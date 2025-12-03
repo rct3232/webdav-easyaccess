@@ -32,7 +32,7 @@ npm run install-all
 `.env` 파일을 생성하고 다음 내용을 입력하세요:
 
 ```env
-# WebDAV Configuration (필수)
+# WebDAV Configuration (required)
 WEBDAV_URL=https://your-webdav-server.com
 WEBDAV_USERNAME=your-username
 WEBDAV_PASSWORD=your-password

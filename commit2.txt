@@ -1,0 +1,20 @@
+fix: Resolve data directory paths and Korean filename encoding issues
+
+- Centralize all data paths to project root/data/ directory
+  * Create server/utils/paths.js for consistent path management
+  * Fix database path from server/data/ to data/
+  * Fix thumbnail directory from server/data/thumbnails/ to data/thumbnails/
+- Fix Korean filename encoding in file uploads
+  * Convert Latin-1 encoded filenames to UTF-8
+  * Add proper Content-Disposition header encoding (RFC 5987)
+  * Replace non-ASCII characters in attachment filenames
+- Improve WebDAV client configuration
+  * Add UTF-8 charset support in headers
+  * Enhance error handling and logging
+- Add path validation to prevent server/data/ usage
+
+Fixes issues with:
+- Files being created in wrong directory (server/data/ instead of data/)
+- Korean filenames appearing as garbled text (mojibake)
+- Download headers causing errors with non-ASCII filenames
+

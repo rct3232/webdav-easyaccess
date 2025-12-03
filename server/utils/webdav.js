@@ -19,9 +19,19 @@ function getWebDAVClient() {
     }
 
     console.log('=== WebDAV Connection Info ===');
-    console.log(`URL: ${url}`);
+    console.log(`Base URL: ${url}`);
     console.log(`Username: ${username}`);
     console.log(`Password: ${password ? '*'.repeat(password.length) : 'NOT SET'}`);
+    
+    // Parse URL to show components
+    try {
+      const urlObj = new URL(url);
+      console.log(`  - Protocol: ${urlObj.protocol}`);
+      console.log(`  - Host: ${urlObj.host}`);
+      console.log(`  - Path: ${urlObj.pathname || '/'}`);
+    } catch (e) {
+      // URL parsing failed, skip
+    }
     console.log('==============================');
 
     // Create WebDAV client with authentication
@@ -34,6 +44,7 @@ function getWebDAVClient() {
       password,
       headers: {
         'User-Agent': 'WebDAV-EasyAccess/1.0',
+        'Accept-Charset': 'utf-8',
       },
     };
 
@@ -126,9 +137,17 @@ async function getFileContents(path) {
       normalizedPath = '/' + normalizedPath;
     }
     
+    // Remove trailing slash for files
+    if (normalizedPath.endsWith('/') && normalizedPath !== '/') {
+      normalizedPath = normalizedPath.slice(0, -1);
+    }
+    
+    console.log(`[WebDAV] Getting file contents: ${normalizedPath}`);
     const buffer = await client.getFileContents(normalizedPath);
+    console.log(`[WebDAV] Downloaded ${buffer?.length || 0} bytes`);
     return buffer;
   } catch (error) {
+    console.error(`[WebDAV] Error getting file contents for ${path}:`, error);
     throw new Error(`Failed to get file contents: ${error.message}`);
   }
 }
@@ -142,9 +161,88 @@ async function putFileContents(path, buffer) {
       normalizedPath = '/' + normalizedPath;
     }
     
-    await client.putFileContents(normalizedPath, buffer);
+    // Remove trailing slash if present (files shouldn't have trailing slash)
+    if (normalizedPath.endsWith('/') && normalizedPath !== '/') {
+      normalizedPath = normalizedPath.slice(0, -1);
+    }
+    
+    // Check if base URL has a path component
+    const baseUrl = process.env.WEBDAV_URL?.trim() || '';
+    let requestPath = normalizedPath;
+    
+    // If base URL contains a path (like /rct3232), we need to handle it carefully
+    // The webdav library combines base URL path with request path
+    if (baseUrl.includes('/') && baseUrl.split('/').length > 3) {
+      // Extract the base path from URL (e.g., /rct3232 from https://server.com/rct3232)
+      const urlParts = baseUrl.split('/');
+      const basePath = '/' + urlParts.slice(3).join('/'); // Get path after domain
+      
+      // If request path is root, use empty string (so it uses base URL path)
+      if (normalizedPath === '/') {
+        requestPath = '';
+      } else {
+        // For non-root paths, use the path as-is
+        // The library will combine: baseUrl + requestPath
+        requestPath = normalizedPath;
+      }
+      
+      console.log(`Base URL path: ${basePath}, Request path: ${requestPath} (original: ${normalizedPath})`);
+    }
+    
+    console.log(`Uploading file: ${requestPath} (size: ${buffer.length} bytes, original path: ${normalizedPath})`);
+    
+    // putFileContents - webdav library handles URL encoding automatically
+    // The library combines: WEBDAV_URL + requestPath
+    await client.putFileContents(requestPath, buffer);
+    
+    console.log(`File uploaded successfully: ${requestPath}`);
     return { success: true };
   } catch (error) {
+    console.error('Upload error details:', {
+      path,
+      message: error.message,
+      status: error.status,
+      response: error.response?.status,
+      url: error.response?.url,
+      bufferSize: buffer?.length,
+    });
+    
+    // Log the actual request URL for debugging
+    if (error.response?.url) {
+      console.error(`Actual request URL: ${error.response.url}`);
+      console.error(`Expected base URL: ${process.env.WEBDAV_URL}`);
+    }
+    
+    // Provide more specific error messages
+    if (error.status === 404 || error.response?.status === 404) {
+      throw new Error(`Path not found: ${path}. Please ensure the parent directory exists.`);
+    } else if (error.status === 403 || error.response?.status === 403) {
+      throw new Error(`Permission denied: Cannot upload to ${path}`);
+    } else if (error.status === 409 || error.response?.status === 409) {
+      throw new Error(`Conflict: File may already exist or parent directory is missing: ${path}`);
+    } else if (error.status === 500 || error.response?.status === 500) {
+      const actualUrl = error.response?.url || 'unknown';
+      const serverError = `WebDAV server error (500). 
+
+Request URL: ${actualUrl}
+Expected path: ${path}
+
+Possible causes:
+1. URL path mismatch - server may be using different base path
+2. File path contains invalid characters
+3. File size exceeds server limits
+4. Parent directory does not exist
+5. Server configuration issue
+
+Try checking your WEBDAV_URL in .env file. If it includes a path (like /rct3232),
+the server might be expecting a different path format.
+
+Original error: ${error.message}`;
+      throw new Error(serverError);
+    } else if (error.message.includes('ECONNREFUSED')) {
+      throw new Error(`Connection refused. Please check your WebDAV server URL and network connection. Original: ${error.message}`);
+    }
+    
     throw new Error(`Failed to upload file: ${error.message}`);
   }
 }

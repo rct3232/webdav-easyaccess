@@ -8,8 +8,6 @@ import {
   Button,
   Breadcrumbs,
   Link,
-  Menu,
-  MenuItem,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
@@ -27,7 +25,8 @@ import FileDetail from '../components/FileDetail';
 import UploadDialog from '../components/UploadDialog';
 import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
-import { listFiles, createFolder } from '../services/fileService';
+import FilePreviewDialog from '../components/FilePreviewDialog';
+import { listFiles } from '../services/fileService';
 
 const VIEW_MODES = {
   LIST: 'list',
@@ -44,11 +43,13 @@ const FileManager = () => {
   const [viewMode, setViewMode] = useState(VIEW_MODES.GRID);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
     loadFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
   const loadFiles = async () => {
@@ -73,12 +74,49 @@ const FileManager = () => {
   };
 
   const handleFileClick = (file) => {
+    console.log('[FileManager] File clicked:', file);
+    
     if (file.type === 'directory') {
       setCurrentPath(file.path);
     } else {
-      // Handle file click (download or preview)
-      window.open(`/api/files/download?path=${encodeURIComponent(file.path)}`, '_blank');
+      // Use basename for filename (not name)
+      const filename = file.basename || file.name;
+      
+      // Check if file can be previewed
+      const canPreviewFile = canPreview(filename);
+      console.log('[FileManager] Can preview:', canPreviewFile, 'File:', filename);
+      
+      // Always open dialog, even for non-previewable files
+      console.log('[FileManager] Opening preview dialog for:', filename);
+      setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
+      setPreviewDialogOpen(true);
     }
+  };
+
+  const canPreview = (filename) => {
+    if (!filename || typeof filename !== 'string') {
+      return false;
+    }
+    
+    const parts = filename.split('.');
+    if (parts.length < 2) {
+      return false; // No extension
+    }
+    
+    const ext = parts.pop().toLowerCase();
+    const previewableExts = [
+      // Images
+      'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+      // Videos
+      'mp4', 'webm', 'ogg', 'mov',
+      // Audio
+      'mp3', 'wav', 'ogg', 'aac', 'm4a',
+      // Documents
+      'pdf',
+      // Text
+      'txt', 'md', 'json', 'xml', 'csv', 'log', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'sh'
+    ];
+    return previewableExts.includes(ext);
   };
 
   const handleRefresh = () => {
@@ -225,6 +263,15 @@ const FileManager = () => {
         onClose={() => setCreateFolderDialogOpen(false)}
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
+      />
+
+      <FilePreviewDialog
+        open={previewDialogOpen}
+        onClose={() => {
+          setPreviewDialogOpen(false);
+          setSelectedFile(null);
+        }}
+        file={selectedFile}
       />
 
       <FileContextMenu

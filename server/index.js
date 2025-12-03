@@ -18,14 +18,23 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Create necessary directories
-const dataDir = path.join(__dirname, '../data');
-const thumbnailDir = path.join(dataDir, 'thumbnails');
+// Set default charset to UTF-8 for all responses
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
+// Create necessary directories - use centralized path utility
+const { getDataDir, getThumbnailDir } = require('./utils/paths');
+const dataDir = getDataDir();
+const thumbnailDir = getThumbnailDir();
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(thumbnailDir)) fs.mkdirSync(thumbnailDir, { recursive: true });
+console.log(`[Server] Data directory: ${dataDir}`);
+console.log(`[Server] Thumbnail directory: ${thumbnailDir}`);
 
 // Serve thumbnails
 app.use('/api/thumbnails', express.static(thumbnailDir));

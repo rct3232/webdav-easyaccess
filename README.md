@@ -1,6 +1,6 @@
 # WebDAV EasyAccess
 
-구글 드라이브 스타일의 WebDAV 파일 관리 웹 서비스입니다.
+WebDAV 파일 관리 웹 서비스입니다.
 
 ## 주요 기능
 

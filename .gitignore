@@ -10,3 +10,6 @@ server/uploads/
 .idea/
 .vscode/
 
+# FFmpeg binary
+ffmpeg.exe
+ffprobe.exe

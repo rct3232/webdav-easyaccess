@@ -1,0 +1,88 @@
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
+
+// Load environment variables from root directory
+const envPath = path.join(__dirname, '../.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else {
+  console.warn('Warning: .env file not found. Using default environment variables.');
+  dotenv.config(); // Try to load from current directory
+}
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Create necessary directories
+const dataDir = path.join(__dirname, '../data');
+const thumbnailDir = path.join(dataDir, 'thumbnails');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(thumbnailDir)) fs.mkdirSync(thumbnailDir, { recursive: true });
+
+// Serve thumbnails
+app.use('/api/thumbnails', express.static(thumbnailDir));
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/files', require('./routes/files'));
+app.use('/api/folders', require('./routes/folders'));
+app.use('/api/permissions', require('./routes/permissions'));
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'WebDAV EasyAccess API is running' });
+});
+
+// WebDAV connection test endpoint
+app.get('/api/webdav/test', async (req, res) => {
+  try {
+    const { testConnection } = require('./utils/webdav');
+    const result = await testConnection();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: `WebDAV test failed: ${error.message}` 
+    });
+  }
+});
+
+// Initialize database
+const db = require('./models/database');
+db.init().then(async () => {
+  console.log('Database initialized');
+  
+  // Test WebDAV connection on startup
+  try {
+    const { testConnection } = require('./utils/webdav');
+    const testResult = await testConnection();
+    if (testResult.success) {
+      console.log('✓ WebDAV connection test: SUCCESS');
+    } else {
+      console.warn('⚠ WebDAV connection test: FAILED');
+      console.warn(`  ${testResult.message}`);
+      console.warn('  Please check your WebDAV credentials in .env file');
+    }
+  } catch (error) {
+    console.warn('⚠ WebDAV connection test failed:', error.message);
+  }
+  
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('Database initialization failed:', err);
+  process.exit(1);
+});
+
+module.exports = app;
+

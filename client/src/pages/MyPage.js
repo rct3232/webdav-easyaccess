@@ -19,7 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
 const MyPage = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });

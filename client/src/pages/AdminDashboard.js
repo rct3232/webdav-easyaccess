@@ -41,7 +41,6 @@ const AdminDashboard = () => {
   const [tab, setTab] = useState(0);
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, userId: null, username: '' });
   const [createDialog, setCreateDialog] = useState({ open: false });
@@ -90,9 +89,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
       await Promise.all([loadPendingUsers(), loadAllUsers(), loadSettings()]);
-      setLoading(false);
     };
     loadData();
   }, []);

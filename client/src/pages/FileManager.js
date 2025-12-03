@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   AppBar,
@@ -52,24 +52,7 @@ const FileManager = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  useEffect(() => {
-    // Update path when user changes
-    if (user && !user.is_admin) {
-      const userFolder = `/${user.username}`;
-      if (currentPath === '/' || !currentPath.startsWith(userFolder)) {
-        setCurrentPath(userFolder);
-      }
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (currentPath) {
-      loadFiles();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPath]);
-
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
       const data = await listFiles(currentPath);
@@ -79,7 +62,23 @@ const FileManager = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPath]);
+
+  useEffect(() => {
+    // Update path when user changes
+    if (user && !user.is_admin) {
+      const userFolder = `/${user.username}`;
+      if (currentPath === '/' || !currentPath.startsWith(userFolder)) {
+        setCurrentPath(userFolder);
+      }
+    }
+  }, [user, currentPath]);
+
+  useEffect(() => {
+    if (currentPath) {
+      loadFiles();
+    }
+  }, [currentPath, loadFiles]);
 
   const handleLogout = () => {
     logout();

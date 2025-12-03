@@ -42,6 +42,8 @@ app.use('/api/thumbnails', express.static(thumbnailDir));
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
 app.use('/api/permissions', require('./routes/permissions'));

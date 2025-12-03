@@ -17,6 +17,7 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess(false);
 
     if (password !== confirmPassword) {
       setError('비밀번호가 일치하지 않습니다.');
@@ -40,7 +42,11 @@ const Register = () => {
     const result = await register(username, email, password);
     
     if (result.success) {
-      navigate('/files');
+      if (result.status === 'pending') {
+        setSuccess(true);
+      } else {
+        navigate('/files');
+      }
     } else {
       setError(result.error);
     }
@@ -69,6 +75,19 @@ const Register = () => {
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
+            </Alert>
+          )}
+
+          {success && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                회원가입이 완료되었습니다!
+              </Typography>
+              <Typography variant="body2">
+                관리자 승인 후 이용하실 수 있습니다.
+                <br />
+                승인 결과는 입력하신 이메일로 안내드립니다.
+              </Typography>
             </Alert>
           )}
 
@@ -119,7 +138,7 @@ const Register = () => {
               variant="contained"
               color="primary"
               sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
+              disabled={loading || success}
             >
               {loading ? '가입 중...' : '회원가입'}
             </Button>

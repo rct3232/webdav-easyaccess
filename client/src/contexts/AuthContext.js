@@ -28,7 +28,11 @@ export const AuthProvider = ({ children }) => {
   const fetchUser = async () => {
     try {
       const response = await axios.get('/api/auth/me');
-      setUser(response.data);
+      const userData = response.data;
+      setUser({
+        ...userData,
+        is_admin: Boolean(userData.is_admin),
+      });
     } catch (error) {
       console.error('Failed to fetch user:', error);
       logout();
@@ -49,15 +53,26 @@ export const AuthProvider = ({ children }) => {
       
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Login failed' };
+      const errorData = error.response?.data || {};
+      return { 
+        success: false, 
+        error: errorData.error || errorData.message || 'Login failed',
+        status: errorData.status,
+        message: errorData.message
+      };
     }
   };
 
   const register = async (username, email, password) => {
     try {
       const response = await axios.post('/api/auth/register', { username, email, password });
-      const { token: newToken, user: userData } = response.data;
+      const { status: accountStatus } = response.data;
       
+      if (accountStatus === 'pending') {
+        return { success: true, status: 'pending' };
+      }
+
+      const { token: newToken, user: userData } = response.data;
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);

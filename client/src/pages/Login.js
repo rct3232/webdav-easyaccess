@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -10,18 +10,36 @@ import {
   Alert,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import axios from 'axios';
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await axios.get('/api/settings/public');
+        setRegistrationEnabled(response.data.registration_enabled);
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+        // Default to false if settings can't be loaded
+        setRegistrationEnabled(false);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setWarning('');
     setLoading(true);
 
     const result = await login(username, password);
@@ -29,7 +47,13 @@ const Login = () => {
     if (result.success) {
       navigate('/files');
     } else {
-      setError(result.error);
+      if (result.status === 'pending') {
+        setWarning(result.message || '계정이 승인 대기 중입니다. 관리자의 승인을 기다려 주세요.');
+      } else if (result.status === 'rejected') {
+        setError(result.message || '계정 가입이 거절되었습니다. 관리자에게 문의하세요.');
+      } else {
+        setError(result.error || '로그인에 실패했습니다.');
+      }
     }
     
     setLoading(false);
@@ -56,6 +80,12 @@ const Login = () => {
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
+            </Alert>
+          )}
+
+          {warning && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {warning}
             </Alert>
           )}
 
@@ -90,13 +120,15 @@ const Login = () => {
             >
               {loading ? '로그인 중...' : '로그인'}
             </Button>
-            <Box textAlign="center">
-              <Link to="/register" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <Typography variant="body2" color="primary">
-                  계정이 없으신가요? 회원가입
-                </Typography>
-              </Link>
-            </Box>
+            {registrationEnabled && (
+              <Box textAlign="center">
+                <Link to="/register" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <Typography variant="body2" color="primary">
+                    계정이 없으신가요? 회원가입
+                  </Typography>
+                </Link>
+              </Box>
+            )}
           </form>
         </Paper>
       </Box>

@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
+const User = require('../models/User');
 const {
   listDirectory,
   getFileContents,
@@ -23,15 +24,37 @@ const upload = multer({
   preservePath: true,
 });
 
+// Helper function to check if user can access a path
+async function canAccessPath(userId, requestedPath) {
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    return false;
+  }
+
+  if (user.is_admin) {
+    return true;
+  }
+
+  const normalizedPath = requestedPath.replace(/\\/g, '/');
+  const userFolder = `/${user.username}`;
+  
+  if (normalizedPath === '/' || normalizedPath === '') {
+    return false;
+  }
+  
+  return normalizedPath.startsWith(userFolder);
+}
+
 // Helper function to check permissions
 async function checkFilePermission(userId, filePath, requiredPermission = 'read') {
-  // Get the folder path (parent directory)
+  if (!await canAccessPath(userId, filePath)) {
+    return false;
+  }
+
   const folderPath = path.dirname(filePath) || '/';
-  
-  // Check if user has permission for this folder
   const hasPermission = await Permission.checkPermission(userId, folderPath, requiredPermission);
   
-  // If no specific permission, check root
   if (!hasPermission && folderPath !== '/') {
     return await Permission.checkPermission(userId, '/', requiredPermission);
   }
@@ -42,12 +65,43 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
 // List files in directory
 router.get('/list', authenticateToken, async (req, res) => {
   try {
-    const folderPath = req.query.path || '/';
+    let folderPath = req.query.path || '/';
+    const user = await User.findById(req.user.id);
     
-    // Check permission
-    const hasPermission = await checkFilePermission(req.user.id, folderPath, 'read');
+    console.log('[Files List] User:', user);
+    console.log('[Files List] Requested path:', folderPath);
+    console.log('[Files List] is_admin:', user?.is_admin);
+    
+    if (!user) {
+      console.log('[Files List] User not found!');
+      return res.status(403).json({ error: 'User not found' });
+    }
+    
+    if (!user.is_admin) {
+      const userFolder = `/${user.username}`;
+      console.log('[Files List] Non-admin user, userFolder:', userFolder);
+      if (folderPath === '/' || folderPath === '') {
+        folderPath = userFolder;
+      } else if (!folderPath.startsWith(userFolder)) {
+        console.log('[Files List] Access denied - path does not start with user folder');
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
+    // For directory listing, check permission on the directory itself
+    console.log('[Files List] Checking permission for folder:', folderPath);
+    const hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'read');
+    console.log('[Files List] Direct permission:', hasPermission);
+    
     if (!hasPermission) {
-      return res.status(403).json({ error: 'Access denied' });
+      // Fallback to root permission
+      const rootPermission = folderPath !== '/' ? await Permission.checkPermission(req.user.id, '/', 'read') : false;
+      console.log('[Files List] Root permission fallback:', rootPermission);
+      
+      if (!rootPermission) {
+        console.log('[Files List] Permission denied - no access to folder');
+        return res.status(403).json({ error: 'Forbidden' });
+      }
     }
 
     const items = await listDirectory(folderPath);
@@ -173,6 +227,18 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     let folderPath = req.body.path || '/';
+    
+    // Adjust path for non-admin users
+    const user = await User.findById(req.user.id);
+    if (!user.is_admin) {
+      const userFolder = `/${user.username}`;
+      if (folderPath === '/' || folderPath === '') {
+        folderPath = userFolder;
+      } else if (!folderPath.startsWith(userFolder)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
     // Normalize folder path
     if (!folderPath.startsWith('/')) {
       folderPath = '/' + folderPath;
@@ -218,6 +284,31 @@ router.delete('/delete', authenticateToken, async (req, res) => {
     const hasPermission = await checkFilePermission(req.user.id, filePath, 'write');
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Check if this is a directory with assigned permissions
+    const user = await User.findById(req.user.id);
+    if (user && user.is_admin) {
+      try {
+        // Try to list directory contents to determine if it's a directory
+        await listDirectory(filePath);
+        
+        // It's a directory - check for permissions
+        console.log('[Delete] Checking permissions for directory:', filePath);
+        const usersWithPermissions = await Permission.hasPermissionsInPath(filePath);
+        
+        if (usersWithPermissions.length > 0) {
+          console.log('[Delete] Found users with permissions:', usersWithPermissions.map(u => u.username));
+          const userList = usersWithPermissions.map(u => `${u.username} (${u.folder_path})`).join(', ');
+          return res.status(400).json({ 
+            error: `이 폴더에는 접근 권한이 부여된 사용자가 있어 삭제할 수 없습니다.\n권한이 있는 사용자: ${userList}\n\n먼저 권한을 제거한 후 삭제해주세요.`,
+            usersWithPermissions: usersWithPermissions.map(u => ({ username: u.username, path: u.folder_path }))
+          });
+        }
+      } catch (dirError) {
+        // Not a directory or doesn't exist, proceed with deletion
+        console.log('[Delete] Not a directory or does not exist, proceeding with deletion');
+      }
     }
 
     await deleteFile(filePath);

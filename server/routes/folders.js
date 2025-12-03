@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
+const User = require('../models/User');
 const { createDirectory, listDirectory } = require('../utils/webdav');
 const path = require('path');
 
@@ -19,9 +20,21 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = 'r
 // Create folder
 router.post('/create', authenticateToken, async (req, res) => {
   try {
-    const { path: folderPath } = req.body;
+    let { path: folderPath } = req.body;
     if (!folderPath) {
       return res.status(400).json({ error: 'Folder path is required' });
+    }
+
+    // Check access for non-admin users
+    const user = await User.findById(req.user.id);
+    if (!user.is_admin) {
+      const userFolder = `/${user.username}`;
+      if (folderPath === '/' || folderPath === '') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      if (!folderPath.startsWith(userFolder)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     // Check permission
@@ -42,7 +55,18 @@ router.post('/create', authenticateToken, async (req, res) => {
 // List folder contents
 router.get('/list', authenticateToken, async (req, res) => {
   try {
-    const folderPath = req.query.path || '/';
+    let folderPath = req.query.path || '/';
+    
+    // Adjust path for non-admin users
+    const user = await User.findById(req.user.id);
+    if (!user.is_admin) {
+      const userFolder = `/${user.username}`;
+      if (folderPath === '/' || folderPath === '') {
+        folderPath = userFolder;
+      } else if (!folderPath.startsWith(userFolder)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
     
     // Check permission
     const hasPermission = await checkFolderPermission(req.user.id, folderPath, 'read');

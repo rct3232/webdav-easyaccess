@@ -16,6 +16,8 @@ import {
   ViewAgenda as ViewAgendaIcon,
   Upload as UploadIcon,
   Folder as FolderIcon,
+  Person as PersonIcon,
+  AdminPanelSettings as AdminIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -37,7 +39,10 @@ const VIEW_MODES = {
 const FileManager = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [currentPath, setCurrentPath] = useState('/');
+  const [currentPath, setCurrentPath] = useState(() => {
+    // Set initial path based on user role
+    return user?.is_admin ? '/' : `/${user?.username || ''}`;
+  });
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(VIEW_MODES.GRID);
@@ -48,7 +53,19 @@ const FileManager = () => {
   const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
-    loadFiles();
+    // Update path when user changes
+    if (user && !user.is_admin) {
+      const userFolder = `/${user.username}`;
+      if (currentPath === '/' || !currentPath.startsWith(userFolder)) {
+        setCurrentPath(userFolder);
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (currentPath) {
+      loadFiles();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
@@ -125,13 +142,20 @@ const FileManager = () => {
   };
 
   const pathParts = currentPath.split('/').filter(Boolean);
+  const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
   const breadcrumbs = [
-    { name: '홈', path: '/' },
+    { name: '홈', path: homePath },
     ...pathParts.map((part, index) => ({
       name: part,
       path: '/' + pathParts.slice(0, index + 1).join('/'),
     })),
-  ];
+  ].filter((crumb, index) => {
+    // For non-admin users, filter out the username from breadcrumbs
+    if (!user?.is_admin && index === 1 && crumb.name === user?.username) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -143,7 +167,15 @@ const FileManager = () => {
           <Typography variant="body2" sx={{ mr: 2 }}>
             {user?.username}
           </Typography>
-          <IconButton color="inherit" onClick={handleLogout}>
+          {user?.is_admin && (
+            <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
+              <AdminIcon />
+            </IconButton>
+          )}
+          <IconButton color="inherit" onClick={() => navigate('/mypage')} title="마이페이지">
+            <PersonIcon />
+          </IconButton>
+          <IconButton color="inherit" onClick={handleLogout} title="로그아웃">
             <LogoutIcon />
           </IconButton>
         </Toolbar>

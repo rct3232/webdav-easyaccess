@@ -54,6 +54,8 @@ class Database {
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
+            status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+            is_admin INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
           )
@@ -82,6 +84,20 @@ class Database {
           }
         });
 
+        // Settings table
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+        });
+
         // Create index for faster lookups
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_folder_permissions_user ON folder_permissions(user_id)`, (err) => {
           if (err) {
@@ -90,14 +106,36 @@ class Database {
           }
         });
 
-        // Last operation - resolve when this completes
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_folder_permissions_path ON folder_permissions(folder_path)`, (err) => {
           if (err) {
             reject(err);
-          } else {
+            return;
+          }
+        });
+
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+        });
+
+        // Add status and is_admin columns if they don't exist (migration)
+        this.db.run(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'approved'`, (err) => {
+          // Ignore error if column already exists
+        });
+
+        this.db.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`, (err) => {
+          // Ignore error if column already exists
+          
+          // Initialize default settings
+          this.db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('registration_enabled', 'false')`, (err) => {
+            if (err) {
+              console.error('Failed to initialize settings:', err);
+            }
             console.log('Database tables created');
             resolve();
-          }
+          });
         });
       });
     });
@@ -108,25 +146,78 @@ class Database {
     const Permission = require('./Permission');
     
     try {
-      // Check if admin user already exists
       const existingAdmin = await User.findByUsername('admin');
       
       if (!existingAdmin) {
-        // Create default admin account
         const defaultPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'admin';
-        const adminUser = await User.create('admin', 'admin@webdav.local', defaultPassword);
-        
-        // Grant admin permission to root folder
+        const adminUser = await User.create('admin', 'admin@webdav.local', defaultPassword, true);
         await Permission.grant(adminUser.id, '/', 'admin');
         
         console.log('Default admin account created:');
         console.log('  Username: admin');
         console.log('  Password: ' + defaultPassword);
         console.log('  ⚠️  Please change the default password after first login!');
+      } else {
+        // Update existing admin account to ensure is_admin is set
+        await new Promise((resolve, reject) => {
+          this.db.run(
+            `UPDATE users SET is_admin = 1, status = 'approved' WHERE username = 'admin'`,
+            (err) => {
+              if (err) {
+                console.error('Failed to update admin account:', err);
+                reject(err);
+              } else {
+                console.log('Admin account updated with is_admin flag');
+                resolve();
+              }
+            }
+          );
+        });
+      }
+
+      // Migrate all existing users to have approved status
+      await new Promise((resolve, reject) => {
+        this.db.run(
+          `UPDATE users SET status = 'approved' WHERE status IS NULL OR status = ''`,
+          (err) => {
+            if (err) {
+              console.error('Failed to migrate user statuses:', err);
+              reject(err);
+            } else {
+              console.log('Migrated existing users to approved status');
+              resolve();
+            }
+          }
+        );
+      });
+
+      // Ensure all approved users have permissions to their own folders
+      const allUsers = await User.findAll();
+      console.log(`Found ${allUsers.length} users to check permissions`);
+      
+      for (const user of allUsers) {
+        console.log(`Checking user: ${user.username}, status: ${user.status}, is_admin: ${user.is_admin}`);
+        
+        if (user.status === 'approved' && !user.is_admin) {
+          const userFolder = `/${user.username}`;
+          const existingPermission = await Permission.getUserPermissions(user.id);
+          const hasOwnFolderPermission = existingPermission.some(p => p.folder_path === userFolder);
+          
+          console.log(`User ${user.username}: has permission for ${userFolder}? ${hasOwnFolderPermission}`);
+          
+          if (!hasOwnFolderPermission) {
+            try {
+              await Permission.grant(user.id, userFolder, 'admin');
+              console.log(`✓ Granted permission to ${user.username} for folder ${userFolder}`);
+            } catch (e) {
+              console.error(`Failed to grant permission to ${user.username}:`, e.message);
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Error initializing default admin:', error);
-      // Don't reject - allow server to start even if admin creation fails
+      console.error('Error stack:', error.stack);
     }
   }
 

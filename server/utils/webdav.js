@@ -396,6 +396,45 @@ Current Username: ${process.env.WEBDAV_USERNAME}`;
   }
 }
 
+async function pathExists(path) {
+  const client = getWebDAVClient();
+  try {
+    // Normalize path
+    let normalizedPath = path.trim();
+    if (!normalizedPath.startsWith('/')) {
+      normalizedPath = '/' + normalizedPath;
+    }
+    
+    // Remove trailing slash for non-root paths
+    if (normalizedPath.endsWith('/') && normalizedPath !== '/') {
+      normalizedPath = normalizedPath.slice(0, -1);
+    }
+    
+    console.log('[WebDAV] Checking if path exists:', normalizedPath);
+    
+    // Try to get directory contents instead of using exists()
+    // If it succeeds, the directory exists
+    try {
+      await client.getDirectoryContents(normalizedPath);
+      console.log('[WebDAV] Path exists: true (directory found)');
+      return true;
+    } catch (dirError) {
+      // 404 means directory doesn't exist
+      if (dirError.status === 404 || dirError.response?.status === 404) {
+        console.log('[WebDAV] Path exists: false (404 Not Found)');
+        return false;
+      }
+      // Other errors (like 401, 403) mean we can't determine, so throw
+      console.error('[WebDAV] Path check failed with status:', dirError.status || dirError.response?.status);
+      throw dirError;
+    }
+  } catch (error) {
+    console.error('[WebDAV] Path exists check error:', error.message);
+    console.error('[WebDAV] Error type:', error.constructor.name);
+    throw error;
+  }
+}
+
 module.exports = {
   getWebDAVClient,
   listDirectory,
@@ -405,6 +444,7 @@ module.exports = {
   moveFile,
   copyFile,
   createDirectory,
+  pathExists,
   isImageFile,
   isVideoFile,
   testConnection,

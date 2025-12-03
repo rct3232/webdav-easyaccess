@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Button,
   TextField,
@@ -30,6 +31,8 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [newName, setNewName] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,7 +60,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
       onClose();
     } catch (error) {
       console.error('Delete failed:', error);
-      alert('삭제에 실패했습니다');
+      const errorMsg = error.response?.data?.error || '삭제에 실패했습니다';
+      setErrorMessage(errorMsg);
+      setErrorDialogOpen(true);
     }
   };
 
@@ -278,6 +283,21 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
           </Button>
           <Button onClick={handleCopy} variant="contained" disabled={loading}>
             복사
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Error Dialog */}
+      <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>
+        <DialogTitle>삭제 실패</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ whiteSpace: 'pre-line', mt: 2 }}>
+            {errorMessage}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setErrorDialogOpen(false)} variant="contained" color="primary">
+            확인
           </Button>
         </DialogActions>
       </Dialog>

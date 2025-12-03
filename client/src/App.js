@@ -7,6 +7,8 @@ import PrivateRoute from './components/PrivateRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import FileManager from './pages/FileManager';
+import MyPage from './pages/MyPage';
+import AdminDashboard from './pages/AdminDashboard';
 
 const theme = createTheme({
   palette: {
@@ -33,6 +35,22 @@ function App() {
               element={
                 <PrivateRoute>
                   <FileManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mypage"
+              element={
+                <PrivateRoute>
+                  <MyPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <PrivateRoute>
+                  <AdminDashboard />
                 </PrivateRoute>
               }
             />

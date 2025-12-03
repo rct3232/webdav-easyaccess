@@ -38,7 +38,6 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Update password
 router.put('/:id/password', authenticateToken, async (req, res) => {
   try {
-    // Only allow users to update their own password
     if (parseInt(req.params.id) !== req.user.id) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -53,6 +52,31 @@ router.put('/:id/password', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Update password error:', error);
     res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
+// Update email
+router.put('/:id/email', authenticateToken, async (req, res) => {
+  try {
+    if (parseInt(req.params.id) !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail && existingEmail.id !== req.user.id) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+
+    await User.updateEmail(req.params.id, email);
+    res.json({ message: 'Email updated successfully' });
+  } catch (error) {
+    console.error('Update email error:', error);
+    res.status(500).json({ error: 'Failed to update email' });
   }
 });
 

@@ -21,6 +21,16 @@ class Permission {
     });
   }
 
+  static async revokeAllUserPermissions(userId) {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM folder_permissions WHERE user_id = ?`;
+      db.getDb().run(sql, [userId], function(err) {
+        if (err) reject(err);
+        else resolve({ success: true, deletedCount: this.changes });
+      });
+    });
+  }
+
   static async getUserPermissions(userId) {
     return new Promise((resolve, reject) => {
       const sql = `SELECT folder_path, permission FROM folder_permissions WHERE user_id = ?`;
@@ -58,6 +68,22 @@ class Permission {
         WHERE fp.folder_path = ?
       `;
       db.getDb().all(sql, [folderPath], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  }
+
+  static async hasPermissionsInPath(folderPath) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT u.id, u.username, u.email, fp.folder_path, fp.permission 
+        FROM folder_permissions fp
+        JOIN users u ON fp.user_id = u.id
+        WHERE fp.folder_path = ? OR fp.folder_path LIKE ?
+      `;
+      const likePattern = folderPath.endsWith('/') ? `${folderPath}%` : `${folderPath}/%`;
+      db.getDb().all(sql, [folderPath, likePattern], (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
       });

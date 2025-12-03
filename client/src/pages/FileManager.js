@@ -74,20 +74,11 @@ const FileManager = () => {
   };
 
   const handleFileClick = (file) => {
-    console.log('[FileManager] File clicked:', file);
-    
     if (file.type === 'directory') {
       setCurrentPath(file.path);
     } else {
-      // Use basename for filename (not name)
       const filename = file.basename || file.name;
-      
-      // Check if file can be previewed
       const canPreviewFile = canPreview(filename);
-      console.log('[FileManager] Can preview:', canPreviewFile, 'File:', filename);
-      
-      // Always open dialog, even for non-previewable files
-      console.log('[FileManager] Opening preview dialog for:', filename);
       setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
       setPreviewDialogOpen(true);
     }

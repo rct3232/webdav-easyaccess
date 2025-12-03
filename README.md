@@ -32,28 +32,26 @@ npm run install-all
 `.env` 파일을 생성하고 다음 내용을 입력하세요:
 
 ```env
-# WebDAV Configuration
+# WebDAV Configuration (필수)
 WEBDAV_URL=https://your-webdav-server.com
 WEBDAV_USERNAME=your-username
 WEBDAV_PASSWORD=your-password
 
 # Server Configuration
 PORT=5000
-NODE_ENV=development
-
-# JWT Secret
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 
-# Database
-DB_PATH=./data/database.sqlite
-
-# Thumbnail Configuration
-THUMBNAIL_DIR=./data/thumbnails
-MAX_THUMBNAIL_SIZE=300
-
-# Default Admin Account (optional)
+# Optional Configuration
+# MAX_THUMBNAIL_SIZE=300
 # ADMIN_DEFAULT_PASSWORD=admin
+# FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
+# WEBDAV_AUTH_TYPE=auto
 ```
+
+**참고:**
+- 데이터베이스와 썸네일은 자동으로 `data/` 디렉토리에 저장됩니다.
+- FFmpeg는 자동으로 감지되며, 찾을 수 없는 경우에만 `FFMPEG_PATH`를 설정하세요.
+- `WEBDAV_AUTH_TYPE`은 인증 방식을 명시적으로 지정할 때만 사용합니다 (auto/basic/digest).
 
 ### 3. 서버 실행
 
@@ -146,7 +144,8 @@ webdav-easyaccess/
 
 - 프로덕션 환경에서는 반드시 `.env` 파일의 `JWT_SECRET`을 강력한 비밀키로 변경하세요.
 - WebDAV 서버 연결 정보는 `.env` 파일에 안전하게 보관하세요.
-- 썸네일은 이미지 파일에 대해서만 자동 생성됩니다. 동영상 썸네일은 향후 업데이트 예정입니다.
+- 이미지와 동영상 파일의 썸네일이 자동으로 생성됩니다.
+- 동영상 썸네일 생성을 위해서는 FFmpeg가 필요합니다 (자동 감지 지원).
 
 ## 라이선스
 

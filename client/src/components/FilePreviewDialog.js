@@ -22,13 +22,8 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
   const [textContent, setTextContent] = useState(null);
 
   const loadPreview = useCallback(async () => {
-    if (!file) {
-      console.log('[Preview] No file provided');
-      return;
-    }
+    if (!file) return;
 
-    const filename = file.name || file.basename;
-    console.log('[Preview] Loading preview for:', filename, file.path);
     setLoading(true);
     setError(null);
 
@@ -36,50 +31,39 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
       const response = await axios.get('/api/files/download', {
         params: { 
           path: file.path,
-          inline: 'true' // Request inline display for preview
+          inline: 'true'
         },
         responseType: 'blob',
       });
 
-      console.log('[Preview] File downloaded, size:', response.data.size);
       const blob = response.data;
+      const filename = file.name || file.basename;
       const fileType = getFileType(filename);
-      console.log('[Preview] File type:', fileType);
 
       if (fileType === 'text') {
-        // For text files, read as text
         const text = await blob.text();
         setTextContent(text);
-        console.log('[Preview] Text content loaded, length:', text.length);
       } else {
-        // For binary files (images, videos, PDFs), create object URL
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
-        console.log('[Preview] Object URL created:', url);
       }
 
       setLoading(false);
     } catch (err) {
-      console.error('[Preview] Load error:', err);
+      console.error('Preview load error:', err);
       setError('파일을 불러올 수 없습니다.');
       setLoading(false);
     }
   }, [file]);
 
   useEffect(() => {
-    const filename = file?.name || file?.basename;
-    console.log('[Preview] useEffect triggered - open:', open, 'file:', filename);
-    
     if (open && file) {
-      // Only load preview if file can be previewed
       if (file.canPreview !== false) {
         loadPreview();
       } else {
-        // For non-previewable files, just set loading to false
         setLoading(false);
       }
     } else {
-      // Clean up when dialog closes
       setPreviewUrl((prevUrl) => {
         if (prevUrl) {
           URL.revokeObjectURL(prevUrl);

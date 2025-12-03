@@ -18,21 +18,6 @@ function getWebDAVClient() {
       url = url.slice(0, -1);
     }
 
-    console.log('=== WebDAV Connection Info ===');
-    console.log(`Base URL: ${url}`);
-    console.log(`Username: ${username}`);
-    console.log(`Password: ${password ? '*'.repeat(password.length) : 'NOT SET'}`);
-    
-    // Parse URL to show components
-    try {
-      const urlObj = new URL(url);
-      console.log(`  - Protocol: ${urlObj.protocol}`);
-      console.log(`  - Host: ${urlObj.host}`);
-      console.log(`  - Path: ${urlObj.pathname || '/'}`);
-    } catch (e) {
-      // URL parsing failed, skip
-    }
-    console.log('==============================');
 
     // Create WebDAV client with authentication
     // The webdav library supports Basic and Digest authentication automatically
@@ -53,13 +38,7 @@ function getWebDAVClient() {
       clientOptions.authType = authType;
     }
 
-    try {
-      webdavClient = createClient(url, clientOptions);
-      console.log('WebDAV client created successfully');
-    } catch (error) {
-      console.error('Failed to create WebDAV client:', error);
-      throw error;
-    }
+    webdavClient = createClient(url, clientOptions);
   }
 
   return webdavClient;
@@ -86,9 +65,6 @@ async function listDirectory(path = '/') {
         requestPath = '';
       }
     }
-    
-    console.log(`Listing directory: ${requestPath || '/'} (requested: ${path})`);
-    
     const items = await client.getDirectoryContents(requestPath);
     return items.map(item => ({
       filename: item.filename,
@@ -99,14 +75,6 @@ async function listDirectory(path = '/') {
       mime: item.mime,
     }));
   } catch (error) {
-    console.error('WebDAV listDirectory error:', error);
-    console.error('Error details:', {
-      message: error.message,
-      status: error.status,
-      response: error.response?.status,
-      url: error.response?.url,
-    });
-    
     if (error.status === 401 || error.response?.status === 401) {
       const detailedError = `WebDAV authentication failed (401 Unauthorized). 
       
@@ -142,9 +110,7 @@ async function getFileContents(path) {
       normalizedPath = normalizedPath.slice(0, -1);
     }
     
-    console.log(`[WebDAV] Getting file contents: ${normalizedPath}`);
     const buffer = await client.getFileContents(normalizedPath);
-    console.log(`[WebDAV] Downloaded ${buffer?.length || 0} bytes`);
     return buffer;
   } catch (error) {
     console.error(`[WebDAV] Error getting file contents for ${path}:`, error);
@@ -185,35 +151,11 @@ async function putFileContents(path, buffer) {
         // The library will combine: baseUrl + requestPath
         requestPath = normalizedPath;
       }
-      
-      console.log(`Base URL path: ${basePath}, Request path: ${requestPath} (original: ${normalizedPath})`);
     }
     
-    console.log(`Uploading file: ${requestPath} (size: ${buffer.length} bytes, original path: ${normalizedPath})`);
-    
-    // putFileContents - webdav library handles URL encoding automatically
-    // The library combines: WEBDAV_URL + requestPath
     await client.putFileContents(requestPath, buffer);
-    
-    console.log(`File uploaded successfully: ${requestPath}`);
     return { success: true };
   } catch (error) {
-    console.error('Upload error details:', {
-      path,
-      message: error.message,
-      status: error.status,
-      response: error.response?.status,
-      url: error.response?.url,
-      bufferSize: buffer?.length,
-    });
-    
-    // Log the actual request URL for debugging
-    if (error.response?.url) {
-      console.error(`Actual request URL: ${error.response.url}`);
-      console.error(`Expected base URL: ${process.env.WEBDAV_URL}`);
-    }
-    
-    // Provide more specific error messages
     if (error.status === 404 || error.response?.status === 404) {
       throw new Error(`Path not found: ${path}. Please ensure the parent directory exists.`);
     } else if (error.status === 403 || error.response?.status === 403) {
@@ -270,7 +212,6 @@ async function deleteFile(path) {
       }
     } catch (err) {
       // If we can't determine, try both methods
-      console.log('Could not determine if path is directory, will try both methods');
     }
     
     // For directories, some WebDAV servers require trailing slash
@@ -279,8 +220,6 @@ async function deleteFile(path) {
     if (isDirectory && !deletePath.endsWith('/')) {
       deletePath = deletePath + '/';
     }
-    
-    console.log(`Deleting: ${deletePath} (original: ${path}, isDirectory: ${isDirectory})`);
     
     try {
       // Try deleting with the determined path
@@ -292,7 +231,6 @@ async function deleteFile(path) {
         const alternatePath = deletePath.endsWith('/') 
           ? deletePath.slice(0, -1) 
           : deletePath + '/';
-        console.log(`First attempt failed, trying alternate path: ${alternatePath}`);
         try {
           await client.deleteFile(alternatePath);
           return { success: true };
@@ -305,15 +243,6 @@ async function deleteFile(path) {
       }
     }
   } catch (error) {
-    console.error('Delete error details:', {
-      path,
-      message: error.message,
-      status: error.status,
-      response: error.response?.status,
-      url: error.response?.url,
-    });
-    
-    // Provide more specific error messages
     if (error.status === 404 || error.response?.status === 404) {
       throw new Error(`File or folder not found: ${path}`);
     } else if (error.status === 403 || error.response?.status === 403) {
@@ -424,7 +353,6 @@ async function testConnection() {
     let lastError = null;
     for (const testPath of testPaths) {
       try {
-        console.log(`Testing connection with path: "${testPath || '/'}"`);
         const items = await client.getDirectoryContents(testPath);
         return { 
           success: true, 
@@ -434,15 +362,11 @@ async function testConnection() {
         };
       } catch (err) {
         lastError = err;
-        console.log(`Path "${testPath || '/'}" failed: ${err.message}`);
-        // Continue to next path
       }
     }
     
-    // All paths failed
     throw lastError || new Error('All connection attempts failed');
   } catch (error) {
-    console.error('WebDAV connection test failed:', error);
     const status = error.status || error.response?.status;
     let message = `WebDAV connection failed: ${error.message}`;
     

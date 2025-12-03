@@ -4,11 +4,9 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
 const { getDatabasePath } = require('../utils/paths');
-// CRITICAL: Always use absolute path from project root/data/database.sqlite
-// NEVER use server/data/database.sqlite
 const DB_PATH = process.env.DB_PATH 
   ? path.resolve(process.cwd(), process.env.DB_PATH)
-  : getDatabasePath(); // getDatabasePath() already returns absolute path
+  : getDatabasePath();
 
 class Database {
   constructor() {
@@ -17,27 +15,20 @@ class Database {
 
   async init() {
     return new Promise((resolve, reject) => {
-      // Ensure data directory exists
-      // CRITICAL: DB_PATH must be absolute path to project root/data/database.sqlite
       const dbDir = path.dirname(DB_PATH);
+      
       if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
-        console.log(`[Database] Created database directory: ${dbDir}`);
       }
       
-      // Verify the path is correct - CRITICAL CHECKS
       if (!path.isAbsolute(DB_PATH)) {
-        console.error(`[Database] ERROR: DB_PATH is not absolute: ${DB_PATH}`);
         return reject(new Error(`DB_PATH must be absolute path, got: ${DB_PATH}`));
       }
-      // Verify it's not in server/data/ - CRITICAL CHECK
+      
       const normalizedPath = DB_PATH.replace(/\\/g, '/');
       if (normalizedPath.includes('/server/data/')) {
-        console.error(`[Database] ERROR: DB_PATH is in server/data/: ${DB_PATH}`);
         return reject(new Error(`DB_PATH must be in project root/data/, not server/data/: ${DB_PATH}`));
       }
-      
-      console.log(`[Database] Database path (verified): ${DB_PATH}`);
 
           this.db = new sqlite3.Database(DB_PATH, (err) => {
         if (err) {

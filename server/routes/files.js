@@ -73,15 +73,8 @@ router.get('/list', authenticateToken, async (req, res) => {
         
         if (isImageFile(item.basename) || isVideoFile(item.basename)) {
           try {
-            console.log(`[Files] Generating thumbnail for: ${fullPath}`);
             thumbnailUrl = await ensureThumbnail(fullPath);
-            if (thumbnailUrl) {
-              console.log(`[Files] Thumbnail URL generated: ${thumbnailUrl}`);
-            } else {
-              console.log(`[Files] Thumbnail URL is null for: ${fullPath}`);
-            }
           } catch (error) {
-            console.error(`[Files] Thumbnail generation error for ${fullPath}:`, error);
             // Continue without thumbnail
           }
         }
@@ -168,27 +161,14 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Get original filename - fix encoding issues
-    // Multer receives filename in latin1 encoding, need to convert to UTF-8
     let originalFilename = req.file.originalname;
     
     try {
-      // Check if filename appears to be incorrectly encoded
-      // If it contains non-ASCII characters, it's likely latin1-encoded UTF-8
       if (/[^\x00-\x7F]/.test(originalFilename)) {
-        console.log(`[Upload] Original filename (raw): ${originalFilename}`);
-        console.log(`[Upload] Original filename (bytes): ${Buffer.from(originalFilename).toString('hex')}`);
-        
-        // Convert from latin1 to UTF-8
-        // The filename was UTF-8 bytes interpreted as latin1
         const latin1Buffer = Buffer.from(originalFilename, 'latin1');
         originalFilename = latin1Buffer.toString('utf8');
-        
-        console.log(`[Upload] Fixed filename: ${originalFilename}`);
-        console.log(`[Upload] Fixed filename (bytes): ${Buffer.from(originalFilename).toString('hex')}`);
       }
     } catch (e) {
-      console.error('[Upload] Filename encoding fix error:', e);
       // If conversion fails, use original filename
     }
 
@@ -209,10 +189,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       filePath = folderPath + originalFilename;
     }
     
-    // Normalize path separators
     filePath = filePath.replace(/\\/g, '/').replace(/\/+/g, '/');
-    
-    console.log(`Upload request - folder: ${folderPath}, file: ${originalFilename}, full path: ${filePath}, size: ${req.file.size} bytes`);
 
     // Check permission
     const hasPermission = await checkFilePermission(req.user.id, filePath, 'write');

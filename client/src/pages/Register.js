@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Container,
@@ -10,6 +10,8 @@ import {
   Alert,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import EmailNotificationMessage from '../components/EmailNotificationMessage';
+import axios from 'axios';
 
 const Register = () => {
   const [username, setUsername] = useState('');
@@ -19,8 +21,21 @@ const Register = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await axios.get('/api/settings/public');
+        setEmailEnabled(response.data.email_enabled || false);
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,8 +100,12 @@ const Register = () => {
               </Typography>
               <Typography variant="body2">
                 관리자 승인 후 이용하실 수 있습니다.
-                <br />
-                승인 결과는 입력하신 이메일로 안내드립니다.
+                {emailEnabled && (
+                  <>
+                    <br />
+                    <EmailNotificationMessage />
+                  </>
+                )}
               </Typography>
             </Alert>
           )}

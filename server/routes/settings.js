@@ -1,13 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
+const { isEmailEnabled } = require('../utils/email');
 
 // Public settings endpoint (no authentication required)
 router.get('/public', async (req, res) => {
   try {
     const registrationEnabled = await Settings.isRegistrationEnabled();
+    const emailEnabled = isEmailEnabled();
     res.json({ 
-      registration_enabled: registrationEnabled 
+      registration_enabled: registrationEnabled,
+      email_enabled: emailEnabled
     });
   } catch (error) {
     console.error('Get public settings error:', error);

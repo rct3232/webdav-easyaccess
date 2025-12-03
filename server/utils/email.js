@@ -115,11 +115,20 @@ async function sendRejectionEmail(email, username) {
   return await sendEmail(email, subject, html);
 }
 
+function isEmailEnabled() {
+  if (!nodemailer) {
+    return false;
+  }
+  
+  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD);
+}
+
 module.exports = {
   initEmailTransporter,
   sendEmail,
   sendRegistrationPendingEmail,
   sendApprovalEmail,
   sendRejectionEmail,
+  isEmailEnabled,
 };
 

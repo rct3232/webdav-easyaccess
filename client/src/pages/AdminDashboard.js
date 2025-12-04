@@ -46,6 +46,8 @@ const AdminDashboard = () => {
   const [createDialog, setCreateDialog] = useState({ open: false });
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', confirmPassword: '' });
   const [settings, setSettings] = useState({ registration_enabled: 'false' });
+  const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
+  const [hasSettingsChanges, setHasSettingsChanges] = useState(false);
 
   const loadPendingUsers = async () => {
     try {
@@ -69,16 +71,23 @@ const AdminDashboard = () => {
     try {
       const response = await axios.get('/api/admin/settings');
       setSettings(response.data);
+      setTempSettings(response.data);
+      setHasSettingsChanges(false);
     } catch (error) {
       console.error('Failed to load settings:', error);
       setMessage({ type: 'error', text: '설정을 불러오는데 실패했습니다.' });
     }
   };
 
-  const handleToggleRegistration = async () => {
+  const handleToggleRegistration = () => {
+    const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
+    setTempSettings({ ...tempSettings, registration_enabled: newValue });
+    setHasSettingsChanges(true);
+  };
+
+  const handleSaveSettings = async () => {
     try {
-      const newValue = settings.registration_enabled === 'true' ? 'false' : 'true';
-      await axios.put('/api/admin/settings', { registration_enabled: newValue });
+      await axios.put('/api/admin/settings', tempSettings);
       setMessage({ type: 'success', text: '설정이 저장되었습니다.' });
       await loadSettings();
     } catch (error) {
@@ -241,7 +250,17 @@ const AdminDashboard = () => {
               <Tab label="설정" />
             </Tabs>
           </Paper>
-          {tab !== 2 && (
+          {tab === 2 ? (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSaveSettings}
+              disabled={!hasSettingsChanges}
+              sx={{ ml: 2 }}
+            >
+              저장
+            </Button>
+          ) : (
             <Button
               variant="contained"
               color="primary"
@@ -362,7 +381,7 @@ const AdminDashboard = () => {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={settings.registration_enabled === 'true'}
+                    checked={tempSettings.registration_enabled === 'true'}
                     onChange={handleToggleRegistration}
                     color="primary"
                   />

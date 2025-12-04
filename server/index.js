@@ -21,12 +21,6 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Set default charset to UTF-8 for all responses
-app.use((req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  next();
-});
-
 // Create necessary directories - use centralized path utility
 const { getDataDir, getThumbnailDir } = require('./utils/paths');
 const dataDir = getDataDir();
@@ -38,6 +32,20 @@ console.log(`[Server] Thumbnail directory: ${thumbnailDir}`);
 
 // Serve thumbnails
 app.use('/api/thumbnails', express.static(thumbnailDir));
+
+// Serve static files from React app build (production only)
+// This must come BEFORE API routes to serve JS/CSS files correctly
+const clientBuildPath = path.join(__dirname, '../client/build');
+if (fs.existsSync(clientBuildPath)) {
+  console.log(`[Server] Serving static files from: ${clientBuildPath}`);
+  app.use(express.static(clientBuildPath));
+}
+
+// Set default charset to UTF-8 for API responses only
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -66,6 +74,17 @@ app.get('/api/webdav/test', async (req, res) => {
     });
   }
 });
+
+// Serve React app for all non-API routes (SPA routing support)
+if (fs.existsSync(clientBuildPath)) {
+  app.get('*', (req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
+}
 
 // Initialize database
 const db = require('./models/database');

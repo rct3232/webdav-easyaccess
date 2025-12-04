@@ -26,8 +26,9 @@ import {
   moveFile,
   copyFile,
 } from '../services/fileService';
+import FolderPickerDialog from './FolderPickerDialog';
 
-const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
+const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
@@ -87,51 +88,103 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
     }
   };
 
-  const handleMove = async () => {
-    if (!destinationPath.trim()) {
-      alert('대상 경로를 입력하세요');
+  const handleMove = async (selectedPath) => {
+    if (!selectedPath || !selectedPath.trim()) {
+      alert('대상 경로를 선택하세요');
       return;
     }
 
     setLoading(true);
     try {
-      const destPath = destinationPath.endsWith('/')
-        ? destinationPath + file.basename
-        : destinationPath + '/' + file.basename;
+      const destPath = selectedPath.endsWith('/')
+        ? selectedPath + file.basename
+        : selectedPath + '/' + file.basename;
       
       await moveFile(file.path, destPath);
       setMoveDialogOpen(false);
       setDestinationPath('');
       onActionComplete();
       onClose();
+      
+      // Show success toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: `${file.basename}을(를) 이동했습니다`,
+          type: 'success'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 3000);
+      }
     } catch (error) {
       console.error('Move failed:', error);
-      alert('이동에 실패했습니다');
+      const errorMsg = error.response?.data?.error || '이동에 실패했습니다';
+      
+      // Show error toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: errorMsg,
+          type: 'error'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 5000);
+      } else {
+        alert(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = async () => {
-    if (!destinationPath.trim()) {
-      alert('대상 경로를 입력하세요');
+  const handleCopy = async (selectedPath) => {
+    if (!selectedPath || !selectedPath.trim()) {
+      alert('대상 경로를 선택하세요');
       return;
     }
 
     setLoading(true);
     try {
-      const destPath = destinationPath.endsWith('/')
-        ? destinationPath + file.basename
-        : destinationPath + '/' + file.basename;
+      const destPath = selectedPath.endsWith('/')
+        ? selectedPath + file.basename
+        : selectedPath + '/' + file.basename;
       
       await copyFile(file.path, destPath);
       setCopyDialogOpen(false);
       setDestinationPath('');
       onActionComplete();
       onClose();
+      
+      // Show success toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: `${file.basename}을(를) 복사했습니다`,
+          type: 'success'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 3000);
+      }
     } catch (error) {
       console.error('Copy failed:', error);
-      alert('복사에 실패했습니다');
+      const errorMsg = error.response?.data?.error || '복사에 실패했습니다';
+      
+      // Show error toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: errorMsg,
+          type: 'error'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 5000);
+      } else {
+        alert(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -227,65 +280,25 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete }) => {
         </DialogActions>
       </Dialog>
 
-      {/* Move Dialog */}
-      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)}>
-        <DialogTitle>이동</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="대상 경로"
-            fullWidth
-            variant="outlined"
-            value={destinationPath}
-            onChange={(e) => setDestinationPath(e.target.value)}
-            placeholder="/ 또는 /folder/path"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !loading) {
-                handleMove();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMoveDialogOpen(false)} disabled={loading}>
-            취소
-          </Button>
-          <Button onClick={handleMove} variant="contained" disabled={loading}>
-            이동
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Move Dialog - Folder Picker */}
+      <FolderPickerDialog
+        open={moveDialogOpen}
+        onClose={() => setMoveDialogOpen(false)}
+        onSelect={handleMove}
+        title={`이동: ${file?.basename}`}
+        currentPath={currentPath}
+        user={user}
+      />
 
-      {/* Copy Dialog */}
-      <Dialog open={copyDialogOpen} onClose={() => setCopyDialogOpen(false)}>
-        <DialogTitle>복사</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="대상 경로"
-            fullWidth
-            variant="outlined"
-            value={destinationPath}
-            onChange={(e) => setDestinationPath(e.target.value)}
-            placeholder="/ 또는 /folder/path"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !loading) {
-                handleCopy();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCopyDialogOpen(false)} disabled={loading}>
-            취소
-          </Button>
-          <Button onClick={handleCopy} variant="contained" disabled={loading}>
-            복사
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Copy Dialog - Folder Picker */}
+      <FolderPickerDialog
+        open={copyDialogOpen}
+        onClose={() => setCopyDialogOpen(false)}
+        onSelect={handleCopy}
+        title={`복사: ${file?.basename}`}
+        currentPath={currentPath}
+        user={user}
+      />
 
       {/* Error Dialog */}
       <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>

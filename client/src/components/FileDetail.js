@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -19,7 +19,9 @@ import {
 } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
 
-const FileDetail = ({ files, onFileClick, onContextMenu }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
+  const [draggedFile, setDraggedFile] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
   const getFileIcon = (file) => {
     if (file.type === 'directory') {
       return <FolderIcon color="primary" />;
@@ -31,6 +33,42 @@ const FileDetail = ({ files, onFileClick, onContextMenu }) => {
       return <VideoIcon />;
     }
     return <FileIcon />;
+  };
+
+  const handleDragStart = (e, file) => {
+    setDraggedFile(file);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', file.path);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedFile(null);
+    setDropTarget(null);
+  };
+
+  const handleDragOver = (e, file) => {
+    // Only allow drop on folders and not on the dragged file itself
+    if (file.type === 'directory' && draggedFile?.path !== file.path) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget(file.path);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e, targetFolder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (draggedFile && targetFolder.type === 'directory' && draggedFile.path !== targetFolder.path) {
+      onFileDrop && onFileDrop(draggedFile, targetFolder);
+    }
+    
+    setDraggedFile(null);
+    setDropTarget(null);
   };
 
   return (
@@ -45,27 +83,43 @@ const FileDetail = ({ files, onFileClick, onContextMenu }) => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {files.map((file, index) => (
-            <TableRow
-              key={index}
-              hover
-              sx={{ cursor: 'pointer' }}
-              onClick={() => onFileClick(file)}
-              onContextMenu={(e) => onContextMenu(e, file)}
-            >
-              <TableCell>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {getFileIcon(file)}
-                  <Typography variant="body2">{file.basename}</Typography>
-                </Box>
-              </TableCell>
-              <TableCell>{file.type === 'directory' ? '폴더' : file.mime || '-'}</TableCell>
-              <TableCell align="right">
-                {file.type === 'directory' ? '-' : formatFileSize(file.size)}
-              </TableCell>
-              <TableCell>{formatDate(file.lastmod)}</TableCell>
-            </TableRow>
-          ))}
+          {files.map((file, index) => {
+            const isDragging = draggedFile?.path === file.path;
+            const isDropTarget = dropTarget === file.path;
+            
+            return (
+              <TableRow
+                key={index}
+                draggable
+                hover
+                sx={{ 
+                  cursor: 'move',
+                  opacity: isDragging ? 0.5 : 1,
+                  backgroundColor: isDropTarget ? 'primary.light' : 'transparent',
+                  transition: 'all 0.2s',
+                }}
+                onClick={() => onFileClick(file)}
+                onContextMenu={(e) => onContextMenu(e, file)}
+                onDragStart={(e) => handleDragStart(e, file)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOver(e, file)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, file)}
+              >
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {getFileIcon(file)}
+                    <Typography variant="body2">{file.basename}</Typography>
+                  </Box>
+                </TableCell>
+                <TableCell>{file.type === 'directory' ? '폴더' : file.mime || '-'}</TableCell>
+                <TableCell align="right">
+                  {file.type === 'directory' ? '-' : formatFileSize(file.size)}
+                </TableCell>
+                <TableCell>{formatDate(file.lastmod)}</TableCell>
+              </TableRow>
+            );
+          })}
           {files.length === 0 && (
             <TableRow>
               <TableCell colSpan={4}>

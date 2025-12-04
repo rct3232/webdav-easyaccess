@@ -8,6 +8,8 @@ import {
   Button,
   Breadcrumbs,
   Link,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
@@ -28,7 +30,7 @@ import UploadDialog from '../components/UploadDialog';
 import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
 import FilePreviewDialog from '../components/FilePreviewDialog';
-import { listFiles } from '../services/fileService';
+import { listFiles, moveFile } from '../services/fileService';
 
 const VIEW_MODES = {
   LIST: 'list',
@@ -51,6 +53,7 @@ const FileManager = () => {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -138,6 +141,51 @@ const FileManager = () => {
   const handleCreateFolderComplete = () => {
     loadFiles();
     setCreateFolderDialogOpen(false);
+  };
+
+  const handleFileDrop = async (draggedFile, targetFolder) => {
+    try {
+      // Check if user is trying to move a file into itself or its parent
+      if (draggedFile.path === targetFolder.path) {
+        return;
+      }
+
+      // Construct destination path
+      const destPath = targetFolder.path.endsWith('/')
+        ? targetFolder.path + draggedFile.basename
+        : targetFolder.path + '/' + draggedFile.basename;
+
+      // Perform the move
+      await moveFile(draggedFile.path, destPath);
+      
+      // Show success message
+      setDropMessage({
+        show: true,
+        text: `${draggedFile.basename}을(를) ${targetFolder.basename}(으)로 이동했습니다`,
+        type: 'success'
+      });
+
+      // Reload files
+      loadFiles();
+
+      // Hide message after 3 seconds
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 3000);
+    } catch (error) {
+      console.error('Move failed:', error);
+      const errorMsg = error.response?.data?.error || '이동에 실패했습니다';
+      setDropMessage({
+        show: true,
+        text: errorMsg,
+        type: 'error'
+      });
+
+      // Hide message after 5 seconds
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 5000);
+    }
   };
 
   const pathParts = currentPath.split('/').filter(Boolean);
@@ -248,6 +296,7 @@ const FileManager = () => {
                 setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                 setSelectedFile(file);
               }}
+              onFileDrop={handleFileDrop}
             />
           ) : viewMode === VIEW_MODES.GRID ? (
             <FileGrid
@@ -258,6 +307,7 @@ const FileManager = () => {
                 setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                 setSelectedFile(file);
               }}
+              onFileDrop={handleFileDrop}
             />
           ) : (
             <FileDetail
@@ -268,6 +318,7 @@ const FileManager = () => {
                 setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                 setSelectedFile(file);
               }}
+              onFileDrop={handleFileDrop}
             />
           )}
         </Box>
@@ -301,7 +352,25 @@ const FileManager = () => {
         onClose={() => setContextMenu(null)}
         file={selectedFile}
         onActionComplete={handleRefresh}
+        user={user}
+        currentPath={currentPath}
+        onMessage={setDropMessage}
       />
+
+      <Snackbar
+        open={dropMessage.show}
+        autoHideDuration={dropMessage.type === 'error' ? 5000 : 3000}
+        onClose={() => setDropMessage({ show: false, text: '', type: 'success' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setDropMessage({ show: false, text: '', type: 'success' })} 
+          severity={dropMessage.type}
+          sx={{ width: '100%' }}
+        >
+          {dropMessage.text}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

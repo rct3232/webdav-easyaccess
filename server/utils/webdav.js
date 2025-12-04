@@ -1,24 +1,34 @@
 const { createClient } = require('webdav');
 
 let webdavClient = null;
+let cachedUrl = null;
 
 function getWebDAVClient() {
+  let url = process.env.WEBDAV_URL;
+  const username = process.env.WEBDAV_USERNAME;
+  const password = process.env.WEBDAV_PASSWORD;
+
+  if (!url || !username || !password) {
+    throw new Error('WebDAV credentials not configured in .env file');
+  }
+
+  // Normalize URL - remove trailing slash if present
+  url = url.trim();
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+
+  // Reset client if URL has changed
+  if (webdavClient && cachedUrl !== url) {
+    console.log(`WebDAV URL changed from ${cachedUrl} to ${url}, resetting client...`);
+    webdavClient = null;
+    cachedUrl = null;
+  }
+
+  // Create new client if needed
   if (!webdavClient) {
-    let url = process.env.WEBDAV_URL;
-    const username = process.env.WEBDAV_USERNAME;
-    const password = process.env.WEBDAV_PASSWORD;
-
-    if (!url || !username || !password) {
-      throw new Error('WebDAV credentials not configured in .env file');
-    }
-
-    // Normalize URL - remove trailing slash if present
-    url = url.trim();
-    if (url.endsWith('/')) {
-      url = url.slice(0, -1);
-    }
-
-
+    console.log(`Creating WebDAV client with URL: ${url}`);
+    
     // Create WebDAV client with authentication
     // The webdav library supports Basic and Digest authentication automatically
     // Some servers may need explicit authType
@@ -39,9 +49,16 @@ function getWebDAVClient() {
     }
 
     webdavClient = createClient(url, clientOptions);
+    cachedUrl = url;
   }
 
   return webdavClient;
+}
+
+function resetWebDAVClient() {
+  webdavClient = null;
+  cachedUrl = null;
+  console.log('WebDAV client reset');
 }
 
 async function listDirectory(path = '/') {
@@ -276,9 +293,51 @@ async function moveFile(sourcePath, destinationPath) {
       normalizedDest = normalizedDest.slice(0, -1);
     }
     
-    await client.moveFile(normalizedSource, normalizedDest);
-    return { success: true };
+    console.log(`Moving file from ${normalizedSource} to ${normalizedDest} (Manual Mode)`);
+    
+    // Manual Move Strategy: Download -> Upload -> Delete
+    // This is used to bypass complex WebDAV proxy/port/redirect issues (30035 port, 502 errors)
+    // It's slower but reliable.
+    
+    try {
+      // 1. Read content
+      const buffer = await client.getFileContents(normalizedSource);
+      
+      // 2. Write to new location
+      await client.putFileContents(normalizedDest, buffer);
+      
+      // 3. Delete original
+      await client.deleteFile(normalizedSource);
+      
+      console.log(`Successfully moved (manual) file from ${normalizedSource} to ${normalizedDest}`);
+      return { success: true };
+      
+    } catch (manualError) {
+      console.error('Manual move failed:', manualError);
+      throw manualError;
+    }
+
   } catch (error) {
+    console.error('Move file error details:', {
+      sourcePath,
+      destinationPath,
+      error: error.message,
+      status: error.status,
+      response: error.response
+    });
+    
+    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
+      throw error;
+    }
+    
+    if (error.status === 502 || error.response?.status === 502) {
+      throw new Error('WebDAV server is not responding. Please check if the WebDAV server is running and accessible.');
+    }
+    
+    if (error.message.includes('ECONNREFUSED')) {
+      throw new Error('Cannot connect to WebDAV server. Please check the WEBDAV_URL in your .env file.');
+    }
+    
     throw new Error(`Failed to move file: ${error.message}`);
   }
 }
@@ -297,10 +356,47 @@ async function copyFile(sourcePath, destinationPath) {
       normalizedDest = '/' + normalizedDest;
     }
     
-    const buffer = await client.getFileContents(normalizedSource);
-    await client.putFileContents(normalizedDest, buffer);
+    console.log(`Copying file from ${normalizedSource} to ${normalizedDest}`);
+    
+    // Skip pre-checks to avoid redirect issues
+    
+    // Manual Copy Strategy: Download -> Upload
+    // Use manual copy instead of client.copyFile to avoid WebDAV proxy/port/redirect issues (502 errors)
+    // This is slower but 100% reliable in complex proxy environments.
+    
+    console.log(`Copying file from ${normalizedSource} to ${normalizedDest} (Manual Mode)`);
+
+    try {
+      const buffer = await client.getFileContents(normalizedSource);
+      await client.putFileContents(normalizedDest, buffer);
+    } catch (manualError) {
+      console.error('Manual copy failed:', manualError);
+      throw manualError;
+    }
+
+    console.log(`Successfully copied (manual) file from ${normalizedSource} to ${normalizedDest}`);
     return { success: true };
   } catch (error) {
+    console.error('Copy file error details:', {
+      sourcePath,
+      destinationPath,
+      error: error.message,
+      status: error.status,
+      response: error.response
+    });
+    
+    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
+      throw error;
+    }
+    
+    if (error.status === 502 || error.response?.status === 502) {
+      throw new Error('WebDAV server is not responding. Please check if the WebDAV server is running and accessible.');
+    }
+    
+    if (error.message.includes('ECONNREFUSED')) {
+      throw new Error('Cannot connect to WebDAV server. Please check the WEBDAV_URL in your .env file.');
+    }
+    
     throw new Error(`Failed to copy file: ${error.message}`);
   }
 }
@@ -437,6 +533,7 @@ async function pathExists(path) {
 
 module.exports = {
   getWebDAVClient,
+  resetWebDAVClient,
   listDirectory,
   getFileContents,
   putFileContents,
@@ -450,3 +547,4 @@ module.exports = {
   testConnection,
 };
 
+ 

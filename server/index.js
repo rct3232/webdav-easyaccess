@@ -4,38 +4,29 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 
-// Load environment variables from root directory
 const envPath = path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 } else {
   console.warn('Warning: .env file not found. Using default environment variables.');
-  dotenv.config(); // Try to load from current directory
+  dotenv.config();
 }
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Create necessary directories - use centralized path utility
 const { getDataDir } = require('./utils/paths');
 const dataDir = getDataDir();
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-console.log(`[Server] Data directory: ${dataDir}`);
-console.log(`[Server] Thumbnails: In-memory cache (not stored on disk)`);
 
-// Serve thumbnails from memory cache (not from disk)
 app.get('/api/thumbnails/:hash.:ext', (req, res) => {
   const { hash, ext } = req.params;
   const { thumbnailCache, getThumbnailHash } = require('./utils/thumbnail');
   
-  // Find thumbnail in cache by hash
-  // We need to iterate through cache to find matching hash
-  // This is not ideal but necessary since we key by webdavPath, not hash
   let foundThumbnail = null;
   for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
     if (getThumbnailHash(webdavPath) === hash) {
@@ -46,28 +37,23 @@ app.get('/api/thumbnails/:hash.:ext', (req, res) => {
   
   if (foundThumbnail && foundThumbnail.extension === ext) {
     res.setHeader('Content-Type', foundThumbnail.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
     res.send(foundThumbnail.buffer);
   } else {
     res.status(404).json({ error: 'Thumbnail not found' });
   }
 });
 
-// Serve static files from React app build (production only)
-// This must come BEFORE API routes to serve JS/CSS files correctly
 const clientBuildPath = path.join(__dirname, '../client/build');
 if (fs.existsSync(clientBuildPath)) {
-  console.log(`[Server] Serving static files from: ${clientBuildPath}`);
   app.use(express.static(clientBuildPath));
 }
 
-// Set default charset to UTF-8 for API responses only
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
 
-// Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
@@ -76,12 +62,10 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
 app.use('/api/permissions', require('./routes/permissions'));
 
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'WebDAV EasyAccess API is running' });
 });
 
-// WebDAV connection test endpoint
 app.get('/api/webdav/test', async (req, res) => {
   try {
     const { testConnection } = require('./utils/webdav');
@@ -95,21 +79,17 @@ app.get('/api/webdav/test', async (req, res) => {
   }
 });
 
-// WebDAV info endpoint (returns URL for display)
 app.get('/api/webdav/info', (req, res) => {
   try {
     const webdavUrl = process.env.WEBDAV_URL || '';
-    // Extract display URL (remove protocol and credentials, show domain + path)
     let displayUrl = webdavUrl;
     try {
       const url = new URL(webdavUrl);
       displayUrl = url.hostname + (url.port ? `:${url.port}` : '') + url.pathname;
-      // Remove trailing slash if present
       if (displayUrl.endsWith('/')) {
         displayUrl = displayUrl.slice(0, -1);
       }
     } catch (e) {
-      // If URL parsing fails, just use the original
       displayUrl = webdavUrl;
     }
     res.json({ url: displayUrl });
@@ -118,10 +98,8 @@ app.get('/api/webdav/info', (req, res) => {
   }
 });
 
-// Serve React app for all non-API routes (SPA routing support)
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {
-    // Don't serve index.html for API routes
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });
     }

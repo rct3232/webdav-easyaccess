@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Grid,
   Card,
@@ -8,64 +8,19 @@ import {
   Box,
   Checkbox,
 } from '@mui/material';
-import {
-  Folder as FolderIcon,
-  InsertDriveFile as FileIcon,
-} from '@mui/icons-material';
-import { formatFileSize } from '../utils/format';
+import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 
 const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
-  const [draggedFile, setDraggedFile] = useState(null);
-  const [dropTarget, setDropTarget] = useState(null);
-  const getThumbnail = (file) => {
-    if (file.thumbnailUrl) {
-      return file.thumbnailUrl;
-    }
-    return null;
-  };
-
-  const getFileIcon = (file) => {
-    if (file.type === 'directory') {
-      return <FolderIcon sx={{ fontSize: 64, color: 'primary.main' }} />;
-    }
-    return <FileIcon sx={{ fontSize: 64, color: 'text.secondary' }} />;
-  };
-
-  const handleDragStart = (e, file) => {
-    setDraggedFile(file);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', file.path);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedFile(null);
-    setDropTarget(null);
-  };
-
-  const handleDragOver = (e, file) => {
-    // Only allow drop on folders and not on the dragged file itself
-    if (file.type === 'directory' && draggedFile?.path !== file.path) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDropTarget(file.path);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDropTarget(null);
-  };
-
-  const handleDrop = (e, targetFolder) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (draggedFile && targetFolder.type === 'directory' && draggedFile.path !== targetFolder.path) {
-      onFileDrop && onFileDrop(draggedFile, targetFolder);
-    }
-    
-    setDraggedFile(null);
-    setDropTarget(null);
-  };
+  const {
+    draggedFile,
+    dropTarget,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useDragAndDrop(onFileDrop, selectionMode);
 
   const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
 
@@ -123,38 +78,44 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               )}
               <Box
                 sx={{
-                  height: 150,
+                  width: '100%',
+                  aspectRatio: '1 / 1',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   backgroundColor: isDropTarget ? 'primary.light' : 'grey.100',
                   position: 'relative',
                   transition: 'background-color 0.2s',
+                  overflow: 'hidden',
                 }}
               >
                 {thumbnail ? (
                   <CardMedia
                     component="img"
-                    height="150"
                     image={thumbnail}
                     alt={file.basename}
-                    sx={{ objectFit: 'contain' }}
+                    sx={{ 
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover' 
+                    }}
                   />
                 ) : (
-                  getFileIcon(file)
+                  getFileIconForGrid(file)
                 )}
               </Box>
-              <CardContent sx={{ flexGrow: 1, p: 1.5 }}>
+              <CardContent sx={{ p: 1, pt: 0.5, pb: 1 }}>
                 <Typography
                   variant="body2"
                   noWrap
                   title={file.basename}
-                  sx={{ fontWeight: 'medium' }}
+                  sx={{ 
+                    fontWeight: 'medium',
+                    fontSize: '0.875rem',
+                    textAlign: 'center',
+                  }}
                 >
                   {file.basename}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {file.type === 'directory' ? '폴더' : formatFileSize(file.size)}
                 </Typography>
               </CardContent>
             </Card>
@@ -173,4 +134,3 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
 };
 
 export default FileGrid;
-

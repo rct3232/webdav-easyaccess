@@ -6,15 +6,12 @@ const { generateToken, authenticateToken } = require('../utils/auth');
 const { sendRegistrationPendingEmail } = require('../utils/email');
 const { pathExists } = require('../utils/webdav');
 
-// Register
 router.post('/register', async (req, res) => {
   let createdUser = null;
   
   try {
-    // Check if registration is enabled
     const registrationEnabled = await Settings.isRegistrationEnabled();
     if (!registrationEnabled) {
-      console.log('[Registration] Registration is disabled');
       return res.status(403).json({ error: '현재 회원가입이 비활성화되어 있습니다. 관리자에게 문의해주세요.' });
     }
 
@@ -24,7 +21,6 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: '사용자명, 이메일, 비밀번호를 모두 입력해주세요.' });
     }
 
-    // Check if user already exists
     const existingUser = await User.findByUsername(username);
     if (existingUser) {
       return res.status(400).json({ error: '이미 사용 중인 사용자명입니다.' });
@@ -35,40 +31,27 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: '이미 사용 중인 이메일입니다.' });
     }
 
-    // Check if folder with same name already exists in WebDAV
     const userFolder = `/${username}`;
-    console.log('[Registration] Checking if folder exists:', userFolder);
     try {
       const folderExists = await pathExists(userFolder);
-      console.log('[Registration] Folder exists?', folderExists);
       if (folderExists) {
-        console.log('[Registration] Folder already exists, rejecting registration');
         return res.status(400).json({ 
           error: '이미 사용 중인 사용자명입니다. 관리자에게 문의해주세요.' 
         });
       }
-      console.log('[Registration] Folder does not exist, proceeding with registration');
     } catch (error) {
-      console.error('WebDAV folder check error:', error);
       return res.status(500).json({ 
         error: '회원가입 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' 
       });
     }
 
-    // Create user
     createdUser = await User.create(username, email, password, false);
-    console.log('[Registration] User created:', createdUser.id);
 
-    // Send email - if this fails, rollback user creation
     try {
       await sendRegistrationPendingEmail(email, username);
-      console.log('[Registration] Email sent successfully');
     } catch (emailError) {
-      console.error('[Registration] Email send failed:', emailError);
-      // Rollback: delete the created user
       if (createdUser && createdUser.id) {
         await User.delete(createdUser.id);
-        console.log('[Registration] User deleted due to email failure');
       }
       return res.status(500).json({ 
         error: '이메일 발송에 실패했습니다. 관리자에게 문의해주세요.' 
@@ -81,21 +64,17 @@ router.post('/register', async (req, res) => {
       user: { id: createdUser.id, username: createdUser.username, email: createdUser.email, status: createdUser.status },
     });
   } catch (error) {
-    console.error('Registration error:', error);
-    // If user was created but something else failed, try to delete
     if (createdUser && createdUser.id) {
       try {
         await User.delete(createdUser.id);
-        console.log('[Registration] User deleted due to error');
       } catch (deleteError) {
-        console.error('[Registration] Failed to delete user after error:', deleteError);
+        // Ignore delete error
       }
     }
     res.status(500).json({ error: '회원가입 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
-// Login
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -144,12 +123,10 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
     res.status(500).json({ error: '로그인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
-// Get current user
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -158,7 +135,6 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
     res.json(user);
   } catch (error) {
-    console.error('Get user error:', error);
     res.status(500).json({ error: '사용자 정보를 불러오는 중 문제가 발생했습니다.' });
   }
 });

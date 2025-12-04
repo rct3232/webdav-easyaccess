@@ -6,12 +6,8 @@ const ffmpeg = require('fluent-ffmpeg');
 const { getFileContents, isImageFile, isVideoFile } = require('./webdav');
 
 const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
-
-// In-memory thumbnail cache: Map<webdavPath, { buffer: Buffer, mimeType: string, extension: string }>
 const thumbnailCache = new Map();
-
-// Cache size limit (optional - prevent memory overflow)
-const MAX_CACHE_SIZE = 1000; // Maximum number of thumbnails in cache
+const MAX_CACHE_SIZE = 1000;
 
 function getThumbnailHash(webdavPath) {
   return crypto.createHash('md5').update(webdavPath).digest('hex');
@@ -22,7 +18,6 @@ function getCachedThumbnail(webdavPath) {
 }
 
 function setCachedThumbnail(webdavPath, buffer, extension) {
-  // Simple cache eviction: remove oldest entries if cache is too large
   if (thumbnailCache.size >= MAX_CACHE_SIZE) {
     const firstKey = thumbnailCache.keys().next().value;
     thumbnailCache.delete(firstKey);
@@ -38,16 +33,12 @@ function setCachedThumbnail(webdavPath, buffer, extension) {
 
 async function generateImageThumbnail(filePath, webdavPath) {
   try {
-    // Check memory cache first
     const cached = getCachedThumbnail(webdavPath);
     if (cached) {
-      console.log(`[Thumbnail] Using cached thumbnail for: ${webdavPath}`);
       return { buffer: cached.buffer, extension: cached.extension };
     }
 
-    console.log(`[Thumbnail] Generating thumbnail for: ${webdavPath}`);
     const buffer = await getFileContents(webdavPath);
-    console.log(`[Thumbnail] Retrieved ${buffer.length} bytes for: ${webdavPath}`);
     if (!buffer || buffer.length === 0) {
       throw new Error('Failed to download file from WebDAV');
     }
@@ -74,9 +65,7 @@ async function generateImageThumbnail(filePath, webdavPath) {
           .toBuffer();
       }
       
-      // Store in memory cache
       setCachedThumbnail(webdavPath, thumbnailBuffer, outputExtension);
-      
       return { buffer: thumbnailBuffer, extension: outputExtension };
     } catch (sharpError) {
       throw sharpError;
@@ -92,7 +81,6 @@ async function generateVideoThumbnail(filePath, webdavPath) {
   let tempFramePath = null;
   
   try {
-    // Check memory cache first
     const cached = getCachedThumbnail(webdavPath);
     if (cached) {
       return { buffer: cached.buffer, extension: cached.extension };
@@ -176,7 +164,6 @@ async function generateVideoThumbnail(filePath, webdavPath) {
         });
     });
     
-    // Check if frame was extracted
     if (!fs.existsSync(tempFramePath)) {
       throw new Error('Frame extraction failed - output file not found');
     }
@@ -189,9 +176,7 @@ async function generateVideoThumbnail(filePath, webdavPath) {
       .jpeg({ quality: 80 })
       .toBuffer();
     
-    // Store in memory cache
     setCachedThumbnail(webdavPath, thumbnailBuffer, 'jpg');
-    
     return { buffer: thumbnailBuffer, extension: 'jpg' };
   } catch (error) {
     console.error(`Error generating video thumbnail: ${error.message}`);
@@ -241,13 +226,11 @@ async function ensureThumbnail(webdavPath) {
   try {
     const filename = path.basename(webdavPath);
     
-    // Check cache first
     const cached = getCachedThumbnail(webdavPath);
     if (cached) {
       return getThumbnailUrl(webdavPath);
     }
     
-    // Generate if not cached
     if (isImageFile(filename)) {
       const result = await generateImageThumbnail(null, webdavPath);
       if (result) {
@@ -264,7 +247,6 @@ async function ensureThumbnail(webdavPath) {
     
     return null;
   } catch (error) {
-    console.error(`Error in ensureThumbnail: ${error.message}`);
     return null;
   }
 }
@@ -277,6 +259,6 @@ module.exports = {
   generateVideoThumbnail,
   ensureThumbnail,
   getThumbnailHash,
-  thumbnailCache, // Export cache for server route access
+  thumbnailCache,
 };
 

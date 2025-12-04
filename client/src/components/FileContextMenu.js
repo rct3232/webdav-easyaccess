@@ -43,7 +43,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const handleDownload = async () => {
     try {
       if (file.type === 'directory') {
-        // Folder download - use downloadMultipleFiles
         const progressId = `download_${Date.now()}`;
         const progressItem = {
           id: progressId,
@@ -65,19 +64,16 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           }
         });
         
-        // Update to completed after a delay
         if (onProgress) {
           setTimeout(() => {
             onProgress({ id: progressId, remove: true });
           }, 3000);
         }
       } else {
-        // File download - single file, no progress needed
         await downloadFile(file.path);
       }
       onClose();
     } catch (error) {
-      console.error('Download failed:', error);
       const errorMsg = error.response?.data?.error || '다운로드에 실패했습니다';
       if (onMessage) {
         onMessage({
@@ -101,10 +97,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
 
     try {
       await deleteFile(file.path);
-      onActionComplete();
+      onActionComplete(file.type === 'directory' ? file.path : null);
       onClose();
     } catch (error) {
-      console.error('Delete failed:', error);
       const errorMsg = error.response?.data?.error || '삭제에 실패했습니다';
       setErrorMessage(errorMsg);
       setErrorDialogOpen(true);
@@ -125,7 +120,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
       onActionComplete();
       onClose();
       
-      // Show success toast message
       if (onMessage) {
         onMessage({
           show: true,
@@ -137,10 +131,8 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         }, 3000);
       }
     } catch (error) {
-      console.error('Rename failed:', error);
       const errorMsg = error.response?.data?.error || '이름 변경에 실패했습니다';
       
-      // Show error toast message
       if (onMessage) {
         onMessage({
           show: true,
@@ -158,7 +150,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
     }
   };
 
-  const handleMove = async (selectedPath) => {
+  const handleFileOperation = async (selectedPath, operation, operationName, actionVerb) => {
     if (!selectedPath || !selectedPath.trim()) {
       alert('대상 경로를 선택하세요');
       return;
@@ -168,16 +160,15 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
       ? selectedPath + file.basename
       : selectedPath + '/' + file.basename;
     
-    // Create progress item
-    const progressId = `move_${Date.now()}`;
+    const progressId = `${operation}_${Date.now()}`;
     const progressItem = {
       id: progressId,
-      type: 'move',
+      type: operation,
       status: 'preparing',
       progress: 0,
       total: 1,
       current: '',
-      name: `${file.basename} 이동`,
+      name: `${file.basename} ${operationName}`,
     };
     
     if (onProgress) {
@@ -186,33 +177,36 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
 
     setLoading(true);
     try {
-      // Update to processing with initial state
       if (onProgress) {
         onProgress({
           ...progressItem,
           status: 'processing',
           progress: 0,
           total: 1,
-          current: '(0/1) 이동중...',
+          current: `(0/1) ${actionVerb}중...`,
         });
       }
       
-      await moveFile(file.path, destPath, (progress) => {
+      await operation(file.path, destPath, (progress) => {
         if (onProgress) {
           onProgress({
             ...progressItem,
             status: progress.stage === 'completed' ? 'completed' : 'processing',
             progress: progress.stage === 'completed' ? 1 : 0,
             total: 1,
-            current: progress.stage === 'completed' ? '(1/1) 이동중...' : '(0/1) 이동중...',
+            current: progress.stage === 'completed' ? `(1/1) ${actionVerb}중...` : `(0/1) ${actionVerb}중...`,
           });
         }
       });
-      setMoveDialogOpen(false);
+      
+      if (operation === moveFile) {
+        setMoveDialogOpen(false);
+      } else {
+        setCopyDialogOpen(false);
+      }
       onActionComplete();
       onClose();
       
-      // Update to completed
       if (onProgress) {
         onProgress({
           ...progressItem,
@@ -222,17 +216,15 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           current: '완료',
         });
         
-        // Remove progress item after delay
         setTimeout(() => {
           onProgress({ id: progressId, remove: true });
         }, 3000);
       }
       
-      // Show success toast message
       if (onMessage) {
         onMessage({
           show: true,
-          text: `${file.basename}을(를) 이동했습니다`,
+          text: `${file.basename}을(를) ${operationName}했습니다`,
           type: 'success'
         });
         setTimeout(() => {
@@ -240,11 +232,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         }, 3000);
       }
     } catch (error) {
-      console.error('Move failed:', error);
-      const errorMsg = error.response?.data?.error || '이동에 실패했습니다';
+      const errorMsg = error.response?.data?.error || `${operationName}에 실패했습니다`;
       const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
       
-      // Update to error
       if (onProgress) {
         onProgress({
           ...progressItem,
@@ -252,13 +242,11 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           error: errorMsg,
         });
         
-        // Remove progress item after delay
         setTimeout(() => {
           onProgress({ id: progressId, remove: true });
         }, 5000);
       }
       
-      // Show error toast message
       if (onMessage) {
         const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
         onMessage({
@@ -277,123 +265,12 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
     }
   };
 
-  const handleCopy = async (selectedPath) => {
-    if (!selectedPath || !selectedPath.trim()) {
-      alert('대상 경로를 선택하세요');
-      return;
-    }
+  const handleMove = (selectedPath) => {
+    handleFileOperation(selectedPath, moveFile, '이동', '이동');
+  };
 
-    const destPath = selectedPath.endsWith('/')
-      ? selectedPath + file.basename
-      : selectedPath + '/' + file.basename;
-    
-    // Create progress item
-    const progressId = `copy_${Date.now()}`;
-    const progressItem = {
-      id: progressId,
-      type: 'copy',
-      status: 'preparing',
-      progress: 0,
-      total: 1,
-      current: '',
-      name: `${file.basename} 복사`,
-    };
-    
-    if (onProgress) {
-      onProgress(progressItem);
-    }
-
-    setLoading(true);
-    try {
-      // Update to processing with initial state
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'processing',
-          progress: 0,
-          total: 1,
-          current: '(0/1) 복사중...',
-        });
-      }
-      
-      await copyFile(file.path, destPath, (progress) => {
-        if (onProgress) {
-          onProgress({
-            ...progressItem,
-            status: progress.stage === 'completed' ? 'completed' : 'processing',
-            progress: progress.stage === 'completed' ? 1 : 0,
-            total: 1,
-            current: progress.stage === 'completed' ? '(1/1) 복사중...' : '(0/1) 복사중...',
-          });
-        }
-      });
-      setCopyDialogOpen(false);
-      onActionComplete();
-      onClose();
-      
-      // Update to completed
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'completed',
-          progress: 0,
-          total: 0,
-          current: '완료',
-        });
-        
-        // Remove progress item after delay
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 3000);
-      }
-      
-      // Show success toast message
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: `${file.basename}을(를) 복사했습니다`,
-          type: 'success'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 3000);
-      }
-    } catch (error) {
-      console.error('Copy failed:', error);
-      const errorMsg = error.response?.data?.error || '복사에 실패했습니다';
-      const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
-      
-      // Update to error
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'error',
-          error: errorMsg,
-        });
-        
-        // Remove progress item after delay
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 5000);
-      }
-      
-      // Show error toast message
-      if (onMessage) {
-        const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
-        onMessage({
-          show: true,
-          text: displayMsg,
-          type: 'error'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 5000);
-      } else {
-        alert(isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const handleCopy = (selectedPath) => {
+    handleFileOperation(selectedPath, copyFile, '복사', '복사');
   };
 
   return (
@@ -484,7 +361,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         </DialogActions>
       </Dialog>
 
-      {/* Move Dialog - Folder Picker */}
       <FolderPickerDialog
         open={moveDialogOpen}
         onClose={() => setMoveDialogOpen(false)}
@@ -494,7 +370,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         user={user}
       />
 
-      {/* Copy Dialog - Folder Picker */}
       <FolderPickerDialog
         open={copyDialogOpen}
         onClose={() => setCopyDialogOpen(false)}
@@ -504,7 +379,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         user={user}
       />
 
-      {/* Error Dialog */}
       <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>
         <DialogTitle>삭제 실패</DialogTitle>
         <DialogContent>

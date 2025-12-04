@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   AppBar,
@@ -6,18 +6,20 @@ import {
   Typography,
   IconButton,
   Button,
-  Breadcrumbs,
-  Link,
   Snackbar,
   Alert,
+  Menu,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  Divider,
+  Paper,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
   ViewList as ViewListIcon,
   ViewModule as ViewModuleIcon,
-  ViewAgenda as ViewAgendaIcon,
-  Upload as UploadIcon,
-  Folder as FolderIcon,
+  ViewStream as ViewStreamIcon,
   Person as PersonIcon,
   AdminPanelSettings as AdminIcon,
   CheckBox as CheckBoxIcon,
@@ -28,9 +30,15 @@ import {
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
+  Sort as SortIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { VIEW_MODES, SORT_MODES } from '../constants/fileManager';
+import { canPreview } from '../utils/fileUtils';
+import { useFileManager } from '../hooks/useFileManager';
+import { useSelection } from '../hooks/useSelection';
+import { useBulkOperations } from '../hooks/useBulkOperations';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
 import FileDetail from '../components/FileDetail';
@@ -39,24 +47,36 @@ import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
 import FilePreviewDialog from '../components/FilePreviewDialog';
 import DownloadProgress from '../components/DownloadProgress';
-import { listFiles, moveFile, copyFile, deleteFile, downloadMultipleFiles, getWebDAVInfo } from '../services/fileService';
+import FolderTree from '../components/FolderTree';
 import FolderPickerDialog from '../components/FolderPickerDialog';
-
-const VIEW_MODES = {
-  LIST: 'list',
-  GRID: 'grid',
-  DETAIL: 'detail',
-};
+import { moveFile } from '../services/fileService';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [currentPath, setCurrentPath] = useState(() => {
-    // Set initial path based on user role
-    return user?.is_admin ? '/' : `/${user?.username || ''}`;
-  });
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    currentPath,
+    setCurrentPath,
+    sortedFiles,
+    loading,
+    sortMode,
+    setSortMode,
+    webdavUrl,
+    loadFiles,
+  } = useFileManager(user);
+
+  const {
+    selectionMode,
+    selectedFiles,
+    handleToggleSelectionMode,
+    handleSelectAll,
+    handleDeselectAll,
+    handleFileCheck,
+    toggleFileSelection,
+    setSelectionMode,
+    setSelectedFiles,
+  } = useSelection(sortedFiles);
+
   const [viewMode, setViewMode] = useState(VIEW_MODES.GRID);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
@@ -64,53 +84,30 @@ const FileManager = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
-  const [webdavUrl, setWebdavUrl] = useState('');
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState(new Set());
-  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
-  const [folderPickerAction, setFolderPickerAction] = useState(null); // 'move' or 'copy'
-  const [progressItems, setProgressItems] = useState([]);
+  const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
+  const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
 
-  const loadFiles = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listFiles(currentPath);
-      setFiles(data);
-    } catch (error) {
-      console.error('Failed to load files:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPath]);
-
-  useEffect(() => {
-    // Update path when user changes
-    if (user && !user.is_admin) {
-      const userFolder = `/${user.username}`;
-      if (currentPath === '/' || !currentPath.startsWith(userFolder)) {
-        setCurrentPath(userFolder);
-      }
-    }
-  }, [user, currentPath]);
-
-  useEffect(() => {
-    if (currentPath) {
-      loadFiles();
-    }
-  }, [currentPath, loadFiles]);
-
-  useEffect(() => {
-    // Load WebDAV URL for display
-    const loadWebDAVUrl = async () => {
-      try {
-        const info = await getWebDAVInfo();
-        setWebdavUrl(info.url || '');
-      } catch (error) {
-        console.error('Failed to load WebDAV URL:', error);
-      }
-    };
-    loadWebDAVUrl();
-  }, []);
+  const {
+    folderPickerOpen,
+    folderPickerAction,
+    progressItems,
+    setProgressItems,
+    handleBulkMove,
+    handleBulkCopy,
+    handleBulkDelete,
+    handleBulkDownload,
+    handleFolderPickerSelect,
+    setFolderPickerOpen,
+    setFolderPickerAction,
+  } = useBulkOperations(
+    selectedFiles,
+    sortedFiles,
+    loadFiles,
+    setTreeUpdateTrigger,
+    setDropMessage,
+    setSelectedFiles,
+    setSelectionMode
+  );
 
   const handleLogout = () => {
     logout();
@@ -123,18 +120,8 @@ const FileManager = () => {
 
   const handleFileClick = (file) => {
     if (selectionMode) {
-      // Toggle selection
-      setSelectedFiles(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(file.path)) {
-          newSet.delete(file.path);
-        } else {
-          newSet.add(file.path);
-        }
-        return newSet;
-      });
+      toggleFileSelection(file);
     } else {
-      // Normal click behavior
       if (file.type === 'directory') {
         setCurrentPath(file.path);
       } else {
@@ -146,295 +133,25 @@ const FileManager = () => {
     }
   };
 
-  const handleToggleSelectionMode = () => {
-    setSelectionMode(prev => !prev);
-    setSelectedFiles(new Set()); // Clear selection when toggling
-  };
-
-  const handleSelectAll = () => {
-    setSelectedFiles(new Set(files.map(file => file.path)));
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedFiles(new Set());
-  };
-
-  const handleFileCheck = (file, checked) => {
-    setSelectedFiles(prev => {
-      const newSet = new Set(prev);
-      if (checked) {
-        newSet.add(file.path);
-      } else {
-        newSet.delete(file.path);
-      }
-      return newSet;
-    });
-  };
-
-  const handleBulkMove = () => {
-    setFolderPickerAction('move');
-    setFolderPickerOpen(true);
-  };
-
-  const handleBulkCopy = () => {
-    setFolderPickerAction('copy');
-    setFolderPickerOpen(true);
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedFiles.size === 0) return;
-    
-    const confirmMessage = `선택한 ${selectedFiles.size}개의 파일/폴더를 삭제하시겠습니까?`;
-    if (!window.confirm(confirmMessage)) return;
-
-    const filePaths = Array.from(selectedFiles);
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const filePath of filePaths) {
-      try {
-        await deleteFile(filePath);
-        successCount++;
-      } catch (error) {
-        console.error(`Failed to delete ${filePath}:`, error);
-        failCount++;
-      }
-    }
-
-    if (successCount > 0) {
-      setDropMessage({
-        show: true,
-        text: `${successCount}개 파일/폴더가 삭제되었습니다${failCount > 0 ? ` (${failCount}개 실패)` : ''}`,
-        type: failCount > 0 ? 'warning' : 'success',
-      });
-      setSelectedFiles(new Set());
-      setSelectionMode(false); // 선택 모드 해제
-      loadFiles();
-    } else {
-      setDropMessage({
-        show: true,
-        text: '삭제에 실패했습니다',
-        type: 'error',
+  const handleRefresh = (deletedFilePath) => {
+    if (deletedFilePath) {
+      setTreeUpdateTrigger({
+        type: 'deleted',
+        folderPath: deletedFilePath,
+        timestamp: Date.now(),
       });
     }
-  };
-
-  const handleBulkDownload = async () => {
-    if (selectedFiles.size === 0) return;
-
-    const filePaths = Array.from(selectedFiles);
     
-    // Create progress item
-    const progressId = `download_${Date.now()}`;
-    const progressItem = {
-      id: progressId,
-      type: 'download',
-      status: 'preparing',
-      progress: 0,
-      total: filePaths.length,
-      current: '',
-      zipName: '',
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
-
-    try {
-      await downloadMultipleFiles(filePaths, (progress) => {
-        setProgressItems(prev => 
-          prev.map(item => item.id === progressId ? { ...progress, id: progressId } : item)
-        );
-      });
-      
-      setSelectedFiles(new Set());
-      setSelectionMode(false); // 선택 모드 해제
-      
-      // Update to completed after a delay
-      setTimeout(() => {
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
-      }, 3000);
-    } catch (error) {
-      console.error('Bulk download error:', error);
-      setProgressItems(prev => 
-        prev.map(item => 
-          item.id === progressId 
-            ? { ...item, status: 'error', error: error.message }
-            : item
-        )
-      );
-    }
-  };
-
-  const handleFolderPickerSelect = async (destinationPath) => {
-    if (!folderPickerAction || selectedFiles.size === 0) return;
-
-    const filePaths = Array.from(selectedFiles);
-    
-    // Create progress item
-    const progressId = `${folderPickerAction}_${Date.now()}`;
-    const progressItem = {
-      id: progressId,
-      type: folderPickerAction,
-      status: 'preparing',
-      progress: 0,
-      total: filePaths.length,
-      current: '',
-      name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
-
-    let successCount = 0;
-    let failCount = 0;
-    const skippedFiles = []; // 중복 파일 목록
-
-    for (let i = 0; i < filePaths.length; i++) {
-      const sourcePath = filePaths[i];
-      try {
-        const fileName = sourcePath.split('/').pop();
-        const destinationFilePath = destinationPath === '/' 
-          ? `/${fileName}` 
-          : `${destinationPath}/${fileName}`;
-
-        // Update progress before starting
-        const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? currentItem.progress || 0 : 0;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
-                }
-              : item
-          );
-        });
-
-        if (folderPickerAction === 'move') {
-          await moveFile(sourcePath, destinationFilePath);
-        } else if (folderPickerAction === 'copy') {
-          await copyFile(sourcePath, destinationFilePath);
-        }
-        
-        successCount++;
-        
-        // Update progress after completion
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? (currentItem.progress || 0) + 1 : 1;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
-                }
-              : item
-          );
-        });
-      } catch (error) {
-        console.error(`Failed to ${folderPickerAction} ${sourcePath}:`, error);
-        const errorMsg = error.response?.data?.error || error.message;
-        const fileName = sourcePath.split('/').pop();
-        
-        // 중복 파일 에러인 경우 건너뛰기
-        if (error.response?.status === 409 || errorMsg.includes('already exists')) {
-          skippedFiles.push(fileName);
-        } else {
-          failCount++;
-        }
-      }
-    }
-
-    // Update to completed
-    const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
-    setProgressItems(prev => 
-      prev.map(item => 
-        item.id === progressId 
-          ? { 
-              ...item, 
-              status: failCount > 0 ? 'error' : 'completed',
-              progress: successCount,
-              total: filePaths.length,
-              current: failCount > 0 ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) ${actionText}...`,
-              error: failCount > 0 ? `${failCount}개 실패` : undefined,
-            }
-          : item
-      )
-    );
-
-    if (successCount > 0) {
-      let message = `${successCount}개 파일/폴더가 ${folderPickerAction === 'move' ? '이동' : '복사'}되었습니다`;
-      if (skippedFiles.length > 0) {
-        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
-      }
-      if (failCount > 0) {
-        message += `\n실패: ${failCount}개`;
-      }
-      
-      setDropMessage({
-        show: true,
-        text: message,
-        type: failCount > 0 || skippedFiles.length > 0 ? 'warning' : 'success',
-      });
-      setSelectedFiles(new Set());
-      setSelectionMode(false); // 선택 모드 해제
-      loadFiles();
-    } else {
-      let message = `${folderPickerAction === 'move' ? '이동' : '복사'}에 실패했습니다`;
-      if (skippedFiles.length > 0) {
-        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
-      }
-      
-      setDropMessage({
-        show: true,
-        text: message,
-        type: 'error',
-      });
-    }
-
-    // Remove progress item after delay
-    setTimeout(() => {
-      setProgressItems(prev => prev.filter(item => item.id !== progressId));
-    }, 3000);
-
-    setFolderPickerOpen(false);
-    setFolderPickerAction(null);
-  };
-
-  const canPreview = (filename) => {
-    if (!filename || typeof filename !== 'string') {
-      return false;
-    }
-    
-    const parts = filename.split('.');
-    if (parts.length < 2) {
-      return false; // No extension
-    }
-    
-    const ext = parts.pop().toLowerCase();
-    const previewableExts = [
-      // Images
-      'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
-      // Videos
-      'mp4', 'webm', 'ogg', 'mov',
-      // Audio
-      'mp3', 'wav', 'ogg', 'aac', 'm4a',
-      // Documents
-      'pdf',
-      // Text
-      'txt', 'md', 'json', 'xml', 'csv', 'log', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'sh'
-    ];
-    return previewableExts.includes(ext);
-  };
-
-  const handleRefresh = () => {
     loadFiles();
+    
+    if (deletedFilePath) {
+      setTimeout(() => {
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }, 500);
+    }
   };
 
   const handleUploadComplete = () => {
@@ -442,37 +159,47 @@ const FileManager = () => {
     setUploadDialogOpen(false);
   };
 
-  const handleCreateFolderComplete = () => {
+  const handleCreateFolderComplete = (folderPath, folderName) => {
+    const parentPath = folderPath.substring(0, folderPath.lastIndexOf('/')) || (user?.is_admin ? '/' : `/${user?.username || ''}`);
+    setTreeUpdateTrigger({
+      type: 'created',
+      folderPath,
+      folderName,
+      parentPath,
+      timestamp: Date.now(),
+    });
+    
     loadFiles();
     setCreateFolderDialogOpen(false);
+    
+    setTimeout(() => {
+      setTreeUpdateTrigger({
+        type: 'refresh',
+        timestamp: Date.now(),
+      });
+    }, 500);
   };
 
   const handleFileDrop = async (draggedFile, targetFolder) => {
     try {
-      // Check if user is trying to move a file into itself or its parent
       if (draggedFile.path === targetFolder.path) {
         return;
       }
 
-      // Construct destination path
       const destPath = targetFolder.path.endsWith('/')
         ? targetFolder.path + draggedFile.basename
         : targetFolder.path + '/' + draggedFile.basename;
 
-      // Perform the move
       await moveFile(draggedFile.path, destPath);
       
-      // Show success message
       setDropMessage({
         show: true,
         text: `${draggedFile.basename}을(를) ${targetFolder.basename}(으)로 이동했습니다`,
         type: 'success'
       });
 
-      // Reload files
       loadFiles();
 
-      // Hide message after 3 seconds
       setTimeout(() => {
         setDropMessage({ show: false, text: '', type: 'success' });
       }, 3000);
@@ -485,32 +212,15 @@ const FileManager = () => {
         type: 'error'
       });
 
-      // Hide message after 5 seconds
       setTimeout(() => {
         setDropMessage({ show: false, text: '', type: 'success' });
       }, 5000);
     }
   };
 
-  const pathParts = currentPath.split('/').filter(Boolean);
-  const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-  const breadcrumbs = [
-    { name: '홈', path: homePath },
-    ...pathParts.map((part, index) => ({
-      name: part,
-      path: '/' + pathParts.slice(0, index + 1).join('/'),
-    })),
-  ].filter((crumb, index) => {
-    // For non-admin users, filter out the username from breadcrumbs
-    if (!user?.is_admin && index === 1 && crumb.name === user?.username) {
-      return false;
-    }
-    return true;
-  });
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <AppBar position="static">
+      <AppBar position="static" elevation={4}>
         <Toolbar>
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="h6" component="div">
@@ -539,162 +249,156 @@ const FileManager = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Toolbar */}
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Breadcrumbs aria-label="breadcrumb">
-            {breadcrumbs.map((crumb, index) => (
-              <Link
-                key={index}
-                component="button"
-                variant="body1"
-                onClick={() => handlePathClick(crumb.path)}
-                sx={{ cursor: 'pointer', textDecoration: 'none' }}
-              >
-                {crumb.name || '홈'}
-              </Link>
-            ))}
-          </Breadcrumbs>
-          <Box sx={{ flexGrow: 1 }} />
-          
-          {/* Selection mode toggle button */}
-          <Button
-            variant={selectionMode ? 'contained' : 'outlined'}
-            startIcon={selectionMode ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
-            onClick={handleToggleSelectionMode}
-            color={selectionMode ? 'primary' : 'inherit'}
-          >
-            {selectionMode ? '선택 모드' : '선택'}
-          </Button>
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <FolderTree
+          currentPath={currentPath}
+          onPathClick={handlePathClick}
+          user={user}
+          treeUpdateTrigger={treeUpdateTrigger}
+          onCreateFolder={() => setCreateFolderDialogOpen(true)}
+          onUploadFile={() => setUploadDialogOpen(true)}
+          selectionMode={selectionMode}
+        />
 
-          {selectionMode ? (
-            <>
-              {/* Selection mode buttons */}
-              {selectedFiles.size > 0 && (
-                <>
-                  <Button
-                    variant="outlined"
-                    startIcon={<MoveIcon />}
-                    onClick={handleBulkMove}
-                    disabled={selectedFiles.size === 0}
-                  >
-                    이동 ({selectedFiles.size})
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<CopyIcon />}
-                    onClick={handleBulkCopy}
-                    disabled={selectedFiles.size === 0}
-                  >
-                    복사 ({selectedFiles.size})
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleBulkDownload}
-                    disabled={selectedFiles.size === 0}
-                  >
-                    다운로드 ({selectedFiles.size})
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={handleBulkDelete}
-                    disabled={selectedFiles.size === 0}
-                  >
-                    삭제 ({selectedFiles.size})
-                  </Button>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Normal mode buttons */}
-              <Button
-                variant="outlined"
-                startIcon={<FolderIcon />}
-                onClick={() => setCreateFolderDialogOpen(true)}
-              >
-                폴더 만들기
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<UploadIcon />}
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                업로드
-              </Button>
-            </>
-          )}
-          
-          <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
             <IconButton
-              color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-              onClick={() => setViewMode(VIEW_MODES.LIST)}
+              onClick={(e) => setSortMenuAnchor(e.currentTarget)}
+              title="정렬"
             >
-              <ViewListIcon />
+              <SortIcon />
             </IconButton>
-            <IconButton
-              color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-              onClick={() => setViewMode(VIEW_MODES.GRID)}
-            >
-              <ViewModuleIcon />
-            </IconButton>
-            <IconButton
-              color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
-              onClick={() => setViewMode(VIEW_MODES.DETAIL)}
-            >
-              <ViewAgendaIcon />
-            </IconButton>
-          </Box>
-        </Box>
 
-        {/* File View */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-              <Typography>로딩 중...</Typography>
-            </Box>
-          ) : viewMode === VIEW_MODES.LIST ? (
-            <FileList
-              files={files}
-              onFileClick={handleFileClick}
-              onContextMenu={(e, file) => {
-                e.preventDefault();
-                setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                setSelectedFile(file);
+            <IconButton
+              color={selectionMode ? 'primary' : 'default'}
+              onClick={handleToggleSelectionMode}
+              title={selectionMode ? '선택 모드' : '선택'}
+              sx={{
+                backgroundColor: selectionMode ? 'primary.main' : 'transparent',
+                color: selectionMode ? 'primary.contrastText' : 'inherit',
+                '&:hover': {
+                  backgroundColor: selectionMode ? 'primary.dark' : 'action.hover',
+                },
               }}
-              onFileDrop={handleFileDrop}
-              selectionMode={selectionMode}
-              selectedFiles={selectedFiles}
-              onFileCheck={handleFileCheck}
-            />
-          ) : viewMode === VIEW_MODES.GRID ? (
-            <>
-              {selectionMode && (
-                <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1, alignItems: 'center' }}>
-                  <Button
-                    size="small"
-                    startIcon={<SelectAllIcon />}
-                    onClick={handleSelectAll}
-                  >
-                    모두 선택
-                  </Button>
-                  <Button
-                    size="small"
-                    startIcon={<DeselectIcon />}
-                    onClick={handleDeselectAll}
-                  >
-                    모두 해제
-                  </Button>
-                  <Typography variant="body2" sx={{ ml: 2 }}>
-                    {selectedFiles.size}개 선택됨
-                  </Typography>
-                </Box>
-              )}
-              <FileGrid
-                files={files}
+            >
+              {selectionMode ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
+            </IconButton>
+
+            {selectionMode && (
+              <>
+                <Button
+                  size="small"
+                  startIcon={<SelectAllIcon />}
+                  onClick={handleSelectAll}
+                >
+                  모두 선택
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<DeselectIcon />}
+                  onClick={handleDeselectAll}
+                >
+                  모두 해제
+                </Button>
+                <Typography variant="body2" sx={{ ml: 1 }}>
+                  {selectedFiles.size}개 선택됨
+                </Typography>
+              </>
+            )}
+
+            <Box sx={{ flexGrow: 1 }} />
+            <Menu
+              anchorEl={sortMenuAnchor}
+              open={Boolean(sortMenuAnchor)}
+              onClose={() => setSortMenuAnchor(null)}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'left',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'left',
+              }}
+            >
+              <Box sx={{ px: 2, py: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                  이름
+                </Typography>
+                <RadioGroup
+                  value={sortMode}
+                  onChange={(e) => {
+                    setSortMode(e.target.value);
+                    setSortMenuAnchor(null);
+                  }}
+                >
+                  <FormControlLabel
+                    value={SORT_MODES.NAME_ASC}
+                    control={<Radio size="small" />}
+                    label="오름차순"
+                  />
+                  <FormControlLabel
+                    value={SORT_MODES.NAME_DESC}
+                    control={<Radio size="small" />}
+                    label="내림차순"
+                  />
+                </RadioGroup>
+              </Box>
+              <Divider />
+              <Box sx={{ px: 2, py: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                  수정 날짜
+                </Typography>
+                <RadioGroup
+                  value={sortMode}
+                  onChange={(e) => {
+                    setSortMode(e.target.value);
+                    setSortMenuAnchor(null);
+                  }}
+                >
+                  <FormControlLabel
+                    value={SORT_MODES.DATE_ASC}
+                    control={<Radio size="small" />}
+                    label="오름차순"
+                  />
+                  <FormControlLabel
+                    value={SORT_MODES.DATE_DESC}
+                    control={<Radio size="small" />}
+                    label="내림차순"
+                  />
+                </RadioGroup>
+              </Box>
+            </Menu>
+          
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <IconButton
+                color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
+                onClick={() => setViewMode(VIEW_MODES.LIST)}
+              >
+                <ViewStreamIcon />
+              </IconButton>
+              <IconButton
+                color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
+                onClick={() => setViewMode(VIEW_MODES.GRID)}
+              >
+                <ViewModuleIcon />
+              </IconButton>
+              <IconButton
+                color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
+                onClick={() => setViewMode(VIEW_MODES.DETAIL)}
+              >
+                <ViewListIcon />
+              </IconButton>
+            </Box>
+          </Box>
+
+          <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <Typography>로딩 중...</Typography>
+              </Box>
+            ) : viewMode === VIEW_MODES.LIST ? (
+              <FileList
+                files={sortedFiles}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
@@ -706,22 +410,36 @@ const FileManager = () => {
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
               />
-            </>
-          ) : (
-            <FileDetail
-              files={files}
-              onFileClick={handleFileClick}
-              onContextMenu={(e, file) => {
-                e.preventDefault();
-                setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                setSelectedFile(file);
-              }}
-              onFileDrop={handleFileDrop}
-              selectionMode={selectionMode}
-              selectedFiles={selectedFiles}
-              onFileCheck={handleFileCheck}
-            />
-          )}
+            ) : viewMode === VIEW_MODES.GRID ? (
+              <FileGrid
+                files={sortedFiles}
+                onFileClick={handleFileClick}
+                onContextMenu={(e, file) => {
+                  e.preventDefault();
+                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                  setSelectedFile(file);
+                }}
+                onFileDrop={handleFileDrop}
+                selectionMode={selectionMode}
+                selectedFiles={selectedFiles}
+                onFileCheck={handleFileCheck}
+              />
+            ) : (
+              <FileDetail
+                files={sortedFiles}
+                onFileClick={handleFileClick}
+                onContextMenu={(e, file) => {
+                  e.preventDefault();
+                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                  setSelectedFile(file);
+                }}
+                onFileDrop={handleFileDrop}
+                selectionMode={selectionMode}
+                selectedFiles={selectedFiles}
+                onFileCheck={handleFileCheck}
+              />
+            )}
+          </Box>
         </Box>
       </Box>
 
@@ -800,6 +518,67 @@ const FileManager = () => {
         </Alert>
       </Snackbar>
 
+      {selectionMode && selectedFiles.size > 0 && (
+        <Paper
+          elevation={8}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: 1,
+            alignItems: 'center',
+            p: 1.5,
+            borderRadius: 3,
+            zIndex: 1000,
+            backgroundColor: 'background.paper',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }}
+        >
+          <Typography variant="body2" sx={{ mr: 1, fontWeight: 500, minWidth: '60px' }}>
+            {selectedFiles.size}개 선택됨
+          </Typography>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleBulkMove}
+            sx={{ minWidth: 'auto', px: 1.5 }}
+            title="이동"
+          >
+            <MoveIcon />
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleBulkCopy}
+            sx={{ minWidth: 'auto', px: 1.5 }}
+            title="복사"
+          >
+            <CopyIcon />
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleBulkDownload}
+            sx={{ minWidth: 'auto', px: 1.5 }}
+            title="다운로드"
+          >
+            <DownloadIcon />
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            onClick={handleBulkDelete}
+            sx={{ minWidth: 'auto', px: 1.5 }}
+            title="삭제"
+          >
+            <DeleteIcon />
+          </Button>
+        </Paper>
+      )}
+
       <DownloadProgress
         items={progressItems}
         onClose={(id) => {
@@ -811,4 +590,3 @@ const FileManager = () => {
 };
 
 export default FileManager;
-

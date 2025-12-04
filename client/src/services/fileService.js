@@ -54,22 +54,52 @@ export const renameFile = async (oldPath, newName) => {
   return response.data;
 };
 
-export const moveFile = async (sourcePath, destinationPath, onProgress) => {
-  // Get file info first for progress tracking
-  let fileSize = 0;
+const getFileSize = async (filePath) => {
   try {
-    const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
-    const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+    const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+    const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
     const files = await listFiles(parentPath);
     const fileItem = files.find(item => item.basename === fileName);
-    if (fileItem && fileItem.size) {
-      fileSize = fileItem.size;
-    }
+    return fileItem?.size || 0;
   } catch (err) {
-    // Ignore error, continue without size info
+    return 0;
   }
+};
 
-  // Start with downloading stage
+const pollOperationProgress = async (operationId, fileSize, onProgress) => {
+  const pollProgress = async () => {
+    try {
+      const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
+      const progress = progressResponse.data;
+      
+      onProgress({
+        stage: progress.stage,
+        progress: progress.progress,
+        total: progress.total,
+        percentage: progress.percentage,
+      });
+      
+      if (progress.stage !== 'completed' && progress.stage !== 'error') {
+        setTimeout(pollProgress, 100);
+      }
+    } catch (err) {
+      if (onProgress) {
+        onProgress({
+          stage: 'completed',
+          progress: fileSize,
+          total: fileSize,
+          percentage: 100,
+        });
+      }
+    }
+  };
+  
+  setTimeout(pollProgress, 50);
+};
+
+export const moveFile = async (sourcePath, destinationPath, onProgress) => {
+  const fileSize = await getFileSize(sourcePath);
+
   if (onProgress && fileSize > 0) {
     onProgress({
       stage: 'downloading',
@@ -86,41 +116,9 @@ export const moveFile = async (sourcePath, destinationPath, onProgress) => {
   
   const operationId = response.data.operationId;
   
-  // Poll for progress updates
   if (onProgress && operationId && fileSize > 0) {
-    const pollProgress = async () => {
-      try {
-        const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
-        const progress = progressResponse.data;
-        
-        onProgress({
-          stage: progress.stage,
-          progress: progress.progress,
-          total: progress.total,
-          percentage: progress.percentage,
-        });
-        
-        // Continue polling if not completed or error
-        if (progress.stage !== 'completed' && progress.stage !== 'error') {
-          setTimeout(pollProgress, 100); // Poll every 100ms
-        }
-      } catch (err) {
-        // If polling fails, assume completed
-        if (onProgress) {
-          onProgress({
-            stage: 'completed',
-            progress: fileSize,
-            total: fileSize,
-            percentage: 100,
-          });
-        }
-      }
-    };
-    
-    // Start polling
-    setTimeout(pollProgress, 50);
+    pollOperationProgress(operationId, fileSize, onProgress);
   } else if (onProgress && fileSize > 0) {
-    // Fallback: immediately show 100% if no operationId
     onProgress({
       stage: 'completed',
       progress: fileSize,
@@ -133,21 +131,8 @@ export const moveFile = async (sourcePath, destinationPath, onProgress) => {
 };
 
 export const copyFile = async (sourcePath, destinationPath, onProgress) => {
-  // Get file info first for progress tracking
-  let fileSize = 0;
-  try {
-    const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
-    const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
-    const files = await listFiles(parentPath);
-    const fileItem = files.find(item => item.basename === fileName);
-    if (fileItem && fileItem.size) {
-      fileSize = fileItem.size;
-    }
-  } catch (err) {
-    // Ignore error, continue without size info
-  }
+  const fileSize = await getFileSize(sourcePath);
 
-  // Start with downloading stage
   if (onProgress && fileSize > 0) {
     onProgress({
       stage: 'downloading',
@@ -164,41 +149,9 @@ export const copyFile = async (sourcePath, destinationPath, onProgress) => {
   
   const operationId = response.data.operationId;
   
-  // Poll for progress updates
   if (onProgress && operationId && fileSize > 0) {
-    const pollProgress = async () => {
-      try {
-        const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
-        const progress = progressResponse.data;
-        
-        onProgress({
-          stage: progress.stage,
-          progress: progress.progress,
-          total: progress.total,
-          percentage: progress.percentage,
-        });
-        
-        // Continue polling if not completed or error
-        if (progress.stage !== 'completed' && progress.stage !== 'error') {
-          setTimeout(pollProgress, 100); // Poll every 100ms
-        }
-      } catch (err) {
-        // If polling fails, assume completed
-        if (onProgress) {
-          onProgress({
-            stage: 'completed',
-            progress: fileSize,
-            total: fileSize,
-            percentage: 100,
-          });
-        }
-      }
-    };
-    
-    // Start polling
-    setTimeout(pollProgress, 50);
+    pollOperationProgress(operationId, fileSize, onProgress);
   } else if (onProgress && fileSize > 0) {
-    // Fallback: immediately show 100% if no operationId
     onProgress({
       stage: 'completed',
       progress: fileSize,
@@ -228,7 +181,6 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
   let lastProgressEvent = null;
   
   try {
-    // Get total file size for progress tracking
     let totalSize = 0;
     try {
       for (const filePath of paths) {
@@ -238,18 +190,16 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
         const fileItem = files.find(item => item.basename === fileName);
         if (fileItem) {
           if (fileItem.type === 'directory') {
-            // For directories, estimate size (we can't easily calculate recursive size)
-            totalSize += 1024 * 1024; // Estimate 1MB per directory
+            totalSize += 1024 * 1024;
           } else if (fileItem.size) {
             totalSize += fileItem.size;
           }
         }
       }
     } catch (err) {
-      // Ignore error, continue without size info
+      // Ignore error
     }
     
-    // Start download
     const response = await axios.post(
       '/api/files/download-multiple',
       { paths },
@@ -277,12 +227,10 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
       }
     );
 
-    // Create download link
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     link.href = url;
     
-    // Get filename from Content-Disposition header
     const contentDisposition = response.headers['content-disposition'];
     let filename = 'download.zip';
     if (contentDisposition) {

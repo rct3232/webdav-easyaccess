@@ -29,8 +29,9 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage 
         : `${currentPath}/${folderName}`;
       
       await createFolder(folderPath);
+      const finalFolderName = folderName;
       setFolderName('');
-      onComplete();
+      onComplete(folderPath, finalFolderName);
       
       // Show success toast message
       if (onMessage) {

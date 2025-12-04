@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   List,
   ListItem,
@@ -7,66 +7,22 @@ import {
   Typography,
   Box,
   Checkbox,
+  Avatar,
 } from '@mui/material';
-import {
-  Folder as FolderIcon,
-  InsertDriveFile as FileIcon,
-  Image as ImageIcon,
-  VideoFile as VideoIcon,
-} from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
+import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 
 const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
-  const [draggedFile, setDraggedFile] = useState(null);
-  const [dropTarget, setDropTarget] = useState(null);
-  const getFileIcon = (file) => {
-    if (file.type === 'directory') {
-      return <FolderIcon color="primary" />;
-    }
-    if (file.mime?.startsWith('image/')) {
-      return <ImageIcon />;
-    }
-    if (file.mime?.startsWith('video/')) {
-      return <VideoIcon />;
-    }
-    return <FileIcon />;
-  };
-
-  const handleDragStart = (e, file) => {
-    setDraggedFile(file);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', file.path);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedFile(null);
-    setDropTarget(null);
-  };
-
-  const handleDragOver = (e, file) => {
-    // Only allow drop on folders and not on the dragged file itself
-    if (file.type === 'directory' && draggedFile?.path !== file.path) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDropTarget(file.path);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDropTarget(null);
-  };
-
-  const handleDrop = (e, targetFolder) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (draggedFile && targetFolder.type === 'directory' && draggedFile.path !== targetFolder.path) {
-      onFileDrop && onFileDrop(draggedFile, targetFolder);
-    }
-    
-    setDraggedFile(null);
-    setDropTarget(null);
-  };
+  const {
+    draggedFile,
+    dropTarget,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useDragAndDrop(onFileDrop, selectionMode);
 
   const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
 
@@ -74,6 +30,8 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     <List>
       {files.map((file, index) => {
         const checked = selectionMode && isSelected(file);
+        const thumbnail = getThumbnail(file);
+        
         return (
           <ListItem
             key={index}
@@ -108,7 +66,24 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 />
               </ListItemIcon>
             )}
-            <ListItemIcon>{getFileIcon(file)}</ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 56, justifyContent: 'center', mr: 2 }}>
+              {thumbnail ? (
+                <Avatar
+                  src={thumbnail}
+                  alt={file.basename}
+                  variant="rounded"
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    bgcolor: 'grey.200',
+                  }}
+                />
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40 }}>
+                  {getFileIcon(file)}
+                </Box>
+              )}
+            </ListItemIcon>
             <ListItemText
               primary={file.basename}
               secondary={
@@ -135,4 +110,3 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
 };
 
 export default FileList;
-

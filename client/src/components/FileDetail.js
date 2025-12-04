@@ -9,7 +9,6 @@ import {
   Paper,
   Typography,
   Box,
-  IconButton,
   Checkbox,
 } from '@mui/material';
 import {

@@ -36,7 +36,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [newName, setNewName] = useState('');
-  const [destinationPath, setDestinationPath] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (!file) return null;
@@ -210,7 +209,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         }
       });
       setMoveDialogOpen(false);
-      setDestinationPath('');
       onActionComplete();
       onClose();
       
@@ -330,7 +328,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         }
       });
       setCopyDialogOpen(false);
-      setDestinationPath('');
       onActionComplete();
       onClose();
       

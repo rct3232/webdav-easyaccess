@@ -39,7 +39,7 @@ import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
 import FilePreviewDialog from '../components/FilePreviewDialog';
 import DownloadProgress from '../components/DownloadProgress';
-import { listFiles, moveFile, copyFile, deleteFile, downloadFile, downloadMultipleFiles, getWebDAVInfo } from '../services/fileService';
+import { listFiles, moveFile, copyFile, deleteFile, downloadMultipleFiles, getWebDAVInfo } from '../services/fileService';
 import FolderPickerDialog from '../components/FolderPickerDialog';
 
 const VIEW_MODES = {
@@ -297,19 +297,21 @@ const FileManager = () => {
 
         // Update progress before starting
         const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
-        setProgressItems(prev => 
-          prev.map(item => 
+        setProgressItems(prev => {
+          const currentItem = prev.find(item => item.id === progressId);
+          const currentProgress = currentItem ? currentItem.progress || 0 : 0;
+          return prev.map(item => 
             item.id === progressId 
               ? { 
                   ...item, 
                   status: 'processing',
-                  progress: successCount,
+                  progress: currentProgress,
                   total: filePaths.length,
-                  current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
                 }
               : item
-          )
-        );
+          );
+        });
 
         if (folderPickerAction === 'move') {
           await moveFile(sourcePath, destinationFilePath);
@@ -320,19 +322,21 @@ const FileManager = () => {
         successCount++;
         
         // Update progress after completion
-        setProgressItems(prev => 
-          prev.map(item => 
+        setProgressItems(prev => {
+          const currentItem = prev.find(item => item.id === progressId);
+          const currentProgress = currentItem ? (currentItem.progress || 0) + 1 : 1;
+          return prev.map(item => 
             item.id === progressId 
               ? { 
                   ...item, 
                   status: 'processing',
-                  progress: successCount,
+                  progress: currentProgress,
                   total: filePaths.length,
-                  current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
                 }
               : item
-          )
-        );
+          );
+        });
       } catch (error) {
         console.error(`Failed to ${folderPickerAction} ${sourcePath}:`, error);
         const errorMsg = error.response?.data?.error || error.message;

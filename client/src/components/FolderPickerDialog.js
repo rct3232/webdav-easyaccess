@@ -18,7 +18,6 @@ import {
 } from '@mui/material';
 import {
   Folder as FolderIcon,
-  FolderOpen as FolderOpenIcon,
   Home as HomeIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';

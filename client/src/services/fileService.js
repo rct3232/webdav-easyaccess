@@ -54,19 +54,159 @@ export const renameFile = async (oldPath, newName) => {
   return response.data;
 };
 
-export const moveFile = async (sourcePath, destinationPath) => {
+export const moveFile = async (sourcePath, destinationPath, onProgress) => {
+  // Get file info first for progress tracking
+  let fileSize = 0;
+  try {
+    const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
+    const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+    const files = await listFiles(parentPath);
+    const fileItem = files.find(item => item.basename === fileName);
+    if (fileItem && fileItem.size) {
+      fileSize = fileItem.size;
+    }
+  } catch (err) {
+    // Ignore error, continue without size info
+  }
+
+  // Start with downloading stage
+  if (onProgress && fileSize > 0) {
+    onProgress({
+      stage: 'downloading',
+      progress: 0,
+      total: fileSize,
+      percentage: 0,
+    });
+  }
+  
   const response = await axios.put(`${API_BASE}/move`, {
     sourcePath,
     destinationPath,
   });
+  
+  const operationId = response.data.operationId;
+  
+  // Poll for progress updates
+  if (onProgress && operationId && fileSize > 0) {
+    const pollProgress = async () => {
+      try {
+        const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
+        const progress = progressResponse.data;
+        
+        onProgress({
+          stage: progress.stage,
+          progress: progress.progress,
+          total: progress.total,
+          percentage: progress.percentage,
+        });
+        
+        // Continue polling if not completed or error
+        if (progress.stage !== 'completed' && progress.stage !== 'error') {
+          setTimeout(pollProgress, 100); // Poll every 100ms
+        }
+      } catch (err) {
+        // If polling fails, assume completed
+        if (onProgress) {
+          onProgress({
+            stage: 'completed',
+            progress: fileSize,
+            total: fileSize,
+            percentage: 100,
+          });
+        }
+      }
+    };
+    
+    // Start polling
+    setTimeout(pollProgress, 50);
+  } else if (onProgress && fileSize > 0) {
+    // Fallback: immediately show 100% if no operationId
+    onProgress({
+      stage: 'completed',
+      progress: fileSize,
+      total: fileSize,
+      percentage: 100,
+    });
+  }
+  
   return response.data;
 };
 
-export const copyFile = async (sourcePath, destinationPath) => {
+export const copyFile = async (sourcePath, destinationPath, onProgress) => {
+  // Get file info first for progress tracking
+  let fileSize = 0;
+  try {
+    const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
+    const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+    const files = await listFiles(parentPath);
+    const fileItem = files.find(item => item.basename === fileName);
+    if (fileItem && fileItem.size) {
+      fileSize = fileItem.size;
+    }
+  } catch (err) {
+    // Ignore error, continue without size info
+  }
+
+  // Start with downloading stage
+  if (onProgress && fileSize > 0) {
+    onProgress({
+      stage: 'downloading',
+      progress: 0,
+      total: fileSize,
+      percentage: 0,
+    });
+  }
+  
   const response = await axios.post(`${API_BASE}/copy`, {
     sourcePath,
     destinationPath,
   });
+  
+  const operationId = response.data.operationId;
+  
+  // Poll for progress updates
+  if (onProgress && operationId && fileSize > 0) {
+    const pollProgress = async () => {
+      try {
+        const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
+        const progress = progressResponse.data;
+        
+        onProgress({
+          stage: progress.stage,
+          progress: progress.progress,
+          total: progress.total,
+          percentage: progress.percentage,
+        });
+        
+        // Continue polling if not completed or error
+        if (progress.stage !== 'completed' && progress.stage !== 'error') {
+          setTimeout(pollProgress, 100); // Poll every 100ms
+        }
+      } catch (err) {
+        // If polling fails, assume completed
+        if (onProgress) {
+          onProgress({
+            stage: 'completed',
+            progress: fileSize,
+            total: fileSize,
+            percentage: 100,
+          });
+        }
+      }
+    };
+    
+    // Start polling
+    setTimeout(pollProgress, 50);
+  } else if (onProgress && fileSize > 0) {
+    // Fallback: immediately show 100% if no operationId
+    onProgress({
+      stage: 'completed',
+      progress: fileSize,
+      total: fileSize,
+      percentage: 100,
+    });
+  }
+  
   return response.data;
 };
 
@@ -74,6 +214,130 @@ export const createFolder = async (folderPath) => {
   const response = await axios.post('/api/folders/create', {
     path: folderPath,
   });
+  return response.data;
+};
+
+export const getWebDAVInfo = async () => {
+  const response = await axios.get('/api/webdav/info');
+  return response.data;
+};
+
+export const downloadMultipleFiles = async (paths, onProgress) => {
+  const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  let lastProgressEvent = null;
+  
+  try {
+    // Get total file size for progress tracking
+    let totalSize = 0;
+    try {
+      for (const filePath of paths) {
+        const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+        const files = await listFiles(parentPath);
+        const fileItem = files.find(item => item.basename === fileName);
+        if (fileItem) {
+          if (fileItem.type === 'directory') {
+            // For directories, estimate size (we can't easily calculate recursive size)
+            totalSize += 1024 * 1024; // Estimate 1MB per directory
+          } else if (fileItem.size) {
+            totalSize += fileItem.size;
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore error, continue without size info
+    }
+    
+    // Start download
+    const response = await axios.post(
+      '/api/files/download-multiple',
+      { paths },
+      {
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          lastProgressEvent = progressEvent;
+          if (onProgress) {
+            const loaded = progressEvent.loaded || 0;
+            const total = progressEvent.total || totalSize || 0;
+            const percentage = total > 0 ? Math.min(100, (loaded / total) * 100) : 0;
+            
+            onProgress({
+              id: downloadId,
+              type: 'download',
+              status: 'downloading',
+              progress: loaded,
+              total: total,
+              percentage: percentage,
+              current: `다운로드 중 (${Math.round(percentage)}%)`,
+              zipName: '',
+            });
+          }
+        },
+      }
+    );
+
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = 'download.zip';
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename\*?=['"]?([^'";]+)/);
+      if (filenameMatch) {
+        filename = decodeURIComponent(filenameMatch[1]);
+      } else {
+        const simpleMatch = contentDisposition.match(/filename=['"]?([^'";]+)/);
+        if (simpleMatch) {
+          filename = simpleMatch[1];
+        }
+      }
+    }
+    
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+    if (onProgress) {
+      const total = lastProgressEvent?.total || totalSize || 0;
+      onProgress({
+        id: downloadId,
+        type: 'download',
+        status: 'completed',
+        progress: total,
+        total: total,
+        percentage: 100,
+        current: '완료',
+        zipName: filename,
+      });
+    }
+
+    return { success: true, downloadId, filename };
+  } catch (error) {
+    console.error('Download multiple files error:', error);
+    if (onProgress) {
+      onProgress({
+        id: downloadId,
+        type: 'download',
+        status: 'error',
+        progress: 0,
+        total: 0,
+        current: '',
+        zipName: '',
+        error: error.response?.data?.error || error.message,
+      });
+    }
+    throw error;
+  }
+};
+
+export const getDownloadProgress = async (downloadId) => {
+  const response = await axios.get(`/api/files/download-progress/${downloadId}`);
   return response.data;
 };
 

@@ -10,6 +10,7 @@ import {
   Typography,
   Box,
   IconButton,
+  Checkbox,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -19,7 +20,7 @@ import {
 } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
   const [draggedFile, setDraggedFile] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const getFileIcon = (file) => {
@@ -71,11 +72,14 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
     setDropTarget(null);
   };
 
+  const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
+
   return (
     <TableContainer component={Paper}>
       <Table>
         <TableHead>
           <TableRow>
+            {selectionMode && <TableCell padding="checkbox" />}
             <TableCell>이름</TableCell>
             <TableCell>유형</TableCell>
             <TableCell align="right">크기</TableCell>
@@ -86,26 +90,40 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
           {files.map((file, index) => {
             const isDragging = draggedFile?.path === file.path;
             const isDropTarget = dropTarget === file.path;
+            const checked = selectionMode && isSelected(file);
             
             return (
               <TableRow
                 key={index}
-                draggable
+                draggable={!selectionMode}
                 hover
+                selected={checked}
                 sx={{ 
-                  cursor: 'move',
+                  cursor: selectionMode ? 'pointer' : 'move',
                   opacity: isDragging ? 0.5 : 1,
                   backgroundColor: isDropTarget ? 'primary.light' : 'transparent',
                   transition: 'all 0.2s',
                 }}
                 onClick={() => onFileClick(file)}
                 onContextMenu={(e) => onContextMenu(e, file)}
-                onDragStart={(e) => handleDragStart(e, file)}
-                onDragEnd={handleDragEnd}
-                onDragOver={(e) => handleDragOver(e, file)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, file)}
+                onDragStart={!selectionMode ? (e) => handleDragStart(e, file) : undefined}
+                onDragEnd={!selectionMode ? handleDragEnd : undefined}
+                onDragOver={!selectionMode ? (e) => handleDragOver(e, file) : undefined}
+                onDragLeave={!selectionMode ? handleDragLeave : undefined}
+                onDrop={!selectionMode ? (e) => handleDrop(e, file) : undefined}
               >
+                {selectionMode && (
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onFileCheck && onFileCheck(file, e.target.checked);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </TableCell>
+                )}
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {getFileIcon(file)}
@@ -122,7 +140,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
           })}
           {files.length === 0 && (
             <TableRow>
-              <TableCell colSpan={4}>
+              <TableCell colSpan={selectionMode ? 5 : 4}>
                 <Box sx={{ textAlign: 'center', py: 4 }}>
                   <Typography color="text.secondary">파일이 없습니다</Typography>
                 </Box>

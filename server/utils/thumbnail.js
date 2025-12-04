@@ -5,52 +5,49 @@ const crypto = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
 const { getFileContents, isImageFile, isVideoFile } = require('./webdav');
 
-const { getThumbnailDir } = require('./paths');
-const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR 
-  ? path.resolve(process.env.THUMBNAIL_DIR)
-  : getThumbnailDir(); // getThumbnailDir() already returns absolute path, no need for path.resolve()
 const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
 
-if (!fs.existsSync(THUMBNAIL_DIR)) {
-  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+// In-memory thumbnail cache: Map<webdavPath, { buffer: Buffer, mimeType: string, extension: string }>
+const thumbnailCache = new Map();
+
+// Cache size limit (optional - prevent memory overflow)
+const MAX_CACHE_SIZE = 1000; // Maximum number of thumbnails in cache
+
+function getThumbnailHash(webdavPath) {
+  return crypto.createHash('md5').update(webdavPath).digest('hex');
 }
 
-if (!path.isAbsolute(THUMBNAIL_DIR)) {
-  throw new Error(`THUMBNAIL_DIR must be absolute path, got: ${THUMBNAIL_DIR}`);
+function getCachedThumbnail(webdavPath) {
+  return thumbnailCache.get(webdavPath) || null;
 }
 
-const normalizedPath = THUMBNAIL_DIR.replace(/\\/g, '/');
-if (normalizedPath.includes('/server/data/')) {
-  throw new Error(`THUMBNAIL_DIR must be in project root/data/, not server/data/: ${THUMBNAIL_DIR}`);
-}
-
-function getThumbnailPath(filePath, extension = 'jpg') {
-  const hash = crypto.createHash('md5').update(filePath).digest('hex');
-  return path.join(THUMBNAIL_DIR, `${hash}.${extension}`);
-}
-
-function findThumbnailPath(filePath) {
-  const hash = crypto.createHash('md5').update(filePath).digest('hex');
-  const jpgPath = path.join(THUMBNAIL_DIR, `${hash}.jpg`);
-  const pngPath = path.join(THUMBNAIL_DIR, `${hash}.png`);
+function setCachedThumbnail(webdavPath, buffer, extension) {
+  // Simple cache eviction: remove oldest entries if cache is too large
+  if (thumbnailCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = thumbnailCache.keys().next().value;
+    thumbnailCache.delete(firstKey);
+  }
   
-  if (fs.existsSync(pngPath)) {
-    return { path: pngPath, extension: 'png' };
-  }
-  if (fs.existsSync(jpgPath)) {
-    return { path: jpgPath, extension: 'jpg' };
-  }
-  return null;
+  const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+  thumbnailCache.set(webdavPath, {
+    buffer,
+    mimeType,
+    extension
+  });
 }
 
 async function generateImageThumbnail(filePath, webdavPath) {
   try {
-    const existingThumbnail = findThumbnailPath(webdavPath);
-    if (existingThumbnail) {
-      return existingThumbnail.path;
+    // Check memory cache first
+    const cached = getCachedThumbnail(webdavPath);
+    if (cached) {
+      console.log(`[Thumbnail] Using cached thumbnail for: ${webdavPath}`);
+      return { buffer: cached.buffer, extension: cached.extension };
     }
 
+    console.log(`[Thumbnail] Generating thumbnail for: ${webdavPath}`);
     const buffer = await getFileContents(webdavPath);
+    console.log(`[Thumbnail] Retrieved ${buffer.length} bytes for: ${webdavPath}`);
     if (!buffer || buffer.length === 0) {
       throw new Error('Failed to download file from WebDAV');
     }
@@ -58,12 +55,6 @@ async function generateImageThumbnail(filePath, webdavPath) {
     const metadata = await sharp(buffer).metadata();
     const hasAlpha = metadata.hasAlpha === true;
     const outputExtension = hasAlpha ? 'png' : 'jpg';
-    const thumbnailPath = getThumbnailPath(webdavPath, outputExtension);
-    const thumbnailDir = path.resolve(path.dirname(thumbnailPath));
-    
-    if (!fs.existsSync(thumbnailDir)) {
-      fs.mkdirSync(thumbnailDir, { recursive: true });
-    }
     
     try {
       const sharpInstance = sharp(buffer)
@@ -72,25 +63,23 @@ async function generateImageThumbnail(filePath, webdavPath) {
           withoutEnlargement: true,
         });
       
+      let thumbnailBuffer;
       if (hasAlpha) {
-        await sharpInstance
+        thumbnailBuffer = await sharpInstance
           .png({ quality: 90, compressionLevel: 6 })
-          .toFile(thumbnailPath);
+          .toBuffer();
       } else {
-        await sharpInstance
+        thumbnailBuffer = await sharpInstance
           .jpeg({ quality: 80 })
-          .toFile(thumbnailPath);
+          .toBuffer();
       }
+      
+      // Store in memory cache
+      setCachedThumbnail(webdavPath, thumbnailBuffer, outputExtension);
+      
+      return { buffer: thumbnailBuffer, extension: outputExtension };
     } catch (sharpError) {
       throw sharpError;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    if (fs.existsSync(thumbnailPath)) {
-      return thumbnailPath;
-    } else {
-      throw new Error(`Thumbnail file was not created at: ${thumbnailPath}`);
     }
   } catch (error) {
     console.error(`Error generating image thumbnail: ${error.message}`);
@@ -103,12 +92,12 @@ async function generateVideoThumbnail(filePath, webdavPath) {
   let tempFramePath = null;
   
   try {
-    const existingThumbnail = findThumbnailPath(webdavPath);
-    if (existingThumbnail) {
-      return existingThumbnail.path;
+    // Check memory cache first
+    const cached = getCachedThumbnail(webdavPath);
+    if (cached) {
+      return { buffer: cached.buffer, extension: cached.extension };
     }
     
-    const thumbnailPath = getThumbnailPath(webdavPath, 'jpg');
     const buffer = await getFileContents(webdavPath);
     if (!buffer || buffer.length === 0) {
       throw new Error('Failed to download video from WebDAV');
@@ -130,11 +119,6 @@ async function generateVideoThumbnail(filePath, webdavPath) {
     tempVideoPath += ext || '.mp4';
     
     fs.writeFileSync(tempVideoPath, buffer);
-    
-    const thumbnailDir = path.resolve(path.dirname(thumbnailPath));
-    if (!fs.existsSync(thumbnailDir)) {
-      fs.mkdirSync(thumbnailDir, { recursive: true });
-    }
     
     let ffmpegFound = false;
     if (process.env.FFMPEG_PATH) {
@@ -180,7 +164,6 @@ async function generateVideoThumbnail(filePath, webdavPath) {
         })
         .on('end', () => resolve())
         .on('error', (err) => {
-          
           let errorMessage = `FFmpeg failed: ${err.message}`;
           if (err.message.includes('ENOENT') || err.message.includes('spawn')) {
             errorMessage += `\n\nFFmpeg is not installed or not found in PATH.\n`;
@@ -189,7 +172,6 @@ async function generateVideoThumbnail(filePath, webdavPath) {
             errorMessage += `  Or set FFMPEG_PATH in .env file to the full path of ffmpeg.exe\n`;
             errorMessage += `  Example: FFMPEG_PATH=C:\\ffmpeg\\bin\\ffmpeg.exe`;
           }
-          
           reject(new Error(errorMessage));
         });
     });
@@ -199,19 +181,18 @@ async function generateVideoThumbnail(filePath, webdavPath) {
       throw new Error('Frame extraction failed - output file not found');
     }
     const frameBuffer = fs.readFileSync(tempFramePath);
-    await sharp(frameBuffer)
+    const thumbnailBuffer = await sharp(frameBuffer)
       .resize(MAX_SIZE, MAX_SIZE, {
         fit: 'inside',
         withoutEnlargement: true,
       })
       .jpeg({ quality: 80 })
-      .toFile(thumbnailPath);
+      .toBuffer();
     
-    if (fs.existsSync(thumbnailPath)) {
-      return thumbnailPath;
-    } else {
-      throw new Error(`Thumbnail file was not created at: ${thumbnailPath}`);
-    }
+    // Store in memory cache
+    setCachedThumbnail(webdavPath, thumbnailBuffer, 'jpg');
+    
+    return { buffer: thumbnailBuffer, extension: 'jpg' };
   } catch (error) {
     console.error(`Error generating video thumbnail: ${error.message}`);
     return null;
@@ -233,41 +214,49 @@ async function getThumbnail(webdavPath) {
   const filename = path.basename(webdavPath);
   
   if (isImageFile(filename)) {
-    return await generateImageThumbnail(null, webdavPath);
+    const result = await generateImageThumbnail(null, webdavPath);
+    return result ? result.buffer : null;
   } else if (isVideoFile(filename)) {
-    return await generateVideoThumbnail(null, webdavPath);
+    const result = await generateVideoThumbnail(null, webdavPath);
+    return result ? result.buffer : null;
   }
   
   return null;
 }
 
 function getThumbnailUrl(webdavPath) {
-  const existingThumbnail = findThumbnailPath(webdavPath);
-  if (existingThumbnail) {
-    const hash = crypto.createHash('md5').update(webdavPath).digest('hex');
-    return `/api/thumbnails/${hash}.${existingThumbnail.extension}`;
+  const cached = getCachedThumbnail(webdavPath);
+  if (cached) {
+    const hash = getThumbnailHash(webdavPath);
+    return `/api/thumbnails/${hash}.${cached.extension}`;
   }
   return null;
+}
+
+function getThumbnailFromCache(webdavPath) {
+  return getCachedThumbnail(webdavPath);
 }
 
 async function ensureThumbnail(webdavPath) {
   try {
     const filename = path.basename(webdavPath);
-    const existingThumbnail = findThumbnailPath(webdavPath);
     
-    if (existingThumbnail) {
+    // Check cache first
+    const cached = getCachedThumbnail(webdavPath);
+    if (cached) {
       return getThumbnailUrl(webdavPath);
     }
     
+    // Generate if not cached
     if (isImageFile(filename)) {
-      const generatedPath = await generateImageThumbnail(null, webdavPath);
-      if (generatedPath && (fs.existsSync(generatedPath) || findThumbnailPath(webdavPath))) {
+      const result = await generateImageThumbnail(null, webdavPath);
+      if (result) {
         return getThumbnailUrl(webdavPath);
       }
       return null;
     } else if (isVideoFile(filename)) {
-      const generatedPath = await generateVideoThumbnail(null, webdavPath);
-      if (generatedPath && (fs.existsSync(generatedPath) || findThumbnailPath(webdavPath))) {
+      const result = await generateVideoThumbnail(null, webdavPath);
+      if (result) {
         return getThumbnailUrl(webdavPath);
       }
       return null;
@@ -283,9 +272,11 @@ async function ensureThumbnail(webdavPath) {
 module.exports = {
   getThumbnail,
   getThumbnailUrl,
-  getThumbnailPath,
+  getThumbnailFromCache,
   generateImageThumbnail,
   generateVideoThumbnail,
   ensureThumbnail,
+  getThumbnailHash,
+  thumbnailCache, // Export cache for server route access
 };
 

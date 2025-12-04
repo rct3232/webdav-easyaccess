@@ -20,6 +20,14 @@ import {
   Folder as FolderIcon,
   Person as PersonIcon,
   AdminPanelSettings as AdminIcon,
+  CheckBox as CheckBoxIcon,
+  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
+  SelectAll as SelectAllIcon,
+  Deselect as DeselectIcon,
+  DriveFileMove as MoveIcon,
+  ContentCopy as CopyIcon,
+  Delete as DeleteIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -30,7 +38,9 @@ import UploadDialog from '../components/UploadDialog';
 import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
 import FilePreviewDialog from '../components/FilePreviewDialog';
-import { listFiles, moveFile } from '../services/fileService';
+import DownloadProgress from '../components/DownloadProgress';
+import { listFiles, moveFile, copyFile, deleteFile, downloadFile, downloadMultipleFiles, getWebDAVInfo } from '../services/fileService';
+import FolderPickerDialog from '../components/FolderPickerDialog';
 
 const VIEW_MODES = {
   LIST: 'list',
@@ -54,6 +64,12 @@ const FileManager = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
+  const [webdavUrl, setWebdavUrl] = useState('');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [folderPickerAction, setFolderPickerAction] = useState(null); // 'move' or 'copy'
+  const [progressItems, setProgressItems] = useState([]);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -83,6 +99,19 @@ const FileManager = () => {
     }
   }, [currentPath, loadFiles]);
 
+  useEffect(() => {
+    // Load WebDAV URL for display
+    const loadWebDAVUrl = async () => {
+      try {
+        const info = await getWebDAVInfo();
+        setWebdavUrl(info.url || '');
+      } catch (error) {
+        console.error('Failed to load WebDAV URL:', error);
+      }
+    };
+    loadWebDAVUrl();
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -93,14 +122,285 @@ const FileManager = () => {
   };
 
   const handleFileClick = (file) => {
-    if (file.type === 'directory') {
-      setCurrentPath(file.path);
+    if (selectionMode) {
+      // Toggle selection
+      setSelectedFiles(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(file.path)) {
+          newSet.delete(file.path);
+        } else {
+          newSet.add(file.path);
+        }
+        return newSet;
+      });
     } else {
-      const filename = file.basename || file.name;
-      const canPreviewFile = canPreview(filename);
-      setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
-      setPreviewDialogOpen(true);
+      // Normal click behavior
+      if (file.type === 'directory') {
+        setCurrentPath(file.path);
+      } else {
+        const filename = file.basename || file.name;
+        const canPreviewFile = canPreview(filename);
+        setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
+        setPreviewDialogOpen(true);
+      }
     }
+  };
+
+  const handleToggleSelectionMode = () => {
+    setSelectionMode(prev => !prev);
+    setSelectedFiles(new Set()); // Clear selection when toggling
+  };
+
+  const handleSelectAll = () => {
+    setSelectedFiles(new Set(files.map(file => file.path)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedFiles(new Set());
+  };
+
+  const handleFileCheck = (file, checked) => {
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(file.path);
+      } else {
+        newSet.delete(file.path);
+      }
+      return newSet;
+    });
+  };
+
+  const handleBulkMove = () => {
+    setFolderPickerAction('move');
+    setFolderPickerOpen(true);
+  };
+
+  const handleBulkCopy = () => {
+    setFolderPickerAction('copy');
+    setFolderPickerOpen(true);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFiles.size === 0) return;
+    
+    const confirmMessage = `선택한 ${selectedFiles.size}개의 파일/폴더를 삭제하시겠습니까?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    const filePaths = Array.from(selectedFiles);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const filePath of filePaths) {
+      try {
+        await deleteFile(filePath);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to delete ${filePath}:`, error);
+        failCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      setDropMessage({
+        show: true,
+        text: `${successCount}개 파일/폴더가 삭제되었습니다${failCount > 0 ? ` (${failCount}개 실패)` : ''}`,
+        type: failCount > 0 ? 'warning' : 'success',
+      });
+      setSelectedFiles(new Set());
+      setSelectionMode(false); // 선택 모드 해제
+      loadFiles();
+    } else {
+      setDropMessage({
+        show: true,
+        text: '삭제에 실패했습니다',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedFiles.size === 0) return;
+
+    const filePaths = Array.from(selectedFiles);
+    
+    // Create progress item
+    const progressId = `download_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'download',
+      status: 'preparing',
+      progress: 0,
+      total: filePaths.length,
+      current: '',
+      zipName: '',
+    };
+    
+    setProgressItems(prev => [...prev, progressItem]);
+
+    try {
+      await downloadMultipleFiles(filePaths, (progress) => {
+        setProgressItems(prev => 
+          prev.map(item => item.id === progressId ? { ...progress, id: progressId } : item)
+        );
+      });
+      
+      setSelectedFiles(new Set());
+      setSelectionMode(false); // 선택 모드 해제
+      
+      // Update to completed after a delay
+      setTimeout(() => {
+        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      }, 3000);
+    } catch (error) {
+      console.error('Bulk download error:', error);
+      setProgressItems(prev => 
+        prev.map(item => 
+          item.id === progressId 
+            ? { ...item, status: 'error', error: error.message }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleFolderPickerSelect = async (destinationPath) => {
+    if (!folderPickerAction || selectedFiles.size === 0) return;
+
+    const filePaths = Array.from(selectedFiles);
+    
+    // Create progress item
+    const progressId = `${folderPickerAction}_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: folderPickerAction,
+      status: 'preparing',
+      progress: 0,
+      total: filePaths.length,
+      current: '',
+      name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
+    };
+    
+    setProgressItems(prev => [...prev, progressItem]);
+
+    let successCount = 0;
+    let failCount = 0;
+    const skippedFiles = []; // 중복 파일 목록
+
+    for (let i = 0; i < filePaths.length; i++) {
+      const sourcePath = filePaths[i];
+      try {
+        const fileName = sourcePath.split('/').pop();
+        const destinationFilePath = destinationPath === '/' 
+          ? `/${fileName}` 
+          : `${destinationPath}/${fileName}`;
+
+        // Update progress before starting
+        const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
+        setProgressItems(prev => 
+          prev.map(item => 
+            item.id === progressId 
+              ? { 
+                  ...item, 
+                  status: 'processing',
+                  progress: successCount,
+                  total: filePaths.length,
+                  current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+                }
+              : item
+          )
+        );
+
+        if (folderPickerAction === 'move') {
+          await moveFile(sourcePath, destinationFilePath);
+        } else if (folderPickerAction === 'copy') {
+          await copyFile(sourcePath, destinationFilePath);
+        }
+        
+        successCount++;
+        
+        // Update progress after completion
+        setProgressItems(prev => 
+          prev.map(item => 
+            item.id === progressId 
+              ? { 
+                  ...item, 
+                  status: 'processing',
+                  progress: successCount,
+                  total: filePaths.length,
+                  current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+                }
+              : item
+          )
+        );
+      } catch (error) {
+        console.error(`Failed to ${folderPickerAction} ${sourcePath}:`, error);
+        const errorMsg = error.response?.data?.error || error.message;
+        const fileName = sourcePath.split('/').pop();
+        
+        // 중복 파일 에러인 경우 건너뛰기
+        if (error.response?.status === 409 || errorMsg.includes('already exists')) {
+          skippedFiles.push(fileName);
+        } else {
+          failCount++;
+        }
+      }
+    }
+
+    // Update to completed
+    const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
+    setProgressItems(prev => 
+      prev.map(item => 
+        item.id === progressId 
+          ? { 
+              ...item, 
+              status: failCount > 0 ? 'error' : 'completed',
+              progress: successCount,
+              total: filePaths.length,
+              current: failCount > 0 ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) ${actionText}...`,
+              error: failCount > 0 ? `${failCount}개 실패` : undefined,
+            }
+          : item
+      )
+    );
+
+    if (successCount > 0) {
+      let message = `${successCount}개 파일/폴더가 ${folderPickerAction === 'move' ? '이동' : '복사'}되었습니다`;
+      if (skippedFiles.length > 0) {
+        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
+      }
+      if (failCount > 0) {
+        message += `\n실패: ${failCount}개`;
+      }
+      
+      setDropMessage({
+        show: true,
+        text: message,
+        type: failCount > 0 || skippedFiles.length > 0 ? 'warning' : 'success',
+      });
+      setSelectedFiles(new Set());
+      setSelectionMode(false); // 선택 모드 해제
+      loadFiles();
+    } else {
+      let message = `${folderPickerAction === 'move' ? '이동' : '복사'}에 실패했습니다`;
+      if (skippedFiles.length > 0) {
+        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
+      }
+      
+      setDropMessage({
+        show: true,
+        text: message,
+        type: 'error',
+      });
+    }
+
+    // Remove progress item after delay
+    setTimeout(() => {
+      setProgressItems(prev => prev.filter(item => item.id !== progressId));
+    }, 3000);
+
+    setFolderPickerOpen(false);
+    setFolderPickerAction(null);
   };
 
   const canPreview = (filename) => {
@@ -208,9 +508,16 @@ const FileManager = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            WebDAV EasyAccess
-          </Typography>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" component="div">
+              WebDAV EasyAccess
+            </Typography>
+            {webdavUrl && (
+              <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
+                {webdavUrl}
+              </Typography>
+            )}
+          </Box>
           <Typography variant="body2" sx={{ mr: 2 }}>
             {user?.username}
           </Typography>
@@ -245,20 +552,78 @@ const FileManager = () => {
             ))}
           </Breadcrumbs>
           <Box sx={{ flexGrow: 1 }} />
+          
+          {/* Selection mode toggle button */}
           <Button
-            variant="outlined"
-            startIcon={<FolderIcon />}
-            onClick={() => setCreateFolderDialogOpen(true)}
+            variant={selectionMode ? 'contained' : 'outlined'}
+            startIcon={selectionMode ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
+            onClick={handleToggleSelectionMode}
+            color={selectionMode ? 'primary' : 'inherit'}
           >
-            폴더 만들기
+            {selectionMode ? '선택 모드' : '선택'}
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<UploadIcon />}
-            onClick={() => setUploadDialogOpen(true)}
-          >
-            업로드
-          </Button>
+
+          {selectionMode ? (
+            <>
+              {/* Selection mode buttons */}
+              {selectedFiles.size > 0 && (
+                <>
+                  <Button
+                    variant="outlined"
+                    startIcon={<MoveIcon />}
+                    onClick={handleBulkMove}
+                    disabled={selectedFiles.size === 0}
+                  >
+                    이동 ({selectedFiles.size})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CopyIcon />}
+                    onClick={handleBulkCopy}
+                    disabled={selectedFiles.size === 0}
+                  >
+                    복사 ({selectedFiles.size})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleBulkDownload}
+                    disabled={selectedFiles.size === 0}
+                  >
+                    다운로드 ({selectedFiles.size})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={handleBulkDelete}
+                    disabled={selectedFiles.size === 0}
+                  >
+                    삭제 ({selectedFiles.size})
+                  </Button>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Normal mode buttons */}
+              <Button
+                variant="outlined"
+                startIcon={<FolderIcon />}
+                onClick={() => setCreateFolderDialogOpen(true)}
+              >
+                폴더 만들기
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<UploadIcon />}
+                onClick={() => setUploadDialogOpen(true)}
+              >
+                업로드
+              </Button>
+            </>
+          )}
+          
           <Box sx={{ display: 'flex', gap: 1 }}>
             <IconButton
               color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
@@ -297,18 +662,47 @@ const FileManager = () => {
                 setSelectedFile(file);
               }}
               onFileDrop={handleFileDrop}
+              selectionMode={selectionMode}
+              selectedFiles={selectedFiles}
+              onFileCheck={handleFileCheck}
             />
           ) : viewMode === VIEW_MODES.GRID ? (
-            <FileGrid
-              files={files}
-              onFileClick={handleFileClick}
-              onContextMenu={(e, file) => {
-                e.preventDefault();
-                setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                setSelectedFile(file);
-              }}
-              onFileDrop={handleFileDrop}
-            />
+            <>
+              {selectionMode && (
+                <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Button
+                    size="small"
+                    startIcon={<SelectAllIcon />}
+                    onClick={handleSelectAll}
+                  >
+                    모두 선택
+                  </Button>
+                  <Button
+                    size="small"
+                    startIcon={<DeselectIcon />}
+                    onClick={handleDeselectAll}
+                  >
+                    모두 해제
+                  </Button>
+                  <Typography variant="body2" sx={{ ml: 2 }}>
+                    {selectedFiles.size}개 선택됨
+                  </Typography>
+                </Box>
+              )}
+              <FileGrid
+                files={files}
+                onFileClick={handleFileClick}
+                onContextMenu={(e, file) => {
+                  e.preventDefault();
+                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                  setSelectedFile(file);
+                }}
+                onFileDrop={handleFileDrop}
+                selectionMode={selectionMode}
+                selectedFiles={selectedFiles}
+                onFileCheck={handleFileCheck}
+              />
+            </>
           ) : (
             <FileDetail
               files={files}
@@ -319,6 +713,9 @@ const FileManager = () => {
                 setSelectedFile(file);
               }}
               onFileDrop={handleFileDrop}
+              selectionMode={selectionMode}
+              selectedFiles={selectedFiles}
+              onFileCheck={handleFileCheck}
             />
           )}
         </Box>
@@ -336,6 +733,7 @@ const FileManager = () => {
         onClose={() => setCreateFolderDialogOpen(false)}
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
+        onMessage={setDropMessage}
       />
 
       <FilePreviewDialog
@@ -355,6 +753,32 @@ const FileManager = () => {
         user={user}
         currentPath={currentPath}
         onMessage={setDropMessage}
+        onProgress={(progressItem) => {
+          if (progressItem.remove) {
+            setProgressItems(prev => prev.filter(item => item.id !== progressItem.id));
+          } else {
+            setProgressItems(prev => {
+              const existing = prev.find(item => item.id === progressItem.id);
+              if (existing) {
+                return prev.map(item => item.id === progressItem.id ? progressItem : item);
+              } else {
+                return [...prev, progressItem];
+              }
+            });
+          }
+        }}
+      />
+
+      <FolderPickerDialog
+        open={folderPickerOpen}
+        onClose={() => {
+          setFolderPickerOpen(false);
+          setFolderPickerAction(null);
+        }}
+        onSelect={handleFolderPickerSelect}
+        title={folderPickerAction === 'move' ? '이동할 폴더 선택' : '복사할 폴더 선택'}
+        currentPath={currentPath}
+        user={user}
       />
 
       <Snackbar
@@ -371,6 +795,13 @@ const FileManager = () => {
           {dropMessage.text}
         </Alert>
       </Snackbar>
+
+      <DownloadProgress
+        items={progressItems}
+        onClose={(id) => {
+          setProgressItems(prev => prev.filter(item => item.id !== id));
+        }}
+      />
     </Box>
   );
 };

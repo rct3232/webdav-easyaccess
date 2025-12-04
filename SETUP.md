@@ -1,70 +1,110 @@
-# 설정 가이드
+# 설치 및 실행 가이드
 
-## 1. .env 파일 생성
-
-프로젝트 루트 디렉토리에 `.env` 파일을 생성하세요.
-
-Windows:
-```cmd
-copy env.example .env
-```
-
-Linux/Mac:
-```bash
-cp env.example .env
-```
-
-그 다음 `.env` 파일을 열어서 WebDAV 정보를 입력하세요.
-
-## 2. 의존성 설치
+## 1. 의존성 설치
 
 ```bash
 npm run install-all
 ```
 
+## 2. 환경 변수 설정
+
+`.env.example` 파일을 복사하여 `.env` 파일을 생성하세요:
+
+**Windows:**
+```cmd
+copy .env.example .env
+```
+
+**Linux/Mac:**
+```bash
+cp .env.example .env
+```
+
+그 다음 `.env` 파일을 열어서 실제 값으로 수정하세요:
+
+```env
+# WebDAV Configuration (required)
+WEBDAV_URL=https://your-webdav-server.com
+WEBDAV_USERNAME=your-username
+WEBDAV_PASSWORD=your-password
+
+# Server Configuration (required)
+PORT=5000
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+
+# Email Configuration (optional - for user notifications)
+# EMAIL_HOST=smtp.gmail.com
+# EMAIL_PORT=587
+# EMAIL_SECURE=false
+# EMAIL_USER=your-email@gmail.com
+# EMAIL_PASSWORD=your-app-password
+# EMAIL_FROM_NAME=WebDAV EasyAccess
+
+# Optional Configuration
+# MAX_THUMBNAIL_SIZE=300
+# ADMIN_DEFAULT_PASSWORD=admin
+# FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
+# WEBDAV_AUTH_TYPE=auto
+```
+
+**참고:**
+- 데이터베이스와 썸네일은 자동으로 `data/` 디렉토리에 저장됩니다.
+- FFmpeg는 자동으로 감지되며, 찾을 수 없는 경우에만 `FFMPEG_PATH`를 설정하세요.
+- `WEBDAV_AUTH_TYPE`은 인증 방식을 명시적으로 지정할 때만 사용합니다 (auto/basic/digest).
+- Gmail을 사용하는 경우 "앱 비밀번호"를 생성하여 사용하세요.
+
 ## 3. 서버 실행
 
-### 방법 1: 백엔드와 프론트엔드 동시 실행 (권장)
+### 개발 모드 (백엔드 + 프론트엔드 동시 실행)
+
 ```bash
 npm run dev
 ```
 
-### 방법 2: 개별 실행
+### 개별 실행
 
-터미널 1 (백엔드):
+**백엔드만:**
 ```bash
 npm run server
 ```
 
-터미널 2 (프론트엔드):
+**프론트엔드만:**
 ```bash
 npm run client
 ```
 
-## 4. 서버 상태 확인
+## 4. 접속
 
-브라우저에서 다음 URL을 열어 서버가 실행 중인지 확인하세요:
-- http://localhost:5000/api/health
+브라우저에서 `http://localhost:3000`으로 접속하세요.
 
-"ok" 메시지가 표시되면 서버가 정상적으로 실행 중입니다.
+## 5. 기본 Admin 계정
 
-## 문제 해결
+프로젝트를 처음 실행하면 자동으로 기본 admin 계정이 생성됩니다:
 
-### ECONNREFUSED 에러가 발생하는 경우:
+- **사용자명**: `admin`
+- **비밀번호**: `admin` (또는 `.env` 파일의 `ADMIN_DEFAULT_PASSWORD` 값)
+- **권한**: 루트 폴더(`/`)에 대한 관리자 권한
 
-1. **서버가 실행 중인지 확인**
-   - 터미널에서 `npm run server` 실행
-   - "Server is running on port 5000" 메시지가 보여야 합니다
+⚠️ **보안**: 프로덕션 환경에서는 반드시 첫 로그인 후 비밀번호를 변경하세요!
 
-2. **포트 충돌 확인**
-   - 다른 프로그램이 5000번 포트를 사용 중일 수 있습니다
-   - `.env` 파일에서 `PORT=5001`로 변경해보세요
+## 운영 환경 실행
 
-3. **의존성 설치 확인**
-   - `server/` 디렉토리에서 `npm install` 실행
-   - `client/` 디렉토리에서 `npm install` 실행
+운영 환경에서 실행하는 방법은 [운영 환경 가이드](#운영-환경-실행)를 참조하세요.
 
-4. **.env 파일 확인**
-   - 프로젝트 루트에 `.env` 파일이 있는지 확인
-   - 파일 내용이 올바른지 확인
+### 운영 환경 실행
 
+1. **프론트엔드 빌드**
+   ```bash
+   npm run build
+   ```
+
+2. **서버 실행**
+   ```bash
+   cd server
+   npm start
+   ```
+
+3. **접속**
+   `http://localhost:5000`
+
+자세한 내용은 [README.md](README.md)의 운영 환경 섹션을 참조하세요.

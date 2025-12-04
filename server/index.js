@@ -22,16 +22,36 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Create necessary directories - use centralized path utility
-const { getDataDir, getThumbnailDir } = require('./utils/paths');
+const { getDataDir } = require('./utils/paths');
 const dataDir = getDataDir();
-const thumbnailDir = getThumbnailDir();
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(thumbnailDir)) fs.mkdirSync(thumbnailDir, { recursive: true });
 console.log(`[Server] Data directory: ${dataDir}`);
-console.log(`[Server] Thumbnail directory: ${thumbnailDir}`);
+console.log(`[Server] Thumbnails: In-memory cache (not stored on disk)`);
 
-// Serve thumbnails
-app.use('/api/thumbnails', express.static(thumbnailDir));
+// Serve thumbnails from memory cache (not from disk)
+app.get('/api/thumbnails/:hash.:ext', (req, res) => {
+  const { hash, ext } = req.params;
+  const { thumbnailCache, getThumbnailHash } = require('./utils/thumbnail');
+  
+  // Find thumbnail in cache by hash
+  // We need to iterate through cache to find matching hash
+  // This is not ideal but necessary since we key by webdavPath, not hash
+  let foundThumbnail = null;
+  for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
+    if (getThumbnailHash(webdavPath) === hash) {
+      foundThumbnail = thumbnail;
+      break;
+    }
+  }
+  
+  if (foundThumbnail && foundThumbnail.extension === ext) {
+    res.setHeader('Content-Type', foundThumbnail.mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.send(foundThumbnail.buffer);
+  } else {
+    res.status(404).json({ error: 'Thumbnail not found' });
+  }
+});
 
 // Serve static files from React app build (production only)
 // This must come BEFORE API routes to serve JS/CSS files correctly
@@ -72,6 +92,29 @@ app.get('/api/webdav/test', async (req, res) => {
       success: false, 
       message: `WebDAV test failed: ${error.message}` 
     });
+  }
+});
+
+// WebDAV info endpoint (returns URL for display)
+app.get('/api/webdav/info', (req, res) => {
+  try {
+    const webdavUrl = process.env.WEBDAV_URL || '';
+    // Extract display URL (remove protocol and credentials, show domain + path)
+    let displayUrl = webdavUrl;
+    try {
+      const url = new URL(webdavUrl);
+      displayUrl = url.hostname + (url.port ? `:${url.port}` : '') + url.pathname;
+      // Remove trailing slash if present
+      if (displayUrl.endsWith('/')) {
+        displayUrl = displayUrl.slice(0, -1);
+      }
+    } catch (e) {
+      // If URL parsing fails, just use the original
+      displayUrl = webdavUrl;
+    }
+    res.json({ url: displayUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get WebDAV info' });
   }
 });
 

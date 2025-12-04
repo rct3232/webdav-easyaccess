@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const archiver = require('archiver');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
@@ -13,9 +14,15 @@ const {
   copyFile,
   isImageFile,
   isVideoFile,
+  pathExists,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
 const path = require('path');
+
+// Download progress tracking
+const downloadProgress = new Map();
+// Operation progress tracking (move/copy)
+const operationProgress = new Map();
 
 // Memory storage for file uploads with UTF-8 filename support
 const upload = multer({ 
@@ -335,6 +342,23 @@ router.put('/rename', authenticateToken, async (req, res) => {
 
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName).replace(/\\/g, '/');
+    
+    // Normalize paths for comparison
+    const normalizedOldPath = oldPath.replace(/\\/g, '/');
+    const normalizedNewPath = newPath.replace(/\\/g, '/');
+    
+    // If same path, no need to rename
+    if (normalizedOldPath === normalizedNewPath) {
+      return res.json({ message: 'File name unchanged', path: newPath });
+    }
+
+    // Check if target file already exists
+    const targetExists = await pathExists(newPath);
+    if (targetExists) {
+      return res.status(409).json({ 
+        error: `파일 이름 변경 실패: "${newName}" 이름의 파일이 이미 존재합니다.` 
+      });
+    }
 
     await moveFile(oldPath, newPath);
     res.json({ message: 'File renamed successfully', path: newPath });
@@ -360,8 +384,70 @@ router.put('/move', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    await moveFile(sourcePath, destinationPath);
-    res.json({ message: 'File moved successfully' });
+    // Check if destination file already exists
+    const destExists = await pathExists(destinationPath);
+    if (destExists) {
+      return res.status(409).json({ error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' });
+    }
+
+    // Get file info for progress tracking
+    let fileSize = 0;
+    try {
+      const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
+      const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+      const items = await listDirectory(parentPath);
+      const fileItem = items.find(item => item.basename === fileName);
+      if (fileItem && fileItem.size) {
+        fileSize = fileItem.size;
+      }
+    } catch (err) {
+      // Ignore error, continue without size info
+    }
+
+    // Create progress tracking ID
+    const operationId = `move_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    operationProgress.set(operationId, {
+      stage: 'preparing',
+      progress: 0,
+      total: fileSize,
+      percentage: 0,
+    });
+
+    // Start move operation with progress callback
+    const progressCallback = (progress) => {
+      operationProgress.set(operationId, {
+        stage: progress.stage,
+        progress: progress.progress,
+        total: progress.total,
+        percentage: progress.total > 0 ? Math.min(100, (progress.progress / progress.total) * 100) : 0,
+      });
+    };
+
+    try {
+      await moveFile(sourcePath, destinationPath, progressCallback);
+      operationProgress.set(operationId, {
+        stage: 'completed',
+        progress: fileSize,
+        total: fileSize,
+        percentage: 100,
+      });
+      
+      // Clean up after 5 minutes
+      setTimeout(() => {
+        operationProgress.delete(operationId);
+      }, 5 * 60 * 1000);
+      
+      res.json({ message: 'File moved successfully', fileSize, operationId });
+    } catch (error) {
+      operationProgress.set(operationId, {
+        stage: 'error',
+        progress: 0,
+        total: fileSize,
+        percentage: 0,
+        error: error.message,
+      });
+      throw error;
+    }
   } catch (error) {
     console.error('Move file error:', error);
     res.status(500).json({ error: error.message || 'Failed to move file' });
@@ -384,30 +470,396 @@ router.post('/copy', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    await copyFile(sourcePath, destinationPath);
-    res.json({ message: 'File copied successfully' });
+    // Check if destination file already exists
+    const destExists = await pathExists(destinationPath);
+    if (destExists) {
+      return res.status(409).json({ error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' });
+    }
+
+    // Get file info for progress tracking
+    let fileSize = 0;
+    try {
+      const parentPath = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
+      const fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+      const items = await listDirectory(parentPath);
+      const fileItem = items.find(item => item.basename === fileName);
+      if (fileItem && fileItem.size) {
+        fileSize = fileItem.size;
+      }
+    } catch (err) {
+      // Ignore error, continue without size info
+    }
+
+    // Create progress tracking ID
+    const operationId = `copy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    operationProgress.set(operationId, {
+      stage: 'preparing',
+      progress: 0,
+      total: fileSize,
+      percentage: 0,
+    });
+
+    // Start copy operation with progress callback
+    const progressCallback = (progress) => {
+      operationProgress.set(operationId, {
+        stage: progress.stage,
+        progress: progress.progress,
+        total: progress.total,
+        percentage: progress.total > 0 ? Math.min(100, (progress.progress / progress.total) * 100) : 0,
+      });
+    };
+
+    try {
+      await copyFile(sourcePath, destinationPath, progressCallback);
+      operationProgress.set(operationId, {
+        stage: 'completed',
+        progress: fileSize,
+        total: fileSize,
+        percentage: 100,
+      });
+      
+      // Clean up after 5 minutes
+      setTimeout(() => {
+        operationProgress.delete(operationId);
+      }, 5 * 60 * 1000);
+      
+      res.json({ message: 'File copied successfully', fileSize, operationId });
+    } catch (error) {
+      operationProgress.set(operationId, {
+        stage: 'error',
+        progress: 0,
+        total: fileSize,
+        percentage: 0,
+        error: error.message,
+      });
+      throw error;
+    }
   } catch (error) {
     console.error('Copy file error:', error);
     res.status(500).json({ error: error.message || 'Failed to copy file' });
   }
 });
 
-// Get thumbnail (legacy route - now handled by static file serving)
+// Get thumbnail (legacy route - now handled by memory cache in server/index.js)
+// This route is kept for backward compatibility but redirects to the new endpoint
 router.get('/thumbnail/:hash', async (req, res) => {
   try {
     const { hash } = req.params;
-    const { getThumbnailPath } = require('../utils/thumbnail');
-    const fs = require('fs');
-    const thumbnailPath = getThumbnailPath(`/${hash}`);
+    const { thumbnailCache, getThumbnailHash } = require('../utils/thumbnail');
     
-    if (fs.existsSync(thumbnailPath)) {
-      res.sendFile(thumbnailPath);
+    // Find thumbnail in cache by hash
+    let foundThumbnail = null;
+    for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
+      if (getThumbnailHash(webdavPath) === hash) {
+        foundThumbnail = thumbnail;
+        break;
+      }
+    }
+    
+    if (foundThumbnail) {
+      res.setHeader('Content-Type', foundThumbnail.mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.send(foundThumbnail.buffer);
     } else {
       res.status(404).json({ error: 'Thumbnail not found' });
     }
   } catch (error) {
     console.error('Get thumbnail error:', error);
     res.status(500).json({ error: 'Failed to get thumbnail' });
+  }
+});
+
+// Helper function to recursively collect files from a directory
+async function collectFilesFromDirectory(dirPath, basePath = '', files = []) {
+  try {
+    const items = await listDirectory(dirPath);
+    for (const item of items) {
+      const itemPath = item.filename || `${dirPath}/${item.basename}`;
+      const relativePath = basePath ? `${basePath}/${item.basename}` : item.basename;
+      
+      if (item.type === 'directory') {
+        await collectFilesFromDirectory(itemPath, relativePath, files);
+      } else {
+        files.push({ path: itemPath, relativePath });
+      }
+    }
+  } catch (error) {
+    console.error(`Error collecting files from ${dirPath}:`, error);
+  }
+  return files;
+}
+
+// Download multiple files/folders as zip
+router.post('/download-multiple', authenticateToken, async (req, res) => {
+  const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  try {
+    const { paths } = req.body;
+    
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return res.status(400).json({ error: 'Paths array is required' });
+    }
+
+    // Check permissions for all paths
+    for (const filePath of paths) {
+      const hasPermission = await checkFilePermission(req.user.id, filePath, 'read');
+      if (!hasPermission) {
+        return res.status(403).json({ error: `Access denied: ${filePath}` });
+      }
+    }
+
+    // Initialize progress
+    downloadProgress.set(downloadId, {
+      status: 'preparing',
+      progress: 0,
+      total: 0,
+      current: '',
+      zipName: '',
+    });
+
+    // Collect all files to download
+    const allFiles = [];
+    let zipName = 'download';
+    
+    // Find common parent directory for all paths
+    let commonParentDir = null;
+    if (paths.length > 1) {
+      // Get all parent directories
+      const parentDirs = paths.map(p => {
+        const dir = path.dirname(p);
+        return dir === '/' ? '' : dir;
+      });
+      
+      // Find common prefix
+      if (parentDirs.every(d => d === parentDirs[0])) {
+        commonParentDir = parentDirs[0] || '/';
+      }
+    }
+    
+    for (const filePath of paths) {
+      console.log(`[Download] Processing path: ${filePath}`);
+      try {
+        // Check if it's a directory by checking parent directory
+        let isDirectory = false;
+        try {
+          const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+          const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+          const parentItems = await listDirectory(parentPath);
+          const item = parentItems.find(i => i.basename === fileName);
+          if (item) {
+            isDirectory = item.type === 'directory';
+          } else {
+            // Item not found in parent, try direct listing
+            try {
+              const items = await listDirectory(filePath);
+              isDirectory = items.length > 0 || filePath.endsWith('/');
+            } catch (listError) {
+              isDirectory = false;
+            }
+          }
+        } catch (checkError) {
+          // If check fails, try direct listing
+          try {
+            const items = await listDirectory(filePath);
+            isDirectory = items.length > 0 || filePath.endsWith('/');
+          } catch (listError) {
+            // If listDirectory fails, it's probably a file
+            isDirectory = false;
+          }
+        }
+        
+        if (isDirectory) {
+          // It's a directory - collect all files recursively
+          const dirName = path.basename(filePath.replace(/\/$/, '')) || 'folder';
+          if (paths.length === 1) {
+            zipName = dirName;
+          }
+          await collectFilesFromDirectory(filePath, dirName, allFiles);
+        } else {
+          // It's a file
+          const fileName = path.basename(filePath);
+          console.log(`[Download] Found file: ${filePath}, filename: ${fileName}`);
+          
+          if (paths.length === 1) {
+            // Single file - use parent directory name or file name
+            const parentDir = path.dirname(filePath);
+            if (parentDir && parentDir !== '/') {
+              zipName = path.basename(parentDir) || 'download';
+            } else {
+              zipName = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+            }
+            // Single file: just use filename
+            allFiles.push({ path: filePath, relativePath: fileName });
+          } else {
+            // Multiple files: preserve directory structure relative to common parent
+            if (commonParentDir && commonParentDir !== '/') {
+              // Remove common parent from path
+              const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
+              console.log(`[Download] Multiple files - common parent: ${commonParentDir}, relativePath: ${relativePath}`);
+              allFiles.push({ path: filePath, relativePath });
+            } else {
+              // No common parent or root, use filename directly
+              console.log(`[Download] Multiple files - no common parent, using filename: ${fileName}`);
+              allFiles.push({ path: filePath, relativePath: fileName });
+            }
+          }
+        }
+      } catch (error) {
+        // If everything fails, assume it's a file
+        console.log(`[Download] Error processing ${filePath}, assuming it's a file:`, error.message);
+        const fileName = path.basename(filePath);
+        if (paths.length === 1) {
+          const parentDir = path.dirname(filePath);
+          if (parentDir && parentDir !== '/') {
+            zipName = path.basename(parentDir) || 'download';
+          } else {
+            zipName = fileName.replace(/\.[^/.]+$/, '');
+          }
+          allFiles.push({ path: filePath, relativePath: fileName });
+        } else {
+          // Multiple files: use filename directly
+          allFiles.push({ path: filePath, relativePath: fileName });
+        }
+      }
+    }
+    
+    console.log(`[Download] Collected ${allFiles.length} files:`, allFiles.map(f => ({ path: f.path, relativePath: f.relativePath })));
+
+    // If multiple items, use a generic name
+    if (paths.length > 1) {
+      const firstPath = paths[0];
+      const parentDir = path.dirname(firstPath);
+      if (parentDir && parentDir !== '/') {
+        zipName = path.basename(parentDir) || 'download';
+      } else {
+        zipName = 'download';
+      }
+    }
+
+    downloadProgress.set(downloadId, {
+      status: 'downloading',
+      progress: 0,
+      total: allFiles.length,
+      current: '',
+      zipName: `${zipName}.zip`,
+    });
+
+    // Set response headers
+    const encodedZipName = encodeURIComponent(`${zipName}.zip`);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}.zip"; filename*=UTF-8''${encodedZipName}`);
+
+    // Create zip archive
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Maximum compression
+    });
+
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      downloadProgress.set(downloadId, {
+        status: 'error',
+        progress: 0,
+        total: allFiles.length,
+        current: '',
+        zipName: `${zipName}.zip`,
+        error: err.message,
+      });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to create zip archive' });
+      }
+    });
+
+    // Pipe archive to response
+    archive.pipe(res);
+
+    // Add files to archive
+    for (let i = 0; i < allFiles.length; i++) {
+      const file = allFiles[i];
+      try {
+        downloadProgress.set(downloadId, {
+          status: 'downloading',
+          progress: i + 1,
+          total: allFiles.length,
+          current: file.relativePath,
+          zipName: `${zipName}.zip`,
+        });
+
+        console.log(`[Download] Adding file to zip: path=${file.path}, relativePath=${file.relativePath}`);
+        const buffer = await getFileContents(file.path);
+        console.log(`[Download] File content size: ${buffer.length} bytes for ${file.path}`);
+        
+        // Create a new buffer copy to avoid reference issues
+        const fileBuffer = Buffer.from(buffer);
+        archive.append(fileBuffer, { name: file.relativePath });
+      } catch (error) {
+        console.error(`Error adding file ${file.path} to archive:`, error);
+        // Continue with other files even if one fails
+      }
+    }
+
+    // Finalize archive
+    await archive.finalize();
+
+    downloadProgress.set(downloadId, {
+      status: 'completed',
+      progress: allFiles.length,
+      total: allFiles.length,
+      current: '',
+      zipName: `${zipName}.zip`,
+    });
+
+    // Clean up progress after 5 minutes
+    setTimeout(() => {
+      downloadProgress.delete(downloadId);
+    }, 5 * 60 * 1000);
+
+  } catch (error) {
+    console.error('Download multiple files error:', error);
+    downloadProgress.set(downloadId, {
+      status: 'error',
+      progress: 0,
+      total: 0,
+      current: '',
+      zipName: '',
+      error: error.message,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to download files' });
+    }
+  }
+});
+
+// Get download progress
+router.get('/download-progress/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const progress = downloadProgress.get(id);
+    
+    if (!progress) {
+      return res.status(404).json({ error: 'Download progress not found' });
+    }
+    
+    res.json(progress);
+  } catch (error) {
+    console.error('Get download progress error:', error);
+    res.status(500).json({ error: 'Failed to get download progress' });
+  }
+});
+
+// Get operation progress (move/copy)
+router.get('/operation-progress/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const progress = operationProgress.get(id);
+    
+    if (!progress) {
+      return res.status(404).json({ error: 'Operation progress not found' });
+    }
+    
+    res.json(progress);
+  } catch (error) {
+    console.error('Get operation progress error:', error);
+    res.status(500).json({ error: 'Failed to get operation progress' });
   }
 });
 

@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import { createFolder } from '../services/fileService';
 
-const CreateFolderDialog = ({ open, onClose, onComplete, currentPath }) => {
+const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage }) => {
   const [folderName, setFolderName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -31,8 +31,33 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath }) => {
       await createFolder(folderPath);
       setFolderName('');
       onComplete();
+      
+      // Show success toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: `"${folderName}" 폴더를 생성했습니다`,
+          type: 'success'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 3000);
+      }
     } catch (error) {
-      setError(error.response?.data?.error || '폴더 생성에 실패했습니다');
+      const errorMsg = error.response?.data?.error || '폴더 생성에 실패했습니다';
+      setError(errorMsg);
+      
+      // Show error toast message
+      if (onMessage) {
+        onMessage({
+          show: true,
+          text: errorMsg,
+          type: 'error'
+        });
+        setTimeout(() => {
+          onMessage({ show: false, text: '', type: 'success' });
+        }, 5000);
+      }
     } finally {
       setLoading(false);
     }

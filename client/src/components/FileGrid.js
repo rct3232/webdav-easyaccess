@@ -6,6 +6,7 @@ import {
   CardContent,
   Typography,
   Box,
+  Checkbox,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -13,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import { formatFileSize } from '../utils/format';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
   const [draggedFile, setDraggedFile] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const getThumbnail = (file) => {
@@ -66,19 +67,22 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
     setDropTarget(null);
   };
 
+  const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
+
   return (
     <Grid container spacing={2}>
       {files.map((file, index) => {
         const thumbnail = getThumbnail(file);
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
+        const checked = selectionMode && isSelected(file);
         
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} key={index}>
             <Card
-              draggable
+              draggable={!selectionMode}
               sx={{
-                cursor: 'move',
+                cursor: selectionMode ? 'pointer' : 'move',
                 '&:hover': {
                   boxShadow: 4,
                 },
@@ -86,18 +90,37 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop }) => {
                 display: 'flex',
                 flexDirection: 'column',
                 opacity: isDragging ? 0.5 : 1,
-                border: isDropTarget ? '2px solid' : 'none',
-                borderColor: 'primary.main',
+                border: isDropTarget ? '2px solid' : checked ? '2px solid' : 'none',
+                borderColor: checked ? 'primary.main' : 'primary.main',
+                backgroundColor: checked ? 'action.selected' : 'transparent',
                 transition: 'all 0.2s',
+                position: 'relative',
               }}
               onClick={() => onFileClick(file)}
               onContextMenu={(e) => onContextMenu(e, file)}
-              onDragStart={(e) => handleDragStart(e, file)}
-              onDragEnd={handleDragEnd}
-              onDragOver={(e) => handleDragOver(e, file)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, file)}
+              onDragStart={!selectionMode ? (e) => handleDragStart(e, file) : undefined}
+              onDragEnd={!selectionMode ? handleDragEnd : undefined}
+              onDragOver={!selectionMode ? (e) => handleDragOver(e, file) : undefined}
+              onDragLeave={!selectionMode ? handleDragLeave : undefined}
+              onDrop={!selectionMode ? (e) => handleDrop(e, file) : undefined}
             >
+              {selectionMode && (
+                <Checkbox
+                  checked={checked}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onFileCheck && onFileCheck(file, e.target.checked);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 8,
+                    zIndex: 1,
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  }}
+                />
+              )}
               <Box
                 sx={{
                   height: 150,

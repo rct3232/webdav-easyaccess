@@ -3,7 +3,7 @@ const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
-const { createDirectory, listDirectory } = require('../utils/webdav');
+const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
 const path = require('path');
 
 // Helper function to check permissions
@@ -42,6 +42,23 @@ router.post('/create', authenticateToken, async (req, res) => {
     const hasPermission = await checkFolderPermission(req.user.id, parentPath, 'write');
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Normalize folder path
+    if (!folderPath.startsWith('/')) {
+      folderPath = '/' + folderPath;
+    }
+    if (!folderPath.endsWith('/')) {
+      folderPath = folderPath + '/';
+    }
+
+    // Check if folder already exists
+    const folderExists = await pathExists(folderPath);
+    if (folderExists) {
+      const folderName = path.basename(folderPath.slice(0, -1));
+      return res.status(409).json({ 
+        error: `폴더 생성 실패: "${folderName}" 이름의 폴더가 이미 존재합니다.` 
+      });
     }
 
     await createDirectory(folderPath);

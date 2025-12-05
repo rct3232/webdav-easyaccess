@@ -137,15 +137,76 @@ router.get('/user/:userId', authenticateToken, async (req, res) => {
 // Get folder permissions
 router.get('/folder', authenticateToken, async (req, res) => {
   try {
-    const folderPath = req.query.path || '/';
+    let folderPath = req.query.path || '/';
+    const includeSubfolders = req.query.includeSubfolders === 'true';
     
-    // Check if user has admin permission on this folder
-    const hasAdmin = await Permission.checkPermission(req.user.id, folderPath, 'admin');
-    if (!hasAdmin) {
-      return res.status(403).json({ error: 'Access denied. Admin permission required' });
+    // 경로 정규화 (끝에 / 제거, 클라이언트와 일치)
+    const normalizePath = (p) => {
+      if (!p || p === '/') return '/';
+      return p.endsWith('/') ? p.slice(0, -1) : p;
+    };
+    
+    folderPath = normalizePath(folderPath);
+    
+    const User = require('../models/User');
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Check if user has permission to view permissions for this folder
+    let canView = false;
+    
+    // 관리자는 모든 폴더의 권한 정보를 볼 수 있음
+    if (user.is_admin) {
+      canView = true;
+    } else {
+      // 폴더 경로 정규화 (확인용)
+      let normalizedPathForCheck = folderPath;
+      if (!normalizedPathForCheck.endsWith('/') && normalizedPathForCheck !== '/') {
+        normalizedPathForCheck = normalizedPathForCheck + '/';
+      }
+      
+      const userFolder = `/${user.username}/`;
+      
+      // 자신의 폴더 내 디렉토리인지 확인
+      if (normalizedPathForCheck.startsWith(userFolder)) {
+        canView = true;
+      } else {
+        // admin 권한이 있는지 확인
+        const hasAdmin = await Permission.checkPermission(req.user.id, folderPath, 'admin');
+        if (hasAdmin) {
+          canView = true;
+        }
+      }
     }
 
-    const permissions = await Permission.getFolderPermissions(folderPath);
+    if (!canView) {
+      return res.status(403).json({ error: 'Access denied. You do not have permission to view permissions for this folder' });
+    }
+
+    let permissions;
+    if (includeSubfolders) {
+      // 하위 폴더 포함하여 권한 정보 가져오기
+      // hasPermissionsInPath는 내부적으로 경로 끝에 /를 추가하므로 그대로 전달
+      permissions = await Permission.hasPermissionsInPath(folderPath);
+      
+      // 반환된 권한의 경로도 정규화 (끝에 / 제거)
+      permissions = permissions.map(perm => ({
+        ...perm,
+        folder_path: normalizePath(perm.folder_path)
+      }));
+    } else {
+      // 해당 폴더만
+      permissions = await Permission.getFolderPermissions(folderPath);
+      
+      // 반환된 권한의 경로도 정규화 (끝에 / 제거)
+      permissions = permissions.map(perm => ({
+        ...perm,
+        folder_path: normalizePath(perm.folder_path)
+      }));
+    }
+    
     res.json(permissions);
   } catch (error) {
     console.error('Get folder permissions error:', error);

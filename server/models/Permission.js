@@ -62,7 +62,7 @@ class Permission {
   static async getFolderPermissions(folderPath) {
     return new Promise((resolve, reject) => {
       const sql = `
-        SELECT u.id, u.username, u.email, fp.permission 
+        SELECT u.id, u.username, u.email, u.is_admin, fp.permission 
         FROM folder_permissions fp
         JOIN users u ON fp.user_id = u.id
         WHERE fp.folder_path = ?
@@ -76,29 +76,36 @@ class Permission {
 
   static async hasPermissionsInPath(folderPath) {
     return new Promise((resolve, reject) => {
-      // 디렉토리 경로 정규화 (끝에 / 추가)
-      const normalizedPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+      // 경로 정규화 (끝에 / 제거)
+      const normalizePath = (p) => {
+        if (!p || p === '/') return '/';
+        return p.endsWith('/') ? p.slice(0, -1) : p;
+      };
+      
+      const normalizedPath = normalizePath(folderPath);
+      const normalizedPathWithSlash = normalizedPath === '/' ? '/' : normalizedPath + '/';
       
       // 정확히 해당 경로에 대한 권한만 검색 (상위 경로 제외)
-      // 예: /test/folder/ -> /test/folder/ 또는 /test/folder/subfolder/ 만 찾음
+      // 예: /test/folder -> /test/folder 또는 /test/folder/subfolder 만 찾음
       // /test/ 같은 상위 경로는 제외
       const sql = `
-        SELECT u.id, u.username, u.email, fp.folder_path, fp.permission 
+        SELECT u.id, u.username, u.email, u.is_admin, fp.folder_path, fp.permission 
         FROM folder_permissions fp
         JOIN users u ON fp.user_id = u.id
-        WHERE fp.folder_path = ? OR fp.folder_path LIKE ?
+        WHERE (fp.folder_path = ? OR fp.folder_path = ? OR fp.folder_path LIKE ?)
       `;
       // 하위 경로만 검색 (상위 경로 제외)
-      const likePattern = `${normalizedPath}%`;
+      const likePattern = `${normalizedPathWithSlash}%`;
       
-      db.getDb().all(sql, [normalizedPath, likePattern], (err, rows) => {
+      db.getDb().all(sql, [normalizedPath, normalizedPathWithSlash, likePattern], (err, rows) => {
         if (err) reject(err);
         else {
           // 상위 경로 제외: 정확히 해당 경로이거나 하위 경로만 반환
           const filtered = rows.filter(row => {
-            const rowPath = row.folder_path;
+            const rowPath = normalizePath(row.folder_path);
             // 정확히 같은 경로이거나 해당 경로의 하위 경로인 경우만
-            return rowPath === normalizedPath || (rowPath.startsWith(normalizedPath) && rowPath.length > normalizedPath.length);
+            return rowPath === normalizedPath || 
+                   (rowPath.startsWith(normalizedPathWithSlash) && rowPath.length > normalizedPathWithSlash.length);
           });
           resolve(filtered);
         }

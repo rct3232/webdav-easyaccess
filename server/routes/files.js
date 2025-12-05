@@ -373,9 +373,9 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
           }
         }
         // 해당 폴더에 직접 쓰기 권한이 있는지 확인 (상위 경로 체크 제거)
+        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
         let hasPermission = await Permission.checkPermission(req.user.id, normalizedFolderPath, 'write');
-        // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-        if (!hasPermission && folderPath !== '/' && !folderPath.endsWith('/')) {
+        if (!hasPermission && folderPath !== '/') {
           hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'write');
         }
         if (!hasPermission) {
@@ -396,11 +396,8 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       ? '/' + originalFilename 
       : (folderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
 
-    // 최종 권한 체크 (경로 정규화 후)
-    const hasPermission = await checkFilePermission(req.user.id, filePath, 'write');
-    if (!hasPermission) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
+    // 파일 경로 자체에 대한 추가 체크는 불필요 (부모 폴더 권한으로 충분)
 
     await putFileContents(filePath, req.file.buffer);
 
@@ -418,13 +415,33 @@ router.delete('/delete', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'File path is required' });
     }
 
-    // Check permission
-    const hasPermission = await checkFilePermission(req.user.id, filePath, 'write');
+    const user = await User.findById(req.user.id);
+    const folderPath = path.dirname(filePath) || '/';
+    // 경로 정규화: 끝에 / 추가 (권한 DB 형식과 일치)
+    const normalizedFolderPath = folderPath === '/' ? '/' : (folderPath.endsWith('/') ? folderPath : folderPath + '/');
+    
+    // 관리자는 모든 경로에 삭제 가능
+    let hasPermission = false;
+    if (user.is_admin) {
+      hasPermission = true;
+    } else {
+      const userFolder = `/${user.username}`;
+      // 자신의 폴더인 경우
+      if (normalizedFolderPath.startsWith(userFolder) || folderPath.startsWith(userFolder)) {
+        hasPermission = true;
+      } else {
+        // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
+        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
+        hasPermission = await Permission.checkPermission(req.user.id, normalizedFolderPath, 'write');
+        if (!hasPermission && folderPath !== '/') {
+          hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'write');
+        }
+      }
+    }
+    
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
-    const user = await User.findById(req.user.id);
     if (user && user.is_admin) {
       try {
         await listDirectory(filePath);
@@ -504,39 +521,53 @@ router.put('/move', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Source and destination paths are required' });
     }
 
-    // 소스 파일의 쓰기 권한 확인
-    const hasSourcePermission = await checkFilePermission(req.user.id, sourcePath, 'write');
+    const user = await User.findById(req.user.id);
+    
+    // 소스 파일의 부모 디렉토리 권한 확인
+    const sourceParentPath = path.dirname(sourcePath) || '/';
+    const normalizedSourceParentPath = sourceParentPath === '/' ? '/' : (sourceParentPath.endsWith('/') ? sourceParentPath : sourceParentPath + '/');
+    
+    let hasSourcePermission = false;
+    if (user.is_admin) {
+      hasSourcePermission = true;
+    } else {
+      const userFolder = `/${user.username}`;
+      // 자신의 폴더인 경우
+      if (normalizedSourceParentPath.startsWith(userFolder) || sourceParentPath.startsWith(userFolder)) {
+        hasSourcePermission = true;
+      } else {
+        // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
+        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
+        hasSourcePermission = await Permission.checkPermission(req.user.id, normalizedSourceParentPath, 'write');
+        if (!hasSourcePermission && sourceParentPath !== '/') {
+          hasSourcePermission = await Permission.checkPermission(req.user.id, sourceParentPath, 'write');
+        }
+      }
+    }
+    
     if (!hasSourcePermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // 대상 경로의 부모 디렉토리 권한 확인
     const destParentPath = path.dirname(destinationPath) || '/';
-    const user = await User.findById(req.user.id);
-    let hasDestPermission = await Permission.checkPermission(req.user.id, destParentPath, 'write');
+    const normalizedDestParentPath = destParentPath === '/' ? '/' : (destParentPath.endsWith('/') ? destParentPath : destParentPath + '/');
     
-    // 상위 경로들을 체크
-    if (!hasDestPermission && destParentPath !== '/') {
-      const pathParts = destParentPath.split('/').filter(Boolean);
-      for (let i = pathParts.length; i > 0; i--) {
-        const parentPath = '/' + pathParts.slice(0, i).join('/');
-        hasDestPermission = await Permission.checkPermission(req.user.id, parentPath, 'write');
-        if (hasDestPermission) {
-          break;
-        }
-      }
-    }
-    
-    // 루트 경로 체크
-    if (!hasDestPermission && destParentPath !== '/') {
-      hasDestPermission = await Permission.checkPermission(req.user.id, '/', 'write');
-    }
-    
-    // 비관리자의 경우 자신의 폴더인지 확인
-    if (!hasDestPermission && !user.is_admin) {
+    let hasDestPermission = false;
+    if (user.is_admin) {
+      hasDestPermission = true;
+    } else {
       const userFolder = `/${user.username}`;
-      if (destParentPath.startsWith(userFolder)) {
+      // 자신의 폴더인 경우
+      if (normalizedDestParentPath.startsWith(userFolder) || destParentPath.startsWith(userFolder)) {
         hasDestPermission = true;
+      } else {
+        // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
+        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
+        hasDestPermission = await Permission.checkPermission(req.user.id, normalizedDestParentPath, 'write');
+        if (!hasDestPermission && destParentPath !== '/') {
+          hasDestPermission = await Permission.checkPermission(req.user.id, destParentPath, 'write');
+        }
       }
     }
     

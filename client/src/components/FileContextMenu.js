@@ -387,6 +387,8 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         title={`이동: ${file?.basename}`}
         currentPath={currentPath}
         user={user}
+        action="move"
+        sourceFilePath={file?.path}
       />
 
       <FolderPickerDialog

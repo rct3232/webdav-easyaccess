@@ -104,6 +104,24 @@ router.post('/create', authenticateToken, async (req, res) => {
       // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
     }
     
+    // 생성된 폴더가 어떤 사용자의 홈 디렉토리 하위에 있는지 확인하고
+    // 해당 사용자에게 자동으로 읽기/쓰기 권한 부여
+    try {
+      const allUsers = await User.findAll();
+      for (const targetUser of allUsers) {
+        const userHomeFolder = `/${targetUser.username}/`;
+        // 생성된 폴더가 이 사용자의 홈 디렉토리 하위에 있는지 확인
+        if (folderPath.startsWith(userHomeFolder)) {
+          // 해당 사용자에게 읽기/쓰기 권한 부여
+          await Permission.grant(targetUser.id, folderPath, 'write');
+          console.log(`Auto-granted write permission to user ${targetUser.username} (${targetUser.id}) for folder ${folderPath}`);
+        }
+      }
+    } catch (autoPermError) {
+      console.error('Failed to auto-grant permissions to folder owner:', autoPermError);
+      // 자동 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
+    }
+    
     res.json({ message: 'Folder created successfully', path: folderPath });
   } catch (error) {
     console.error('Create folder error:', error);

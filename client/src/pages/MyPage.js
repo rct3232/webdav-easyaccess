@@ -13,9 +13,11 @@ import {
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import ShareDialog from '../components/ShareDialog';
 import axios from 'axios';
 
 const MyPage = () => {
@@ -23,6 +25,7 @@ const MyPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -174,7 +177,7 @@ const MyPage = () => {
           </Box>
         </Paper>
 
-        <Paper sx={{ p: 3 }}>
+        <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
             비밀번호 변경
           </Typography>
@@ -209,7 +212,39 @@ const MyPage = () => {
             </Button>
           </Box>
         </Paper>
+
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            공유 관리
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
+          </Typography>
+          
+          <Button
+            variant="contained"
+            startIcon={<ShareIcon />}
+            onClick={() => setShareDialogOpen(true)}
+            fullWidth
+          >
+            공유 관리 열기
+          </Button>
+        </Paper>
       </Box>
+
+      <ShareDialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        mode="share"
+        folderPath={user?.username ? `/${user.username}` : null}
+        folderName={user?.username || '홈 디렉토리'}
+        user={user}
+        onMessage={(msg) => {
+          setMessage({ type: msg.type, text: msg.text });
+        }}
+      />
     </Box>
   );
 };

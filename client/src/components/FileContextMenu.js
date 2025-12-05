@@ -19,6 +19,7 @@ import {
   ContentCopy as CopyIcon,
   DriveFileMove as MoveIcon,
   Share as ShareIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import {
   downloadFile,
@@ -30,6 +31,7 @@ import {
 } from '../services/fileService';
 import FolderPickerDialog from './FolderPickerDialog';
 import ShareDialog from './ShareDialog';
+import SharedFolderManageDialog from './SharedFolderManageDialog';
 
 const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -40,9 +42,13 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const [errorMessage, setErrorMessage] = useState('');
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sharedFolderManageDialogOpen, setSharedFolderManageDialogOpen] = useState(false);
 
   // 공유 버튼 표시 조건: 디렉토리이고, 사용자 디렉토리 하위에 있는 경우
   const canShare = file?.type === 'directory' && user && !user.is_admin && file.path.startsWith(`/${user.username}/`);
+  
+  // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
+  const isSharedFolder = file?.type === 'directory' && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);
 
   if (!file) return null;
 
@@ -343,6 +349,18 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
             <ListItemText>공유</ListItemText>
           </MenuItem>
         )}
+        {isSharedFolder && (
+          <MenuItem
+            onClick={() => {
+              setSharedFolderManageDialogOpen(true);
+            }}
+          >
+            <ListItemIcon>
+              <SettingsIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>공유 관리</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={handleDelete} disabled={!hasWritePermission}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
@@ -409,6 +427,16 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         folderName={file?.basename || file?.name}
         user={user}
         onMessage={onMessage}
+      />
+
+      <SharedFolderManageDialog
+        open={sharedFolderManageDialogOpen}
+        onClose={() => setSharedFolderManageDialogOpen(false)}
+        folderPath={file?.path}
+        folderName={file?.basename || file?.name}
+        user={user}
+        onMessage={onMessage}
+        onActionComplete={onActionComplete}
       />
 
       <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>

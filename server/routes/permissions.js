@@ -64,7 +64,7 @@ router.post('/grant', authenticateToken, async (req, res) => {
 // Revoke permission
 router.delete('/revoke', authenticateToken, async (req, res) => {
   try {
-    const { userId, folderPath } = req.query;
+    const { userId, folderPath, includeSubfolders } = req.query;
     
     if (!userId || !folderPath) {
       return res.status(400).json({ error: 'User ID and folder path are required' });
@@ -76,8 +76,47 @@ router.delete('/revoke', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied. Admin permission required' });
     }
 
-    await Permission.revoke(userId, folderPath);
-    res.json({ message: 'Permission revoked successfully' });
+    // 경로 정규화 함수
+    const normalizePath = (p) => {
+      if (!p || p === '/') return '/';
+      return p.endsWith('/') ? p.slice(0, -1) : p;
+    };
+
+    const normalizedFolderPath = normalizePath(folderPath);
+    const normalizedFolderPathWithSlash = normalizedFolderPath === '/' ? '/' : normalizedFolderPath + '/';
+
+    if (includeSubfolders === 'true') {
+      // 하위 폴더 포함하여 모든 권한 삭제
+      const allPermissions = await Permission.getUserPermissions(userId);
+      
+      // 해당 폴더와 하위 폴더의 권한만 필터링
+      const permissionsToRevoke = allPermissions.filter(perm => {
+        const normalizedPermPath = normalizePath(perm.folder_path);
+        return normalizedPermPath === normalizedFolderPath || 
+               (normalizedPermPath.startsWith(normalizedFolderPathWithSlash) && 
+                normalizedPermPath.length > normalizedFolderPathWithSlash.length);
+      });
+      
+      // 각 권한을 삭제
+      let deletedCount = 0;
+      for (const perm of permissionsToRevoke) {
+        try {
+          await Permission.revoke(userId, perm.folder_path);
+          deletedCount++;
+        } catch (error) {
+          console.error(`Failed to revoke permission for ${perm.folder_path}:`, error);
+        }
+      }
+      
+      res.json({ 
+        message: 'Permission revoked successfully',
+        deletedCount 
+      });
+    } else {
+      // 해당 폴더만 삭제
+      await Permission.revoke(userId, folderPath);
+      res.json({ message: 'Permission revoked successfully' });
+    }
   } catch (error) {
     console.error('Revoke permission error:', error);
     res.status(500).json({ error: 'Failed to revoke permission' });

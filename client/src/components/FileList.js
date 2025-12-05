@@ -31,27 +31,38 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       {files.map((file, index) => {
         const checked = selectionMode && isSelected(file);
         const thumbnail = getThumbnail(file);
+        // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
+        const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
         
         return (
           <ListItem
             key={index}
-            button={!selectionMode}
-            draggable={!selectionMode}
-            onClick={() => onFileClick(file)}
-            onContextMenu={(e) => onContextMenu(e, file)}
-            onDragStart={!selectionMode ? (e) => handleDragStart(e, file) : undefined}
+            button={!selectionMode && !isDisabled}
+            draggable={!selectionMode && !isDisabled}
+            onClick={() => {
+              if (!isDisabled) {
+                onFileClick(file);
+              }
+            }}
+            onContextMenu={(e) => {
+              if (!isDisabled) {
+                onContextMenu(e, file);
+              }
+            }}
+            onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
             onDragEnd={!selectionMode ? handleDragEnd : undefined}
-            onDragOver={!selectionMode ? (e) => handleDragOver(e, file) : undefined}
+            onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
             onDragLeave={!selectionMode ? handleDragLeave : undefined}
-            onDrop={!selectionMode ? (e) => handleDrop(e, file) : undefined}
+            onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
             sx={{
               '&:hover': {
-                backgroundColor: 'action.hover',
+                backgroundColor: isDisabled ? 'transparent' : 'action.hover',
               },
               backgroundColor: dropTarget === file.path ? 'primary.light' : 'transparent',
-              opacity: draggedFile?.path === file.path ? 0.5 : 1,
-              cursor: selectionMode ? 'pointer' : 'move',
+              opacity: draggedFile?.path === file.path ? 0.5 : (isDisabled ? 0.4 : 1),
+              cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
               transition: 'background-color 0.2s',
+              color: isDisabled ? 'text.disabled' : 'inherit',
             }}
           >
             {selectionMode && (

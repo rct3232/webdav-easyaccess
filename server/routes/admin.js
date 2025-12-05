@@ -310,5 +310,66 @@ router.delete('/users/:id', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// Get folder list for admin (single level)
+router.get('/folders/list', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { listDirectory } = require('../utils/webdav');
+    const path = req.query.path || '/';
+    
+    const items = await listDirectory(path);
+    const folders = items
+      .filter(item => item.type === 'directory')
+      .map(item => ({
+        path: item.filename || item.basename,
+        name: item.basename || item.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    
+    res.json(folders);
+  } catch (error) {
+    console.error('Get folder list error:', error);
+    res.status(500).json({ error: '폴더 목록을 불러오는데 실패했습니다.' });
+  }
+});
+
+// Get user permissions
+router.get('/users/:id/permissions', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const permissions = await Permission.getUserPermissions(userId);
+    res.json(permissions);
+  } catch (error) {
+    console.error('Get user permissions error:', error);
+    res.status(500).json({ error: '사용자 권한을 불러오는데 실패했습니다.' });
+  }
+});
+
+// Update user permissions (bulk)
+router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { permissions } = req.body; // Array of { folderPath, permission: 'read' | 'write' }
+    
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ error: '권한 목록이 올바르지 않습니다.' });
+    }
+
+    // Revoke all existing permissions first
+    await Permission.revokeAllUserPermissions(userId);
+
+    // Grant new permissions
+    for (const perm of permissions) {
+      if (perm.folderPath && perm.permission && ['read', 'write', 'admin'].includes(perm.permission)) {
+        await Permission.grant(userId, perm.folderPath, perm.permission);
+      }
+    }
+
+    res.json({ message: '권한이 업데이트되었습니다.' });
+  } catch (error) {
+    console.error('Update user permissions error:', error);
+    res.status(500).json({ error: '권한 업데이트에 실패했습니다.' });
+  }
+});
+
 module.exports = router;
 

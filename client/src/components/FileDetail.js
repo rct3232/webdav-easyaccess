@@ -34,28 +34,39 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
             const isDragging = draggedFile?.path === file.path;
             const isDropTarget = dropTarget === file.path;
             const checked = selectionMode && isSelected(file);
+            // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
+            const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
             
             return (
               <TableRow
                 key={index}
-                draggable={!selectionMode}
-                hover
+                draggable={!selectionMode && !isDisabled}
+                hover={!isDisabled}
                 selected={checked}
                 sx={{ 
-                  cursor: selectionMode ? 'pointer' : 'move',
-                  opacity: isDragging ? 0.5 : 1,
+                  cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
+                  opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
                   backgroundColor: isDropTarget ? 'primary.light' : 'transparent',
                   transition: 'all 0.2s',
                   borderBottom: '1px solid',
                   borderColor: 'divider',
+                  color: isDisabled ? 'text.disabled' : 'inherit',
                 }}
-                onClick={() => onFileClick(file)}
-                onContextMenu={(e) => onContextMenu(e, file)}
-                onDragStart={!selectionMode ? (e) => handleDragStart(e, file) : undefined}
+                onClick={() => {
+                  if (!isDisabled) {
+                    onFileClick(file);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  if (!isDisabled) {
+                    onContextMenu(e, file);
+                  }
+                }}
+                onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
                 onDragEnd={!selectionMode ? handleDragEnd : undefined}
-                onDragOver={!selectionMode ? (e) => handleDragOver(e, file) : undefined}
+                onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
                 onDragLeave={!selectionMode ? handleDragLeave : undefined}
-                onDrop={!selectionMode ? (e) => handleDrop(e, file) : undefined}
+                onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
               >
                 {selectionMode && (
                   <TableCell padding="checkbox" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>

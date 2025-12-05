@@ -18,6 +18,7 @@ import {
   Edit as EditIcon,
   ContentCopy as CopyIcon,
   DriveFileMove as MoveIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import {
   downloadFile,
@@ -28,15 +29,20 @@ import {
   copyFile,
 } from '../services/fileService';
 import FolderPickerDialog from './FolderPickerDialog';
+import ShareDialog from './ShareDialog';
 
-const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress }) => {
+const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 공유 버튼 표시 조건: 디렉토리이고, 사용자 디렉토리 하위에 있는 경우
+  const canShare = file?.type === 'directory' && user && !user.is_admin && file.path.startsWith(`/${user.username}/`);
 
   if (!file) return null;
 
@@ -306,6 +312,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           onClick={() => {
             setMoveDialogOpen(true);
           }}
+          disabled={!hasWritePermission}
         >
           <ListItemIcon>
             <MoveIcon fontSize="small" />
@@ -324,7 +331,19 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
             <ListItemText>복사</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={handleDelete}>
+        {canShare && (
+          <MenuItem
+            onClick={() => {
+              setShareDialogOpen(true);
+            }}
+          >
+            <ListItemIcon>
+              <ShareIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>공유</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem onClick={handleDelete} disabled={!hasWritePermission}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>
@@ -377,6 +396,17 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         title={`복사: ${file?.basename}`}
         currentPath={currentPath}
         user={user}
+        action="copy"
+        sourceFilePath={file?.path}
+      />
+
+      <ShareDialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        folderPath={file?.path}
+        folderName={file?.basename || file?.name}
+        user={user}
+        onMessage={onMessage}
       />
 
       <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>

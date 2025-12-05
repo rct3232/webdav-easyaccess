@@ -49,7 +49,7 @@ import FilePreviewDialog from '../components/FilePreviewDialog';
 import DownloadProgress from '../components/DownloadProgress';
 import FolderTree from '../components/FolderTree';
 import FolderPickerDialog from '../components/FolderPickerDialog';
-import { moveFile } from '../services/fileService';
+import { moveFile, checkPermission } from '../services/fileService';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
@@ -63,6 +63,7 @@ const FileManager = () => {
     setSortMode,
     webdavUrl,
     loadFiles,
+    hasWritePermission,
   } = useFileManager(user);
 
   const {
@@ -114,15 +115,90 @@ const FileManager = () => {
     navigate('/login');
   };
 
-  const handlePathClick = (path) => {
+  const handlePathClick = async (path) => {
+    // 공유됨 뷰는 바로 설정
+    if (path === '/__shared__') {
+      setCurrentPath(path);
+      return;
+    }
+    
+    // 권한 체크
+    if (!user?.is_admin) {
+      try {
+        const permission = await checkPermission(path);
+        if (!permission.hasRead) {
+          setDropMessage({
+            show: true,
+            text: '이 폴더에 대한 접근 권한이 없습니다.',
+            type: 'error',
+          });
+          return;
+        }
+      } catch (error) {
+        // 403 에러 등 권한 관련 에러 처리
+        if (error.response?.status === 403) {
+          setDropMessage({
+            show: true,
+            text: '이 폴더에 대한 접근 권한이 없습니다.',
+            type: 'error',
+          });
+          return;
+        }
+        console.error('Failed to check permission:', error);
+      }
+    }
+    
     setCurrentPath(path);
   };
 
-  const handleFileClick = (file) => {
+  const handleFileClick = async (file) => {
     if (selectionMode) {
       toggleFileSelection(file);
     } else {
       if (file.type === 'directory') {
+        // 권한이 없는 폴더는 클릭 불가
+        if (file.hasReadPermission === false) {
+          setDropMessage({
+            show: true,
+            text: '이 폴더에 대한 접근 권한이 없습니다.',
+            type: 'error',
+          });
+          return;
+        }
+        
+        // 권한 체크 (서버 측에서도 확인)
+        if (!user?.is_admin) {
+          try {
+            const permission = await checkPermission(file.path);
+            if (!permission.hasRead) {
+              setDropMessage({
+                show: true,
+                text: '이 폴더에 대한 접근 권한이 없습니다.',
+                type: 'error',
+              });
+              return;
+            }
+          } catch (error) {
+            // 403 에러 등 권한 관련 에러 처리
+            if (error.response?.status === 403) {
+              setDropMessage({
+                show: true,
+                text: '이 폴더에 대한 접근 권한이 없습니다.',
+                type: 'error',
+              });
+              return;
+            }
+            console.error('Failed to check permission:', error);
+            // 에러가 발생해도 접근은 허용하지 않음
+            setDropMessage({
+              show: true,
+              text: '권한 확인 중 오류가 발생했습니다.',
+              type: 'error',
+            });
+            return;
+          }
+        }
+        
         setCurrentPath(file.path);
       } else {
         const filename = file.basename || file.name;
@@ -258,6 +334,7 @@ const FileManager = () => {
           onCreateFolder={() => setCreateFolderDialogOpen(true)}
           onUploadFile={() => setUploadDialogOpen(true)}
           selectionMode={selectionMode}
+          hasWritePermission={hasWritePermission}
         />
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -475,6 +552,7 @@ const FileManager = () => {
         user={user}
         currentPath={currentPath}
         onMessage={setDropMessage}
+        hasWritePermission={hasWritePermission}
         onProgress={(progressItem) => {
           if (progressItem.remove) {
             setProgressItems(prev => prev.filter(item => item.id !== progressItem.id));
@@ -501,6 +579,8 @@ const FileManager = () => {
         title={folderPickerAction === 'move' ? '이동할 폴더 선택' : '복사할 폴더 선택'}
         currentPath={currentPath}
         user={user}
+        action={folderPickerAction}
+        sourceFilePaths={folderPickerAction === 'copy' ? Array.from(selectedFiles) : undefined}
       />
 
       <Snackbar
@@ -543,6 +623,7 @@ const FileManager = () => {
             variant="contained"
             size="small"
             onClick={handleBulkMove}
+            disabled={!hasWritePermission}
             sx={{ minWidth: 'auto', px: 1.5 }}
             title="이동"
           >
@@ -571,6 +652,7 @@ const FileManager = () => {
             color="error"
             size="small"
             onClick={handleBulkDelete}
+            disabled={!hasWritePermission}
             sx={{ minWidth: 'auto', px: 1.5 }}
             title="삭제"
           >

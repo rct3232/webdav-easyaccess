@@ -289,3 +289,10 @@ export const getDownloadProgress = async (downloadId) => {
   return response.data;
 };
 
+export const checkPermission = async (folderPath) => {
+  const response = await axios.get('/api/permissions/check', {
+    params: { path: folderPath },
+  });
+  return response.data;
+};
+

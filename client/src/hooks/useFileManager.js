@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { listFiles, getWebDAVInfo } from '../services/fileService';
+import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
 import { sortFiles } from '../utils/fileUtils';
 import { SORT_MODES } from '../constants/fileManager';
+import axios from 'axios';
 
 export const useFileManager = (user) => {
   const [currentPath, setCurrentPath] = useState(() => {
@@ -11,18 +12,95 @@ export const useFileManager = (user) => {
   const [loading, setLoading] = useState(true);
   const [sortMode, setSortMode] = useState(SORT_MODES.NAME_ASC);
   const [webdavUrl, setWebdavUrl] = useState('');
+  const [hasWritePermission, setHasWritePermission] = useState(true);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listFiles(currentPath);
-      setFiles(data);
+      // 공유됨 뷰인 경우 특별 처리
+      if (currentPath === '/__shared__') {
+        // 공유된 폴더 목록을 가져옴
+        const response = await axios.get(`/api/permissions/user/${user?.id}`);
+        const userBaseFolder = `/${user?.username || ''}`;
+        
+        // 경로 정규화 함수 (끝의 / 제거)
+        const normalizePath = (path) => {
+          if (!path || path === '/') return '/';
+          return path.endsWith('/') ? path.slice(0, -1) : path;
+        };
+        
+        // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
+        const sharedFolders = response.data.filter(perm => {
+          const folderPath = normalizePath(perm.folder_path);
+          const normalizedUserBaseFolder = normalizePath(userBaseFolder);
+          
+          // 사용자 기본 폴더로 시작하지 않는 경로만 포함
+          return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
+        });
+        
+        // 권한이 직접 부여된 경로를 정규화된 경로로 저장
+        const permissionPaths = new Map();
+        sharedFolders.forEach(perm => {
+          const normalized = normalizePath(perm.folder_path);
+          permissionPaths.set(normalized, perm);
+        });
+        
+        // 최상위 디렉토리만 필터링 (부모 경로가 permissionPaths에 없으면 최상위)
+        const topLevelFolders = Array.from(permissionPaths.entries()).filter(([normalizedPath, perm]) => {
+          const pathParts = normalizedPath.split('/').filter(Boolean);
+          // 부모 경로들을 확인
+          for (let i = pathParts.length - 1; i > 0; i--) {
+            const parentPath = '/' + pathParts.slice(0, i).join('/');
+            if (permissionPaths.has(parentPath)) {
+              return false; // 부모 경로가 있으면 최상위가 아님
+            }
+          }
+          return true; // 부모 경로가 없으면 최상위
+        });
+        
+        // 최상위 폴더들만 표시 (각 폴더의 실제 내용은 클릭했을 때 표시)
+        const sharedFiles = topLevelFolders.map(([normalizedPath, perm]) => {
+          const pathParts = normalizedPath.split('/').filter(Boolean);
+          const name = pathParts[pathParts.length - 1] || normalizedPath;
+          return {
+            path: normalizedPath,
+            basename: name,
+            name: name,
+            type: 'directory',
+            size: 0,
+            lastmodified: null,
+            hasReadPermission: true,
+            hasWritePermission: perm.permission === 'write' || perm.permission === 'admin'
+          };
+        });
+        
+        setFiles(sharedFiles);
+      } else {
+        try {
+          const data = await listFiles(currentPath);
+          // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
+          setFiles(data);
+        } catch (error) {
+          // 403 에러 등 권한 관련 에러 처리
+          if (error.response?.status === 403) {
+            console.error('Access denied:', error);
+            setFiles([]);
+            // 에러는 상위 컴포넌트에서 처리하도록 전달
+            throw error;
+          }
+          throw error;
+        }
+      }
     } catch (error) {
       console.error('Failed to load files:', error);
+      // 403 에러가 아닌 경우에만 빈 배열로 설정
+      if (error.response?.status !== 403) {
+        setFiles([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [currentPath]);
+  }, [currentPath, user]);
 
   const sortedFiles = useMemo(() => {
     return sortFiles(files, sortMode);
@@ -31,17 +109,48 @@ export const useFileManager = (user) => {
   useEffect(() => {
     if (user && !user.is_admin) {
       const userFolder = `/${user.username}`;
-      if (currentPath === '/' || !currentPath.startsWith(userFolder)) {
+      // 공유됨 뷰는 리다이렉트하지 않음
+      if (currentPath === '/__shared__') {
+        return;
+      }
+      // 공유된 폴더 접근을 허용하기 위해 경로 제한 완화
+      // 단, 루트 경로(/)만 자신의 폴더로 리다이렉트
+      if (currentPath === '/') {
         setCurrentPath(userFolder);
       }
+      // 다른 경로는 서버에서 권한 체크를 하므로 허용
     }
   }, [user, currentPath]);
 
   useEffect(() => {
     if (currentPath) {
       loadFiles();
+      // 공유됨 뷰는 쓰기 권한 체크 불필요 (읽기 전용 뷰)
+      if (currentPath === '/__shared__') {
+        setHasWritePermission(false);
+      } else {
+        // 현재 경로의 쓰기 권한 확인
+        const loadPermission = async () => {
+          try {
+            const permission = await checkPermission(currentPath);
+            setHasWritePermission(permission.hasWrite);
+          } catch (error) {
+            console.error('Failed to check permission:', error);
+            // 에러 발생 시 기본값: 관리자는 true, 일반 사용자는 자신의 폴더인지 확인
+            // 단, 권한 체크 실패 시에는 보안을 위해 false로 설정하는 것이 안전함
+            if (user?.is_admin) {
+              setHasWritePermission(true);
+            } else {
+              const userFolder = `/${user?.username || ''}`;
+              // 자신의 폴더인 경우에만 기본값으로 쓰기 권한 부여
+              setHasWritePermission(currentPath === userFolder || currentPath === userFolder + '/' || currentPath.startsWith(userFolder + '/'));
+            }
+          }
+        };
+        loadPermission();
+      }
     }
-  }, [currentPath, loadFiles]);
+  }, [currentPath, loadFiles, user]);
 
   useEffect(() => {
     const loadWebDAVUrl = async () => {
@@ -65,6 +174,7 @@ export const useFileManager = (user) => {
     setSortMode,
     webdavUrl,
     loadFiles,
+    hasWritePermission,
   };
 };
 

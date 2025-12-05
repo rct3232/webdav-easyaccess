@@ -21,19 +21,42 @@ import {
   Home as HomeIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
-import { listFiles } from '../services/fileService';
+import { listFiles, checkPermission } from '../services/fileService';
 
-const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user }) => {
+const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
   const [selectedPath, setSelectedPath] = useState(currentPath || '/');
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasWritePermission, setHasWritePermission] = useState(true);
 
   useEffect(() => {
     if (open) {
       setSelectedPath(currentPath || '/');
       loadFolders(currentPath || '/');
+      // 복사 또는 이동 작업일 때 쓰기 권한 확인
+      if (action === 'copy' || action === 'move') {
+        checkWritePermission(currentPath || '/');
+      } else {
+        setHasWritePermission(true);
+      }
     }
-  }, [open, currentPath]);
+  }, [open, currentPath, action]);
+
+  const checkWritePermission = async (path) => {
+    try {
+      const permission = await checkPermission(path);
+      setHasWritePermission(permission.hasWrite);
+    } catch (error) {
+      console.error('Failed to check permission:', error);
+      // 에러 발생 시 기본값으로 관리자는 true, 일반 사용자는 자신의 폴더인지 확인
+      if (user?.is_admin) {
+        setHasWritePermission(true);
+      } else {
+        const userFolder = `/${user?.username || ''}`;
+        setHasWritePermission(path.startsWith(userFolder));
+      }
+    }
+  };
 
   const loadFolders = async (path) => {
     setLoading(true);
@@ -54,16 +77,55 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user 
     const newPath = folder.path;
     setSelectedPath(newPath);
     loadFolders(newPath);
+    // 복사 또는 이동 작업일 때 쓰기 권한 확인
+    if (action === 'copy' || action === 'move') {
+      checkWritePermission(newPath);
+    }
   };
 
   const handlePathClick = (path) => {
     setSelectedPath(path);
     loadFolders(path);
+    // 복사 또는 이동 작업일 때 쓰기 권한 확인
+    if (action === 'copy' || action === 'move') {
+      checkWritePermission(path);
+    }
   };
 
   const handleSelect = () => {
     onSelect(selectedPath);
     onClose();
+  };
+
+  // 복사 파일의 부모 디렉토리와 선택된 경로가 같은지 확인
+  const isSameDirectory = (filePath, targetPath) => {
+    if (!filePath || !targetPath) return false;
+    
+    // 파일 경로의 부모 디렉토리 구하기
+    const parentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+    
+    // 경로 정규화 (끝의 슬래시 제거)
+    const normalizedParent = parentDir === '/' ? '/' : parentDir.replace(/\/$/, '');
+    const normalizedTarget = targetPath === '/' ? '/' : targetPath.replace(/\/$/, '');
+    
+    return normalizedParent === normalizedTarget;
+  };
+
+  // 복사 작업 시 출발 디렉토리와 타겟 디렉토리가 같은지 확인
+  const isCopyToSameDirectory = () => {
+    if (action !== 'copy') return false;
+    
+    // 단일 파일 복사
+    if (sourceFilePath) {
+      return isSameDirectory(sourceFilePath, selectedPath);
+    }
+    
+    // 다중 파일 복사
+    if (sourceFilePaths && sourceFilePaths.length > 0) {
+      return sourceFilePaths.some(filePath => isSameDirectory(filePath, selectedPath));
+    }
+    
+    return false;
   };
 
   // Build breadcrumbs
@@ -157,7 +219,15 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user 
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>취소</Button>
-        <Button onClick={handleSelect} variant="contained" color="primary">
+        <Button 
+          onClick={handleSelect} 
+          variant="contained" 
+          color="primary"
+          disabled={
+            ((action === 'copy' || action === 'move') && !hasWritePermission) ||
+            isCopyToSameDirectory()
+          }
+        >
           선택
         </Button>
       </DialogActions>

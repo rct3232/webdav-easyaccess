@@ -76,6 +76,8 @@ async function listDirectory(path = '/') {
     const normalizedPath = normalizePath(path);
     const requestPath = getRequestPath(normalizedPath);
     const items = await client.getDirectoryContents(requestPath);
+    // WebDAV 클라이언트가 반환하는 항목들을 정규화하여 반환
+    // basename만 사용하여 직접 자식만 표시되도록 보장
     return items.map(item => ({
       filename: item.filename,
       basename: item.basename,
@@ -83,7 +85,11 @@ async function listDirectory(path = '/') {
       size: item.size,
       type: item.type,
       mime: item.mime,
-    }));
+    })).filter(item => {
+      // basename만 있는 항목만 반환 (직접 자식만)
+      // filename이 있더라도 실제로는 basename으로 경로를 구성하므로 필터링 불필요
+      return item.basename && item.basename.trim() !== '';
+    });
   } catch (error) {
     if (error.status === 401 || error.response?.status === 401) {
       throw new Error(`WebDAV authentication failed. Check credentials in .env file. Original: ${error.message}`);

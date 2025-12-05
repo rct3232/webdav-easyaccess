@@ -76,16 +76,32 @@ class Permission {
 
   static async hasPermissionsInPath(folderPath) {
     return new Promise((resolve, reject) => {
+      // 디렉토리 경로 정규화 (끝에 / 추가)
+      const normalizedPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+      
+      // 정확히 해당 경로에 대한 권한만 검색 (상위 경로 제외)
+      // 예: /test/folder/ -> /test/folder/ 또는 /test/folder/subfolder/ 만 찾음
+      // /test/ 같은 상위 경로는 제외
       const sql = `
         SELECT u.id, u.username, u.email, fp.folder_path, fp.permission 
         FROM folder_permissions fp
         JOIN users u ON fp.user_id = u.id
         WHERE fp.folder_path = ? OR fp.folder_path LIKE ?
       `;
-      const likePattern = folderPath.endsWith('/') ? `${folderPath}%` : `${folderPath}/%`;
-      db.getDb().all(sql, [folderPath, likePattern], (err, rows) => {
+      // 하위 경로만 검색 (상위 경로 제외)
+      const likePattern = `${normalizedPath}%`;
+      
+      db.getDb().all(sql, [normalizedPath, likePattern], (err, rows) => {
         if (err) reject(err);
-        else resolve(rows);
+        else {
+          // 상위 경로 제외: 정확히 해당 경로이거나 하위 경로만 반환
+          const filtered = rows.filter(row => {
+            const rowPath = row.folder_path;
+            // 정확히 같은 경로이거나 해당 경로의 하위 경로인 경우만
+            return rowPath === normalizedPath || (rowPath.startsWith(normalizedPath) && rowPath.length > normalizedPath.length);
+          });
+          resolve(filtered);
+        }
       });
     });
   }

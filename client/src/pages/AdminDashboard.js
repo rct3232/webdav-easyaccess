@@ -15,6 +15,7 @@ import {
   Button,
   Chip,
   Alert,
+  Snackbar,
   Tabs,
   Tab,
   Dialog,
@@ -25,6 +26,7 @@ import {
   TextField,
   FormControlLabel,
   Switch,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -32,13 +34,22 @@ import {
   Close as CloseIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
+  Add as AddCircleIcon,
+  Remove as RemoveCircleIcon,
+  Folder as FolderIcon,
+  FolderOpen as FolderOpenIcon,
+  ChevronRight as ChevronRightIcon,
+  ExpandMore as ExpandMoreIcon,
+  Visibility as VisibilityIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import ShareDialog from '../components/ShareDialog';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(0); // 0: 전체 사용자, 1: 설정
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -48,6 +59,7 @@ const AdminDashboard = () => {
   const [settings, setSettings] = useState({ registration_enabled: 'false' });
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false);
+  const [permissionDialog, setPermissionDialog] = useState({ open: false, userId: null, username: '' });
 
   const loadPendingUsers = async () => {
     try {
@@ -213,6 +225,19 @@ const AdminDashboard = () => {
     return new Date(dateString).toLocaleString('ko-KR');
   };
 
+  const handleUserClick = (userId, username) => {
+    if (userId === undefined || userId === null) return;
+    setPermissionDialog({ open: true, userId, username });
+  };
+
+  const handleClosePermissionDialog = () => {
+    setPermissionDialog({ open: false, userId: null, username: '' });
+  };
+
+  const handleSavePermissionsSuccess = async () => {
+    await loadAllUsers();
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
@@ -231,26 +256,15 @@ const AdminDashboard = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, p: 3 }}>
-        {message.text && (
-          <Alert 
-            severity={message.type} 
-            sx={{ mb: 2 }} 
-            onClose={() => setMessage({ type: '', text: '' })}
-          >
-            {message.text}
-          </Alert>
-        )}
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
           <Paper sx={{ flex: 1 }}>
             <Tabs value={tab} onChange={(e, newValue) => setTab(newValue)}>
-              <Tab label={`승인 대기 (${pendingUsers.length})`} />
-              <Tab label={`전체 사용자 (${users.length})`} />
+              <Tab label={`사용자 (${users.length})`} />
               <Tab label="설정" />
             </Tabs>
           </Paper>
-          {tab === 2 ? (
+          {tab === 1 ? (
             <Button
               variant="contained"
               color="primary"
@@ -274,105 +288,117 @@ const AdminDashboard = () => {
         </Box>
 
         {tab === 0 && (
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>사용자명</TableCell>
-                  <TableCell>이메일</TableCell>
-                  <TableCell>가입일</TableCell>
-                  <TableCell align="center">작업</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {pendingUsers.length === 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <TableContainer 
+              component={Paper} 
+              sx={{ 
+                flex: 1,
+                overflow: 'auto',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <Table stickyHeader>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={4} align="center">
-                      승인 대기 중인 사용자가 없습니다.
-                    </TableCell>
+                    <TableCell>사용자명</TableCell>
+                    <TableCell>이메일</TableCell>
+                    <TableCell>상태</TableCell>
+                    <TableCell>권한</TableCell>
+                    <TableCell>가입일</TableCell>
+                    <TableCell align="center">작업</TableCell>
                   </TableRow>
-                ) : (
-                  pendingUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>{user.username}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{formatDate(user.created_at)}</TableCell>
-                      <TableCell align="center">
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          startIcon={<CheckIcon />}
-                          onClick={() => handleApprove(user.id, user.username)}
-                          sx={{ mr: 1 }}
-                        >
-                          승인
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          size="small"
-                          startIcon={<CloseIcon />}
-                          onClick={() => handleReject(user.id, user.username)}
-                        >
-                          거절
-                        </Button>
+                </TableHead>
+                <TableBody>
+                  {users.length === 0 && pendingUsers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        등록된 사용자가 없습니다.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  ) : (
+                    (() => {
+                      // 중복 제거: pendingUsers를 우선하고, users에서 pending 상태가 아닌 사용자만 추가
+                      const userMap = new Map();
+                      // 먼저 pendingUsers 추가
+                      pendingUsers.forEach(user => userMap.set(user.id, user));
+                      // users에서 pending 상태가 아닌 사용자만 추가 (중복 방지)
+                      users.forEach(user => {
+                        if (user.status !== 'pending' || !userMap.has(user.id)) {
+                          userMap.set(user.id, user);
+                        }
+                      });
+                      return Array.from(userMap.values())
+                        .sort((a, b) => {
+                          // 승인대기 상태를 가장 위에 표시
+                          if (a.status === 'pending' && b.status !== 'pending') return -1;
+                          if (a.status !== 'pending' && b.status === 'pending') return 1;
+                          // 같은 상태면 가입일 기준 내림차순
+                          return new Date(b.created_at) - new Date(a.created_at);
+                        });
+                    })().map((user) => (
+                        <TableRow 
+                          key={user.id}
+                          sx={{ cursor: user.status !== 'pending' && !user.is_admin ? 'pointer' : 'default' }}
+                          onClick={() => user.status !== 'pending' && !user.is_admin && handleUserClick(user.id, user.username)}
+                        >
+                          <TableCell>{user.username}</TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>{getStatusChip(user.status)}</TableCell>
+                          <TableCell>
+                            {user.is_admin ? (
+                              <Chip label="관리자" color="primary" size="small" />
+                            ) : (
+                              <Chip label="일반" size="small" />
+                            )}
+                          </TableCell>
+                          <TableCell>{formatDate(user.created_at)}</TableCell>
+                          <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                            {user.status === 'pending' ? (
+                              <>
+                                <Button
+                                  variant="contained"
+                                  color="success"
+                                  size="small"
+                                  startIcon={<CheckIcon />}
+                                  onClick={() => handleApprove(user.id, user.username)}
+                                  sx={{ mr: 1 }}
+                                >
+                                  승인
+                                </Button>
+                                <Button
+                                  variant="contained"
+                                  color="error"
+                                  size="small"
+                                  startIcon={<CloseIcon />}
+                                  onClick={() => handleReject(user.id, user.username)}
+                                >
+                                  거절
+                                </Button>
+                              </>
+                            ) : (
+                              !user.is_admin && (
+                                <IconButton
+                                  color="error"
+                                  size="small"
+                                  onClick={() => handleDeleteClick(user.id, user.username)}
+                                  title="사용자 삭제"
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              )
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
         )}
 
         {tab === 1 && (
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>사용자명</TableCell>
-                  <TableCell>이메일</TableCell>
-                  <TableCell>상태</TableCell>
-                  <TableCell>권한</TableCell>
-                  <TableCell>가입일</TableCell>
-                  <TableCell align="center">작업</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.username}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{getStatusChip(user.status)}</TableCell>
-                    <TableCell>
-                      {user.is_admin ? (
-                        <Chip label="관리자" color="primary" size="small" />
-                      ) : (
-                        <Chip label="일반" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell>{formatDate(user.created_at)}</TableCell>
-                    <TableCell align="center">
-                      {!user.is_admin && (
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={() => handleDeleteClick(user.id, user.username)}
-                          title="사용자 삭제"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-
-        {tab === 2 && (
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
               시스템 설정
@@ -490,6 +516,37 @@ const AdminDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 권한 설정 다이얼로그 */}
+      <ShareDialog
+        open={permissionDialog.open}
+        onClose={handleClosePermissionDialog}
+        mode="admin"
+        userId={permissionDialog.userId}
+        username={permissionDialog.username}
+        onSave={handleSavePermissionsSuccess}
+        onMessage={(msg) => {
+          if (msg && msg.text) {
+            setMessage({ type: msg.type || 'info', text: msg.text });
+          }
+        }}
+      />
+
+      {/* 토스트 메시지 */}
+      <Snackbar
+        open={!!message.text}
+        autoHideDuration={6000}
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setMessage({ type: '', text: '' })} 
+          severity={message.type || 'info'}
+          sx={{ width: '100%' }}
+        >
+          {message.text}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

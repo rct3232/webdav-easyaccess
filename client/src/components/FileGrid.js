@@ -31,33 +31,44 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
         const checked = selectionMode && isSelected(file);
+        // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
+        const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
         
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} key={index}>
             <Card
-              draggable={!selectionMode}
+              draggable={!selectionMode && !isDisabled}
               sx={{
-                cursor: selectionMode ? 'pointer' : 'move',
+                cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
                 '&:hover': {
-                  boxShadow: 4,
+                  boxShadow: isDisabled ? 2 : 4,
                 },
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                opacity: isDragging ? 0.5 : 1,
+                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
                 border: isDropTarget ? '2px solid' : checked ? '2px solid' : 'none',
                 borderColor: checked ? 'primary.main' : 'primary.main',
                 backgroundColor: checked ? 'action.selected' : 'transparent',
                 transition: 'all 0.2s',
                 position: 'relative',
+                color: isDisabled ? 'text.disabled' : 'inherit',
               }}
-              onClick={() => onFileClick(file)}
-              onContextMenu={(e) => onContextMenu(e, file)}
-              onDragStart={!selectionMode ? (e) => handleDragStart(e, file) : undefined}
+              onClick={() => {
+                if (!isDisabled) {
+                  onFileClick(file);
+                }
+              }}
+              onContextMenu={(e) => {
+                if (!isDisabled) {
+                  onContextMenu(e, file);
+                }
+              }}
+              onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
               onDragEnd={!selectionMode ? handleDragEnd : undefined}
-              onDragOver={!selectionMode ? (e) => handleDragOver(e, file) : undefined}
+              onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
               onDragLeave={!selectionMode ? handleDragLeave : undefined}
-              onDrop={!selectionMode ? (e) => handleDrop(e, file) : undefined}
+              onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
             >
               {selectionMode && (
                 <Checkbox

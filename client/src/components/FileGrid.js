@@ -7,11 +7,13 @@ import {
   Typography,
   Box,
   Checkbox,
+  CircularProgress,
 } from '@mui/material';
+import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
   const {
     draggedFile,
     dropTarget,
@@ -32,7 +34,17 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const isDropTarget = dropTarget === file.path;
         const checked = selectionMode && isSelected(file);
         // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-        const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
+        const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
+        const processingType = processingMap?.get(file.path);
+        const isProcessing = Boolean(processingType);
+        const isDisabled = isPermissionDisabled || isProcessing;
+
+        const renderProcessingIcon = () => {
+          if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
+          if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
+          if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
+          return null;
+        };
         
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} key={index}>
@@ -129,6 +141,22 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   {file.basename}
                 </Typography>
               </CardContent>
+              {isProcessing && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <CircularProgress size={18} thickness={5} />
+                  {renderProcessingIcon()}
+                </Box>
+              )}
             </Card>
           </Grid>
         );

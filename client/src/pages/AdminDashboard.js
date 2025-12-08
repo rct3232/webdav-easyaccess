@@ -26,7 +26,6 @@ import {
   TextField,
   FormControlLabel,
   Switch,
-  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -34,14 +33,6 @@ import {
   Close as CloseIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
-  Add as AddCircleIcon,
-  Remove as RemoveCircleIcon,
-  Folder as FolderIcon,
-  FolderOpen as FolderOpenIcon,
-  ChevronRight as ChevronRightIcon,
-  ExpandMore as ExpandMoreIcon,
-  Visibility as VisibilityIcon,
-  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -56,7 +47,6 @@ const AdminDashboard = () => {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, userId: null, username: '' });
   const [createDialog, setCreateDialog] = useState({ open: false });
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', confirmPassword: '' });
-  const [settings, setSettings] = useState({ registration_enabled: 'false' });
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false);
   const [permissionDialog, setPermissionDialog] = useState({ open: false, userId: null, username: '' });
@@ -82,7 +72,6 @@ const AdminDashboard = () => {
   const loadSettings = async () => {
     try {
       const response = await axios.get('/api/admin/settings');
-      setSettings(response.data);
       setTempSettings(response.data);
       setHasSettingsChanges(false);
     } catch (error) {

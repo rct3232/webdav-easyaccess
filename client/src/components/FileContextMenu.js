@@ -33,7 +33,7 @@ import FolderPickerDialog from './FolderPickerDialog';
 import ShareDialog from './ShareDialog';
 import SharedFolderManageDialog from './SharedFolderManageDialog';
 
-const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission }) => {
+const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission, onProcessingStart, onProcessingEnd }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
@@ -107,6 +107,8 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
       return;
     }
 
+    onProcessingStart?.([file.path], 'delete');
+
     try {
       await deleteFile(file.path);
       onActionComplete(file.type === 'directory' ? file.path : null);
@@ -116,6 +118,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
       setErrorMessage(errorMsg);
       setErrorDialogOpen(true);
     }
+    onProcessingEnd?.([file.path]);
   };
 
   const handleRename = async () => {
@@ -173,9 +176,16 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
       : selectedPath + '/' + file.basename;
     
     const progressId = `${operation}_${Date.now()}`;
+    const operationType =
+      operation === moveFile ? 'move' :
+      operation === copyFile ? 'copy' :
+      operationName === '삭제' ? 'delete' : 'download';
+
+    onProcessingStart?.([file.path], operationType);
+
     const progressItem = {
       id: progressId,
-      type: operation,
+      type: operationType,
       status: 'preparing',
       progress: 0,
       total: 1,
@@ -232,17 +242,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           onProgress({ id: progressId, remove: true });
         }, 3000);
       }
-      
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: `${file.basename}을(를) ${operationName}했습니다`,
-          type: 'success'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 3000);
-      }
     } catch (error) {
       const errorMsg = error.response?.data?.error || `${operationName}에 실패했습니다`;
       const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
@@ -259,7 +258,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         }, 5000);
       }
       
-      if (onMessage) {
+      if (!onProgress && onMessage) {
         const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
         onMessage({
           show: true,
@@ -269,10 +268,11 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         setTimeout(() => {
           onMessage({ show: false, text: '', type: 'success' });
         }, 5000);
-      } else {
+      } else if (!onProgress) {
         alert(isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg);
       }
     } finally {
+      onProcessingEnd?.([file.path]);
       setLoading(false);
     }
   };

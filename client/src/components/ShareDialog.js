@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -12,7 +12,6 @@ import {
   Chip,
   Menu,
   MenuItem,
-  ListItemIcon,
   ListItemText,
 } from '@mui/material';
 import {
@@ -22,7 +21,6 @@ import {
   ExpandMore as ExpandMoreIcon,
   Add as AddIcon,
   Edit as EditIcon,
-  Visibility as VisibilityIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -54,11 +52,9 @@ const ShareDialog = ({
   const rootPath = isAdminMode 
     ? (startFromUserHome && username ? `/${username}` : '/')
     : (folderPath && folderPath !== '/' && folderPath.endsWith('/') ? folderPath.slice(0, -1) : (folderPath || '/'));
-  // 공유 모드에서 선택한 폴더 경로 (비교용)
-  const selectedFolderPath = isShareMode ? rootPath : null;
   
   const [users, setUsers] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [, setLoadingUsers] = useState(false);
   const [folderTree, setFolderTree] = useState(new Map());
   // folderPermissions: Map<folderPath, Map<userId, permission>>
   const [folderPermissions, setFolderPermissions] = useState(new Map());
@@ -77,6 +73,7 @@ const ShareDialog = ({
       }
       initializeDialog();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rootPath, isAdminMode, isShareMode, userId, username]);
 
   const initializeDialog = async () => {

@@ -9,8 +9,6 @@ import {
   Collapse,
   Typography,
   IconButton,
-  Divider,
-  CircularProgress,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -262,7 +260,6 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
-  const [sharedLoading, setSharedLoading] = useState(false);
   const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
   const userBaseFolder = `/${user?.username || ''}`;
 
@@ -273,12 +270,12 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
       // 관리자는 공유됨 폴더 트리를 로드하지 않음
       setSharedFolders([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadSharedFolders = async () => {
     if (!user || !user.id || user.is_admin) return;
     
-    setSharedLoading(true);
     try {
       const response = await axios.get(`/api/permissions/user/${user.id}`);
       // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
@@ -299,8 +296,6 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
     } catch (error) {
       console.error('Failed to load shared folders:', error);
       setSharedFolders([]);
-    } finally {
-      setSharedLoading(false);
     }
   };
 

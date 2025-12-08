@@ -1,10 +1,22 @@
 import { useState } from 'react';
 import { moveFile, copyFile, deleteFile, downloadMultipleFiles } from '../services/fileService';
 
-export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdateTrigger, setDropMessage, setSelectedFiles, setSelectionMode) => {
+export const useBulkOperations = (
+  selectedFiles,
+  files,
+  loadFiles,
+  setTreeUpdateTrigger,
+  setDropMessage,
+  setSelectedFiles,
+  setSelectionMode,
+  options = {}
+) => {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [folderPickerAction, setFolderPickerAction] = useState(null);
   const [progressItems, setProgressItems] = useState([]);
+
+  const markProcessing = options.markProcessing || (() => {});
+  const clearProcessing = options.clearProcessing || (() => {});
 
   const handleBulkMove = () => {
     setFolderPickerAction('move');
@@ -18,28 +30,91 @@ export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdate
 
   const handleBulkDelete = async () => {
     if (selectedFiles.size === 0) return;
+    setSelectionMode(false);
     
     const confirmMessage = `선택한 ${selectedFiles.size}개의 파일/폴더를 삭제하시겠습니까?`;
     if (!window.confirm(confirmMessage)) return;
 
     const filePaths = Array.from(selectedFiles);
+    markProcessing(filePaths, 'delete');
+    const progressId = `delete_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'delete',
+      status: 'preparing',
+      progress: 0,
+      total: filePaths.length,
+      current: '',
+      name: `${filePaths.length}개 항목 삭제`,
+    };
+    
+    setProgressItems(prev => [...prev, progressItem]);
+
     let successCount = 0;
     let failCount = 0;
     const deletedFolders = [];
 
-    for (const filePath of filePaths) {
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i];
       try {
+        setProgressItems(prev => {
+          const currentItem = prev.find(item => item.id === progressId);
+          const currentProgress = currentItem ? currentItem.progress || 0 : 0;
+          return prev.map(item => 
+            item.id === progressId 
+              ? { 
+                  ...item, 
+                  status: 'processing',
+                  progress: currentProgress,
+                  total: filePaths.length,
+                  current: `(${currentProgress}/${filePaths.length}) 삭제중...`,
+                }
+              : item
+          );
+        });
+
         await deleteFile(filePath);
         const file = files.find(f => f.path === filePath);
         if (file && file.type === 'directory') {
           deletedFolders.push(filePath);
         }
         successCount++;
+        
+        setProgressItems(prev => {
+          const currentItem = prev.find(item => item.id === progressId);
+          const currentProgress = currentItem ? (currentItem.progress || 0) + 1 : 1;
+          return prev.map(item => 
+            item.id === progressId 
+              ? { 
+                  ...item, 
+                  status: 'processing',
+                  progress: currentProgress,
+                  total: filePaths.length,
+                  current: `(${currentProgress}/${filePaths.length}) 삭제중...`,
+                }
+              : item
+          );
+        });
       } catch (error) {
         console.error(`Failed to delete ${filePath}:`, error);
         failCount++;
       }
     }
+
+    setProgressItems(prev => 
+      prev.map(item => 
+        item.id === progressId 
+          ? { 
+              ...item, 
+              status: failCount > 0 ? 'error' : 'completed',
+              progress: successCount,
+              total: filePaths.length,
+              current: failCount > 0 ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) 삭제중...`,
+              error: failCount > 0 ? `${failCount}개 실패` : undefined,
+            }
+          : item
+      )
+    );
 
     if (successCount > 0) {
       deletedFolders.forEach(folderPath => {
@@ -50,11 +125,6 @@ export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdate
         });
       });
 
-      setDropMessage({
-        show: true,
-        text: `${successCount}개 파일/폴더가 삭제되었습니다${failCount > 0 ? ` (${failCount}개 실패)` : ''}`,
-        type: failCount > 0 ? 'warning' : 'success',
-      });
       setSelectedFiles(new Set());
       setSelectionMode(false);
       loadFiles();
@@ -67,17 +137,18 @@ export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdate
           });
         }, 500);
       }
-    } else {
-      setDropMessage({
-        show: true,
-        text: '삭제에 실패했습니다',
-        type: 'error',
-      });
     }
+
+    clearProcessing(filePaths);
+
+    setTimeout(() => {
+      setProgressItems(prev => prev.filter(item => item.id !== progressId));
+    }, 3000);
   };
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
+    setSelectionMode(false);
 
     const filePaths = Array.from(selectedFiles);
     const progressId = `download_${Date.now()}`;
@@ -120,8 +191,11 @@ export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdate
 
   const handleFolderPickerSelect = async (destinationPath) => {
     if (!folderPickerAction || selectedFiles.size === 0) return;
+    // 이동/복사 실행 시점에 선택 모드 해제
+    setSelectionMode(false);
 
     const filePaths = Array.from(selectedFiles);
+    markProcessing(filePaths, folderPickerAction);
     const progressId = `${folderPickerAction}_${Date.now()}`;
     const progressItem = {
       id: progressId,
@@ -217,37 +291,14 @@ export const useBulkOperations = (selectedFiles, files, loadFiles, setTreeUpdate
     );
 
     if (successCount > 0) {
-      let message = `${successCount}개 파일/폴더가 ${folderPickerAction === 'move' ? '이동' : '복사'}되었습니다`;
-      if (skippedFiles.length > 0) {
-        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
-      }
-      if (failCount > 0) {
-        message += `\n실패: ${failCount}개`;
-      }
-      
-      setDropMessage({
-        show: true,
-        text: message,
-        type: failCount > 0 || skippedFiles.length > 0 ? 'warning' : 'success',
-      });
       setSelectedFiles(new Set());
       setSelectionMode(false);
       loadFiles();
-    } else {
-      let message = `${folderPickerAction === 'move' ? '이동' : '복사'}에 실패했습니다`;
-      if (skippedFiles.length > 0) {
-        message += `\n건너뛴 파일: ${skippedFiles.join(', ')}`;
-      }
-      
-      setDropMessage({
-        show: true,
-        text: message,
-        type: 'error',
-      });
     }
 
     setTimeout(() => {
       setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      clearProcessing(filePaths);
     }, 3000);
 
     setFolderPickerOpen(false);

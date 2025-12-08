@@ -213,38 +213,42 @@ const MyPage = () => {
           </Box>
         </Paper>
 
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            공유 관리
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
-          </Typography>
-          
-          <Button
-            variant="contained"
-            startIcon={<ShareIcon />}
-            onClick={() => setShareDialogOpen(true)}
-            fullWidth
-          >
-            공유 관리 열기
-          </Button>
-        </Paper>
+        {!user?.is_admin && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              공유 관리
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
+            </Typography>
+            
+            <Button
+              variant="contained"
+              startIcon={<ShareIcon />}
+              onClick={() => setShareDialogOpen(true)}
+              fullWidth
+            >
+              공유 관리 열기
+            </Button>
+          </Paper>
+        )}
       </Box>
 
-      <ShareDialog
-        open={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
-        mode="share"
-        folderPath={user?.username ? `/${user.username}` : null}
-        folderName={user?.username || '홈 디렉토리'}
-        user={user}
-        onMessage={(msg) => {
-          setMessage({ type: msg.type, text: msg.text });
-        }}
-      />
+      {!user?.is_admin && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onClose={() => setShareDialogOpen(false)}
+          mode="share"
+          folderPath={user?.username ? `/${user.username}` : null}
+          folderName={user?.username || '홈 디렉토리'}
+          user={user}
+          onMessage={(msg) => {
+            setMessage({ type: msg.type, text: msg.text });
+          }}
+        />
+      )}
     </Box>
   );
 };

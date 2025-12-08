@@ -87,6 +87,7 @@ const FileManager = () => {
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
+  const [processingMap, setProcessingMap] = useState(new Map());
 
   const {
     folderPickerOpen,
@@ -107,7 +108,23 @@ const FileManager = () => {
     setTreeUpdateTrigger,
     setDropMessage,
     setSelectedFiles,
-    setSelectionMode
+    setSelectionMode,
+    {
+      markProcessing: (paths, type) => {
+        setProcessingMap(prev => {
+          const next = new Map(prev);
+          paths.forEach(p => next.set(p, type));
+          return next;
+        });
+      },
+      clearProcessing: (paths) => {
+        setProcessingMap(prev => {
+          const next = new Map(prev);
+          paths.forEach(p => next.delete(p));
+          return next;
+        });
+      },
+    }
   );
 
   const handleLogout = () => {
@@ -257,8 +274,21 @@ const FileManager = () => {
   };
 
   const handleFileDrop = async (draggedFile, targetFolder) => {
+    const srcPath = draggedFile.path;
+    setProcessingMap(prev => {
+      const next = new Map(prev);
+      next.set(srcPath, 'move');
+      return next;
+    });
+    const progressId = `move_drag_${Date.now()}`;
+    
     try {
       if (draggedFile.path === targetFolder.path) {
+        setProcessingMap(prev => {
+          const next = new Map(prev);
+          next.delete(srcPath);
+          return next;
+        });
         return;
       }
 
@@ -266,30 +296,80 @@ const FileManager = () => {
         ? targetFolder.path + draggedFile.basename
         : targetFolder.path + '/' + draggedFile.basename;
 
+      const progressItem = {
+        id: progressId,
+        type: 'move',
+        status: 'preparing',
+        progress: 0,
+        total: 1,
+        current: '',
+        name: `${draggedFile.basename} 이동`,
+      };
+      
+      setProgressItems(prev => [...prev, progressItem]);
+
+      setProgressItems(prev => 
+        prev.map(item => 
+          item.id === progressId 
+            ? { 
+                ...item, 
+                status: 'processing',
+                progress: 0,
+                total: 1,
+                current: '(0/1) 이동중...',
+              }
+            : item
+        )
+      );
+
       await moveFile(draggedFile.path, destPath);
       
-      setDropMessage({
-        show: true,
-        text: `${draggedFile.basename}을(를) ${targetFolder.basename}(으)로 이동했습니다`,
-        type: 'success'
-      });
-
+      setProgressItems(prev => 
+        prev.map(item => 
+          item.id === progressId 
+            ? { 
+                ...item, 
+                status: 'completed',
+                progress: 1,
+                total: 1,
+                current: '(1/1) 이동중...',
+              }
+            : item
+        )
+      );
+      
       loadFiles();
 
       setTimeout(() => {
         setDropMessage({ show: false, text: '', type: 'success' });
+        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        setProcessingMap(prev => {
+          const next = new Map(prev);
+          next.delete(srcPath);
+          return next;
+        });
       }, 3000);
     } catch (error) {
       console.error('Move failed:', error);
-      const errorMsg = error.response?.data?.error || '이동에 실패했습니다';
-      setDropMessage({
-        show: true,
-        text: errorMsg,
-        type: 'error'
-      });
+      setProgressItems(prev => 
+        prev.map(item => 
+          item.id === progressId 
+            ? { 
+                ...item, 
+                status: 'error',
+                error: error.response?.data?.error || '이동에 실패했습니다',
+              }
+            : item
+        )
+      );
 
       setTimeout(() => {
-        setDropMessage({ show: false, text: '', type: 'success' });
+        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        setProcessingMap(prev => {
+          const next = new Map(prev);
+          next.delete(srcPath);
+          return next;
+        });
       }, 5000);
     }
   };
@@ -476,6 +556,7 @@ const FileManager = () => {
             ) : viewMode === VIEW_MODES.LIST ? (
               <FileList
                 files={sortedFiles}
+                processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
@@ -490,6 +571,7 @@ const FileManager = () => {
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
                 files={sortedFiles}
+                processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
@@ -504,6 +586,7 @@ const FileManager = () => {
             ) : (
               <FileDetail
                 files={sortedFiles}
+                processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
@@ -566,6 +649,20 @@ const FileManager = () => {
               }
             });
           }
+        }}
+        onProcessingStart={(paths, type) => {
+          setProcessingMap(prev => {
+            const next = new Map(prev);
+            paths.forEach(p => next.set(p, type));
+            return next;
+          });
+        }}
+        onProcessingEnd={(paths) => {
+          setProcessingMap(prev => {
+            const next = new Map(prev);
+            paths.forEach(p => next.delete(p));
+            return next;
+          });
         }}
       />
 

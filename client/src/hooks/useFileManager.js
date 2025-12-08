@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
 import { sortFiles } from '../utils/fileUtils';
 import { SORT_MODES } from '../constants/fileManager';
@@ -13,12 +13,15 @@ export const useFileManager = (user) => {
   const [sortMode, setSortMode] = useState(SORT_MODES.NAME_ASC);
   const [webdavUrl, setWebdavUrl] = useState('');
   const [hasWritePermission, setHasWritePermission] = useState(true);
+  const requestIdRef = useRef(0);
 
   const loadFiles = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
+    const targetPath = currentPath;
     try {
       // 공유됨 뷰인 경우 특별 처리
-      if (currentPath === '/__shared__') {
+      if (targetPath === '/__shared__') {
         // 공유된 폴더 목록을 가져옴
         const response = await axios.get(`/api/permissions/user/${user?.id}`);
         const userBaseFolder = `/${user?.username || ''}`;
@@ -74,17 +77,23 @@ export const useFileManager = (user) => {
           };
         });
         
-        setFiles(sharedFiles);
+        if (requestId === requestIdRef.current) {
+          setFiles(sharedFiles);
+        }
       } else {
         try {
-          const data = await listFiles(currentPath);
+          const data = await listFiles(targetPath);
           // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
-          setFiles(data);
+          if (requestId === requestIdRef.current) {
+            setFiles(data);
+          }
         } catch (error) {
           // 403 에러 등 권한 관련 에러 처리
           if (error.response?.status === 403) {
             console.error('Access denied:', error);
-            setFiles([]);
+            if (requestId === requestIdRef.current) {
+              setFiles([]);
+            }
             // 에러는 상위 컴포넌트에서 처리하도록 전달
             throw error;
           }
@@ -94,11 +103,13 @@ export const useFileManager = (user) => {
     } catch (error) {
       console.error('Failed to load files:', error);
       // 403 에러가 아닌 경우에만 빈 배열로 설정
-      if (error.response?.status !== 403) {
+      if (error.response?.status !== 403 && requestId === requestIdRef.current) {
         setFiles([]);
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentPath, user]);
 

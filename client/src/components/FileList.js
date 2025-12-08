@@ -8,12 +8,14 @@ import {
   Box,
   Checkbox,
   Avatar,
+  CircularProgress,
 } from '@mui/material';
+import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
   const {
     draggedFile,
     dropTarget,
@@ -32,7 +34,17 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const checked = selectionMode && isSelected(file);
         const thumbnail = getThumbnail(file);
         // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-        const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
+        const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
+        const processingType = processingMap?.get(file.path);
+        const isProcessing = Boolean(processingType);
+        const isDisabled = isPermissionDisabled || isProcessing;
+
+        const renderProcessingIcon = () => {
+          if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
+          if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
+          if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
+          return null;
+        };
         
         return (
           <ListItem
@@ -63,6 +75,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
               transition: 'background-color 0.2s',
               color: isDisabled ? 'text.disabled' : 'inherit',
+              position: 'relative',
             }}
           >
             {selectionMode && (
@@ -108,6 +121,23 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 </Box>
               }
             />
+            {isProcessing && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: 16,
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  pointerEvents: 'none',
+                }}
+              >
+                <CircularProgress size={18} thickness={5} />
+                {renderProcessingIcon()}
+              </Box>
+            )}
           </ListItem>
         );
       })}

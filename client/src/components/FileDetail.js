@@ -8,12 +8,14 @@ import {
   Typography,
   Box,
   Checkbox,
+  CircularProgress,
 } from '@mui/material';
+import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIcon } from '../utils/fileIconUtils';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
   const {
     draggedFile,
     dropTarget,
@@ -35,7 +37,17 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
             const isDropTarget = dropTarget === file.path;
             const checked = selectionMode && isSelected(file);
             // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-            const isDisabled = file.type === 'directory' && file.hasReadPermission === false;
+            const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
+            const processingType = processingMap?.get(file.path);
+            const isProcessing = Boolean(processingType);
+            const isDisabled = isPermissionDisabled || isProcessing;
+
+            const renderProcessingIcon = () => {
+              if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
+              if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
+              if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
+              return null;
+            };
             
             return (
               <TableRow
@@ -51,6 +63,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   color: isDisabled ? 'text.disabled' : 'inherit',
+                  position: 'relative',
                 }}
                 onClick={() => {
                   if (!isDisabled) {
@@ -95,6 +108,24 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                   {formatDate(file.lastmod)}
                 </TableCell>
+                {isProcessing && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      pr: 2,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <CircularProgress size={18} thickness={5} />
+                    <Box sx={{ ml: 0.5 }}>
+                      {renderProcessingIcon()}
+                    </Box>
+                  </Box>
+                )}
               </TableRow>
             );
           })}

@@ -37,11 +37,17 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
 
   useEffect(() => {
     if (open) {
-      setSelectedPath(currentPath || '/');
-      loadFolders(currentPath || '/');
-      // 복사 또는 이동 작업일 때 쓰기 권한 확인
+      // 모달 오픈 시 현재 위치를 기준으로 시작 (없으면 루트)
+      const initialPath = currentPath || '/';
+      setSelectedPath(initialPath);
+      loadFolders(initialPath);
+      // 복사 또는 이동 작업일 때 쓰기 권한 확인 (admin은 무조건 가능)
       if (action === 'copy' || action === 'move') {
-        checkWritePermission(currentPath || '/');
+        if (user?.is_admin) {
+          setHasWritePermission(true);
+        } else {
+          checkWritePermission(initialPath);
+        }
       } else {
         setHasWritePermission(true);
       }
@@ -50,10 +56,17 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
         loadSharedFolders();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentPath, action, user]);
 
   const checkWritePermission = async (path) => {
     try {
+      // 관리자는 항상 쓰기 가능하도록 처리
+      if (user?.is_admin) {
+        setHasWritePermission(true);
+        return;
+      }
+
       const permission = await checkPermission(path);
       setHasWritePermission(permission.hasWrite);
     } catch (error) {
@@ -252,16 +265,16 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     return normalizedParent === normalizedTarget;
   };
 
-  // 복사 작업 시 출발 디렉토리와 타겟 디렉토리가 같은지 확인
+  // 복사/이동 작업 시 출발 디렉토리와 타겟 디렉토리가 같은지 확인
   const isCopyToSameDirectory = () => {
-    if (action !== 'copy') return false;
+    if (action !== 'copy' && action !== 'move') return false;
     
-    // 단일 파일 복사
+    // 단일 파일 복사/이동
     if (sourceFilePath) {
       return isSameDirectory(sourceFilePath, selectedPath);
     }
     
-    // 다중 파일 복사
+    // 다중 파일 복사/이동
     if (sourceFilePaths && sourceFilePaths.length > 0) {
       return sourceFilePaths.some(filePath => isSameDirectory(filePath, selectedPath));
     }
@@ -273,6 +286,24 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   const isSourceInHome = () => {
     if (!action || (action !== 'copy' && action !== 'move')) return false;
     
+    // admin의 경우 root('/') 또는 root 하위 경로는 모두 홈으로 간주
+    if (user?.is_admin) {
+      // 단일 파일
+      if (sourceFilePath) {
+        // root('/') 또는 root 하위 경로는 홈
+        return sourceFilePath === '/' || sourceFilePath.startsWith('/');
+      }
+      
+      // 다중 파일
+      if (sourceFilePaths && sourceFilePaths.length > 0) {
+        // 모든 파일이 root('/') 또는 root 하위 경로인지 확인
+        return sourceFilePaths.every(filePath => filePath === '/' || filePath.startsWith('/'));
+      }
+      
+      return false;
+    }
+    
+    // 일반 사용자의 경우
     const userBaseFolder = `/${user?.username || ''}`;
     
     // 단일 파일
@@ -430,6 +461,10 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       return 'shared';
     }
     
+    if (user?.is_admin) {
+      return selectedPath?.startsWith('/') ? 'home' : 'shared';
+    }
+    
     if (selectedPath === homePath || selectedPath.startsWith(homePath + '/')) {
       return 'home';
     }
@@ -438,16 +473,21 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
 
   // Build breadcrumbs
   const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+  const homeLabel = user?.is_admin ? 'root' : '홈';
   let breadcrumbs = [];
+  
+  const isHomePath = user?.is_admin
+    ? (selectedPath?.startsWith('/') && selectedPath !== '/__shared__')
+    : (selectedPath === homePath || selectedPath.startsWith(homePath + '/'));
   
   if (selectedPath === '/__shared__') {
     // 공유됨 뷰인 경우
     breadcrumbs = [{ name: '공유됨', path: '/__shared__' }];
-  } else if (selectedPath === homePath || selectedPath.startsWith(homePath + '/')) {
+  } else if (isHomePath) {
     // 홈 디렉토리인 경우
     const pathParts = selectedPath.split('/').filter(Boolean);
     breadcrumbs = [
-      { name: '홈', path: homePath },
+      { name: homeLabel, path: homePath },
       ...pathParts.map((part, index) => ({
         name: part,
         path: '/' + pathParts.slice(0, index + 1).join('/'),

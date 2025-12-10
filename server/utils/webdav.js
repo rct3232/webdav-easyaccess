@@ -1,8 +1,20 @@
 const { createClient } = require('webdav');
 const path = require('path');
 
-let webdavClient = null;
-let cachedUrl = null;
+const clientCache = new Map();
+
+function logWebdavError(context, error, extra = {}) {
+  const status = error?.status || error?.response?.status;
+  const code = error?.code;
+  const message = error?.message;
+  const details = {
+    status,
+    code,
+    message,
+    ...extra,
+  };
+  console.error(`[WebDAV] ${context}`, details);
+}
 
 function normalizePath(filePath) {
   let normalized = filePath.trim();
@@ -15,16 +27,16 @@ function normalizePath(filePath) {
   return normalized.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
-function getRequestPath(normalizedPath) {
-  const baseUrl = process.env.WEBDAV_URL?.trim() || '';
+function getRequestPath(normalizedPath, baseUrlOverride = null) {
+  const baseUrl = baseUrlOverride?.trim?.() || process.env.WEBDAV_URL?.trim() || '';
   if (baseUrl.includes('/') && baseUrl.split('/').length > 3) {
     return normalizedPath === '/' ? '' : normalizedPath.substring(1);
   }
   return normalizedPath;
 }
 
-function getWebDAVClient() {
-  let url = process.env.WEBDAV_URL;
+function getWebDAVClient(baseUrlOverride = null) {
+  let url = baseUrlOverride || process.env.WEBDAV_URL;
   const username = process.env.WEBDAV_USERNAME;
   const password = process.env.WEBDAV_PASSWORD;
 
@@ -37,12 +49,7 @@ function getWebDAVClient() {
     url = url.slice(0, -1);
   }
 
-  if (webdavClient && cachedUrl !== url) {
-    webdavClient = null;
-    cachedUrl = null;
-  }
-
-  if (!webdavClient) {
+  if (!clientCache.has(url)) {
     const authType = process.env.WEBDAV_AUTH_TYPE || 'auto';
     const clientOptions = {
       username,
@@ -57,17 +64,177 @@ function getWebDAVClient() {
       clientOptions.authType = authType;
     }
 
-    webdavClient = createClient(url, clientOptions);
-    cachedUrl = url;
+    const client = createClient(url, clientOptions);
+    clientCache.set(url, client);
   }
 
-  return webdavClient;
+  return clientCache.get(url);
 }
 
 function resetWebDAVClient() {
-  webdavClient = null;
-  cachedUrl = null;
+  clientCache.clear();
   console.log('WebDAV client reset');
+}
+
+async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
+  const client = getWebDAVClient(); // fallback uses default base URL
+  try {
+    const normalizedSource = normalizePath(sourcePath);
+    const normalizedDest = normalizePath(destinationPath);
+    
+    let isDirectory = false;
+    try {
+      await client.getDirectoryContents(getRequestPath(normalizedSource));
+      isDirectory = true;
+    } catch (dirError) {
+      isDirectory = false;
+    }
+    
+    if (isDirectory) {
+      try {
+        await createDirectory(normalizedDest);
+      } catch (createError) {
+        if (!createError.message.includes('already exists')) {
+          throw createError;
+        }
+      }
+      
+      const sourceItems = await listDirectory(normalizedSource);
+      for (const item of sourceItems) {
+        const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
+        const destItemPath = `${normalizedDest}/${item.basename}`;
+        await moveFileStreamed(sourceItemPath, destItemPath);
+      }
+      
+      await deleteFile(normalizedSource);
+      return { success: true };
+    } else {
+      let fileSize = 0;
+      try {
+        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
+        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
+        const items = await listDirectory(parentPath);
+        const fileItem = items.find(item => item.basename === fileName);
+        if (fileItem && fileItem.size) {
+          fileSize = fileItem.size;
+        }
+      } catch (err) {
+        // Ignore error
+      }
+
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'downloading', progress: 0, total: fileSize });
+      }
+      const buffer = await getFileContents(normalizedSource);
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
+      }
+      
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
+      }
+      await putFileContents(normalizedDest, buffer);
+      
+      await deleteFile(normalizedSource);
+      
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
+      }
+      
+      return { success: true };
+    }
+  } catch (error) {
+    logWebdavError('MOVE fallback(stream) failed', error, { sourcePath, destinationPath });
+    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
+      throw error;
+    }
+    if (error.status === 502 || error.response?.status === 502) {
+      throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
+    }
+    if (error.message.includes('ECONNREFUSED')) {
+      throw new Error('Cannot connect to WebDAV server. Check WEBDAV_URL in .env file.');
+    }
+    throw new Error(`Failed to move file: ${error.message}`);
+  }
+}
+
+async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
+  const client = getWebDAVClient(); // fallback uses default base URL
+  try {
+    const normalizedSource = normalizePath(sourcePath);
+    const normalizedDest = normalizePath(destinationPath);
+    
+    let isDirectory = false;
+    try {
+      await client.getDirectoryContents(getRequestPath(normalizedSource));
+      isDirectory = true;
+    } catch (dirError) {
+      isDirectory = false;
+    }
+    
+    if (isDirectory) {
+      try {
+        await createDirectory(normalizedDest);
+      } catch (createError) {
+        if (!createError.message.includes('already exists')) {
+          throw createError;
+        }
+      }
+      
+      const sourceItems = await listDirectory(normalizedSource);
+      for (const item of sourceItems) {
+        const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
+        const destItemPath = `${normalizedDest}/${item.basename}`;
+        await copyFileStreamed(sourceItemPath, destItemPath);
+      }
+      
+      return { success: true };
+    } else {
+      let fileSize = 0;
+      try {
+        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
+        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
+        const items = await listDirectory(parentPath);
+        const fileItem = items.find(item => item.basename === fileName);
+        if (fileItem && fileItem.size) {
+          fileSize = fileItem.size;
+        }
+      } catch (err) {
+        // Ignore error
+      }
+
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'downloading', progress: 0, total: fileSize });
+      }
+      const buffer = await getFileContents(normalizedSource);
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
+      }
+      
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
+      }
+      await putFileContents(normalizedDest, buffer);
+      
+      if (progressCallback && fileSize > 0) {
+        progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
+      }
+      
+      return { success: true };
+    }
+  } catch (error) {
+    logWebdavError('COPY fallback(stream) failed', error, { sourcePath, destinationPath });
+    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
+      throw error;
+    }
+    if (error.status === 502 || error.response?.status === 502) {
+      throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
+    }
+    if (error.message.includes('ECONNREFUSED')) {
+      throw new Error('Cannot connect to WebDAV server. Check WEBDAV_URL in .env file.');
+    }
+    throw new Error(`Failed to copy file: ${error.message}`);
+  }
 }
 
 async function listDirectory(path = '/') {
@@ -189,161 +356,93 @@ async function deleteFile(path) {
 }
 
 async function moveFile(sourcePath, destinationPath, progressCallback) {
-  const client = getWebDAVClient();
-  try {
-    const normalizedSource = normalizePath(sourcePath);
-    const normalizedDest = normalizePath(destinationPath);
-    
-    let isDirectory = false;
-    try {
-      await client.getDirectoryContents(getRequestPath(normalizedSource));
-      isDirectory = true;
-    } catch (dirError) {
-      isDirectory = false;
-    }
-    
-    if (isDirectory) {
-      try {
-        await createDirectory(normalizedDest);
-      } catch (createError) {
-        if (!createError.message.includes('already exists')) {
-          throw createError;
-        }
-      }
-      
-      const sourceItems = await listDirectory(normalizedSource);
-      for (const item of sourceItems) {
-        const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
-        const destItemPath = `${normalizedDest}/${item.basename}`;
-        await moveFile(sourceItemPath, destItemPath);
-      }
-      
-      await deleteFile(normalizedSource);
-      return { success: true };
-    } else {
-      let fileSize = 0;
-      try {
-        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
-        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
-        const items = await listDirectory(parentPath);
-        const fileItem = items.find(item => item.basename === fileName);
-        if (fileItem && fileItem.size) {
-          fileSize = fileItem.size;
-        }
-      } catch (err) {
-        // Ignore error
-      }
+  const sourceBase = process.env.WEBDAV_URL?.trim();
+  const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
+  const client = getWebDAVClient(sourceBase);
+  const normalizedSource = normalizePath(sourcePath);
+  const normalizedDest = normalizePath(destinationPath);
 
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'downloading', progress: 0, total: fileSize });
-      }
-      const buffer = await getFileContents(normalizedSource);
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
-      }
-      
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
-      }
-      await putFileContents(normalizedDest, buffer);
-      
-      await deleteFile(normalizedSource);
-      
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
-      }
-      
-      return { success: true };
+  if (normalizedSource === normalizedDest) {
+    return { success: true };
+  }
+
+  const destRequestPath = getRequestPath(normalizedDest, destBase);
+  const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
+  const destAbsolute = destBaseTrimmed
+    ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
+    : destRequestPath;
+
+  try {
+    const sourceRequestPath = getRequestPath(normalizedSource);
+    await client.customRequest(sourceRequestPath, {
+      method: 'MOVE',
+      headers: {
+        Destination: destAbsolute,
+        Overwrite: 'F',
+      },
+      retry: false,
+    });
+    if (progressCallback) {
+      progressCallback({ stage: 'completed', progress: 1, total: 1 });
     }
+    return { success: true };
   } catch (error) {
-    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
-      throw error;
+    logWebdavError('MOVE failed (will fallback)', error, { sourcePath: sourcePath, destinationPath: destinationPath, destinationAbsolute: destAbsolute, sourceBase });
+    // If destination already exists or source missing, surface immediately
+    const status = error?.status || error?.response?.status;
+    if (status === 409) {
+      throw new Error(`Destination already exists: ${destinationPath}`);
     }
-    if (error.status === 502 || error.response?.status === 502) {
-      throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
+    if (status === 404) {
+      throw new Error(`Source not found: ${sourcePath}`);
     }
-    if (error.message.includes('ECONNREFUSED')) {
-      throw new Error('Cannot connect to WebDAV server. Check WEBDAV_URL in .env file.');
-    }
-    throw new Error(`Failed to move file: ${error.message}`);
+    // Fallback to streaming move
+    return await moveFileStreamed(sourcePath, destinationPath, progressCallback);
   }
 }
 
 async function copyFile(sourcePath, destinationPath, progressCallback) {
-  const client = getWebDAVClient();
-  try {
-    const normalizedSource = normalizePath(sourcePath);
-    const normalizedDest = normalizePath(destinationPath);
-    
-    let isDirectory = false;
-    try {
-      await client.getDirectoryContents(getRequestPath(normalizedSource));
-      isDirectory = true;
-    } catch (dirError) {
-      isDirectory = false;
-    }
-    
-    if (isDirectory) {
-      try {
-        await createDirectory(normalizedDest);
-      } catch (createError) {
-        if (!createError.message.includes('already exists')) {
-          throw createError;
-        }
-      }
-      
-      const sourceItems = await listDirectory(normalizedSource);
-      for (const item of sourceItems) {
-        const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
-        const destItemPath = `${normalizedDest}/${item.basename}`;
-        await copyFile(sourceItemPath, destItemPath);
-      }
-      
-      return { success: true };
-    } else {
-      let fileSize = 0;
-      try {
-        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
-        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
-        const items = await listDirectory(parentPath);
-        const fileItem = items.find(item => item.basename === fileName);
-        if (fileItem && fileItem.size) {
-          fileSize = fileItem.size;
-        }
-      } catch (err) {
-        // Ignore error
-      }
+  const sourceBase = process.env.WEBDAV_URL?.trim();
+  const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
+  const client = getWebDAVClient(sourceBase);
+  const normalizedSource = normalizePath(sourcePath);
+  const normalizedDest = normalizePath(destinationPath);
 
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'downloading', progress: 0, total: fileSize });
-      }
-      const buffer = await getFileContents(normalizedSource);
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
-      }
-      
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
-      }
-      await putFileContents(normalizedDest, buffer);
-      
-      if (progressCallback && fileSize > 0) {
-        progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
-      }
-      
-      return { success: true };
+  if (normalizedSource === normalizedDest) {
+    return { success: true };
+  }
+
+  const destRequestPath = getRequestPath(normalizedDest, destBase);
+  const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
+  const destAbsolute = destBaseTrimmed
+    ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
+    : destRequestPath;
+
+  try {
+    const sourceRequestPath = getRequestPath(normalizedSource);
+    await client.customRequest(sourceRequestPath, {
+      method: 'COPY',
+      headers: {
+        Destination: destAbsolute,
+        Overwrite: 'F',
+        Depth: 'infinity',
+      },
+      retry: false,
+    });
+    if (progressCallback) {
+      progressCallback({ stage: 'completed', progress: 1, total: 1 });
     }
+    return { success: true };
   } catch (error) {
-    if (error.message.includes('does not exist') || error.message.includes('already exists')) {
-      throw error;
+    logWebdavError('COPY failed (will fallback)', error, { sourcePath: sourcePath, destinationPath: destinationPath, destinationAbsolute: destAbsolute, sourceBase });
+    const status = error?.status || error?.response?.status;
+    if (status === 409) {
+      throw new Error(`Destination already exists: ${destinationPath}`);
     }
-    if (error.status === 502 || error.response?.status === 502) {
-      throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
+    if (status === 404) {
+      throw new Error(`Source not found: ${sourcePath}`);
     }
-    if (error.message.includes('ECONNREFUSED')) {
-      throw new Error('Cannot connect to WebDAV server. Check WEBDAV_URL in .env file.');
-    }
-    throw new Error(`Failed to copy file: ${error.message}`);
+    return await copyFileStreamed(sourcePath, destinationPath, progressCallback);
   }
 }
 

@@ -45,13 +45,14 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 # ADMIN_DEFAULT_PASSWORD=admin
 # FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
 # WEBDAV_AUTH_TYPE=auto
+# WEBDAV_UPSTREAM_URL=http://your-upstream-host:port
 ```
 
 **참고:**
 - 데이터베이스와 썸네일은 자동으로 `data/` 디렉토리에 저장됩니다.
 - FFmpeg는 자동으로 감지되며, 찾을 수 없는 경우에만 `FFMPEG_PATH`를 설정하세요.
 - `WEBDAV_AUTH_TYPE`은 인증 방식을 명시적으로 지정할 때만 사용합니다 (auto/basic/digest).
-- Gmail을 사용하는 경우 "앱 비밀번호"를 생성하여 사용하세요.
+- `WEBDAV_UPSTREAM_URL`은 프록시 앞단에서 MOVE/COPY가 502 등을 반환할 때 설정하세요.
 
 ## 3. 서버 실행
 

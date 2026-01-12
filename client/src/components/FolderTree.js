@@ -610,6 +610,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
                 sx={{
                   py: 0.5,
                   minHeight: 32,
+                  pl: 0,
                   transition: 'all 0.2s',
                   '&.Mui-selected': {
                     backgroundColor: 'transparent',

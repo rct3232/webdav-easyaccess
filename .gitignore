@@ -10,6 +10,18 @@ server/uploads/
 .idea/
 .vscode/
 
+# Test coverage and reports (테스트 커버리지 및 리포트)
+coverage/
+.nyc_output/
+*.lcov
+
+# Jest cache (Jest 캐시)
+.jest-cache/
+
+# Test results (테스트 결과 파일 - 선택적)
+test-results/
+*.xml
+
 # FFmpeg binary
 ffmpeg.exe
 ffprobe.exe

@@ -1,0 +1,113 @@
+import { http, HttpResponse } from 'msw';
+
+export const handlers = [
+  // 파일 목록 조회
+  http.get('/api/files/list', ({ request }) => {
+    const url = new URL(request.url);
+    const path = url.searchParams.get('path') || '/';
+    
+    return HttpResponse.json({
+      files: [
+        { 
+          basename: 'test.txt', 
+          path: `${path}test.txt`.replace('//', '/'), 
+          type: 'file', 
+          size: 1024, 
+          mtime: new Date().toISOString(),
+          hasReadPermission: true,
+          hasWritePermission: true
+        },
+        { 
+          basename: 'folder', 
+          path: `${path}folder`.replace('//', '/'), 
+          type: 'directory', 
+          mtime: new Date().toISOString(),
+          hasReadPermission: true,
+          hasWritePermission: true
+        },
+        { 
+          basename: 'image.png', 
+          path: `${path}image.png`.replace('//', '/'), 
+          type: 'file', 
+          size: 2048, 
+          mtime: new Date().toISOString(),
+          mime: 'image/png',
+          hasReadPermission: true,
+          hasWritePermission: true
+        }
+      ]
+    });
+  }),
+  
+  // 파일 업로드
+  http.post('/api/files/upload', async () => {
+    return HttpResponse.json({ 
+      success: true,
+      path: '/uploaded-file.txt'
+    });
+  }),
+  
+  // 파일 다운로드
+  http.get('/api/files/download', () => {
+    return new HttpResponse(new Blob(['test content']), {
+      headers: { 
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': 'attachment; filename="test.txt"'
+      }
+    });
+  }),
+  
+  // 다중 파일 다운로드
+  http.post('/api/files/download-multiple', () => {
+    return new HttpResponse(new Blob(['zip content']), {
+      headers: { 
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="files.zip"'
+      }
+    });
+  }),
+  
+  // 파일 이동
+  http.post('/api/files/move', async () => {
+    return HttpResponse.json({ success: true });
+  }),
+  
+  // 파일 복사
+  http.post('/api/files/copy', async () => {
+    return HttpResponse.json({ success: true });
+  }),
+  
+  // 파일 삭제
+  http.delete('/api/files/delete', () => {
+    return HttpResponse.json({ success: true });
+  }),
+  
+  // 파일 이름 변경
+  http.post('/api/files/rename', () => {
+    return HttpResponse.json({ success: true });
+  }),
+  
+  // 폴더 생성
+  http.post('/api/folders/create', () => {
+    return HttpResponse.json({ success: true });
+  }),
+  
+  // 폴더 목록
+  http.get('/api/folders/list', () => {
+    return HttpResponse.json({
+      folders: [
+        { path: '/', name: '/', type: 'directory' },
+        { path: '/testuser', name: 'testuser', type: 'directory' }
+      ]
+    });
+  }),
+  
+  // 권한 확인
+  http.get('/api/permissions/check', () => {
+    return HttpResponse.json({
+      canRead: true,
+      canWrite: true
+    });
+  }),
+];
+

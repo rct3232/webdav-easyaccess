@@ -4,21 +4,25 @@
   "description": "React frontend for WebDAV EasyAccess",
   "private": true,
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "axios": "^1.6.2",
-    "@mui/material": "^5.14.20",
-    "@mui/icons-material": "^5.14.19",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.14.19",
+    "@mui/material": "^5.14.20",
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
+    "react-router-dom": "^6.20.0",
     "react-virtualized": "^9.22.5"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:ci": "react-scripts test --watchAll=false --coverage",
+    "test:integration": "react-scripts test --testPathPattern=integration --watchAll=false",
+    "test:unit": "react-scripts test --testPathPattern='(hooks|utils|components)/__tests__' --watchAll=false",
+    "test:coverage": "react-scripts test --watchAll=false --coverage --collectCoverageFrom='src/**/*.{js,jsx}' --collectCoverageFrom='!src/index.js' --collectCoverageFrom='!src/setupTests.js' --collectCoverageFrom='!src/setupProxy.js' --collectCoverageFrom='!src/mocks/**' --collectCoverageFrom='!src/test-utils/**'",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -39,6 +43,16 @@
     ]
   },
   "devDependencies": {
-    "react-scripts": "5.0.1"
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
+    "msw": "^2.12.7",
+    "react-scripts": "5.0.1",
+    "undici": "^7.18.2"
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(msw|@mswjs|@bundled-es-modules|@open-draft|until-async|strict-event-emitter|axios)/)"
+    ]
   }
 }

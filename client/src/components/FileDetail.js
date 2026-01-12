@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Table,
   TableBody,
@@ -9,13 +9,17 @@ import {
   Box,
   Checkbox,
   CircularProgress,
+  useTheme,
 } from '@mui/material';
 import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIcon } from '../utils/fileIconUtils';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
+  const tableRef = useRef(null);
+  const theme = useTheme();
+  
   const {
     draggedFile,
     dropTarget,
@@ -24,13 +28,20 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
     handleDragOver,
     handleDragLeave,
     handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode);
+  } = useDragAndDrop(onFileDrop, selectionMode, theme);
 
   const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
 
   return (
-    <TableContainer component={Box}>
-      <Table sx={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+    <TableContainer 
+      component={Box}
+      ref={tableRef}
+      sx={{
+        position: 'relative',
+        minHeight: files.length === 0 ? '200px' : 'auto',
+      }}
+    >
+      <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0 }}>
         <TableBody>
           {files.map((file, index) => {
             const isDragging = draggedFile?.path === file.path;
@@ -58,12 +69,24 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 sx={{ 
                   cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
                   opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
-                  backgroundColor: isDropTarget ? 'primary.light' : 'transparent',
+                  backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
                   transition: 'all 0.2s',
                   borderBottom: '1px solid',
                   borderColor: 'divider',
-                  color: isDisabled ? 'text.disabled' : 'inherit',
+                  color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),
                   position: 'relative',
+                  height: '40px',
+                  '& > td': {
+                    py: 0.5,
+                  },
+                  ...(isDropTarget && {
+                    '& .MuiSvgIcon-root': {
+                      color: 'white',
+                    },
+                    '& .MuiTypography-root': {
+                      color: 'white',
+                    },
+                  }),
                 }}
                 onClick={() => {
                   if (!isDisabled) {
@@ -85,6 +108,8 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   <TableCell padding="checkbox" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                     <Checkbox
                       checked={checked}
+                      size="small"
+                      sx={{ padding: '4px' }}
                       onChange={(e) => {
                         e.stopPropagation();
                         onFileCheck && onFileCheck(file, e.target.checked);
@@ -94,19 +119,25 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   </TableCell>
                 )}
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
                     {getFileIcon(file)}
-                    <Typography variant="body2">{file.basename}</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{file.basename}</Typography>
                   </Box>
                 </TableCell>
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                  {file.type === 'directory' ? '폴더' : file.mime || '-'}
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                    {file.type === 'directory' ? '폴더' : file.mime || '-'}
+                  </Typography>
                 </TableCell>
                 <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                  {file.type === 'directory' ? '-' : formatFileSize(file.size)}
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                    {file.type === 'directory' ? '-' : formatFileSize(file.size)}
+                  </Typography>
                 </TableCell>
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                  {formatDate(file.lastmod)}
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                    {formatDate(file.lastmod)}
+                  </Typography>
                 </TableCell>
                 {isProcessing && (
                   <Box
@@ -120,7 +151,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                       pointerEvents: 'none',
                     }}
                   >
-                    <CircularProgress size={18} thickness={5} />
+                    <CircularProgress size={16} thickness={5} />
                     <Box sx={{ ml: 0.5 }}>
                       {renderProcessingIcon()}
                     </Box>

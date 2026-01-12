@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { setupDragGhost } from '../utils/dragGhostImage';
 
-export const useDragAndDrop = (onFileDrop, selectionMode) => {
+export const useDragAndDrop = (onFileDrop, selectionMode, theme) => {
   const [draggedFile, setDraggedFile] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
 
@@ -9,6 +10,11 @@ export const useDragAndDrop = (onFileDrop, selectionMode) => {
     setDraggedFile(file);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', file.path);
+    
+    // Set custom drag ghost image if theme is available
+    if (theme) {
+      setupDragGhost(e, file, theme, 1);
+    }
   };
 
   const handleDragEnd = () => {

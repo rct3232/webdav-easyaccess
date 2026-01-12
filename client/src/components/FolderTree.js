@@ -21,6 +21,7 @@ import {
   Share as ShareIcon,
 } from '@mui/icons-material';
 import { listFiles } from '../services/fileService';
+import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
 import axios from 'axios';
 
 const FolderTreeItem = ({ 
@@ -35,16 +36,27 @@ const FolderTreeItem = ({
   isHome = false,
   treeUpdateTrigger,
   hasReadPermission = true, // 권한 정보 (기본값: true)
+  hasWritePermission = true, // 쓰기 권한 정보
+  onExplorerDrop,
 }) => {
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const isExpanded = expandedPaths.has(path);
   const isCurrent = currentPath === path;
   const hasChildren = children.length > 0;
   const showExpandIcon = hasChildren || isExpanded || hasLoaded;
   const prevTreeUpdateTriggerRef = useRef(treeUpdateTrigger);
   const isDisabled = hasReadPermission === false;
+
+  const {
+    isDraggingOver,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useExplorerDragAndDrop();
 
   useEffect(() => {
     if (isExpanded && !hasLoaded && !loading) {
@@ -133,16 +145,67 @@ const FolderTreeItem = ({
     }
   };
 
+  const handleFolderDragOver = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragOver(e);
+      setIsDropTarget(true);
+    }
+  };
+
+  const handleFolderDragEnter = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragEnter(e);
+      setIsDropTarget(true);
+    }
+  };
+
+  const handleFolderDragLeave = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragLeave(e);
+      setIsDropTarget(false);
+    }
+  };
+
+  const handleFolderDrop = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal && onExplorerDrop) {
+      handleDrop(e, path, onExplorerDrop);
+      setIsDropTarget(false);
+    }
+  };
+
   return (
     <>
       <ListItem
         disablePadding
         sx={{
-          pl: level * 2,
           '&:hover': {
-            backgroundColor: isDisabled ? 'transparent' : 'action.hover',
+            backgroundColor: isDisabled ? 'transparent' : ((isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover'),
           },
         }}
+        onDragEnter={handleFolderDragEnter}
+        onDragOver={handleFolderDragOver}
+        onDragLeave={handleFolderDragLeave}
+        onDrop={handleFolderDrop}
       >
         <ListItemButton
           onClick={handleClick}
@@ -151,15 +214,31 @@ const FolderTreeItem = ({
           sx={{
             py: 0.5,
             minHeight: 32,
+            pl: level * 2,
             opacity: isDisabled ? 0.4 : 1,
+            backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
+            transition: 'all 0.2s',
+            ...((isDropTarget || isDraggingOver) && hasWritePermission && {
+              color: 'white',
+              borderLeft: '3px solid',
+              borderLeftColor: 'primary.main',
+              '& .MuiListItemIcon-root': {
+                color: 'white',
+              },
+              '& .MuiTypography-root': {
+                color: 'white',
+              },
+            }),
             '&.Mui-selected': {
-              backgroundColor: 'primary.light',
-              color: 'primary.contrastText',
+              backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
+              color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
+              borderLeft: '3px solid',
+              borderLeftColor: 'primary.main',
               '&:hover': {
-                backgroundColor: 'primary.main',
+                backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'action.hover',
               },
               '& .MuiListItemIcon-root': {
-                color: 'primary.contrastText',
+                color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
               },
             },
             '&.Mui-disabled': {
@@ -222,7 +301,7 @@ const FolderTreeItem = ({
                 variant="body2"
                 sx={{
                   fontSize: '0.875rem',
-                  fontWeight: isCurrent ? 600 : 400,
+                  fontWeight: isCurrent ? 700 : 400,
                 }}
               >
                 {name}
@@ -247,6 +326,8 @@ const FolderTreeItem = ({
                 user={user}
                 treeUpdateTrigger={treeUpdateTrigger}
                 hasReadPermission={child.hasReadPermission}
+                hasWritePermission={child.hasWritePermission}
+                onExplorerDrop={onExplorerDrop}
               />
             ))}
           </List>
@@ -256,7 +337,7 @@ const FolderTreeItem = ({
   );
 };
 
-const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission }) => {
+const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission, onExplorerDrop }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
@@ -478,7 +559,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
           <UploadIcon />
         </IconButton>
       </Box>
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'auto', px: '5px' }}>
         <List dense sx={{ py: 1 }}>
         {user?.is_admin && homePath === '/' ? (
           <FolderTreeItem
@@ -492,6 +573,8 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
             user={user}
             isHome={true}
             treeUpdateTrigger={treeUpdateTrigger}
+            hasWritePermission={true}
+            onExplorerDrop={onExplorerDrop}
           />
         ) : (
           <FolderTreeItem
@@ -505,6 +588,8 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
             user={user}
             isHome={true}
             treeUpdateTrigger={treeUpdateTrigger}
+            hasWritePermission={true}
+            onExplorerDrop={onExplorerDrop}
           />
         )}
         
@@ -525,14 +610,17 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
                 sx={{
                   py: 0.5,
                   minHeight: 32,
+                  transition: 'all 0.2s',
                   '&.Mui-selected': {
-                    backgroundColor: 'primary.light',
-                    color: 'primary.contrastText',
+                    backgroundColor: 'transparent',
+                    color: 'primary.main',
+                    borderLeft: '3px solid',
+                    borderLeftColor: 'primary.main',
                     '&:hover': {
-                      backgroundColor: 'primary.main',
+                      backgroundColor: 'action.hover',
                     },
                     '& .MuiListItemIcon-root': {
-                      color: 'primary.contrastText',
+                      color: 'primary.main',
                     },
                   },
                 }}
@@ -566,7 +654,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
                       variant="body2"
                       sx={{
                         fontSize: '0.875rem',
-                        fontWeight: currentPath === '/__shared__' ? 600 : 400,
+                        fontWeight: currentPath === '/__shared__' ? 700 : 400,
                       }}
                     >
                       공유됨
@@ -593,6 +681,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
                       user={user}
                       treeUpdateTrigger={treeUpdateTrigger}
                       sharedFoldersMap={sharedFoldersMap}
+                      onExplorerDrop={onExplorerDrop}
                     />
                   ));
                 })()}
@@ -617,10 +706,12 @@ const SharedFolderTreeItem = ({
   user,
   treeUpdateTrigger,
   sharedFoldersMap, // 권한이 있는 폴더들의 Map
+  onExplorerDrop,
 }) => {
   const [children, setChildren] = useState(node.children || []);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(node.children && node.children.length > 0);
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const isExpanded = expandedPaths.has(node.path);
   const isCurrent = currentPath === node.path;
   const hasChildren = children.length > 0;
@@ -628,6 +719,7 @@ const SharedFolderTreeItem = ({
   
   // 현재 노드의 권한 확인
   let hasPermission = false;
+  let hasWritePermission = false;
   
   if (node.hasReadPermission !== undefined) {
     // 서버에서 반환한 권한 정보 사용
@@ -637,7 +729,22 @@ const SharedFolderTreeItem = ({
     hasPermission = sharedFoldersMap.has(node.path) || sharedFoldersMap.has(node.path + '/');
   }
   
+  if (node.hasWritePermission !== undefined) {
+    hasWritePermission = node.hasWritePermission === true;
+  } else if (sharedFoldersMap) {
+    const perm = sharedFoldersMap.get(node.path) || sharedFoldersMap.get(node.path + '/');
+    hasWritePermission = perm && perm.permission === 'write';
+  }
+  
   const isDisabled = !hasPermission;
+
+  const {
+    isDraggingOver,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useExplorerDragAndDrop();
 
   useEffect(() => {
     if (isExpanded && !hasLoaded && !loading) {
@@ -702,16 +809,67 @@ const SharedFolderTreeItem = ({
     }
   };
 
+  const handleFolderDragOver = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragOver(e);
+      setIsDropTarget(true);
+    }
+  };
+
+  const handleFolderDragEnter = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragEnter(e);
+      setIsDropTarget(true);
+    }
+  };
+
+  const handleFolderDragLeave = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleDragLeave(e);
+      setIsDropTarget(false);
+    }
+  };
+
+  const handleFolderDrop = (e) => {
+    if (isDisabled || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal && onExplorerDrop) {
+      handleDrop(e, node.path, onExplorerDrop);
+      setIsDropTarget(false);
+    }
+  };
+
   return (
     <>
       <ListItem
         disablePadding
         sx={{
-          pl: level * 2,
           '&:hover': {
-            backgroundColor: 'action.hover',
+            backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover',
           },
         }}
+        onDragEnter={handleFolderDragEnter}
+        onDragOver={handleFolderDragOver}
+        onDragLeave={handleFolderDragLeave}
+        onDrop={handleFolderDrop}
       >
         <ListItemButton
           onClick={handleClick}
@@ -720,15 +878,31 @@ const SharedFolderTreeItem = ({
           sx={{
             py: 0.5,
             minHeight: 32,
+            pl: level * 2,
             opacity: isDisabled ? 0.5 : 1,
+            backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
+            transition: 'all 0.2s',
+            ...((isDropTarget || isDraggingOver) && hasWritePermission && {
+              color: 'white',
+              borderLeft: '3px solid',
+              borderLeftColor: 'primary.main',
+              '& .MuiListItemIcon-root': {
+                color: 'white',
+              },
+              '& .MuiTypography-root': {
+                color: 'white',
+              },
+            }),
             '&.Mui-selected': {
-              backgroundColor: 'primary.light',
-              color: 'primary.contrastText',
+              backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
+              color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
+              borderLeft: '3px solid',
+              borderLeftColor: 'primary.main',
               '&:hover': {
-                backgroundColor: 'primary.main',
+                backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'action.hover',
               },
               '& .MuiListItemIcon-root': {
-                color: 'primary.contrastText',
+                color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
               },
             },
             '&.Mui-disabled': {
@@ -789,7 +963,7 @@ const SharedFolderTreeItem = ({
                 variant="body2"
                 sx={{
                   fontSize: '0.875rem',
-                  fontWeight: isCurrent ? 600 : 400,
+                  fontWeight: isCurrent ? 700 : 400,
                 }}
               >
                 {node.name}
@@ -826,6 +1000,7 @@ const SharedFolderTreeItem = ({
                   user={user}
                   treeUpdateTrigger={treeUpdateTrigger}
                   sharedFoldersMap={sharedFoldersMap}
+                  onExplorerDrop={onExplorerDrop}
                 />
               );
             })}

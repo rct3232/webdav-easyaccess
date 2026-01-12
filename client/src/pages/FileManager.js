@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   AppBar,
@@ -39,6 +39,8 @@ import { canPreview } from '../utils/fileUtils';
 import { useFileManager } from '../hooks/useFileManager';
 import { useSelection } from '../hooks/useSelection';
 import { useBulkOperations } from '../hooks/useBulkOperations';
+import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
+import { uploadMultipleFiles } from '../services/fileService';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
 import FileDetail from '../components/FileDetail';
@@ -54,6 +56,8 @@ import { moveFile, checkPermission } from '../services/fileService';
 const FileManager = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const fileContentRef = useRef(null);
+  
   const {
     currentPath,
     setCurrentPath,
@@ -78,7 +82,7 @@ const FileManager = () => {
     setSelectedFiles,
   } = useSelection(sortedFiles);
 
-  const [viewMode, setViewMode] = useState(VIEW_MODES.GRID);
+  const [viewMode, setViewMode] = useState(VIEW_MODES.LIST);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -88,6 +92,15 @@ const FileManager = () => {
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [processingMap, setProcessingMap] = useState(new Map());
+
+  // Explorer drag and drop hook for the entire file content area
+  const {
+    isDraggingOver: isFileAreaDraggingOver,
+    handleDragEnter: handleFileAreaDragEnter,
+    handleDragOver: handleFileAreaDragOver,
+    handleDragLeave: handleFileAreaDragLeave,
+    handleDrop: handleFileAreaDrop,
+  } = useExplorerDragAndDrop();
 
   const {
     folderPickerOpen,
@@ -374,6 +387,195 @@ const FileManager = () => {
     }
   };
 
+  const handleExplorerDrop = async (filesToUpload, targetPath) => {
+    // Use currentPath if targetPath is null
+    const uploadPath = targetPath || currentPath;
+    
+    // Check permissions
+    if (!hasWritePermission && !user?.is_admin) {
+      setDropMessage({
+        show: true,
+        text: '업로드 권한이 없습니다',
+        type: 'error',
+      });
+      return;
+    }
+
+    const progressId = `upload_drop_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'upload',
+      status: 'preparing',
+      progress: 0,
+      total: filesToUpload.length,
+      current: '준비 중...',
+      name: `${filesToUpload.length}개 파일 업로드`,
+    };
+    
+    setProgressItems(prev => [...prev, progressItem]);
+
+    try {
+      const { results, errors } = await uploadMultipleFiles(
+        filesToUpload,
+        uploadPath,
+        (progress) => {
+          setProgressItems(prev =>
+            prev.map(item =>
+              item.id === progressId
+                ? {
+                    ...item,
+                    status: progress.status === 'error' ? 'error' : 'processing',
+                    progress: progress.current,
+                    total: progress.total,
+                    current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
+                    error: progress.error,
+                  }
+                : item
+            )
+          );
+        }
+      );
+
+      // Show completion status
+      if (errors.length > 0) {
+        setProgressItems(prev =>
+          prev.map(item =>
+            item.id === progressId
+              ? {
+                  ...item,
+                  status: 'error',
+                  error: `${errors.length}개 파일 업로드 실패`,
+                }
+              : item
+          )
+        );
+
+        // Show error toast for first error
+        const firstError = errors[0];
+        let errorMessage = firstError.error;
+        if (firstError.error.includes('Access denied') || firstError.error.includes('403')) {
+          errorMessage = '업로드 권한이 없습니다';
+        } else if (firstError.error.includes('already exists') || firstError.error.includes('409')) {
+          errorMessage = '같은 이름의 파일이 이미 존재합니다';
+        }
+        
+        setDropMessage({
+          show: true,
+          text: errorMessage,
+          type: 'error',
+        });
+      } else {
+        setProgressItems(prev =>
+          prev.map(item =>
+            item.id === progressId
+              ? {
+                  ...item,
+                  status: 'completed',
+                  progress: results.length,
+                  total: results.length,
+                  current: '완료',
+                }
+              : item
+          )
+        );
+
+        setDropMessage({
+          show: true,
+          text: `${results.length}개 파일이 업로드되었습니다`,
+          type: 'success',
+        });
+      }
+
+      // Refresh file list and tree
+      loadFiles();
+      setTreeUpdateTrigger({
+        type: 'refresh',
+        timestamp: Date.now(),
+      });
+
+      // Clear progress after delay
+      setTimeout(() => {
+        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      }, 3000);
+    } catch (error) {
+      console.error('Upload error:', error);
+      
+      let errorMessage = error.response?.data?.error || error.message || '업로드에 실패했습니다';
+      if (error.response?.status === 403) {
+        errorMessage = '업로드 권한이 없습니다';
+      } else if (error.response?.status === 500) {
+        errorMessage = `서버 오류: ${errorMessage}`;
+      }
+      
+      setProgressItems(prev =>
+        prev.map(item =>
+          item.id === progressId
+            ? {
+                ...item,
+                status: 'error',
+                error: errorMessage,
+              }
+            : item
+        )
+      );
+
+      setDropMessage({
+        show: true,
+        text: errorMessage,
+        type: 'error',
+      });
+
+      setTimeout(() => {
+        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      }, 5000);
+    }
+  };
+
+  // Handle drops on the entire file content area
+  const handleContentAreaDragOver = (e) => {
+    if (selectionMode || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleFileAreaDragOver(e);
+    }
+  };
+
+  const handleContentAreaDragEnter = (e) => {
+    if (selectionMode || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleFileAreaDragEnter(e);
+    }
+  };
+
+  const handleContentAreaDragLeave = (e) => {
+    if (selectionMode || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleFileAreaDragLeave(e);
+    }
+  };
+
+  const handleContentAreaDrop = (e) => {
+    if (selectionMode || !hasWritePermission) return;
+    
+    const types = e.dataTransfer.types;
+    const isExternal = types && types.includes('Files');
+    
+    if (isExternal) {
+      handleFileAreaDrop(e, currentPath, handleExplorerDrop);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <AppBar position="static" elevation={4}>
@@ -415,9 +617,54 @@ const FileManager = () => {
           onUploadFile={() => setUploadDialogOpen(true)}
           selectionMode={selectionMode}
           hasWritePermission={hasWritePermission}
+          onExplorerDrop={handleExplorerDrop}
         />
 
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box 
+          ref={fileContentRef}
+          sx={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+          onDragEnter={handleContentAreaDragEnter}
+          onDragOver={handleContentAreaDragOver}
+          onDragLeave={handleContentAreaDragLeave}
+          onDrop={handleContentAreaDrop}
+        >
+          {isFileAreaDraggingOver && hasWritePermission && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                right: 10,
+                bottom: 10,
+                border: '3px dashed',
+                borderColor: 'primary.main',
+                borderRadius: '10px',
+                pointerEvents: 'none',
+                zIndex: 1000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography
+                variant="h5"
+                sx={{
+                  color: 'primary.main',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  px: 3,
+                }}
+              >
+                파일을 여기에 놓으세요
+              </Typography>
+            </Box>
+          )}
           <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
             <IconButton
               onClick={(e) => setSortMenuAnchor(e.currentTarget)}
@@ -567,6 +814,7 @@ const FileManager = () => {
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
+                hasWritePermission={hasWritePermission}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
@@ -582,6 +830,7 @@ const FileManager = () => {
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
+                hasWritePermission={hasWritePermission}
               />
             ) : (
               <FileDetail
@@ -597,6 +846,7 @@ const FileManager = () => {
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
+                hasWritePermission={hasWritePermission}
               />
             )}
           </Box>

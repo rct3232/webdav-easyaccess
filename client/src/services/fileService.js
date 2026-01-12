@@ -39,6 +39,78 @@ export const uploadFile = async (file, path = '/') => {
   return response.data;
 };
 
+export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('path', targetPath);
+  if (relativePath) {
+    formData.append('relativePath', relativePath);
+  }
+
+  const response = await axios.post(`${API_BASE}/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+export const uploadMultipleFiles = async (files, targetPath = '/', onProgress) => {
+  const results = [];
+  const errors = [];
+  
+  for (let i = 0; i < files.length; i++) {
+    const { file, relativePath } = files[i];
+    
+    try {
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: files.length,
+          currentFile: relativePath || file.name,
+          status: 'uploading',
+        });
+      }
+      
+      const result = await uploadFileWithPath(file, targetPath, relativePath);
+      results.push({ file, result, success: true });
+      
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: files.length,
+          currentFile: relativePath || file.name,
+          status: 'success',
+        });
+      }
+    } catch (error) {
+      // 409 Conflict는 중복 파일로 인한 정상적인 거부이므로 에러로 로깅하지 않음
+      const isDuplicate = error.response?.status === 409;
+      if (!isDuplicate) {
+        console.error(`Failed to upload ${relativePath || file.name}:`, error);
+      }
+      
+      errors.push({ 
+        file, 
+        relativePath: relativePath || file.name,
+        error: error.response?.data?.error || error.message 
+      });
+      
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: files.length,
+          currentFile: relativePath || file.name,
+          status: 'error',
+          error: error.response?.data?.error || error.message,
+        });
+      }
+    }
+  }
+  
+  return { results, errors };
+};
+
 export const deleteFile = async (filePath) => {
   const response = await axios.delete(`${API_BASE}/delete`, {
     params: { path: filePath },

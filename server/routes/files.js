@@ -346,6 +346,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     let folderPath = req.body.path || '/';
+    const relativePath = req.body.relativePath || ''; // Support for nested folder uploads
     
     const user = await User.findById(req.user.id);
     
@@ -392,9 +393,72 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       folderPath = folderPath + '/';
     }
     
-    const filePath = folderPath === '/' 
+    // If relativePath is provided, create intermediate directories
+    let finalFolderPath = folderPath;
+    if (relativePath) {
+      // Extract directory path from relativePath (excluding filename)
+      const relativeDir = path.dirname(relativePath);
+      if (relativeDir && relativeDir !== '.') {
+        // Construct full directory path
+        finalFolderPath = path.join(folderPath, relativeDir).replace(/\\/g, '/');
+        if (!finalFolderPath.endsWith('/')) {
+          finalFolderPath = finalFolderPath + '/';
+        }
+        
+        // Create intermediate directories if they don't exist
+        const { createDirectory } = require('../utils/webdav');
+        const dirParts = relativeDir.split('/').filter(Boolean);
+        let currentPath = folderPath;
+        
+        for (const dirPart of dirParts) {
+          currentPath = path.join(currentPath, dirPart).replace(/\\/g, '/');
+          if (!currentPath.endsWith('/')) {
+            currentPath = currentPath + '/';
+          }
+          
+          // Check if directory exists, create if not
+          const dirExists = await pathExists(currentPath);
+          
+          if (!dirExists) {
+            try {
+              await createDirectory(currentPath);
+              
+              // Grant permissions to the user who created it
+              try {
+                await Permission.grant(req.user.id, currentPath, 'write');
+                
+                // Auto-grant permissions to folder owner if within user's home directory
+                const allUsers = await User.findAll();
+                for (const targetUser of allUsers) {
+                  const userHomeFolder = `/${targetUser.username}/`;
+                  if (currentPath.startsWith(userHomeFolder)) {
+                    await Permission.grant(targetUser.id, currentPath, 'write');
+                  }
+                }
+              } catch (permError) {
+                console.error('Failed to grant permissions for intermediate directory:', permError);
+              }
+            } catch (createError) {
+              // Directory might already exist or be created by another request
+              console.log('Directory creation skipped or failed:', currentPath, createError.message);
+            }
+          }
+        }
+      }
+    }
+    
+    const filePath = finalFolderPath === '/' 
       ? '/' + originalFilename 
-      : (folderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
+      : (finalFolderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
+
+    // Check if file already exists
+    const fileExists = await pathExists(filePath);
+    
+    if (fileExists) {
+      return res.status(409).json({ 
+        error: `파일 업로드 실패: "${originalFilename}" 이름의 파일이 이미 존재합니다.` 
+      });
+    }
 
     // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
     // 파일 경로 자체에 대한 추가 체크는 불필요 (부모 폴더 권한으로 충분)

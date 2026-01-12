@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Grid,
   Card,
@@ -8,12 +8,16 @@ import {
   Box,
   Checkbox,
   CircularProgress,
+  useTheme,
 } from '@mui/material';
 import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
+  const gridRef = useRef(null);
+  const theme = useTheme();
+  
   const {
     draggedFile,
     dropTarget,
@@ -22,12 +26,20 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     handleDragOver,
     handleDragLeave,
     handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode);
+  } = useDragAndDrop(onFileDrop, selectionMode, theme);
 
   const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
 
   return (
-    <Grid container spacing={2}>
+    <Grid 
+      container 
+      spacing={2}
+      ref={gridRef}
+      sx={{
+        position: 'relative',
+        minHeight: files.length === 0 ? '200px' : 'auto',
+      }}
+    >
       {files.map((file, index) => {
         const thumbnail = getThumbnail(file);
         const isDragging = draggedFile?.path === file.path;
@@ -106,10 +118,18 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: isDropTarget ? 'primary.light' : 'grey.100',
+                  backgroundColor: isDropTarget ? 'primary.main' : 'grey.100',
                   position: 'relative',
-                  transition: 'background-color 0.2s',
+                  transition: 'all 0.2s',
                   overflow: 'hidden',
+                  ...(isDropTarget && {
+                    '& .MuiSvgIcon-root': {
+                      color: 'white',
+                    },
+                    '& img': {
+                      filter: 'brightness(0.7)',
+                    },
+                  }),
                 }}
               >
                 {thumbnail ? (
@@ -127,7 +147,14 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   getFileIconForGrid(file)
                 )}
               </Box>
-              <CardContent sx={{ p: 1, pt: 0.5, pb: 1 }}>
+              <CardContent sx={{ 
+                p: 1, 
+                pt: 0.5, 
+                pb: 1,
+                ...(isDropTarget && {
+                  backgroundColor: 'primary.main',
+                }),
+              }}>
                 <Typography
                   variant="body2"
                   noWrap
@@ -136,6 +163,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                     fontWeight: 'medium',
                     fontSize: '0.875rem',
                     textAlign: 'center',
+                    color: isDropTarget ? 'white' : 'inherit',
                   }}
                 >
                   {file.basename}

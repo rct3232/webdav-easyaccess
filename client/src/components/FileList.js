@@ -1,14 +1,11 @@
 import React from 'react';
 import {
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Typography,
   Box,
   Checkbox,
   Avatar,
   CircularProgress,
+  useTheme,
 } from '@mui/material';
 import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
@@ -16,6 +13,7 @@ import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 
 const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
+  const theme = useTheme();
   const {
     draggedFile,
     dropTarget,
@@ -24,12 +22,18 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     handleDragOver,
     handleDragLeave,
     handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode);
+  } = useDragAndDrop(onFileDrop, selectionMode, theme);
 
   const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
 
   return (
-    <List>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gap: 2,
+      }}
+    >
       {files.map((file, index) => {
         const checked = selectionMode && isSelected(file);
         const thumbnail = getThumbnail(file);
@@ -47,9 +51,8 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         };
         
         return (
-          <ListItem
+          <Box
             key={index}
-            button={!selectionMode && !isDisabled}
             draggable={!selectionMode && !isDisabled}
             onClick={() => {
               if (!isDisabled) {
@@ -67,19 +70,34 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             onDragLeave={!selectionMode ? handleDragLeave : undefined}
             onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
             sx={{
+              display: 'flex',
+              alignItems: 'center',
+              p: 1.5,
+              borderRadius: 1,
               '&:hover': {
                 backgroundColor: isDisabled ? 'transparent' : 'action.hover',
               },
-              backgroundColor: dropTarget === file.path ? 'primary.light' : 'transparent',
+              backgroundColor: dropTarget === file.path ? 'primary.main' : 'transparent',
               opacity: draggedFile?.path === file.path ? 0.5 : (isDisabled ? 0.4 : 1),
               cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
-              transition: 'background-color 0.2s',
-              color: isDisabled ? 'text.disabled' : 'inherit',
+              transition: 'all 0.2s',
+              color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),
               position: 'relative',
+              ...(dropTarget === file.path && {
+                '& .MuiAvatar-root': {
+                  filter: 'brightness(0) invert(1)',
+                },
+                '& .MuiSvgIcon-root': {
+                  color: 'white',
+                },
+                '& .MuiTypography-root': {
+                  color: 'white',
+                },
+              }),
             }}
           >
             {selectionMode && (
-              <ListItemIcon sx={{ minWidth: 40 }}>
+              <Box sx={{ minWidth: 40, display: 'flex', alignItems: 'center' }}>
                 <Checkbox
                   checked={checked}
                   onChange={(e) => {
@@ -88,9 +106,9 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   }}
                   onClick={(e) => e.stopPropagation()}
                 />
-              </ListItemIcon>
+              </Box>
             )}
-            <ListItemIcon sx={{ minWidth: 56, justifyContent: 'center', mr: 2 }}>
+            <Box sx={{ minWidth: 56, display: 'flex', justifyContent: 'center', mr: 2 }}>
               {thumbnail ? (
                 <Avatar
                   src={thumbnail}
@@ -107,20 +125,20 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   {getFileIcon(file)}
                 </Box>
               )}
-            </ListItemIcon>
-            <ListItemText
-              primary={file.basename}
-              secondary={
-                <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    {file.type === 'directory' ? '폴더' : formatFileSize(file.size)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDate(file.lastmod)}
-                  </Typography>
-                </Box>
-              }
-            />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" noWrap>
+                {file.basename}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {file.type === 'directory' ? '폴더' : formatFileSize(file.size)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {formatDate(file.lastmod)}
+                </Typography>
+              </Box>
+            </Box>
             {isProcessing && (
               <Box
                 sx={{
@@ -138,15 +156,15 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 {renderProcessingIcon()}
               </Box>
             )}
-          </ListItem>
+          </Box>
         );
       })}
       {files.length === 0 && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 4 }}>
           <Typography color="text.secondary">파일이 없습니다</Typography>
         </Box>
       )}
-    </List>
+    </Box>
   );
 };
 

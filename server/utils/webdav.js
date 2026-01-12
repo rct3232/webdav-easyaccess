@@ -1,5 +1,6 @@
 const { createClient } = require('webdav');
 const path = require('path');
+const { normalizePath } = require('./pathUtils');
 
 const clientCache = new Map();
 
@@ -14,17 +15,6 @@ function logWebdavError(context, error, extra = {}) {
     ...extra,
   };
   console.error(`[WebDAV] ${context}`, details);
-}
-
-function normalizePath(filePath) {
-  let normalized = filePath.trim();
-  if (!normalized.startsWith('/')) {
-    normalized = '/' + normalized;
-  }
-  if (normalized.endsWith('/') && normalized !== '/') {
-    normalized = normalized.slice(0, -1);
-  }
-  return normalized.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
 function getRequestPath(normalizedPath, baseUrlOverride = null) {

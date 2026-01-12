@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
+const { normalizePath, normalizePathWithSlash } = require('../utils/pathUtils');
 
 // Grant permission
 router.post('/grant', authenticateToken, async (req, res) => {
@@ -76,14 +77,8 @@ router.delete('/revoke', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied. Admin permission required' });
     }
 
-    // 경로 정규화 함수
-    const normalizePath = (p) => {
-      if (!p || p === '/') return '/';
-      return p.endsWith('/') ? p.slice(0, -1) : p;
-    };
-
     const normalizedFolderPath = normalizePath(folderPath);
-    const normalizedFolderPathWithSlash = normalizedFolderPath === '/' ? '/' : normalizedFolderPath + '/';
+    const normalizedFolderPathWithSlash = normalizePathWithSlash(folderPath);
 
     if (includeSubfolders === 'true') {
       // 하위 폴더 포함하여 모든 권한 삭제
@@ -179,12 +174,6 @@ router.get('/folder', authenticateToken, async (req, res) => {
     let folderPath = req.query.path || '/';
     const includeSubfolders = req.query.includeSubfolders === 'true';
     
-    // 경로 정규화 (끝에 / 제거, 클라이언트와 일치)
-    const normalizePath = (p) => {
-      if (!p || p === '/') return '/';
-      return p.endsWith('/') ? p.slice(0, -1) : p;
-    };
-    
     folderPath = normalizePath(folderPath);
     
     const User = require('../models/User');
@@ -263,13 +252,6 @@ router.get('/check', authenticateToken, async (req, res) => {
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
     }
-    
-    // 경로 정규화 함수
-    const normalizePath = (path) => {
-      if (!path || path === '/') return '/';
-      // 끝에 / 제거
-      return path.endsWith('/') ? path.slice(0, -1) : path;
-    };
     
     // 경로 정규화
     folderPath = normalizePath(folderPath);

@@ -4,34 +4,9 @@ const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
+const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
+const { checkFolderPermission } = require('../middleware/permissions');
 const path = require('path');
-
-// Helper function to check permissions
-// 상위 경로에 권한이 있으면 하위 경로도 접근 가능
-async function checkFolderPermission(userId, folderPath, requiredPermission = 'read') {
-  // 정확한 경로에 권한이 있는지 먼저 체크
-  const hasPermission = await Permission.checkPermission(userId, folderPath, requiredPermission);
-  if (hasPermission) {
-    return true;
-  }
-  
-  // 상위 경로들을 체크 (예: /a/b/c -> /a/b, /a, /)
-  const pathParts = folderPath.split('/').filter(Boolean);
-  for (let i = pathParts.length; i > 0; i--) {
-    const parentPath = '/' + pathParts.slice(0, i).join('/');
-    const parentPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
-    if (parentPermission) {
-      return true;
-    }
-  }
-  
-  // 루트 경로 체크
-  if (folderPath !== '/') {
-    return await Permission.checkPermission(userId, '/', requiredPermission);
-  }
-  
-  return false;
-}
 
 // Create folder
 router.post('/create', authenticateToken, async (req, res) => {
@@ -77,12 +52,7 @@ router.post('/create', authenticateToken, async (req, res) => {
     }
 
     // Normalize folder path
-    if (!folderPath.startsWith('/')) {
-      folderPath = '/' + folderPath;
-    }
-    if (!folderPath.endsWith('/')) {
-      folderPath = folderPath + '/';
-    }
+    folderPath = normalizePathWithSlash(folderPath);
 
     // Check if folder already exists
     const folderExists = await pathExists(folderPath);

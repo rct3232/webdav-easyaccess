@@ -17,6 +17,8 @@ const {
   pathExists,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
+const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
+const { checkFilePermission, canAccessPath } = require('../middleware/permissions');
 const path = require('path');
 
 const downloadProgress = new Map();
@@ -27,92 +29,14 @@ const upload = multer({
   preservePath: true,
 });
 
-async function canAccessPath(userId, requestedPath) {
-  const user = await User.findById(userId);
-  
-  if (!user) {
-    return false;
-  }
-
-  if (user.is_admin) {
-    return true;
-  }
-
-  const normalizedPath = requestedPath.replace(/\\/g, '/');
-  const userFolder = `/${user.username}`;
-  
-  if (normalizedPath === '/' || normalizedPath === '') {
-    return false;
-  }
-  
-  return normalizedPath.startsWith(userFolder);
-}
-
-async function checkFilePermission(userId, filePath, requiredPermission = 'read') {
-  const user = await User.findById(userId);
-  if (!user) {
-    return false;
-  }
-
-  const folderPath = path.dirname(filePath) || '/';
-  
-  // 디렉토리 경로 정규화 (끝에 / 추가)
-  const normalizedFolderPath = folderPath === '/' ? '/' : (folderPath.endsWith('/') ? folderPath : folderPath + '/');
-  
-  // 정확한 경로에 권한이 있는지 먼저 체크
-  let hasPermission = await Permission.checkPermission(userId, normalizedFolderPath, requiredPermission);
-  
-  // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-  if (!hasPermission && !normalizedFolderPath.endsWith('/') && folderPath !== '/') {
-    hasPermission = await Permission.checkPermission(userId, folderPath, requiredPermission);
-  }
-  
-  // 상위 경로들을 체크 (예: /a/b/c -> /a/b, /a, /)
-  if (!hasPermission && normalizedFolderPath !== '/') {
-    const pathParts = normalizedFolderPath.split('/').filter(Boolean);
-    for (let i = pathParts.length; i > 0; i--) {
-      const parentPath = '/' + pathParts.slice(0, i).join('/') + '/';
-      hasPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
-      if (hasPermission) {
-        break;
-      }
-    }
-  }
-  
-  // 루트 경로 체크
-  if (!hasPermission && normalizedFolderPath !== '/') {
-    hasPermission = await Permission.checkPermission(userId, '/', requiredPermission);
-  }
-  
-  // 비관리자의 경우 자신의 폴더인지 확인
-  if (!hasPermission && !user.is_admin) {
-    const userFolder = `/${user.username}`;
-    if (normalizedFolderPath.startsWith(userFolder) || folderPath.startsWith(userFolder)) {
-      hasPermission = true;
-    }
-  }
-  
-  return hasPermission;
-}
-
 router.get('/list', authenticateToken, async (req, res) => {
   try {
-    let folderPath = req.query.path || '/';
+    let folderPath = normalizePath(req.query.path || '/');
     const user = await User.findById(req.user.id);
     
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
     }
-    
-    // 경로 정규화 (끝에 / 제거)
-    folderPath = folderPath.trim();
-    if (!folderPath.startsWith('/')) {
-      folderPath = '/' + folderPath;
-    }
-    if (folderPath !== '/' && folderPath.endsWith('/')) {
-      folderPath = folderPath.slice(0, -1);
-    }
-    folderPath = folderPath.replace(/\\/g, '/').replace(/\/+/g, '/');
     
     // 권한 체크를 먼저 수행 (상위 경로 포함)
     // 디렉토리 경로 정규화 (끝에 / 추가)

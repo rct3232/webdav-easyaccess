@@ -13,8 +13,10 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useResponsive } from '../hooks/useResponsive';
 
 const FilePreviewDialog = ({ open, onClose, file }) => {
+  const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -157,7 +159,8 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
             alt={file.name}
             sx={{
               maxWidth: '100%',
-              maxHeight: '70vh',
+              maxHeight: isMobile ? '100%' : '70vh',
+              height: isMobile ? '100%' : 'auto',
               objectFit: 'contain',
               margin: 'auto',
               display: 'block',
@@ -173,7 +176,9 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
             src={previewUrl}
             sx={{
               maxWidth: '100%',
-              maxHeight: '70vh',
+              maxHeight: isMobile ? '100%' : '70vh',
+              height: isMobile ? '100%' : 'auto',
+              width: isMobile ? '100%' : 'auto',
               margin: 'auto',
               display: 'block',
             }}
@@ -200,7 +205,7 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
             src={previewUrl}
             sx={{
               width: '100%',
-              height: '70vh',
+              height: isMobile ? '100%' : '70vh',
               border: 'none',
             }}
           />
@@ -211,11 +216,12 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
           <Box
             component="pre"
             sx={{
-              maxHeight: '70vh',
+              maxHeight: isMobile ? '100%' : '70vh',
+              height: isMobile ? '100%' : 'auto',
               overflow: 'auto',
               backgroundColor: 'grey.100',
               p: 2,
-              borderRadius: 1,
+              borderRadius: isMobile ? 0 : 1,
               fontFamily: 'monospace',
               fontSize: '0.875rem',
               whiteSpace: 'pre-wrap',
@@ -243,18 +249,25 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
       onClose={onClose}
       maxWidth={file?.canPreview === false ? 'sm' : 'lg'}
       fullWidth
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           minHeight: file?.canPreview === false ? 'auto' : '80vh',
+          ...(isMobile && {
+            height: '100vh',
+            maxHeight: '100vh',
+            margin: 0,
+            borderRadius: 0,
+          }),
         },
       }}
     >
-      <DialogTitle>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
+      <DialogTitle sx={isMobile ? { flexShrink: 0 } : { pb: 1.5 }}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
           <Typography variant="h6" component="div" noWrap sx={{ flex: 1, mr: 2 }}>
             {file.name || file.basename}
           </Typography>
-          <Box display="flex" gap={1}>
+          <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
             <IconButton onClick={handleDownload} size="small" title="다운로드">
               <DownloadIcon />
             </IconButton>
@@ -263,8 +276,39 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
             </IconButton>
           </Box>
         </Box>
+        {!isMobile && (
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ 
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '0.75rem',
+              lineHeight: 1.4,
+              mt: 0.5,
+            }}
+          >
+            {file.path}
+          </Typography>
+        )}
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent 
+        dividers={!isMobile}
+        sx={{ 
+          p: 0,
+          ...(isMobile && {
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minHeight: 0,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+          }),
+        }}
+      >
         {renderPreview()}
       </DialogContent>
     </Dialog>

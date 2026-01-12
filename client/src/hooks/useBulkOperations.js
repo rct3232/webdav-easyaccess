@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { moveFile, copyFile, deleteFile, downloadMultipleFiles } from '../services/fileService';
+import { useFileOperationProgress } from './useFileOperationProgress';
 
 export const useBulkOperations = (
   selectedFiles,
@@ -13,7 +14,7 @@ export const useBulkOperations = (
 ) => {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [folderPickerAction, setFolderPickerAction] = useState(null);
-  const [progressItems, setProgressItems] = useState([]);
+  const { progressItems, updateProgress } = useFileOperationProgress();
 
   const markProcessing = options.markProcessing || (() => {});
   const clearProcessing = options.clearProcessing || (() => {});
@@ -38,7 +39,8 @@ export const useBulkOperations = (
     const filePaths = Array.from(selectedFiles);
     markProcessing(filePaths, 'delete');
     const progressId = `delete_${Date.now()}`;
-    const progressItem = {
+    
+    updateProgress({
       id: progressId,
       type: 'delete',
       status: 'preparing',
@@ -46,9 +48,7 @@ export const useBulkOperations = (
       total: filePaths.length,
       current: '',
       name: `${filePaths.length}개 항목 삭제`,
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
+    });
 
     let successCount = 0;
     let failCount = 0;
@@ -57,20 +57,14 @@ export const useBulkOperations = (
     for (let i = 0; i < filePaths.length; i++) {
       const filePath = filePaths[i];
       try {
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? currentItem.progress || 0 : 0;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) 삭제중...`,
-                }
-              : item
-          );
+        updateProgress({
+          id: progressId,
+          type: 'delete',
+          status: 'processing',
+          progress: successCount,
+          total: filePaths.length,
+          current: `(${successCount}/${filePaths.length}) 삭제중...`,
+          name: `${filePaths.length}개 항목 삭제`,
         });
 
         await deleteFile(filePath);
@@ -80,20 +74,14 @@ export const useBulkOperations = (
         }
         successCount++;
         
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? (currentItem.progress || 0) + 1 : 1;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) 삭제중...`,
-                }
-              : item
-          );
+        updateProgress({
+          id: progressId,
+          type: 'delete',
+          status: 'processing',
+          progress: successCount,
+          total: filePaths.length,
+          current: `(${successCount}/${filePaths.length}) 삭제중...`,
+          name: `${filePaths.length}개 항목 삭제`,
         });
       } catch (error) {
         console.error(`Failed to delete ${filePath}:`, error);
@@ -101,20 +89,16 @@ export const useBulkOperations = (
       }
     }
 
-    setProgressItems(prev => 
-      prev.map(item => 
-        item.id === progressId 
-          ? { 
-              ...item, 
-              status: failCount > 0 ? 'error' : 'completed',
-              progress: successCount,
-              total: filePaths.length,
-              current: failCount > 0 ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) 삭제중...`,
-              error: failCount > 0 ? `${failCount}개 실패` : undefined,
-            }
-          : item
-      )
-    );
+    updateProgress({
+      id: progressId,
+      type: 'delete',
+      status: failCount > 0 ? 'error' : 'completed',
+      progress: successCount,
+      total: filePaths.length,
+      current: failCount > 0 ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) 삭제중...`,
+      name: `${filePaths.length}개 항목 삭제`,
+      error: failCount > 0 ? `${failCount}개 실패` : undefined,
+    });
 
     if (successCount > 0) {
       deletedFolders.forEach(folderPath => {
@@ -142,7 +126,7 @@ export const useBulkOperations = (
     clearProcessing(filePaths);
 
     setTimeout(() => {
-      setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      updateProgress({ id: progressId, remove: true });
     }, 3000);
   };
 
@@ -152,7 +136,8 @@ export const useBulkOperations = (
 
     const filePaths = Array.from(selectedFiles);
     const progressId = `download_${Date.now()}`;
-    const progressItem = {
+    
+    updateProgress({
       id: progressId,
       type: 'download',
       status: 'preparing',
@@ -160,32 +145,26 @@ export const useBulkOperations = (
       total: filePaths.length,
       current: '',
       zipName: '',
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
+    });
 
     try {
       await downloadMultipleFiles(filePaths, (progress) => {
-        setProgressItems(prev => 
-          prev.map(item => item.id === progressId ? { ...progress, id: progressId } : item)
-        );
+        updateProgress({ ...progress, id: progressId });
       });
       
       setSelectedFiles(new Set());
       setSelectionMode(false);
       
       setTimeout(() => {
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        updateProgress({ id: progressId, remove: true });
       }, 3000);
     } catch (error) {
       console.error('Bulk download error:', error);
-      setProgressItems(prev => 
-        prev.map(item => 
-          item.id === progressId 
-            ? { ...item, status: 'error', error: error.message }
-            : item
-        )
-      );
+      updateProgress({
+        id: progressId,
+        status: 'error',
+        error: error.message,
+      });
     }
   };
 
@@ -197,7 +176,8 @@ export const useBulkOperations = (
     const filePaths = Array.from(selectedFiles);
     markProcessing(filePaths, folderPickerAction);
     const progressId = `${folderPickerAction}_${Date.now()}`;
-    const progressItem = {
+    
+    updateProgress({
       id: progressId,
       type: folderPickerAction,
       status: 'preparing',
@@ -205,9 +185,7 @@ export const useBulkOperations = (
       total: filePaths.length,
       current: '',
       name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
+    });
 
     let successCount = 0;
     let failCount = 0;
@@ -222,20 +200,14 @@ export const useBulkOperations = (
           : `${destinationPath}/${fileName}`;
 
         const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? currentItem.progress || 0 : 0;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
-                }
-              : item
-          );
+        updateProgress({
+          id: progressId,
+          type: folderPickerAction,
+          status: 'processing',
+          progress: successCount,
+          total: filePaths.length,
+          current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+          name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
         });
 
         if (folderPickerAction === 'move') {
@@ -246,20 +218,14 @@ export const useBulkOperations = (
         
         successCount++;
         
-        setProgressItems(prev => {
-          const currentItem = prev.find(item => item.id === progressId);
-          const currentProgress = currentItem ? (currentItem.progress || 0) + 1 : 1;
-          return prev.map(item => 
-            item.id === progressId 
-              ? { 
-                  ...item, 
-                  status: 'processing',
-                  progress: currentProgress,
-                  total: filePaths.length,
-                  current: `(${currentProgress}/${filePaths.length}) ${actionText}...`,
-                }
-              : item
-          );
+        updateProgress({
+          id: progressId,
+          type: folderPickerAction,
+          status: 'processing',
+          progress: successCount,
+          total: filePaths.length,
+          current: `(${successCount}/${filePaths.length}) ${actionText}...`,
+          name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
         });
       } catch (error) {
         console.error(`Failed to ${folderPickerAction} ${sourcePath}:`, error);
@@ -275,20 +241,16 @@ export const useBulkOperations = (
     }
 
     const actionText = folderPickerAction === 'move' ? '이동중' : '복사중';
-    setProgressItems(prev => 
-      prev.map(item => 
-        item.id === progressId 
-          ? { 
-              ...item, 
-              status: failCount > 0 ? 'error' : 'completed',
-              progress: successCount,
-              total: filePaths.length,
-              current: failCount > 0 ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) ${actionText}...`,
-              error: failCount > 0 ? `${failCount}개 실패` : undefined,
-            }
-          : item
-      )
-    );
+    updateProgress({
+      id: progressId,
+      type: folderPickerAction,
+      status: failCount > 0 ? 'error' : 'completed',
+      progress: successCount,
+      total: filePaths.length,
+      current: failCount > 0 ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) ${actionText}...`,
+      name: `${filePaths.length}개 항목 ${folderPickerAction === 'move' ? '이동' : '복사'}`,
+      error: failCount > 0 ? `${failCount}개 실패` : undefined,
+    });
 
     if (successCount > 0) {
       setSelectedFiles(new Set());
@@ -297,7 +259,7 @@ export const useBulkOperations = (
     }
 
     setTimeout(() => {
-      setProgressItems(prev => prev.filter(item => item.id !== progressId));
+      updateProgress({ id: progressId, remove: true });
       clearProcessing(filePaths);
     }, 3000);
 
@@ -309,7 +271,7 @@ export const useBulkOperations = (
     folderPickerOpen,
     folderPickerAction,
     progressItems,
-    setProgressItems,
+    updateProgress,
     handleBulkMove,
     handleBulkCopy,
     handleBulkDelete,

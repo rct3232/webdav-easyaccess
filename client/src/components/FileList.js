@@ -7,9 +7,9 @@ import {
   CircularProgress,
   useTheme,
 } from '@mui/material';
-import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
-import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { useFileViewCommon } from '../hooks/useFileViewCommon';
+import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 
 const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
@@ -17,14 +17,18 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   const {
     draggedFile,
     dropTarget,
-    handleDragStart,
-    handleDragEnd,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode, theme);
-
-  const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
+    getFileState,
+    handleFileCheck: handleCheck,
+    getDragHandlers,
+    getDropHandlers,
+  } = useFileViewCommon({
+    onFileDrop,
+    selectionMode,
+    selectedFiles,
+    onFileCheck,
+    processingMap,
+    theme,
+  });
 
   return (
     <Box
@@ -35,25 +39,16 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       }}
     >
       {files.map((file, index) => {
-        const checked = selectionMode && isSelected(file);
+        const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
         const thumbnail = getThumbnail(file);
-        // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-        const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
-        const processingType = processingMap?.get(file.path);
-        const isProcessing = Boolean(processingType);
-        const isDisabled = isPermissionDisabled || isProcessing;
-
-        const renderProcessingIcon = () => {
-          if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
-          if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
-          if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
-          return null;
-        };
+        const dragHandlers = getDragHandlers(file, isDisabled);
+        const dropHandlers = getDropHandlers(file, isDisabled);
         
         return (
           <Box
             key={index}
-            draggable={!selectionMode && !isDisabled}
+            {...dragHandlers}
+            {...dropHandlers}
             onClick={() => {
               if (!isDisabled) {
                 onFileClick(file);
@@ -64,11 +59,6 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 onContextMenu(e, file);
               }
             }}
-            onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
-            onDragEnd={!selectionMode ? handleDragEnd : undefined}
-            onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
-            onDragLeave={!selectionMode ? handleDragLeave : undefined}
-            onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -83,27 +73,14 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               transition: 'all 0.2s',
               color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),
               position: 'relative',
-              ...(dropTarget === file.path && {
-                '& .MuiAvatar-root': {
-                  filter: 'brightness(0) invert(1)',
-                },
-                '& .MuiSvgIcon-root': {
-                  color: 'white',
-                },
-                '& .MuiTypography-root': {
-                  color: 'white',
-                },
-              }),
+              ...getDropTargetStyles(dropTarget === file.path),
             }}
           >
             {selectionMode && (
               <Box sx={{ minWidth: 40, display: 'flex', alignItems: 'center' }}>
                 <Checkbox
                   checked={checked}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onFileCheck && onFileCheck(file, e.target.checked);
-                  }}
+                  onChange={(e) => handleCheck(file, e.target.checked, e)}
                   onClick={(e) => e.stopPropagation()}
                 />
               </Box>
@@ -153,7 +130,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 }}
               >
                 <CircularProgress size={18} thickness={5} />
-                {renderProcessingIcon()}
+                {renderProcessingIcon(processingType)}
               </Box>
             )}
           </Box>

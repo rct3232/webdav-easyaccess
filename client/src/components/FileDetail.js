@@ -11,9 +11,9 @@ import {
   CircularProgress,
   useTheme,
 } from '@mui/material';
-import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../utils/format';
-import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { useFileViewCommon } from '../hooks/useFileViewCommon';
+import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIcon } from '../utils/fileIconUtils';
 
 const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
@@ -23,14 +23,18 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
   const {
     draggedFile,
     dropTarget,
-    handleDragStart,
-    handleDragEnd,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode, theme);
-
-  const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
+    getFileState,
+    handleFileCheck: handleCheck,
+    getDragHandlers,
+    getDropHandlers,
+  } = useFileViewCommon({
+    onFileDrop,
+    selectionMode,
+    selectedFiles,
+    onFileCheck,
+    processingMap,
+    theme,
+  });
 
   return (
     <TableContainer 
@@ -44,26 +48,17 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
       <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0 }}>
         <TableBody>
           {files.map((file, index) => {
+            const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
             const isDragging = draggedFile?.path === file.path;
             const isDropTarget = dropTarget === file.path;
-            const checked = selectionMode && isSelected(file);
-            // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-            const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
-            const processingType = processingMap?.get(file.path);
-            const isProcessing = Boolean(processingType);
-            const isDisabled = isPermissionDisabled || isProcessing;
-
-            const renderProcessingIcon = () => {
-              if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
-              if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
-              if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
-              return null;
-            };
+            const dragHandlers = getDragHandlers(file, isDisabled);
+            const dropHandlers = getDropHandlers(file, isDisabled);
             
             return (
               <TableRow
                 key={index}
-                draggable={!selectionMode && !isDisabled}
+                {...dragHandlers}
+                {...dropHandlers}
                 hover={!isDisabled}
                 selected={checked}
                 sx={{ 
@@ -98,11 +93,6 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                     onContextMenu(e, file);
                   }
                 }}
-                onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
-                onDragEnd={!selectionMode ? handleDragEnd : undefined}
-                onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
-                onDragLeave={!selectionMode ? handleDragLeave : undefined}
-                onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
               >
                 {selectionMode && (
                   <TableCell padding="checkbox" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -110,10 +100,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                       checked={checked}
                       size="small"
                       sx={{ padding: '4px' }}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onFileCheck && onFileCheck(file, e.target.checked);
-                      }}
+                      onChange={(e) => handleCheck(file, e.target.checked, e)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </TableCell>
@@ -153,7 +140,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   >
                     <CircularProgress size={16} thickness={5} />
                     <Box sx={{ ml: 0.5 }}>
-                      {renderProcessingIcon()}
+                      {renderProcessingIcon(processingType)}
                     </Box>
                   </Box>
                 )}

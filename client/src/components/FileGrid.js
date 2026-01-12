@@ -10,8 +10,8 @@ import {
   CircularProgress,
   useTheme,
 } from '@mui/material';
-import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
-import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { useFileViewCommon } from '../hooks/useFileViewCommon';
+import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 
 const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
@@ -21,14 +21,18 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   const {
     draggedFile,
     dropTarget,
-    handleDragStart,
-    handleDragEnd,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-  } = useDragAndDrop(onFileDrop, selectionMode, theme);
-
-  const isSelected = (file) => selectedFiles && selectedFiles.has(file.path);
+    getFileState,
+    handleFileCheck: handleCheck,
+    getDragHandlers,
+    getDropHandlers,
+  } = useFileViewCommon({
+    onFileDrop,
+    selectionMode,
+    selectedFiles,
+    onFileCheck,
+    processingMap,
+    theme,
+  });
 
   return (
     <Grid 
@@ -42,26 +46,17 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     >
       {files.map((file, index) => {
         const thumbnail = getThumbnail(file);
+        const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
-        const checked = selectionMode && isSelected(file);
-        // 디렉토리인 경우 권한 체크 (파일은 항상 접근 가능)
-        const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
-        const processingType = processingMap?.get(file.path);
-        const isProcessing = Boolean(processingType);
-        const isDisabled = isPermissionDisabled || isProcessing;
-
-        const renderProcessingIcon = () => {
-          if (processingType === 'move') return <MoveIcon fontSize="small" color="primary" />;
-          if (processingType === 'copy') return <CopyIcon fontSize="small" color="primary" />;
-          if (processingType === 'delete') return <DeleteIcon fontSize="small" color="primary" />;
-          return null;
-        };
+        const dragHandlers = getDragHandlers(file, isDisabled);
+        const dropHandlers = getDropHandlers(file, isDisabled);
         
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} key={index}>
             <Card
-              draggable={!selectionMode && !isDisabled}
+              {...dragHandlers}
+              {...dropHandlers}
               sx={{
                 cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
                 '&:hover': {
@@ -88,19 +83,11 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   onContextMenu(e, file);
                 }
               }}
-              onDragStart={!selectionMode && !isDisabled ? (e) => handleDragStart(e, file) : undefined}
-              onDragEnd={!selectionMode ? handleDragEnd : undefined}
-              onDragOver={!selectionMode && !isDisabled ? (e) => handleDragOver(e, file) : undefined}
-              onDragLeave={!selectionMode ? handleDragLeave : undefined}
-              onDrop={!selectionMode && !isDisabled ? (e) => handleDrop(e, file) : undefined}
             >
               {selectionMode && (
                 <Checkbox
                   checked={checked}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onFileCheck && onFileCheck(file, e.target.checked);
-                  }}
+                  onChange={(e) => handleCheck(file, e.target.checked, e)}
                   onClick={(e) => e.stopPropagation()}
                   sx={{
                     position: 'absolute',
@@ -182,7 +169,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   }}
                 >
                   <CircularProgress size={18} thickness={5} />
-                  {renderProcessingIcon()}
+                  {renderProcessingIcon(processingType)}
                 </Box>
               )}
             </Card>

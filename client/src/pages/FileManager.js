@@ -106,7 +106,7 @@ const FileManager = () => {
     folderPickerOpen,
     folderPickerAction,
     progressItems,
-    setProgressItems,
+    updateProgress,
     handleBulkMove,
     handleBulkCopy,
     handleBulkDelete,
@@ -309,7 +309,7 @@ const FileManager = () => {
         ? targetFolder.path + draggedFile.basename
         : targetFolder.path + '/' + draggedFile.basename;
 
-      const progressItem = {
+      updateProgress({
         id: progressId,
         type: 'move',
         status: 'preparing',
@@ -317,45 +317,35 @@ const FileManager = () => {
         total: 1,
         current: '',
         name: `${draggedFile.basename} 이동`,
-      };
-      
-      setProgressItems(prev => [...prev, progressItem]);
+      });
 
-      setProgressItems(prev => 
-        prev.map(item => 
-          item.id === progressId 
-            ? { 
-                ...item, 
-                status: 'processing',
-                progress: 0,
-                total: 1,
-                current: '(0/1) 이동중...',
-              }
-            : item
-        )
-      );
+      updateProgress({
+        id: progressId,
+        type: 'move',
+        status: 'processing',
+        progress: 0,
+        total: 1,
+        current: '(0/1) 이동중...',
+        name: `${draggedFile.basename} 이동`,
+      });
 
       await moveFile(draggedFile.path, destPath);
       
-      setProgressItems(prev => 
-        prev.map(item => 
-          item.id === progressId 
-            ? { 
-                ...item, 
-                status: 'completed',
-                progress: 1,
-                total: 1,
-                current: '(1/1) 이동중...',
-              }
-            : item
-        )
-      );
+      updateProgress({
+        id: progressId,
+        type: 'move',
+        status: 'completed',
+        progress: 1,
+        total: 1,
+        current: '(1/1) 이동중...',
+        name: `${draggedFile.basename} 이동`,
+      });
       
       loadFiles();
 
       setTimeout(() => {
         setDropMessage({ show: false, text: '', type: 'success' });
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        updateProgress({ id: progressId, remove: true });
         setProcessingMap(prev => {
           const next = new Map(prev);
           next.delete(srcPath);
@@ -364,20 +354,16 @@ const FileManager = () => {
       }, 3000);
     } catch (error) {
       console.error('Move failed:', error);
-      setProgressItems(prev => 
-        prev.map(item => 
-          item.id === progressId 
-            ? { 
-                ...item, 
-                status: 'error',
-                error: error.response?.data?.error || '이동에 실패했습니다',
-              }
-            : item
-        )
-      );
+      updateProgress({
+        id: progressId,
+        type: 'move',
+        status: 'error',
+        error: error.response?.data?.error || '이동에 실패했습니다',
+        name: `${draggedFile.basename} 이동`,
+      });
 
       setTimeout(() => {
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        updateProgress({ id: progressId, remove: true });
         setProcessingMap(prev => {
           const next = new Map(prev);
           next.delete(srcPath);
@@ -402,7 +388,7 @@ const FileManager = () => {
     }
 
     const progressId = `upload_drop_${Date.now()}`;
-    const progressItem = {
+    updateProgress({
       id: progressId,
       type: 'upload',
       status: 'preparing',
@@ -410,45 +396,35 @@ const FileManager = () => {
       total: filesToUpload.length,
       current: '준비 중...',
       name: `${filesToUpload.length}개 파일 업로드`,
-    };
-    
-    setProgressItems(prev => [...prev, progressItem]);
+    });
 
     try {
       const { results, errors } = await uploadMultipleFiles(
         filesToUpload,
         uploadPath,
         (progress) => {
-          setProgressItems(prev =>
-            prev.map(item =>
-              item.id === progressId
-                ? {
-                    ...item,
-                    status: progress.status === 'error' ? 'error' : 'processing',
-                    progress: progress.current,
-                    total: progress.total,
-                    current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
-                    error: progress.error,
-                  }
-                : item
-            )
-          );
+          updateProgress({
+            id: progressId,
+            type: 'upload',
+            status: progress.status === 'error' ? 'error' : 'processing',
+            progress: progress.current,
+            total: progress.total,
+            current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
+            name: `${filesToUpload.length}개 파일 업로드`,
+            error: progress.error,
+          });
         }
       );
 
       // Show completion status
       if (errors.length > 0) {
-        setProgressItems(prev =>
-          prev.map(item =>
-            item.id === progressId
-              ? {
-                  ...item,
-                  status: 'error',
-                  error: `${errors.length}개 파일 업로드 실패`,
-                }
-              : item
-          )
-        );
+        updateProgress({
+          id: progressId,
+          type: 'upload',
+          status: 'error',
+          error: `${errors.length}개 파일 업로드 실패`,
+          name: `${filesToUpload.length}개 파일 업로드`,
+        });
 
         // Show error toast for first error
         const firstError = errors[0];
@@ -465,19 +441,15 @@ const FileManager = () => {
           type: 'error',
         });
       } else {
-        setProgressItems(prev =>
-          prev.map(item =>
-            item.id === progressId
-              ? {
-                  ...item,
-                  status: 'completed',
-                  progress: results.length,
-                  total: results.length,
-                  current: '완료',
-                }
-              : item
-          )
-        );
+        updateProgress({
+          id: progressId,
+          type: 'upload',
+          status: 'completed',
+          progress: results.length,
+          total: results.length,
+          current: '완료',
+          name: `${filesToUpload.length}개 파일 업로드`,
+        });
 
         setDropMessage({
           show: true,
@@ -495,7 +467,7 @@ const FileManager = () => {
 
       // Clear progress after delay
       setTimeout(() => {
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        updateProgress({ id: progressId, remove: true });
       }, 3000);
     } catch (error) {
       console.error('Upload error:', error);
@@ -507,17 +479,13 @@ const FileManager = () => {
         errorMessage = `서버 오류: ${errorMessage}`;
       }
       
-      setProgressItems(prev =>
-        prev.map(item =>
-          item.id === progressId
-            ? {
-                ...item,
-                status: 'error',
-                error: errorMessage,
-              }
-            : item
-        )
-      );
+      updateProgress({
+        id: progressId,
+        type: 'upload',
+        status: 'error',
+        error: errorMessage,
+        name: `${filesToUpload.length}개 파일 업로드`,
+      });
 
       setDropMessage({
         show: true,
@@ -526,7 +494,7 @@ const FileManager = () => {
       });
 
       setTimeout(() => {
-        setProgressItems(prev => prev.filter(item => item.id !== progressId));
+        updateProgress({ id: progressId, remove: true });
       }, 5000);
     }
   };
@@ -886,20 +854,7 @@ const FileManager = () => {
         currentPath={currentPath}
         onMessage={setDropMessage}
         hasWritePermission={hasWritePermission}
-        onProgress={(progressItem) => {
-          if (progressItem.remove) {
-            setProgressItems(prev => prev.filter(item => item.id !== progressItem.id));
-          } else {
-            setProgressItems(prev => {
-              const existing = prev.find(item => item.id === progressItem.id);
-              if (existing) {
-                return prev.map(item => item.id === progressItem.id ? progressItem : item);
-              } else {
-                return [...prev, progressItem];
-              }
-            });
-          }
-        }}
+        onProgress={updateProgress}
         onProcessingStart={(paths, type) => {
           setProcessingMap(prev => {
             const next = new Map(prev);
@@ -1011,7 +966,7 @@ const FileManager = () => {
       <DownloadProgress
         items={progressItems}
         onClose={(id) => {
-          setProgressItems(prev => prev.filter(item => item.id !== id));
+          updateProgress({ id, remove: true });
         }}
       />
     </Box>

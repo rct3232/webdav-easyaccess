@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -31,9 +31,14 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
   const { isMobile } = useResponsive();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const filesRef = useRef([]);
 
   const onDrop = useCallback((acceptedFiles) => {
-    setFiles((prev) => [...prev, ...acceptedFiles.map(file => ({ file, status: 'pending' }))]);
+    setFiles((prev) => {
+      const newFiles = [...prev, ...acceptedFiles.map(file => ({ file, status: 'pending', abortController: null }))];
+      filesRef.current = newFiles;
+      return newFiles;
+    });
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -42,13 +47,53 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
   });
 
   const handleRemove = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFiles((prev) => {
+      const newFiles = prev.filter((_, i) => i !== index);
+      filesRef.current = newFiles;
+      return newFiles;
+    });
   };
+
+  const handleCancelFile = useCallback((index) => {
+    setFiles((prev) => {
+      const newFiles = [...prev];
+      const fileItem = newFiles[index];
+      
+      // pending 상태의 파일만 취소 가능 (abortController가 없어도 됨 - 아직 업로드 시작 전)
+      if (fileItem.status === 'pending') {
+        if (fileItem.abortController) {
+          fileItem.abortController.abort();
+        }
+        newFiles[index] = { ...fileItem, status: 'cancelled', abortController: null };
+      }
+      
+      filesRef.current = newFiles;
+      return newFiles;
+    });
+  }, []);
+
+  const handleCancelAll = useCallback(() => {
+    setFiles((prev) => {
+      const newFiles = prev.map((fileItem) => {
+        // pending 상태의 파일만 취소
+        if (fileItem.status === 'pending') {
+          if (fileItem.abortController) {
+            fileItem.abortController.abort();
+          }
+          return { ...fileItem, status: 'cancelled', abortController: null };
+        }
+        return fileItem;
+      });
+      filesRef.current = newFiles;
+      return newFiles;
+    });
+  }, []);
 
   const handleUpload = async () => {
     if (files.length === 0) return;
 
     setUploading(true);
+    filesRef.current = [...files];
 
     try {
       // 현재 경로에 동일 이름이 있는지 사전 확인
@@ -60,32 +105,97 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
         console.error('Failed to fetch existing files before upload:', e);
       }
 
-      for (let i = 0; i < files.length; i++) {
-        const fileItem = files[i];
-        fileItem.status = 'uploading';
-        fileItem.errorMessage = '';
-        setFiles([...files]);
+      for (let i = 0; i < filesRef.current.length; i++) {
+        // 최신 상태 확인
+        const fileItem = filesRef.current[i];
+        
+        // 취소된 파일은 스킵
+        if (!fileItem || fileItem.status === 'cancelled') {
+          continue;
+        }
+
+        // AbortController 생성 및 상태 업데이트
+        const abortController = new AbortController();
+        setFiles((prev) => {
+          const newFiles = [...prev];
+          if (newFiles[i]) {
+            newFiles[i] = {
+              ...newFiles[i],
+              status: 'uploading',
+              errorMessage: '',
+              abortController: abortController,
+            };
+          }
+          filesRef.current = newFiles;
+          return newFiles;
+        });
 
         // 동일 이름 존재 시 업로드 스킵 및 실패 처리
         if (existingNames.has(fileItem.file.name)) {
-          fileItem.status = 'error';
-          fileItem.errorMessage = '같은 이름의 파일이 이미 존재합니다.';
-          setFiles([...files]);
+          setFiles((prev) => {
+            const newFiles = [...prev];
+            if (newFiles[i]) {
+              newFiles[i] = {
+                ...newFiles[i],
+                status: 'error',
+                errorMessage: '같은 이름의 파일이 이미 존재합니다.',
+                abortController: null,
+              };
+            }
+            filesRef.current = newFiles;
+            return newFiles;
+          });
           continue;
         }
 
         try {
-          await uploadFile(fileItem.file, currentPath);
-          fileItem.status = 'success';
-          fileItem.errorMessage = '';
+          await uploadFile(fileItem.file, currentPath, abortController.signal);
+          setFiles((prev) => {
+            const newFiles = [...prev];
+            if (newFiles[i]) {
+              newFiles[i] = {
+                ...newFiles[i],
+                status: 'success',
+                errorMessage: '',
+                abortController: null,
+              };
+            }
+            filesRef.current = newFiles;
+            return newFiles;
+          });
           existingNames.add(fileItem.file.name); // 이후 파일에서 중복 방지
         } catch (error) {
-          fileItem.status = 'error';
-          const errMsg = error?.response?.data?.error || error?.message || '업로드 실패';
-          fileItem.errorMessage = errMsg;
+          // 취소 에러는 정상적인 취소로 처리
+          if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+            setFiles((prev) => {
+              const newFiles = [...prev];
+              if (newFiles[i]) {
+                newFiles[i] = {
+                  ...newFiles[i],
+                  status: 'cancelled',
+                  abortController: null,
+                };
+              }
+              filesRef.current = newFiles;
+              return newFiles;
+            });
+          } else {
+            setFiles((prev) => {
+              const newFiles = [...prev];
+              if (newFiles[i]) {
+                newFiles[i] = {
+                  ...newFiles[i],
+                  status: 'error',
+                  errorMessage: error?.response?.data?.error || error?.message || '업로드 실패',
+                  abortController: null,
+                };
+              }
+              filesRef.current = newFiles;
+              return newFiles;
+            });
+          }
           console.error('Upload error:', error);
         }
-        setFiles([...files]);
       }
 
       onComplete();
@@ -93,6 +203,7 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
       console.error('Upload failed:', error);
     } finally {
       setUploading(false);
+      filesRef.current = [];
       setFiles([]);
     }
   };
@@ -103,6 +214,10 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
       onClose();
     }
   };
+
+  // 대기 중인 파일 개수 확인
+  const pendingFilesCount = files.filter(f => f.status === 'pending').length;
+  const hasPendingFiles = pendingFilesCount > 0;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
@@ -129,62 +244,87 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
 
         {files.length > 0 && (
           <List>
-            {files.map((fileItem, index) => (
-              <ListItem
-                key={index}
-                secondaryAction={
-                  uploading ? (
-                    fileItem.status === 'success' ? (
-                      <CheckCircleIcon
-                        fontSize="small"
-                        color="success"
-                        sx={{ animation: `${popIn} 0.3s ease-out` }}
-                      />
-                    ) : fileItem.status === 'error' ? (
-                      <ErrorIcon
-                        fontSize="small"
-                        color="error"
-                        sx={{ animation: `${popIn} 0.3s ease-out` }}
-                      />
+            {files.map((fileItem, index) => {
+              const isPending = fileItem.status === 'pending';
+              const isUploading = fileItem.status === 'uploading';
+              const isSuccess = fileItem.status === 'success';
+              const isError = fileItem.status === 'error';
+              const isCancelled = fileItem.status === 'cancelled';
+
+              return (
+                <ListItem
+                  key={index}
+                  secondaryAction={
+                    uploading ? (
+                      isSuccess ? (
+                        <CheckCircleIcon
+                          fontSize="small"
+                          color="success"
+                          sx={{ animation: `${popIn} 0.3s ease-out` }}
+                        />
+                      ) : isError ? (
+                        <ErrorIcon
+                          fontSize="small"
+                          color="error"
+                          sx={{ animation: `${popIn} 0.3s ease-out` }}
+                        />
+                      ) : isUploading ? (
+                        <CircularProgress size={18} />
+                      ) : isCancelled ? (
+                        <Typography variant="caption" color="text.secondary">
+                          취소됨
+                        </Typography>
+                      ) : isPending ? (
+                        <IconButton 
+                          edge="end" 
+                          onClick={() => handleCancelFile(index)}
+                          size="small"
+                        >
+                          <CloseIcon />
+                        </IconButton>
+                      ) : null
                     ) : (
-                      <CircularProgress size={18} />
-                    )
-                  ) : (
-                    <IconButton 
-                      edge="end" 
-                      onClick={() => handleRemove(index)}
-                      size="small"
-                      disabled={uploading}
-                    >
-                      <CloseIcon />
-                    </IconButton>
-                  )
-                }
-              >
-                <ListItemText
-                  primary={fileItem.file.name}
-                  secondary={
-                    fileItem.status === 'success' ? (
-                      <Typography component="span" color="success.main">업로드 완료</Typography>
-                    ) : fileItem.status === 'error' ? (
-                      <Typography component="span" color="error.main">
-                        {fileItem.errorMessage || '업로드 실패'}
-                      </Typography>
-                    ) : fileItem.status === 'uploading' ? (
-                      <Typography component="span" color="text.secondary">업로드 중...</Typography>
-                    ) : (
-                      <Typography component="span" color="text.secondary">대기 중</Typography>
+                      <IconButton 
+                        edge="end" 
+                        onClick={() => handleRemove(index)}
+                        size="small"
+                        disabled={uploading}
+                      >
+                        <CloseIcon />
+                      </IconButton>
                     )
                   }
-                />
-              </ListItem>
-            ))}
+                >
+                  <ListItemText
+                    primary={fileItem.file.name}
+                    secondary={
+                      isSuccess ? (
+                        <Typography component="span" color="success.main">업로드 완료</Typography>
+                      ) : isError ? (
+                        <Typography component="span" color="error.main">
+                          {fileItem.errorMessage || '업로드 실패'}
+                        </Typography>
+                      ) : isUploading ? (
+                        <Typography component="span" color="text.secondary">업로드 중...</Typography>
+                      ) : isCancelled ? (
+                        <Typography component="span" color="text.secondary">취소됨</Typography>
+                      ) : (
+                        <Typography component="span" color="text.secondary">대기 중</Typography>
+                      )
+                    }
+                  />
+                </ListItem>
+              );
+            })}
           </List>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={uploading}>
-          취소
+        <Button 
+          onClick={uploading ? handleCancelAll : handleClose} 
+          disabled={uploading && !hasPendingFiles}
+        >
+          {uploading ? '전체 취소' : '취소'}
         </Button>
         <Button
           onClick={handleUpload}
@@ -199,4 +339,3 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
 };
 
 export default UploadDialog;
-

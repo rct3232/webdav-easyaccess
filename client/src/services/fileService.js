@@ -26,16 +26,22 @@ export const downloadFile = async (filePath) => {
   window.URL.revokeObjectURL(url);
 };
 
-export const uploadFile = async (file, path = '/') => {
+export const uploadFile = async (file, path = '/', signal = null) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('path', path);
 
-  const response = await axios.post(`${API_BASE}/upload`, formData, {
+  const config = {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-  });
+  };
+
+  if (signal) {
+    config.signal = signal;
+  }
+
+  const response = await axios.post(`${API_BASE}/upload`, formData, config);
   return response.data;
 };
 

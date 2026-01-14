@@ -4,6 +4,29 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  /* Prevent bounce scroll on page level */
+  overscroll-behavior: none;
+}
+
+/**
+ * Mobile browser viewport height handling.
+ * - fallback: 100vh
+ * - modern: 100dvh (dynamic viewport height; fixes "empty scroll" on mobile Chrome/Safari)
+ */
+:root {
+  --app-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

@@ -73,7 +73,7 @@ const Register = () => {
     <Container maxWidth="sm">
       <Box
         sx={{
-          minHeight: '100vh',
+          minHeight: 'var(--app-height)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

@@ -7,7 +7,6 @@ import {
 import {
   Upload as UploadIcon,
   CreateNewFolder as CreateNewFolderIcon,
-  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 /**
@@ -17,19 +16,12 @@ import {
 const MobileFAB = ({ 
   onUpload, 
   onCreateFolder, 
-  onRefresh,
   hasWritePermission = true,
   disabled = false,
 }) => {
   const [open, setOpen] = useState(false);
 
   const actions = [
-    { 
-      icon: <RefreshIcon />, 
-      name: '새로고침', 
-      onClick: onRefresh,
-      show: true,
-    },
     { 
       icon: <CreateNewFolderIcon />, 
       name: '폴더 생성', 

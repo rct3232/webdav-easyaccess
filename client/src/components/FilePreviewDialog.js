@@ -254,8 +254,8 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
         sx: {
           minHeight: file?.canPreview === false ? 'auto' : '80vh',
           ...(isMobile && {
-            height: '100vh',
-            maxHeight: '100vh',
+            height: 'var(--app-height)',
+            maxHeight: 'var(--app-height)',
             margin: 0,
             borderRadius: 0,
           }),

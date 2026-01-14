@@ -17,7 +17,7 @@ import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIcon } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
   const theme = useTheme();
@@ -44,8 +44,10 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
   // Long-press handlers for mobile
   const handleTouchStart = (file) => (e) => {
     if (!isMobile || selectionMode) return;
-    // Prevent text selection on long press
-    e.preventDefault();
+    // Prevent text selection on long press (only if event is cancelable)
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     touchMovedRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       if (!touchMovedRef.current) {
@@ -204,7 +206,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
               </TableRow>
             );
           })}
-          {files.length === 0 && (
+          {!loading && files.length === 0 && (
             <TableRow>
               <TableCell colSpan={selectionMode ? 5 : 4} sx={{ border: 'none' }}>
                 <Box sx={{ textAlign: 'center', py: 4 }}>

@@ -255,8 +255,16 @@ const AdminDashboard = () => {
   const userList = getUserList();
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static">
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'var(--app-height)',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}
+    >
+      <AppBar position="sticky" sx={{ top: 0, zIndex: (theme) => theme.zIndex.appBar }}>
         <Toolbar>
           <IconButton
             edge="start"
@@ -272,7 +280,7 @@ const AdminDashboard = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Box sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
           <Paper sx={{ flex: 1 }}>
             <Tabs value={tab} onChange={(e, newValue) => setTab(newValue)}>
@@ -306,12 +314,21 @@ const AdminDashboard = () => {
         </Box>
 
         {tab === 0 && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {isMobile ? (
               // 모바일: Card 기반 레이아웃
-              <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ 
+                flex: 1, 
+                minHeight: 0, 
+                overflow: 'auto', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 2,
+                // Enable smooth scrolling and bounce effect on iOS
+                WebkitOverflowScrolling: 'touch',
+              }}>
                 {userList.length === 0 ? (
-                  <Paper sx={{ p: 3, textAlign: 'center' }}>
+                  <Paper sx={{ p: 3, textAlign: 'center', flexShrink: 0 }}>
                     <Typography variant="body1" color="text.secondary">
                       등록된 사용자가 없습니다.
                     </Typography>
@@ -325,6 +342,7 @@ const AdminDashboard = () => {
                         '&:hover': user.status !== 'pending' && !user.is_admin ? {
                           boxShadow: 3,
                         } : {},
+                        flexShrink: 0, // Prevent cards from shrinking
                       }}
                       onClick={() => user.status !== 'pending' && !user.is_admin && handleUserClick(user.id, user.username)}
                     >
@@ -483,7 +501,14 @@ const AdminDashboard = () => {
         )}
 
         {tab === 1 && (
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ 
+            p: 3, 
+            flex: 1, 
+            minHeight: 0, 
+            overflow: 'auto',
+            // Enable smooth scrolling and bounce effect on iOS
+            WebkitOverflowScrolling: 'touch',
+          }}>
             <Typography variant="h6" gutterBottom>
               시스템 설정
             </Typography>

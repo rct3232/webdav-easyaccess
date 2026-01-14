@@ -15,7 +15,7 @@ import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
@@ -42,8 +42,10 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   // Long-press handlers for mobile
   const handleTouchStart = (file) => (e) => {
     if (!isMobile || selectionMode) return;
-    // Prevent text selection on long press
-    e.preventDefault();
+    // Prevent text selection on long press (only if event is cancelable)
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     touchMovedRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       if (!touchMovedRef.current) {
@@ -225,7 +227,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
           </Grid>
         );
       })}
-      {files.length === 0 && (
+      {!loading && files.length === 0 && (
         <Grid item xs={12}>
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <Typography color="text.secondary">파일이 없습니다</Typography>

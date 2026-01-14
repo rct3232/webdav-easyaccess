@@ -17,6 +17,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
+import { useResponsive } from '../hooks/useResponsive';
 
 const checkmarkAnimation = keyframes`
   0% {
@@ -43,6 +44,7 @@ const progressCompleteAnimation = keyframes`
 
 const DownloadProgress = ({ items, onClose }) => {
   const [expanded, setExpanded] = useState(true);
+  const { isMobile } = useResponsive();
 
   const getStatusIcon = (type) => {
     switch (type) {
@@ -98,10 +100,11 @@ const DownloadProgress = ({ items, onClose }) => {
       sx={{
         position: 'fixed',
         bottom: 16,
-        right: 16,
+        ...(isMobile 
+          ? { left: 16, right: 16, width: 'auto' }
+          : { right: 16, maxWidth: 400, width: '100%' }
+        ),
         zIndex: 1300,
-        maxWidth: 400,
-        width: '100%',
       }}
     >
       <Paper

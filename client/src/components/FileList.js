@@ -13,7 +13,7 @@ import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtil
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
   const theme = useTheme();
   const longPressTimerRef = useRef(null);
@@ -39,8 +39,10 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   // Long-press handlers for mobile
   const handleTouchStart = (file) => (e) => {
     if (!isMobile || selectionMode) return;
-    // Prevent text selection on long press
-    e.preventDefault();
+    // Prevent text selection on long press (only if event is cancelable)
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     touchMovedRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       if (!touchMovedRef.current) {
@@ -186,7 +188,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
           </Box>
         );
       })}
-      {files.length === 0 && (
+      {!loading && files.length === 0 && (
         <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 4 }}>
           <Typography color="text.secondary">파일이 없습니다</Typography>
         </Box>

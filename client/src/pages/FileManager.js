@@ -24,6 +24,7 @@ import {
   DialogContentText,
   DialogActions,
   TextField,
+  CircularProgress,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
@@ -51,6 +52,7 @@ import { useSelection } from '../hooks/useSelection';
 import { useBulkOperations } from '../hooks/useBulkOperations';
 import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { uploadMultipleFiles } from '../services/fileService';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
@@ -74,6 +76,7 @@ const FileManager = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const fileContentRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const { isMobile, isDesktop } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
@@ -150,6 +153,21 @@ const FileManager = () => {
     handleDragLeave: handleFileAreaDragLeave,
     handleDrop: handleFileAreaDrop,
   } = useExplorerDragAndDrop();
+
+  // Pull-to-refresh hook (모바일에서만 활성화)
+  const {
+    pullDistance,
+    isPulling,
+    isRefreshing,
+    touchHandlers,
+  } = usePullToRefresh(
+    loadFiles,
+    {
+      scrollContainerRef: isMobile ? scrollContainerRef : null,
+      threshold: 40,
+      maxPullDistance: 80,
+    }
+  );
 
   const {
     folderPickerOpen,
@@ -860,8 +878,16 @@ const FileManager = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <AppBar position="static" elevation={4}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'var(--app-height)',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}
+    >
+      <AppBar position="sticky" sx={{ top: 0, zIndex: (theme) => theme.zIndex.appBar }} elevation={4}>
         <Toolbar>
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="h6" component="div" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
@@ -892,7 +918,7 @@ const FileManager = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {!isMobile && (
           <FolderTree
             currentPath={currentPath}
@@ -1212,8 +1238,65 @@ const FileManager = () => {
             )}
           </Box>
 
-          <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-            {loading ? (
+          <Box
+            ref={scrollContainerRef}
+            {...(isMobile ? touchHandlers : {})}
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              p: 2,
+              minHeight: 0,
+              position: 'relative',
+              // Avoid being hidden behind the fixed bottom selection action bar on mobile
+              pb: selectionMode && isMobile ? 'calc(88px + env(safe-area-inset-bottom))' : 2,
+              // Enable smooth scrolling and bounce effect on iOS
+              WebkitOverflowScrolling: 'touch',
+              // Optional: contain bounce within this scroll area
+              overscrollBehaviorY: 'contain',
+            }}
+          >
+            {/* Pull-to-refresh 시각적 피드백 - 실제 콘텐츠 영역에 포함 */}
+            {isMobile && (
+              <Collapse in={isPulling || isRefreshing || loading} timeout={400}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingTop: '16px',
+                    paddingBottom: '16px',
+                    marginTop: (isRefreshing || loading) ? '0px' : `${Math.max(-pullDistance * 0.5, -40)}px`,
+                    transition: (isRefreshing || loading) 
+                      ? 'margin-top 0.3s ease-out' 
+                      : 'margin-top 0.15s ease-out',
+                    opacity: (isRefreshing || loading) ? 1 : Math.min(pullDistance / 40, 1),
+                    minHeight: '60px',
+                  }}
+                >
+                  <CircularProgress
+                    size={24}
+                    thickness={4}
+                    sx={{
+                      mb: 1,
+                      color: 'primary.main',
+                    }}
+                  />
+                  {(isRefreshing || loading) && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.secondary',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      로딩 중...
+                    </Typography>
+                  )}
+                </Box>
+              </Collapse>
+            )}
+            {!isMobile && loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
                 <Typography>로딩 중...</Typography>
               </Box>
@@ -1223,7 +1306,9 @@ const FileManager = () => {
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
-                  e.preventDefault();
+                  if (e.cancelable) {
+                    e.preventDefault();
+                  }
                   if (isMobile) {
                     setActionSheetFile(file);
                     setActionSheetOpen(true);
@@ -1239,6 +1324,7 @@ const FileManager = () => {
                 hasWritePermission={hasWritePermission}
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
+                loading={loading}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
@@ -1246,7 +1332,9 @@ const FileManager = () => {
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
-                  e.preventDefault();
+                  if (e.cancelable) {
+                    e.preventDefault();
+                  }
                   if (isMobile) {
                     setActionSheetFile(file);
                     setActionSheetOpen(true);
@@ -1262,6 +1350,7 @@ const FileManager = () => {
                 hasWritePermission={hasWritePermission}
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
+                loading={loading}
               />
             ) : (
               <FileDetail
@@ -1269,7 +1358,9 @@ const FileManager = () => {
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
-                  e.preventDefault();
+                  if (e.cancelable) {
+                    e.preventDefault();
+                  }
                   if (isMobile) {
                     setActionSheetFile(file);
                     setActionSheetOpen(true);
@@ -1285,6 +1376,7 @@ const FileManager = () => {
                 hasWritePermission={hasWritePermission}
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
+                loading={loading}
               />
             )}
           </Box>
@@ -1514,7 +1606,6 @@ const FileManager = () => {
         <MobileFAB
           onUpload={() => setUploadDialogOpen(true)}
           onCreateFolder={() => setCreateFolderDialogOpen(true)}
-          onRefresh={loadFiles}
           hasWritePermission={hasWritePermission}
         />
       )}

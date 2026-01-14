@@ -92,8 +92,16 @@ const MyPage = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static">
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'var(--app-height)',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}
+    >
+      <AppBar position="sticky" sx={{ top: 0, zIndex: (theme) => theme.zIndex.appBar }}>
         <Toolbar>
           <IconButton
             edge="start"
@@ -109,7 +117,19 @@ const MyPage = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ flex: 1, p: 3, maxWidth: 600, mx: 'auto', width: '100%' }}>
+      <Box
+        sx={{
+          flex: 1,
+          p: 3,
+          maxWidth: 600,
+          mx: 'auto',
+          width: '100%',
+          overflow: 'auto',
+          minHeight: 0,
+          // Enable smooth scrolling and bounce effect on iOS
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         {message.text && (
           <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
             {message.text}

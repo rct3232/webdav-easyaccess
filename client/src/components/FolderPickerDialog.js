@@ -26,8 +26,10 @@ import {
 } from '@mui/icons-material';
 import { listFiles, checkPermission } from '../services/fileService';
 import axios from 'axios';
+import { useResponsive } from '../hooks/useResponsive';
 
 const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
+  const { isMobile } = useResponsive();
   const [selectedPath, setSelectedPath] = useState(currentPath || '/');
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -247,7 +249,11 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     if (selectedPath === '/__shared__') {
       return;
     }
+    // onSelect를 호출 (onSelect 내부에서 다이얼로그를 닫도록 처리)
     onSelect(selectedPath);
+    // onSelect가 다이얼로그를 닫지 않는 경우를 대비해 onClose도 호출
+    // (하지만 onSelect 내부에서 이미 닫았을 수 있으므로 중복 호출이 될 수 있음)
+    // FileContextMenu와의 호환성을 위해 onClose도 호출
     onClose();
   };
 
@@ -277,6 +283,51 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     // 다중 파일 복사/이동
     if (sourceFilePaths && sourceFilePaths.length > 0) {
       return sourceFilePaths.some(filePath => isSameDirectory(filePath, selectedPath));
+    }
+    
+    return false;
+  };
+
+  // 이동 작업 시 선택한 디렉토리가 이동할 디렉토리의 하위 디렉토리이거나 자기 자신인지 확인
+  const isMovingToSubdirectory = () => {
+    if (action !== 'move') return false;
+    
+    // 경로 정규화 함수
+    const normalizePath = (path) => {
+      if (!path || path === '/') return '/';
+      return path.endsWith('/') ? path.slice(0, -1) : path;
+    };
+    
+    const normalizedSelectedPath = normalizePath(selectedPath);
+    
+    // 단일 디렉토리 이동
+    if (sourceFilePath) {
+      const normalizedSourcePath = normalizePath(sourceFilePath);
+      // 선택한 경로가 이동할 디렉토리와 정확히 같은 경우 (자기 자신)
+      if (normalizedSelectedPath === normalizedSourcePath) {
+        return true;
+      }
+      // 선택한 경로가 이동할 디렉토리의 하위 디렉토리인지 확인
+      // 예: sourceFilePath = '/user/folder1', selectedPath = '/user/folder1/subfolder' -> true
+      if (normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) {
+        return true;
+      }
+    }
+    
+    // 다중 디렉토리 이동
+    if (sourceFilePaths && sourceFilePaths.length > 0) {
+      return sourceFilePaths.some(filePath => {
+        const normalizedSourcePath = normalizePath(filePath);
+        // 선택한 경로가 이동할 디렉토리와 정확히 같은 경우 (자기 자신)
+        if (normalizedSelectedPath === normalizedSourcePath) {
+          return true;
+        }
+        // 선택한 경로가 이동할 디렉토리의 하위 디렉토리인지 확인
+        if (normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) {
+          return true;
+        }
+        return false;
+      });
     }
     
     return false;
@@ -549,6 +600,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      fullScreen={isMobile}
     >
       <DialogTitle>{title || '폴더 선택'}</DialogTitle>
       <DialogContent>
@@ -679,7 +731,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
           disabled={
             (selectedPath === '/__shared__') ||
             ((action === 'copy' || action === 'move') && !hasWritePermission) ||
-            isCopyToSameDirectory()
+            isCopyToSameDirectory() ||
+            isMovingToSubdirectory()
           }
         >
           선택

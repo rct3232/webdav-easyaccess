@@ -26,6 +26,9 @@ import {
   TextField,
   FormControlLabel,
   Switch,
+  Card,
+  CardContent,
+  CardActions,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -37,8 +40,10 @@ import {
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import ShareDialog from '../components/ShareDialog';
+import { useResponsive } from '../hooks/useResponsive';
 
 const AdminDashboard = () => {
+  const { isMobile } = useResponsive();
   const navigate = useNavigate();
   const [tab, setTab] = useState(0); // 0: 전체 사용자, 1: 설정
   const [users, setUsers] = useState([]);
@@ -227,6 +232,28 @@ const AdminDashboard = () => {
     await loadAllUsers();
   };
 
+  // 사용자 리스트 가져오기 (중복 제거 및 정렬)
+  const getUserList = () => {
+    if (users.length === 0 && pendingUsers.length === 0) {
+      return [];
+    }
+    const userMap = new Map();
+    pendingUsers.forEach(user => userMap.set(user.id, user));
+    users.forEach(user => {
+      if (user.status !== 'pending' || !userMap.has(user.id)) {
+        userMap.set(user.id, user);
+      }
+    });
+    return Array.from(userMap.values())
+      .sort((a, b) => {
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+  };
+
+  const userList = getUserList();
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
@@ -259,7 +286,8 @@ const AdminDashboard = () => {
               color="primary"
               onClick={handleSaveSettings}
               disabled={!hasSettingsChanges}
-              sx={{ ml: 2 }}
+              sx={{ ml: isMobile ? 1 : 2 }}
+              size={isMobile ? "small" : "medium"}
             >
               저장
             </Button>
@@ -267,65 +295,131 @@ const AdminDashboard = () => {
             <Button
               variant="contained"
               color="primary"
-              startIcon={<AddIcon />}
+              startIcon={isMobile ? null : <AddIcon />}
               onClick={handleCreateClick}
-              sx={{ ml: 2 }}
+              sx={{ ml: isMobile ? 1 : 2 }}
+              size={isMobile ? "small" : "medium"}
             >
-              사용자 추가
+              {isMobile ? "추가" : "사용자 추가"}
             </Button>
           )}
         </Box>
 
         {tab === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-            <TableContainer 
-              component={Paper} 
-              sx={{ 
-                flex: 1,
-                overflow: 'auto',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-            >
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>사용자명</TableCell>
-                    <TableCell>이메일</TableCell>
-                    <TableCell>상태</TableCell>
-                    <TableCell>권한</TableCell>
-                    <TableCell>가입일</TableCell>
-                    <TableCell align="center">작업</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {users.length === 0 && pendingUsers.length === 0 ? (
+            {isMobile ? (
+              // 모바일: Card 기반 레이아웃
+              <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {userList.length === 0 ? (
+                  <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="body1" color="text.secondary">
+                      등록된 사용자가 없습니다.
+                    </Typography>
+                  </Paper>
+                ) : (
+                  userList.map((user) => (
+                    <Card
+                      key={user.id}
+                      sx={{
+                        cursor: user.status !== 'pending' && !user.is_admin ? 'pointer' : 'default',
+                        '&:hover': user.status !== 'pending' && !user.is_admin ? {
+                          boxShadow: 3,
+                        } : {},
+                      }}
+                      onClick={() => user.status !== 'pending' && !user.is_admin && handleUserClick(user.id, user.username)}
+                    >
+                      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                        <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                          {user.username}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {user.email}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                          {getStatusChip(user.status)}
+                          {user.is_admin ? (
+                            <Chip label="관리자" color="primary" size="small" />
+                          ) : (
+                            <Chip label="일반" size="small" />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          가입일: {formatDate(user.created_at)}
+                        </Typography>
+                      </CardContent>
+                      <CardActions sx={{ px: 2, pb: 2, pt: 0 }} onClick={(e) => e.stopPropagation()}>
+                        {user.status === 'pending' ? (
+                          <>
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              startIcon={<CheckIcon />}
+                              onClick={() => handleApprove(user.id, user.username)}
+                              sx={{ flex: 1 }}
+                            >
+                              승인
+                            </Button>
+                            <Button
+                              variant="contained"
+                              color="error"
+                              size="small"
+                              startIcon={<CloseIcon />}
+                              onClick={() => handleReject(user.id, user.username)}
+                              sx={{ flex: 1 }}
+                            >
+                              거절
+                            </Button>
+                          </>
+                        ) : (
+                          !user.is_admin && (
+                            <IconButton
+                              color="error"
+                              size="small"
+                              onClick={() => handleDeleteClick(user.id, user.username)}
+                              title="사용자 삭제"
+                              sx={{ ml: 'auto' }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          )
+                        )}
+                      </CardActions>
+                    </Card>
+                  ))
+                )}
+              </Box>
+            ) : (
+              // 데스크톱: 기존 Table 레이아웃
+              <TableContainer 
+                component={Paper} 
+                sx={{ 
+                  flex: 1,
+                  overflow: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <Table stickyHeader>
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        등록된 사용자가 없습니다.
-                      </TableCell>
+                      <TableCell>사용자명</TableCell>
+                      <TableCell>이메일</TableCell>
+                      <TableCell>상태</TableCell>
+                      <TableCell>권한</TableCell>
+                      <TableCell>가입일</TableCell>
+                      <TableCell align="center">작업</TableCell>
                     </TableRow>
-                  ) : (
-                    (() => {
-                      // 중복 제거: pendingUsers를 우선하고, users에서 pending 상태가 아닌 사용자만 추가
-                      const userMap = new Map();
-                      // 먼저 pendingUsers 추가
-                      pendingUsers.forEach(user => userMap.set(user.id, user));
-                      // users에서 pending 상태가 아닌 사용자만 추가 (중복 방지)
-                      users.forEach(user => {
-                        if (user.status !== 'pending' || !userMap.has(user.id)) {
-                          userMap.set(user.id, user);
-                        }
-                      });
-                      return Array.from(userMap.values())
-                        .sort((a, b) => {
-                          // 승인대기 상태를 가장 위에 표시
-                          if (a.status === 'pending' && b.status !== 'pending') return -1;
-                          if (a.status !== 'pending' && b.status === 'pending') return 1;
-                          // 같은 상태면 가입일 기준 내림차순
-                          return new Date(b.created_at) - new Date(a.created_at);
-                        });
-                    })().map((user) => (
+                  </TableHead>
+                  <TableBody>
+                    {userList.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          등록된 사용자가 없습니다.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      userList.map((user) => (
                         <TableRow 
                           key={user.id}
                           sx={{ cursor: user.status !== 'pending' && !user.is_admin ? 'pointer' : 'default' }}
@@ -380,10 +474,11 @@ const AdminDashboard = () => {
                           </TableCell>
                         </TableRow>
                       ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </Box>
         )}
 
@@ -421,6 +516,7 @@ const AdminDashboard = () => {
       <Dialog
         open={deleteDialog.open}
         onClose={handleDeleteCancel}
+        fullScreen={isMobile}
       >
         <DialogTitle>사용자 삭제 확인</DialogTitle>
         <DialogContent>
@@ -452,6 +548,7 @@ const AdminDashboard = () => {
         onClose={handleCreateCancel}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>새 사용자 추가</DialogTitle>
         <DialogContent>

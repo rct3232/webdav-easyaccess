@@ -18,6 +18,7 @@ import { keyframes } from '@emotion/react';
 import { useDropzone } from 'react-dropzone';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { uploadFile, listFiles } from '../services/fileService';
+import { useResponsive } from '../hooks/useResponsive';
 
 // 성공/실패 아이콘 표시용 애니메이션
 const popIn = keyframes`
@@ -27,6 +28,7 @@ const popIn = keyframes`
 `;
 
 const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
+  const { isMobile } = useResponsive();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -103,7 +105,7 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
       <DialogTitle>파일 업로드</DialogTitle>
       <DialogContent>
         <Box

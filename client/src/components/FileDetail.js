@@ -15,10 +15,14 @@ import { formatFileSize, formatDate } from '../utils/format';
 import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIcon } from '../utils/fileIconUtils';
+import { useResponsive } from '../hooks/useResponsive';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
+const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick }) => {
+  const { isMobile } = useResponsive();
   const tableRef = useRef(null);
   const theme = useTheme();
+  const longPressTimerRef = useRef(null);
+  const touchMovedRef = useRef(false);
   
   const {
     draggedFile,
@@ -34,7 +38,40 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
     onFileCheck,
     processingMap,
     theme,
+    isMobile,
   });
+
+  // Long-press handlers for mobile
+  const handleTouchStart = (file) => (e) => {
+    if (!isMobile || selectionMode) return;
+    // Prevent text selection on long press
+    e.preventDefault();
+    touchMovedRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      if (!touchMovedRef.current) {
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+        onContextMenu(e, file);
+      }
+    }, 500);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    touchMovedRef.current = true;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <TableContainer 
@@ -43,9 +80,17 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
       sx={{
         position: 'relative',
         minHeight: files.length === 0 ? '200px' : 'auto',
+        overflowX: isMobile ? 'auto' : 'visible',
       }}
     >
-      <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+      <Table 
+        size="small" 
+        sx={{ 
+          borderCollapse: 'separate', 
+          borderSpacing: 0,
+          minWidth: isMobile ? 600 : 'auto',
+        }}
+      >
         <TableBody>
           {files.map((file, index) => {
             const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
@@ -59,10 +104,13 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 key={index}
                 {...dragHandlers}
                 {...dropHandlers}
+                onTouchStart={isMobile ? handleTouchStart(file) : undefined}
+                onTouchEnd={isMobile ? handleTouchEnd : undefined}
+                onTouchMove={isMobile ? handleTouchMove : undefined}
                 hover={!isDisabled}
                 selected={checked}
                 sx={{ 
-                  cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
+                  cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
                   opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
                   backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
                   transition: 'all 0.2s',
@@ -81,6 +129,15 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                     '& .MuiTypography-root': {
                       color: 'white',
                     },
+                  }),
+                  // Prevent text selection on mobile long-press
+                  ...(isMobile && {
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    MozUserSelect: 'none',
+                    msUserSelect: 'none',
+                    WebkitTouchCallout: 'none',
+                    touchAction: 'manipulation',
                   }),
                 }}
                 onClick={() => {

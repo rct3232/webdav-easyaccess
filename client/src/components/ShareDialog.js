@@ -22,8 +22,10 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Close as CloseIcon,
+  GroupAdd as GroupAddIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useResponsive } from '../hooks/useResponsive';
 
 // mode: 'admin' | 'share'
 // admin mode: userId, username 필요, onSave 필요
@@ -44,6 +46,7 @@ const ShareDialog = ({
   // Common props
   onMessage = null
 }) => {
+  const { isMobile } = useResponsive();
   const isAdminMode = mode === 'admin';
   const isShareMode = mode === 'share';
   
@@ -65,6 +68,8 @@ const ShareDialog = ({
   const [saving, setSaving] = useState(false);
   const [userSelectMenuAnchor, setUserSelectMenuAnchor] = useState(null);
   const [userSelectMenuFolderPath, setUserSelectMenuFolderPath] = useState(null);
+  const [folderMenuAnchor, setFolderMenuAnchor] = useState(null);
+  const [folderMenuPath, setFolderMenuPath] = useState(null);
 
   useEffect(() => {
     if (open) {
@@ -571,7 +576,16 @@ const ShareDialog = ({
     
     return (
       <Box key={node.path} sx={{ width: '100%' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, pl: level * 2, width: '100%' }}>
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            py: 0.5, 
+            pl: level * 1, 
+            width: '100%',
+          }}
+        >
           {/* 왼쪽: 폴더 트리 */}
           <Box sx={{ display: 'flex', alignItems: 'center', flex: '1 0 0', minWidth: 0 }}>
             <IconButton
@@ -597,7 +611,7 @@ const ShareDialog = ({
                 overflow: 'hidden',
                 position: 'relative',
               }}
-              onMouseEnter={(e) => {
+              onMouseEnter={isMobile ? undefined : (e) => {
                 const container = e.currentTarget;
                 const text = container.querySelector('span');
                 if (text) {
@@ -642,7 +656,7 @@ const ShareDialog = ({
                   }
                 }
               }}
-              onMouseLeave={(e) => {
+              onMouseLeave={isMobile ? undefined : (e) => {
                 const text = e.currentTarget.querySelector('span');
                 if (text) {
                   text.style.animation = 'none';
@@ -656,6 +670,8 @@ const ShareDialog = ({
                 sx={{
                   display: 'inline-block',
                   whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
               >
                 {node.name || node.path}
@@ -663,124 +679,79 @@ const ShareDialog = ({
             </Box>
           </Box>
           
-          {/* 오른쪽: 사용자 칩들 */}
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1, 
-              flexShrink: 2,
-            }}
-          >
-            {/* 칩들 그룹 - 스크롤 가능 */}
-            <Box 
-              sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 0.5, 
-                flexWrap: 'nowrap',
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                '&::-webkit-scrollbar': {
-                  height: '4px',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'rgba(0,0,0,0.2)',
-                  borderRadius: '2px',
-                },
-              }}
-            >
-              {displayUsers
-                .filter(([targetUserId]) => {
-                  // 사용자 이름이 있는 경우만 표시
-                  const userName = getUserName(targetUserId);
-                  return userName && userName.trim() !== '';
-                })
-                .map(([targetUserId, permission]) => {
-                const userName = getUserName(targetUserId);
-                const canEdit = !isUserBaseFolder || targetUserId !== userId;
-                
-                const isWrite = permission === 'write';
-                
-                return (
-                  <Chip
-                    key={targetUserId}
-                    label={userName}
-                    size="small"
-                    avatar={
-                      <Box
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (canEdit) {
-                            handleTogglePermission(node.path, targetUserId);
-                          }
-                        }}
-                        sx={{ 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          backgroundColor: isWrite ? 'primary.main' : 'grey.400',
-                          cursor: canEdit ? 'pointer' : 'default',
-                          '&:hover': canEdit ? { opacity: 0.8 } : {},
-                          marginLeft: '4px',
-                          marginRight: '-4px'
-                        }}
-                      >
-                        <EditIcon sx={{ fontSize: 12, color: 'white' }} />
-                      </Box>
-                    }
-                    onDelete={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) {
-                        handleRemoveUser(node.path, targetUserId);
-                      }
-                    }}
-                    deleteIcon={<CloseIcon />}
-                    sx={{ 
-                      backgroundColor: 'grey.200',
-                      border: 'none',
-                      '& .MuiChip-avatar': {
-                        marginLeft: '4px',
-                        marginRight: '-4px'
-                      }
-                    }}
-                  />
-                );
-              })}
-            </Box>
+          {/* 오른쪽: 드롭다운 메뉴 버튼 */}
+          {(() => {
+            // 현재 폴더의 사용자 개수 계산 (추가 아이템 제외)
+            const currentFolderUserPerms = folderPermissions.get(node.path) || new Map();
+            const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
             
-            {/* 사용자 추가 버튼 - 고정 위치 */}
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isShareMode) {
-                  setUserSelectMenuAnchor(e.currentTarget);
-                  setUserSelectMenuFolderPath(node.path);
-                } else {
-                  handleAddUser(node.path);
-                }
-              }}
-              sx={{ 
-                width: 28,
-                height: 28,
-                bgcolor: 'success.main',
-                color: 'white',
-                flexShrink: 0,
-                '&:hover': {
-                  bgcolor: 'success.dark',
-                }
-              }}
-            >
-              <AddIcon fontSize="small" />
-            </IconButton>
-          </Box>
+            const currentDisplayUsers = isAdminMode 
+              ? currentFolderUsers.filter(([uid]) => uid === userId)
+              : currentFolderUsers.filter(([targetUserId]) => {
+                  if (user && targetUserId === user.id) return false;
+                  const userInfo = userInfoMap.get(targetUserId);
+                  if (userInfo && userInfo.is_admin) return false;
+                  const fullUser = users.find(u => u.id === targetUserId);
+                  if (fullUser && fullUser.is_admin) return false;
+                  return true;
+                });
+            
+            const userCount = currentDisplayUsers.filter(([targetUserId]) => {
+              const userName = getUserName(targetUserId);
+              return userName && userName.trim() !== '';
+            }).length;
+            
+            return (
+              <Box
+                component="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFolderMenuAnchor(e.currentTarget);
+                  setFolderMenuPath(node.path);
+                }}
+                sx={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  border: 'none',
+                  borderRadius: '20px',
+                  backgroundColor: 'grey.300',
+                  color: 'text.primary',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  height: 28,
+                  pl: 1,
+                  pr: 0,
+                  gap: 0.5,
+                  '&:hover': {
+                    backgroundColor: 'grey.400',
+                  }
+                }}
+              >
+                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                  {userCount}
+                </Typography>
+                <Box
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    backgroundColor: 'success.main',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <GroupAddIcon sx={{ fontSize: 16 }} />
+                </Box>
+              </Box>
+            );
+          })()}
         </Box>
+        
         {isExpanded && hasChildren && (
-          <Box sx={{ pl: 2 }}>
+          <Box sx={{ pl: 1 }}>
             {node.children.map(child => renderFolderTree(child.path, level + 1))}
           </Box>
         )}
@@ -896,6 +867,8 @@ const ShareDialog = ({
     setExpandedPaths(new Set());
     setUserSelectMenuAnchor(null);
     setUserSelectMenuFolderPath(null);
+    setFolderMenuAnchor(null);
+    setFolderMenuPath(null);
     setUserInfoMap(new Map());
     onClose();
   };
@@ -919,8 +892,9 @@ const ShareDialog = ({
         open={open}
         onClose={handleClose}
         maxWidth="md"
+        fullScreen={isMobile}
         PaperProps={{
-          sx: { 
+          sx: isMobile ? {} : { 
             width: '49%',
             maxWidth: '49%',
             height: '70vh',
@@ -971,6 +945,153 @@ const ShareDialog = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 폴더별 사용자 관리 드롭다운 메뉴 */}
+      <Menu
+        anchorEl={folderMenuAnchor}
+        open={Boolean(folderMenuAnchor)}
+        onClose={() => {
+          setFolderMenuAnchor(null);
+          setFolderMenuPath(null);
+        }}
+        PaperProps={{
+          style: {
+            maxHeight: '75vh',
+            minWidth: 200,
+          },
+        }}
+      >
+        {folderMenuPath && (() => {
+          const currentFolderUserPerms = folderPermissions.get(folderMenuPath) || new Map();
+          const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
+          
+          // 현재 폴더의 사용자들 표시
+          const currentDisplayUsers = isAdminMode 
+            ? currentFolderUsers.filter(([uid]) => uid === userId)
+            : currentFolderUsers.filter(([targetUserId]) => {
+                if (user && targetUserId === user.id) return false;
+                const userInfo = userInfoMap.get(targetUserId);
+                if (userInfo && userInfo.is_admin) return false;
+                const fullUser = users.find(u => u.id === targetUserId);
+                if (fullUser && fullUser.is_admin) return false;
+                return true;
+              });
+          
+          const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
+          const currentIsUserBaseFolder = isAdminMode && folderMenuPath === currentUserBaseFolder;
+          
+          return (
+            <>
+              {currentDisplayUsers
+                .filter(([targetUserId]) => {
+                  const userName = getUserName(targetUserId);
+                  return userName && userName.trim() !== '';
+                })
+                .map(([targetUserId, permission]) => {
+                  const userName = getUserName(targetUserId);
+                  const canEdit = !currentIsUserBaseFolder || targetUserId !== userId;
+                  const isWrite = permission === 'write';
+                  
+                  return (
+                    <MenuItem
+                      key={targetUserId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // 메뉴는 닫지 않고, 칩 클릭 이벤트 처리
+                      }}
+                      sx={{ py: 0.5 }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1 }}>
+                        <Chip
+                          label={userName}
+                          size="small"
+                          avatar={
+                            <Box
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (canEdit) {
+                                  handleTogglePermission(folderMenuPath, targetUserId);
+                                }
+                              }}
+                              sx={{ 
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 20,
+                                height: 20,
+                                borderRadius: '50%',
+                                backgroundColor: isWrite ? 'primary.main' : 'grey.400',
+                                cursor: canEdit ? 'pointer' : 'default',
+                                '&:hover': canEdit ? { opacity: 0.8 } : {},
+                                marginLeft: '4px',
+                                marginRight: '-4px'
+                              }}
+                            >
+                              <EditIcon sx={{ fontSize: 12, color: 'white' }} />
+                            </Box>
+                          }
+                          onDelete={(e) => {
+                            e.stopPropagation();
+                            if (canEdit) {
+                              handleRemoveUser(folderMenuPath, targetUserId);
+                            }
+                          }}
+                          deleteIcon={<CloseIcon />}
+                          sx={{ 
+                            backgroundColor: 'grey.200',
+                            border: 'none',
+                            flex: 1,
+                            '& .MuiChip-avatar': {
+                              marginLeft: '4px',
+                              marginRight: '-4px'
+                            }
+                          }}
+                        />
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
+              
+              {/* 구분선 */}
+              {currentDisplayUsers.filter(([targetUserId]) => {
+                const userName = getUserName(targetUserId);
+                return userName && userName.trim() !== '';
+              }).length > 0 && (
+                <MenuItem disabled sx={{ py: 0 }}>
+                  <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
+                </MenuItem>
+              )}
+              
+              {/* 사용자 추가 메뉴 아이템 */}
+              <MenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFolderMenuAnchor(null);
+                  setFolderMenuPath(null);
+                  if (isShareMode) {
+                    setUserSelectMenuAnchor(e.currentTarget);
+                    setUserSelectMenuFolderPath(folderMenuPath);
+                  } else {
+                    handleAddUser(folderMenuPath);
+                  }
+                }}
+              >
+                <ListItemText 
+                  primary="사용자 추가" 
+                  primaryTypographyProps={{ 
+                    sx: { 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1 
+                    } 
+                  }}
+                />
+                <AddIcon fontSize="small" sx={{ ml: 1 }} />
+              </MenuItem>
+            </>
+          );
+        })()}
+      </Menu>
 
       {/* 사용자 선택 메뉴 (공유 모드용) */}
       <Menu

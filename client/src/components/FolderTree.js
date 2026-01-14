@@ -38,6 +38,7 @@ const FolderTreeItem = ({
   hasReadPermission = true, // 권한 정보 (기본값: true)
   hasWritePermission = true, // 쓰기 권한 정보
   onExplorerDrop,
+  isMobile = false,
 }) => {
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -202,10 +203,10 @@ const FolderTreeItem = ({
             backgroundColor: isDisabled ? 'transparent' : ((isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover'),
           },
         }}
-        onDragEnter={handleFolderDragEnter}
-        onDragOver={handleFolderDragOver}
-        onDragLeave={handleFolderDragLeave}
-        onDrop={handleFolderDrop}
+        onDragEnter={isMobile ? undefined : handleFolderDragEnter}
+        onDragOver={isMobile ? undefined : handleFolderDragOver}
+        onDragLeave={isMobile ? undefined : handleFolderDragLeave}
+        onDrop={isMobile ? undefined : handleFolderDrop}
       >
         <ListItemButton
           onClick={handleClick}
@@ -328,6 +329,7 @@ const FolderTreeItem = ({
                 hasReadPermission={child.hasReadPermission}
                 hasWritePermission={child.hasWritePermission}
                 onExplorerDrop={onExplorerDrop}
+                isMobile={isMobile}
               />
             ))}
           </List>
@@ -337,7 +339,7 @@ const FolderTreeItem = ({
   );
 };
 
-const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission, onExplorerDrop }) => {
+const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission, onExplorerDrop, isMobile = false }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
@@ -506,8 +508,8 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
   return (
     <Box
       sx={{
-        width: 200,
-        borderRight: 1,
+        width: isMobile ? '100%' : 200,
+        borderRight: isMobile ? 0 : 1,
         borderColor: 'divider',
         display: 'flex',
         flexDirection: 'column',
@@ -515,51 +517,53 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
         height: '100%',
       }}
     >
-      <Box
-        sx={{
-          p: 3,
-          display: 'flex',
-          gap: 0,
-        }}
-      >
-        <IconButton
-          onClick={onCreateFolder}
-          disabled={!hasWritePermission}
-          title="폴더 만들기"
+      {!isMobile && (
+        <Box
           sx={{
-            flex: 1,
-            borderRadius: '20px 0 0 20px',
-            backgroundColor: 'white',
-            color: 'text.secondary',
-            boxShadow: 2,
-            '&:hover': {
-              backgroundColor: 'grey.100',
-              boxShadow: 3,
-            },
+            p: 3,
+            display: 'flex',
+            gap: 0,
           }}
         >
-          <CreateNewFolderIcon />
-        </IconButton>
-        <IconButton
-          onClick={onUploadFile}
-          disabled={!hasWritePermission}
-          title="파일 업로드"
-          sx={{
-            flex: 1,
-            borderRadius: '0 20px 20px 0',
-            backgroundColor: 'white',
-            color: 'text.secondary',
-            boxShadow: 2,
-            '&:hover': {
-              backgroundColor: 'grey.100',
-              boxShadow: 3,
-            },
-          }}
-        >
-          <UploadIcon />
-        </IconButton>
-      </Box>
-      <Box sx={{ flex: 1, overflow: 'auto', px: '5px' }}>
+          <IconButton
+            onClick={onCreateFolder}
+            disabled={!hasWritePermission}
+            title="폴더 만들기"
+            sx={{
+              flex: 1,
+              borderRadius: '20px 0 0 20px',
+              backgroundColor: 'white',
+              color: 'text.secondary',
+              boxShadow: 2,
+              '&:hover': {
+                backgroundColor: 'grey.100',
+                boxShadow: 3,
+              },
+            }}
+          >
+            <CreateNewFolderIcon />
+          </IconButton>
+          <IconButton
+            onClick={onUploadFile}
+            disabled={!hasWritePermission}
+            title="파일 업로드"
+            sx={{
+              flex: 1,
+              borderRadius: '0 20px 20px 0',
+              backgroundColor: 'white',
+              color: 'text.secondary',
+              boxShadow: 2,
+              '&:hover': {
+                backgroundColor: 'grey.100',
+                boxShadow: 3,
+              },
+            }}
+          >
+            <UploadIcon />
+          </IconButton>
+        </Box>
+      )}
+      <Box sx={{ flex: 1, overflow: 'auto', px: '5px', pt: isMobile ? 2 : 0 }}>
         <List dense sx={{ py: 1 }}>
         {user?.is_admin && homePath === '/' ? (
           <FolderTreeItem
@@ -575,6 +579,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
             treeUpdateTrigger={treeUpdateTrigger}
             hasWritePermission={true}
             onExplorerDrop={onExplorerDrop}
+            isMobile={isMobile}
           />
         ) : (
           <FolderTreeItem
@@ -590,6 +595,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
             treeUpdateTrigger={treeUpdateTrigger}
             hasWritePermission={true}
             onExplorerDrop={onExplorerDrop}
+            isMobile={isMobile}
           />
         )}
         
@@ -683,6 +689,7 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
                       treeUpdateTrigger={treeUpdateTrigger}
                       sharedFoldersMap={sharedFoldersMap}
                       onExplorerDrop={onExplorerDrop}
+                      isMobile={isMobile}
                     />
                   ));
                 })()}
@@ -708,6 +715,7 @@ const SharedFolderTreeItem = ({
   treeUpdateTrigger,
   sharedFoldersMap, // 권한이 있는 폴더들의 Map
   onExplorerDrop,
+  isMobile = false,
 }) => {
   const [children, setChildren] = useState(node.children || []);
   const [loading, setLoading] = useState(false);
@@ -867,10 +875,10 @@ const SharedFolderTreeItem = ({
             backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover',
           },
         }}
-        onDragEnter={handleFolderDragEnter}
-        onDragOver={handleFolderDragOver}
-        onDragLeave={handleFolderDragLeave}
-        onDrop={handleFolderDrop}
+        onDragEnter={isMobile ? undefined : handleFolderDragEnter}
+        onDragOver={isMobile ? undefined : handleFolderDragOver}
+        onDragLeave={isMobile ? undefined : handleFolderDragLeave}
+        onDrop={isMobile ? undefined : handleFolderDrop}
       >
         <ListItemButton
           onClick={handleClick}
@@ -1002,6 +1010,7 @@ const SharedFolderTreeItem = ({
                   treeUpdateTrigger={treeUpdateTrigger}
                   sharedFoldersMap={sharedFoldersMap}
                   onExplorerDrop={onExplorerDrop}
+                  isMobile={isMobile}
                 />
               );
             })}

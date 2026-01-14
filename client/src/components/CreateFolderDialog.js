@@ -8,8 +8,10 @@ import {
   TextField,
 } from '@mui/material';
 import { createFolder } from '../services/fileService';
+import { useResponsive } from '../hooks/useResponsive';
 
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage }) => {
+  const { isMobile } = useResponsive();
   const [folderName, setFolderName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -71,7 +73,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage 
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
       <DialogTitle>새 폴더 만들기</DialogTitle>
       <DialogContent>
         <TextField

@@ -276,43 +276,42 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     
     // 관리자는 모든 경로에 파일 업로드 가능
     if (!user.is_admin) {
+      // 경로 정규화 (끝의 / 제거)
+      const normalizedPath = normalizePath(folderPath);
       const userFolder = `/${user.username}`;
-      if (folderPath === '/' || folderPath === '') {
+      
+      if (normalizedPath === '/' || normalizedPath === '') {
         folderPath = userFolder;
-      } else if (!folderPath.startsWith(userFolder)) {
+      } else if (normalizedPath !== userFolder && !normalizedPath.startsWith(userFolder + '/')) {
         // 공유된 폴더인지 권한 체크
-        // 먼저 경로 정규화
-        if (!folderPath.startsWith('/')) {
-          folderPath = '/' + folderPath;
-        }
-        if (folderPath !== '/' && !folderPath.endsWith('/')) {
-          folderPath = folderPath + '/';
-        }
+        // /check 엔드포인트와 동일한 방식으로 권한 체크
+        const normalizedDirPath = normalizedPath === '/' ? '/' : normalizedPath + '/';
         
-        // 폴더 경로에 대한 쓰기 권한 체크 - 해당 폴더에 직접 쓰기 권한이 있어야 함 (상위 경로 체크 안 함)
-        // 경로 정규화
-        let normalizedFolderPath = folderPath;
-        if (normalizedFolderPath !== '/') {
-          if (!normalizedFolderPath.endsWith('/')) {
-            normalizedFolderPath = normalizedFolderPath + '/';
-          }
-        }
         // 해당 폴더에 직접 쓰기 권한이 있는지 확인 (상위 경로 체크 제거)
         // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
-        let hasPermission = await Permission.checkPermission(req.user.id, normalizedFolderPath, 'write');
-        if (!hasPermission && folderPath !== '/') {
-          hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'write');
+        let hasPermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'write');
+        
+        // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
+        if (!hasPermission && normalizedPath !== '/') {
+          hasPermission = await Permission.checkPermission(req.user.id, normalizedPath, 'write');
         }
+        
         if (!hasPermission) {
           return res.status(403).json({ error: 'Access denied' });
         }
+        
+        // 권한이 있으면 정규화된 경로 사용
+        folderPath = normalizedPath;
+      } else {
+        // 자신의 폴더인 경우 정규화된 경로 사용
+        folderPath = normalizedPath;
       }
+    } else {
+      // 관리자의 경우도 경로 정규화
+      folderPath = normalizePath(folderPath);
     }
     
-    // 경로 정규화
-    if (!folderPath.startsWith('/')) {
-      folderPath = '/' + folderPath;
-    }
+    // 디렉토리 경로로 변환 (끝에 / 추가)
     if (folderPath !== '/' && !folderPath.endsWith('/')) {
       folderPath = folderPath + '/';
     }
@@ -334,6 +333,20 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         const dirParts = relativeDir.split('/').filter(Boolean);
         let currentPath = folderPath;
         
+        // Get parent folder owners (users with write/admin permissions on the parent folder)
+        // This is done once before the loop to avoid repeated queries
+        let parentFolderOwners = [];
+        try {
+          const parentPermissions = await Permission.getFolderPermissions(folderPath);
+          // Filter users with write or admin permissions
+          parentFolderOwners = parentPermissions
+            .filter(perm => perm.permission === 'write' || perm.permission === 'admin')
+            .map(perm => perm.id);
+        } catch (permQueryError) {
+          console.error('Failed to query parent folder permissions:', permQueryError);
+          // Continue even if query fails
+        }
+        
         for (const dirPart of dirParts) {
           currentPath = path.join(currentPath, dirPart).replace(/\\/g, '/');
           if (!currentPath.endsWith('/')) {
@@ -351,12 +364,28 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
               try {
                 await Permission.grant(req.user.id, currentPath, 'write');
                 
+                // Grant permissions to parent folder owners (users with write/admin permissions on parent folder)
+                for (const ownerId of parentFolderOwners) {
+                  try {
+                    // Skip if it's the same user (already granted above)
+                    if (ownerId !== req.user.id) {
+                      await Permission.grant(ownerId, currentPath, 'write');
+                    }
+                  } catch (ownerPermError) {
+                    console.error(`Failed to grant permission to parent folder owner ${ownerId} for ${currentPath}:`, ownerPermError);
+                    // Continue with other owners even if one fails
+                  }
+                }
+                
                 // Auto-grant permissions to folder owner if within user's home directory
                 const allUsers = await User.findAll();
                 for (const targetUser of allUsers) {
                   const userHomeFolder = `/${targetUser.username}/`;
                   if (currentPath.startsWith(userHomeFolder)) {
-                    await Permission.grant(targetUser.id, currentPath, 'write');
+                    // Skip if already granted to this user
+                    if (targetUser.id !== req.user.id && !parentFolderOwners.includes(targetUser.id)) {
+                      await Permission.grant(targetUser.id, currentPath, 'write');
+                    }
                   }
                 }
               } catch (permError) {

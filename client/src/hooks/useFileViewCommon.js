@@ -13,6 +13,7 @@ import { getFileItemState } from '../utils/fileViewUtils';
  * @param {Function} options.onFileCheck - Callback for file check
  * @param {Map} options.processingMap - Map of file paths to processing types
  * @param {Object} options.theme - MUI theme object
+ * @param {boolean} options.isMobile - Whether the device is mobile
  * @returns {Object} Common view logic and handlers
  */
 export const useFileViewCommon = ({
@@ -22,6 +23,7 @@ export const useFileViewCommon = ({
   onFileCheck,
   processingMap,
   theme,
+  isMobile = false,
 }) => {
   const dragAndDrop = useDragAndDrop(onFileDrop, selectionMode, theme);
   
@@ -53,7 +55,7 @@ export const useFileViewCommon = ({
    * Get drag handlers for a file
    */
   const getDragHandlers = useCallback((file, isDisabled) => {
-    if (selectionMode || isDisabled) {
+    if (isMobile || selectionMode || isDisabled) {
       return {
         draggable: false,
         onDragStart: undefined,
@@ -66,13 +68,13 @@ export const useFileViewCommon = ({
       onDragStart: (e) => dragAndDrop.handleDragStart(e, file),
       onDragEnd: dragAndDrop.handleDragEnd,
     };
-  }, [selectionMode, dragAndDrop]);
+  }, [isMobile, selectionMode, dragAndDrop]);
   
   /**
    * Get drop handlers for a file
    */
   const getDropHandlers = useCallback((file, isDisabled) => {
-    if (selectionMode || isDisabled) {
+    if (isMobile || selectionMode || isDisabled) {
       return {
         onDragOver: undefined,
         onDragLeave: undefined,
@@ -85,7 +87,7 @@ export const useFileViewCommon = ({
       onDragLeave: dragAndDrop.handleDragLeave,
       onDrop: (e) => dragAndDrop.handleDrop(e, file),
     };
-  }, [selectionMode, dragAndDrop]);
+  }, [isMobile, selectionMode, dragAndDrop]);
   
   return {
     ...dragAndDrop,

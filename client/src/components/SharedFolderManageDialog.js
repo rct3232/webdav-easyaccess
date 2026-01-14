@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -13,6 +13,7 @@ import {
   ExitToApp as ExitToAppIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { checkPermission } from '../services/fileService';
 
 const SharedFolderManageDialog = ({ 
   open, 
@@ -25,6 +26,33 @@ const SharedFolderManageDialog = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [hasWritePermission, setHasWritePermission] = useState(false);
+
+  // 폴더 경로가 변경되거나 다이얼로그가 열릴 때 쓰기 권한 확인
+  useEffect(() => {
+    const checkWritePermission = async () => {
+      if (!open || !folderPath || !user) {
+        return;
+      }
+
+      // 관리자는 항상 쓰기 권한이 있음
+      if (user.is_admin) {
+        setHasWritePermission(true);
+        return;
+      }
+
+      try {
+        const permission = await checkPermission(folderPath);
+        setHasWritePermission(permission.hasWrite);
+      } catch (error) {
+        console.error('Failed to check write permission:', error);
+        // 에러 발생 시 기본값으로 false 설정
+        setHasWritePermission(false);
+      }
+    };
+
+    checkWritePermission();
+  }, [open, folderPath, user]);
 
   const handleWritePermissionRequest = () => {
     // 더미 기능 - 나중에 구현
@@ -104,15 +132,17 @@ const SharedFolderManageDialog = ({
           </Typography>
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<EditIcon />}
-              onClick={handleWritePermissionRequest}
-              fullWidth
-              sx={{ py: 1.5 }}
-            >
-              쓰기 권한 요청
-            </Button>
+            {!hasWritePermission && (
+              <Button
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={handleWritePermissionRequest}
+                fullWidth
+                sx={{ py: 1.5 }}
+              >
+                쓰기 권한 요청
+              </Button>
+            )}
             
             <Button
               variant="outlined"

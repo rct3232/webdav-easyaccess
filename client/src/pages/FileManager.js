@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   AppBar,
@@ -9,11 +9,21 @@ import {
   Snackbar,
   Alert,
   Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
   Radio,
   RadioGroup,
   FormControlLabel,
   Divider,
   Paper,
+  Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
@@ -40,6 +50,7 @@ import { useFileManager } from '../hooks/useFileManager';
 import { useSelection } from '../hooks/useSelection';
 import { useBulkOperations } from '../hooks/useBulkOperations';
 import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
+import { useResponsive } from '../hooks/useResponsive';
 import { uploadMultipleFiles } from '../services/fileService';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
@@ -51,12 +62,25 @@ import FilePreviewDialog from '../components/FilePreviewDialog';
 import DownloadProgress from '../components/DownloadProgress';
 import FolderTree from '../components/FolderTree';
 import FolderPickerDialog from '../components/FolderPickerDialog';
-import { moveFile, checkPermission } from '../services/fileService';
+import MobileBreadcrumb from '../components/MobileBreadcrumb';
+import MobileFAB from '../components/MobileFAB';
+import FileActionSheet from '../components/FileActionSheet';
+import ShareDialog from '../components/ShareDialog';
+import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
+import FilePropertiesDialog from '../components/FilePropertiesDialog';
+import { moveFile, checkPermission, renameFile, deleteFile, copyFile, downloadFile, downloadMultipleFiles } from '../services/fileService';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const fileContentRef = useRef(null);
+  const { isMobile, isDesktop } = useResponsive();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [actionSheetFile, setActionSheetFile] = useState(null);
+  // 모바일용 FolderPickerDialog를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
+  const [mobilePickerFile, setMobilePickerFile] = useState(null);
+  const [mobilePickerAction, setMobilePickerAction] = useState(null);
   
   const {
     currentPath,
@@ -83,6 +107,13 @@ const FileManager = () => {
   } = useSelection(sortedFiles);
 
   const [viewMode, setViewMode] = useState(VIEW_MODES.LIST);
+
+  // 모바일에서 Detail 모드로 전환 시도 시 List 모드로 자동 전환
+  useEffect(() => {
+    if (isMobile && viewMode === VIEW_MODES.DETAIL) {
+      setViewMode(VIEW_MODES.LIST);
+    }
+  }, [isMobile, viewMode]);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -91,7 +122,25 @@ const FileManager = () => {
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
+  const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
   const [processingMap, setProcessingMap] = useState(new Map());
+  
+  // FileActionSheet 관련 다이얼로그 상태
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharedFolderManageDialogOpen, setSharedFolderManageDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [renameNewName, setRenameNewName] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  // 모바일용 이름 변경/삭제/공유/공유 관리를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
+  const [mobileRenameFile, setMobileRenameFile] = useState(null);
+  const [mobileDeleteFile, setMobileDeleteFile] = useState(null);
+  const [mobileShareFile, setMobileShareFile] = useState(null);
+  const [mobileSharedManageFile, setMobileSharedManageFile] = useState(null);
+  const [mobilePropertiesFile, setMobilePropertiesFile] = useState(null);
+  
+  // 속성 다이얼로그 상태
+  const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -284,6 +333,272 @@ const FileManager = () => {
         timestamp: Date.now(),
       });
     }, 500);
+  };
+
+  // FileActionSheet 핸들러 함수들
+  const handleRename = async () => {
+    // mobileRenameFile이 있으면 사용, 없으면 actionSheetFile 사용
+    const targetFile = mobileRenameFile || actionSheetFile;
+    
+    if (!targetFile || !renameNewName.trim()) {
+      setDropMessage({
+        show: true,
+        text: '이름을 입력하세요',
+        type: 'error',
+      });
+      return;
+    }
+
+    setRenameLoading(true);
+    const filePath = targetFile.path;
+    
+    setProcessingMap(prev => {
+      const next = new Map(prev);
+      next.set(filePath, 'rename');
+      return next;
+    });
+
+    try {
+      await renameFile(filePath, renameNewName);
+      setRenameDialogOpen(false);
+      setRenameNewName('');
+      setMobileRenameFile(null);
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+      handleRefresh();
+      
+      setDropMessage({
+        show: true,
+        text: `"${targetFile.basename}"을(를) "${renameNewName}"(으)로 이름 변경했습니다`,
+        type: 'success',
+      });
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 3000);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || '이름 변경에 실패했습니다';
+      setDropMessage({
+        show: true,
+        text: errorMsg,
+        type: 'error',
+      });
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 5000);
+    } finally {
+      setRenameLoading(false);
+      setProcessingMap(prev => {
+        const next = new Map(prev);
+        next.delete(filePath);
+        return next;
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    // mobileDeleteFile이 있으면 사용, 없으면 actionSheetFile 사용
+    const targetFile = mobileDeleteFile || actionSheetFile;
+    
+    if (!targetFile) return;
+
+    const filePath = targetFile.path;
+    const isDirectory = targetFile.type === 'directory';
+    
+    setProcessingMap(prev => {
+      const next = new Map(prev);
+      next.set(filePath, 'delete');
+      return next;
+    });
+
+    try {
+      await deleteFile(filePath);
+      setDeleteDialogOpen(false);
+      setMobileDeleteFile(null);
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+      handleRefresh(isDirectory ? filePath : null);
+      
+      setDropMessage({
+        show: true,
+        text: `"${targetFile.basename}"을(를) 삭제했습니다`,
+        type: 'success',
+      });
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 3000);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || '삭제에 실패했습니다';
+      setDropMessage({
+        show: true,
+        text: errorMsg,
+        type: 'error',
+      });
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 5000);
+    } finally {
+      setProcessingMap(prev => {
+        const next = new Map(prev);
+        next.delete(filePath);
+        return next;
+      });
+    }
+  };
+
+  // FileContextMenu.handleFileOperation과 동일한 패턴의 공통 핸들러
+  const handleActionSheetFileOperation = async (selectedPath, operation, operationName, actionVerb, file = null) => {
+    // file 파라미터가 제공되면 사용, 없으면 actionSheetFile 사용
+    const targetFile = file || actionSheetFile;
+    
+    if (!targetFile || !selectedPath || !selectedPath.trim()) {
+      setDropMessage({
+        show: true,
+        text: '대상 경로를 선택하세요',
+        type: 'error',
+      });
+      return;
+    }
+
+    const destPath = selectedPath.endsWith('/')
+      ? selectedPath + targetFile.basename
+      : selectedPath + '/' + targetFile.basename;
+    
+    const filePath = targetFile.path;
+    const progressId = `${operationName}_${Date.now()}`;
+    const operationType = operation === moveFile ? 'move' : 'copy';
+
+    // onProcessingStart와 동일한 효과
+    setProcessingMap(prev => {
+      const next = new Map(prev);
+      next.set(filePath, operationType);
+      return next;
+    });
+
+    const progressItem = {
+      id: progressId,
+      type: operationType,
+      status: 'preparing',
+      progress: 0,
+      total: 1,
+      current: '',
+      name: `${targetFile.basename} ${operationName}`,
+    };
+    
+    // onProgress와 동일한 효과
+    updateProgress(progressItem);
+
+    try {
+      updateProgress({
+        ...progressItem,
+        status: 'processing',
+        progress: 0,
+        total: 1,
+        current: `(0/1) ${actionVerb}중...`,
+      });
+      
+      await operation(filePath, destPath, (progress) => {
+        updateProgress({
+          ...progressItem,
+          status: progress.stage === 'completed' ? 'completed' : 'processing',
+          progress: progress.stage === 'completed' ? 1 : 0,
+          total: 1,
+          current: progress.stage === 'completed' ? `(1/1) ${actionVerb}중...` : `(0/1) ${actionVerb}중...`,
+        });
+      });
+      
+      setFolderPickerOpen(false);
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+      // onActionComplete와 동일한 효과
+      handleRefresh();
+      
+      updateProgress({
+        ...progressItem,
+        status: 'completed',
+        progress: 0,
+        total: 0,
+        current: '완료',
+      });
+      
+      setTimeout(() => {
+        updateProgress({ id: progressId, remove: true });
+      }, 3000);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || `${operationName}에 실패했습니다`;
+      const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
+      
+      // onProgress가 있으면 progress에 에러 표시 (FileContextMenu와 동일)
+      updateProgress({
+        ...progressItem,
+        status: 'error',
+        error: errorMsg,
+      });
+      
+      setTimeout(() => {
+        updateProgress({ id: progressId, remove: true });
+      }, 5000);
+      
+      // FileContextMenu와 동일한 패턴: onProgress가 있으면 progress에만 표시
+      // 모바일에서는 항상 updateProgress가 있으므로 여기서는 progress에만 표시
+    } finally {
+      // onProcessingEnd와 동일한 효과
+      setProcessingMap(prev => {
+        const next = new Map(prev);
+        next.delete(filePath);
+        return next;
+      });
+    }
+  };
+
+  const handleActionSheetMove = (selectedPath) => {
+    handleActionSheetFileOperation(selectedPath, moveFile, '이동', '이동');
+  };
+
+  const handleActionSheetCopy = (selectedPath) => {
+    handleActionSheetFileOperation(selectedPath, copyFile, '복사', '복사');
+  };
+
+  const handleActionSheetDownload = async () => {
+    if (!actionSheetFile) return;
+
+    try {
+      if (actionSheetFile.type === 'directory') {
+        const progressId = `download_${Date.now()}`;
+        const progressItem = {
+          id: progressId,
+          type: 'download',
+          status: 'preparing',
+          progress: 0,
+          total: 1,
+          current: '',
+          zipName: '',
+        };
+        
+        updateProgress(progressItem);
+        
+        await downloadMultipleFiles([actionSheetFile.path], (progress) => {
+          updateProgress({ ...progress, id: progressId });
+        });
+        
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+        }, 3000);
+      } else {
+        await downloadFile(actionSheetFile.path);
+      }
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || '다운로드에 실패했습니다';
+      setDropMessage({
+        show: true,
+        text: errorMsg,
+        type: 'error',
+      });
+      setTimeout(() => {
+        setDropMessage({ show: false, text: '', type: 'success' });
+      }, 5000);
+    }
   };
 
   const handleFileDrop = async (draggedFile, targetFolder) => {
@@ -501,7 +816,7 @@ const FileManager = () => {
 
   // Handle drops on the entire file content area
   const handleContentAreaDragOver = (e) => {
-    if (selectionMode || !hasWritePermission) return;
+    if (isMobile || selectionMode || !hasWritePermission) return;
     
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
@@ -512,7 +827,7 @@ const FileManager = () => {
   };
 
   const handleContentAreaDragEnter = (e) => {
-    if (selectionMode || !hasWritePermission) return;
+    if (isMobile || selectionMode || !hasWritePermission) return;
     
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
@@ -523,7 +838,7 @@ const FileManager = () => {
   };
 
   const handleContentAreaDragLeave = (e) => {
-    if (selectionMode || !hasWritePermission) return;
+    if (isMobile || selectionMode || !hasWritePermission) return;
     
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
@@ -534,7 +849,7 @@ const FileManager = () => {
   };
 
   const handleContentAreaDrop = (e) => {
-    if (selectionMode || !hasWritePermission) return;
+    if (isMobile || selectionMode || !hasWritePermission) return;
     
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
@@ -549,18 +864,20 @@ const FileManager = () => {
       <AppBar position="static" elevation={4}>
         <Toolbar>
           <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" component="div">
+            <Typography variant="h6" component="div" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
               WebDAV EasyAccess
             </Typography>
-            {webdavUrl && (
+            {webdavUrl && !isMobile && (
               <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
                 {webdavUrl}
               </Typography>
             )}
           </Box>
-          <Typography variant="body2" sx={{ mr: 2 }}>
-            {user?.username}
-          </Typography>
+          {!isMobile && (
+            <Typography variant="body2" sx={{ mr: 2 }}>
+              {user?.username}
+            </Typography>
+          )}
           {user?.is_admin && (
             <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
               <AdminIcon />
@@ -576,17 +893,20 @@ const FileManager = () => {
       </AppBar>
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <FolderTree
-          currentPath={currentPath}
-          onPathClick={handlePathClick}
-          user={user}
-          treeUpdateTrigger={treeUpdateTrigger}
-          onCreateFolder={() => setCreateFolderDialogOpen(true)}
-          onUploadFile={() => setUploadDialogOpen(true)}
-          selectionMode={selectionMode}
-          hasWritePermission={hasWritePermission}
-          onExplorerDrop={handleExplorerDrop}
-        />
+        {!isMobile && (
+          <FolderTree
+            currentPath={currentPath}
+            onPathClick={handlePathClick}
+            user={user}
+            treeUpdateTrigger={treeUpdateTrigger}
+            onCreateFolder={() => setCreateFolderDialogOpen(true)}
+            onUploadFile={() => setUploadDialogOpen(true)}
+            selectionMode={selectionMode}
+            hasWritePermission={hasWritePermission}
+            onExplorerDrop={handleExplorerDrop}
+            isMobile={isMobile}
+          />
+        )}
 
         <Box 
           ref={fileContentRef}
@@ -633,6 +953,52 @@ const FileManager = () => {
               </Typography>
             </Box>
           )}
+
+          {isMobile && (
+            <>
+              <MobileBreadcrumb
+                currentPath={currentPath}
+                onPathClick={handlePathClick}
+                user={user}
+                onToggleFolderTree={() => setDrawerOpen(!drawerOpen)}
+                isFolderTreeOpen={drawerOpen}
+              />
+              <Collapse in={drawerOpen} timeout="auto">
+                <Box
+                  sx={{
+                    maxHeight: '50vh',
+                    overflow: 'auto',
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: 'background.paper',
+                  }}
+                >
+                  <FolderTree
+                    currentPath={currentPath}
+                    onPathClick={(path) => {
+                      handlePathClick(path);
+                      setDrawerOpen(false);
+                    }}
+                    user={user}
+                    treeUpdateTrigger={treeUpdateTrigger}
+                    onCreateFolder={() => {
+                      setCreateFolderDialogOpen(true);
+                      setDrawerOpen(false);
+                    }}
+                    onUploadFile={() => {
+                      setUploadDialogOpen(true);
+                      setDrawerOpen(false);
+                    }}
+                    selectionMode={selectionMode}
+                    hasWritePermission={hasWritePermission}
+                    onExplorerDrop={handleExplorerDrop}
+                    isMobile={isMobile}
+                  />
+                </Box>
+              </Collapse>
+            </>
+          )}
+
           <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
             <IconButton
               onClick={(e) => setSortMenuAnchor(e.currentTarget)}
@@ -658,23 +1024,39 @@ const FileManager = () => {
 
             {selectionMode && (
               <>
-                <Button
-                  size="small"
-                  startIcon={<SelectAllIcon />}
-                  onClick={handleSelectAll}
-                >
-                  모두 선택
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={<DeselectIcon />}
-                  onClick={handleDeselectAll}
-                >
-                  모두 해제
-                </Button>
-                <Typography variant="body2" sx={{ ml: 1 }}>
-                  {selectedFiles.size}개 선택됨
-                </Typography>
+                {isMobile ? (
+                  <>
+                    <IconButton size="small" onClick={handleSelectAll} title="모두 선택">
+                      <SelectAllIcon />
+                    </IconButton>
+                    <IconButton size="small" onClick={handleDeselectAll} title="모두 해제">
+                      <DeselectIcon />
+                    </IconButton>
+                    <Typography variant="caption" sx={{ ml: 1, fontSize: '0.75rem' }}>
+                      {selectedFiles.size}개
+                    </Typography>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      size="small"
+                      startIcon={<SelectAllIcon />}
+                      onClick={handleSelectAll}
+                    >
+                      모두 선택
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<DeselectIcon />}
+                      onClick={handleDeselectAll}
+                    >
+                      모두 해제
+                    </Button>
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      {selectedFiles.size}개 선택됨
+                    </Typography>
+                  </>
+                )}
               </>
             )}
 
@@ -741,26 +1123,93 @@ const FileManager = () => {
               </Box>
             </Menu>
           
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <IconButton
-                color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-                onClick={() => setViewMode(VIEW_MODES.LIST)}
-              >
-                <ViewStreamIcon />
-              </IconButton>
-              <IconButton
-                color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-                onClick={() => setViewMode(VIEW_MODES.GRID)}
-              >
-                <ViewModuleIcon />
-              </IconButton>
-              <IconButton
-                color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
-                onClick={() => setViewMode(VIEW_MODES.DETAIL)}
-              >
-                <ViewListIcon />
-              </IconButton>
-            </Box>
+            {selectionMode ? (
+              <>
+                <IconButton
+                  onClick={(e) => setViewModeMenuAnchor(e.currentTarget)}
+                  title="보기 모드"
+                >
+                  {viewMode === VIEW_MODES.LIST && <ViewStreamIcon />}
+                  {viewMode === VIEW_MODES.GRID && <ViewModuleIcon />}
+                  {viewMode === VIEW_MODES.DETAIL && <ViewListIcon />}
+                </IconButton>
+                <Menu
+                  anchorEl={viewModeMenuAnchor}
+                  open={Boolean(viewModeMenuAnchor)}
+                  onClose={() => setViewModeMenuAnchor(null)}
+                  anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'right',
+                  }}
+                  transformOrigin={{
+                    vertical: 'top',
+                    horizontal: 'right',
+                  }}
+                >
+                  <MenuItem
+                    onClick={() => {
+                      setViewMode(VIEW_MODES.LIST);
+                      setViewModeMenuAnchor(null);
+                    }}
+                    selected={viewMode === VIEW_MODES.LIST}
+                  >
+                    <ListItemIcon>
+                      <ViewStreamIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>리스트 보기</ListItemText>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setViewMode(VIEW_MODES.GRID);
+                      setViewModeMenuAnchor(null);
+                    }}
+                    selected={viewMode === VIEW_MODES.GRID}
+                  >
+                    <ListItemIcon>
+                      <ViewModuleIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>그리드 보기</ListItemText>
+                  </MenuItem>
+                  {!isMobile && (
+                    <MenuItem
+                      onClick={() => {
+                        setViewMode(VIEW_MODES.DETAIL);
+                        setViewModeMenuAnchor(null);
+                      }}
+                      selected={viewMode === VIEW_MODES.DETAIL}
+                    >
+                      <ListItemIcon>
+                        <ViewListIcon fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText>상세 보기</ListItemText>
+                    </MenuItem>
+                  )}
+                </Menu>
+              </>
+            ) : (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <IconButton
+                  color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
+                  onClick={() => setViewMode(VIEW_MODES.LIST)}
+                >
+                  <ViewStreamIcon />
+                </IconButton>
+                <IconButton
+                  color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
+                  onClick={() => setViewMode(VIEW_MODES.GRID)}
+                >
+                  <ViewModuleIcon />
+                </IconButton>
+                {!isMobile && (
+                  <IconButton
+                    color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
+                    onClick={() => setViewMode(VIEW_MODES.DETAIL)}
+                  >
+                    <ViewListIcon />
+                  </IconButton>
+                )}
+              </Box>
+            )}
           </Box>
 
           <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
@@ -775,14 +1224,21 @@ const FileManager = () => {
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
-                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                  setSelectedFile(file);
+                  if (isMobile) {
+                    setActionSheetFile(file);
+                    setActionSheetOpen(true);
+                  } else {
+                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                    setSelectedFile(file);
+                  }
                 }}
                 onFileDrop={handleFileDrop}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
                 hasWritePermission={hasWritePermission}
+                currentPath={currentPath}
+                onPathClick={handlePathClick}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
@@ -791,14 +1247,21 @@ const FileManager = () => {
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
-                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                  setSelectedFile(file);
+                  if (isMobile) {
+                    setActionSheetFile(file);
+                    setActionSheetOpen(true);
+                  } else {
+                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                    setSelectedFile(file);
+                  }
                 }}
                 onFileDrop={handleFileDrop}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
                 hasWritePermission={hasWritePermission}
+                currentPath={currentPath}
+                onPathClick={handlePathClick}
               />
             ) : (
               <FileDetail
@@ -807,14 +1270,21 @@ const FileManager = () => {
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
                   e.preventDefault();
-                  setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                  setSelectedFile(file);
+                  if (isMobile) {
+                    setActionSheetFile(file);
+                    setActionSheetOpen(true);
+                  } else {
+                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+                    setSelectedFile(file);
+                  }
                 }}
                 onFileDrop={handleFileDrop}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
                 hasWritePermission={hasWritePermission}
+                currentPath={currentPath}
+                onPathClick={handlePathClick}
               />
             )}
           </Box>
@@ -876,13 +1346,53 @@ const FileManager = () => {
         onClose={() => {
           setFolderPickerOpen(false);
           setFolderPickerAction(null);
+          // 모바일용 상태도 초기화
+          if (mobilePickerFile) {
+            setMobilePickerFile(null);
+            setMobilePickerAction(null);
+          }
         }}
-        onSelect={handleFolderPickerSelect}
-        title={folderPickerAction === 'move' ? '이동할 폴더 선택' : '복사할 폴더 선택'}
+        onSelect={(selectedPath) => {
+          // mobilePickerFile이 있으면 모바일에서 호출된 것
+          if (mobilePickerFile) {
+            const currentAction = mobilePickerAction;
+            const currentFile = mobilePickerFile;
+            
+            // 다이얼로그 닫기
+            setFolderPickerOpen(false);
+            setFolderPickerAction(null);
+            setMobilePickerFile(null);
+            setMobilePickerAction(null);
+            
+            // 작업 수행 (currentFile을 사용)
+            if (currentAction === 'move') {
+              handleActionSheetFileOperation(selectedPath, moveFile, '이동', '이동', currentFile);
+            } else if (currentAction === 'copy') {
+              handleActionSheetFileOperation(selectedPath, copyFile, '복사', '복사', currentFile);
+            }
+            
+            // ActionSheet도 닫기
+            setActionSheetOpen(false);
+            setActionSheetFile(null);
+          } else {
+            // 기존 bulk operation 로직 (데스크톱)
+            handleFolderPickerSelect(selectedPath);
+            setFolderPickerOpen(false);
+            setFolderPickerAction(null);
+          }
+        }}
+        title={
+          mobilePickerFile
+            ? `${mobilePickerAction === 'move' ? '이동' : '복사'}: ${mobilePickerFile.basename}`
+            : folderPickerAction === 'move' ? '이동할 폴더 선택' : '복사할 폴더 선택'
+        }
         currentPath={currentPath}
         user={user}
         action={folderPickerAction}
-        sourceFilePaths={folderPickerAction === 'copy' ? Array.from(selectedFiles) : undefined}
+        sourceFilePath={mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined)}
+        sourceFilePaths={
+          !mobilePickerFile && !actionSheetFile && folderPickerAction === 'copy' ? Array.from(selectedFiles) : undefined
+        }
       />
 
       <Snackbar
@@ -905,61 +1415,90 @@ const FileManager = () => {
           elevation={8}
           sx={{
             position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
+            bottom: isMobile ? 0 : 24,
+            left: isMobile ? 0 : '50%',
+            right: isMobile ? 0 : 'auto',
+            transform: isMobile ? 'none' : 'translateX(-50%)',
+            width: isMobile ? '100%' : 'auto',
             display: 'flex',
-            gap: 1,
+            gap: isMobile ? 0.5 : 1,
             alignItems: 'center',
-            p: 1.5,
-            borderRadius: 3,
+            justifyContent: 'center',
+            p: isMobile ? 1 : 1.5,
+            borderRadius: isMobile ? 0 : 3,
             zIndex: 1000,
             backgroundColor: 'background.paper',
             boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            paddingBottom: isMobile ? 'calc(8px + env(safe-area-inset-bottom))' : 1.5,
           }}
         >
-          <Typography variant="body2" sx={{ mr: 1, fontWeight: 500, minWidth: '60px' }}>
-            {selectedFiles.size}개 선택됨
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              mr: isMobile ? 0.5 : 1, 
+              fontWeight: 500, 
+              minWidth: isMobile ? 'auto' : '60px',
+              fontSize: isMobile ? '0.875rem' : '0.875rem',
+            }}
+          >
+            {selectedFiles.size}개
           </Typography>
-          <Button
-            variant="contained"
-            size="small"
+          <IconButton
+            color="primary"
+            size={isMobile ? "medium" : "small"}
             onClick={handleBulkMove}
             disabled={!hasWritePermission}
-            sx={{ minWidth: 'auto', px: 1.5 }}
             title="이동"
+            sx={{ 
+              backgroundColor: 'primary.main',
+              color: 'white',
+              '&:hover': { backgroundColor: 'primary.dark' },
+              '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
+            }}
           >
-            <MoveIcon />
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
+            <MoveIcon fontSize={isMobile ? "medium" : "small"} />
+          </IconButton>
+          <IconButton
+            color="primary"
+            size={isMobile ? "medium" : "small"}
             onClick={handleBulkCopy}
-            sx={{ minWidth: 'auto', px: 1.5 }}
             title="복사"
+            sx={{ 
+              backgroundColor: 'primary.main',
+              color: 'white',
+              '&:hover': { backgroundColor: 'primary.dark' },
+            }}
           >
-            <CopyIcon />
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
+            <CopyIcon fontSize={isMobile ? "medium" : "small"} />
+          </IconButton>
+          <IconButton
+            color="primary"
+            size={isMobile ? "medium" : "small"}
             onClick={handleBulkDownload}
-            sx={{ minWidth: 'auto', px: 1.5 }}
             title="다운로드"
+            sx={{ 
+              backgroundColor: 'primary.main',
+              color: 'white',
+              '&:hover': { backgroundColor: 'primary.dark' },
+            }}
           >
-            <DownloadIcon />
-          </Button>
-          <Button
-            variant="contained"
+            <DownloadIcon fontSize={isMobile ? "medium" : "small"} />
+          </IconButton>
+          <IconButton
             color="error"
-            size="small"
+            size={isMobile ? "medium" : "small"}
             onClick={handleBulkDelete}
             disabled={!hasWritePermission}
-            sx={{ minWidth: 'auto', px: 1.5 }}
             title="삭제"
+            sx={{ 
+              backgroundColor: 'error.main',
+              color: 'white',
+              '&:hover': { backgroundColor: 'error.dark' },
+              '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
+            }}
           >
-            <DeleteIcon />
-          </Button>
+            <DeleteIcon fontSize={isMobile ? "medium" : "small"} />
+          </IconButton>
         </Paper>
       )}
 
@@ -969,6 +1508,221 @@ const FileManager = () => {
           updateProgress({ id, remove: true });
         }}
       />
+
+      {/* Mobile FAB */}
+      {isMobile && !selectionMode && (
+        <MobileFAB
+          onUpload={() => setUploadDialogOpen(true)}
+          onCreateFolder={() => setCreateFolderDialogOpen(true)}
+          onRefresh={loadFiles}
+          hasWritePermission={hasWritePermission}
+        />
+      )}
+
+      {/* Mobile Action Sheet */}
+      {isMobile && (
+        <FileActionSheet
+          open={actionSheetOpen}
+          onClose={() => {
+            setActionSheetOpen(false);
+            setActionSheetFile(null);
+          }}
+          file={actionSheetFile}
+          hasWritePermission={hasWritePermission}
+          user={user}
+          onDownload={handleActionSheetDownload}
+          onRename={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
+              setMobileRenameFile(actionSheetFile);
+              setRenameNewName(actionSheetFile.basename);
+              setRenameDialogOpen(true);
+            }
+          }}
+          onMove={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (FolderPickerDialog가 닫혀도 유지)
+              setMobilePickerFile(actionSheetFile);
+              setMobilePickerAction('move');
+              setFolderPickerAction('move');
+              setFolderPickerOpen(true);
+            }
+          }}
+          onCopy={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (FolderPickerDialog가 닫혀도 유지)
+              setMobilePickerFile(actionSheetFile);
+              setMobilePickerAction('copy');
+              setFolderPickerAction('copy');
+              setFolderPickerOpen(true);
+            }
+          }}
+          onDelete={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
+              setMobileDeleteFile(actionSheetFile);
+              setDeleteDialogOpen(true);
+            }
+          }}
+          onShare={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
+              setMobileShareFile(actionSheetFile);
+              setShareDialogOpen(true);
+            }
+          }}
+          onManageShared={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
+              setMobileSharedManageFile(actionSheetFile);
+              setSharedFolderManageDialogOpen(true);
+            }
+          }}
+          onPreview={() => {
+            if (actionSheetFile) {
+              const filename = actionSheetFile.basename || actionSheetFile.name;
+              const canPreviewFile = canPreview(filename);
+              setSelectedFile({ ...actionSheetFile, name: filename, canPreview: canPreviewFile });
+              setPreviewDialogOpen(true);
+            }
+          }}
+          onProperties={() => {
+            if (actionSheetFile) {
+              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
+              setMobilePropertiesFile(actionSheetFile);
+              setPropertiesDialogOpen(true);
+            }
+          }}
+        />
+      )}
+
+      {/* Rename Dialog */}
+      <Dialog 
+        open={renameDialogOpen} 
+        onClose={() => {
+          setRenameDialogOpen(false);
+          setRenameNewName('');
+          setMobileRenameFile(null);
+        }}
+        fullScreen={isMobile}
+      >
+        <DialogTitle>이름 변경</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="새 이름"
+            fullWidth
+            variant="outlined"
+            value={renameNewName}
+            onChange={(e) => setRenameNewName(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !renameLoading) {
+                handleRename();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setRenameDialogOpen(false);
+              setRenameNewName('');
+              setMobileRenameFile(null);
+            }} 
+            disabled={renameLoading}
+          >
+            취소
+          </Button>
+          <Button 
+            onClick={handleRename} 
+            variant="contained" 
+            disabled={renameLoading || !renameNewName.trim()}
+          >
+            변경
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog 
+        open={deleteDialogOpen} 
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setMobileDeleteFile(null);
+        }}
+        fullScreen={isMobile}
+      >
+        <DialogTitle>삭제 확인</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            정말로 "{(mobileDeleteFile || actionSheetFile)?.basename}"을(를) 삭제하시겠습니까?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setDeleteDialogOpen(false);
+              setMobileDeleteFile(null);
+            }}
+          >
+            취소
+          </Button>
+          <Button 
+            onClick={handleDelete} 
+            variant="contained" 
+            color="error"
+            disabled={processingMap.has((mobileDeleteFile || actionSheetFile)?.path)}
+          >
+            삭제
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Share Dialog */}
+      {(mobileShareFile || actionSheetFile) && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onClose={() => {
+            setShareDialogOpen(false);
+            setMobileShareFile(null);
+          }}
+          folderPath={(mobileShareFile || actionSheetFile)?.path}
+          folderName={(mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name}
+          user={user}
+          onMessage={setDropMessage}
+        />
+      )}
+
+      {/* Shared Folder Manage Dialog */}
+      {(mobileSharedManageFile || actionSheetFile) && (
+        <SharedFolderManageDialog
+          open={sharedFolderManageDialogOpen}
+          onClose={() => {
+            setSharedFolderManageDialogOpen(false);
+            setMobileSharedManageFile(null);
+          }}
+          folderPath={(mobileSharedManageFile || actionSheetFile)?.path}
+          folderName={(mobileSharedManageFile || actionSheetFile)?.basename || (mobileSharedManageFile || actionSheetFile)?.name}
+          user={user}
+          onMessage={setDropMessage}
+          onActionComplete={() => {
+            handleRefresh();
+          }}
+        />
+      )}
+
+      {/* File Properties Dialog */}
+      {(mobilePropertiesFile || actionSheetFile) && (
+        <FilePropertiesDialog
+          open={propertiesDialogOpen}
+          onClose={() => {
+            setPropertiesDialogOpen(false);
+            setMobilePropertiesFile(null);
+          }}
+          file={mobilePropertiesFile || actionSheetFile}
+        />
+      )}
     </Box>
   );
 };

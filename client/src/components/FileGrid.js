@@ -13,10 +13,14 @@ import {
 import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
+import { useResponsive } from '../hooks/useResponsive';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick }) => {
+  const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
+  const longPressTimerRef = useRef(null);
+  const touchMovedRef = useRef(false);
   
   const {
     draggedFile,
@@ -32,12 +36,45 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     onFileCheck,
     processingMap,
     theme,
+    isMobile,
   });
+
+  // Long-press handlers for mobile
+  const handleTouchStart = (file) => (e) => {
+    if (!isMobile || selectionMode) return;
+    // Prevent text selection on long press
+    e.preventDefault();
+    touchMovedRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      if (!touchMovedRef.current) {
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+        onContextMenu(e, file);
+      }
+    }, 500);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    touchMovedRef.current = true;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <Grid 
       container 
-      spacing={2}
+      spacing={isMobile ? 1.5 : 2}
       ref={gridRef}
       sx={{
         position: 'relative',
@@ -53,12 +90,15 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const dropHandlers = getDropHandlers(file, isDisabled);
         
         return (
-          <Grid item xs={6} sm={4} md={3} lg={2} key={index}>
+          <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={index}>
             <Card
               {...dragHandlers}
               {...dropHandlers}
+              onTouchStart={isMobile ? handleTouchStart(file) : undefined}
+              onTouchEnd={isMobile ? handleTouchEnd : undefined}
+              onTouchMove={isMobile ? handleTouchMove : undefined}
               sx={{
-                cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
+                cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
                 '&:hover': {
                   boxShadow: isDisabled ? 2 : 4,
                 },
@@ -72,6 +112,15 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 transition: 'all 0.2s',
                 position: 'relative',
                 color: isDisabled ? 'text.disabled' : 'inherit',
+                // Prevent text selection on mobile long-press
+                ...(isMobile && {
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none',
+                  WebkitTouchCallout: 'none',
+                  touchAction: 'manipulation',
+                }),
               }}
               onClick={() => {
                 if (!isDisabled) {

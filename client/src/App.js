@@ -11,12 +11,52 @@ import MyPage from './pages/MyPage';
 import AdminDashboard from './pages/AdminDashboard';
 
 const theme = createTheme({
+  breakpoints: {
+    values: {
+      xs: 0,      // 모바일 세로
+      sm: 600,    // 모바일 가로, 작은 태블릿
+      md: 900,    // 태블릿
+      lg: 1200,   // 데스크톱
+      xl: 1536,   // 대형 데스크톱
+    },
+  },
   palette: {
     primary: {
       main: '#1976d2',
     },
     secondary: {
       main: '#dc004e',
+    },
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          minHeight: 44, // 터치 타겟 최소 크기
+        },
+      },
+    },
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          minWidth: 44,
+          minHeight: 44,
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          minHeight: 44, // 터치 타겟 최소 크기
+        },
+      },
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          minHeight: 56, // 터치 타겟 최소 크기
+        },
+      },
     },
   },
 });

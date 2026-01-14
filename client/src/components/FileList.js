@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Typography,
   Box,
@@ -11,9 +11,14 @@ import { formatFileSize, formatDate } from '../utils/format';
 import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
+import { useResponsive } from '../hooks/useResponsive';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick }) => {
+  const { isMobile } = useResponsive();
   const theme = useTheme();
+  const longPressTimerRef = useRef(null);
+  const touchMovedRef = useRef(false);
+  
   const {
     draggedFile,
     dropTarget,
@@ -28,7 +33,40 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     onFileCheck,
     processingMap,
     theme,
+    isMobile,
   });
+
+  // Long-press handlers for mobile
+  const handleTouchStart = (file) => (e) => {
+    if (!isMobile || selectionMode) return;
+    // Prevent text selection on long press
+    e.preventDefault();
+    touchMovedRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      if (!touchMovedRef.current) {
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+        onContextMenu(e, file);
+      }
+    }, 500);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    touchMovedRef.current = true;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <Box
@@ -49,6 +87,9 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             key={index}
             {...dragHandlers}
             {...dropHandlers}
+            onTouchStart={isMobile ? handleTouchStart(file) : undefined}
+            onTouchEnd={isMobile ? handleTouchEnd : undefined}
+            onTouchMove={isMobile ? handleTouchMove : undefined}
             onClick={() => {
               if (!isDisabled) {
                 onFileClick(file);
@@ -69,11 +110,20 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               },
               backgroundColor: dropTarget === file.path ? 'primary.main' : 'transparent',
               opacity: draggedFile?.path === file.path ? 0.5 : (isDisabled ? 0.4 : 1),
-              cursor: isDisabled ? 'not-allowed' : (selectionMode ? 'pointer' : 'move'),
+              cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
               transition: 'all 0.2s',
               color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),
               position: 'relative',
               ...getDropTargetStyles(dropTarget === file.path),
+              // Prevent text selection on mobile long-press
+              ...(isMobile && {
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none',
+                WebkitTouchCallout: 'none',
+                touchAction: 'manipulation',
+              }),
             }}
           >
             {selectionMode && (

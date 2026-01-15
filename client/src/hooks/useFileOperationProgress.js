@@ -44,6 +44,9 @@ export const useFileOperationProgress = () => {
    * @param {string} [progressItem.current] - Current item description
    * @param {string} [progressItem.name] - Operation name/description
    * @param {string} [progressItem.error] - Error message (if status is 'error')
+   * @param {Array<Object>} [progressItem.failedItems] - Array of failed items with fileName and error
+   * @param {boolean} [progressItem.keepOnError] - If true, prevents automatic removal on error
+   * @param {Object} [progressItem.retryData] - Data needed for retry operation (filePaths, destinationPath, etc.)
    */
   const updateProgress = useCallback((progressItem) => {
     if (progressItem.remove) {

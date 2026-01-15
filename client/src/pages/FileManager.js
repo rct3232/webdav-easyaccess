@@ -179,6 +179,8 @@ const FileManager = () => {
     handleBulkDelete,
     handleBulkDownload,
     handleFolderPickerSelect,
+    handleRetry,
+    dismissFailedItems,
     setFolderPickerOpen,
     setFolderPickerAction,
   } = useBulkOperations(
@@ -719,6 +721,8 @@ const FileManager = () => {
       });
       return;
     }
+
+    dismissFailedItems();
 
     const progressId = `upload_drop_${Date.now()}`;
     updateProgress({
@@ -1388,6 +1392,7 @@ const FileManager = () => {
         onClose={() => setUploadDialogOpen(false)}
         onComplete={handleUploadComplete}
         currentPath={currentPath}
+        onUploadStart={dismissFailedItems}
       />
 
       <CreateFolderDialog
@@ -1599,6 +1604,7 @@ const FileManager = () => {
         onClose={(id) => {
           updateProgress({ id, remove: true });
         }}
+        onRetry={handleRetry}
       />
 
       {/* Mobile FAB */}

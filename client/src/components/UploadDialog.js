@@ -27,7 +27,7 @@ const popIn = keyframes`
   100% { transform: scale(1); opacity: 1; }
 `;
 
-const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
+const UploadDialog = ({ open, onClose, onComplete, currentPath, onUploadStart }) => {
   const { isMobile } = useResponsive();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -91,6 +91,11 @@ const UploadDialog = ({ open, onClose, onComplete, currentPath }) => {
 
   const handleUpload = async () => {
     if (files.length === 0) return;
+
+    // 업로드 시작 시 기존 실패 항목 dismiss
+    if (onUploadStart) {
+      onUploadStart();
+    }
 
     setUploading(true);
     filesRef.current = [...files];

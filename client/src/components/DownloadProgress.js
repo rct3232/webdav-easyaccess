@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -6,6 +6,11 @@ import {
   LinearProgress,
   IconButton,
   Collapse,
+  CircularProgress,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -15,6 +20,8 @@ import {
   CheckCircle as CheckCircleIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
+  ErrorOutline as ErrorIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 import { useResponsive } from '../hooks/useResponsive';
@@ -42,9 +49,17 @@ const progressCompleteAnimation = keyframes`
   }
 `;
 
-const DownloadProgress = ({ items, onClose }) => {
+const DownloadProgress = ({ items, onClose, onRetry }) => {
   const [expanded, setExpanded] = useState(true);
   const { isMobile } = useResponsive();
+
+  // 실패 시 자동 확장
+  useEffect(() => {
+    const hasError = items?.some(item => item.status === 'error');
+    if (hasError) {
+      setExpanded(true);
+    }
+  }, [items]);
 
   const getStatusIcon = (type) => {
     switch (type) {
@@ -83,6 +98,31 @@ const DownloadProgress = ({ items, onClose }) => {
     return Math.min(100, (item.progress / item.total) * 100);
   };
 
+  const getOverallProgress = () => {
+    if (!items || items.length === 0) return 0;
+    // Calculate progress for each item and average
+    const totalProgress = items.reduce((sum, item) => {
+      const itemProgress = getProgress(item);
+      return sum + itemProgress;
+    }, 0);
+    return Math.round(totalProgress / items.length);
+  };
+
+  const getOverallStatus = () => {
+    if (!items || items.length === 0) return 'completed';
+    const hasProcessing = items.some(item => item.status === 'processing' || item.status === 'preparing' || item.status === 'downloading');
+    const hasError = items.some(item => item.status === 'error');
+    if (hasError) return 'error';
+    if (hasProcessing) return 'processing';
+    return 'completed';
+  };
+
+  const getOverallType = () => {
+    if (!items || items.length === 0) return 'download';
+    // Return the type of the first item (or most common type)
+    return items[0]?.type || 'download';
+  };
+
   const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -95,120 +135,288 @@ const DownloadProgress = ({ items, onClose }) => {
     return null;
   }
 
-  return (
-    <Box
-      sx={{
-        position: 'fixed',
-        bottom: 16,
-        ...(isMobile 
-          ? { left: 16, right: 16, width: 'auto' }
-          : { right: 16, maxWidth: 400, width: '100%' }
-        ),
-        zIndex: 1300,
-      }}
-    >
+  const overallStatus = getOverallStatus();
+  const overallProgress = getOverallProgress();
+  const overallType = getOverallType();
+
+  // 최소화 UI 렌더링
+  const renderMinimizedUI = () => {
+    const renderStatusIcon = () => {
+      if (overallStatus === 'completed') {
+        return (
+          <CheckCircleIcon 
+            sx={{ 
+              color: 'success.main',
+              fontSize: 20,
+            }} 
+          />
+        );
+      } else if (overallStatus === 'error') {
+        return (
+          <ErrorIcon 
+            sx={{ 
+              color: 'error.main',
+              fontSize: 20,
+            }} 
+          />
+        );
+      } else {
+        // 작업 중: 스피너 + 내부 아이콘
+        const TypeIconComponent = getStatusIcon(overallType);
+        return (
+          <Box sx={{ position: 'relative', width: 20, height: 20 }}>
+            <CircularProgress 
+              size={20} 
+              thickness={4}
+              sx={{ position: 'absolute', top: 0, left: 0 }}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'primary.main',
+                fontSize: '12px',
+              }}
+            >
+              {React.isValidElement(TypeIconComponent) 
+                ? React.cloneElement(TypeIconComponent, { sx: { fontSize: 12, color: 'primary.main' } })
+                : <Box sx={{ fontSize: 12 }}>{TypeIconComponent}</Box>
+              }
+            </Box>
+          </Box>
+        );
+      }
+    };
+
+    return (
       <Paper
         elevation={6}
         sx={{
-          p: 2,
+          position: 'fixed',
+          bottom: 16,
+          ...(isMobile 
+            ? { left: 16 }
+            : { right: 16 }
+          ),
+          minWidth: 200,
+          maxWidth: 300,
+          borderRadius: '20px',
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          cursor: 'pointer',
+          zIndex: 1300,
           backgroundColor: 'background.paper',
         }}
+        onClick={() => setExpanded(true)}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-            진행 중인 작업
+        {renderStatusIcon()}
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="caption" sx={{ fontWeight: 'medium', display: 'block' }}>
+            {overallStatus === 'completed' ? '완료' : overallStatus === 'error' ? '오류 발생' : '작업 중'}
           </Typography>
-          <IconButton
-            size="small"
-            onClick={() => setExpanded(!expanded)}
-            sx={{ mr: 1 }}
-          >
-          {expanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
-          </IconButton>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {overallProgress}%
+          </Typography>
         </Box>
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(true);
+          }}
+          sx={{ padding: 0.5 }}
+        >
+          <ExpandLessIcon fontSize="small" />
+        </IconButton>
+      </Paper>
+    );
+  };
 
-        <Collapse in={expanded}>
-          {items.map((item, index) => (
-            <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+  // 확장 UI 렌더링
+  const renderExpandedUI = () => {
+    return (
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 16,
+          ...(isMobile 
+            ? { left: 16, right: 16, width: 'auto' }
+            : { right: 16, maxWidth: 400, width: '100%' }
+          ),
+          zIndex: 1300,
+        }}
+      >
+        <Paper
+          elevation={6}
+          sx={{
+            p: 2,
+            backgroundColor: 'background.paper',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+              진행 중인 작업
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={() => setExpanded(false)}
+              sx={{ mr: 1 }}
+            >
+              {expanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
+            </IconButton>
+          </Box>
+
+          <Collapse in={expanded}>
+            {items.map((item, index) => (
+              <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                  {item.status === 'completed' ? (
+                    <CheckCircleIcon 
+                      sx={{ 
+                        color: 'success.main',
+                        animation: `${checkmarkAnimation} 0.5s ease-in-out`,
+                      }} 
+                    />
+                  ) : item.status === 'error' ? (
+                    <ErrorIcon 
+                      sx={{ 
+                        color: 'error.main',
+                      }} 
+                    />
+                  ) : (
+                    getStatusIcon(item.type)
+                  )}
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      ml: 1,
+                      flexGrow: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={item.name || item.zipName}
+                  >
+                    {item.name || item.zipName || '작업 중...'}
+                  </Typography>
+                </Box>
+                
                 {item.status === 'completed' ? (
-                  <CheckCircleIcon 
-                    sx={{ 
-                      color: 'success.main',
-                      animation: `${checkmarkAnimation} 0.5s ease-in-out`,
-                    }} 
+                  <Box
+                    sx={{
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: 'success.main',
+                      opacity: 0.2,
+                      mb: 0.5,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        height: '100%',
+                        width: '100%',
+                        backgroundColor: 'success.main',
+                        animation: `${progressCompleteAnimation} 0.5s ease-in-out`,
+                      },
+                    }}
                   />
                 ) : (
-                  getStatusIcon(item.type)
-                )}
-                <Typography
-                  variant="body2"
-                  sx={{
-                    ml: 1,
-                    flexGrow: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={item.name || item.zipName}
-                >
-                  {item.name || item.zipName || '작업 중...'}
-                </Typography>
-              </Box>
-              
-              {item.status === 'completed' ? (
-                <Box
-                  sx={{
-                    height: 6,
-                    borderRadius: 3,
-                    backgroundColor: 'success.main',
-                    opacity: 0.2,
-                    mb: 0.5,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    '&::after': {
-                      content: '""',
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      height: '100%',
-                      width: '100%',
-                      backgroundColor: 'success.main',
-                      animation: `${progressCompleteAnimation} 0.5s ease-in-out`,
-                    },
-                  }}
-                />
-              ) : (
-                <LinearProgress
-                  variant={
-                    item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.status === 'preparing' || item.total === 0
-                      ? 'indeterminate'
-                      : 'determinate'
-                  }
-                  value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' ? undefined : getProgress(item)}
-                  sx={{ mb: 0.5, height: 6, borderRadius: 3 }}
-                />
-              )}
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="caption" color="text.secondary">
-                  {getStatusText(item)}
-                </Typography>
-                {item.total > 0 && item.type !== 'move' && item.type !== 'copy' && item.type !== 'delete' && item.status !== 'completed' && (
-                  <Typography variant="caption" color="text.secondary">
-                    {item.percentage !== undefined 
-                      ? `${Math.round(item.percentage)}%`
-                      : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`
+                  <LinearProgress
+                    variant={
+                      item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.status === 'preparing' || item.total === 0
+                        ? 'indeterminate'
+                        : 'determinate'
                     }
+                    value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' ? undefined : getProgress(item)}
+                    sx={{ 
+                      mb: 0.5, 
+                      height: 6, 
+                      borderRadius: 3,
+                      ...(item.status === 'error' && {
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: 'error.main',
+                        }
+                      })
+                    }}
+                  />
+                )}
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {getStatusText(item)}
                   </Typography>
+                  {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
+                    <Typography variant="caption" color="text.secondary">
+                      {item.type === 'move' || item.type === 'copy' || item.type === 'delete'
+                        ? `${item.progress}/${item.total} (${Math.round((item.progress / item.total) * 100)}%)`
+                        : item.percentage !== undefined 
+                          ? `${Math.round(item.percentage)}%`
+                          : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`
+                      }
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* 실패 내역 리스트 */}
+                {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
+                  <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
+                      실패한 항목:
+                    </Typography>
+                    <List dense sx={{ py: 0, mb: 2 }}>
+                      {item.failedItems.map((failedItem, failedIndex) => (
+                        <ListItem key={failedIndex} sx={{ px: 0, py: 0.5 }}>
+                          <ListItemText
+                            primary={failedItem.fileName}
+                            secondary={failedItem.error}
+                            primaryTypographyProps={{ variant: 'caption' }}
+                            secondaryTypographyProps={{ variant: 'caption', color: 'error' }}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                      {onRetry && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<RefreshIcon />}
+                          onClick={() => onRetry(item.id)}
+                          sx={{ flex: 1 }}
+                        >
+                          재시도
+                        </Button>
+                      )}
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => onClose && onClose(item.id)}
+                        sx={{ flex: 1 }}
+                      >
+                        확인
+                      </Button>
+                    </Box>
+                  </Box>
                 )}
               </Box>
-            </Box>
-          ))}
-        </Collapse>
-      </Paper>
-    </Box>
-  );
+            ))}
+          </Collapse>
+        </Paper>
+      </Box>
+    );
+  };
+
+  return expanded ? renderExpandedUI() : renderMinimizedUI();
 };
 
 export default DownloadProgress;

@@ -40,16 +40,21 @@ export const useBulkOperations = (
     setFolderPickerOpen(true);
   };
 
-  const handleBulkDelete = async (retryData = null) => {
+  const handleBulkDelete = async (retryData = null, onConfirm = null) => {
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
     if (filePaths.length === 0) return;
     
     if (!retryData) {
       dismissFailedItems();
+      // onConfirm 콜백이 있으면 호출하여 확인 모달 표시, 없으면 바로 진행
+      if (onConfirm) {
+        onConfirm(filePaths);
+        return;
+      }
+      // 확인 후 즉시 선택모드 해제
+      setSelectedFiles(new Set());
       setSelectionMode(false);
-      const confirmMessage = `선택한 ${filePaths.length}개의 파일/폴더를 삭제하시겠습니까?`;
-      if (!window.confirm(confirmMessage)) return;
     }
 
     markProcessing(filePaths, 'delete');
@@ -149,9 +154,9 @@ export const useBulkOperations = (
         });
       });
 
+      // 선택모드는 이미 위에서 해제했으므로 여기서는 제거
       if (!retryData) {
         setSelectedFiles(new Set());
-        setSelectionMode(false);
       }
       loadFiles();
       

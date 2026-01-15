@@ -70,6 +70,7 @@ import FileActionSheet from '../components/FileActionSheet';
 import ShareDialog from '../components/ShareDialog';
 import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
 import FilePropertiesDialog from '../components/FilePropertiesDialog';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { moveFile, checkPermission, renameFile, deleteFile, copyFile, downloadFile, downloadMultipleFiles, uploadFile, listFiles } from '../services/fileService';
 
 const FileManager = () => {
@@ -144,6 +145,31 @@ const FileManager = () => {
   
   // 속성 다이얼로그 상태
   const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
+  
+  // Bulk delete 확인 다이얼로그 상태
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkDeleteFilePaths, setBulkDeleteFilePaths] = useState([]);
+  
+  // MobileFAB 상태
+  const [mobileFABOpen, setMobileFABOpen] = useState(false);
+
+  // 다이얼로그가 열릴 때 FAB를 자동으로 닫기
+  useEffect(() => {
+    if (isMobile && (uploadDialogOpen || createFolderDialogOpen)) {
+      setMobileFABOpen(false);
+    }
+  }, [isMobile, uploadDialogOpen, createFolderDialogOpen]);
+
+  // FAB 열림/닫힘 상태 변경 핸들러
+  // 다이얼로그가 열려있을 때는 FAB를 열지 않도록 처리
+  const handleFABOpenChange = useCallback((newOpen) => {
+    // 다이얼로그가 열려있을 때 FAB를 열려고 하면 무시
+    if (newOpen && (uploadDialogOpen || createFolderDialogOpen)) {
+      return; // FAB를 열지 않음
+    }
+    // 그 외의 경우 정상적으로 상태 업데이트
+    setMobileFABOpen(newOpen);
+  }, [uploadDialogOpen, createFolderDialogOpen]);
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -208,6 +234,17 @@ const FileManager = () => {
       },
     }
   );
+
+  const handleBulkDeleteConfirm = () => {
+    setBulkDeleteDialogOpen(false);
+    const filePaths = [...bulkDeleteFilePaths];
+    setBulkDeleteFilePaths([]);
+    // 선택모드 해제
+    setSelectedFiles(new Set());
+    setSelectionMode(false);
+    // 삭제 실행 (retryData로 전달하여 확인 단계 건너뛰기)
+    handleBulkDelete({ filePaths }, null);
+  };
 
   const handleLogout = () => {
     logout();
@@ -2127,6 +2164,7 @@ const FileManager = () => {
         onClose={() => setUploadDialogOpen(false)}
         currentPath={currentPath}
         onUploadStart={handleUploadStart}
+        onCancel={() => setMobileFABOpen(true)}
       />
 
       <CreateFolderDialog
@@ -2135,6 +2173,7 @@ const FileManager = () => {
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
         onMessage={setDropMessage}
+        onCancel={() => setMobileFABOpen(true)}
       />
 
       <FilePreviewDialog
@@ -2318,7 +2357,13 @@ const FileManager = () => {
           <IconButton
             color="error"
             size={isMobile ? "medium" : "small"}
-            onClick={handleBulkDelete}
+            onClick={() => {
+              const filePaths = Array.from(selectedFiles);
+              if (filePaths.length > 0) {
+                setBulkDeleteFilePaths(filePaths);
+                setBulkDeleteDialogOpen(true);
+              }
+            }}
             disabled={!hasWritePermission}
             title="삭제"
             sx={{ 
@@ -2348,9 +2393,15 @@ const FileManager = () => {
       {/* Mobile FAB */}
       {isMobile && !selectionMode && (
         <MobileFAB
-          onUpload={() => setUploadDialogOpen(true)}
-          onCreateFolder={() => setCreateFolderDialogOpen(true)}
+          onUpload={() => {
+            setUploadDialogOpen(true);
+          }}
+          onCreateFolder={() => {
+            setCreateFolderDialogOpen(true);
+          }}
           hasWritePermission={hasWritePermission}
+          open={mobileFABOpen}
+          onOpenChange={handleFABOpenChange}
         />
       )}
 
@@ -2480,39 +2531,20 @@ const FileManager = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog 
-        open={deleteDialogOpen} 
+      <ConfirmDialog
+        open={deleteDialogOpen}
         onClose={() => {
           setDeleteDialogOpen(false);
           setMobileDeleteFile(null);
         }}
-        fullScreen={isMobile}
-      >
-        <DialogTitle>삭제 확인</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            정말로 "{(mobileDeleteFile || actionSheetFile)?.basename}"을(를) 삭제하시겠습니까?
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={() => {
-              setDeleteDialogOpen(false);
-              setMobileDeleteFile(null);
-            }}
-          >
-            취소
-          </Button>
-          <Button 
-            onClick={handleDelete} 
-            variant="contained" 
-            color="error"
-            disabled={processingMap.has((mobileDeleteFile || actionSheetFile)?.path)}
-          >
-            삭제
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={handleDelete}
+        title="삭제 확인"
+        message={`정말로 "${(mobileDeleteFile || actionSheetFile)?.basename}"을(를) 삭제하시겠습니까?`}
+        confirmText="삭제"
+        cancelText="취소"
+        confirmColor="error"
+        loading={processingMap.has((mobileDeleteFile || actionSheetFile)?.path)}
+      />
 
       {/* Share Dialog */}
       {(mobileShareFile || actionSheetFile) && (
@@ -2558,6 +2590,21 @@ const FileManager = () => {
           file={mobilePropertiesFile || actionSheetFile}
         />
       )}
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={bulkDeleteDialogOpen}
+        onClose={() => {
+          setBulkDeleteDialogOpen(false);
+          setBulkDeleteFilePaths([]);
+        }}
+        onConfirm={handleBulkDeleteConfirm}
+        title="삭제 확인"
+        message={`선택한 ${bulkDeleteFilePaths.length}개의 파일/폴더를 삭제하시겠습니까?`}
+        confirmText="삭제"
+        cancelText="취소"
+        confirmColor="error"
+      />
     </Box>
   );
 };

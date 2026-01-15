@@ -32,6 +32,7 @@ import {
 import FolderPickerDialog from './FolderPickerDialog';
 import ShareDialog from './ShareDialog';
 import SharedFolderManageDialog from './SharedFolderManageDialog';
+import ConfirmDialog from './ConfirmDialog';
 
 const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission, onProcessingStart, onProcessingEnd }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -43,6 +44,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(false);
   const [sharedFolderManageDialogOpen, setSharedFolderManageDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // 공유 버튼 표시 조건: 디렉토리이고, 사용자 디렉토리 하위에 있는 경우
   const canShare = file?.type === 'directory' && user && !user.is_admin && file.path.startsWith(`/${user.username}/`);
@@ -103,10 +105,11 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`정말로 "${file.basename}"을(를) 삭제하시겠습니까?`)) {
-      return;
-    }
+    setDeleteDialogOpen(true);
+  };
 
+  const handleDeleteConfirm = async () => {
+    setDeleteDialogOpen(false);
     onProcessingStart?.([file.path], 'delete');
 
     try {
@@ -437,6 +440,17 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         user={user}
         onMessage={onMessage}
         onActionComplete={onActionComplete}
+      />
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="삭제 확인"
+        message={`정말로 "${file.basename}"을(를) 삭제하시겠습니까?`}
+        confirmText="삭제"
+        cancelText="취소"
+        confirmColor="error"
       />
 
       <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>

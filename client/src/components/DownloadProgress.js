@@ -284,9 +284,12 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
           sx={{
             p: 2,
             backgroundColor: 'background.paper',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexShrink: 0 }}>
             <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
               진행 중인 작업
             </Typography>
@@ -299,227 +302,280 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
             </IconButton>
           </Box>
 
-          <Collapse in={expanded}>
-            {items.map((item, index) => (
-              <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+          <Collapse 
+            in={expanded}
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Box
+              sx={{
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                maxHeight: 'calc(80vh - 120px)',
+                '&::-webkit-scrollbar': {
+                  width: '8px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  borderRadius: '4px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                },
+              }}
+            >
+              {items.map((item, index) => (
+              <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 }, display: 'flex', flexDirection: 'column' }}>
+                {/* 아이템 헤더 (고정 영역) */}
+                <Box sx={{ flexShrink: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                    {item.status === 'completed' ? (
+                      <CheckCircleIcon 
+                        sx={{ 
+                          color: 'success.main',
+                          animation: `${checkmarkAnimation} 0.5s ease-in-out`,
+                        }} 
+                      />
+                    ) : item.status === 'error' ? (
+                      <ErrorIcon 
+                        sx={{ 
+                          color: 'error.main',
+                        }} 
+                      />
+                    ) : (
+                      getStatusIcon(item.type)
+                    )}
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        ml: 1,
+                        flexGrow: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={item.name || item.zipName}
+                    >
+                      {item.name || item.zipName || '작업 중...'}
+                    </Typography>
+                  </Box>
+                  
                   {item.status === 'completed' ? (
-                    <CheckCircleIcon 
-                      sx={{ 
-                        color: 'success.main',
-                        animation: `${checkmarkAnimation} 0.5s ease-in-out`,
-                      }} 
-                    />
-                  ) : item.status === 'error' ? (
-                    <ErrorIcon 
-                      sx={{ 
-                        color: 'error.main',
-                      }} 
+                    <Box
+                      sx={{
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: 'success.main',
+                        opacity: 0.2,
+                        mb: 0.5,
+                        position: 'relative',
+                        overflow: 'hidden',
+                        '&::after': {
+                          content: '""',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          height: '100%',
+                          width: '100%',
+                          backgroundColor: 'success.main',
+                          animation: `${progressCompleteAnimation} 0.5s ease-in-out`,
+                        },
+                      }}
                     />
                   ) : (
-                    getStatusIcon(item.type)
-                  )}
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      ml: 1,
-                      flexGrow: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title={item.name || item.zipName}
-                  >
-                    {item.name || item.zipName || '작업 중...'}
-                  </Typography>
-                </Box>
-                
-                {item.status === 'completed' ? (
-                  <Box
-                    sx={{
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: 'success.main',
-                      opacity: 0.2,
-                      mb: 0.5,
-                      position: 'relative',
-                      overflow: 'hidden',
-                      '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        height: '100%',
-                        width: '100%',
-                        backgroundColor: 'success.main',
-                        animation: `${progressCompleteAnimation} 0.5s ease-in-out`,
-                      },
-                    }}
-                  />
-                ) : (
-                  <LinearProgress
-                    variant={
-                      item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' || item.status === 'preparing' || item.total === 0
-                        ? 'indeterminate'
-                        : 'determinate'
-                    }
-                    value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' ? undefined : getProgress(item)}
-                    sx={{ 
-                      mb: 0.5, 
-                      height: 6, 
-                      borderRadius: 3,
-                      ...(item.status === 'error' && {
-                        '& .MuiLinearProgress-bar': {
-                          backgroundColor: 'error.main',
-                        }
-                      })
-                    }}
-                  />
-                )}
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">
-                    {getStatusText(item)}
-                  </Typography>
-                  {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
-                    <Typography variant="caption" color="text.secondary">
-                      {item.type === 'move' || item.type === 'copy' || item.type === 'delete'
-                        ? `${item.progress}/${item.total} (${Math.round((item.progress / item.total) * 100)}%)`
-                        : item.percentage !== undefined 
-                          ? `${Math.round(item.percentage)}%`
-                          : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`
+                    <LinearProgress
+                      variant={
+                        item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' || item.status === 'preparing' || item.total === 0
+                          ? 'indeterminate'
+                          : 'determinate'
                       }
+                      value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' ? undefined : getProgress(item)}
+                      sx={{ 
+                        mb: 0.5, 
+                        height: 6, 
+                        borderRadius: 3,
+                        ...(item.status === 'error' && {
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor: 'error.main',
+                          }
+                        })
+                      }}
+                    />
+                  )}
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {getStatusText(item)}
                     </Typography>
-                  )}
-                  {/* 업로드 타입일 때 전체 취소 버튼 */}
-                  {item.type === 'upload' && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
-                    <IconButton
-                      size="small"
-                      onClick={() => onCancelAll(item.id)}
-                      sx={{ ml: 1 }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  )}
+                    {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
+                      <Typography variant="caption" color="text.secondary">
+                        {item.type === 'move' || item.type === 'copy' || item.type === 'delete'
+                          ? `${item.progress}/${item.total} (${Math.round((item.progress / item.total) * 100)}%)`
+                          : item.percentage !== undefined 
+                            ? `${Math.round(item.percentage)}%`
+                            : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`
+                        }
+                      </Typography>
+                    )}
+                    {/* 업로드 타입일 때 전체 취소 버튼 */}
+                    {item.type === 'upload' && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
+                      <Typography
+                        component="button"
+                        variant="caption"
+                        onClick={() => onCancelAll(item.id)}
+                        sx={{
+                          ml: 1,
+                          color: 'text.secondary',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          border: 'none',
+                          background: 'none',
+                          padding: 0,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          '&:hover': {
+                            color: 'text.primary',
+                          },
+                        }}
+                      >
+                        <CloseIcon fontSize="small" sx={{ fontSize: '0.875rem' }} />
+                        작업 취소
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
+                
+                {/* 아이템 본문 (스크롤 가능) */}
+                <Box sx={{ flex: 1, minHeight: 0 }}>
 
-                {/* 업로드 타입일 때 개별 파일 목록 표시 */}
-                {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
-                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <List dense sx={{ py: 0 }}>
-                      {item.fileItems.map((fileItem, fileIndex) => {
-                        const fileStatus = fileItem.status;
-                        const canCancel = (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
-                        
-                        return (
-                          <ListItem 
-                            key={fileIndex} 
-                            sx={{ px: 0, py: 0.5 }}
-                            secondaryAction={
-                              canCancel ? (
-                                <IconButton
-                                  edge="end"
-                                  size="small"
-                                  onClick={() => onCancelFile(item.id, fileItem.fileName)}
-                                >
-                                  <CloseIcon fontSize="small" />
-                                </IconButton>
-                              ) : fileStatus === 'completed' ? (
-                                <CheckCircleIcon 
-                                  fontSize="small" 
-                                  color="success"
-                                  sx={{ fontSize: 16 }}
-                                />
-                              ) : fileStatus === 'error' ? (
-                                <ErrorIcon 
-                                  fontSize="small" 
-                                  color="error"
-                                  sx={{ fontSize: 16 }}
-                                />
-                              ) : fileStatus === 'cancelled' ? (
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                                  취소됨
-                                </Typography>
-                              ) : null
-                            }
-                          >
-                            <ListItemText
-                              primary={fileItem.fileName}
-                              primaryTypographyProps={{ variant: 'caption' }}
-                              secondary={
-                                fileStatus === 'uploading' ? (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                                    업로드 중...
-                                  </Typography>
+                  {/* 업로드 타입일 때 개별 파일 목록 표시 */}
+                  {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <List dense sx={{ py: 0 }}>
+                        {item.fileItems.map((fileItem, fileIndex) => {
+                          const fileStatus = fileItem.status;
+                          const canCancel = (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
+                          
+                          return (
+                            <ListItem 
+                              key={fileIndex} 
+                              sx={{ px: 0, py: 0.5 }}
+                              secondaryAction={
+                                canCancel ? (
+                                  <IconButton
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => onCancelFile(item.id, fileItem.fileName)}
+                                  >
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
                                 ) : fileStatus === 'completed' ? (
-                                  <Typography variant="caption" color="success.main" sx={{ fontSize: 11 }}>
-                                    완료
-                                  </Typography>
+                                  <CheckCircleIcon 
+                                    fontSize="small" 
+                                    color="success"
+                                    sx={{ fontSize: 16 }}
+                                  />
                                 ) : fileStatus === 'error' ? (
-                                  <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
-                                    {fileItem.error || '업로드 실패'}
-                                  </Typography>
+                                  <ErrorIcon 
+                                    fontSize="small" 
+                                    color="error"
+                                    sx={{ fontSize: 16 }}
+                                  />
                                 ) : fileStatus === 'cancelled' ? (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
                                     취소됨
                                   </Typography>
-                                ) : (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                                    대기 중
-                                  </Typography>
-                                )
+                                ) : null
                               }
+                            >
+                              <ListItemText
+                                primary={fileItem.fileName}
+                                primaryTypographyProps={{ variant: 'caption' }}
+                                secondary={
+                                  fileStatus === 'uploading' ? (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                      업로드 중...
+                                    </Typography>
+                                  ) : fileStatus === 'completed' ? (
+                                    <Typography variant="caption" color="success.main" sx={{ fontSize: 11 }}>
+                                      완료
+                                    </Typography>
+                                  ) : fileStatus === 'error' ? (
+                                    <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
+                                      {fileItem.error || '업로드 실패'}
+                                    </Typography>
+                                  ) : fileStatus === 'cancelled' ? (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                      취소됨
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                      대기 중
+                                    </Typography>
+                                  )
+                                }
+                              />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                    </Box>
+                  )}
+
+                  {/* 실패 내역 리스트 */}
+                  {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
+                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
+                        실패한 항목:
+                      </Typography>
+                      <List dense sx={{ py: 0, mb: 2 }}>
+                        {item.failedItems.map((failedItem, failedIndex) => (
+                          <ListItem key={failedIndex} sx={{ px: 0, py: 0.5 }}>
+                            <ListItemText
+                              primary={failedItem.fileName}
+                              secondary={failedItem.error}
+                              primaryTypographyProps={{ variant: 'caption' }}
+                              secondaryTypographyProps={{ variant: 'caption', color: 'error' }}
                             />
                           </ListItem>
-                        );
-                      })}
-                    </List>
-                  </Box>
-                )}
-
-                {/* 실패 내역 리스트 */}
-                {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
-                  <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
-                      실패한 항목:
-                    </Typography>
-                    <List dense sx={{ py: 0, mb: 2 }}>
-                      {item.failedItems.map((failedItem, failedIndex) => (
-                        <ListItem key={failedIndex} sx={{ px: 0, py: 0.5 }}>
-                          <ListItemText
-                            primary={failedItem.fileName}
-                            secondary={failedItem.error}
-                            primaryTypographyProps={{ variant: 'caption' }}
-                            secondaryTypographyProps={{ variant: 'caption', color: 'error' }}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                      {onRetry && (
+                        ))}
+                      </List>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                        {onRetry && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<RefreshIcon />}
+                            onClick={() => onRetry(item.id)}
+                            sx={{ flex: 1 }}
+                          >
+                            재시도
+                          </Button>
+                        )}
                         <Button
-                          variant="outlined"
+                          variant="contained"
                           size="small"
-                          startIcon={<RefreshIcon />}
-                          onClick={() => onRetry(item.id)}
+                          onClick={() => onClose && onClose(item.id)}
                           sx={{ flex: 1 }}
                         >
-                          재시도
+                          확인
                         </Button>
-                      )}
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => onClose && onClose(item.id)}
-                        sx={{ flex: 1 }}
-                      >
-                        확인
-                      </Button>
+                      </Box>
                     </Box>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
-            ))}
+              ))}
+            </Box>
           </Collapse>
         </Paper>
       </Box>

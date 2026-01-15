@@ -17,11 +17,13 @@ import {
   DriveFileMove as MoveIcon,
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
+  UploadFile as UploadIcon,
   CheckCircle as CheckCircleIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   ErrorOutline as ErrorIcon,
   Refresh as RefreshIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 import { useResponsive } from '../hooks/useResponsive';
@@ -49,16 +51,38 @@ const progressCompleteAnimation = keyframes`
   }
 `;
 
-const DownloadProgress = ({ items, onClose, onRetry }) => {
+const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
   const [expanded, setExpanded] = useState(true);
   const { isMobile } = useResponsive();
 
-  // 실패 시 자동 확장
+  const prevItemIdsRef = React.useRef(new Set());
+
+  // 새 작업 시작 시 최소화 상태로 설정, 실패 시 자동 확장
   useEffect(() => {
+    const currentItemIds = new Set(items?.map(item => item.id) || []);
+    const prevItemIds = prevItemIdsRef.current;
+
+    // 새 작업이 시작된 경우 (새로운 id가 추가됨)
+    const newItemIds = Array.from(currentItemIds).filter(id => !prevItemIds.has(id));
+    if (newItemIds.length > 0) {
+      // 새로 추가된 항목 중 preparing 또는 processing 상태인 것이 있으면 최소화 상태로
+      const newItems = items?.filter(item => newItemIds.includes(item.id)) || [];
+      const hasNewPreparing = newItems.some(item => 
+        item.status === 'preparing' || item.status === 'processing' || item.status === 'downloading' || item.status === 'uploading'
+      );
+      if (hasNewPreparing) {
+        setExpanded(false);
+      }
+    }
+
+    // 실패 시 자동 확장 (기존 로직 유지)
     const hasError = items?.some(item => item.status === 'error');
     if (hasError) {
       setExpanded(true);
     }
+
+    // 이전 id 집합 업데이트
+    prevItemIdsRef.current = currentItemIds;
   }, [items]);
 
   const getStatusIcon = (type) => {
@@ -71,6 +95,8 @@ const DownloadProgress = ({ items, onClose, onRetry }) => {
         return <CopyIcon />;
       case 'delete':
         return <DeleteIcon />;
+      case 'upload':
+        return <UploadIcon />;
       default:
         return <DownloadIcon />;
     }
@@ -79,7 +105,7 @@ const DownloadProgress = ({ items, onClose, onRetry }) => {
   const getStatusText = (item) => {
     if (item.status === 'preparing') {
       return '준비 중...';
-    } else if (item.status === 'downloading' || item.status === 'processing') {
+    } else if (item.status === 'downloading' || item.status === 'processing' || item.status === 'uploading') {
       return item.current || '처리 중...';
     } else if (item.status === 'completed') {
       return '완료';
@@ -110,7 +136,7 @@ const DownloadProgress = ({ items, onClose, onRetry }) => {
 
   const getOverallStatus = () => {
     if (!items || items.length === 0) return 'completed';
-    const hasProcessing = items.some(item => item.status === 'processing' || item.status === 'preparing' || item.status === 'downloading');
+    const hasProcessing = items.some(item => item.status === 'processing' || item.status === 'preparing' || item.status === 'downloading' || item.status === 'uploading');
     const hasError = items.some(item => item.status === 'error');
     if (hasError) return 'error';
     if (hasProcessing) return 'processing';
@@ -333,11 +359,11 @@ const DownloadProgress = ({ items, onClose, onRetry }) => {
                 ) : (
                   <LinearProgress
                     variant={
-                      item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.status === 'preparing' || item.total === 0
+                      item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' || item.status === 'preparing' || item.total === 0
                         ? 'indeterminate'
                         : 'determinate'
                     }
-                    value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' ? undefined : getProgress(item)}
+                    value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' ? undefined : getProgress(item)}
                     sx={{ 
                       mb: 0.5, 
                       height: 6, 
@@ -365,7 +391,91 @@ const DownloadProgress = ({ items, onClose, onRetry }) => {
                       }
                     </Typography>
                   )}
+                  {/* 업로드 타입일 때 전체 취소 버튼 */}
+                  {item.type === 'upload' && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
+                    <IconButton
+                      size="small"
+                      onClick={() => onCancelAll(item.id)}
+                      sx={{ ml: 1 }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  )}
                 </Box>
+
+                {/* 업로드 타입일 때 개별 파일 목록 표시 */}
+                {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
+                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <List dense sx={{ py: 0 }}>
+                      {item.fileItems.map((fileItem, fileIndex) => {
+                        const fileStatus = fileItem.status;
+                        const canCancel = (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
+                        
+                        return (
+                          <ListItem 
+                            key={fileIndex} 
+                            sx={{ px: 0, py: 0.5 }}
+                            secondaryAction={
+                              canCancel ? (
+                                <IconButton
+                                  edge="end"
+                                  size="small"
+                                  onClick={() => onCancelFile(item.id, fileItem.fileName)}
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              ) : fileStatus === 'completed' ? (
+                                <CheckCircleIcon 
+                                  fontSize="small" 
+                                  color="success"
+                                  sx={{ fontSize: 16 }}
+                                />
+                              ) : fileStatus === 'error' ? (
+                                <ErrorIcon 
+                                  fontSize="small" 
+                                  color="error"
+                                  sx={{ fontSize: 16 }}
+                                />
+                              ) : fileStatus === 'cancelled' ? (
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
+                                  취소됨
+                                </Typography>
+                              ) : null
+                            }
+                          >
+                            <ListItemText
+                              primary={fileItem.fileName}
+                              primaryTypographyProps={{ variant: 'caption' }}
+                              secondary={
+                                fileStatus === 'uploading' ? (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                    업로드 중...
+                                  </Typography>
+                                ) : fileStatus === 'completed' ? (
+                                  <Typography variant="caption" color="success.main" sx={{ fontSize: 11 }}>
+                                    완료
+                                  </Typography>
+                                ) : fileStatus === 'error' ? (
+                                  <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
+                                    {fileItem.error || '업로드 실패'}
+                                  </Typography>
+                                ) : fileStatus === 'cancelled' ? (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                    취소됨
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                                    대기 중
+                                  </Typography>
+                                )
+                              }
+                            />
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Box>
+                )}
 
                 {/* 실패 내역 리스트 */}
                 {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (

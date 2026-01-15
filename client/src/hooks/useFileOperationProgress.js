@@ -55,7 +55,56 @@ export const useFileOperationProgress = () => {
       setProgressItems(prev => {
         const existing = prev.find(item => item.id === progressItem.id);
         if (existing) {
-          return prev.map(item => item.id === progressItem.id ? progressItem : item);
+          // 기존 항목과 새 항목 병합
+          const merged = { ...existing, ...progressItem };
+          
+          // fileItems 배열이 있는 경우 병합
+          if (progressItem.fileItems && existing.fileItems) {
+            const existingFileItemsMap = new Map();
+            existing.fileItems.forEach(item => {
+              existingFileItemsMap.set(item.fileName, item);
+            });
+            
+            // 새 fileItems를 기존 항목과 병합
+            const mergedFileItems = progressItem.fileItems.map(newItem => {
+              const existingItem = existingFileItemsMap.get(newItem.fileName);
+              
+              // 취소 상태는 항상 보존 (우선순위 최우선)
+              if (existingItem && existingItem.status === 'cancelled') {
+                return existingItem; // 취소 상태 보존
+              }
+              
+              // 기존 항목과 새 항목 병합 (기존 항목의 속성 유지)
+              if (existingItem) {
+                return {
+                  ...existingItem,
+                  ...newItem,
+                  // 취소 상태가 이미 있는 경우 유지
+                  status: existingItem.status === 'cancelled' ? 'cancelled' : newItem.status,
+                };
+              }
+              
+              return newItem;
+            });
+            
+            // 기존에만 있고 새 항목에 없는 fileItems 추가 (취소된 파일 등)
+            existing.fileItems.forEach(existingItem => {
+              if (!progressItem.fileItems.find(item => item.fileName === existingItem.fileName)) {
+                // 취소된 파일은 항상 유지
+                if (existingItem.status === 'cancelled') {
+                  mergedFileItems.push(existingItem);
+                }
+              }
+            });
+            
+            merged.fileItems = mergedFileItems;
+          } else if (progressItem.fileItems) {
+            // 기존에 fileItems가 없고 새로 추가하는 경우
+            merged.fileItems = progressItem.fileItems;
+          }
+          // 기존 fileItems가 있고 새로 전달하지 않은 경우는 기존 것 유지
+          
+          return prev.map(item => item.id === progressItem.id ? merged : item);
         } else {
           return [...prev, progressItem];
         }

@@ -21,18 +21,12 @@ import {
   Share as ShareIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import {
-  downloadFile,
-  downloadMultipleFiles,
-  deleteFile,
-  renameFile,
-  moveFile,
-  copyFile,
-} from '../services/fileService';
+import { moveFile, copyFile } from '../services/fileService';
 import FolderPickerDialog from './FolderPickerDialog';
 import ShareDialog from './ShareDialog';
 import SharedFolderManageDialog from './SharedFolderManageDialog';
 import ConfirmDialog from './ConfirmDialog';
+import { useFileOperations } from '../hooks/useFileOperations';
 
 const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission, onProcessingStart, onProcessingEnd }) => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -46,6 +40,21 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const [sharedFolderManageDialogOpen, setSharedFolderManageDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Use file operations hook - must be called before conditional return
+  const {
+    handleFileDownload,
+    handleFileOperation: handleFileOp,
+    handleFileRename,
+    handleFileDelete,
+  } = useFileOperations({
+    onProgress,
+    onMessage,
+    onProcessingStart,
+    onProcessingEnd,
+    onActionComplete,
+    onClose,
+  });
+
   // 공유 버튼 표시 조건: 디렉토리이고, 사용자 디렉토리 하위에 있는 경우
   const canShare = file?.type === 'directory' && user && !user.is_admin && file.path.startsWith(`/${user.username}/`);
   
@@ -54,238 +63,51 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
 
   if (!file) return null;
 
-  const handleDownload = async () => {
-    try {
-      if (file.type === 'directory') {
-        const progressId = `download_${Date.now()}`;
-        const progressItem = {
-          id: progressId,
-          type: 'download',
-          status: 'preparing',
-          progress: 0,
-          total: 1,
-          current: '',
-          zipName: '',
-        };
-        
-        if (onProgress) {
-          onProgress(progressItem);
-        }
-        
-        await downloadMultipleFiles([file.path], (progress) => {
-          if (onProgress) {
-            onProgress({ ...progress, id: progressId });
-          }
-        });
-        
-        if (onProgress) {
-          setTimeout(() => {
-            onProgress({ id: progressId, remove: true });
-          }, 3000);
-        }
-      } else {
-        await downloadFile(file.path);
-      }
-      onClose();
-    } catch (error) {
-      const errorMsg = error.response?.data?.error || '다운로드에 실패했습니다';
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: errorMsg,
-          type: 'error'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 5000);
-      } else {
-        alert(errorMsg);
-      }
-    }
+  const handleDownload = () => {
+    handleFileDownload(file);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     setDeleteDialogOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
     setDeleteDialogOpen(false);
-    onProcessingStart?.([file.path], 'delete');
-
     try {
-      await deleteFile(file.path);
-      onActionComplete(file.type === 'directory' ? file.path : null);
-      onClose();
+      await handleFileDelete(file);
     } catch (error) {
-      const errorMsg = error.response?.data?.error || '삭제에 실패했습니다';
+      const errorMsg = error?.response?.data?.error || error?.message || '삭제에 실패했습니다';
       setErrorMessage(errorMsg);
       setErrorDialogOpen(true);
     }
-    onProcessingEnd?.([file.path]);
   };
 
   const handleRename = async () => {
     if (!newName.trim()) {
-      alert('이름을 입력하세요');
       return;
     }
-
     setLoading(true);
     try {
-      await renameFile(file.path, newName);
+      await handleFileRename(file, newName);
       setRenameDialogOpen(false);
       setNewName('');
-      onActionComplete();
-      onClose();
-      
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: `"${file.basename}"을(를) "${newName}"(으)로 이름 변경했습니다`,
-          type: 'success'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 3000);
-      }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || '이름 변경에 실패했습니다';
-      
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: errorMsg,
-          type: 'error'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 5000);
-      } else {
-        alert(errorMsg);
-      }
+      // Error is already handled by useFileOperations
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileOperation = async (selectedPath, operation, operationName, actionVerb) => {
-    if (!selectedPath || !selectedPath.trim()) {
-      alert('대상 경로를 선택하세요');
-      return;
-    }
-
-    const destPath = selectedPath.endsWith('/')
-      ? selectedPath + file.basename
-      : selectedPath + '/' + file.basename;
-    
-    const progressId = `${operation}_${Date.now()}`;
-    const operationType =
-      operation === moveFile ? 'move' :
-      operation === copyFile ? 'copy' :
-      operationName === '삭제' ? 'delete' : 'download';
-
-    onProcessingStart?.([file.path], operationType);
-
-    const progressItem = {
-      id: progressId,
-      type: operationType,
-      status: 'preparing',
-      progress: 0,
-      total: 1,
-      current: '',
-      name: `${file.basename} ${operationName}`,
-    };
-    
-    if (onProgress) {
-      onProgress(progressItem);
-    }
-
-    setLoading(true);
-    try {
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'processing',
-          progress: 0,
-          total: 1,
-          current: `(0/1) ${actionVerb}중...`,
-        });
-      }
-      
-      await operation(file.path, destPath, (progress) => {
-        if (onProgress) {
-          onProgress({
-            ...progressItem,
-            status: progress.stage === 'completed' ? 'completed' : 'processing',
-            progress: progress.stage === 'completed' ? 1 : 0,
-            total: 1,
-            current: progress.stage === 'completed' ? `(1/1) ${actionVerb}중...` : `(0/1) ${actionVerb}중...`,
-          });
-        }
-      });
-      
-      if (operation === moveFile) {
-        setMoveDialogOpen(false);
-      } else {
-        setCopyDialogOpen(false);
-      }
-      onActionComplete();
-      onClose();
-      
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'completed',
-          progress: 0,
-          total: 0,
-          current: '완료',
-        });
-        
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 3000);
-      }
-    } catch (error) {
-      const errorMsg = error.response?.data?.error || `${operationName}에 실패했습니다`;
-      const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
-      
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'error',
-          error: errorMsg,
-        });
-        
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 5000);
-      }
-      
-      if (!onProgress && onMessage) {
-        const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
-        onMessage({
-          show: true,
-          text: displayMsg,
-          type: 'error'
-        });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 5000);
-      } else if (!onProgress) {
-        alert(isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg);
-      }
-    } finally {
-      onProcessingEnd?.([file.path]);
       setLoading(false);
     }
   };
 
   const handleMove = (selectedPath) => {
-    handleFileOperation(selectedPath, moveFile, '이동', '이동');
+    handleFileOp(file, selectedPath, moveFile, '이동', '이동').then(() => {
+      setMoveDialogOpen(false);
+    });
   };
 
   const handleCopy = (selectedPath) => {
-    handleFileOperation(selectedPath, copyFile, '복사', '복사');
+    handleFileOp(file, selectedPath, copyFile, '복사', '복사').then(() => {
+      setCopyDialogOpen(false);
+    });
   };
 
   return (

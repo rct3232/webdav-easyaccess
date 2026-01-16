@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { moveFile, copyFile, deleteFile, downloadMultipleFiles } from '../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
+import { getErrorMessage } from '../utils/errorUtils';
 
 export const useBulkOperations = (
   selectedFiles,
@@ -20,13 +21,31 @@ export const useBulkOperations = (
   const clearProcessing = options.clearProcessing || (() => {});
 
   // 기존 실패 항목들을 자동으로 dismiss
-  const dismissFailedItems = () => {
+  const dismissFailedItems = useCallback(() => {
     progressItems.forEach(item => {
       if (item.status === 'error' && item.keepOnError) {
         updateProgress({ id: item.id, remove: true });
       }
     });
-  };
+  }, [progressItems, updateProgress]);
+
+  // 공통 progress 업데이트 함수
+  const updateProgressWithRetry = useCallback((progressId, updates, retryData) => {
+    updateProgress({
+      id: progressId,
+      ...updates,
+      retryData: retryData || updates.retryData,
+    });
+  }, [updateProgress]);
+
+  // Action text 상수
+  const getActionText = useCallback((action) => {
+    return action === 'move' ? '이동중' : '복사중';
+  }, []);
+
+  const getActionName = useCallback((action) => {
+    return action === 'move' ? '이동' : '복사';
+  }, []);
 
   const handleBulkMove = () => {
     dismissFailedItems();
@@ -40,110 +59,79 @@ export const useBulkOperations = (
     setFolderPickerOpen(true);
   };
 
-  const handleBulkDelete = async (retryData = null, onConfirm = null) => {
+  const handleBulkDelete = useCallback(async (retryData = null, onConfirm = null) => {
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
     if (filePaths.length === 0) return;
     
     if (!retryData) {
       dismissFailedItems();
-      // onConfirm 콜백이 있으면 호출하여 확인 모달 표시, 없으면 바로 진행
       if (onConfirm) {
         onConfirm(filePaths);
         return;
       }
-      // 확인 후 즉시 선택모드 해제
       setSelectedFiles(new Set());
       setSelectionMode(false);
     }
 
     markProcessing(filePaths, 'delete');
     const progressId = retryData?.progressId || `delete_${Date.now()}`;
+    const retryDataObj = { type: 'delete', filePaths };
     
-    updateProgress({
-      id: progressId,
+    updateProgressWithRetry(progressId, {
       type: 'delete',
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
       current: '',
       name: `${filePaths.length}개 항목 삭제`,
-      retryData: {
-        type: 'delete',
-        filePaths: filePaths,
-      },
-    });
+    }, retryDataObj);
 
     let successCount = 0;
     let failCount = 0;
     const deletedFolders = [];
     const failedItems = [];
 
-    for (let i = 0; i < filePaths.length; i++) {
-      const filePath = filePaths[i];
+    for (const filePath of filePaths) {
       try {
-        updateProgress({
-          id: progressId,
+        updateProgressWithRetry(progressId, {
           type: 'delete',
           status: 'processing',
           progress: successCount,
           total: filePaths.length,
           current: `(${successCount}/${filePaths.length}) 삭제중...`,
           name: `${filePaths.length}개 항목 삭제`,
-          retryData: {
-            type: 'delete',
-            filePaths: filePaths,
-          },
-        });
+        }, retryDataObj);
 
         await deleteFile(filePath);
         const file = files.find(f => f.path === filePath);
-        if (file && file.type === 'directory') {
+        if (file?.type === 'directory') {
           deletedFolders.push(filePath);
         }
         successCount++;
-        
-        updateProgress({
-          id: progressId,
-          type: 'delete',
-          status: 'processing',
-          progress: successCount,
-          total: filePaths.length,
-          current: `(${successCount}/${filePaths.length}) 삭제중...`,
-          name: `${filePaths.length}개 항목 삭제`,
-          retryData: {
-            type: 'delete',
-            filePaths: filePaths,
-          },
-        });
       } catch (error) {
         console.error(`Failed to delete ${filePath}:`, error);
         failCount++;
-        const fileName = filePath.split('/').pop();
-        const errorMsg = error.response?.data?.error || error.message || '알 수 없는 오류';
         failedItems.push({
-          fileName: fileName,
-          error: errorMsg,
+          fileName: filePath.split('/').pop(),
+          error: getErrorMessage(error, '알 수 없는 오류'),
         });
       }
     }
 
-    updateProgress({
-      id: progressId,
+    updateProgressWithRetry(progressId, {
       type: 'delete',
       status: failCount > 0 ? 'error' : 'completed',
       progress: successCount,
       total: filePaths.length,
-      current: failCount > 0 ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) 삭제중...`,
+      current: failCount > 0 
+        ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` 
+        : `(${successCount}/${filePaths.length}) 삭제중...`,
       name: `${filePaths.length}개 항목 삭제`,
       error: failCount > 0 ? `${failCount}개 실패` : undefined,
       failedItems: failedItems.length > 0 ? failedItems : undefined,
       keepOnError: failCount > 0,
-      retryData: {
-        type: 'delete',
-        filePaths: filePaths,
-      },
-    });
+    }, retryDataObj);
 
     if (successCount > 0) {
       deletedFolders.forEach(folderPath => {
@@ -154,7 +142,6 @@ export const useBulkOperations = (
         });
       });
 
-      // 선택모드는 이미 위에서 해제했으므로 여기서는 제거
       if (!retryData) {
         setSelectedFiles(new Set());
       }
@@ -172,13 +159,12 @@ export const useBulkOperations = (
 
     clearProcessing(filePaths);
 
-    // 실패가 없을 때만 자동 제거
     if (failCount === 0) {
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
       }, 3000);
     }
-  };
+  }, [selectedFiles, files, loadFiles, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry]);
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
@@ -219,7 +205,7 @@ export const useBulkOperations = (
     }
   };
 
-  const handleFolderPickerSelect = async (destinationPath, retryData = null) => {
+  const handleFolderPickerSelect = useCallback(async (destinationPath, retryData = null) => {
     const action = retryData?.type || folderPickerAction;
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
@@ -227,56 +213,43 @@ export const useBulkOperations = (
     
     if (!retryData) {
       dismissFailedItems();
-      // 이동/복사 실행 시점에 선택 모드 해제
       setSelectionMode(false);
     }
 
     markProcessing(filePaths, action);
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
+    const actionName = getActionName(action);
+    const actionText = getActionText(action);
+    const retryDataObj = { type: action, filePaths, destinationPath };
     
-    updateProgress({
-      id: progressId,
+    updateProgressWithRetry(progressId, {
       type: action,
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
       current: '',
-      name: `${filePaths.length}개 항목 ${action === 'move' ? '이동' : '복사'}`,
-      retryData: {
-        type: action,
-        filePaths: filePaths,
-        destinationPath: destinationPath,
-      },
-    });
+      name: `${filePaths.length}개 항목 ${actionName}`,
+    }, retryDataObj);
 
     let successCount = 0;
     let failCount = 0;
-    const skippedFiles = [];
     const failedItems = [];
 
-    for (let i = 0; i < filePaths.length; i++) {
-      const sourcePath = filePaths[i];
+    for (const sourcePath of filePaths) {
       try {
         const fileName = sourcePath.split('/').pop();
         const destinationFilePath = destinationPath === '/' 
           ? `/${fileName}` 
           : `${destinationPath}/${fileName}`;
 
-        const actionText = action === 'move' ? '이동중' : '복사중';
-        updateProgress({
-          id: progressId,
+        updateProgressWithRetry(progressId, {
           type: action,
           status: 'processing',
           progress: successCount,
           total: filePaths.length,
           current: `(${successCount}/${filePaths.length}) ${actionText}...`,
-          name: `${filePaths.length}개 항목 ${action === 'move' ? '이동' : '복사'}`,
-          retryData: {
-            type: action,
-            filePaths: filePaths,
-            destinationPath: destinationPath,
-          },
-        });
+          name: `${filePaths.length}개 항목 ${actionName}`,
+        }, retryDataObj);
 
         if (action === 'move') {
           await moveFile(sourcePath, destinationFilePath);
@@ -285,56 +258,36 @@ export const useBulkOperations = (
         }
         
         successCount++;
-        
-        updateProgress({
-          id: progressId,
-          type: action,
-          status: 'processing',
-          progress: successCount,
-          total: filePaths.length,
-          current: `(${successCount}/${filePaths.length}) ${actionText}...`,
-          name: `${filePaths.length}개 항목 ${action === 'move' ? '이동' : '복사'}`,
-          retryData: {
-            type: action,
-            filePaths: filePaths,
-            destinationPath: destinationPath,
-          },
-        });
       } catch (error) {
         console.error(`Failed to ${action} ${sourcePath}:`, error);
-        const errorMsg = error.response?.data?.error || error.message || '알 수 없는 오류';
+        const errorMsg = getErrorMessage(error, '알 수 없는 오류');
         const fileName = sourcePath.split('/').pop();
         
         if (error.response?.status === 409 || errorMsg.includes('already exists')) {
-          skippedFiles.push(fileName);
+          // Skip duplicate files
         } else {
           failCount++;
           failedItems.push({
-            fileName: fileName,
+            fileName,
             error: errorMsg,
           });
         }
       }
     }
 
-    const actionText = action === 'move' ? '이동중' : '복사중';
-    updateProgress({
-      id: progressId,
+    updateProgressWithRetry(progressId, {
       type: action,
       status: failCount > 0 ? 'error' : 'completed',
       progress: successCount,
       total: filePaths.length,
-      current: failCount > 0 ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` : `(${successCount}/${filePaths.length}) ${actionText}...`,
-      name: `${filePaths.length}개 항목 ${action === 'move' ? '이동' : '복사'}`,
+      current: failCount > 0 
+        ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` 
+        : `(${successCount}/${filePaths.length}) ${actionText}...`,
+      name: `${filePaths.length}개 항목 ${actionName}`,
       error: failCount > 0 ? `${failCount}개 실패` : undefined,
       failedItems: failedItems.length > 0 ? failedItems : undefined,
       keepOnError: failCount > 0,
-      retryData: {
-        type: action,
-        filePaths: filePaths,
-        destinationPath: destinationPath,
-      },
-    });
+    }, retryDataObj);
 
     if (successCount > 0) {
       if (!retryData) {
@@ -344,7 +297,6 @@ export const useBulkOperations = (
       loadFiles();
     }
 
-    // 실패가 없을 때만 자동 제거
     if (failCount === 0) {
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
@@ -358,7 +310,7 @@ export const useBulkOperations = (
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  };
+  }, [selectedFiles, folderPickerAction, loadFiles, setSelectedFiles, setSelectionMode, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText]);
 
   const handleRetry = async (progressId) => {
     const progressItem = progressItems.find(item => item.id === progressId);

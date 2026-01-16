@@ -305,8 +305,6 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
           <Collapse 
             in={expanded}
             sx={{
-              flex: 1,
-              minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -316,25 +314,24 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                 overflowY: 'auto',
                 overflowX: 'hidden',
                 maxHeight: 'calc(80vh - 120px)',
+                scrollbarWidth: 'none', // Firefox
                 '&::-webkit-scrollbar': {
-                  width: '8px',
-                },
-                '&::-webkit-scrollbar-track': {
-                  backgroundColor: 'transparent',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'rgba(0,0,0,0.2)',
-                  borderRadius: '4px',
-                },
-                '&::-webkit-scrollbar-thumb:hover': {
-                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  display: 'none', // Chrome, Safari, Edge
                 },
               }}
             >
               {items.map((item, index) => (
               <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 }, display: 'flex', flexDirection: 'column' }}>
                 {/* 아이템 헤더 (고정 영역) */}
-                <Box sx={{ flexShrink: 0 }}>
+                <Box sx={{ 
+                  flexShrink: 0,
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                  backgroundColor: 'background.paper',
+                  pt: 1,
+                  pb: 0.5,
+                }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
                     {item.status === 'completed' ? (
                       <CheckCircleIcon 
@@ -455,7 +452,10 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                 </Box>
                 
                 {/* 아이템 본문 (스크롤 가능) */}
-                <Box sx={{ flex: 1, minHeight: 0 }}>
+                <Box sx={{ 
+                  flex: 1, 
+                  minHeight: 0,
+                }}>
 
                   {/* 업로드 타입일 때 개별 파일 목록 표시 */}
                   {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (

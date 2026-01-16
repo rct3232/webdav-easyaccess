@@ -61,6 +61,7 @@ const MobileFAB = ({
       onOpen={() => setOpen(true)}
       FabProps={{
         disabled: disabled,
+        tabIndex: -1, // 포커스를 받지 않도록 설정하여 Dialog 닫힘 후 포커스 이동 시 onOpen이 호출되는 것을 방지
       }}
     >
       {actions.map((action) => (

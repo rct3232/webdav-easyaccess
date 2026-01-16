@@ -70,7 +70,14 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth="sm" 
+      fullWidth 
+      fullScreen={isMobile}
+      disableRestoreFocus
+    >
       <DialogTitle>파일 업로드</DialogTitle>
       <DialogContent>
         <Box

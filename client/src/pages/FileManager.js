@@ -149,27 +149,6 @@ const FileManager = () => {
   // Bulk delete 확인 다이얼로그 상태
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [bulkDeleteFilePaths, setBulkDeleteFilePaths] = useState([]);
-  
-  // MobileFAB 상태
-  const [mobileFABOpen, setMobileFABOpen] = useState(false);
-
-  // 다이얼로그가 열릴 때 FAB를 자동으로 닫기
-  useEffect(() => {
-    if (isMobile && (uploadDialogOpen || createFolderDialogOpen)) {
-      setMobileFABOpen(false);
-    }
-  }, [isMobile, uploadDialogOpen, createFolderDialogOpen]);
-
-  // FAB 열림/닫힘 상태 변경 핸들러
-  // 다이얼로그가 열려있을 때는 FAB를 열지 않도록 처리
-  const handleFABOpenChange = useCallback((newOpen) => {
-    // 다이얼로그가 열려있을 때 FAB를 열려고 하면 무시
-    if (newOpen && (uploadDialogOpen || createFolderDialogOpen)) {
-      return; // FAB를 열지 않음
-    }
-    // 그 외의 경우 정상적으로 상태 업데이트
-    setMobileFABOpen(newOpen);
-  }, [uploadDialogOpen, createFolderDialogOpen]);
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -2164,7 +2143,6 @@ const FileManager = () => {
         onClose={() => setUploadDialogOpen(false)}
         currentPath={currentPath}
         onUploadStart={handleUploadStart}
-        onCancel={() => setMobileFABOpen(true)}
       />
 
       <CreateFolderDialog
@@ -2173,7 +2151,6 @@ const FileManager = () => {
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
         onMessage={setDropMessage}
-        onCancel={() => setMobileFABOpen(true)}
       />
 
       <FilePreviewDialog
@@ -2400,8 +2377,6 @@ const FileManager = () => {
             setCreateFolderDialogOpen(true);
           }}
           hasWritePermission={hasWritePermission}
-          open={mobileFABOpen}
-          onOpenChange={handleFABOpenChange}
         />
       )}
 

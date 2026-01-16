@@ -73,7 +73,14 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage 
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth="sm" 
+      fullWidth 
+      fullScreen={isMobile}
+      disableRestoreFocus
+    >
       <DialogTitle>새 폴더 만들기</DialogTitle>
       <DialogContent>
         <TextField

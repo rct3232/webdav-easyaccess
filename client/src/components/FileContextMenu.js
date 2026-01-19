@@ -154,18 +154,16 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           </ListItemIcon>
           <ListItemText>이동</ListItemText>
         </MenuItem>
-        {file.type !== 'directory' && (
-          <MenuItem
-            onClick={() => {
-              setCopyDialogOpen(true);
-            }}
-          >
-            <ListItemIcon>
-              <CopyIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>복사</ListItemText>
-          </MenuItem>
-        )}
+        <MenuItem
+          onClick={() => {
+            setCopyDialogOpen(true);
+          }}
+        >
+          <ListItemIcon>
+            <CopyIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>복사</ListItemText>
+        </MenuItem>
         {canShare && (
           <MenuItem
             onClick={() => {

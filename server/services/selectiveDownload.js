@@ -1,0 +1,86 @@
+const path = require('path');
+const { normalizePath } = require('../utils/pathUtils');
+const { isMetaPath } = require('../store/metaPaths');
+
+function posixJoin(a, b) {
+  const left = a === '/' ? '' : String(a || '');
+  const right = String(b || '');
+  const joined = path.posix.join(left, right);
+  return joined.startsWith('/') ? joined : `/${joined}`;
+}
+
+function defaultWebdavAdapter() {
+  const { listDirectory } = require('../utils/webdav');
+  return { listDirectory };
+}
+
+/**
+ * Collect downloadable files under a directory recursively (recursive_strict).
+ *
+ * - Only enter a directory if canEnterDirectory(dirPath) is true.
+ * - Only include a file if canIncludeFile(parentDirPath) is true.
+ *
+ * Returns:
+ * - files: [{ path, relativePath }]
+ * - skippedPaths: skipped directory/file paths
+ */
+async function selectiveCollectFiles({
+  rootPath,
+  basePath = '',
+  canEnterDirectory,
+  canIncludeFile,
+  webdav = defaultWebdavAdapter(),
+} = {}) {
+  if (typeof canEnterDirectory !== 'function' || typeof canIncludeFile !== 'function') {
+    throw new Error('canEnterDirectory and canIncludeFile are required');
+  }
+
+  const root = normalizePath(rootPath);
+  if (isMetaPath(root)) {
+    throw new Error('Access denied');
+  }
+
+  const files = [];
+  const skippedPaths = [];
+
+  const canEnterRoot = await canEnterDirectory(root);
+  if (!canEnterRoot) {
+    return { files, skippedPaths: [root] };
+  }
+
+  async function walkDir(dirPath, relBase) {
+    const items = await webdav.listDirectory(dirPath);
+    for (const item of items) {
+      if (!item?.basename) continue;
+      if (item.basename === '.wea') continue;
+
+      const childPath = posixJoin(dirPath, item.basename);
+      if (isMetaPath(childPath)) continue;
+      const childRel = relBase ? `${relBase}/${item.basename}` : item.basename;
+
+      if (item.type === 'directory') {
+        const ok = await canEnterDirectory(childPath);
+        if (!ok) {
+          skippedPaths.push(childPath);
+          continue;
+        }
+        await walkDir(childPath, childRel);
+      } else {
+        const ok = await canIncludeFile(dirPath);
+        if (!ok) {
+          skippedPaths.push(childPath);
+          continue;
+        }
+        files.push({ path: childPath, relativePath: childRel });
+      }
+    }
+  }
+
+  await walkDir(root, basePath || '');
+  return { files, skippedPaths };
+}
+
+module.exports = {
+  selectiveCollectFiles,
+};
+

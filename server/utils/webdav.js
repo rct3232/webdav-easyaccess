@@ -32,6 +32,48 @@ function getRequestPath(normalizedPath, baseUrlOverride = null) {
   return normalizedPath;
 }
 
+/**
+ * Build an absolute Destination URL safe for HTTP headers.
+ *
+ * Node rejects non-Latin1 characters in header values (ERR_INVALID_CHAR),
+ * so we must ensure the URL is ASCII/percent-encoded.
+ *
+ * @param {string} destBase - Absolute base URL (may include a path prefix like /webdav)
+ * @param {string} normalizedDest - WebDAV destination path (absolute, normalized)
+ * @returns {string} Absolute, percent-encoded URL string
+ */
+function buildDestinationAbsoluteUrl(destBase, normalizedDest) {
+  const base = (destBase || '').trim();
+  const destNormalized = normalizePath(normalizedDest);
+
+  // If base is missing, fall back to a best-effort encoded request path.
+  if (!base) {
+    const rp = getRequestPath(destNormalized);
+    return encodeURI(rp).replace(/\?/g, '%3F').replace(/#/g, '%23');
+  }
+
+  const destRequestPath = getRequestPath(destNormalized, base);
+
+  try {
+    const u = new URL(base);
+    // Ensure we do not accidentally preserve any query/fragment in the base URL.
+    u.search = '';
+    u.hash = '';
+
+    const destPart = destRequestPath ? destRequestPath.replace(/^\//, '') : '';
+    const basePathname = u.pathname || '/';
+    u.pathname = path.posix.join(basePathname, destPart);
+    return u.toString();
+  } catch (e) {
+    // Best-effort fallback if base is not a valid absolute URL.
+    const destBaseTrimmed = base.endsWith('/') ? base.slice(0, -1) : base;
+    const abs = destBaseTrimmed
+      ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
+      : destRequestPath;
+    return encodeURI(abs).replace(/\?/g, '%3F').replace(/#/g, '%23');
+  }
+}
+
 async function getWebDAVClient(baseUrlOverride = null) {
   let url = baseUrlOverride || process.env.WEBDAV_URL;
   const username = process.env.WEBDAV_USERNAME;
@@ -402,9 +444,10 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
 
   const destRequestPath = getRequestPath(normalizedDest, destBase);
   const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
-  const destAbsolute = destBaseTrimmed
+  const destAbsoluteRaw = destBaseTrimmed
     ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
     : destRequestPath;
+  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest);
 
   try {
     const sourceRequestPath = getRequestPath(normalizedSource);
@@ -421,7 +464,14 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
     }
     return { success: true };
   } catch (error) {
-    logWebdavError('MOVE failed (will fallback)', error, { sourcePath: sourcePath, destinationPath: destinationPath, destinationAbsolute: destAbsolute, sourceBase });
+    logWebdavError('MOVE failed (will fallback)', error, {
+      sourcePath: sourcePath,
+      destinationPath: destinationPath,
+      destinationAbsolute: destAbsolute,
+      destinationAbsoluteRaw: destAbsoluteRaw,
+      sourceBase,
+      destBase,
+    });
     // If destination already exists or source missing, surface immediately
     const status = error?.status || error?.response?.status;
     if (status === 409) {
@@ -448,9 +498,10 @@ async function copyFile(sourcePath, destinationPath, progressCallback) {
 
   const destRequestPath = getRequestPath(normalizedDest, destBase);
   const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
-  const destAbsolute = destBaseTrimmed
+  const destAbsoluteRaw = destBaseTrimmed
     ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
     : destRequestPath;
+  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest);
 
   try {
     const sourceRequestPath = getRequestPath(normalizedSource);
@@ -468,7 +519,14 @@ async function copyFile(sourcePath, destinationPath, progressCallback) {
     }
     return { success: true };
   } catch (error) {
-    logWebdavError('COPY failed (will fallback)', error, { sourcePath: sourcePath, destinationPath: destinationPath, destinationAbsolute: destAbsolute, sourceBase });
+    logWebdavError('COPY failed (will fallback)', error, {
+      sourcePath: sourcePath,
+      destinationPath: destinationPath,
+      destinationAbsolute: destAbsolute,
+      destinationAbsoluteRaw: destAbsoluteRaw,
+      sourceBase,
+      destBase,
+    });
     const status = error?.status || error?.response?.status;
     if (status === 409) {
       throw new Error(`Destination already exists: ${destinationPath}`);
@@ -571,6 +629,7 @@ async function pathExists(path) {
 module.exports = {
   getWebDAVClient,
   getRequestPath,
+  buildDestinationAbsoluteUrl,
   resetWebDAVClient,
   listDirectory,
   getFileContents,

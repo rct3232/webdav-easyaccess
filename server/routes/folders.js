@@ -5,7 +5,7 @@ const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
 const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
-const { checkFolderPermission } = require('../middleware/permissions');
+const { canReadFolder, canWriteFolder, isOwnerPath } = require('../utils/permissionPolicy');
 const { isMetaPath } = require('../store/metaPaths');
 const path = require('path');
 
@@ -29,31 +29,13 @@ router.post('/create', authenticateToken, async (req, res) => {
     
     // 관리자는 모든 경로에 폴더 생성 가능
     if (!user.is_admin) {
-      const userFolder = `/${user.username}`;
       if (folderPath === '/' || folderPath === '') {
         return res.status(403).json({ error: 'Access denied' });
       }
-      if (!folderPath.startsWith(userFolder)) {
-        // 공유된 폴더인지 권한 체크 - 부모 폴더에 직접 쓰기 권한이 있어야 함 (상위 경로 체크 안 함)
-        const parentPath = path.dirname(folderPath) || '/';
-        // 경로 정규화
-        let normalizedParentPath = parentPath;
-        if (normalizedParentPath !== '/') {
-          if (!normalizedParentPath.endsWith('/')) {
-            normalizedParentPath = normalizedParentPath + '/';
-          }
-        }
-        // 부모 폴더에 직접 쓰기 권한이 있는지 확인 (상위 경로 체크 제거)
-        const hasPermission = await Permission.checkPermission(req.user.id, normalizedParentPath, 'write');
-        // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-        if (!hasPermission && parentPath !== '/' && !parentPath.endsWith('/')) {
-          const hasPermissionNoSlash = await Permission.checkPermission(req.user.id, parentPath, 'write');
-          if (hasPermissionNoSlash) {
-            // 허용
-          } else {
-            return res.status(403).json({ error: 'Access denied' });
-          }
-        } else if (!hasPermission) {
+      if (!isOwnerPath(user, folderPath)) {
+        const parentPath = path.posix.dirname(folderPath) || '/';
+        const ok = await canWriteFolder(user, parentPath);
+        if (!ok) {
           return res.status(403).json({ error: 'Access denied' });
         }
       }
@@ -85,24 +67,6 @@ router.post('/create', authenticateToken, async (req, res) => {
       // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
     }
     
-    // 생성된 폴더가 어떤 사용자의 홈 디렉토리 하위에 있는지 확인하고
-    // 해당 사용자에게 자동으로 읽기/쓰기 권한 부여
-    try {
-      const allUsers = await User.findAll();
-      for (const targetUser of allUsers) {
-        const userHomeFolder = `/${targetUser.username}/`;
-        // 생성된 폴더가 이 사용자의 홈 디렉토리 하위에 있는지 확인
-        if (folderPath.startsWith(userHomeFolder)) {
-          // 해당 사용자에게 읽기/쓰기 권한 부여
-          await Permission.grant(targetUser.id, folderPath, 'write');
-          console.log(`Auto-granted write permission to user ${targetUser.username} (${targetUser.id}) for folder ${folderPath}`);
-        }
-      }
-    } catch (autoPermError) {
-      console.error('Failed to auto-grant permissions to folder owner:', autoPermError);
-      // 자동 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
-    }
-    
     res.json({ message: 'Folder created successfully', path: folderPath });
   } catch (error) {
     console.error('Create folder error:', error);
@@ -118,22 +82,16 @@ router.get('/list', authenticateToken, async (req, res) => {
       return rejectMetaPath(res);
     }
     
-    // Check permission first
+    // Check permission first (effective read)
     const user = await User.findById(req.user.id);
-    
-    // 관리자는 모든 경로에 접근 가능
     let hasPermission = true;
     if (!user.is_admin) {
-      hasPermission = await checkFolderPermission(req.user.id, folderPath, 'read');
-      
+      if (folderPath === '/' || folderPath === '') {
+        folderPath = `/${user.username}`;
+      }
+      hasPermission = await canReadFolder(req.user.id, folderPath, 'read');
       if (!hasPermission) {
-        // 권한이 없으면, 비관리자의 경우 자신의 폴더인지 확인
-        const userFolder = `/${user.username}`;
-        if (folderPath === '/' || folderPath === '') {
-          folderPath = userFolder;
-        } else if (!folderPath.startsWith(userFolder)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        return res.status(403).json({ error: 'Access denied' });
       }
     }
 
@@ -149,7 +107,6 @@ router.get('/list', authenticateToken, async (req, res) => {
         let hasWritePermission = true;
         
         if (item.type === 'directory') {
-          // 관리자는 모든 디렉토리에 접근 가능
           if (user.is_admin) {
             hasReadPermission = true;
             hasWritePermission = true;
@@ -158,42 +115,9 @@ router.get('/list', authenticateToken, async (req, res) => {
               ? '/' + item.basename 
               : (folderPath.endsWith('/') ? folderPath : folderPath + '/') + item.basename;
             const normalizedPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
-            
-            // 디렉토리 경로 정규화 (끝에 / 추가)
-            const normalizedDirPath = normalizedPath.endsWith('/') ? normalizedPath : normalizedPath + '/';
-            
-            // 해당 경로에 직접 권한이 있는지 확인
-            hasReadPermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'read');
-            
-            // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-            if (!hasReadPermission && !normalizedPath.endsWith('/')) {
-              hasReadPermission = await Permission.checkPermission(req.user.id, normalizedPath, 'read');
-            }
-            
-            // 비관리자의 경우 자신의 폴더인지 확인 (항상 표시)
-            if (!hasReadPermission) {
-              const userFolder = `/${user.username}`;
-              if (normalizedPath.startsWith(userFolder) || normalizedDirPath.startsWith(userFolder)) {
-                hasReadPermission = true;
-                hasWritePermission = true;
-              }
-            }
-            
-            // 쓰기 권한 체크
-            if (hasReadPermission) {
-              hasWritePermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'write');
-              if (!hasWritePermission && !normalizedPath.endsWith('/')) {
-                hasWritePermission = await Permission.checkPermission(req.user.id, normalizedPath, 'write');
-              }
-              
-              // 자신의 폴더인 경우 쓰기 권한 확인
-              if (!hasWritePermission) {
-                const userFolder = `/${user.username}`;
-                if (normalizedPath.startsWith(userFolder) || normalizedDirPath.startsWith(userFolder)) {
-                  hasWritePermission = true;
-                }
-              }
-            }
+
+            hasReadPermission = await canReadFolder(req.user.id, normalizedPath, 'read');
+            hasWritePermission = await canWriteFolder(user, normalizedPath);
           }
         }
         

@@ -323,6 +323,20 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
       }
     }
     
+    // Optional: server may report skipped paths due to permission (URL-encoded JSON)
+    const skippedCountHeader = response.headers['x-wea-skipped-count'];
+    const skippedHeader = response.headers['x-wea-skipped'];
+    let skippedInfo = null;
+    let skippedCount = 0;
+    try {
+      if (skippedCountHeader) skippedCount = parseInt(skippedCountHeader, 10) || 0;
+      if (skippedHeader) {
+        skippedInfo = JSON.parse(decodeURIComponent(skippedHeader));
+      }
+    } catch (e) {
+      // ignore
+    }
+
     link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
@@ -340,10 +354,12 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
         percentage: 100,
         current: '완료',
         zipName: filename,
+        skippedCount,
+        skippedInfo,
       });
     }
 
-    return { success: true, downloadId, filename };
+    return { success: true, downloadId, filename, skippedCount, skippedInfo };
   } catch (error) {
     console.error('Download multiple files error:', error);
     if (onProgress) {

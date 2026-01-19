@@ -146,6 +146,40 @@ function permissionRank(p) {
   return idx < 0 ? -1 : idx;
 }
 
+function strongerPermission(a, b) {
+  return permissionRank(a) >= permissionRank(b) ? a : b;
+}
+
+function normalizeNoSlash(p) {
+  const n = normalizeWebdavPath(p);
+  if (n !== '/' && n.endsWith('/')) return n.slice(0, -1);
+  return n;
+}
+
+function normalizeWithSlash(p) {
+  const noSlash = normalizeNoSlash(p);
+  return noSlash === '/' ? '/' : `${noSlash}/`;
+}
+
+function rewriteKeyByMapping(key, mapping) {
+  const keyNorm = normalizeWebdavPath(key);
+  const fromNoSlash = mapping.fromNoSlash;
+  const fromWithSlash = mapping.fromWithSlash;
+
+  if (fromNoSlash === '/') {
+    if (keyNorm === '/') return mapping.toNoSlash;
+    const suffix = keyNorm.startsWith('/') ? keyNorm.slice(1) : keyNorm;
+    return mapping.toWithSlash + suffix;
+  }
+
+  if (keyNorm === fromNoSlash) return mapping.toNoSlash;
+  if (keyNorm === fromWithSlash) return mapping.toWithSlash;
+  if (keyNorm.startsWith(fromWithSlash)) {
+    return mapping.toWithSlash + keyNorm.slice(fromWithSlash.length);
+  }
+  return null;
+}
+
 async function checkPermission(userId, folderPath, requiredPermission) {
   const uid = String(userId);
   const folder = normalizeWebdavPath(folderPath);
@@ -230,6 +264,199 @@ async function hasPermissionsInPath(folderPath) {
   return results;
 }
 
+async function rewritePermissionsForAllUsers(
+  mappings = [],
+  { excludePrefixes = [], duplicateExactMatches = false } = {}
+) {
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    return { success: true, rewrittenUsers: 0, rewrittenKeys: 0 };
+  }
+
+  await ensureDirs();
+
+  const normalizedMappings = mappings
+    .map((m) => ({ fromPrefix: m?.fromPrefix, toPrefix: m?.toPrefix }))
+    .filter((m) => typeof m.fromPrefix === 'string' && typeof m.toPrefix === 'string')
+    .map((m) => ({
+      fromNoSlash: normalizeNoSlash(m.fromPrefix),
+      fromWithSlash: normalizeWithSlash(m.fromPrefix),
+      toNoSlash: normalizeNoSlash(m.toPrefix),
+      toWithSlash: normalizeWithSlash(m.toPrefix),
+    }))
+    .filter((m) => !(m.fromNoSlash === m.toNoSlash && m.fromWithSlash === m.toWithSlash));
+
+  if (normalizedMappings.length === 0) {
+    return { success: true, rewrittenUsers: 0, rewrittenKeys: 0 };
+  }
+
+  const normalizedExclude = Array.isArray(excludePrefixes)
+    ? excludePrefixes
+        .filter((p) => typeof p === 'string' && p.length > 0)
+        .map((p) => ({ noSlash: normalizeNoSlash(p), withSlash: normalizeWithSlash(p) }))
+    : [];
+
+  function isExcluded(key) {
+    if (normalizedExclude.length === 0) return false;
+    const keyNorm = normalizeWebdavPath(key);
+    for (const pref of normalizedExclude) {
+      if (pref.noSlash === '/') return true;
+      if (keyNorm === pref.noSlash || keyNorm === pref.withSlash) return true;
+      if (keyNorm.startsWith(pref.withSlash)) return true;
+    }
+    return false;
+  }
+
+  return await withLock('perm:global', async () => {
+    const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+    let rewrittenUsers = 0;
+    let rewrittenKeys = 0;
+
+    for (const ent of entries) {
+      if (!ent.basename || !ent.basename.endsWith('.json')) continue;
+      const userId = ent.basename.replace(/\.json$/, '');
+
+      const didRewrite = await withLock(`perm:${userId}`, async () => {
+        const doc = await readUserPermissionsDoc(userId, { bypassCache: true });
+        const perms = doc.permissions || {};
+        const out = {};
+        let changed = false;
+        let keysChanged = 0;
+
+        for (const [rawKey, perm] of Object.entries(perms)) {
+          let nextKey = rawKey;
+          let rewritten = false;
+          let usedMapping = null;
+
+          if (!isExcluded(rawKey)) {
+            for (const mapping of normalizedMappings) {
+              const candidate = rewriteKeyByMapping(rawKey, mapping);
+              if (candidate) {
+                nextKey = candidate;
+                rewritten = true;
+                usedMapping = mapping;
+                break;
+              }
+            }
+          }
+
+          // If we only partially moved a directory tree, the source root directory may remain.
+          // In that case we must keep the *exact* root ACL at the source for traversal to skipped subtrees,
+          // while also granting the same ACL at the destination root.
+          const shouldDuplicateExact =
+            duplicateExactMatches &&
+            rewritten &&
+            usedMapping &&
+            (normalizeWebdavPath(rawKey) === usedMapping.fromNoSlash ||
+              normalizeWebdavPath(rawKey) === usedMapping.fromWithSlash);
+
+          const writeKey = (k) => {
+            if (out[k]) {
+              const merged = strongerPermission(out[k], perm);
+              if (merged !== out[k]) changed = true;
+              out[k] = merged;
+            } else {
+              out[k] = perm;
+            }
+          };
+
+          if (shouldDuplicateExact && nextKey !== rawKey) {
+            changed = true;
+            keysChanged++;
+            writeKey(rawKey);
+            writeKey(nextKey);
+          } else {
+            if (rewritten && nextKey !== rawKey) {
+              changed = true;
+              keysChanged++;
+            }
+            writeKey(nextKey);
+          }
+        }
+
+        if (!changed) return { changed: false, keysChanged: 0 };
+
+        doc.permissions = out;
+        await writeUserPermissionsDoc(userId, doc);
+        await mirrorToUserDirIfExists(userId, doc);
+        return { changed: true, keysChanged };
+      });
+
+      if (didRewrite.changed) {
+        rewrittenUsers++;
+        rewrittenKeys += didRewrite.keysChanged;
+      }
+    }
+
+    return { success: true, rewrittenUsers, rewrittenKeys };
+  });
+}
+
+async function revokePermissionsPrefixForAllUsers(prefixes = []) {
+  if (!Array.isArray(prefixes) || prefixes.length === 0) {
+    return { success: true, revokedUsers: 0, revokedKeys: 0 };
+  }
+
+  await ensureDirs();
+
+  const normalizedPrefixes = prefixes
+    .filter((p) => typeof p === 'string' && p.length > 0)
+    .map((p) => ({ noSlash: normalizeNoSlash(p), withSlash: normalizeWithSlash(p) }));
+
+  if (normalizedPrefixes.length === 0) {
+    return { success: true, revokedUsers: 0, revokedKeys: 0 };
+  }
+
+  function matchesAnyPrefix(key) {
+    const keyNorm = normalizeWebdavPath(key);
+    for (const pref of normalizedPrefixes) {
+      if (pref.noSlash === '/') return true;
+      if (keyNorm === pref.noSlash || keyNorm === pref.withSlash) return true;
+      if (keyNorm.startsWith(pref.withSlash)) return true;
+    }
+    return false;
+  }
+
+  return await withLock('perm:global', async () => {
+    const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+    let revokedUsers = 0;
+    let revokedKeys = 0;
+
+    for (const ent of entries) {
+      if (!ent.basename || !ent.basename.endsWith('.json')) continue;
+      const userId = ent.basename.replace(/\.json$/, '');
+
+      const didRevoke = await withLock(`perm:${userId}`, async () => {
+        const doc = await readUserPermissionsDoc(userId, { bypassCache: true });
+        const perms = doc.permissions || {};
+        const out = {};
+        let removed = 0;
+
+        for (const [rawKey, perm] of Object.entries(perms)) {
+          if (matchesAnyPrefix(rawKey)) {
+            removed++;
+            continue;
+          }
+          out[rawKey] = perm;
+        }
+
+        if (removed === 0) return { changed: false, removed: 0 };
+
+        doc.permissions = out;
+        await writeUserPermissionsDoc(userId, doc);
+        await mirrorToUserDirIfExists(userId, doc);
+        return { changed: true, removed };
+      });
+
+      if (didRevoke.changed) {
+        revokedUsers++;
+        revokedKeys += didRevoke.removed;
+      }
+    }
+
+    return { success: true, revokedUsers, revokedKeys };
+  });
+}
+
 module.exports = {
   grant,
   revoke,
@@ -238,5 +465,7 @@ module.exports = {
   checkPermission,
   getFolderPermissions,
   hasPermissionsInPath,
+  rewritePermissionsForAllUsers,
+  revokePermissionsPrefixForAllUsers,
 };
 

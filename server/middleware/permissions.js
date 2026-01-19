@@ -6,6 +6,13 @@ const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { normalizePath, normalizePathWithSlash, getParentPaths } = require('../utils/pathUtils');
 
+function isOwnerPathSafe(user, targetPath) {
+  if (!user?.username) return false;
+  const root = `/${user.username}`;
+  const normalized = normalizePath(targetPath);
+  return normalized === root || normalized.startsWith(`${root}/`);
+}
+
 /**
  * Check if user has permission to access a file
  * Checks the file's parent directory permissions
@@ -54,8 +61,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
   
   // Check if it's user's own folder
   if (!hasPermission) {
-    const userFolder = `/${user.username}`;
-    if (normalizedFolderPath.startsWith(userFolder) || folderPath.startsWith(userFolder)) {
+    if (isOwnerPathSafe(user, normalizedFolderPath) || isOwnerPathSafe(user, folderPath)) {
       hasPermission = true;
     }
   }
@@ -110,8 +116,7 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = 'r
   
   // Check if it's user's own folder
   if (!hasPermission) {
-    const userFolder = `/${user.username}`;
-    if (normalizedPath.startsWith(userFolder)) {
+    if (isOwnerPathSafe(user, normalizedPath)) {
       hasPermission = true;
     }
   }
@@ -144,7 +149,7 @@ async function canAccessPath(userId, requestedPath) {
     return false;
   }
   
-  return normalizedPath.startsWith(userFolder);
+  return normalizedPath === userFolder || normalizedPath.startsWith(`${userFolder}/`);
 }
 
 /**

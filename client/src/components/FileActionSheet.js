@@ -174,7 +174,7 @@ const FileActionSheet = ({
             </ListItem>
           )}
 
-          {!isDirectory && onCopy && (
+          {onCopy && (
             <ListItem 
               button 
               onClick={() => handleAction(onCopy)}

@@ -28,6 +28,14 @@ class Permission {
   static async hasPermissionsInPath(folderPath) {
     return await permissionStore.hasPermissionsInPath(folderPath);
   }
+
+  static async rewritePermissionsForAllUsers(mappings, options) {
+    return await permissionStore.rewritePermissionsForAllUsers(mappings, options);
+  }
+
+  static async revokePermissionsPrefixForAllUsers(prefixes) {
+    return await permissionStore.revokePermissionsPrefixForAllUsers(prefixes);
+  }
 }
 
 module.exports = Permission;

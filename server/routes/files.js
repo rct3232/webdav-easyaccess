@@ -18,7 +18,17 @@ const {
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
 const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
-const { checkFilePermission, canAccessPath } = require('../middleware/permissions');
+const {
+  canReadFolder,
+  canReadFile,
+  canWriteFolder,
+  canWriteFileByParent,
+  hasDirectFolderPermission,
+  isOwnerPath,
+} = require('../utils/permissionPolicy');
+const { selectiveTransfer } = require('../services/selectiveTransfer');
+const { selectiveCollectFiles } = require('../services/selectiveDownload');
+const { selectiveDelete } = require('../services/selectiveDelete');
 const { isMetaPath } = require('../store/metaPaths');
 const path = require('path');
 
@@ -56,13 +66,7 @@ async function isDirectoryPath(webdavPath) {
 }
 
 async function hasDirectFolderWritePermission(userId, folderPath) {
-  const dirPath = normalizePathWithSlash(folderPath);
-  const noSlashPath = normalizePath(folderPath);
-  let ok = await Permission.checkPermission(userId, dirPath, 'write');
-  if (!ok && noSlashPath !== '/') {
-    ok = await Permission.checkPermission(userId, noSlashPath, 'write');
-  }
-  return ok;
+  return await hasDirectFolderPermission(userId, folderPath, 'write');
 }
 
 const upload = multer({ 
@@ -284,7 +288,20 @@ router.get('/download', authenticateToken, async (req, res) => {
       return rejectMetaPath(res);
     }
 
-    const hasPermission = await checkFilePermission(req.user.id, filePath, 'read');
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+
+    // Download policy: direct-only read (admin/owner bypass)
+    let hasPermission = false;
+    if (user.is_admin || isOwnerPath(user, filePath)) {
+      hasPermission = true;
+    } else {
+      const normalized = normalizePath(filePath);
+      const parentDir = path.posix.dirname(normalized) || '/';
+      hasPermission = await hasDirectFolderPermission(user.id, parentDir, 'read');
+    }
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -294,6 +311,7 @@ router.get('/download', authenticateToken, async (req, res) => {
     const encodedFilename = encodeURIComponent(filename);
     const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
     const disposition = inline ? 'inline' : 'attachment';
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
     
     if (inline) {
@@ -353,32 +371,14 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     if (!user.is_admin) {
       // 경로 정규화 (끝의 / 제거)
       const normalizedPath = normalizePath(folderPath);
-      const userFolder = `/${user.username}`;
       
       if (normalizedPath === '/' || normalizedPath === '') {
-        folderPath = userFolder;
-      } else if (normalizedPath !== userFolder && !normalizedPath.startsWith(userFolder + '/')) {
-        // 공유된 폴더인지 권한 체크
-        // /check 엔드포인트와 동일한 방식으로 권한 체크
-        const normalizedDirPath = normalizedPath === '/' ? '/' : normalizedPath + '/';
-        
-        // 해당 폴더에 직접 쓰기 권한이 있는지 확인 (상위 경로 체크 제거)
-        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
-        let hasPermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'write');
-        
-        // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-        if (!hasPermission && normalizedPath !== '/') {
-          hasPermission = await Permission.checkPermission(req.user.id, normalizedPath, 'write');
-        }
-        
-        if (!hasPermission) {
+        folderPath = `/${user.username}`;
+      } else {
+        const ok = await canWriteFolder(user, normalizedPath);
+        if (!ok) {
           return res.status(403).json({ error: 'Access denied' });
         }
-        
-        // 권한이 있으면 정규화된 경로 사용
-        folderPath = normalizedPath;
-      } else {
-        // 자신의 폴더인 경우 정규화된 경로 사용
         folderPath = normalizedPath;
       }
     } else {
@@ -452,17 +452,6 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
                   }
                 }
                 
-                // Auto-grant permissions to folder owner if within user's home directory
-                const allUsers = await User.findAll();
-                for (const targetUser of allUsers) {
-                  const userHomeFolder = `/${targetUser.username}/`;
-                  if (currentPath.startsWith(userHomeFolder)) {
-                    // Skip if already granted to this user
-                    if (targetUser.id !== req.user.id && !parentFolderOwners.includes(targetUser.id)) {
-                      await Permission.grant(targetUser.id, currentPath, 'write');
-                    }
-                  }
-                }
               } catch (permError) {
                 console.error('Failed to grant permissions for intermediate directory:', permError);
               }
@@ -517,40 +506,14 @@ router.delete('/delete', authenticateToken, async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
     const normalizedTargetPath = normalizePath(filePath);
     const isDir = await isDirectoryPath(filePath);
-    const folderPath = path.dirname(normalizedTargetPath) || '/';
-    // 경로 정규화: 끝에 / 추가 (권한 DB 형식과 일치)
-    const normalizedFolderPath = folderPath === '/' ? '/' : (folderPath.endsWith('/') ? folderPath : folderPath + '/');
-    
-    // 관리자는 모든 경로에 삭제 가능
-    let hasPermission = false;
-    if (user.is_admin) {
-      hasPermission = true;
-    } else {
-      const userFolder = `/${user.username}`;
-      
-      if (isDir) {
-        // Folder delete: follow folder's own permission (direct write only)
-        if (normalizedTargetPath.startsWith(userFolder)) {
-          hasPermission = true;
-        } else {
-          hasPermission = await hasDirectFolderWritePermission(req.user.id, normalizedTargetPath);
-        }
-      } else {
-        // File delete: parent folder write (direct only)
-        if (normalizedFolderPath.startsWith(userFolder) || folderPath.startsWith(userFolder)) {
-          hasPermission = true;
-        } else {
-          // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
-          // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
-          hasPermission = await Permission.checkPermission(req.user.id, normalizedFolderPath, 'write');
-          if (!hasPermission && folderPath !== '/') {
-            hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'write');
-          }
-        }
-      }
-    }
+    const hasPermission = isDir
+      ? await canWriteFolder(user, normalizedTargetPath)
+      : await canWriteFileByParent(user, normalizedTargetPath);
     
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
@@ -583,6 +546,36 @@ router.delete('/delete', authenticateToken, async (req, res) => {
       }
     }
 
+    if (isDir) {
+      const canEnterDirectory = async (dirPath) => {
+        if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+        return await hasDirectFolderPermission(user.id, dirPath, 'write');
+      };
+      const canDeleteFileByParent = async (parentDir) => canEnterDirectory(parentDir);
+
+      const result = await selectiveDelete({
+        rootPath: normalizedTargetPath,
+        canEnterDirectory,
+        canDeleteFileByParent,
+      });
+
+      try {
+        const prefixes = (result.deletedDirPrefixes || []).map((p) => normalizePath(p));
+        if (prefixes.length > 0) {
+          await Permission.revokePermissionsPrefixForAllUsers(prefixes);
+        }
+      } catch (permError) {
+        console.error('Failed to revoke permissions after directory deletion:', permError);
+      }
+
+      return res.json({
+        message: 'File deleted successfully',
+        deletedPaths: result.deletedPaths,
+        deletedDirPrefixes: result.deletedDirPrefixes,
+        skippedPaths: result.skippedPaths,
+      });
+    }
+
     await deleteFile(filePath);
     res.json({ message: 'File deleted successfully' });
   } catch (error) {
@@ -608,21 +601,9 @@ router.put('/rename', authenticateToken, async (req, res) => {
 
     const isDir = await isDirectoryPath(oldPath);
     const normalizedOld = normalizePath(oldPath);
-    const userFolder = `/${user.username}`;
-
-    let hasPermission = false;
-    if (user.is_admin) {
-      hasPermission = true;
-    } else if (normalizedOld.startsWith(userFolder)) {
-      hasPermission = true;
-    } else if (isDir) {
-      // Folder rename: follow folder's own permission (direct write only)
-      hasPermission = await hasDirectFolderWritePermission(req.user.id, normalizedOld);
-    } else {
-      // File rename: require direct write on its parent folder (no ancestor fallback)
-      const parentPath = path.dirname(normalizedOld) || '/';
-      hasPermission = await hasDirectFolderWritePermission(req.user.id, parentPath);
-    }
+    const hasPermission = isDir
+      ? await canWriteFolder(user, normalizedOld)
+      : await canWriteFileByParent(user, normalizedOld);
 
     if (!hasPermission) {
       return res.status(403).json({ error: 'Access denied' });
@@ -648,6 +629,14 @@ router.put('/rename', authenticateToken, async (req, res) => {
     }
 
     await moveFile(oldPath, newPath);
+    if (isDir) {
+      try {
+        const normalizedNew = normalizePath(newPath);
+        await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedOld, toPrefix: normalizedNew }]);
+      } catch (permError) {
+        console.error('Failed to rewrite permissions after directory rename:', permError);
+      }
+    }
     res.json({ message: 'File renamed successfully', path: newPath });
   } catch (error) {
     console.error('Rename file error:', error);
@@ -666,67 +655,23 @@ router.put('/move', authenticateToken, async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
     const normalizedSourcePath = normalizePath(sourcePath);
     const normalizedDestinationPath = normalizePath(destinationPath);
     const isSourceDir = await isDirectoryPath(sourcePath);
-    
-    // 소스 파일의 부모 디렉토리 권한 확인
-    const sourceParentPath = path.dirname(normalizedSourcePath) || '/';
-    const normalizedSourceParentPath = sourceParentPath === '/' ? '/' : (sourceParentPath.endsWith('/') ? sourceParentPath : sourceParentPath + '/');
-    
-    let hasSourcePermission = false;
-    if (user.is_admin) {
-      hasSourcePermission = true;
-    } else {
-      const userFolder = `/${user.username}`;
-      
-      if (isSourceDir) {
-        // Folder move: follow folder's own permission (direct write only)
-        if (normalizedSourcePath.startsWith(userFolder)) {
-          hasSourcePermission = true;
-        } else {
-          hasSourcePermission = await hasDirectFolderWritePermission(req.user.id, normalizedSourcePath);
-        }
-      } else {
-        // File move: parent folder write (direct only)
-        if (normalizedSourceParentPath.startsWith(userFolder) || sourceParentPath.startsWith(userFolder)) {
-          hasSourcePermission = true;
-        } else {
-          // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
-          // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
-          hasSourcePermission = await Permission.checkPermission(req.user.id, normalizedSourceParentPath, 'write');
-          if (!hasSourcePermission && sourceParentPath !== '/') {
-            hasSourcePermission = await Permission.checkPermission(req.user.id, sourceParentPath, 'write');
-          }
-        }
-      }
-    }
+    const hasSourcePermission = isSourceDir
+      ? await canWriteFolder(user, normalizedSourcePath)
+      : await canWriteFileByParent(user, normalizedSourcePath);
     
     if (!hasSourcePermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // 대상 경로의 부모 디렉토리 권한 확인
-    const destParentPath = path.dirname(normalizedDestinationPath) || '/';
-    const normalizedDestParentPath = destParentPath === '/' ? '/' : (destParentPath.endsWith('/') ? destParentPath : destParentPath + '/');
-    
-    let hasDestPermission = false;
-    if (user.is_admin) {
-      hasDestPermission = true;
-    } else {
-      const userFolder = `/${user.username}`;
-      // 자신의 폴더인 경우
-      if (normalizedDestParentPath.startsWith(userFolder) || destParentPath.startsWith(userFolder)) {
-        hasDestPermission = true;
-      } else {
-        // 공유받은 폴더인 경우 직접 권한만 체크 (상위 경로 체크 안 함)
-        // 경로 끝에 /가 있는 경우와 없는 경우 모두 체크
-        hasDestPermission = await Permission.checkPermission(req.user.id, normalizedDestParentPath, 'write');
-        if (!hasDestPermission && destParentPath !== '/') {
-          hasDestPermission = await Permission.checkPermission(req.user.id, destParentPath, 'write');
-        }
-      }
-    }
+    // Destination parent write permission (direct-only, admin/owner bypass)
+    const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
+    const hasDestPermission = await canWriteFolder(user, destParentPath);
     
     if (!hasDestPermission) {
       return res.status(403).json({ error: 'Access denied' });
@@ -735,6 +680,59 @@ router.put('/move', authenticateToken, async (req, res) => {
     const destExists = await pathExists(destinationPath);
     if (destExists) {
       return res.status(409).json({ error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' });
+    }
+
+    if (isSourceDir) {
+      const canEnterDirectory = async (dirPath) => {
+        if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+        return await hasDirectFolderPermission(user.id, dirPath, 'write');
+      };
+      const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+
+      const result = await selectiveTransfer({
+        sourceRoot: normalizedSourcePath,
+        destRoot: normalizedDestinationPath,
+        mode: 'move',
+        canEnterDirectory,
+        canTransferFile,
+      });
+
+      // Always rewrite root prefix, but keep skipped subtrees' ACL in place.
+      try {
+        const excludePrefixes = (result.skippedPaths || [])
+          .map((p) => normalizePath(p))
+          .filter((p) => p !== normalizedSourcePath && p.startsWith(`${normalizedSourcePath}/`));
+
+        const rootMovedFully = (result.movedDirMappings || []).some(
+          (m) => normalizePath(m.fromPrefix) === normalizedSourcePath
+        );
+
+        await Permission.rewritePermissionsForAllUsers(
+          [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
+          {
+            excludePrefixes,
+            // If source root still exists (partial move), keep exact "/a" ACL for traversal to skipped subtrees
+            // while also granting it on "/1/a".
+            duplicateExactMatches: !rootMovedFully,
+          }
+        );
+      } catch (permError) {
+        console.error('Failed to rewrite permissions after move:', permError);
+      }
+
+      if (result.movedDirMappings.length > 0) {
+        try {
+          await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
+        } catch (permError) {
+          console.error('Failed to rewrite permissions after move:', permError);
+        }
+      }
+
+      return res.json({
+        message: 'Directory moved (selective) successfully',
+        movedDirMappings: result.movedDirMappings,
+        skippedPaths: result.skippedPaths,
+      });
     }
 
     let fileSize = 0;
@@ -807,42 +805,24 @@ router.post('/copy', authenticateToken, async (req, res) => {
       return rejectMetaPath(res);
     }
 
-    // 소스 파일의 읽기 권한 확인
-    const hasSourcePermission = await checkFilePermission(req.user.id, sourcePath, 'read');
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+
+    // Source read permission (effective/inherited)
+    const isSourceDir = await isDirectoryPath(sourcePath);
+    const hasSourcePermission = isSourceDir
+      ? await canReadFolder(req.user.id, sourcePath, 'read')
+      : await canReadFile(req.user.id, sourcePath, 'read');
     if (!hasSourcePermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // 대상 경로의 부모 디렉토리 권한 확인
-    const destParentPath = path.dirname(destinationPath) || '/';
-    const user = await User.findById(req.user.id);
-    let hasDestPermission = await Permission.checkPermission(req.user.id, destParentPath, 'write');
-    
-    // 상위 경로들을 체크
-    if (!hasDestPermission && destParentPath !== '/') {
-      const pathParts = destParentPath.split('/').filter(Boolean);
-      for (let i = pathParts.length; i > 0; i--) {
-        const parentPath = '/' + pathParts.slice(0, i).join('/');
-        hasDestPermission = await Permission.checkPermission(req.user.id, parentPath, 'write');
-        if (hasDestPermission) {
-          break;
-        }
-      }
-    }
-    
-    // 루트 경로 체크
-    if (!hasDestPermission && destParentPath !== '/') {
-      hasDestPermission = await Permission.checkPermission(req.user.id, '/', 'write');
-    }
-    
-    // 비관리자의 경우 자신의 폴더인지 확인
-    if (!hasDestPermission && !user.is_admin) {
-      const userFolder = `/${user.username}`;
-      if (destParentPath.startsWith(userFolder)) {
-        hasDestPermission = true;
-      }
-    }
-    
+    // Destination parent write permission (direct-only, admin/owner bypass)
+    const normalizedDest = normalizePath(destinationPath);
+    const destParentPath = path.posix.dirname(normalizedDest) || '/';
+    const hasDestPermission = await canWriteFolder(user, destParentPath);
     if (!hasDestPermission) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -850,6 +830,44 @@ router.post('/copy', authenticateToken, async (req, res) => {
     const destExists = await pathExists(destinationPath);
     if (destExists) {
       return res.status(409).json({ error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' });
+    }
+
+    if (isSourceDir) {
+      const normalizedSource = normalizePath(sourcePath);
+
+      const canEnterDirectory = async (dirPath) => {
+        if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+        return await hasDirectFolderPermission(user.id, dirPath, 'read');
+      };
+      const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+
+      const okRoot = await canEnterDirectory(normalizedSource);
+      if (!okRoot) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const result = await selectiveTransfer({
+        sourceRoot: normalizedSource,
+        destRoot: normalizedDest,
+        mode: 'copy',
+        canEnterDirectory,
+        canTransferFile,
+      });
+
+      // executor_only: grant write to created directories for the executor
+      try {
+        for (const dir of result.createdDirs) {
+          await Permission.grant(req.user.id, dir, 'write');
+        }
+      } catch (permError) {
+        console.error('Failed to grant executor permissions after copy:', permError);
+      }
+
+      return res.json({
+        message: 'Directory copied (selective) successfully',
+        createdDirs: result.createdDirs,
+        skippedPaths: result.skippedPaths,
+      });
     }
 
     let fileSize = 0;
@@ -966,16 +984,26 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Paths array is required' });
     }
 
-    // Check permissions for all paths
-    for (const filePath of paths) {
-      if (isMetaPath(filePath)) {
+    // Reject meta paths early
+    for (const p of paths) {
+      if (isMetaPath(p)) {
         return rejectMetaPath(res);
       }
-      const hasPermission = await checkFilePermission(req.user.id, filePath, 'read');
-      if (!hasPermission) {
-        return res.status(403).json({ error: `Access denied: ${filePath}` });
-      }
     }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+
+    // Download policy: recursive_strict + direct-only read (admin/owner bypass)
+    const canEnterDirectory = async (dirPath) => {
+      if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+      return await hasDirectFolderPermission(user.id, dirPath, 'read');
+    };
+    const canIncludeFile = async (parentDir) => canEnterDirectory(parentDir);
+
+    const skippedPaths = [];
 
     downloadProgress.set(downloadId, {
       status: 'preparing',
@@ -1032,7 +1060,14 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
           if (paths.length === 1) {
             zipName = dirName;
           }
-          await collectFilesFromDirectory(filePath, dirName, allFiles);
+          const collected = await selectiveCollectFiles({
+            rootPath: filePath,
+            basePath: dirName,
+            canEnterDirectory,
+            canIncludeFile,
+          });
+          allFiles.push(...collected.files);
+          skippedPaths.push(...collected.skippedPaths);
         } else {
           const fileName = path.basename(filePath);
           
@@ -1043,30 +1078,59 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
             } else {
               zipName = fileName.replace(/\.[^/.]+$/, '');
             }
-            allFiles.push({ path: filePath, relativePath: fileName });
+            const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+            const ok = await canIncludeFile(parentDirForPerm);
+            if (!ok) {
+              skippedPaths.push(filePath);
+            } else {
+              allFiles.push({ path: filePath, relativePath: fileName });
+            }
           } else {
             if (commonParentDir && commonParentDir !== '/') {
               const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
-              allFiles.push({ path: filePath, relativePath });
+              const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+              const ok = await canIncludeFile(parentDirForPerm);
+              if (!ok) {
+                skippedPaths.push(filePath);
+              } else {
+                allFiles.push({ path: filePath, relativePath });
+              }
             } else {
-              allFiles.push({ path: filePath, relativePath: fileName });
+              const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+              const ok = await canIncludeFile(parentDirForPerm);
+              if (!ok) {
+                skippedPaths.push(filePath);
+              } else {
+                allFiles.push({ path: filePath, relativePath: fileName });
+              }
             }
           }
         }
       } catch (error) {
         const fileName = path.basename(filePath);
-        if (paths.length === 1) {
-          const parentDir = path.dirname(filePath);
-          if (parentDir && parentDir !== '/') {
-            zipName = path.basename(parentDir) || 'download';
-          } else {
-            zipName = fileName.replace(/\.[^/.]+$/, '');
-          }
-          allFiles.push({ path: filePath, relativePath: fileName });
+        // If we can't determine type, treat as file and apply direct-only read check
+        const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+        const ok = await canIncludeFile(parentDirForPerm);
+        if (!ok) {
+          skippedPaths.push(filePath);
         } else {
-          allFiles.push({ path: filePath, relativePath: fileName });
+          if (paths.length === 1) {
+            const parentDir = path.dirname(filePath);
+            if (parentDir && parentDir !== '/') {
+              zipName = path.basename(parentDir) || 'download';
+            } else {
+              zipName = fileName.replace(/\.[^/.]+$/, '');
+            }
+            allFiles.push({ path: filePath, relativePath: fileName });
+          } else {
+            allFiles.push({ path: filePath, relativePath: fileName });
+          }
         }
       }
+    }
+
+    if (allFiles.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     if (paths.length > 1) {
@@ -1089,6 +1153,31 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
 
     const encodedZipName = encodeURIComponent(`${zipName}.zip`);
     res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-WEA-Skipped-Count, X-WEA-Skipped');
+    res.setHeader('X-WEA-Skipped-Count', String(skippedPaths.length));
+    try {
+      const maxLen = 7000;
+      let payload = {
+        paths: skippedPaths.slice(0, 100),
+        truncated: skippedPaths.length > 100,
+      };
+      let encoded = encodeURIComponent(JSON.stringify(payload));
+
+      // Keep the header parseable: shrink list instead of slicing percent-encoded data.
+      while (encoded.length > maxLen && payload.paths.length > 0) {
+        payload.paths.pop();
+        payload.truncated = true;
+        encoded = encodeURIComponent(JSON.stringify(payload));
+      }
+
+      if (encoded.length > maxLen) {
+        encoded = encodeURIComponent(JSON.stringify({ paths: [], truncated: true }));
+      }
+
+      res.setHeader('X-WEA-Skipped', encoded);
+    } catch {
+      res.setHeader('X-WEA-Skipped', encodeURIComponent(JSON.stringify({ paths: [], truncated: true })));
+    }
     res.setHeader('Content-Disposition', `attachment; filename="${zipName}.zip"; filename*=UTF-8''${encodedZipName}`);
 
     const archive = archiver('zip', {

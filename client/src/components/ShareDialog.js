@@ -66,10 +66,9 @@ const ShareDialog = ({
   const [expandedPaths, setExpandedPaths] = useState(new Set([rootPath]));
   const [loadingPaths, setLoadingPaths] = useState(new Set());
   const [saving, setSaving] = useState(false);
-  const [userSelectMenuAnchor, setUserSelectMenuAnchor] = useState(null);
-  const [userSelectMenuFolderPath, setUserSelectMenuFolderPath] = useState(null);
   const [folderMenuAnchor, setFolderMenuAnchor] = useState(null);
   const [folderMenuPath, setFolderMenuPath] = useState(null);
+  const [folderMenuView, setFolderMenuView] = useState('manage'); // 'manage' | 'selectUser'
 
   useEffect(() => {
     if (open) {
@@ -465,19 +464,20 @@ const ShareDialog = ({
       userPermMap.set(userId, 'read'); // 기본 권한은 읽기
       setFolderPermissions(newFolderPermissions);
     } else {
-      // 공유 모드: 사용자 선택 팝업 표시
-      setUserSelectMenuFolderPath(folderPath);
+      // 공유 모드: (단일 메뉴 내) 사용자 선택 뷰로 전환
+      setFolderMenuPath(folderPath);
+      setFolderMenuView('selectUser');
     }
   };
 
   const handleUserSelect = (selectedUserId, selectedUsername) => {
-    if (!userSelectMenuFolderPath) return;
+    if (!folderMenuPath) return;
     
     const newFolderPermissions = new Map(folderPermissions);
-    if (!newFolderPermissions.has(userSelectMenuFolderPath)) {
-      newFolderPermissions.set(userSelectMenuFolderPath, new Map());
+    if (!newFolderPermissions.has(folderMenuPath)) {
+      newFolderPermissions.set(folderMenuPath, new Map());
     }
-    const userPermMap = newFolderPermissions.get(userSelectMenuFolderPath);
+    const userPermMap = newFolderPermissions.get(folderMenuPath);
     userPermMap.set(selectedUserId, 'read'); // 기본 권한은 읽기
     setFolderPermissions(newFolderPermissions);
     
@@ -495,8 +495,8 @@ const ShareDialog = ({
       });
     }
     
-    setUserSelectMenuAnchor(null);
-    setUserSelectMenuFolderPath(null);
+    // 메뉴는 같은 위치에서 유지, 사용자 선택 뷰에서 관리 뷰로 복귀
+    setFolderMenuView('manage');
   };
 
   const handleRemoveUser = (folderPath, targetUserId) => {
@@ -865,10 +865,9 @@ const ShareDialog = ({
     setFolderPermissions(new Map());
     setFolderTree(new Map());
     setExpandedPaths(new Set());
-    setUserSelectMenuAnchor(null);
-    setUserSelectMenuFolderPath(null);
     setFolderMenuAnchor(null);
     setFolderMenuPath(null);
+    setFolderMenuView('manage');
     setUserInfoMap(new Map());
     onClose();
   };
@@ -953,6 +952,7 @@ const ShareDialog = ({
         onClose={() => {
           setFolderMenuAnchor(null);
           setFolderMenuPath(null);
+          setFolderMenuView('manage');
         }}
         PaperProps={{
           style: {
@@ -980,7 +980,7 @@ const ShareDialog = ({
           const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
           const currentIsUserBaseFolder = isAdminMode && folderMenuPath === currentUserBaseFolder;
           
-          return (
+          const renderManageView = () => (
             <>
               {currentDisplayUsers
                 .filter(([targetUserId]) => {
@@ -997,7 +997,6 @@ const ShareDialog = ({
                       key={targetUserId}
                       onClick={(e) => {
                         e.stopPropagation();
-                        // 메뉴는 닫지 않고, 칩 클릭 이벤트 처리
                       }}
                       sx={{ py: 0.5 }}
                     >
@@ -1066,11 +1065,8 @@ const ShareDialog = ({
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  setFolderMenuAnchor(null);
-                  setFolderMenuPath(null);
                   if (isShareMode) {
-                    setUserSelectMenuAnchor(e.currentTarget);
-                    setUserSelectMenuFolderPath(folderMenuPath);
+                    setFolderMenuView('selectUser');
                   } else {
                     handleAddUser(folderMenuPath);
                   }
@@ -1090,49 +1086,57 @@ const ShareDialog = ({
               </MenuItem>
             </>
           );
+          
+          const renderSelectUserView = () => {
+            const availableUsers = users.filter(u => {
+              // 이미 선택된 사용자는 제외
+              const folderUserPerms = folderPermissions.get(folderMenuPath);
+              if (folderUserPerms && folderUserPerms.has(u.id)) return false;
+              // 자기 자신 제외
+              if (user && u.id === user.id) return false;
+              // 관리자 제외
+              if (u.is_admin) return false;
+              return true;
+            });
+            
+            return (
+              <>
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFolderMenuView('manage');
+                  }}
+                >
+                  <ListItemText primary="← 뒤로" />
+                </MenuItem>
+                
+                <MenuItem disabled sx={{ py: 0 }}>
+                  <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
+                </MenuItem>
+                
+                {availableUsers.map((u) => (
+                  <MenuItem
+                    key={u.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUserSelect(u.id, u.username);
+                    }}
+                  >
+                    <ListItemText primary={u.username} secondary={u.email} />
+                  </MenuItem>
+                ))}
+                
+                {availableUsers.length === 0 && (
+                  <MenuItem disabled>
+                    <ListItemText primary="추가할 사용자가 없습니다." />
+                  </MenuItem>
+                )}
+              </>
+            );
+          };
+          
+          return folderMenuView === 'selectUser' ? renderSelectUserView() : renderManageView();
         })()}
-      </Menu>
-
-      {/* 사용자 선택 메뉴 (공유 모드용) */}
-      <Menu
-        anchorEl={userSelectMenuAnchor}
-        open={Boolean(userSelectMenuAnchor)}
-        onClose={() => {
-          setUserSelectMenuAnchor(null);
-          setUserSelectMenuFolderPath(null);
-        }}
-        PaperProps={{
-          style: {
-            maxHeight: '75vh',
-          },
-        }}
-      >
-        {users
-          .filter(u => {
-            // 이미 선택된 사용자는 제외
-            if (!userSelectMenuFolderPath) return true;
-            const folderUserPerms = folderPermissions.get(userSelectMenuFolderPath);
-            if (!folderUserPerms) return true;
-            return !folderUserPerms.has(u.id);
-          })
-          .map((user) => (
-            <MenuItem
-              key={user.id}
-              onClick={() => handleUserSelect(user.id, user.username)}
-            >
-              <ListItemText primary={user.username} secondary={user.email} />
-            </MenuItem>
-          ))}
-        {users.filter(u => {
-          if (!userSelectMenuFolderPath) return false;
-          const folderUserPerms = folderPermissions.get(userSelectMenuFolderPath);
-          if (!folderUserPerms) return false;
-          return !folderUserPerms.has(u.id);
-        }).length === 0 && (
-          <MenuItem disabled>
-            <ListItemText primary="추가할 사용자가 없습니다." />
-          </MenuItem>
-        )}
       </Menu>
     </>
   );

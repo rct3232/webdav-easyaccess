@@ -6,11 +6,12 @@ import { getErrorMessage } from '../utils/errorUtils';
 export const useBulkOperations = (
   selectedFiles,
   files,
-  loadFiles,
+  onOperationComplete,
   setTreeUpdateTrigger,
   setDropMessage,
   setSelectedFiles,
   setSelectionMode,
+  getCurrentPath,
   options = {}
 ) => {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
@@ -63,6 +64,7 @@ export const useBulkOperations = (
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
     if (filePaths.length === 0) return;
+    const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
     
     if (!retryData) {
       dismissFailedItems();
@@ -76,7 +78,7 @@ export const useBulkOperations = (
 
     markProcessing(filePaths, 'delete');
     const progressId = retryData?.progressId || `delete_${Date.now()}`;
-    const retryDataObj = { type: 'delete', filePaths };
+    const retryDataObj = { type: 'delete', filePaths, startedPath };
     
     updateProgressWithRetry(progressId, {
       type: 'delete',
@@ -145,7 +147,13 @@ export const useBulkOperations = (
       if (!retryData) {
         setSelectedFiles(new Set());
       }
-      loadFiles();
+      if (onOperationComplete) {
+        onOperationComplete({
+          opType: 'delete',
+          startedPath,
+          deletedFolderPaths: deletedFolders,
+        });
+      }
       
       if (deletedFolders.length > 0) {
         setTimeout(() => {
@@ -164,7 +172,7 @@ export const useBulkOperations = (
         updateProgress({ id: progressId, remove: true });
       }, 3000);
     }
-  }, [selectedFiles, files, loadFiles, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry]);
+  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry]);
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
@@ -210,6 +218,7 @@ export const useBulkOperations = (
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
     if (!action || filePaths.length === 0) return;
+    const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
     
     if (!retryData) {
       dismissFailedItems();
@@ -220,7 +229,7 @@ export const useBulkOperations = (
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
     const actionName = getActionName(action);
     const actionText = getActionText(action);
-    const retryDataObj = { type: action, filePaths, destinationPath };
+    const retryDataObj = { type: action, filePaths, destinationPath, startedPath };
     
     updateProgressWithRetry(progressId, {
       type: action,
@@ -294,7 +303,13 @@ export const useBulkOperations = (
         setSelectedFiles(new Set());
         setSelectionMode(false);
       }
-      loadFiles();
+      if (onOperationComplete) {
+        onOperationComplete({
+          opType: action,
+          startedPath,
+          targetPath: destinationPath,
+        });
+      }
     }
 
     if (failCount === 0) {
@@ -310,7 +325,7 @@ export const useBulkOperations = (
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, loadFiles, setSelectedFiles, setSelectionMode, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText]);
+  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText]);
 
   const handleRetry = async (progressId) => {
     const progressItem = progressItems.find(item => item.id === progressId);
@@ -319,13 +334,13 @@ export const useBulkOperations = (
       return;
     }
 
-    const { type, filePaths, destinationPath } = progressItem.retryData;
+    const { type, filePaths, destinationPath, startedPath } = progressItem.retryData;
 
     // 기존 progressItem 재사용하여 재시도
     if (type === 'delete') {
-      await handleBulkDelete({ filePaths, progressId });
+      await handleBulkDelete({ filePaths, progressId, startedPath });
     } else if (type === 'move' || type === 'copy') {
-      await handleFolderPickerSelect(destinationPath, { type, filePaths, progressId });
+      await handleFolderPickerSelect(destinationPath, { type, filePaths, progressId, startedPath });
     }
   };
 

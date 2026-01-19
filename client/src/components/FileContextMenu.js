@@ -60,6 +60,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   
   // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
   const isSharedFolder = file?.type === 'directory' && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);
+  
+  // Prefer per-item permission if available
+  const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
   if (!file) return null;
 
@@ -74,7 +77,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   const handleDeleteConfirm = async () => {
     setDeleteDialogOpen(false);
     try {
-      await handleFileDelete(file);
+      await handleFileDelete(file, { startedPath: currentPath });
     } catch (error) {
       const errorMsg = error?.response?.data?.error || error?.message || '삭제에 실패했습니다';
       setErrorMessage(errorMsg);
@@ -88,7 +91,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
     }
     setLoading(true);
     try {
-      await handleFileRename(file, newName);
+      await handleFileRename(file, newName, { startedPath: currentPath });
       setRenameDialogOpen(false);
       setNewName('');
     } catch (error) {
@@ -99,13 +102,13 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   };
 
   const handleMove = (selectedPath) => {
-    handleFileOp(file, selectedPath, moveFile, '이동', '이동').then(() => {
+    handleFileOp(file, selectedPath, moveFile, '이동', '이동', { startedPath: currentPath }).then(() => {
       setMoveDialogOpen(false);
     });
   };
 
   const handleCopy = (selectedPath) => {
-    handleFileOp(file, selectedPath, copyFile, '복사', '복사').then(() => {
+    handleFileOp(file, selectedPath, copyFile, '복사', '복사', { startedPath: currentPath }).then(() => {
       setCopyDialogOpen(false);
     });
   };
@@ -133,6 +136,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
             setNewName(file.basename);
             setRenameDialogOpen(true);
           }}
+          disabled={!fileWritePermission}
         >
           <ListItemIcon>
             <EditIcon fontSize="small" />
@@ -143,7 +147,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           onClick={() => {
             setMoveDialogOpen(true);
           }}
-          disabled={!hasWritePermission}
+          disabled={!fileWritePermission}
         >
           <ListItemIcon>
             <MoveIcon fontSize="small" />
@@ -186,7 +190,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
             <ListItemText>공유 관리</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={handleDelete} disabled={!hasWritePermission}>
+        <MenuItem onClick={handleDelete} disabled={!fileWritePermission}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>

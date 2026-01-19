@@ -7,13 +7,13 @@ import { uploadFile, listFiles } from '../services/fileService';
  * 
  * @param {Object} options - Hook options
  * @param {Function} options.updateProgress - Progress update callback
- * @param {Function} options.loadFiles - Callback to reload file list
+ * @param {Function} options.onOperationComplete - Notify completion (for conditional refresh)
  * @param {Function} options.dismissFailedItems - Callback to dismiss failed items
  * @returns {Object} Upload handlers
  */
 export const useFileUpload = ({
   updateProgress,
-  loadFiles,
+  onOperationComplete,
   dismissFailedItems,
 }) => {
   // Abort controllers for each upload session
@@ -264,8 +264,11 @@ export const useFileUpload = ({
     }
 
     // Refresh file list if successful
-    if (successCount > 0 && loadFiles) {
-      loadFiles();
+    if (successCount > 0 && onOperationComplete) {
+      onOperationComplete({
+        opType: 'upload',
+        startedPath: uploadPath,
+      });
     }
 
     // Auto-remove if no failures
@@ -281,7 +284,7 @@ export const useFileUpload = ({
         keepOnError: true,
       });
     }
-  }, [updateProgress, loadFiles, dismissFailedItems, uploadSingleFile, updateProgressWithItems, isFileCancelled]);
+  }, [updateProgress, onOperationComplete, dismissFailedItems, uploadSingleFile, updateProgressWithItems, isFileCancelled]);
 
   /**
    * Handle retry upload
@@ -412,8 +415,11 @@ export const useFileUpload = ({
     }
 
     // Refresh if successful
-    if (successCount > completedCount && loadFiles) {
-      loadFiles();
+    if (successCount > completedCount && onOperationComplete) {
+      onOperationComplete({
+        opType: 'upload',
+        startedPath: uploadPath,
+      });
     }
 
     // Auto-remove if no failures
@@ -429,7 +435,7 @@ export const useFileUpload = ({
         keepOnError: true,
       });
     }
-  }, [updateProgress, loadFiles, uploadSingleFile, updateProgressWithItems, isFileCancelled]);
+  }, [updateProgress, onOperationComplete, uploadSingleFile, updateProgressWithItems, isFileCancelled]);
 
   /**
    * Cancel single file upload

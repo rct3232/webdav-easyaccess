@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile, copyFile } from '../services/fileService';
 import { getErrorMessage, showErrorMessage, showSuccessMessage, showMessage } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
+import { normalizePath } from '../utils/refreshPolicy';
 
 /**
  * Common file operations hook
@@ -100,8 +101,10 @@ export const useFileOperations = ({
    * @param {Function} operation - Operation function (moveFile or copyFile)
    * @param {string} operationName - Operation name for display ('이동' or '복사')
    * @param {string} actionVerb - Action verb for progress ('이동' or '복사')
+   * @param {Object} [context] - Operation context
+   * @param {string} [context.startedPath] - Path at operation start
    */
-  const handleFileOperation = useCallback(async (file, selectedPath, operation, operationName, actionVerb) => {
+  const handleFileOperation = useCallback(async (file, selectedPath, operation, operationName, actionVerb, context = {}) => {
     if (!file || !selectedPath || !selectedPath.trim()) {
       const msg = '대상 경로를 선택하세요';
       if (setDropMessage) {
@@ -122,6 +125,8 @@ export const useFileOperations = ({
     const filePath = file.path;
     const progressId = `${operationName}_${Date.now()}`;
     const operationType = operation === moveFile ? 'move' : 'copy';
+    const startedPath = context?.startedPath;
+    const targetFolderPath = normalizePath(selectedPath);
 
     // Mark processing
     if (setProcessingMap) {
@@ -168,7 +173,11 @@ export const useFileOperations = ({
       });
       
       if (onActionComplete) {
-        onActionComplete();
+        onActionComplete({
+          opType: operationType,
+          startedPath,
+          targetPath: targetFolderPath,
+        });
       }
       
       if (onClose) {
@@ -226,8 +235,10 @@ export const useFileOperations = ({
    * Handle file rename
    * @param {Object} file - File object
    * @param {string} newName - New file name
+   * @param {Object} [context] - Operation context
+   * @param {string} [context.startedPath] - Path at operation start
    */
-  const handleFileRename = useCallback(async (file, newName) => {
+  const handleFileRename = useCallback(async (file, newName, context = {}) => {
     if (!file || !newName || !newName.trim()) {
       const msg = '이름을 입력하세요';
       if (setDropMessage) {
@@ -242,6 +253,7 @@ export const useFileOperations = ({
     }
 
     const filePath = file.path;
+    const startedPath = context?.startedPath;
     
     // Mark processing
     if (setProcessingMap) {
@@ -254,7 +266,10 @@ export const useFileOperations = ({
       await renameFile(filePath, newName);
       
       if (onActionComplete) {
-        onActionComplete();
+        onActionComplete({
+          opType: 'rename',
+          startedPath,
+        });
       }
       
       if (onClose) {
@@ -289,12 +304,15 @@ export const useFileOperations = ({
   /**
    * Handle file delete
    * @param {Object} file - File object
+   * @param {Object} [context] - Operation context
+   * @param {string} [context.startedPath] - Path at operation start
    */
-  const handleFileDelete = useCallback(async (file) => {
+  const handleFileDelete = useCallback(async (file, context = {}) => {
     if (!file) return;
 
     const filePath = file.path;
     const isDirectory = file.type === 'directory';
+    const startedPath = context?.startedPath;
     
     // Mark processing
     if (setProcessingMap) {
@@ -307,7 +325,11 @@ export const useFileOperations = ({
       await deleteFile(filePath);
       
       if (onActionComplete) {
-        onActionComplete(isDirectory ? filePath : null);
+        onActionComplete({
+          opType: 'delete',
+          startedPath,
+          deletedFolderPath: isDirectory ? filePath : null,
+        });
       }
       
       if (onClose) {

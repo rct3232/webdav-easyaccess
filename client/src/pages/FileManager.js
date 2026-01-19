@@ -57,6 +57,7 @@ import { useFileOperations } from '../hooks/useFileOperations';
 import { uploadMultipleFiles } from '../services/fileService';
 import { showErrorMessage, showSuccessMessage } from '../utils/errorUtils';
 import { createProcessingUpdater } from '../utils/processingUtils';
+import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
 import FileDetail from '../components/FileDetail';
@@ -131,6 +132,65 @@ const FileManager = () => {
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
   const [processingMap, setProcessingMap] = useState(new Map());
+  const currentPathRef = useRef(currentPath);
+  const loadFilesRef = useRef(loadFiles);
+  
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+  
+  useEffect(() => {
+    loadFilesRef.current = loadFiles;
+  }, [loadFiles]);
+  
+  // Operation completion handler (stable; uses refs to avoid stale-closure refresh)
+  const handleOperationComplete = useCallback((info = {}) => {
+    // Backward compatibility: allow legacy signature (deletedFolderPath string)
+    const payload = typeof info === 'string'
+      ? { opType: 'delete', deletedFolderPath: info }
+      : (info || {});
+    
+    const opType = payload.opType || payload.type || 'refresh';
+    const startedPath = payload.startedPath;
+    const targetPath = payload.targetPath;
+    const currentPathNow = currentPathRef.current;
+    
+    const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
+      ? payload.deletedFolderPaths
+      : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
+    
+    // Keep folder tree consistent (safe even if we skip list refresh)
+    deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
+      setTreeUpdateTrigger({
+        type: 'deleted',
+        folderPath,
+        timestamp: Date.now(),
+      });
+    });
+    
+    const shouldRefresh = shouldRefreshAfterOperation({
+      opType,
+      startedPath: startedPath ?? currentPathNow,
+      currentPathNow,
+      targetPath,
+    });
+    
+    if (shouldRefresh) {
+      const fn = loadFilesRef.current;
+      if (typeof fn === 'function') {
+        fn();
+      }
+    }
+    
+    if (deletedFolderPaths.length > 0) {
+      setTimeout(() => {
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }, 500);
+    }
+  }, [setTreeUpdateTrigger]);
   
   // FileActionSheet 관련 다이얼로그 상태
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -197,11 +257,12 @@ const FileManager = () => {
   } = useBulkOperations(
     selectedFiles,
     sortedFiles,
-    loadFiles,
+    handleOperationComplete,
     setTreeUpdateTrigger,
     setDropMessage,
     setSelectedFiles,
     setSelectionMode,
+    () => currentPathRef.current,
     { markProcessing, clearProcessing }
   );
 
@@ -213,31 +274,9 @@ const FileManager = () => {
     handleCancelAllUpload,
   } = useFileUpload({
     updateProgress,
-    loadFiles,
+    onOperationComplete: handleOperationComplete,
     dismissFailedItems,
   });
-
-  // Define handleRefresh before useFileOperations
-  const handleRefresh = useCallback((deletedFilePath) => {
-    if (deletedFilePath) {
-      setTreeUpdateTrigger({
-        type: 'deleted',
-        folderPath: deletedFilePath,
-        timestamp: Date.now(),
-      });
-    }
-    
-    loadFiles();
-    
-    if (deletedFilePath) {
-      setTimeout(() => {
-        setTreeUpdateTrigger({
-          type: 'refresh',
-          timestamp: Date.now(),
-        });
-      }, 500);
-    }
-  }, [loadFiles, setTreeUpdateTrigger]);
 
   // File operations hook for mobile actions
   const {
@@ -249,7 +288,7 @@ const FileManager = () => {
     onProgress: updateProgress,
     setDropMessage,
     setProcessingMap,
-    onActionComplete: handleRefresh,
+    onActionComplete: handleOperationComplete,
     onClose: () => {
       setActionSheetOpen(false);
       setActionSheetFile(null);
@@ -378,7 +417,7 @@ const FileManager = () => {
       timestamp: Date.now(),
     });
     
-    loadFiles();
+    handleOperationComplete({ opType: 'createFolder', startedPath: parentPath });
     setCreateFolderDialogOpen(false);
     
     setTimeout(() => {
@@ -399,7 +438,7 @@ const FileManager = () => {
 
     setRenameLoading(true);
     try {
-      await handleFileRenameOp(targetFile, renameNewName);
+      await handleFileRenameOp(targetFile, renameNewName, { startedPath: currentPathRef.current });
       setRenameDialogOpen(false);
       setRenameNewName('');
       setMobileRenameFile(null);
@@ -415,7 +454,7 @@ const FileManager = () => {
     if (!targetFile) return;
 
     try {
-      await handleFileDeleteOp(targetFile);
+      await handleFileDeleteOp(targetFile, { startedPath: currentPathRef.current });
       setDeleteDialogOpen(false);
       setMobileDeleteFile(null);
       setActionSheetOpen(false);
@@ -431,7 +470,7 @@ const FileManager = () => {
     if (!targetFile) return;
 
     try {
-      await handleFileOperationOp(targetFile, selectedPath, operation, operationName, actionVerb);
+      await handleFileOperationOp(targetFile, selectedPath, operation, operationName, actionVerb, { startedPath: currentPathRef.current });
       setFolderPickerOpen(false);
       setActionSheetOpen(false);
       setActionSheetFile(null);
@@ -457,7 +496,7 @@ const FileManager = () => {
       }
 
     try {
-      await handleFileOperationOp(draggedFile, targetFolder.path, moveFile, '이동', '이동');
+      await handleFileOperationOp(draggedFile, targetFolder.path, moveFile, '이동', '이동', { startedPath: currentPathRef.current });
     } catch (error) {
       // Error is already handled by useFileOperations
     }
@@ -539,7 +578,7 @@ const FileManager = () => {
       }
 
       // Refresh file list and tree
-      loadFiles();
+      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
       setTreeUpdateTrigger({
         type: 'refresh',
         timestamp: Date.now(),
@@ -1154,7 +1193,7 @@ const FileManager = () => {
         contextMenu={contextMenu}
         onClose={() => setContextMenu(null)}
         file={selectedFile}
-        onActionComplete={handleRefresh}
+        onActionComplete={handleOperationComplete}
         user={user}
         currentPath={currentPath}
         onMessage={setDropMessage}
@@ -1527,7 +1566,7 @@ const FileManager = () => {
           user={user}
           onMessage={setDropMessage}
           onActionComplete={() => {
-            handleRefresh();
+            handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
           }}
         />
       )}

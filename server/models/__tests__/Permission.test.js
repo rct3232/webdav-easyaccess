@@ -5,39 +5,29 @@
 
 const Permission = require('../Permission');
 const User = require('../User');
-const db = require('../database');
 const {
-  createTestDatabase,
-  initializeTestSchema,
-  cleanupTestDatabase,
-  closeTestDatabase,
+  setupTestStore,
+  resetTestStore,
+  teardownTestStore,
   createTestUser
 } = require('../../test-utils');
 
-// Mock the database module
-jest.mock('../database', () => ({
-  getDb: jest.fn()
-}));
-
 describe('Permission Model', () => {
-  let testDb;
   let testUser1;
   let testUser2;
 
   beforeAll(async () => {
-    testDb = await createTestDatabase();
-    await initializeTestSchema(testDb);
-    db.getDb.mockReturnValue(testDb);
+    await setupTestStore();
   });
 
   afterAll(async () => {
-    await closeTestDatabase(testDb);
+    await teardownTestStore();
   });
 
   beforeEach(async () => {
-    await cleanupTestDatabase(testDb);
-    testUser1 = await createTestUser(testDb, { username: 'user1', email: 'user1@example.com' });
-    testUser2 = await createTestUser(testDb, { username: 'user2', email: 'user2@example.com' });
+    await resetTestStore();
+    testUser1 = await createTestUser({ username: 'user1', email: 'user1@example.com' });
+    testUser2 = await createTestUser({ username: 'user2', email: 'user2@example.com' });
   });
 
   describe('grant', () => {

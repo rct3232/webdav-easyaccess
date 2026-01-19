@@ -319,6 +319,7 @@ router.get('/folders/list', authenticateToken, isAdmin, async (req, res) => {
     const items = await listDirectory(path);
     const folders = items
       .filter(item => item.type === 'directory')
+      .filter(item => item.basename !== '.wea')
       .map(item => ({
         path: item.filename || item.basename,
         name: item.basename || item.name,

@@ -5,34 +5,23 @@
 
 const bcrypt = require('bcryptjs');
 const User = require('../User');
-const db = require('../database');
 const {
-  createTestDatabase,
-  initializeTestSchema,
-  cleanupTestDatabase,
-  closeTestDatabase
+  setupTestStore,
+  resetTestStore,
+  teardownTestStore
 } = require('../../test-utils');
 
-// Mock the database module
-jest.mock('../database', () => ({
-  getDb: jest.fn()
-}));
-
 describe('User Model', () => {
-  let testDb;
-
   beforeAll(async () => {
-    testDb = await createTestDatabase();
-    await initializeTestSchema(testDb);
-    db.getDb.mockReturnValue(testDb);
+    await setupTestStore();
   });
 
   afterAll(async () => {
-    await closeTestDatabase(testDb);
+    await teardownTestStore();
   });
 
   beforeEach(async () => {
-    await cleanupTestDatabase(testDb);
+    await resetTestStore();
   });
 
   describe('create', () => {

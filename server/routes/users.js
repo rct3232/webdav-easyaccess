@@ -6,15 +6,15 @@ const { authenticateToken } = require('../utils/auth');
 // Get all users (admin only - simplified for now)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const db = require('../models/database').getDb();
-    const sql = `SELECT id, username, email, created_at FROM users`;
-    
-    db.all(sql, [], (err, rows) => {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to fetch users' });
-      }
-      res.json(rows);
-    });
+    const users = await User.findAll();
+    res.json(
+      users.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        created_at: u.created_at,
+      }))
+    );
   } catch (error) {
     console.error('Get users error:', error);
     res.status(500).json({ error: 'Failed to get users' });
@@ -24,17 +24,14 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get approved users for sharing (available to all authenticated users)
 router.get('/approved', authenticateToken, async (req, res) => {
   try {
-    const db = require('../models/database').getDb();
-    const sql = `SELECT id, username, email FROM users WHERE status = 'approved' AND is_admin = 0 ORDER BY username`;
-    
-    db.all(sql, [], (err, rows) => {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to fetch approved users' });
-      }
-      // 현재 사용자는 제외
-      const filtered = rows.filter(user => user.id !== req.user.id);
-      res.json(filtered);
-    });
+    const approved = await User.findByStatus('approved');
+    const rows = approved
+      .filter(u => !u.is_admin)
+      .map(u => ({ id: u.id, username: u.username, email: u.email }))
+      .sort((a, b) => a.username.localeCompare(b.username));
+    // 현재 사용자는 제외
+    const filtered = rows.filter(user => user.id !== req.user.id);
+    res.json(filtered);
   } catch (error) {
     console.error('Get approved users error:', error);
     res.status(500).json({ error: 'Failed to get approved users' });

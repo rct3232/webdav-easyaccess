@@ -1,91 +1,51 @@
 /**
- * Test utility functions for creating test data and managing test database
+ * Test utility functions for file-store based tests
  */
 
-const sqlite3 = require('sqlite3').verbose();
-const bcrypt = require('bcryptjs');
+const os = require('os');
+const path = require('path');
+const fs = require('fs/promises');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key';
 
-/**
- * Create an in-memory SQLite database for testing
- * @returns {Promise<sqlite3.Database>} Database instance
- */
-function createTestDatabase() {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(':memory:', (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(db);
-      }
-    });
-  });
+let currentTestDir = null;
+
+async function setupTestStore() {
+  process.env.NODE_ENV = 'test';
+  process.env.WEA_STORAGE_BACKEND = 'fs';
+  process.env.WEA_DISABLE_DEFAULT_ADMIN = 'true';
+
+  if (!currentTestDir) {
+    currentTestDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wea-test-'));
+  }
+  process.env.WEA_FS_DIR = currentTestDir;
+
+  const { initMetadataStore } = require('./store/bootstrap');
+  await initMetadataStore();
+
+  return currentTestDir;
 }
 
-/**
- * Initialize database schema for testing
- * @param {sqlite3.Database} db - Database instance
- * @returns {Promise<void>}
- */
-function initializeTestSchema(db) {
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      // Users table
-      db.run(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT UNIQUE NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          status TEXT DEFAULT 'pending',
-          is_admin INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Folder permissions table
-      db.run(`
-        CREATE TABLE IF NOT EXISTS folder_permissions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          folder_path TEXT NOT NULL,
-          permission TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id, folder_path),
-          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-        )
-      `);
-
-      // Settings table
-      db.run(`
-        CREATE TABLE IF NOT EXISTS settings (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          key TEXT UNIQUE NOT NULL,
-          value TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `, (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
-  });
+async function resetTestStore() {
+  await setupTestStore();
+  await fs.rm(currentTestDir, { recursive: true, force: true });
+  await fs.mkdir(currentTestDir, { recursive: true });
+  const { initMetadataStore } = require('./store/bootstrap');
+  await initMetadataStore();
 }
 
-/**
- * Create a test user
- * @param {sqlite3.Database} db - Database instance
- * @param {Object} userData - User data
- * @returns {Promise<Object>} Created user
- */
-async function createTestUser(db, userData = {}) {
+async function teardownTestStore() {
+  if (!currentTestDir) return;
+  try {
+    await fs.rm(currentTestDir, { recursive: true, force: true });
+  } finally {
+    currentTestDir = null;
+  }
+}
+
+async function createTestUser(userData = {}) {
+  await setupTestStore();
   const {
     username = 'testuser',
     email = 'test@example.com',
@@ -93,25 +53,20 @@ async function createTestUser(db, userData = {}) {
     isAdmin = false,
     status = 'approved'
   } = userData;
+  const User = require('./models/User');
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  return new Promise((resolve, reject) => {
-    const sql = `INSERT INTO users (username, email, password, status, is_admin) VALUES (?, ?, ?, ?, ?)`;
-    db.run(sql, [username, email, hashedPassword, status, isAdmin ? 1 : 0], function(err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve({
-          id: this.lastID,
-          username,
-          email,
-          status,
-          is_admin: isAdmin ? 1 : 0
-        });
-      }
-    });
-  });
+  const created = await User.create(username, email, password, isAdmin);
+  if (status && status !== created.status) {
+    await User.updateStatus(created.id, status);
+  }
+  const row = await require('./store/userStore').findById(created.id);
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    status: row.status,
+    is_admin: row.is_admin,
+  };
 }
 
 /**
@@ -127,72 +82,18 @@ function createTestToken(user) {
   );
 }
 
-/**
- * Grant permission to a user
- * @param {sqlite3.Database} db - Database instance
- * @param {number} userId - User ID
- * @param {string} folderPath - Folder path
- * @param {string} permission - Permission type (read/write)
- * @returns {Promise<Object>}
- */
-function grantTestPermission(db, userId, folderPath, permission = 'read') {
-  return new Promise((resolve, reject) => {
-    const sql = `INSERT OR REPLACE INTO folder_permissions (user_id, folder_path, permission) VALUES (?, ?, ?)`;
-    db.run(sql, [userId, folderPath, permission], function(err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve({ id: this.lastID, userId, folderPath, permission });
-      }
-    });
-  });
-}
-
-/**
- * Clean up database (delete all records)
- * @param {sqlite3.Database} db - Database instance
- * @returns {Promise<void>}
- */
-function cleanupTestDatabase(db) {
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('DELETE FROM folder_permissions');
-      db.run('DELETE FROM users');
-      db.run('DELETE FROM settings', (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
-  });
-}
-
-/**
- * Close database connection
- * @param {sqlite3.Database} db - Database instance
- * @returns {Promise<void>}
- */
-function closeTestDatabase(db) {
-  return new Promise((resolve, reject) => {
-    db.close((err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
+async function grantTestPermission(userId, folderPath, permission = 'read') {
+  await setupTestStore();
+  const Permission = require('./models/Permission');
+  return await Permission.grant(userId, folderPath, permission);
 }
 
 module.exports = {
-  createTestDatabase,
-  initializeTestSchema,
+  setupTestStore,
+  resetTestStore,
+  teardownTestStore,
   createTestUser,
   createTestToken,
   grantTestPermission,
-  cleanupTestDatabase,
-  closeTestDatabase
 };
 

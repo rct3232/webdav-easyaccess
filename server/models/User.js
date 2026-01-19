@@ -1,101 +1,70 @@
-const db = require('./database');
 const bcrypt = require('bcryptjs');
+const userStore = require('../store/userStore');
 
 class User {
   static async create(username, email, password, isAdmin = false) {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const status = isAdmin ? 'approved' : 'pending';
-    
-    return new Promise((resolve, reject) => {
-      const sql = `INSERT INTO users (username, email, password, status, is_admin) VALUES (?, ?, ?, ?, ?)`;
-      db.getDb().run(sql, [username, email, hashedPassword, status, isAdmin ? 1 : 0], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ id: this.lastID, username, email, status, is_admin: isAdmin ? 1 : 0 });
-        }
-      });
+    const userObj = await userStore.createUser({
+      username,
+      email,
+      passwordHash: hashedPassword,
+      isAdmin,
     });
+    return {
+      id: userObj.id,
+      username: userObj.username,
+      email: userObj.email,
+      status: userObj.status,
+      is_admin: userObj.is_admin,
+    };
   }
 
   static async findByUsername(username) {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT * FROM users WHERE username = ?`;
-      db.getDb().get(sql, [username], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
+    return await userStore.findByUsername(username);
   }
 
   static async findByEmail(email) {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT * FROM users WHERE email = ?`;
-      db.getDb().get(sql, [email], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
+    return await userStore.findByEmail(email);
   }
 
   static async findById(id) {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT id, username, email, status, is_admin, created_at, updated_at FROM users WHERE id = ?`;
-      db.getDb().get(sql, [id], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
+    const u = await userStore.findById(id);
+    if (!u) return undefined;
+    // Do not expose password hash here
+    // Match previous behavior (no password field)
+    // eslint-disable-next-line no-unused-vars
+    const { password, ...rest } = u;
+    return rest;
   }
 
   static async findAll() {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT id, username, email, status, is_admin, created_at, updated_at FROM users ORDER BY created_at DESC`;
-      db.getDb().all(sql, [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
+    const users = await userStore.findAll();
+    return users.map(u => {
+      // eslint-disable-next-line no-unused-vars
+      const { password, ...rest } = u;
+      return rest;
     });
   }
 
   static async findByStatus(status) {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT id, username, email, status, is_admin, created_at, updated_at FROM users WHERE status = ? ORDER BY created_at DESC`;
-      db.getDb().all(sql, [status], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
+    const users = await userStore.findByStatus(status);
+    return users.map(u => {
+      // eslint-disable-next-line no-unused-vars
+      const { password, ...rest } = u;
+      return rest;
     });
   }
 
   static async updateStatus(userId, status) {
-    return new Promise((resolve, reject) => {
-      const sql = `UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      db.getDb().run(sql, [status, userId], function(err) {
-        if (err) reject(err);
-        else resolve({ success: true });
-      });
-    });
+    return await userStore.updateStatus(userId, status);
   }
 
   static async updateEmail(userId, newEmail) {
-    return new Promise((resolve, reject) => {
-      const sql = `UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      db.getDb().run(sql, [newEmail, userId], function(err) {
-        if (err) reject(err);
-        else resolve({ success: true });
-      });
-    });
+    return await userStore.updateEmail(userId, newEmail);
   }
 
   static async delete(userId) {
-    return new Promise((resolve, reject) => {
-      const sql = `DELETE FROM users WHERE id = ?`;
-      db.getDb().run(sql, [userId], function(err) {
-        if (err) reject(err);
-        else resolve({ success: true });
-      });
-    });
+    return await userStore.deleteUser(userId);
   }
 
   static async verifyPassword(user, password) {
@@ -104,14 +73,7 @@ class User {
 
   static async updatePassword(userId, newPassword) {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    return new Promise((resolve, reject) => {
-      const sql = `UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      db.getDb().run(sql, [hashedPassword, userId], function(err) {
-        if (err) reject(err);
-        else resolve({ success: true });
-      });
-    });
+    return await userStore.updatePassword(userId, hashedPassword);
   }
 }
 

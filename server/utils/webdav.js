@@ -1,8 +1,15 @@
-const { createClient } = require('webdav');
 const path = require('path');
 const { normalizePath } = require('./pathUtils');
 
 const clientCache = new Map();
+
+let createClientPromise = null;
+async function getCreateClient() {
+  if (!createClientPromise) {
+    createClientPromise = import('webdav').then(mod => mod.createClient);
+  }
+  return await createClientPromise;
+}
 
 function logWebdavError(context, error, extra = {}) {
   const status = error?.status || error?.response?.status;
@@ -25,7 +32,7 @@ function getRequestPath(normalizedPath, baseUrlOverride = null) {
   return normalizedPath;
 }
 
-function getWebDAVClient(baseUrlOverride = null) {
+async function getWebDAVClient(baseUrlOverride = null) {
   let url = baseUrlOverride || process.env.WEBDAV_URL;
   const username = process.env.WEBDAV_USERNAME;
   const password = process.env.WEBDAV_PASSWORD;
@@ -40,6 +47,7 @@ function getWebDAVClient(baseUrlOverride = null) {
   }
 
   if (!clientCache.has(url)) {
+    const createClient = await getCreateClient();
     const authType = process.env.WEBDAV_AUTH_TYPE || 'auto';
     const clientOptions = {
       username,
@@ -67,7 +75,7 @@ function resetWebDAVClient() {
 }
 
 async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
-  const client = getWebDAVClient(); // fallback uses default base URL
+  const client = await getWebDAVClient(); // fallback uses default base URL
   try {
     const normalizedSource = normalizePath(sourcePath);
     const normalizedDest = normalizePath(destinationPath);
@@ -149,7 +157,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
 }
 
 async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
-  const client = getWebDAVClient(); // fallback uses default base URL
+  const client = await getWebDAVClient(); // fallback uses default base URL
   try {
     const normalizedSource = normalizePath(sourcePath);
     const normalizedDest = normalizePath(destinationPath);
@@ -228,7 +236,7 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
 }
 
 async function listDirectory(path = '/') {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
     const requestPath = getRequestPath(normalizedPath);
@@ -256,7 +264,7 @@ async function listDirectory(path = '/') {
 }
 
 async function getFileContents(filePath) {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(filePath);
     const requestPath = getRequestPath(normalizedPath);
@@ -268,7 +276,7 @@ async function getFileContents(filePath) {
 }
 
 async function putFileContents(path, buffer) {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
     const requestPath = getRequestPath(normalizedPath);
@@ -290,8 +298,44 @@ async function putFileContents(path, buffer) {
   }
 }
 
+/**
+ * PUT file contents with advanced options (headers, overwrite, etc).
+ * This is required for conditional requests like If-None-Match: *.
+ *
+ * @param {string} path
+ * @param {Buffer|string|import("stream").Readable} buffer
+ * @param {object} options - Passed through to webdav client's putFileContents
+ * @returns {Promise<{success: true}>}
+ */
+async function putFileContentsAdvanced(path, buffer, options = {}) {
+  const client = await getWebDAVClient();
+  try {
+    const normalizedPath = normalizePath(path);
+    const requestPath = getRequestPath(normalizedPath);
+    await client.putFileContents(requestPath, buffer, options);
+    return { success: true };
+  } catch (error) {
+    // Preserve status codes for callers that need to branch on 412/409/etc
+    throw error;
+  }
+}
+
+/**
+ * Perform a custom WebDAV request using the configured client.
+ * @param {string} path
+ * @param {object} requestOptions
+ * @param {string|null} baseUrlOverride
+ * @returns {Promise<any>}
+ */
+async function customRequest(path, requestOptions, baseUrlOverride = null) {
+  const client = await getWebDAVClient(baseUrlOverride);
+  const normalizedPath = normalizePath(path);
+  const requestPath = getRequestPath(normalizedPath, baseUrlOverride);
+  return client.customRequest(requestPath, requestOptions);
+}
+
 async function deleteFile(path) {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
     let isDirectory = false;
@@ -348,7 +392,7 @@ async function deleteFile(path) {
 async function moveFile(sourcePath, destinationPath, progressCallback) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
-  const client = getWebDAVClient(sourceBase);
+  const client = await getWebDAVClient(sourceBase);
   const normalizedSource = normalizePath(sourcePath);
   const normalizedDest = normalizePath(destinationPath);
 
@@ -394,7 +438,7 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
 async function copyFile(sourcePath, destinationPath, progressCallback) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
-  const client = getWebDAVClient(sourceBase);
+  const client = await getWebDAVClient(sourceBase);
   const normalizedSource = normalizePath(sourcePath);
   const normalizedDest = normalizePath(destinationPath);
 
@@ -437,7 +481,7 @@ async function copyFile(sourcePath, destinationPath, progressCallback) {
 }
 
 async function createDirectory(path) {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
     await client.createDirectory(getRequestPath(normalizedPath));
@@ -461,7 +505,7 @@ function isVideoFile(filename) {
 
 async function testConnection() {
   try {
-    const client = getWebDAVClient();
+    const client = await getWebDAVClient();
     const baseUrl = process.env.WEBDAV_URL?.trim() || '';
     const testPaths = baseUrl.includes('/') && baseUrl.split('/').length > 3 ? ['', '/'] : ['/'];
     
@@ -503,7 +547,7 @@ async function testConnection() {
 }
 
 async function pathExists(path) {
-  const client = getWebDAVClient();
+  const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
     try {
@@ -526,10 +570,13 @@ async function pathExists(path) {
 
 module.exports = {
   getWebDAVClient,
+  getRequestPath,
   resetWebDAVClient,
   listDirectory,
   getFileContents,
   putFileContents,
+  putFileContentsAdvanced,
+  customRequest,
   deleteFile,
   moveFile,
   copyFile,

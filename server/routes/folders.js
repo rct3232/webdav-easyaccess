@@ -6,7 +6,12 @@ const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
 const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
 const { checkFolderPermission } = require('../middleware/permissions');
+const { isMetaPath } = require('../store/metaPaths');
 const path = require('path');
+
+function rejectMetaPath(res) {
+  return res.status(403).json({ error: 'Access denied' });
+}
 
 // Create folder
 router.post('/create', authenticateToken, async (req, res) => {
@@ -14,6 +19,9 @@ router.post('/create', authenticateToken, async (req, res) => {
     let { path: folderPath } = req.body;
     if (!folderPath) {
       return res.status(400).json({ error: 'Folder path is required' });
+    }
+    if (isMetaPath(folderPath)) {
+      return rejectMetaPath(res);
     }
 
     // Check access for non-admin users
@@ -53,6 +61,9 @@ router.post('/create', authenticateToken, async (req, res) => {
 
     // Normalize folder path
     folderPath = normalizePathWithSlash(folderPath);
+    if (isMetaPath(folderPath)) {
+      return rejectMetaPath(res);
+    }
 
     // Check if folder already exists
     const folderExists = await pathExists(folderPath);
@@ -103,6 +114,9 @@ router.post('/create', authenticateToken, async (req, res) => {
 router.get('/list', authenticateToken, async (req, res) => {
   try {
     let folderPath = req.query.path || '/';
+    if (isMetaPath(folderPath)) {
+      return rejectMetaPath(res);
+    }
     
     // Check permission first
     const user = await User.findById(req.user.id);
@@ -124,10 +138,12 @@ router.get('/list', authenticateToken, async (req, res) => {
     }
 
     const items = await listDirectory(folderPath);
+    // Hide metadata directories from UI
+    const filteredItems = items.filter(item => item.basename !== '.wea');
     
     // 각 항목에 대한 권한 체크 및 권한 정보 포함
     const itemsWithPermissions = await Promise.all(
-      items.map(async (item) => {
+      filteredItems.map(async (item) => {
         // 권한 체크 (모든 항목에 대해)
         let hasReadPermission = true;
         let hasWritePermission = true;

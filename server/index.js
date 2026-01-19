@@ -108,9 +108,9 @@ if (fs.existsSync(clientBuildPath)) {
 }
 
 // Initialize database
-const db = require('./models/database');
-db.init().then(async () => {
-  console.log('Database initialized');
+const { initMetadataStore } = require('./store/bootstrap');
+initMetadataStore().then(async () => {
+  console.log('Metadata store initialized');
   
   // Test WebDAV connection on startup
   try {
@@ -131,7 +131,7 @@ db.init().then(async () => {
     console.log(`Server is running on port ${PORT}`);
   });
 }).catch(err => {
-  console.error('Database initialization failed:', err);
+  console.error('Initialization failed:', err);
   process.exit(1);
 });
 

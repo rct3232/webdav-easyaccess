@@ -19,10 +19,15 @@ const {
 const { getThumbnailUrl } = require('../utils/thumbnail');
 const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
 const { checkFilePermission, canAccessPath } = require('../middleware/permissions');
+const { isMetaPath } = require('../store/metaPaths');
 const path = require('path');
 
 const downloadProgress = new Map();
 const operationProgress = new Map();
+
+function rejectMetaPath(res) {
+  return res.status(403).json({ error: 'Access denied' });
+}
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -32,6 +37,9 @@ const upload = multer({
 router.get('/list', authenticateToken, async (req, res) => {
   try {
     let folderPath = normalizePath(req.query.path || '/');
+    if (isMetaPath(folderPath)) {
+      return rejectMetaPath(res);
+    }
     const user = await User.findById(req.user.id);
     
     if (!user) {
@@ -97,11 +105,13 @@ router.get('/list', authenticateToken, async (req, res) => {
     }
 
     const items = await listDirectory(folderPath);
+    // Hide metadata directories from UI
+    const filteredItems = items.filter(item => item.basename !== '.wea');
     const { ensureThumbnail } = require('../utils/thumbnail');
     
     // 각 항목에 대한 권한 체크 및 필터링
     const itemsWithThumbnails = await Promise.all(
-      items.map(async (item) => {
+      filteredItems.map(async (item) => {
         // 경로 구성: folderPath와 basename을 조합하여 직접 자식만 표시되도록 함
         // folderPath는 이미 정규화되어 있고 끝에 /가 없음
         // basename이 경로 구분자를 포함하지 않도록 검증 (직접 자식만)
@@ -211,6 +221,9 @@ router.get('/download', authenticateToken, async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'File path is required' });
     }
+    if (isMetaPath(filePath)) {
+      return rejectMetaPath(res);
+    }
 
     const hasPermission = await checkFilePermission(req.user.id, filePath, 'read');
     if (!hasPermission) {
@@ -270,6 +283,9 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     let folderPath = req.body.path || '/';
+    if (isMetaPath(folderPath)) {
+      return rejectMetaPath(res);
+    }
     const relativePath = req.body.relativePath || ''; // Support for nested folder uploads
     
     const user = await User.findById(req.user.id);
@@ -399,10 +415,16 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         }
       }
     }
+    if (isMetaPath(finalFolderPath)) {
+      return rejectMetaPath(res);
+    }
     
     const filePath = finalFolderPath === '/' 
       ? '/' + originalFilename 
       : (finalFolderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
+    if (isMetaPath(filePath)) {
+      return rejectMetaPath(res);
+    }
 
     // Check if file already exists
     const fileExists = await pathExists(filePath);
@@ -430,6 +452,9 @@ router.delete('/delete', authenticateToken, async (req, res) => {
     const filePath = req.query.path;
     if (!filePath) {
       return res.status(400).json({ error: 'File path is required' });
+    }
+    if (isMetaPath(filePath)) {
+      return rejectMetaPath(res);
     }
 
     const user = await User.findById(req.user.id);
@@ -501,6 +526,9 @@ router.put('/rename', authenticateToken, async (req, res) => {
     if (!oldPath || !newName) {
       return res.status(400).json({ error: 'Old path and new name are required' });
     }
+    if (isMetaPath(oldPath)) {
+      return rejectMetaPath(res);
+    }
 
     const hasPermission = await checkFilePermission(req.user.id, oldPath, 'write');
     if (!hasPermission) {
@@ -509,6 +537,9 @@ router.put('/rename', authenticateToken, async (req, res) => {
 
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName).replace(/\\/g, '/');
+    if (isMetaPath(newPath)) {
+      return rejectMetaPath(res);
+    }
     const normalizedOldPath = oldPath.replace(/\\/g, '/');
     const normalizedNewPath = newPath.replace(/\\/g, '/');
     
@@ -536,6 +567,9 @@ router.put('/move', authenticateToken, async (req, res) => {
     const { sourcePath, destinationPath } = req.body;
     if (!sourcePath || !destinationPath) {
       return res.status(400).json({ error: 'Source and destination paths are required' });
+    }
+    if (isMetaPath(sourcePath) || isMetaPath(destinationPath)) {
+      return rejectMetaPath(res);
     }
 
     const user = await User.findById(req.user.id);
@@ -662,6 +696,9 @@ router.post('/copy', authenticateToken, async (req, res) => {
     const { sourcePath, destinationPath } = req.body;
     if (!sourcePath || !destinationPath) {
       return res.status(400).json({ error: 'Source and destination paths are required' });
+    }
+    if (isMetaPath(sourcePath) || isMetaPath(destinationPath)) {
+      return rejectMetaPath(res);
     }
 
     // 소스 파일의 읽기 권한 확인
@@ -825,6 +862,9 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
 
     // Check permissions for all paths
     for (const filePath of paths) {
+      if (isMetaPath(filePath)) {
+        return rejectMetaPath(res);
+      }
       const hasPermission = await checkFilePermission(req.user.id, filePath, 'read');
       if (!hasPermission) {
         return res.status(403).json({ error: `Access denied: ${filePath}` });

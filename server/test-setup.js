@@ -9,6 +9,8 @@ process.env.JWT_SECRET = 'test-jwt-secret-key';
 process.env.WEBDAV_URL = 'http://test-webdav-server.com';
 process.env.WEBDAV_USERNAME = 'test-user';
 process.env.WEBDAV_PASSWORD = 'test-password';
+process.env.WEA_STORAGE_BACKEND = 'fs';
+process.env.WEA_DISABLE_DEFAULT_ADMIN = 'true';
 
 // Suppress console output during tests (optional - can be commented out for debugging)
 global.console = {

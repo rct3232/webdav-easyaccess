@@ -71,8 +71,15 @@ router.delete('/revoke', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'User ID and folder path are required' });
     }
 
-    // Check admin permission
-    const hasAdmin = await Permission.checkPermission(req.user.id, folderPath, 'admin');
+    // Check admin permission (global admin bypasses per-folder admin checks)
+    const User = require('../models/User');
+    const requestingUser = await User.findById(req.user.id);
+    let hasAdmin = false;
+    if (requestingUser && requestingUser.is_admin) {
+      hasAdmin = true;
+    } else {
+      hasAdmin = await Permission.checkPermission(req.user.id, folderPath, 'admin');
+    }
     if (!hasAdmin && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ error: 'Access denied. Admin permission required' });
     }

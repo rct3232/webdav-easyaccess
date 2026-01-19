@@ -12,44 +12,34 @@ const {
 } = require('../permissions');
 const Permission = require('../../models/Permission');
 const User = require('../../models/User');
-const db = require('../../models/database');
 const {
-  createTestDatabase,
-  initializeTestSchema,
-  cleanupTestDatabase,
-  closeTestDatabase,
+  setupTestStore,
+  resetTestStore,
+  teardownTestStore,
   createTestUser,
   grantTestPermission
 } = require('../../test-utils');
 
-// Mock the database module
-jest.mock('../../models/database', () => ({
-  getDb: jest.fn()
-}));
-
 describe('Permissions Middleware', () => {
-  let testDb;
   let adminUser;
   let regularUser;
 
   beforeAll(async () => {
-    testDb = await createTestDatabase();
-    await initializeTestSchema(testDb);
-    db.getDb.mockReturnValue(testDb);
+    await setupTestStore();
   });
 
   afterAll(async () => {
-    await closeTestDatabase(testDb);
+    await teardownTestStore();
   });
 
   beforeEach(async () => {
-    await cleanupTestDatabase(testDb);
-    adminUser = await createTestUser(testDb, { 
+    await resetTestStore();
+    adminUser = await createTestUser({ 
       username: 'admin', 
       email: 'admin@example.com', 
       isAdmin: true 
     });
-    regularUser = await createTestUser(testDb, { 
+    regularUser = await createTestUser({ 
       username: 'testuser', 
       email: 'test@example.com' 
     });
@@ -67,13 +57,13 @@ describe('Permissions Middleware', () => {
     });
 
     it('should allow user with parent folder permission', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'read');
+      await grantTestPermission(regularUser.id, '/folder', 'read');
       const hasPermission = await checkFilePermission(regularUser.id, '/folder/file.txt', 'read');
       expect(hasPermission).toBe(true);
     });
 
     it('should allow user with parent folder permission (with trailing slash)', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder/', 'read');
+      await grantTestPermission(regularUser.id, '/folder/', 'read');
       const hasPermission = await checkFilePermission(regularUser.id, '/folder/file.txt', 'read');
       expect(hasPermission).toBe(true);
     });
@@ -84,7 +74,7 @@ describe('Permissions Middleware', () => {
     });
 
     it('should check permission hierarchy (write includes read)', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'write');
+      await grantTestPermission(regularUser.id, '/folder', 'write');
       
       const hasRead = await checkFilePermission(regularUser.id, '/folder/file.txt', 'read');
       const hasWrite = await checkFilePermission(regularUser.id, '/folder/file.txt', 'write');
@@ -94,13 +84,13 @@ describe('Permissions Middleware', () => {
     });
 
     it('should deny insufficient permission', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'read');
+      await grantTestPermission(regularUser.id, '/folder', 'read');
       const hasPermission = await checkFilePermission(regularUser.id, '/folder/file.txt', 'write');
       expect(hasPermission).toBe(false);
     });
 
     it('should check parent paths recursively', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/parent', 'read');
+      await grantTestPermission(regularUser.id, '/parent', 'read');
       const hasPermission = await checkFilePermission(regularUser.id, '/parent/child/grandchild/file.txt', 'read');
       expect(hasPermission).toBe(true);
     });
@@ -133,19 +123,19 @@ describe('Permissions Middleware', () => {
     });
 
     it('should allow user with direct folder permission', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'read');
+      await grantTestPermission(regularUser.id, '/folder', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/folder', 'read');
       expect(hasPermission).toBe(true);
     });
 
     it('should allow user with direct folder permission (with trailing slash)', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder/', 'read');
+      await grantTestPermission(regularUser.id, '/folder/', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/folder', 'read');
       expect(hasPermission).toBe(true);
     });
 
     it('should allow user with parent folder permission', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/parent', 'read');
+      await grantTestPermission(regularUser.id, '/parent', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/parent/child', 'read');
       expect(hasPermission).toBe(true);
     });
@@ -156,7 +146,7 @@ describe('Permissions Middleware', () => {
     });
 
     it('should check permission hierarchy', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'write');
+      await grantTestPermission(regularUser.id, '/folder', 'write');
       
       const hasRead = await checkFolderPermission(regularUser.id, '/folder', 'read');
       const hasWrite = await checkFolderPermission(regularUser.id, '/folder', 'write');
@@ -176,7 +166,7 @@ describe('Permissions Middleware', () => {
     });
 
     it('should check deeply nested paths', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/', 'read');
+      await grantTestPermission(regularUser.id, '/', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/a/b/c/d/e', 'read');
       expect(hasPermission).toBe(true);
     });
@@ -274,7 +264,7 @@ describe('Permissions Middleware', () => {
     });
 
     it('should check write permission', async () => {
-      await grantTestPermission(testDb, regularUser.id, '/folder', 'read');
+      await grantTestPermission(regularUser.id, '/folder', 'read');
       mockReq.query.path = '/folder/file.txt';
       const middleware = requirePermission('write');
       
@@ -385,7 +375,7 @@ describe('Permissions Middleware', () => {
 
   describe('Integration: Permission checking with path normalization', () => {
     beforeEach(async () => {
-      await grantTestPermission(testDb, regularUser.id, '/project', 'write');
+      await grantTestPermission(regularUser.id, '/project', 'write');
     });
 
     it('should work with various path formats', async () => {
@@ -404,8 +394,8 @@ describe('Permissions Middleware', () => {
 
     it('should handle complex permission hierarchies', async () => {
       // Grant specific permissions at different levels
-      await grantTestPermission(testDb, regularUser.id, '/root', 'read');
-      await grantTestPermission(testDb, regularUser.id, '/root/level1', 'write');
+      await grantTestPermission(regularUser.id, '/root', 'read');
+      await grantTestPermission(regularUser.id, '/root/level1', 'write');
 
       // Should have write permission (includes read)
       const hasWrite = await checkFilePermission(regularUser.id, '/root/level1/file.txt', 'write');
@@ -422,7 +412,7 @@ describe('Permissions Middleware', () => {
 
     it('should prioritize more specific permissions', async () => {
       // This test verifies that the most specific permission is found
-      await grantTestPermission(testDb, regularUser.id, '/folder/subfolder', 'write');
+      await grantTestPermission(regularUser.id, '/folder/subfolder', 'write');
 
       const hasPermission = await checkFilePermission(regularUser.id, '/folder/subfolder/file.txt', 'write');
       expect(hasPermission).toBe(true);

@@ -18,8 +18,19 @@ export const useBulkOperations = (
   const [folderPickerAction, setFolderPickerAction] = useState(null);
   const { progressItems, updateProgress } = useFileOperationProgress();
 
-  const markProcessing = options.markProcessing || (() => {});
-  const clearProcessing = options.clearProcessing || (() => {});
+  const { markProcessing: markProcessingImpl, clearProcessing: clearProcessingImpl } = options;
+
+  const markProcessing = useCallback((filePaths, opType) => {
+    if (typeof markProcessingImpl === 'function') {
+      markProcessingImpl(filePaths, opType);
+    }
+  }, [markProcessingImpl]);
+
+  const clearProcessing = useCallback((filePaths) => {
+    if (typeof clearProcessingImpl === 'function') {
+      clearProcessingImpl(filePaths);
+    }
+  }, [clearProcessingImpl]);
 
   // 기존 실패 항목들을 자동으로 dismiss
   const dismissFailedItems = useCallback(() => {
@@ -178,7 +189,7 @@ export const useBulkOperations = (
         updateProgress({ id: progressId, remove: true });
       }, 3000);
     }
-  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry]);
+  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress]);
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
@@ -358,7 +369,7 @@ export const useBulkOperations = (
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText]);
+  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText, updateProgress]);
 
   const handleRetry = async (progressId) => {
     const progressItem = progressItems.find(item => item.id === progressId);

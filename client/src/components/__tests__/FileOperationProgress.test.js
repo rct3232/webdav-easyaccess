@@ -1,11 +1,11 @@
 import React from 'react';
 import { render, screen } from '../../test-utils';
-import DownloadProgress from '../DownloadProgress';
+import FileOperationProgress from '../FileOperationProgress';
 
-describe('DownloadProgress', () => {
+describe('FileOperationProgress', () => {
   it('shows skipped paths list for warning items', () => {
     render(
-      <DownloadProgress
+      <FileOperationProgress
         items={[
           {
             id: 'op-1',

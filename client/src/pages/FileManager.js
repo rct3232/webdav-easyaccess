@@ -65,7 +65,7 @@ import UploadDialog from '../components/UploadDialog';
 import CreateFolderDialog from '../components/CreateFolderDialog';
 import FileContextMenu from '../components/FileContextMenu';
 import FilePreviewDialog from '../components/FilePreviewDialog';
-import DownloadProgress from '../components/DownloadProgress';
+import FileOperationProgress from '../components/FileOperationProgress';
 import FolderTree from '../components/FolderTree';
 import FolderPickerDialog from '../components/FolderPickerDialog';
 import MobileBreadcrumb from '../components/MobileBreadcrumb';
@@ -75,7 +75,7 @@ import ShareDialog from '../components/ShareDialog';
 import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
 import FilePropertiesDialog from '../components/FilePropertiesDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { moveFile, checkPermission, renameFile, deleteFile, copyFile, downloadFile, downloadMultipleFiles, uploadFile, listFiles } from '../services/fileService';
+import { moveFile, checkPermission, copyFile } from '../services/fileService';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
@@ -1374,7 +1374,7 @@ const FileManager = () => {
         </Paper>
       )}
 
-      <DownloadProgress
+      <FileOperationProgress
         items={progressItems}
         onClose={(id) => {
           updateProgress({ id, remove: true });

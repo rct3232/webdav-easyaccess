@@ -67,6 +67,15 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     }
   }, [scrollContainerRef]);
 
+  const resetPull = useCallback(() => {
+    setPullDistance(0);
+    setIsPulling(false);
+    isDragging.current = false;
+    touchStartY.current = 0;
+    touchStartContainerTop.current = 0;
+    touchStartScrollTop.current = 0;
+  }, []);
+
   const handleTouchMove = useCallback((e) => {
     if (!isDragging.current || !scrollContainerRef?.current) return;
 
@@ -93,7 +102,7 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
         resetPull();
       }
     }
-  }, [scrollContainerRef, maxPullDistance]);
+  }, [scrollContainerRef, maxPullDistance, resetPull]);
 
   const handleTouchEnd = useCallback(() => {
     if (!isDragging.current) return;
@@ -120,16 +129,7 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
       // 임계값을 넘지 않았으면 리셋
       resetPull();
     }
-  }, [pullDistance, threshold, isRefreshing, onRefresh]);
-
-  const resetPull = useCallback(() => {
-    setPullDistance(0);
-    setIsPulling(false);
-    isDragging.current = false;
-    touchStartY.current = 0;
-    touchStartContainerTop.current = 0;
-    touchStartScrollTop.current = 0;
-  }, []);
+  }, [pullDistance, threshold, isRefreshing, onRefresh, resetPull]);
 
   // 새로고침 중이 아닐 때만 리셋 가능
   useEffect(() => {

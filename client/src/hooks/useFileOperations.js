@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile, copyFile } from '../services/fileService';
+import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile } from '../services/fileService';
 import { getErrorMessage, showErrorMessage, showSuccessMessage, showMessage } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
 import { normalizePath } from '../utils/refreshPolicy';
@@ -326,7 +326,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onProgress, onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   /**
    * Handle file delete
@@ -438,7 +438,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   return {
     handleFileDownload,

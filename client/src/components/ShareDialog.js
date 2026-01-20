@@ -543,37 +543,7 @@ const ShareDialog = ({
     const isExpanded = expandedPaths.has(node.path);
     const isLoading = loadingPaths.has(node.path);
     const hasChildren = node.children && node.children.length > 0;
-    
-    // 관리자 모드에서 사용자 기본 폴더는 제거 불가
-    const userBaseFolder = isAdminMode ? `/${username}` : null;
-    const isUserBaseFolder = isAdminMode && node.path === userBaseFolder;
-    
-    // 이 폴더에 할당된 사용자들
-    const folderUserPerms = folderPermissions.get(node.path) || new Map();
-    const folderUsers = Array.from(folderUserPerms.entries());
-    
-    // 관리자 모드에서는 선택한 사용자만 표시
-    // 공유 모드에서는 자기 자신과 관리자 사용자는 제외
-    const displayUsers = isAdminMode 
-      ? folderUsers.filter(([uid]) => uid === userId)
-      : folderUsers.filter(([targetUserId]) => {
-          // 자기 자신 제외
-          if (user && targetUserId === user.id) {
-            return false;
-          }
-          // 관리자 사용자 제외
-          const userInfo = userInfoMap.get(targetUserId);
-          if (userInfo && userInfo.is_admin) {
-            return false;
-          }
-          // users 배열에서도 확인 (fallback)
-          const fullUser = users.find(u => u.id === targetUserId);
-          if (fullUser && fullUser.is_admin) {
-            return false;
-          }
-          return true;
-        });
-    
+
     return (
       <Box key={node.path} sx={{ width: '100%' }}>
         <Box 

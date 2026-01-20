@@ -52,7 +52,7 @@ const progressCompleteAnimation = keyframes`
   }
 `;
 
-const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
+const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
   const [expanded, setExpanded] = useState(true);
   const { isMobile } = useResponsive();
 
@@ -711,5 +711,5 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
   return expanded ? renderExpandedUI() : renderMinimizedUI();
 };
 
-export default DownloadProgress;
+export default FileOperationProgress;
 

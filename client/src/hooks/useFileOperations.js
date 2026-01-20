@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile } from '../services/fileService';
-import { getErrorMessage, showErrorMessage, showSuccessMessage, showMessage } from '../utils/errorUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
 import { normalizePath } from '../utils/refreshPolicy';
 
@@ -21,8 +21,6 @@ import { normalizePath } from '../utils/refreshPolicy';
  */
 export const useFileOperations = ({
   onProgress,
-  onMessage,
-  setDropMessage,
   setProcessingMap,
   onProcessingStart,
   onProcessingEnd,
@@ -97,19 +95,13 @@ export const useFileOperations = ({
           type: 'download',
           status: 'error',
           error: errorMsg,
+          keepOnError: true,
         });
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 5000);
-      } else if (onMessage) {
-        showMessage(onMessage, errorMsg, 'error');
-      } else if (setDropMessage) {
-        showErrorMessage(setDropMessage, error, '다운로드에 실패했습니다');
       } else {
         alert(errorMsg);
       }
     }
-  }, [onProgress, onMessage, setDropMessage, onClose]);
+  }, [onProgress, onClose]);
 
   /**
    * Handle file operation (move/copy)
@@ -124,11 +116,16 @@ export const useFileOperations = ({
   const handleFileOperation = useCallback(async (file, selectedPath, operation, operationName, actionVerb, context = {}) => {
     if (!file || !selectedPath || !selectedPath.trim()) {
       const msg = '대상 경로를 선택하세요';
-      if (setDropMessage) {
-        setDropMessage({ show: true, text: msg, type: 'error' });
-        setTimeout(() => setDropMessage({ show: false, text: '', type: 'success' }), 5000);
-      } else if (onMessage) {
-        showMessage(onMessage, msg, 'error');
+      if (onProgress) {
+        const progressId = `${operationName}_invalid_${Date.now()}`;
+        onProgress({
+          id: progressId,
+          type: operation === moveFile ? 'move' : 'copy',
+          status: 'error',
+          error: msg,
+          keepOnError: true,
+          name: `${file?.basename || ''} ${operationName}`.trim(),
+        });
       } else {
         alert(msg);
       }
@@ -232,21 +229,12 @@ export const useFileOperations = ({
         onProgress({
           ...progressItem,
           status: 'error',
-          error: errorMsg,
+          error: isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg,
+          keepOnError: true,
         });
-        
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 5000);
       } else {
         const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
-        if (onMessage) {
-          showMessage(onMessage, displayMsg, 'error');
-        } else if (setDropMessage) {
-          showErrorMessage(setDropMessage, error, displayMsg);
-        } else {
-          alert(displayMsg);
-        }
+        alert(displayMsg);
       }
     } finally {
       // Clear processing
@@ -256,7 +244,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onProgress, onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   /**
    * Handle file rename
@@ -268,11 +256,16 @@ export const useFileOperations = ({
   const handleFileRename = useCallback(async (file, newName, context = {}) => {
     if (!file || !newName || !newName.trim()) {
       const msg = '이름을 입력하세요';
-      if (setDropMessage) {
-        setDropMessage({ show: true, text: msg, type: 'error' });
-        setTimeout(() => setDropMessage({ show: false, text: '', type: 'success' }), 5000);
-      } else if (onMessage) {
-        showMessage(onMessage, msg, 'error');
+      if (onProgress) {
+        const progressId = `rename_invalid_${Date.now()}`;
+        onProgress({
+          id: progressId,
+          type: 'rename',
+          status: 'error',
+          error: msg,
+          keepOnError: true,
+          name: `${file?.basename || '파일'} 이름 변경`,
+        });
       } else {
         alert(msg);
       }
@@ -281,6 +274,16 @@ export const useFileOperations = ({
 
     const filePath = file.path;
     const startedPath = context?.startedPath;
+    const progressId = `rename_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'rename',
+      status: 'preparing',
+      progress: 0,
+      total: 1,
+      current: '',
+      name: `${file.basename} 이름 변경`,
+    };
     
     // Mark processing
     if (setProcessingMap) {
@@ -290,6 +293,15 @@ export const useFileOperations = ({
     }
 
     try {
+      if (onProgress) {
+        onProgress(progressItem);
+        onProgress({
+          ...progressItem,
+          status: 'processing',
+          current: '(0/1) 이름 변경중...',
+        });
+      }
+
       await renameFile(filePath, newName);
       
       if (onActionComplete) {
@@ -302,19 +314,28 @@ export const useFileOperations = ({
       if (onClose) {
         onClose();
       }
-      
-      const successMsg = `"${file.basename}"을(를) "${newName}"(으)로 이름 변경했습니다`;
-      if (onMessage) {
-        showMessage(onMessage, successMsg, 'success');
-      } else if (setDropMessage) {
-        showSuccessMessage(setDropMessage, successMsg);
+
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'completed',
+          progress: 1,
+          total: 1,
+          current: '완료',
+        });
+        setTimeout(() => {
+          onProgress({ id: progressId, remove: true });
+        }, 3000);
       }
     } catch (error) {
       const errorMsg = getErrorMessage(error, '이름 변경에 실패했습니다');
-      if (onMessage) {
-        showMessage(onMessage, errorMsg, 'error');
-      } else if (setDropMessage) {
-        showErrorMessage(setDropMessage, error, '이름 변경에 실패했습니다');
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'error',
+          error: errorMsg,
+          keepOnError: true,
+        });
       } else {
         alert(errorMsg);
       }
@@ -326,7 +347,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   /**
    * Handle file delete
@@ -385,13 +406,6 @@ export const useFileOperations = ({
       if (onClose) {
         onClose();
       }
-      
-      const successMsg = `"${file.basename}"을(를) 삭제했습니다`;
-      if (onMessage) {
-        showMessage(onMessage, successMsg, 'success');
-      } else if (setDropMessage) {
-        showSuccessMessage(setDropMessage, successMsg);
-      }
 
       if (onProgress) {
         onProgress({
@@ -414,11 +428,7 @@ export const useFileOperations = ({
       }
     } catch (error) {
       const errorMsg = getErrorMessage(error, '삭제에 실패했습니다');
-      if (onMessage) {
-        showMessage(onMessage, errorMsg, 'error');
-      } else if (setDropMessage) {
-        showErrorMessage(setDropMessage, error, '삭제에 실패했습니다');
-      } else {
+      if (!onProgress) {
         alert(errorMsg);
       }
 
@@ -438,7 +448,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onProgress, onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   return {
     handleFileDownload,

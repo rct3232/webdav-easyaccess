@@ -10,7 +10,7 @@ import {
 import { createFolder } from '../services/fileService';
 import { useResponsive } from '../hooks/useResponsive';
 
-const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage }) => {
+const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
   const { isMobile } = useResponsive();
   const [folderName, setFolderName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,42 +24,59 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onMessage 
 
     setLoading(true);
     setError('');
+    const finalFolderName = folderName.trim();
+    const progressId = `createFolder_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'createFolder',
+      status: 'preparing',
+      progress: 0,
+      total: 1,
+      current: '',
+      name: `"${finalFolderName}" 폴더 생성`,
+    };
 
     try {
       const folderPath = currentPath === '/' 
-        ? `/${folderName}` 
-        : `${currentPath}/${folderName}`;
+        ? `/${finalFolderName}` 
+        : `${currentPath}/${finalFolderName}`;
       
+      if (onProgress) {
+        onProgress(progressItem);
+        onProgress({
+          ...progressItem,
+          status: 'processing',
+          current: '(0/1) 생성중...',
+        });
+      }
+
       await createFolder(folderPath);
-      const finalFolderName = folderName;
       setFolderName('');
       onComplete(folderPath, finalFolderName);
-      
-      // Show success toast message
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: `"${folderName}" 폴더를 생성했습니다`,
-          type: 'success'
+
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'completed',
+          progress: 1,
+          total: 1,
+          current: '완료',
         });
         setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
+          onProgress({ id: progressId, remove: true });
         }, 3000);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.error || '폴더 생성에 실패했습니다';
       setError(errorMsg);
-      
-      // Show error toast message
-      if (onMessage) {
-        onMessage({
-          show: true,
-          text: errorMsg,
-          type: 'error'
+
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'error',
+          error: errorMsg,
+          keepOnError: true,
         });
-        setTimeout(() => {
-          onMessage({ show: false, text: '', type: 'success' });
-        }, 5000);
       }
     } finally {
       setLoading(false);

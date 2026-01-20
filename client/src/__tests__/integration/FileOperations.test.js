@@ -78,9 +78,10 @@ describe('File Operations Integration Tests', () => {
       fireEvent.click(confirmDeleteButton);
 
       await waitFor(() => {
-        expect(defaultProps.onMessage).toHaveBeenCalledWith(
+        expect(defaultProps.onProgress).toHaveBeenCalledWith(
           expect.objectContaining({
-            type: 'error',
+            type: 'delete',
+            status: 'error',
           })
         );
       }, { timeout: 3000 });

@@ -48,7 +48,6 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
     handleFileDelete,
   } = useFileOperations({
     onProgress,
-    onMessage,
     onProcessingStart,
     onProcessingEnd,
     onActionComplete,

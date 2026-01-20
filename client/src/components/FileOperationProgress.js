@@ -18,6 +18,8 @@ import {
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
   UploadFile as UploadIcon,
+  DriveFileRenameOutline as RenameIcon,
+  CreateNewFolder as CreateFolderIcon,
   CheckCircle as CheckCircleIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
@@ -98,6 +100,10 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
         return <DeleteIcon />;
       case 'upload':
         return <UploadIcon />;
+      case 'rename':
+        return <RenameIcon />;
+      case 'createFolder':
+        return <CreateFolderIcon />;
       default:
         return <DownloadIcon />;
     }
@@ -445,7 +451,14 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                   ) : (
                     <LinearProgress
                       variant={
-                        item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' || item.status === 'preparing' || item.total === 0
+                        item.type === 'move' ||
+                        item.type === 'copy' ||
+                        item.type === 'delete' ||
+                        item.type === 'upload' ||
+                        item.type === 'rename' ||
+                        item.type === 'createFolder' ||
+                        item.status === 'preparing' ||
+                        item.total === 0
                           ? 'indeterminate'
                           : 'determinate'
                       }
@@ -472,18 +485,20 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                     <Typography variant="caption" color="text.secondary">
                       {getStatusText(item)}
                     </Typography>
-                    {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
+                  {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
                       <Typography variant="caption" color="text.secondary">
-                        {item.type === 'move' || item.type === 'copy' || item.type === 'delete'
+                      {item.type === 'upload'
+                        ? `${item.progress}/${item.total}`
+                        : (item.type === 'move' || item.type === 'copy' || item.type === 'delete'
                           ? `${item.progress}/${item.total} (${Math.round((item.progress / item.total) * 100)}%)`
-                          : item.percentage !== undefined 
+                          : item.percentage !== undefined
                             ? `${Math.round(item.percentage)}%`
                             : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`
-                        }
+                        )}
                       </Typography>
                     )}
                     {/* 업로드 타입일 때 전체 취소 버튼 */}
-                    {item.type === 'upload' && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
+                  {item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
                       <Typography
                         component="button"
                         variant="caption"
@@ -524,7 +539,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       <List dense sx={{ py: 0 }}>
                         {item.fileItems.map((fileItem, fileIndex) => {
                           const fileStatus = fileItem.status;
-                          const canCancel = (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
+                          const canCancel = item.cancellable !== false && (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
                           
                           return (
                             <ListItem 

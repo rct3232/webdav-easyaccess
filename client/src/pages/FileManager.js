@@ -55,7 +55,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useFileOperations } from '../hooks/useFileOperations';
 import { uploadMultipleFiles } from '../services/fileService';
-import { showErrorMessage, showSuccessMessage } from '../utils/errorUtils';
+import { showErrorMessage } from '../utils/errorUtils';
 import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
 import FileList from '../components/FileList';
@@ -199,6 +199,7 @@ const FileManager = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [renameNewName, setRenameNewName] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState('');
   // 모바일용 이름 변경/삭제/공유/공유 관리를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
   const [mobileRenameFile, setMobileRenameFile] = useState(null);
   const [mobileDeleteFile, setMobileDeleteFile] = useState(null);
@@ -286,7 +287,6 @@ const FileManager = () => {
     handleFileDelete: handleFileDeleteOp,
   } = useFileOperations({
     onProgress: updateProgress,
-    setDropMessage,
     setProcessingMap,
     onActionComplete: handleOperationComplete,
     onClose: () => {
@@ -432,12 +432,13 @@ const FileManager = () => {
   const handleRename = async () => {
     const targetFile = mobileRenameFile || actionSheetFile;
     if (!targetFile || !renameNewName.trim()) {
-      showErrorMessage(setDropMessage, null, '이름을 입력하세요');
+      setRenameError('이름을 입력하세요');
       return;
     }
 
     setRenameLoading(true);
     try {
+      setRenameError('');
       await handleFileRenameOp(targetFile, renameNewName, { startedPath: currentPathRef.current });
       setRenameDialogOpen(false);
       setRenameNewName('');
@@ -506,23 +507,43 @@ const FileManager = () => {
     // Use currentPath if targetPath is null
     const uploadPath = targetPath || currentPath;
     
-    // Check permissions
-    if (!hasWritePermission && !user?.is_admin) {
-      showErrorMessage(setDropMessage, null, '업로드 권한이 없습니다');
-      return;
-    }
+    if (!filesToUpload || filesToUpload.length === 0) return;
 
     dismissFailedItems();
 
     const progressId = `upload_drop_${Date.now()}`;
-    updateProgress({
+    const fileItems = filesToUpload.map(({ file, relativePath }) => ({
+      fileName: relativePath || file?.name || 'unknown',
+      status: 'pending',
+      error: undefined,
+    }));
+
+    const baseProgress = {
       id: progressId,
       type: 'upload',
-      status: 'preparing',
       progress: 0,
       total: filesToUpload.length,
-      current: '준비 중...',
+      current: '',
       name: `${filesToUpload.length}개 파일 업로드`,
+      fileItems: [...fileItems],
+      cancellable: false,
+    };
+
+    // Check permissions
+    if (!hasWritePermission && !user?.is_admin) {
+      updateProgress({
+        ...baseProgress,
+        status: 'error',
+        error: '업로드 권한이 없습니다',
+        keepOnError: true,
+      });
+      return;
+    }
+
+    updateProgress({
+      ...baseProgress,
+      status: 'preparing',
+      current: '준비 중...',
     });
 
     try {
@@ -530,64 +551,81 @@ const FileManager = () => {
         filesToUpload,
         uploadPath,
         (progress) => {
+          const fileName = progress.currentFile;
+          const idx = fileItems.findIndex((it) => it.fileName === fileName);
+          if (idx !== -1) {
+            const status =
+              progress.status === 'uploading'
+                ? 'uploading'
+                : progress.status === 'success'
+                  ? 'completed'
+                  : progress.status === 'error'
+                    ? 'error'
+                    : 'pending';
+            fileItems[idx] = {
+              ...fileItems[idx],
+              status,
+              error: progress.status === 'error' ? progress.error : undefined,
+            };
+          }
+
+          const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+          const failCount = fileItems.filter((it) => it.status === 'error').length;
+
           updateProgress({
-            id: progressId,
-            type: 'upload',
-            status: progress.status === 'error' ? 'error' : 'processing',
-            progress: progress.current,
+            ...baseProgress,
+            status: 'processing',
+            progress: completedCount,
             total: progress.total,
             current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
-            name: `${filesToUpload.length}개 파일 업로드`,
-            error: progress.error,
+            error: failCount > 0 ? `${failCount}개 실패` : undefined,
+            keepOnError: failCount > 0 || undefined,
+            fileItems: [...fileItems],
           });
         }
       );
 
-      // Show completion status
-      if (errors.length > 0) {
-        updateProgress({
-          id: progressId,
-          type: 'upload',
-          status: 'error',
-          error: `${errors.length}개 파일 업로드 실패`,
-          name: `${filesToUpload.length}개 파일 업로드`,
-        });
+      const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+      const failCount = fileItems.filter((it) => it.status === 'error').length;
+      const failedItems = (errors || []).map((e) => ({
+        fileName: e.relativePath || e.file?.name || 'unknown',
+        error: e.error,
+      }));
 
-        // Show error toast for first error
-        const firstError = errors[0];
-        let errorMessage = firstError.error;
-        if (firstError.error.includes('Access denied') || firstError.error.includes('403')) {
-          errorMessage = '업로드 권한이 없습니다';
-        } else if (firstError.error.includes('already exists') || firstError.error.includes('409')) {
-          errorMessage = '같은 이름의 파일이 이미 존재합니다';
-        }
-        
-        showErrorMessage(setDropMessage, null, errorMessage);
+      if (failCount > 0) {
+        updateProgress({
+          ...baseProgress,
+          status: 'error',
+          progress: completedCount,
+          total: filesToUpload.length,
+          current: '완료 (일부 실패)',
+          error: `${failCount}개 파일 업로드 실패`,
+          keepOnError: true,
+          failedItems: failedItems.length > 0 ? failedItems : undefined,
+          fileItems: [...fileItems],
+        });
       } else {
         updateProgress({
-          id: progressId,
-          type: 'upload',
+          ...baseProgress,
           status: 'completed',
-          progress: results.length,
-          total: results.length,
+          progress: filesToUpload.length,
+          total: filesToUpload.length,
           current: '완료',
-          name: `${filesToUpload.length}개 파일 업로드`,
+          fileItems: [...fileItems],
         });
-
-        showSuccessMessage(setDropMessage, `${results.length}개 파일이 업로드되었습니다`);
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+        }, 3000);
       }
 
       // Refresh file list and tree
-      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
-      setTreeUpdateTrigger({
-        type: 'refresh',
-        timestamp: Date.now(),
-      });
-
-      // Clear progress after delay
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-      }, 3000);
+      if (Array.isArray(results) && results.length > 0) {
+        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }
     } catch (error) {
       console.error('Upload error:', error);
       
@@ -599,18 +637,12 @@ const FileManager = () => {
       }
       
       updateProgress({
-        id: progressId,
-        type: 'upload',
+        ...baseProgress,
         status: 'error',
         error: errorMessage,
-        name: `${filesToUpload.length}개 파일 업로드`,
+        keepOnError: true,
+        fileItems: [...fileItems],
       });
-
-      showErrorMessage(setDropMessage, error, errorMessage);
-
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-      }, 5000);
     }
   };
 
@@ -1177,7 +1209,7 @@ const FileManager = () => {
         onClose={() => setCreateFolderDialogOpen(false)}
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
-        onMessage={setDropMessage}
+        onProgress={updateProgress}
       />
 
       <FilePreviewDialog
@@ -1480,6 +1512,7 @@ const FileManager = () => {
         onClose={() => {
           setRenameDialogOpen(false);
           setRenameNewName('');
+          setRenameError('');
           setMobileRenameFile(null);
         }}
         fullScreen={isMobile}
@@ -1493,7 +1526,12 @@ const FileManager = () => {
             fullWidth
             variant="outlined"
             value={renameNewName}
-            onChange={(e) => setRenameNewName(e.target.value)}
+            onChange={(e) => {
+              setRenameNewName(e.target.value);
+              if (renameError) setRenameError('');
+            }}
+            error={Boolean(renameError)}
+            helperText={renameError || ' '}
             onKeyPress={(e) => {
               if (e.key === 'Enter' && !renameLoading) {
                 handleRename();
@@ -1506,6 +1544,7 @@ const FileManager = () => {
             onClick={() => {
               setRenameDialogOpen(false);
               setRenameNewName('');
+              setRenameError('');
               setMobileRenameFile(null);
             }} 
             disabled={renameLoading}

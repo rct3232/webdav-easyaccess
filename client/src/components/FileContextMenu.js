@@ -66,11 +66,21 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
 
   if (!file) return null;
 
+  const closeMenu = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
   const handleDownload = () => {
+    // Close immediately on click (desktop UX aligned with mobile ActionSheet)
+    closeMenu();
     handleFileDownload(file);
   };
 
   const handleDelete = () => {
+    // Close immediately, then show confirmation dialog
+    closeMenu();
     setDeleteDialogOpen(true);
   };
 
@@ -133,6 +143,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         </MenuItem>
         <MenuItem
           onClick={() => {
+            closeMenu();
             setNewName(file.basename);
             setRenameDialogOpen(true);
           }}
@@ -145,6 +156,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         </MenuItem>
         <MenuItem
           onClick={() => {
+            closeMenu();
             setMoveDialogOpen(true);
           }}
           disabled={!fileWritePermission}
@@ -156,6 +168,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         </MenuItem>
         <MenuItem
           onClick={() => {
+            closeMenu();
             setCopyDialogOpen(true);
           }}
         >
@@ -167,6 +180,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         {canShare && (
           <MenuItem
             onClick={() => {
+              closeMenu();
               setShareDialogOpen(true);
             }}
           >
@@ -179,6 +193,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         {isSharedFolder && (
           <MenuItem
             onClick={() => {
+              closeMenu();
               setSharedFolderManageDialogOpen(true);
             }}
           >

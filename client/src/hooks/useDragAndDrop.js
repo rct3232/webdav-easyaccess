@@ -8,11 +8,14 @@ export const useDragAndDrop = (onFileDrop, selectionMode, theme) => {
   const handleDragStart = (e, file) => {
     if (selectionMode) return;
     setDraggedFile(file);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', file.path);
+    // In real browsers `dataTransfer` always exists; in tests it may be missing.
+    if (e?.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', file.path);
+    }
     
     // Set custom drag ghost image if theme is available
-    if (theme) {
+    if (theme && e?.dataTransfer) {
       setupDragGhost(e, file, theme, 1);
     }
   };
@@ -26,7 +29,9 @@ export const useDragAndDrop = (onFileDrop, selectionMode, theme) => {
     if (selectionMode) return;
     if (file.type === 'directory' && draggedFile?.path !== file.path) {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      if (e?.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
       setDropTarget(file.path);
     }
   };

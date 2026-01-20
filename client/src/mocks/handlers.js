@@ -6,37 +6,36 @@ export const handlers = [
     const url = new URL(request.url);
     const path = url.searchParams.get('path') || '/';
     
-    return HttpResponse.json({
-      files: [
-        { 
-          basename: 'test.txt', 
-          path: `${path}test.txt`.replace('//', '/'), 
-          type: 'file', 
-          size: 1024, 
-          mtime: new Date().toISOString(),
-          hasReadPermission: true,
-          hasWritePermission: true
-        },
-        { 
-          basename: 'folder', 
-          path: `${path}folder`.replace('//', '/'), 
-          type: 'directory', 
-          mtime: new Date().toISOString(),
-          hasReadPermission: true,
-          hasWritePermission: true
-        },
-        { 
-          basename: 'image.png', 
-          path: `${path}image.png`.replace('//', '/'), 
-          type: 'file', 
-          size: 2048, 
-          mtime: new Date().toISOString(),
-          mime: 'image/png',
-          hasReadPermission: true,
-          hasWritePermission: true
-        }
-      ]
-    });
+    // `fileService.listFiles()` expects an array in `response.data`.
+    return HttpResponse.json([
+      { 
+        basename: 'test.txt', 
+        path: `${path}test.txt`.replace('//', '/'), 
+        type: 'file', 
+        size: 1024, 
+        mtime: new Date().toISOString(),
+        hasReadPermission: true,
+        hasWritePermission: true
+      },
+      { 
+        basename: 'folder', 
+        path: `${path}folder`.replace('//', '/'), 
+        type: 'directory', 
+        mtime: new Date().toISOString(),
+        hasReadPermission: true,
+        hasWritePermission: true
+      },
+      { 
+        basename: 'image.png', 
+        path: `${path}image.png`.replace('//', '/'), 
+        type: 'file', 
+        size: 2048, 
+        mtime: new Date().toISOString(),
+        mime: 'image/png',
+        hasReadPermission: true,
+        hasWritePermission: true
+      }
+    ]);
   }),
   
   // 파일 업로드
@@ -71,6 +70,9 @@ export const handlers = [
   http.post('/api/files/move', async () => {
     return HttpResponse.json({ success: true });
   }),
+  http.put('/api/files/move', async () => {
+    return HttpResponse.json({ success: true });
+  }),
   
   // 파일 복사
   http.post('/api/files/copy', async () => {
@@ -84,6 +86,9 @@ export const handlers = [
   
   // 파일 이름 변경
   http.post('/api/files/rename', () => {
+    return HttpResponse.json({ success: true });
+  }),
+  http.put('/api/files/rename', () => {
     return HttpResponse.json({ success: true });
   }),
   
@@ -105,9 +110,19 @@ export const handlers = [
   // 권한 확인
   http.get('/api/permissions/check', () => {
     return HttpResponse.json({
+      // Backward/forward compatibility: some callers use hasRead/hasWrite,
+      // others use canRead/canWrite.
+      hasRead: true,
+      hasWrite: true,
       canRead: true,
-      canWrite: true
+      canWrite: true,
     });
+  }),
+
+  // 사용자에게 공유된 폴더 권한 목록
+  http.get('/api/permissions/user/:userId', () => {
+    // Minimal stub for tests; app code expects an array of permission rows.
+    return HttpResponse.json([]);
   }),
 ];
 

@@ -3,7 +3,6 @@ import { renderWithProviders, screen, waitFor, fireEvent } from '../../test-util
 import { http, HttpResponse } from 'msw';
 import { server } from '../../mocks/server';
 import FileContextMenu from '../../components/FileContextMenu';
-import * as fileService from '../../services/fileService';
 
 describe('File Operations Integration Tests', () => {
   const mockFile = {
@@ -40,13 +39,16 @@ describe('File Operations Integration Tests', () => {
 
   describe('File Delete', () => {
     it('should delete a file successfully', async () => {
-      const { rerender } = renderWithProviders(
-        <FileContextMenu {...defaultProps} />
-      );
+      renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       // Click delete button
-      const deleteButton = screen.getByText('삭제');
-      fireEvent.click(deleteButton);
+      const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
+      fireEvent.click(deleteMenuItem);
+      expect(defaultProps.onClose).toHaveBeenCalled();
+
+      // Confirm delete
+      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
+      fireEvent.click(confirmDeleteButton);
 
       // Wait for delete confirmation
       await waitFor(() => {
@@ -67,8 +69,13 @@ describe('File Operations Integration Tests', () => {
 
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
-      const deleteButton = screen.getByText('삭제');
-      fireEvent.click(deleteButton);
+      const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
+      fireEvent.click(deleteMenuItem);
+      expect(defaultProps.onClose).toHaveBeenCalled();
+
+      // Confirm delete
+      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
+      fireEvent.click(confirmDeleteButton);
 
       await waitFor(() => {
         expect(defaultProps.onMessage).toHaveBeenCalledWith(
@@ -85,8 +92,9 @@ describe('File Operations Integration Tests', () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       // Click rename button
-      const renameButton = screen.getByText('이름 변경');
-      fireEvent.click(renameButton);
+      const renameMenuItem = screen.getByRole('menuitem', { name: '이름 변경' });
+      fireEvent.click(renameMenuItem);
+      expect(defaultProps.onClose).toHaveBeenCalled();
 
       // Wait for dialog
       await waitFor(() => {
@@ -109,8 +117,9 @@ describe('File Operations Integration Tests', () => {
     it('should validate empty file name', async () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
-      const renameButton = screen.getByText('이름 변경');
-      fireEvent.click(renameButton);
+      const renameMenuItem = screen.getByRole('menuitem', { name: '이름 변경' });
+      fireEvent.click(renameMenuItem);
+      expect(defaultProps.onClose).toHaveBeenCalled();
 
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -135,9 +144,7 @@ describe('File Operations Integration Tests', () => {
       fireEvent.click(moveButton);
 
       // Check if processing started
-      await waitFor(() => {
-        expect(defaultProps.onClose).toHaveBeenCalled();
-      });
+      expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
     it('should open folder picker for copy operation', async () => {
@@ -146,9 +153,7 @@ describe('File Operations Integration Tests', () => {
       const copyButton = screen.getByText('복사');
       fireEvent.click(copyButton);
 
-      await waitFor(() => {
-        expect(defaultProps.onClose).toHaveBeenCalled();
-      });
+      expect(defaultProps.onClose).toHaveBeenCalled();
     });
   });
 
@@ -168,8 +173,12 @@ describe('File Operations Integration Tests', () => {
       );
 
       // Trigger delete operation
-      const deleteButton = screen.getByText('삭제');
-      fireEvent.click(deleteButton);
+      const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
+      fireEvent.click(deleteMenuItem);
+      expect(defaultProps.onClose).toHaveBeenCalled();
+
+      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
+      fireEvent.click(confirmDeleteButton);
 
       // Wait for action to complete
       await waitFor(() => {

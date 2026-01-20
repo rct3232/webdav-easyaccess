@@ -22,6 +22,7 @@ import {
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   ErrorOutline as ErrorIcon,
+  WarningAmber as WarningIcon,
   Refresh as RefreshIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
@@ -75,9 +76,9 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
       }
     }
 
-    // 실패 시 자동 확장 (기존 로직 유지)
-    const hasError = items?.some(item => item.status === 'error');
-    if (hasError) {
+    // 에러/경고 시 자동 확장
+    const hasErrorOrWarning = items?.some(item => item.status === 'error' || item.status === 'warning');
+    if (hasErrorOrWarning) {
       setExpanded(true);
     }
 
@@ -109,6 +110,8 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
       return item.current || '처리 중...';
     } else if (item.status === 'completed') {
       return '완료';
+    } else if (item.status === 'warning') {
+      return item.error || '일부 제외됨';
     } else if (item.status === 'error') {
       return `오류: ${item.error || '알 수 없는 오류'}`;
     }
@@ -116,6 +119,9 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
   };
 
   const getProgress = (item) => {
+    if (item.status === 'completed' || item.status === 'warning') {
+      return 100;
+    }
     // Use percentage if available, otherwise calculate from progress/total
     if (item.percentage !== undefined) {
       return Math.min(100, item.percentage);
@@ -138,8 +144,10 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
     if (!items || items.length === 0) return 'completed';
     const hasProcessing = items.some(item => item.status === 'processing' || item.status === 'preparing' || item.status === 'downloading' || item.status === 'uploading');
     const hasError = items.some(item => item.status === 'error');
+    const hasWarning = items.some(item => item.status === 'warning');
     if (hasError) return 'error';
     if (hasProcessing) return 'processing';
+    if (hasWarning) return 'warning';
     return 'completed';
   };
 
@@ -184,6 +192,15 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
               color: 'error.main',
               fontSize: 20,
             }} 
+          />
+        );
+      } else if (overallStatus === 'warning') {
+        return (
+          <WarningIcon
+            sx={{
+              color: 'warning.main',
+              fontSize: 20,
+            }}
           />
         );
       } else {
@@ -245,12 +262,32 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
         {renderStatusIcon()}
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography variant="caption" sx={{ fontWeight: 'medium', display: 'block' }}>
-            {overallStatus === 'completed' ? '완료' : overallStatus === 'error' ? '오류 발생' : '작업 중'}
+            {overallStatus === 'completed'
+              ? '완료'
+              : overallStatus === 'error'
+                ? '오류 발생'
+                : overallStatus === 'warning'
+                  ? '일부 제외됨'
+                  : '작업 중'}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {overallProgress}%
           </Typography>
         </Box>
+        {onClose && (
+          <IconButton
+            size="small"
+            aria-label="dismiss-all"
+            onClick={(e) => {
+              e.stopPropagation();
+              // Dismiss all visible items (best-effort)
+              (items || []).forEach((it) => onClose(it.id));
+            }}
+            sx={{ padding: 0.5 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        )}
         <IconButton
           size="small"
           onClick={(e) => {
@@ -340,6 +377,12 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                           animation: `${checkmarkAnimation} 0.5s ease-in-out`,
                         }} 
                       />
+                    ) : item.status === 'warning' ? (
+                      <WarningIcon
+                        sx={{
+                          color: 'warning.main',
+                        }}
+                      />
                     ) : item.status === 'error' ? (
                       <ErrorIcon 
                         sx={{ 
@@ -362,6 +405,19 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                     >
                       {item.name || item.zipName || '작업 중...'}
                     </Typography>
+                    {onClose && (
+                      <IconButton
+                        size="small"
+                        aria-label={`dismiss-${item.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClose(item.id);
+                        }}
+                        sx={{ ml: 0.5 }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Box>
                   
                   {item.status === 'completed' ? (
@@ -401,6 +457,11 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                         ...(item.status === 'error' && {
                           '& .MuiLinearProgress-bar': {
                             backgroundColor: 'error.main',
+                          }
+                        }),
+                        ...(item.status === 'warning' && {
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor: 'warning.main',
                           }
                         })
                       }}
@@ -528,6 +589,71 @@ const DownloadProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }
                           );
                         })}
                       </List>
+                    </Box>
+                  )}
+
+                  {/* 선택적 작업에서 제외된 경로 리스트 */}
+                  {(((typeof item.skippedCount === 'number' ? item.skippedCount : 0) > 0) ||
+                    (Array.isArray(item.skippedPaths) && item.skippedPaths.length > 0)) && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                      {(() => {
+                        const skippedCount =
+                          typeof item.skippedCount === 'number'
+                            ? item.skippedCount
+                            : (Array.isArray(item.skippedPaths) ? item.skippedPaths.length : 0);
+                        const skippedPaths = Array.isArray(item.skippedPaths) ? item.skippedPaths : [];
+                        const truncated =
+                          Boolean(item.skippedTruncated) || (typeof item.skippedCount === 'number' && skippedPaths.length < item.skippedCount);
+                        return (
+                          <>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 'medium',
+                                mb: 1,
+                                display: 'block',
+                                color: 'warning.main',
+                              }}
+                            >
+                              제외된 항목: {skippedCount}개{truncated ? ' (일부만 표시됨)' : ''}
+                            </Typography>
+                            <List
+                              dense
+                              sx={{
+                                py: 0,
+                                maxHeight: 140,
+                                overflowY: 'auto',
+                                scrollbarWidth: 'none',
+                                '&::-webkit-scrollbar': { display: 'none' },
+                              }}
+                            >
+                              {skippedPaths.map((p, idx) => (
+                                <ListItem key={idx} sx={{ px: 0, py: 0.25 }}>
+                                  <ListItemText
+                                    primary={p}
+                                    primaryTypographyProps={{
+                                      variant: 'caption',
+                                      sx: {
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      },
+                                    }}
+                                  />
+                                </ListItem>
+                              ))}
+                              {skippedPaths.length === 0 && (
+                                <ListItem sx={{ px: 0, py: 0.25 }}>
+                                  <ListItemText
+                                    primary="(목록 없음)"
+                                    primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                                  />
+                                </ListItem>
+                              )}
+                            </List>
+                          </>
+                        );
+                      })()}
                     </Box>
                   )}
 

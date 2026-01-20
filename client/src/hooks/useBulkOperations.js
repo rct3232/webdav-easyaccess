@@ -93,6 +93,7 @@ export const useBulkOperations = (
     let failCount = 0;
     const deletedFolders = [];
     const failedItems = [];
+    const skippedSet = new Set();
 
     for (const filePath of filePaths) {
       try {
@@ -105,7 +106,10 @@ export const useBulkOperations = (
           name: `${filePaths.length}개 항목 삭제`,
         }, retryDataObj);
 
-        await deleteFile(filePath);
+        const result = await deleteFile(filePath);
+        if (Array.isArray(result?.skippedPaths) && result.skippedPaths.length > 0) {
+          result.skippedPaths.forEach((p) => skippedSet.add(p));
+        }
         const file = files.find(f => f.path === filePath);
         if (file?.type === 'directory') {
           deletedFolders.push(filePath);
@@ -123,16 +127,18 @@ export const useBulkOperations = (
 
     updateProgressWithRetry(progressId, {
       type: 'delete',
-      status: failCount > 0 ? 'error' : 'completed',
+      status: failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'),
       progress: successCount,
       total: filePaths.length,
       current: failCount > 0 
         ? `(${successCount}/${filePaths.length}) 삭제중... (${failCount}개 실패)` 
         : `(${successCount}/${filePaths.length}) 삭제중...`,
       name: `${filePaths.length}개 항목 삭제`,
-      error: failCount > 0 ? `${failCount}개 실패` : undefined,
+      error: failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined),
       failedItems: failedItems.length > 0 ? failedItems : undefined,
-      keepOnError: failCount > 0,
+      keepOnError: failCount > 0 || skippedSet.size > 0,
+      skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
+      skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
     }, retryDataObj);
 
     if (successCount > 0) {
@@ -167,7 +173,7 @@ export const useBulkOperations = (
 
     clearProcessing(filePaths);
 
-    if (failCount === 0) {
+    if (failCount === 0 && skippedSet.size === 0) {
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
       }, 3000);
@@ -193,16 +199,34 @@ export const useBulkOperations = (
     });
 
     try {
-      await downloadMultipleFiles(filePaths, (progress) => {
+      const result = await downloadMultipleFiles(filePaths, (progress) => {
         updateProgress({ ...progress, id: progressId });
       });
+
+      const skippedCount = result?.skippedCount || 0;
+      const skippedPaths = result?.skippedInfo?.paths || [];
+      const skippedTruncated = Boolean(result?.skippedInfo?.truncated);
+      if (skippedCount > 0 || skippedPaths.length > 0) {
+        updateProgress({
+          id: progressId,
+          type: 'download',
+          status: 'warning',
+          error: `권한으로 제외된 항목: ${skippedCount || skippedPaths.length}개`,
+          keepOnError: true,
+          skippedPaths,
+          skippedCount: skippedCount || skippedPaths.length,
+          skippedTruncated,
+        });
+      }
       
       setSelectedFiles(new Set());
       setSelectionMode(false);
       
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-      }, 3000);
+      if (!(skippedCount > 0 || skippedPaths.length > 0)) {
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+        }, 3000);
+      }
     } catch (error) {
       console.error('Bulk download error:', error);
       updateProgress({
@@ -243,6 +267,7 @@ export const useBulkOperations = (
     let successCount = 0;
     let failCount = 0;
     const failedItems = [];
+    const skippedSet = new Set();
 
     for (const sourcePath of filePaths) {
       try {
@@ -261,9 +286,15 @@ export const useBulkOperations = (
         }, retryDataObj);
 
         if (action === 'move') {
-          await moveFile(sourcePath, destinationFilePath);
+          const result = await moveFile(sourcePath, destinationFilePath);
+          if (Array.isArray(result?.skippedPaths) && result.skippedPaths.length > 0) {
+            result.skippedPaths.forEach((p) => skippedSet.add(p));
+          }
         } else if (action === 'copy') {
-          await copyFile(sourcePath, destinationFilePath);
+          const result = await copyFile(sourcePath, destinationFilePath);
+          if (Array.isArray(result?.skippedPaths) && result.skippedPaths.length > 0) {
+            result.skippedPaths.forEach((p) => skippedSet.add(p));
+          }
         }
         
         successCount++;
@@ -286,16 +317,18 @@ export const useBulkOperations = (
 
     updateProgressWithRetry(progressId, {
       type: action,
-      status: failCount > 0 ? 'error' : 'completed',
+      status: failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'),
       progress: successCount,
       total: filePaths.length,
       current: failCount > 0 
         ? `(${successCount}/${filePaths.length}) ${actionText}... (${failCount}개 실패)` 
         : `(${successCount}/${filePaths.length}) ${actionText}...`,
       name: `${filePaths.length}개 항목 ${actionName}`,
-      error: failCount > 0 ? `${failCount}개 실패` : undefined,
+      error: failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined),
       failedItems: failedItems.length > 0 ? failedItems : undefined,
-      keepOnError: failCount > 0,
+      keepOnError: failCount > 0 || skippedSet.size > 0,
+      skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
+      skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
     }, retryDataObj);
 
     if (successCount > 0) {
@@ -312,7 +345,7 @@ export const useBulkOperations = (
       }
     }
 
-    if (failCount === 0) {
+    if (failCount === 0 && skippedSet.size === 0) {
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
         clearProcessing(filePaths);

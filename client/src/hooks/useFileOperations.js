@@ -51,13 +51,30 @@ export const useFileOperations = ({
           onProgress(progressItem);
         }
         
-        await downloadMultipleFiles([file.path], (progress) => {
+        const result = await downloadMultipleFiles([file.path], (progress) => {
           if (onProgress) {
             onProgress({ ...progress, id: progressId });
           }
         });
+
+        const skippedCount = result?.skippedCount || 0;
+        const skippedPaths = result?.skippedInfo?.paths || [];
+        const skippedTruncated = Boolean(result?.skippedInfo?.truncated);
+        const hasSkipped = skippedCount > 0 || skippedPaths.length > 0;
+        if (hasSkipped && onProgress) {
+          onProgress({
+            id: progressId,
+            type: 'download',
+            status: 'warning',
+            error: `권한으로 제외된 항목: ${skippedCount || skippedPaths.length}개`,
+            keepOnError: true,
+            skippedPaths,
+            skippedCount: skippedCount || skippedPaths.length,
+            skippedTruncated,
+          });
+        }
         
-        if (onProgress) {
+        if (onProgress && !hasSkipped) {
           setTimeout(() => {
             onProgress({ id: progressId, remove: true });
           }, 3000);
@@ -160,7 +177,7 @@ export const useFileOperations = ({
         });
       }
       
-      await operation(filePath, destPath, (progress) => {
+      const result = await operation(filePath, destPath, (progress) => {
         if (onProgress) {
           onProgress({
             ...progressItem,
@@ -185,17 +202,27 @@ export const useFileOperations = ({
       }
       
       if (onProgress) {
+        const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
+        const hasSkipped = skippedPaths.length > 0;
+
         onProgress({
           ...progressItem,
-          status: 'completed',
-          progress: 0,
-          total: 0,
-          current: '완료',
+          status: hasSkipped ? 'warning' : 'completed',
+          progress: 1,
+          total: 1,
+          current: hasSkipped ? '일부 제외됨' : '완료',
+          error: hasSkipped ? `권한으로 제외된 항목: ${skippedPaths.length}개` : undefined,
+          keepOnError: hasSkipped || undefined,
+          skippedPaths: hasSkipped ? skippedPaths : undefined,
+          skippedCount: hasSkipped ? skippedPaths.length : undefined,
+          skippedTruncated: undefined,
         });
         
-        setTimeout(() => {
-          onProgress({ id: progressId, remove: true });
-        }, 3000);
+        if (!hasSkipped) {
+          setTimeout(() => {
+            onProgress({ id: progressId, remove: true });
+          }, 3000);
+        }
       }
     } catch (error) {
       const errorMsg = getErrorMessage(error, `${operationName}에 실패했습니다`);
@@ -299,7 +326,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, onMessage, setDropMessage, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
 
   /**
    * Handle file delete
@@ -313,6 +340,16 @@ export const useFileOperations = ({
     const filePath = file.path;
     const isDirectory = file.type === 'directory';
     const startedPath = context?.startedPath;
+    const progressId = `delete_${Date.now()}`;
+    const progressItem = {
+      id: progressId,
+      type: 'delete',
+      status: 'preparing',
+      progress: 0,
+      total: 1,
+      current: '',
+      name: `${file.basename} 삭제`,
+    };
     
     // Mark processing
     if (setProcessingMap) {
@@ -322,7 +359,20 @@ export const useFileOperations = ({
     }
 
     try {
-      await deleteFile(filePath);
+      if (onProgress) {
+        onProgress(progressItem);
+        onProgress({
+          ...progressItem,
+          status: 'processing',
+          progress: 0,
+          total: 1,
+          current: '(0/1) 삭제중...',
+        });
+      }
+
+      const result = await deleteFile(filePath);
+      const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
+      const hasSkipped = skippedPaths.length > 0;
       
       if (onActionComplete) {
         onActionComplete({
@@ -342,6 +392,26 @@ export const useFileOperations = ({
       } else if (setDropMessage) {
         showSuccessMessage(setDropMessage, successMsg);
       }
+
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: hasSkipped ? 'warning' : 'completed',
+          progress: 1,
+          total: 1,
+          current: hasSkipped ? '(1/1) 삭제중... (일부 제외됨)' : '완료',
+          error: hasSkipped ? `권한으로 제외된 항목: ${skippedPaths.length}개` : undefined,
+          keepOnError: hasSkipped || undefined,
+          skippedPaths: hasSkipped ? skippedPaths : undefined,
+          skippedCount: hasSkipped ? skippedPaths.length : undefined,
+        });
+
+        if (!hasSkipped) {
+          setTimeout(() => {
+            onProgress({ id: progressId, remove: true });
+          }, 3000);
+        }
+      }
     } catch (error) {
       const errorMsg = getErrorMessage(error, '삭제에 실패했습니다');
       if (onMessage) {
@@ -350,6 +420,15 @@ export const useFileOperations = ({
         showErrorMessage(setDropMessage, error, '삭제에 실패했습니다');
       } else {
         alert(errorMsg);
+      }
+
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'error',
+          error: errorMsg,
+          keepOnError: true,
+        });
       }
     } finally {
       // Clear processing

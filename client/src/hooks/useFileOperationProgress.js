@@ -38,14 +38,17 @@ export const useFileOperationProgress = () => {
    * @param {string} progressItem.id - Unique identifier for the progress item
    * @param {boolean} [progressItem.remove] - If true, removes the item instead of updating
    * @param {string} [progressItem.type] - Type of operation ('move', 'copy', 'delete', 'download', 'upload')
-   * @param {string} [progressItem.status] - Current status ('preparing', 'processing', 'completed', 'error')
+   * @param {string} [progressItem.status] - Current status ('preparing', 'processing', 'downloading', 'uploading', 'completed', 'warning', 'error')
    * @param {number} [progressItem.progress] - Current progress count
    * @param {number} [progressItem.total] - Total items count
    * @param {string} [progressItem.current] - Current item description
    * @param {string} [progressItem.name] - Operation name/description
-   * @param {string} [progressItem.error] - Error message (if status is 'error')
+   * @param {string} [progressItem.error] - Message for error/warning states
    * @param {Array<Object>} [progressItem.failedItems] - Array of failed items with fileName and error
    * @param {boolean} [progressItem.keepOnError] - If true, prevents automatic removal on error
+   * @param {Array<string>} [progressItem.skippedPaths] - Paths excluded from selective operations
+   * @param {number} [progressItem.skippedCount] - Total excluded count (may exceed skippedPaths length)
+   * @param {boolean} [progressItem.skippedTruncated] - Whether skipped list was truncated
    * @param {Object} [progressItem.retryData] - Data needed for retry operation (filePaths, destinationPath, etc.)
    */
   const updateProgress = useCallback((progressItem) => {
@@ -57,6 +60,16 @@ export const useFileOperationProgress = () => {
         if (existing) {
           // 기존 항목과 새 항목 병합
           const merged = { ...existing, ...progressItem };
+
+          // Final status precedence: error > warning > completed.
+          // Also prevent regressing from warning/error back to completed.
+          const existingStatus = existing.status;
+          const nextStatus = progressItem.status ?? existingStatus;
+          if ((existingStatus === 'error' && nextStatus !== 'error') || (existingStatus === 'warning' && nextStatus === 'completed')) {
+            merged.status = existingStatus;
+          } else {
+            merged.status = nextStatus;
+          }
           
           // fileItems 배열이 있는 경우 병합
           if (progressItem.fileItems && existing.fileItems) {
@@ -103,6 +116,21 @@ export const useFileOperationProgress = () => {
             merged.fileItems = progressItem.fileItems;
           }
           // 기존 fileItems가 있고 새로 전달하지 않은 경우는 기존 것 유지
+
+          // skipped paths merge (union) so incremental updates don't lose earlier data
+          if (Array.isArray(existing.skippedPaths) || Array.isArray(progressItem.skippedPaths)) {
+            const a = Array.isArray(existing.skippedPaths) ? existing.skippedPaths : [];
+            const b = Array.isArray(progressItem.skippedPaths) ? progressItem.skippedPaths : [];
+            merged.skippedPaths = Array.from(new Set([...a, ...b]));
+          }
+          if (typeof existing.skippedCount === 'number' || typeof progressItem.skippedCount === 'number') {
+            const a = typeof existing.skippedCount === 'number' ? existing.skippedCount : 0;
+            const b = typeof progressItem.skippedCount === 'number' ? progressItem.skippedCount : 0;
+            merged.skippedCount = Math.max(a, b);
+          }
+          if (typeof existing.skippedTruncated === 'boolean' || typeof progressItem.skippedTruncated === 'boolean') {
+            merged.skippedTruncated = Boolean(existing.skippedTruncated || progressItem.skippedTruncated);
+          }
           
           return prev.map(item => item.id === progressItem.id ? merged : item);
         } else {

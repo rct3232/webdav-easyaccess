@@ -146,6 +146,39 @@ describe('useFileOperationProgress', () => {
       expect(result.current.progressItems.find(i => i.id === 'item-2')).toBeUndefined();
       expect(result.current.progressItems.find(i => i.id === 'item-3')).toBeDefined();
     });
+
+    it('should union skippedPaths and keep warning over completed', () => {
+      const { result } = renderHook(() => useFileOperationProgress());
+
+      act(() => {
+        result.current.updateProgress({
+          id: 'op-1',
+          type: 'move',
+          status: 'warning',
+          error: '권한으로 제외된 항목: 1개',
+          skippedPaths: ['/a/b'],
+          skippedCount: 2,
+          skippedTruncated: true,
+        });
+      });
+
+      act(() => {
+        // Later update tries to mark completed and adds another skipped path
+        result.current.updateProgress({
+          id: 'op-1',
+          status: 'completed',
+          skippedPaths: ['/a/c'],
+          skippedCount: 1,
+        });
+      });
+
+      expect(result.current.progressItems).toHaveLength(1);
+      const item = result.current.progressItems[0];
+      expect(item.status).toBe('warning');
+      expect(item.skippedPaths.sort()).toEqual(['/a/b', '/a/c'].sort());
+      expect(item.skippedCount).toBe(2);
+      expect(item.skippedTruncated).toBe(true);
+    });
   });
 
   describe('clearAllProgress', () => {

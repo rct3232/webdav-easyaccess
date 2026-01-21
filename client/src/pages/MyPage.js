@@ -6,7 +6,6 @@ import {
   Typography,
   IconButton,
   Paper,
-  TextField,
   Button,
   Alert,
   Divider,
@@ -19,10 +18,12 @@ import {
 import {
   ArrowBack as ArrowBackIcon,
   Share as ShareIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ShareDialog from '../components/ShareDialog';
+import AccountEditDialog from '../components/AccountEditDialog';
 import axios from 'axios';
 import {
   approvePermissionRequest,
@@ -45,14 +46,30 @@ const MyPage = () => {
   const [requestActionLoadingIds, setRequestActionLoadingIds] = useState(new Set());
   
   const [email, setEmail] = useState('');
+  const [originalEmail, setOriginalEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
       setEmail(user.email || '');
+      setOriginalEmail(user.email || '');
     }
   }, [user]);
+
+  const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+  const emailChanged = normalizeEmail(email) !== normalizeEmail(originalEmail);
+  const passwordEntered = password.length > 0 || confirmPassword.length > 0;
+  const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+  const passwordTooShort = passwordEntered && password.length > 0 && password.length < 4;
+  const passwordConfirmMissing = passwordEntered && confirmPassword.length === 0;
+  const emailEmpty = emailChanged && normalizeEmail(email).length === 0;
+
+  const canSave =
+    ((emailChanged && !emailEmpty) || passwordEntered) &&
+    !(passwordEntered && (passwordMismatch || passwordTooShort || passwordConfirmMissing));
 
   const formatPermissionLabel = (p) => {
     if (p === 'read') return '읽기';
@@ -116,53 +133,95 @@ const MyPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const handleEmailUpdate = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleOpenEditDialog = () => {
+    if (!user) return;
+    setOriginalEmail(email || user.email || '');
+    setPassword('');
+    setConfirmPassword('');
     setMessage({ type: '', text: '' });
-
-    try {
-      await axios.put(`/api/users/${user.id}/email`, { email });
-      setMessage({ type: 'success', text: '이메일이 성공적으로 변경되었습니다.' });
-    } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '이메일 변경에 실패했습니다.' 
-      });
-    } finally {
-      setLoading(false);
-    }
+    setEditDialogOpen(true);
   };
 
-  const handlePasswordUpdate = async (e) => {
-    e.preventDefault();
+  const handleCloseEditDialog = () => {
+    setEmail(originalEmail || '');
+    setPassword('');
+    setConfirmPassword('');
+    setEditDialogOpen(false);
+  };
+
+  const handleSaveAccountChanges = async () => {
+    if (!user) return;
+    if (!canSave) return;
+
+    const trimmedEmail = String(email || '').trim();
+    const shouldUpdateEmail = emailChanged;
+    const shouldUpdatePassword = passwordEntered;
+
+    // Defensive validation (button should be disabled already, but keep safe).
+    if (shouldUpdateEmail && normalizeEmail(trimmedEmail).length === 0) {
+      setMessage({ type: 'error', text: '이메일을 입력해주세요.' });
+      return;
+    }
+
+    if (shouldUpdatePassword) {
+      if (passwordConfirmMissing) {
+        setMessage({ type: 'error', text: '비밀번호 확인을 입력해주세요.' });
+        return;
+      }
+      if (passwordMismatch) {
+        setMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+        return;
+      }
+      if (password.length < 4) {
+        setMessage({ type: 'error', text: '비밀번호는 최소 4자 이상이어야 합니다.' });
+        return;
+      }
+    }
+
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    if (password !== confirmPassword) {
-      setMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 4) {
-      setMessage({ type: 'error', text: '비밀번호는 최소 4자 이상이어야 합니다.' });
-      setLoading(false);
-      return;
-    }
-
+    let emailUpdated = false;
     try {
-      await axios.put(`/api/users/${user.id}/password`, { password });
-      setMessage({ type: 'success', text: '비밀번호가 성공적으로 변경되었습니다. 보안을 위해 다시 로그인해주세요.' });
-      setPassword('');
-      setConfirmPassword('');
-      // Password change rotates token_version on the server, invalidating existing tokens.
-      logout();
+      if (shouldUpdateEmail) {
+        await axios.put(`/api/users/${user.id}/email`, { email: trimmedEmail });
+        emailUpdated = true;
+        setOriginalEmail(trimmedEmail);
+      }
+
+      if (shouldUpdatePassword) {
+        await axios.put(`/api/users/${user.id}/password`, { password });
+        setMessage({
+          type: 'success',
+          text: '비밀번호가 성공적으로 변경되었습니다. 보안을 위해 다시 로그인해주세요.',
+        });
+        setPassword('');
+        setConfirmPassword('');
+        setEditDialogOpen(false);
+        // Password change rotates token_version on the server, invalidating existing tokens.
+        logout();
+        return;
+      }
+
+      if (shouldUpdateEmail) {
+        setMessage({ type: 'success', text: '이메일이 성공적으로 변경되었습니다.' });
+        setEditDialogOpen(false);
+      }
     } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '비밀번호 변경에 실패했습니다.' 
-      });
+      const serverMsg = error.response?.data?.error;
+      if (emailUpdated && shouldUpdatePassword) {
+        setMessage({
+          type: 'error',
+          text: serverMsg
+            ? `이메일은 변경되었으나 비밀번호 변경에 실패했습니다: ${serverMsg}`
+            : '이메일은 변경되었으나 비밀번호 변경에 실패했습니다.',
+        });
+      } else {
+        setMessage({
+          type: 'error',
+          text: serverMsg || '저장에 실패했습니다.',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -218,9 +277,12 @@ const MyPage = () => {
         )}
 
         <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            계정 정보
-          </Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="h6">계정 정보</Typography>
+            <IconButton aria-label="계정 정보 수정" onClick={handleOpenEditDialog} size="small">
+              <EditIcon />
+            </IconButton>
+          </Stack>
           <Divider sx={{ mb: 2 }} />
           
           <Box sx={{ mb: 2 }}>
@@ -229,6 +291,15 @@ const MyPage = () => {
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 500 }}>
               {user?.username}
+            </Typography>
+          </Box>
+
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              이메일
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              {email || user?.email || '-'}
             </Typography>
           </Box>
 
@@ -248,69 +319,6 @@ const MyPage = () => {
             <Typography variant="body1" sx={{ fontWeight: 500 }}>
               {user?.is_admin ? '관리자' : '일반 사용자'}
             </Typography>
-          </Box>
-        </Paper>
-
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            이메일 변경
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          <Box component="form" onSubmit={handleEmailUpdate}>
-            <TextField
-              fullWidth
-              label="이메일"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={loading}
-              fullWidth
-            >
-              이메일 변경
-            </Button>
-          </Box>
-        </Paper>
-
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            비밀번호 변경
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          <Box component="form" onSubmit={handlePasswordUpdate}>
-            <TextField
-              fullWidth
-              label="새 비밀번호"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              label="비밀번호 확인"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={loading}
-              fullWidth
-            >
-              비밀번호 변경
-            </Button>
           </Box>
         </Paper>
 
@@ -472,6 +480,22 @@ const MyPage = () => {
           }}
         />
       )}
+
+      <AccountEditDialog
+        open={editDialogOpen}
+        onClose={handleCloseEditDialog}
+        email={email}
+        onEmailChange={(v) => setEmail(v)}
+        password={password}
+        onPasswordChange={(v) => setPassword(v)}
+        confirmPassword={confirmPassword}
+        onConfirmPasswordChange={(v) => setConfirmPassword(v)}
+        loading={loading}
+        canSave={canSave}
+        onSave={handleSaveAccountChanges}
+        message={message}
+        onClearMessage={() => setMessage({ type: '', text: '' })}
+      />
     </Box>
   );
 };

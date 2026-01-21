@@ -8,14 +8,16 @@ npm run install-all
 
 ## 2. 환경 변수 설정
 
-`.env.example` 파일을 복사하여 `.env` 파일을 생성하세요:
+`.env.example` 파일을 복사하여 루트에 `.env` 파일을 생성하세요:
 
 **Windows:**
+
 ```cmd
 copy .env.example .env
 ```
 
 **Linux/Mac:**
+
 ```bash
 cp .env.example .env
 ```
@@ -29,7 +31,7 @@ WEBDAV_USERNAME=your-username
 WEBDAV_PASSWORD=your-password
 
 # Server Configuration (required)
-PORT=5000
+PORT=5001
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 
 # Email Configuration (optional - for user notifications)
@@ -43,13 +45,20 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 # Optional Configuration
 # MAX_THUMBNAIL_SIZE=300
 # ADMIN_DEFAULT_PASSWORD=admin
+# WEA_DISABLE_DEFAULT_ADMIN=true
+# WEA_STORAGE_BACKEND=webdav
+# WEA_FS_DIR=./.wea-local
 # FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
 # WEBDAV_AUTH_TYPE=auto
 # WEBDAV_UPSTREAM_URL=http://your-upstream-host:port
 ```
 
-**참고:**
-- 데이터베이스와 썸네일은 자동으로 `data/` 디렉토리에 저장됩니다.
+### 참고(저장 위치)
+
+- **메타데이터(사용자/권한/설정)**는 기본적으로 WebDAV의 `/.wea/` 아래에 JSON으로 저장됩니다.
+  - 테스트/옵션으로 로컬 파일시스템 저장을 원하면 `WEA_STORAGE_BACKEND=fs` 와 `WEA_FS_DIR`(또는 `WEA_METADATA_DIR`)를 설정하세요.
+- **썸네일**은 서버의 **메모리 캐시**에 저장되며, 서버 재시작 시 재생성됩니다.
+  - 영상 썸네일 생성 과정에서 임시 파일을 `data/temp` 아래에 생성할 수 있습니다.
 - FFmpeg는 자동으로 감지되며, 찾을 수 없는 경우에만 `FFMPEG_PATH`를 설정하세요.
 - `WEBDAV_AUTH_TYPE`은 인증 방식을 명시적으로 지정할 때만 사용합니다 (auto/basic/digest).
 - `WEBDAV_UPSTREAM_URL`은 프록시 앞단에서 MOVE/COPY가 502 등을 반환할 때 설정하세요.
@@ -65,11 +74,13 @@ npm run dev
 ### 개별 실행
 
 **백엔드만:**
+
 ```bash
 npm run server
 ```
 
 **프론트엔드만:**
+
 ```bash
 npm run client
 ```
@@ -90,22 +101,24 @@ npm run client
 
 ## 운영 환경 실행
 
-운영 환경에서 실행하는 방법은 [운영 환경 가이드](#운영-환경-실행)를 참조하세요.
-
 ### 운영 환경 실행
 
 1. **프론트엔드 빌드**
+
    ```bash
    npm run build
    ```
 
 2. **서버 실행**
+
    ```bash
    cd server
    npm start
    ```
 
 3. **접속**
-   `http://localhost:5000`
 
-자세한 내용은 [README.md](README.md)의 운영 환경 섹션을 참조하세요.
+   `http://localhost:5001` (또는 `.env`의 `PORT`)
+
+자세한 내용은 [README.md](../README.md)의 운영 환경 섹션을 참조하세요.
+

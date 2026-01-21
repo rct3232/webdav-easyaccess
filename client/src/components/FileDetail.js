@@ -42,7 +42,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
   });
 
   // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file) => {
+  const getLongPressHandlers = useCallback((file, canOpenMenu = false) => {
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
@@ -51,7 +51,9 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          onContextMenu(e, file);
+          if (canOpenMenu) {
+            onContextMenu(e, file);
+          }
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -101,7 +103,9 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
       >
         <TableBody>
           {files.map((file, index) => {
-            const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
+            const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
+            const allowContextMenu = isPermissionDisabled && !isProcessing;
+            const canOpenMenu = !isDisabled || allowContextMenu;
             const isDragging = draggedFile?.path === file.path;
             const isDropTarget = dropTarget === file.path;
             const dragHandlers = getDragHandlers(file, isDisabled);
@@ -112,7 +116,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 key={index}
                 {...dragHandlers}
                 {...dropHandlers}
-                {...getLongPressHandlers(file)}
+                {...getLongPressHandlers(file, canOpenMenu)}
                 hover={!isDisabled}
                 selected={checked}
                 sx={{ 
@@ -152,7 +156,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   }
                 }}
                 onContextMenu={(e) => {
-                  if (!isDisabled) {
+                  if (!isDisabled || allowContextMenu) {
                     onContextMenu(e, file);
                   }
                 }}

@@ -59,6 +59,9 @@ const FileActionSheet = ({
   // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
   const isSharedFolder = isDirectory && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);
 
+  // Direct read permission missing on directory (disabled in list UI)
+  const isPermissionDisabled = isDirectory && file?.hasReadPermission === false;
+
   // 파일 객체에 hasWritePermission이 있으면 사용, 없으면 prop의 hasWritePermission 사용
   const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
@@ -109,6 +112,22 @@ const FileActionSheet = ({
 
         {/* Actions */}
         <List sx={{ py: 0 }}>
+          {isPermissionDisabled ? (
+            // Permission-less folders: allow only "공유 관리" to request access
+            isSharedFolder && onManageShared && (
+              <ListItem 
+                button 
+                onClick={() => handleAction(onManageShared)}
+                sx={{ minHeight: 56, borderRadius: 1 }}
+              >
+                <ListItemIcon>
+                  <SettingsIcon />
+                </ListItemIcon>
+                <ListItemText primary="공유 관리" />
+              </ListItem>
+            )
+          ) : (
+            <>
           {canPreview && onPreview && (
             <ListItem 
               button 
@@ -230,6 +249,8 @@ const FileActionSheet = ({
                 </ListItemIcon>
                 <ListItemText primary="삭제" />
               </ListItem>
+            </>
+          )}
             </>
           )}
         </List>

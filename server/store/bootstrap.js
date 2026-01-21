@@ -12,6 +12,7 @@ const { ensureDir } = require('./storage');
 const userStore = require('./userStore');
 const settingsStore = require('./settingsStore');
 const permissionStore = require('./permissionStore');
+const permissionRequestStore = require('./permissionRequestStore');
 
 async function ensureDirs() {
   await ensureDir(META_ROOT);
@@ -60,6 +61,7 @@ async function initMetadataStore() {
   await ensureDirs();
   await userStore.ensureUserIndexFile();
   await settingsStore.ensureSettingsFile();
+  await permissionRequestStore.ensurePermissionRequestsFile();
   await ensureDefaultAdmin();
 }
 

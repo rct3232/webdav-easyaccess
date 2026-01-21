@@ -10,6 +10,11 @@ import {
   Button,
   Alert,
   Divider,
+  Tabs,
+  Tab,
+  Chip,
+  Stack,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -19,6 +24,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ShareDialog from '../components/ShareDialog';
 import axios from 'axios';
+import {
+  approvePermissionRequest,
+  cancelPermissionRequest,
+  listInboxPermissionRequests,
+  listOutboxPermissionRequests,
+  rejectPermissionRequest,
+} from '../services/permissionRequestService';
 
 const MyPage = () => {
   const { user, logout } = useAuth();
@@ -26,6 +38,11 @@ const MyPage = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [requestTab, setRequestTab] = useState(0); // 0: inbox, 1: outbox
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [inboxRequests, setInboxRequests] = useState([]);
+  const [outboxRequests, setOutboxRequests] = useState([]);
+  const [requestActionLoadingIds, setRequestActionLoadingIds] = useState(new Set());
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +53,68 @@ const MyPage = () => {
       setEmail(user.email || '');
     }
   }, [user]);
+
+  const formatPermissionLabel = (p) => {
+    if (p === 'read') return '읽기';
+    if (p === 'write') return '쓰기';
+    return String(p || '');
+  };
+
+  const formatStatusLabel = (s) => {
+    if (s === 'pending') return { label: '대기', color: 'warning' };
+    if (s === 'approved') return { label: '승인', color: 'success' };
+    if (s === 'rejected') return { label: '거절', color: 'error' };
+    if (s === 'cancelled') return { label: '취소', color: 'default' };
+    return { label: String(s || ''), color: 'default' };
+  };
+
+  const withRequestActionLoading = async (id, fn) => {
+    setRequestActionLoadingIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    try {
+      return await fn();
+    } finally {
+      setRequestActionLoadingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const loadPermissionRequests = async () => {
+    if (!user) return;
+    setRequestLoading(true);
+    try {
+      const [inbox, outbox] = await Promise.all([
+        listInboxPermissionRequests({ status: 'pending' }),
+        listOutboxPermissionRequests(),
+      ]);
+      setInboxRequests(Array.isArray(inbox) ? inbox : []);
+      // Hide cancelled requests from the UI list
+      const outboxList = Array.isArray(outbox) ? outbox : [];
+      setOutboxRequests(outboxList.filter((r) => r?.status !== 'cancelled'));
+    } catch (error) {
+      setInboxRequests([]);
+      setOutboxRequests([]);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || '권한 요청 목록을 불러오는데 실패했습니다.',
+      });
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadPermissionRequests();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleEmailUpdate = async (e) => {
     e.preventDefault();
@@ -236,7 +315,7 @@ const MyPage = () => {
         </Paper>
 
         {!user?.is_admin && (
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               공유 관리
             </Typography>
@@ -251,9 +330,131 @@ const MyPage = () => {
               startIcon={<ShareIcon />}
               onClick={() => setShareDialogOpen(true)}
               fullWidth
+              sx={{ mb: 3 }}
             >
               공유 관리 열기
             </Button>
+
+            <Divider sx={{ mb: 2 }} />
+
+            <Tabs
+              value={requestTab}
+              onChange={(e, v) => setRequestTab(v)}
+              sx={{ mb: 2 }}
+            >
+              <Tab label={`받은 요청 (${inboxRequests.length})`} />
+              <Tab label={`내 요청 (${outboxRequests.length})`} />
+            </Tabs>
+
+            {requestLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              <Stack spacing={1.5}>
+                {(requestTab === 0 ? inboxRequests : outboxRequests).length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    표시할 요청이 없습니다.
+                  </Typography>
+                ) : (
+                  (requestTab === 0 ? inboxRequests : outboxRequests).map((r) => {
+                    const permLabel = formatPermissionLabel(r.requested_permission);
+                    const statusInfo = formatStatusLabel(r.status);
+                    const isPending = r.status === 'pending';
+                    const isActionLoading = requestActionLoadingIds.has(r.id);
+
+                    return (
+                      <Paper key={r.id} variant="outlined" sx={{ p: 2 }}>
+                        <Stack spacing={1}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Chip
+                              size="small"
+                              label={permLabel}
+                              color={r.requested_permission === 'write' ? 'primary' : 'default'}
+                            />
+                            <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
+                            <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                              {r.created_at ? new Date(r.created_at).toLocaleString('ko-KR') : ''}
+                            </Typography>
+                          </Stack>
+
+                          <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                            폴더: {r.folder_path}
+                          </Typography>
+
+                          {requestTab === 0 ? (
+                            <Typography variant="caption" color="text.secondary">
+                              요청자: {r.requester_username || r.requester_id}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              소유자: {r.owner_username || r.owner_id}
+                            </Typography>
+                          )}
+
+                          {r.message ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                              메시지: {r.message}
+                            </Typography>
+                          ) : null}
+
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            {requestTab === 0 ? (
+                              <>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  disabled={!isPending || isActionLoading}
+                                  onClick={() =>
+                                    withRequestActionLoading(r.id, async () => {
+                                      await approvePermissionRequest(r.id);
+                                      setMessage({ type: 'success', text: '요청을 승인했습니다.' });
+                                      await loadPermissionRequests();
+                                    })
+                                  }
+                                >
+                                  승인
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  disabled={!isPending || isActionLoading}
+                                  onClick={() =>
+                                    withRequestActionLoading(r.id, async () => {
+                                      await rejectPermissionRequest(r.id);
+                                      setMessage({ type: 'success', text: '요청을 거절했습니다.' });
+                                      await loadPermissionRequests();
+                                    })
+                                  }
+                                >
+                                  거절
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={!isPending || isActionLoading}
+                                onClick={() =>
+                                  withRequestActionLoading(r.id, async () => {
+                                    await cancelPermissionRequest(r.id);
+                                    setMessage({ type: 'success', text: '요청을 취소했습니다.' });
+                                    await loadPermissionRequests();
+                                  })
+                                }
+                              >
+                                취소
+                              </Button>
+                            )}
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    );
+                  })
+                )}
+              </Stack>
+            )}
           </Paper>
         )}
       </Box>

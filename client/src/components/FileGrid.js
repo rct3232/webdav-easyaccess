@@ -40,7 +40,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   });
 
   // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file) => {
+  const getLongPressHandlers = useCallback((file, canOpenMenu = false) => {
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
@@ -49,7 +49,9 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          onContextMenu(e, file);
+          if (canOpenMenu) {
+            onContextMenu(e, file);
+          }
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -91,7 +93,9 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     >
       {files.map((file, index) => {
         const thumbnail = getThumbnail(file);
-        const { isSelected: checked, isDisabled, isProcessing, processingType } = getFileState(file);
+        const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
+        const allowContextMenu = isPermissionDisabled && !isProcessing;
+        const canOpenMenu = !isDisabled || allowContextMenu;
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
@@ -102,7 +106,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             <Card
               {...dragHandlers}
               {...dropHandlers}
-              {...getLongPressHandlers(file)}
+              {...getLongPressHandlers(file, canOpenMenu)}
               sx={{
                 cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
                 '&:hover': {
@@ -134,7 +138,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 }
               }}
               onContextMenu={(e) => {
-                if (!isDisabled) {
+                if (!isDisabled || allowContextMenu) {
                   onContextMenu(e, file);
                 }
               }}

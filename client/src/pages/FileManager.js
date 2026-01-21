@@ -1602,6 +1602,11 @@ const FileManager = () => {
           }}
           folderPath={(mobileSharedManageFile || actionSheetFile)?.path}
           folderName={(mobileSharedManageFile || actionSheetFile)?.basename || (mobileSharedManageFile || actionSheetFile)?.name}
+          directHasReadPermission={
+            typeof (mobileSharedManageFile || actionSheetFile)?.hasReadPermission === 'boolean'
+              ? (mobileSharedManageFile || actionSheetFile).hasReadPermission
+              : undefined
+          }
           user={user}
           onMessage={setDropMessage}
           onActionComplete={() => {

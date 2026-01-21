@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "jest --watchAll",
+    "test": "jest",
     "test:unit": "jest --testMatch='**/(utils|models|middleware)/**/*.test.js'",
     "test:integration": "jest --testMatch='**/routes/**/*.test.js'",
     "test:ci": "jest --ci --coverage --maxWorkers=2",

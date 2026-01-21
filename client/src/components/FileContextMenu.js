@@ -60,6 +60,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
   // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
   const isSharedFolder = file?.type === 'directory' && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);
   
+  // Direct read permission missing on directory (disabled in list UI)
+  const isPermissionDisabled = file?.type === 'directory' && file?.hasReadPermission === false;
+
   // Prefer per-item permission if available
   const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
@@ -134,6 +137,23 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
             : undefined
         }
       >
+        {isPermissionDisabled ? (
+          // Permission-less folders: allow only "공유 관리" to request access
+          isSharedFolder && (
+            <MenuItem
+              onClick={() => {
+                closeMenu();
+                setSharedFolderManageDialogOpen(true);
+              }}
+            >
+              <ListItemIcon>
+                <SettingsIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>공유 관리</ListItemText>
+            </MenuItem>
+          )
+        ) : (
+          <>
         <MenuItem onClick={handleDownload}>
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
@@ -208,6 +228,8 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           </ListItemIcon>
           <ListItemText>삭제</ListItemText>
         </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Rename Dialog */}
@@ -275,6 +297,7 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
         onClose={() => setSharedFolderManageDialogOpen(false)}
         folderPath={file?.path}
         folderName={file?.basename || file?.name}
+        directHasReadPermission={typeof file?.hasReadPermission === 'boolean' ? file.hasReadPermission : undefined}
         user={user}
         onMessage={onMessage}
         onActionComplete={onActionComplete}

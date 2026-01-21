@@ -261,7 +261,7 @@ const MyPage = () => {
         sx={{
           flex: 1,
           p: 3,
-          maxWidth: 600,
+          maxWidth: { xs: 600, md: 1000, lg: 1200 },
           mx: 'auto',
           width: '100%',
           overflow: 'auto',
@@ -276,195 +276,203 @@ const MyPage = () => {
           </Alert>
         )}
 
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Typography variant="h6">계정 정보</Typography>
-            <IconButton aria-label="계정 정보 수정" onClick={handleOpenEditDialog} size="small">
-              <EditIcon />
-            </IconButton>
-          </Stack>
-          <Divider sx={{ mb: 2 }} />
-          
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              사용자명
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {user?.username}
-            </Typography>
-          </Box>
-
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              이메일
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {email || user?.email || '-'}
-            </Typography>
-          </Box>
-
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              계정 상태
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {user?.status === 'approved' ? '승인됨' : user?.status}
-            </Typography>
-          </Box>
-
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              권한
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              {user?.is_admin ? '관리자' : '일반 사용자'}
-            </Typography>
-          </Box>
-        </Paper>
-
-        {!user?.is_admin && (
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              공유 관리
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
-            </Typography>
-            
-            <Button
-              variant="contained"
-              startIcon={<ShareIcon />}
-              onClick={() => setShareDialogOpen(true)}
-              fullWidth
-              sx={{ mb: 3 }}
-            >
-              공유 관리 열기
-            </Button>
-
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 3,
+            alignItems: 'start',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(auto-fit, minmax(320px, 1fr))',
+            },
+          }}
+        >
+          <Paper sx={{ p: 3 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="h6">계정 정보</Typography>
+              <IconButton aria-label="계정 정보 수정" onClick={handleOpenEditDialog} size="small">
+                <EditIcon />
+              </IconButton>
+            </Stack>
             <Divider sx={{ mb: 2 }} />
 
-            <Tabs
-              value={requestTab}
-              onChange={(e, v) => setRequestTab(v)}
-              sx={{ mb: 2 }}
-            >
-              <Tab label={`받은 요청 (${inboxRequests.length})`} />
-              <Tab label={`내 요청 (${outboxRequests.length})`} />
-            </Tabs>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                사용자명
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {user?.username}
+              </Typography>
+            </Box>
 
-            {requestLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Stack spacing={1.5}>
-                {(requestTab === 0 ? inboxRequests : outboxRequests).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    표시할 요청이 없습니다.
-                  </Typography>
-                ) : (
-                  (requestTab === 0 ? inboxRequests : outboxRequests).map((r) => {
-                    const permLabel = formatPermissionLabel(r.requested_permission);
-                    const statusInfo = formatStatusLabel(r.status);
-                    const isPending = r.status === 'pending';
-                    const isActionLoading = requestActionLoadingIds.has(r.id);
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                이메일
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {email || user?.email || '-'}
+              </Typography>
+            </Box>
 
-                    return (
-                      <Paper key={r.id} variant="outlined" sx={{ p: 2 }}>
-                        <Stack spacing={1}>
-                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                            <Chip
-                              size="small"
-                              label={permLabel}
-                              color={r.requested_permission === 'write' ? 'primary' : 'default'}
-                            />
-                            <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
-                            <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                              {r.created_at ? new Date(r.created_at).toLocaleString('ko-KR') : ''}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                계정 상태
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {user?.status === 'approved' ? '승인됨' : user?.status}
+              </Typography>
+            </Box>
+
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                권한
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {user?.is_admin ? '관리자' : '일반 사용자'}
+              </Typography>
+            </Box>
+          </Paper>
+
+          {!user?.is_admin && (
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                공유 관리
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
+              </Typography>
+
+              <Button
+                variant="contained"
+                startIcon={<ShareIcon />}
+                onClick={() => setShareDialogOpen(true)}
+                fullWidth
+                sx={{ mb: 3 }}
+              >
+                공유 관리 열기
+              </Button>
+
+              <Divider sx={{ mb: 2 }} />
+
+              <Tabs value={requestTab} onChange={(e, v) => setRequestTab(v)} sx={{ mb: 2 }}>
+                <Tab label={`받은 요청 (${inboxRequests.length})`} />
+                <Tab label={`내 요청 (${outboxRequests.length})`} />
+              </Tabs>
+
+              {requestLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : (
+                <Stack spacing={1.5}>
+                  {(requestTab === 0 ? inboxRequests : outboxRequests).length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      표시할 요청이 없습니다.
+                    </Typography>
+                  ) : (
+                    (requestTab === 0 ? inboxRequests : outboxRequests).map((r) => {
+                      const permLabel = formatPermissionLabel(r.requested_permission);
+                      const statusInfo = formatStatusLabel(r.status);
+                      const isPending = r.status === 'pending';
+                      const isActionLoading = requestActionLoadingIds.has(r.id);
+
+                      return (
+                        <Paper key={r.id} variant="outlined" sx={{ p: 2 }}>
+                          <Stack spacing={1}>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                              <Chip
+                                size="small"
+                                label={permLabel}
+                                color={r.requested_permission === 'write' ? 'primary' : 'default'}
+                              />
+                              <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                                {r.created_at ? new Date(r.created_at).toLocaleString('ko-KR') : ''}
+                              </Typography>
+                            </Stack>
+
+                            <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                              폴더: {r.folder_path}
                             </Typography>
-                          </Stack>
 
-                          <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                            폴더: {r.folder_path}
-                          </Typography>
-
-                          {requestTab === 0 ? (
-                            <Typography variant="caption" color="text.secondary">
-                              요청자: {r.requester_username || r.requester_id}
-                            </Typography>
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">
-                              소유자: {r.owner_username || r.owner_id}
-                            </Typography>
-                          )}
-
-                          {r.message ? (
-                            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
-                              메시지: {r.message}
-                            </Typography>
-                          ) : null}
-
-                          <Stack direction="row" spacing={1} justifyContent="flex-end">
                             {requestTab === 0 ? (
-                              <>
-                                <Button
-                                  size="small"
-                                  variant="contained"
-                                  disabled={!isPending || isActionLoading}
-                                  onClick={() =>
-                                    withRequestActionLoading(r.id, async () => {
-                                      await approvePermissionRequest(r.id);
-                                      setMessage({ type: 'success', text: '요청을 승인했습니다.' });
-                                      await loadPermissionRequests();
-                                    })
-                                  }
-                                >
-                                  승인
-                                </Button>
+                              <Typography variant="caption" color="text.secondary">
+                                요청자: {r.requester_username || r.requester_id}
+                              </Typography>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                소유자: {r.owner_username || r.owner_id}
+                              </Typography>
+                            )}
+
+                            {r.message ? (
+                              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                                메시지: {r.message}
+                              </Typography>
+                            ) : null}
+
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                              {requestTab === 0 ? (
+                                <>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={!isPending || isActionLoading}
+                                    onClick={() =>
+                                      withRequestActionLoading(r.id, async () => {
+                                        await approvePermissionRequest(r.id);
+                                        setMessage({ type: 'success', text: '요청을 승인했습니다.' });
+                                        await loadPermissionRequests();
+                                      })
+                                    }
+                                  >
+                                    승인
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="error"
+                                    disabled={!isPending || isActionLoading}
+                                    onClick={() =>
+                                      withRequestActionLoading(r.id, async () => {
+                                        await rejectPermissionRequest(r.id);
+                                        setMessage({ type: 'success', text: '요청을 거절했습니다.' });
+                                        await loadPermissionRequests();
+                                      })
+                                    }
+                                  >
+                                    거절
+                                  </Button>
+                                </>
+                              ) : (
                                 <Button
                                   size="small"
                                   variant="outlined"
-                                  color="error"
                                   disabled={!isPending || isActionLoading}
                                   onClick={() =>
                                     withRequestActionLoading(r.id, async () => {
-                                      await rejectPermissionRequest(r.id);
-                                      setMessage({ type: 'success', text: '요청을 거절했습니다.' });
+                                      await cancelPermissionRequest(r.id);
+                                      setMessage({ type: 'success', text: '요청을 취소했습니다.' });
                                       await loadPermissionRequests();
                                     })
                                   }
                                 >
-                                  거절
+                                  취소
                                 </Button>
-                              </>
-                            ) : (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                disabled={!isPending || isActionLoading}
-                                onClick={() =>
-                                  withRequestActionLoading(r.id, async () => {
-                                    await cancelPermissionRequest(r.id);
-                                    setMessage({ type: 'success', text: '요청을 취소했습니다.' });
-                                    await loadPermissionRequests();
-                                  })
-                                }
-                              >
-                                취소
-                              </Button>
-                            )}
+                              )}
+                            </Stack>
                           </Stack>
-                        </Stack>
-                      </Paper>
-                    );
-                  })
-                )}
-              </Stack>
-            )}
-          </Paper>
-        )}
+                        </Paper>
+                      );
+                    })
+                  )}
+                </Stack>
+              )}
+            </Paper>
+          )}
+        </Box>
       </Box>
 
       {!user?.is_admin && (

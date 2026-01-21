@@ -73,7 +73,9 @@ JWT_EXPIRES_IN=30m
   - 테스트/옵션으로 로컬 파일시스템 저장을 원하면 `WEA_STORAGE_BACKEND=fs` 와 `WEA_FS_DIR`(또는 `WEA_METADATA_DIR`)를 설정하세요.
 - **썸네일**은 서버의 **메모리 캐시**에 저장되며, 서버 재시작 시 재생성됩니다.
   - 영상 썸네일 생성 과정에서 임시 파일을 `data/temp` 아래에 생성할 수 있습니다.
-- FFmpeg는 자동으로 감지되며, 찾을 수 없는 경우에만 `FFMPEG_PATH`를 설정하세요.
+- **FFmpeg(영상 썸네일)**: 서버 시작 시 FFmpeg를 **1회만 감지/초기화**합니다.
+  - FFmpeg가 없으면 **영상 썸네일은 자동으로 비활성화**되며(이미지 썸네일은 정상), 폴더 조회 시 FFmpeg를 반복 탐색하지 않습니다.
+  - FFmpeg 설치 후 PATH에 잡히지 않는 경우에만 `FFMPEG_PATH`를 설정하세요. (예: `FFMPEG_PATH=C:\\ffmpeg\\bin\\ffmpeg.exe`)
 - `WEBDAV_AUTH_TYPE`은 인증 방식을 명시적으로 지정할 때만 사용합니다 (auto/basic/digest).
 - `WEBDAV_UPSTREAM_URL`은 프록시 앞단에서 MOVE/COPY가 502 등을 반환할 때 설정하세요.
 
@@ -135,4 +137,3 @@ npm run client
    `http://localhost:5001` (또는 `.env`의 `PORT`)
 
 자세한 내용은 [README.md](../README.md)의 운영 환경 섹션을 참조하세요.
-

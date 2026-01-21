@@ -14,6 +14,7 @@ export const useFileManager = (user) => {
   const [webdavUrl, setWebdavUrl] = useState('');
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const requestIdRef = useRef(0);
+  const prevPathRef = useRef(currentPath);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -135,6 +136,13 @@ export const useFileManager = (user) => {
 
   useEffect(() => {
     if (currentPath) {
+      // Clear current list only when navigating to a different path.
+      // Keep the list intact for refreshes (loadFiles called without path change).
+      if (prevPathRef.current !== currentPath) {
+        setFiles([]);
+      }
+      prevPathRef.current = currentPath;
+
       loadFiles();
       // 공유됨 뷰는 쓰기 권한 체크 불필요 (읽기 전용 뷰)
       if (currentPath === '/__shared__') {

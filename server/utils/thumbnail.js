@@ -2,12 +2,120 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+const { execFile } = require('child_process');
 const ffmpeg = require('fluent-ffmpeg');
 const { getFileContents, isImageFile, isVideoFile } = require('./webdav');
 
 const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
 const thumbnailCache = new Map();
 const MAX_CACHE_SIZE = 1000;
+
+const FFMPEG_INIT_TIMEOUT_MS = parseInt(process.env.FFMPEG_INIT_TIMEOUT_MS) || 2000;
+
+const ffmpegState = {
+  checked: false,
+  available: false,
+  source: null, // env | projectRoot | win32KnownPath | path
+  path: null,
+  reason: null,
+};
+
+let ffmpegInitPromise = null;
+
+function getFfmpegStatus() {
+  return { ...ffmpegState };
+}
+
+async function canExecFfmpeg(cmdPath) {
+  return await new Promise((resolve) => {
+    execFile(cmdPath, ['-version'], { timeout: FFMPEG_INIT_TIMEOUT_MS }, (err) => {
+      if (!err) return resolve(true);
+      // Treat timeout as "present" to avoid false negatives on slow systems.
+      if (err.killed || err.signal === 'SIGTERM' || err.signal === 'SIGKILL') return resolve(true);
+      return resolve(false);
+    });
+  });
+}
+
+async function initFfmpegOnce() {
+  if (ffmpegState.checked) return getFfmpegStatus();
+  if (ffmpegInitPromise) return await ffmpegInitPromise;
+
+  ffmpegInitPromise = (async () => {
+    // 1) Explicit FFMPEG_PATH
+    if (process.env.FFMPEG_PATH) {
+      const resolved = path.resolve(process.env.FFMPEG_PATH);
+      try {
+        if (fs.existsSync(resolved) && (await canExecFfmpeg(resolved))) {
+          ffmpeg.setFfmpegPath(resolved);
+          ffmpegState.checked = true;
+          ffmpegState.available = true;
+          ffmpegState.source = 'env';
+          ffmpegState.path = resolved;
+          ffmpegState.reason = null;
+          return getFfmpegStatus();
+        }
+      } catch (e) {
+        // fall through
+      }
+    }
+
+    const platform = os.platform();
+
+    // 2) Windows-specific known locations (backward-compatible)
+    if (platform === 'win32') {
+      const { getProjectRoot } = require('./paths');
+      const projectRoot = getProjectRoot();
+
+      const candidates = [
+        path.join(projectRoot, 'ffmpeg.exe'),
+        'C:\\ffmpeg\\bin\\ffmpeg.exe',
+        'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+        'C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe',
+      ];
+
+      for (const candidate of candidates) {
+        try {
+          if (fs.existsSync(candidate) && (await canExecFfmpeg(candidate))) {
+            ffmpeg.setFfmpegPath(candidate);
+            ffmpegState.checked = true;
+            ffmpegState.available = true;
+            ffmpegState.source = candidate.includes(projectRoot) ? 'projectRoot' : 'win32KnownPath';
+            ffmpegState.path = candidate;
+            ffmpegState.reason = null;
+            return getFfmpegStatus();
+          }
+        } catch (e) {
+          // try next candidate
+        }
+      }
+    }
+
+    // 3) PATH lookup (mac/linux/windows)
+    if (await canExecFfmpeg('ffmpeg')) {
+      // fluent-ffmpeg defaults to 'ffmpeg' on PATH; no need to set an explicit path.
+      ffmpegState.checked = true;
+      ffmpegState.available = true;
+      ffmpegState.source = 'path';
+      ffmpegState.path = null;
+      ffmpegState.reason = null;
+      return getFfmpegStatus();
+    }
+
+    // Not available
+    ffmpegState.checked = true;
+    ffmpegState.available = false;
+    ffmpegState.source = null;
+    ffmpegState.path = null;
+    ffmpegState.reason = process.env.FFMPEG_PATH
+      ? 'FFMPEG_PATH is set but ffmpeg is not executable'
+      : 'ffmpeg not found in PATH';
+    return getFfmpegStatus();
+  })();
+
+  return await ffmpegInitPromise;
+}
 
 function getThumbnailHash(webdavPath) {
   return crypto.createHash('md5').update(webdavPath).digest('hex');
@@ -85,6 +193,12 @@ async function generateVideoThumbnail(filePath, webdavPath) {
     if (cached) {
       return { buffer: cached.buffer, extension: cached.extension };
     }
+
+    // Fast-fail if FFmpeg isn't available: avoids downloading the video and repeated errors.
+    const status = await initFfmpegOnce();
+    if (!status.available) {
+      return null;
+    }
     
     const buffer = await getFileContents(webdavPath);
     if (!buffer || buffer.length === 0) {
@@ -107,42 +221,7 @@ async function generateVideoThumbnail(filePath, webdavPath) {
     tempVideoPath += ext || '.mp4';
     
     fs.writeFileSync(tempVideoPath, buffer);
-    
-    let ffmpegFound = false;
-    if (process.env.FFMPEG_PATH) {
-      const ffmpegPath = path.resolve(process.env.FFMPEG_PATH);
-      if (fs.existsSync(ffmpegPath)) {
-        ffmpeg.setFfmpegPath(ffmpegPath);
-        ffmpegFound = true;
-      }
-    }
-    
-    if (!ffmpegFound) {
-      const { getProjectRoot } = require('./paths');
-      const projectRoot = getProjectRoot();
-      const os = require('os');
-      const platform = os.platform();
-      
-      const projectRootFfmpeg = path.join(projectRoot, 'ffmpeg.exe');
-      if (fs.existsSync(projectRootFfmpeg)) {
-        ffmpeg.setFfmpegPath(projectRootFfmpeg);
-        ffmpegFound = true;
-      } else if (platform === 'win32') {
-        const possiblePaths = [
-          'C:\\ffmpeg\\bin\\ffmpeg.exe',
-          'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
-          'C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe',
-        ];
-        
-        for (const possiblePath of possiblePaths) {
-          if (fs.existsSync(possiblePath)) {
-            ffmpeg.setFfmpegPath(possiblePath);
-            ffmpegFound = true;
-            break;
-          }
-        }
-      }
-    }    
+
     await new Promise((resolve, reject) => {
       ffmpeg(tempVideoPath)
         .screenshots({
@@ -238,6 +317,8 @@ async function ensureThumbnail(webdavPath) {
       }
       return null;
     } else if (isVideoFile(filename)) {
+      const status = await initFfmpegOnce();
+      if (!status.available) return null;
       const result = await generateVideoThumbnail(null, webdavPath);
       if (result) {
         return getThumbnailUrl(webdavPath);
@@ -259,6 +340,8 @@ module.exports = {
   generateVideoThumbnail,
   ensureThumbnail,
   getThumbnailHash,
+  initFfmpegOnce,
+  getFfmpegStatus,
   thumbnailCache,
 };
 

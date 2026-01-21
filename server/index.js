@@ -74,6 +74,12 @@ if (fs.existsSync(clientBuildPath)) {
   app.use(express.static(clientBuildPath));
 }
 
+const requestLogger = require('./middleware/requestLogger');
+app.use('/api', requestLogger());
+
+// Thumbnails are non-JSON responses; mount before forcing JSON Content-Type.
+app.use('/api/thumbnails', require('./routes/thumbnails'));
+
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
@@ -137,6 +143,22 @@ if (fs.existsSync(clientBuildPath)) {
 const { initMetadataStore } = require('./store/bootstrap');
 initMetadataStore().then(async () => {
   console.log('Metadata store initialized');
+
+  // Initialize FFmpeg once on startup to avoid repeated lookups/errors per request.
+  try {
+    const { initFfmpegOnce } = require('./utils/thumbnail');
+    const status = await initFfmpegOnce();
+    if (status.available) {
+      const source = status.source ? ` (${status.source})` : '';
+      const pathInfo = status.path ? ` - ${status.path}` : '';
+      console.log(`✓ FFmpeg: available${source}${pathInfo}`);
+    } else {
+      console.warn('⚠ FFmpeg: not available. Video thumbnails are disabled.');
+      console.warn('  Install ffmpeg and ensure it is in PATH, or set FFMPEG_PATH in .env');
+    }
+  } catch (e) {
+    console.warn('⚠ FFmpeg initialization failed. Video thumbnails are disabled.');
+  }
   
   // Test WebDAV connection on startup
   try {

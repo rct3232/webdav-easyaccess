@@ -15,7 +15,32 @@ if (fs.existsSync(envPath)) {
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// CORS hardening:
+// - In production, set CORS_ORIGINS (comma-separated) to restrict browser access.
+// - If unset, we keep backward-compatible "allow all" behavior (but warn in production).
+const corsOriginsEnv = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '';
+const corsOrigins = corsOriginsEnv
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
+  console.warn('Warning: CORS_ORIGINS is not set. Allowing all origins in production.');
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow non-browser clients (no Origin header) like curl/server-to-server.
+      if (!origin) return callback(null, true);
+      if (corsOrigins.length === 0) return callback(null, true);
+      return callback(null, corsOrigins.includes(origin));
+    },
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Content-Disposition', 'X-WEA-Skipped-Count', 'X-WEA-Skipped'],
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 

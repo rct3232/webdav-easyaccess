@@ -21,7 +21,7 @@ import ShareDialog from '../components/ShareDialog';
 import axios from 'axios';
 
 const MyPage = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -74,9 +74,11 @@ const MyPage = () => {
 
     try {
       await axios.put(`/api/users/${user.id}/password`, { password });
-      setMessage({ type: 'success', text: '비밀번호가 성공적으로 변경되었습니다.' });
+      setMessage({ type: 'success', text: '비밀번호가 성공적으로 변경되었습니다. 보안을 위해 다시 로그인해주세요.' });
       setPassword('');
       setConfirmPassword('');
+      // Password change rotates token_version on the server, invalidating existing tokens.
+      logout();
     } catch (error) {
       setMessage({ 
         type: 'error', 

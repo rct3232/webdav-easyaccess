@@ -4,15 +4,35 @@
  */
 
 const jwt = require('jsonwebtoken');
-const { generateToken, verifyToken, authenticateToken } = require('../auth');
+const bcrypt = require('bcryptjs');
+const userStore = require('../../store/userStore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key';
 
 describe('auth utilities', () => {
-  const mockUser = {
-    id: 1,
-    username: 'testuser'
-  };
+  let generateToken;
+  let verifyToken;
+  let authenticateToken;
+  let mockUser;
+
+  beforeAll(async () => {
+    // Load with default test env (see server/test-setup.js)
+    ({ generateToken, verifyToken, authenticateToken } = require('../auth'));
+
+    // Create a real user so authenticateToken can validate token_version.
+    const username = `authutil_${Math.random().toString(36).slice(2, 10)}`;
+    const created = await userStore.createUser({
+      username,
+      email: `${username}@example.com`,
+      passwordHash: await bcrypt.hash('test-password', 10),
+      isAdmin: false,
+    });
+    mockUser = {
+      id: created.id,
+      username: created.username,
+      token_version: created.token_version,
+    };
+  });
 
   describe('generateToken', () => {
     it('should generate a valid JWT token', () => {
@@ -38,9 +58,26 @@ describe('auth utilities', () => {
       expect(decoded.exp).toBeDefined();
       expect(decoded.iat).toBeDefined();
       
-      // Token should expire in approximately 7 days (604800 seconds)
+      // Default token expiry should be approximately 30 minutes (1800 seconds)
       const expirationTime = decoded.exp - decoded.iat;
-      expect(expirationTime).toBeCloseTo(604800, -2);
+      expect(expirationTime).toBeCloseTo(1800, -1);
+    });
+
+    it('should respect JWT_EXPIRES_IN env var', () => {
+      const prev = process.env.JWT_EXPIRES_IN;
+      process.env.JWT_EXPIRES_IN = '10m';
+      jest.resetModules();
+      const { generateToken: generateTokenWithEnv } = require('../auth');
+
+      const token = generateTokenWithEnv(mockUser);
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const expirationTime = decoded.exp - decoded.iat;
+      expect(expirationTime).toBeCloseTo(600, -1);
+
+      // restore
+      if (prev === undefined) delete process.env.JWT_EXPIRES_IN;
+      else process.env.JWT_EXPIRES_IN = prev;
+      jest.resetModules();
     });
 
     it('should generate different tokens for different users', () => {
@@ -150,41 +187,45 @@ describe('auth utilities', () => {
       const token = generateToken(mockUser);
       mockReq.headers['authorization'] = `Bearer ${token}`;
       
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockReq.user).toBeDefined();
+        expect(mockReq.user.id).toBe(mockUser.id);
+        expect(mockReq.user.username).toBe(mockUser.username);
+        expect(mockNext).toHaveBeenCalled();
+        expect(mockRes.status).not.toHaveBeenCalled();
+      });
       
-      expect(mockReq.user).toBeDefined();
-      expect(mockReq.user.id).toBe(mockUser.id);
-      expect(mockReq.user.username).toBe(mockUser.username);
-      expect(mockNext).toHaveBeenCalled();
-      expect(mockRes.status).not.toHaveBeenCalled();
     });
 
     it('should reject request without token', () => {
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockRes.status).toHaveBeenCalledWith(401);
+        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
       
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
     it('should reject request with invalid token', () => {
       mockReq.headers['authorization'] = 'Bearer invalid.token.string';
       
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockRes.status).toHaveBeenCalledWith(403);
+        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
       
-      expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
     it('should reject request with malformed authorization header', () => {
       mockReq.headers['authorization'] = 'InvalidFormat';
       
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockRes.status).toHaveBeenCalledWith(401);
+        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
       
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
     it('should reject request with expired token', () => {
@@ -197,12 +238,12 @@ describe('auth utilities', () => {
       return new Promise((resolve) => {
         setTimeout(() => {
           mockReq.headers['authorization'] = `Bearer ${expiredToken}`;
-          authenticateToken(mockReq, mockRes, mockNext);
-          
-          expect(mockRes.status).toHaveBeenCalledWith(403);
-          expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
-          expect(mockNext).not.toHaveBeenCalled();
-          resolve();
+          authenticateToken(mockReq, mockRes, mockNext).then(() => {
+            expect(mockRes.status).toHaveBeenCalledWith(403);
+            expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
+            expect(mockNext).not.toHaveBeenCalled();
+            resolve();
+          });
         }, 100);
       });
     });
@@ -211,11 +252,12 @@ describe('auth utilities', () => {
       const token = generateToken(mockUser);
       mockReq.headers['authorization'] = token; // No "Bearer " prefix
       
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        // Should fail because it expects "Bearer token" format
+        expect(mockRes.status).toHaveBeenCalledWith(401);
+        expect(mockNext).not.toHaveBeenCalled();
+      });
       
-      // Should fail because it expects "Bearer token" format
-      expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
     it('should handle multiple authentication attempts', () => {
@@ -223,15 +265,17 @@ describe('auth utilities', () => {
       mockReq.headers['authorization'] = `Bearer ${token}`;
       
       // First attempt
-      authenticateToken(mockReq, mockRes, mockNext);
-      expect(mockNext).toHaveBeenCalledTimes(1);
-      
-      // Reset mocks
-      mockNext.mockClear();
-      
-      // Second attempt with same token
-      authenticateToken(mockReq, mockRes, mockNext);
-      expect(mockNext).toHaveBeenCalledTimes(1);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockNext).toHaveBeenCalledTimes(1);
+
+        // Reset mocks
+        mockNext.mockClear();
+
+        // Second attempt with same token
+        return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+          expect(mockNext).toHaveBeenCalledTimes(1);
+        });
+      });
     });
   });
 
@@ -256,11 +300,12 @@ describe('auth utilities', () => {
       };
       const mockNext = jest.fn();
       
-      authenticateToken(mockReq, mockRes, mockNext);
+      return authenticateToken(mockReq, mockRes, mockNext).then(() => {
+        expect(mockReq.user).toBeDefined();
+        expect(mockReq.user.id).toBe(mockUser.id);
+        expect(mockNext).toHaveBeenCalled();
+      });
       
-      expect(mockReq.user).toBeDefined();
-      expect(mockReq.user.id).toBe(mockUser.id);
-      expect(mockNext).toHaveBeenCalled();
     });
   });
 });

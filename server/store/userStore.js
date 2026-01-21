@@ -171,6 +171,8 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
       password: passwordHash,
       status: isAdmin ? 'approved' : 'pending',
       is_admin: isAdmin ? 1 : 0,
+      // Used for server-side token invalidation (logout-all / password change, etc.)
+      token_version: 0,
       created_at: createdAt,
       updated_at: createdAt,
     };
@@ -244,6 +246,8 @@ async function updatePassword(userId, passwordHash) {
     const user = await findById(userId);
     if (!user) return { success: true };
     user.password = passwordHash;
+    const current = Number.isInteger(user.token_version) ? user.token_version : 0;
+    user.token_version = current + 1;
     await writeUserByUsername(user.username, user);
     return { success: true };
   });

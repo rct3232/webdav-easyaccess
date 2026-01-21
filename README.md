@@ -104,20 +104,29 @@ npm start
 
 - **WEBDAV_URL**: WebDAV 서버 URL (경로 prefix 포함 가능)
 - **WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV 계정
-- **JWT_SECRET**: JWT 서명 키(프로덕션에서 반드시 변경)
+- **JWT_SECRET**: JWT 서명 키(프로덕션에서 반드시 변경, 미설정 시 서버가 시작되지 않음)
 - **PORT**: 서버 포트 (기본값 `5001`)
 
 ### 선택(주요)
 
+- **JWT_EXPIRES_IN**: JWT 만료 시간 (기본 `30m`, 예: `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: 가입/승인 알림 메일
 - **ADMIN_DEFAULT_PASSWORD**: 기본 admin 비밀번호(기본 `admin`)
 - **WEA_DISABLE_DEFAULT_ADMIN**: 기본 admin 자동 생성 비활성화(`true`)
 - **WEA_STORAGE_BACKEND**: 메타데이터 저장소 선택(`webdav` 또는 `fs`, 기본은 `webdav`)
 - **WEA_FS_DIR / WEA_METADATA_DIR**: `fs` 저장소 사용 시 저장 경로
+- **CORS_ORIGINS / CORS_ORIGIN**: CORS 허용 Origin 제한(권장: 운영에서 설정, 쉼표로 여러 개 가능)
+- **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: 로그인 rate limit (best-effort, in-memory)
 - **WEBDAV_AUTH_TYPE**: `auto/basic/digest`
 - **WEBDAV_UPSTREAM_URL**: 프록시 환경에서 MOVE/COPY가 502 등을 반환할 때 우회용 upstream base URL
 - **MAX_THUMBNAIL_SIZE**: 썸네일 최대 크기(기본 `300`)
 - **FFMPEG_PATH**: FFmpeg 경로(자동 감지 실패 시)
+
+## 보안 메모
+
+- **브라우저 종료 시 로그아웃**: 인증 토큰은 `sessionStorage`에 저장되어 브라우저(탭/창) 종료 시 자동으로 로그아웃됩니다.
+- **비밀번호 변경 시 재로그인**: 비밀번호 변경 시 서버가 `token_version`을 증가시켜 기존 토큰을 즉시 무효화합니다(다른 기기 포함).
+- **HTTPS 권장/강제**: HTTP/혼재 환경에서는 네트워크 구간에서 토큰/자격증명이 탈취될 수 있습니다. 운영은 **HTTPS를 강제**하는 구성을 권장합니다.
 
 ## 권한 정책(요약)
 

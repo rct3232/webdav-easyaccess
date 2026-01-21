@@ -33,6 +33,8 @@ WEBDAV_PASSWORD=your-password
 # Server Configuration (required)
 PORT=5001
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+# Auth token expiry (default: 30m)
+JWT_EXPIRES_IN=30m
 
 # Email Configuration (optional - for user notifications)
 # EMAIL_HOST=smtp.gmail.com
@@ -48,10 +50,22 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 # WEA_DISABLE_DEFAULT_ADMIN=true
 # WEA_STORAGE_BACKEND=webdav
 # WEA_FS_DIR=./.wea-local
+
+# CORS (recommended in production; comma-separated)
+# CORS_ORIGINS=https://your-domain.com,https://admin.your-domain.com
+# Login rate limit (best-effort, in-memory)
+# LOGIN_RATE_LIMIT_WINDOW_MS=900000
+# LOGIN_RATE_LIMIT_MAX=20
 # FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
 # WEBDAV_AUTH_TYPE=auto
 # WEBDAV_UPSTREAM_URL=http://your-upstream-host:port
 ```
+
+## 보안 참고(중요)
+
+- **브라우저 종료 시 로그아웃**: 현재 클라이언트는 인증 토큰을 `sessionStorage`에 저장하므로, 브라우저(탭/창) 종료 시 자동으로 로그아웃됩니다.
+- **HTTPS 권장/강제**: 운영 환경에서 HTTPS가 보장되지 않으면, 네트워크 구간에서 토큰/자격증명이 탈취될 수 있습니다. 가능한 한 **리버스 프록시(Nginx/Caddy 등)로 HTTPS를 강제**하세요.
+- **JWT_SECRET 필수**: 운영에서는 반드시 `JWT_SECRET`을 설정해야 하며, 기본값을 사용하면 서버가 시작되지 않습니다.
 
 ### 참고(저장 위치)
 

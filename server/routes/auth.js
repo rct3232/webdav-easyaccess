@@ -6,6 +6,53 @@ const { generateToken, authenticateToken } = require('../utils/auth');
 const { sendRegistrationPendingEmail } = require('../utils/email');
 const { pathExists } = require('../utils/webdav');
 
+// Simple in-memory login rate limiter (best-effort, per-process).
+// Configure via env:
+// - LOGIN_RATE_LIMIT_WINDOW_MS (default: 900000 = 15m)
+// - LOGIN_RATE_LIMIT_MAX (default: 20)
+const LOGIN_RATE_LIMIT_WINDOW_MS = parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000', 10);
+const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX || '20', 10);
+const loginAttempts = new Map();
+
+function getClientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) {
+    return xff.split(',')[0].trim();
+  }
+  return req.ip || '';
+}
+
+function loginKey(req, username) {
+  // Key by IP to avoid bypass by rotating usernames.
+  return `${getClientIp(req)}`;
+}
+
+function checkLoginRateLimit(req, username) {
+  const key = loginKey(req, username);
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.resetAt) return { ok: true, key };
+  if (entry.count >= LOGIN_RATE_LIMIT_MAX) {
+    return { ok: false, key, retryAfterMs: entry.resetAt - now };
+  }
+  return { ok: true, key };
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_RATE_LIMIT_WINDOW_MS });
+    return;
+  }
+  entry.count += 1;
+  loginAttempts.set(key, entry);
+}
+
+function clearLoginFailures(key) {
+  loginAttempts.delete(key);
+}
+
 router.post('/register', async (req, res) => {
   let createdUser = null;
   
@@ -83,17 +130,29 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: '사용자명과 비밀번호를 입력해주세요.' });
     }
 
+    const limit = checkLoginRateLimit(req, username);
+    if (!limit.ok) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((limit.retryAfterMs || 0) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      return res.status(429).json({
+        error: '로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.',
+      });
+    }
+
     const user = await User.findByUsername(username);
     if (!user) {
+      recordLoginFailure(limit.key);
       return res.status(401).json({ error: '사용자명 또는 비밀번호가 올바르지 않습니다.' });
     }
 
     const isValid = await User.verifyPassword(user, password);
     if (!isValid) {
+      recordLoginFailure(limit.key);
       return res.status(401).json({ error: '사용자명 또는 비밀번호가 올바르지 않습니다.' });
     }
 
     if (user.status === 'pending') {
+      recordLoginFailure(limit.key);
       return res.status(403).json({ 
         error: '계정 승인 대기 중',
         status: 'pending',
@@ -102,6 +161,7 @@ router.post('/login', async (req, res) => {
     }
 
     if (user.status === 'rejected') {
+      recordLoginFailure(limit.key);
       return res.status(403).json({ 
         error: '계정 가입 거절됨',
         status: 'rejected',
@@ -110,6 +170,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = generateToken(user);
+    clearLoginFailures(limit.key);
 
     res.json({
       message: '로그인 성공',

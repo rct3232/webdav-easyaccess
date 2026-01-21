@@ -14,14 +14,51 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => {
+    // Session-only auth: closing the browser should log out.
+    const sessionToken = sessionStorage.getItem('token');
+    // Cleanup legacy persistence from older versions.
+    try {
+      localStorage.removeItem('token');
+    } catch {
+      // ignore
+    }
+    return sessionToken;
+  });
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token');
+    try {
+      sessionStorage.removeItem('token');
+    } catch {
+      // ignore
+    }
+    // Cleanup legacy persistence from older versions.
+    try {
+      localStorage.removeItem('token');
+    } catch {
+      // ignore
+    }
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
   }, []);
+
+  useEffect(() => {
+    // Global auto-logout on invalid/expired auth (covers all API calls).
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const status = error?.response?.status;
+        if ((status === 401 || status === 403) && sessionStorage.getItem('token')) {
+          logout();
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      axios.interceptors.response.eject(interceptorId);
+    };
+  }, [logout]);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -53,7 +90,7 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post('/api/auth/login', { username, password });
       const { token: newToken, user: userData } = response.data;
       
-      localStorage.setItem('token', newToken);
+      sessionStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -80,7 +117,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const { token: newToken, user: userData } = response.data;
-      localStorage.setItem('token', newToken);
+      sessionStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;

@@ -4,17 +4,25 @@ import { sortFiles } from '../utils/fileUtils';
 import { SORT_MODES } from '../constants/fileManager';
 import axios from 'axios';
 
-export const useFileManager = (user) => {
+export const useFileManager = (user, options = {}) => {
+  const { onLoadComplete } = options;
+  const onLoadCompleteRef = useRef(onLoadComplete);
   const [currentPath, setCurrentPath] = useState(() => {
     return user?.is_admin ? '/' : `/${user?.username || ''}`;
   });
   const [files, setFiles] = useState([]);
+  // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
   const [loading, setLoading] = useState(true);
   const [sortMode, setSortMode] = useState(SORT_MODES.NAME_ASC);
   const [webdavUrl, setWebdavUrl] = useState('');
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const requestIdRef = useRef(0);
   const prevPathRef = useRef(currentPath);
+  
+  // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
+  useEffect(() => {
+    onLoadCompleteRef.current = onLoadComplete;
+  }, [onLoadComplete]);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -110,6 +118,9 @@ export const useFileManager = (user) => {
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
+        // 로딩 완료 시 콜백 호출
+        // ref를 사용하여 의존성 배열에 포함하지 않음 (무한 루프 방지)
+        onLoadCompleteRef.current?.();
       }
     }
   }, [currentPath, user]);

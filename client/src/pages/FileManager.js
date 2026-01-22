@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   AppBar,
@@ -101,7 +101,13 @@ const FileManager = () => {
     webdavUrl,
     loadFiles,
     hasWritePermission,
-  } = useFileManager(user);
+  } = useFileManager(user, {
+    onLoadComplete: isMobile ? (() => {
+      if (handleLoadCompleteRef.current) {
+        handleLoadCompleteRef.current();
+      }
+    }) : undefined,
+  });
 
   const {
     selectionMode,
@@ -218,7 +224,11 @@ const FileManager = () => {
   // 모바일 새로고침/폴더 이동 완료 상태
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const refreshSuccessTimeoutRef = useRef(null);
-  const wasLoadingRef = useRef(false);
+  
+  // 상수 정의
+  const REFRESH_SUCCESS_DURATION = 500; // 체크 아이콘 표시 시간 (ms)
+  const INDICATOR_BASE_HEIGHT = 60; // 기본 높이 (px)
+  const MAX_PULL_MARGIN = 40; // 최대 당김 마진 (px)
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -234,50 +244,157 @@ const FileManager = () => {
     pullDistance,
     isPulling,
     isRefreshing,
-    touchHandlers,
+    threshold,
+    resetPull,
   } = usePullToRefresh(
     loadFiles,
     {
       scrollContainerRef: isMobile ? scrollContainerRef : null,
-      threshold: 40,
-      maxPullDistance: 80,
+      threshold: 240,
+      maxPullDistance: 300,
+      showRefreshSuccess: isMobile ? showRefreshSuccess : false,
+      onRefreshComplete: isMobile ? (() => {
+        if (handleRefreshCompleteRef.current) {
+          handleRefreshCompleteRef.current();
+        }
+      }) : undefined,
     }
   );
 
-  // 모바일에서 로딩 완료 시 체크 아이콘 표시
-  useEffect(() => {
-    if (isMobile) {
-      const isLoading = isRefreshing || loading;
-      
-      // 로딩이 완료되었을 때 (이전에 로딩 중이었고 지금은 완료된 경우)
-      if (wasLoadingRef.current && !isLoading) {
-        // 이전 타임아웃이 있으면 클리어
-        if (refreshSuccessTimeoutRef.current) {
-          clearTimeout(refreshSuccessTimeoutRef.current);
-        }
-        
-        // 체크 아이콘 표시
-        setShowRefreshSuccess(true);
-        
-        // 0.5초 후 사라지도록
-        refreshSuccessTimeoutRef.current = setTimeout(() => {
-          setShowRefreshSuccess(false);
-        }, 500);
-      } else if (isLoading) {
-        // 로딩 중이면 체크 아이콘 숨김
-        setShowRefreshSuccess(false);
-      }
-      
-      // 현재 로딩 상태 저장
-      wasLoadingRef.current = isLoading;
+  // 새로고침/로딩 완료 시 체크 아이콘 표시하는 공통 함수
+  /**
+   * @param {Object} options - 옵션
+   * @param {boolean} options.shouldResetPull - resetPull 호출 여부 (기본: false)
+   * @param {boolean} options.shouldCheckRefreshing - isRefreshing 체크 여부 (기본: false)
+   */
+  const showRefreshSuccessIndicator = useCallback((options = {}) => {
+    const { shouldResetPull = false, shouldCheckRefreshing = false } = options;
+    
+    if (!isMobile) return;
+    if (shouldCheckRefreshing && isRefreshing) return;
+    
+    // 이전 타임아웃이 있으면 클리어
+    if (refreshSuccessTimeoutRef.current) {
+      clearTimeout(refreshSuccessTimeoutRef.current);
     }
     
-    return () => {
-      if (refreshSuccessTimeoutRef.current) {
-        clearTimeout(refreshSuccessTimeoutRef.current);
+    // 즉시 체크 아이콘 표시 (동기적으로 설정하여 깜빡임 방지)
+    setShowRefreshSuccess(true);
+    
+    // 지정된 시간 후 사라지도록
+    refreshSuccessTimeoutRef.current = setTimeout(() => {
+      setShowRefreshSuccess(false);
+      if (shouldResetPull && resetPull) {
+        resetPull();
       }
-    };
-  }, [isMobile, isRefreshing, loading]);
+    }, REFRESH_SUCCESS_DURATION);
+  }, [isMobile, isRefreshing, resetPull]);
+
+  // 새로고침 완료 시 즉시 showRefreshSuccess를 true로 설정하는 콜백
+  // (usePullToRefresh보다 먼저 정의되어야 함)
+  const handleRefreshCompleteRef = useRef(null);
+  const handleLoadCompleteRef = useRef(null);
+  
+  // 폴더 이동/로딩 완료 시 즉시 showRefreshSuccess를 true로 설정하는 콜백
+  const handleLoadComplete = useCallback(() => {
+    showRefreshSuccessIndicator({ shouldCheckRefreshing: true });
+  }, [showRefreshSuccessIndicator]);
+  
+  // ref에 콜백 저장
+  handleLoadCompleteRef.current = handleLoadComplete;
+
+  // 새로고침 완료 시 즉시 showRefreshSuccess를 true로 설정하는 콜백
+  const handleRefreshComplete = useCallback(() => {
+    showRefreshSuccessIndicator({ shouldResetPull: true });
+  }, [showRefreshSuccessIndicator]);
+
+  // ref에 콜백 저장
+  handleRefreshCompleteRef.current = handleRefreshComplete;
+
+
+
+  // 진행률 계산 및 임계값 도달 여부
+  const progress = Math.min(pullDistance / threshold, 1);
+  const hasReachedThreshold = pullDistance >= threshold;
+
+  // JSX 조건 변수 추출 (가독성 향상 및 중복 제거)
+  const shouldShowIndicator = isPulling || isRefreshing || loading || showRefreshSuccess;
+  const isActiveLoading = isRefreshing || loading || showRefreshSuccess;
+  const isPullingOnly = isPulling && !isRefreshing && !loading && !showRefreshSuccess;
+  const isDeterminateProgress = isPullingOnly;
+
+  // 스타일 객체를 useMemo로 추출하여 중복 제거
+  const indicatorStyles = useMemo(() => ({
+    paddingTop: shouldShowIndicator ? '16px' : '0px',
+    paddingBottom: shouldShowIndicator ? '16px' : '0px',
+    marginTop: isActiveLoading 
+      ? '0px' 
+      : `${Math.max(-pullDistance * 0.5, -MAX_PULL_MARGIN)}px`,
+    transition: isActiveLoading 
+      ? 'margin-top 0.3s ease-out, min-height 0.3s ease-out, opacity 0.3s ease-out' 
+      : isPulling
+      ? 'none' // 당기는 중에는 transition 없이 즉시 반응
+      : 'margin-top 0.15s ease-out, min-height 0.15s ease-out, opacity 0.15s ease-out',
+    opacity: shouldShowIndicator 
+      ? (isActiveLoading ? 1 : Math.min(pullDistance / threshold, 1))
+      : 0,
+    minHeight: shouldShowIndicator
+      ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : `${INDICATOR_BASE_HEIGHT}px`)
+      : 0,
+    height: shouldShowIndicator 
+      ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : 'auto')
+      : 0,
+    overflow: 'hidden',
+  }), [shouldShowIndicator, isActiveLoading, isPullingOnly, isPulling, pullDistance, threshold]);
+
+  // 아이콘 스타일
+  const iconStyles = useMemo(() => ({
+    width: 24,
+    height: 24,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    mb: 1,
+    transform: isPullingOnly ? `rotate(${pullDistance * 2}deg)` : 'none',
+    transition: 'transform 0.1s ease-out, color 0.2s ease',
+  }), [isPullingOnly, pullDistance]);
+
+  // CircularProgress 색상 계산
+  const progressColor = useMemo(() => {
+    if (hasReachedThreshold && isPullingOnly) {
+      return 'primary.main';
+    }
+    if (isPullingOnly) {
+      return 'text.disabled';
+    }
+    return 'primary.main';
+  }, [hasReachedThreshold, isPullingOnly]);
+
+  // 텍스트 색상 계산
+  const textColor = useMemo(() => {
+    if (showRefreshSuccess) {
+      return 'success.main';
+    }
+    if (hasReachedThreshold && isPullingOnly) {
+      return 'primary.main';
+    }
+    return 'text.secondary';
+  }, [showRefreshSuccess, hasReachedThreshold, isPullingOnly]);
+
+  // 텍스트 내용 계산
+  const textContent = useMemo(() => {
+    if (showRefreshSuccess) {
+      return '완료';
+    }
+    if (isRefreshing || loading) {
+      return '로딩 중...';
+    }
+    if (hasReachedThreshold) {
+      return '놓으면 새로고침';
+    }
+    return '당겨서 새로고침';
+  }, [showRefreshSuccess, isRefreshing, loading, hasReachedThreshold]);
+
 
   // Processing map updater
   const { markProcessing, clearProcessing } = createProcessingUpdater(setProcessingMap);
@@ -1113,7 +1230,6 @@ const FileManager = () => {
 
           <Box
             ref={scrollContainerRef}
-            {...(isMobile ? touchHandlers : {})}
             sx={{
               flex: 1,
               overflow: 'auto',
@@ -1126,37 +1242,22 @@ const FileManager = () => {
               WebkitOverflowScrolling: 'touch',
               // Optional: contain bounce within this scroll area
               overscrollBehaviorY: 'contain',
+              // touch-action: 수직 스크롤만 허용하여 pull-to-refresh와 충돌 방지
+              touchAction: 'pan-y',
             }}
           >
             {/* Pull-to-refresh 시각적 피드백 - 실제 콘텐츠 영역에 포함 */}
             {isMobile && (
-              <Collapse in={isPulling || isRefreshing || loading || showRefreshSuccess} timeout={400}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingTop: '16px',
-                    paddingBottom: '16px',
-                    marginTop: (isRefreshing || loading) ? '0px' : `${Math.max(-pullDistance * 0.5, -40)}px`,
-                    transition: (isRefreshing || loading) 
-                      ? 'margin-top 0.3s ease-out' 
-                      : 'margin-top 0.15s ease-out',
-                    opacity: (isRefreshing || loading || showRefreshSuccess) ? 1 : Math.min(pullDistance / 40, 1),
-                    minHeight: '60px',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      mb: 1,
-                    }}
-                  >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  ...indicatorStyles,
+                }}
+              >
+                  <Box sx={iconStyles}>
                     {showRefreshSuccess ? (
                       <CheckCircleIcon
                         sx={{
@@ -1170,8 +1271,11 @@ const FileManager = () => {
                       <CircularProgress
                         size={24}
                         thickness={4}
+                        value={isDeterminateProgress ? progress * 100 : undefined}
+                        variant={isDeterminateProgress ? 'determinate' : 'indeterminate'}
                         sx={{
-                          color: 'primary.main',
+                          color: progressColor,
+                          transition: 'color 0.2s ease',
                         }}
                       />
                     )}
@@ -1179,19 +1283,19 @@ const FileManager = () => {
                   <Typography
                     variant="caption"
                     sx={{
-                      color: showRefreshSuccess ? 'success.main' : 'text.secondary',
+                      color: textColor,
                       fontSize: '0.75rem',
                       lineHeight: '1.2rem',
                       height: '1.2rem',
                       display: 'flex',
                       alignItems: 'center',
-                      visibility: (isRefreshing || loading || showRefreshSuccess) ? 'visible' : 'hidden',
+                      visibility: shouldShowIndicator ? 'visible' : 'hidden',
+                      transition: 'color 0.2s ease',
                     }}
                   >
-                    {showRefreshSuccess ? '완료' : '로딩 중...'}
+                    {textContent}
                   </Typography>
-                </Box>
-              </Collapse>
+              </Box>
             )}
             {!isMobile && loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>

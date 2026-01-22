@@ -318,24 +318,34 @@ const FileManager = () => {
       return;
     }
     
-    // 권한 체크
+    // 이전 경로 저장 (롤백용)
+    const previousPath = currentPathRef.current;
+    
+    // Optimistic update: 경로 즉시 변경
+    setCurrentPath(path);
+    
+    // 권한 체크는 백그라운드에서 수행
     if (!user?.is_admin) {
       try {
         const permission = await checkPermission(path);
         if (!permission.hasRead) {
+          // 권한 없음: 이전 경로로 롤백
+          setCurrentPath(previousPath);
           showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
           return;
         }
       } catch (error) {
+        // 에러 발생: 이전 경로로 롤백
+        setCurrentPath(previousPath);
         if (error.response?.status === 403) {
           showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
-          return;
+        } else {
+          console.error('Failed to check permission:', error);
+          showErrorMessage(setDropMessage, null, '권한 확인 중 오류가 발생했습니다.');
         }
-        console.error('Failed to check permission:', error);
+        return;
       }
     }
-    
-    setCurrentPath(path);
   };
 
   const handleFileClick = async (file) => {
@@ -343,32 +353,40 @@ const FileManager = () => {
       toggleFileSelection(file);
     } else {
       if (file.type === 'directory') {
-        // 권한이 없는 폴더는 클릭 불가
+        // 권한이 없는 폴더는 클릭 불가 (이미 표시된 정보 활용)
         if (file.hasReadPermission === false) {
           showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
           return;
         }
         
-        // 권한 체크 (서버 측에서도 확인)
+        // 이전 경로 저장
+        const previousPath = currentPathRef.current;
+        
+        // Optimistic update: 경로 즉시 변경
+        setCurrentPath(file.path);
+        
+        // 권한 체크는 백그라운드에서 수행 (서버 측 확인)
         if (!user?.is_admin) {
           try {
             const permission = await checkPermission(file.path);
             if (!permission.hasRead) {
+              // 권한 없음: 롤백
+              setCurrentPath(previousPath);
               showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
               return;
             }
           } catch (error) {
+            // 에러 발생: 롤백
+            setCurrentPath(previousPath);
             if (error.response?.status === 403) {
               showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
-              return;
+            } else {
+              console.error('Failed to check permission:', error);
+              showErrorMessage(setDropMessage, null, '권한 확인 중 오류가 발생했습니다.');
             }
-            console.error('Failed to check permission:', error);
-            showErrorMessage(setDropMessage, null, '권한 확인 중 오류가 발생했습니다.');
             return;
           }
         }
-        
-        setCurrentPath(file.path);
       } else {
         const filename = file.basename || file.name;
         const canPreviewFile = canPreview(filename);

@@ -27,10 +27,12 @@ import {
 import axios from 'axios';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileTreeSkeleton } from './FileSkeletons';
+import { approvePermissionRequest } from '../services/permissionRequestService';
 
-// mode: 'admin' | 'share'
+// mode: 'admin' | 'share' | 'review'
 // admin mode: userId, username 필요, onSave 필요
 // share mode: folderPath, folderName 필요, user 필요
+// review mode: permissionRequest 필요, folderPath, folderName 필요, user 필요, onApprove (선택사항)
 const ShareDialog = ({ 
   open, 
   onClose, 
@@ -44,12 +46,16 @@ const ShareDialog = ({
   folderPath = null,
   folderName = null,
   user = null,
+  // Review mode props
+  permissionRequest = null, // 검토할 권한 신청 객체
+  onApprove = null, // 검토 완료 후 승인 콜백 (선택사항)
   // Common props
   onMessage = null
 }) => {
   const { isMobile } = useResponsive();
   const isAdminMode = mode === 'admin';
   const isShareMode = mode === 'share';
+  const isReviewMode = mode === 'review';
   
   // Admin mode: startFromUserHome이 true이면 사용자 홈 디렉토리부터, 아니면 root부터 시작
   // Share mode: 선택한 폴더부터 시작
@@ -62,6 +68,8 @@ const ShareDialog = ({
   const [folderTree, setFolderTree] = useState(new Map());
   // folderPermissions: Map<folderPath, Map<userId, permission>>
   const [folderPermissions, setFolderPermissions] = useState(new Map());
+  // initialFolderPermissions: 초기 로드된 권한 (삭제된 권한 추적용)
+  const [initialFolderPermissions, setInitialFolderPermissions] = useState(new Map());
   // userInfoMap: Map<userId, {username, email}> - 권한 정보에서 가져온 사용자 정보
   const [userInfoMap, setUserInfoMap] = useState(new Map());
   const [expandedPaths, setExpandedPaths] = useState(new Set([rootPath]));
@@ -75,16 +83,17 @@ const ShareDialog = ({
 
   useEffect(() => {
     if (open) {
-      if (isShareMode) {
+      if (isShareMode || isReviewMode) {
         loadUsers();
       }
       initializeDialog();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, rootPath, isAdminMode, isShareMode, userId, username]);
+  }, [open, rootPath, isAdminMode, isShareMode, isReviewMode, userId, username, permissionRequest]);
 
   const initializeDialog = async () => {
     setFolderPermissions(new Map());
+    setInitialFolderPermissions(new Map());
     setUserInfoMap(new Map());
     setExpandedPaths(new Set([rootPath]));
     setFolderTree(new Map());
@@ -99,7 +108,7 @@ const ShareDialog = ({
         await loadFolderChildren(rootPath);
         
         // 모든 하위 폴더를 재귀적으로 로드
-        const expandedPathsSet = await loadAllSubfoldersRecursive(rootPath);
+        const { expandedPathsSet, allSubfolderPaths } = await loadAllSubfoldersRecursive(rootPath);
         setExpandedPaths(prev => new Set([...prev, ...expandedPathsSet]));
         
         // Load user permissions
@@ -152,6 +161,142 @@ const ShareDialog = ({
           setLoadingPermissions(false);
         }
         setLoadingAllFolders(false);
+      } else if (isReviewMode) {
+        // 검토 모드: 신청받은 폴더부터 시작
+        const selectedFolder = {
+          path: rootPath,
+          name: folderName,
+          children: []
+        };
+        setFolderTree(new Map([[rootPath, selectedFolder]]));
+        
+        // 선택한 폴더의 하위 폴더 로드
+        await loadFolderChildren(rootPath);
+        
+        // 모든 하위 폴더를 재귀적으로 로드
+        const { expandedPathsSet, allSubfolderPaths } = await loadAllSubfoldersRecursive(rootPath);
+        expandedPathsSet.add(rootPath);
+        setExpandedPaths(expandedPathsSet);
+        
+        // 검토 모드: 신청받은 권한을 미리 반영 (하위 폴더의 기존 상위 권한 유지)
+        setLoadingPermissions(true);
+        try {
+          const normalizePath = (p) => {
+            if (!p || p === '/') return '/';
+            return p.endsWith('/') ? p.slice(0, -1) : p;
+          };
+          
+          // 권한 우선순위 함수 (높을수록 우선순위 높음)
+          const getPermissionPriority = (perm) => {
+            if (perm === 'admin') return 3;
+            if (perm === 'write') return 2;
+            if (perm === 'read') return 1;
+            return 0;
+          };
+          
+          // 더 높은 권한 선택
+          const getHigherPermission = (perm1, perm2) => {
+            return getPermissionPriority(perm1) >= getPermissionPriority(perm2) ? perm1 : perm2;
+          };
+          
+          // folderPermissions 초기화: Map<folderPath, Map<userId, permission>>
+          const newFolderPermissions = new Map();
+          const newUserInfoMap = new Map();
+          
+          // 먼저 기존 권한 정보 로드 (하위 폴더 포함)
+          try {
+            const permResponse = await axios.get('/api/permissions/folder', {
+              params: {
+                path: rootPath,
+                includeSubfolders: 'true'
+              }
+            });
+            
+            // 기존 권한을 먼저 설정
+            permResponse.data.forEach(perm => {
+              const normalizedPath = normalizePath(perm.folder_path);
+              if (!newFolderPermissions.has(normalizedPath)) {
+                newFolderPermissions.set(normalizedPath, new Map());
+              }
+              const userPermMap = newFolderPermissions.get(normalizedPath);
+              userPermMap.set(perm.id, perm.permission);
+              
+              // 사용자 정보도 함께 저장 (is_admin 포함)
+              if (perm.id && perm.username) {
+                newUserInfoMap.set(perm.id, {
+                  username: perm.username,
+                  email: perm.email || '',
+                  is_admin: Boolean(perm.is_admin)
+                });
+              }
+            });
+          } catch (error) {
+            // 권한 정보 로드 실패는 조용히 처리 (권한이 없을 수도 있음)
+            console.log('Failed to load existing permissions:', error);
+          }
+          
+          // 신청받은 폴더와 모든 하위 폴더에 신청받은 권한 설정 (기존 권한이 더 높으면 유지)
+          if (permissionRequest) {
+            const requesterId = permissionRequest.requester_id;
+            const requestedPermission = permissionRequest.requested_permission || 'read';
+            const normalizedRootPath = normalizePath(rootPath);
+            
+            // 신청받은 폴더에 권한 설정
+            if (!newFolderPermissions.has(normalizedRootPath)) {
+              newFolderPermissions.set(normalizedRootPath, new Map());
+            }
+            const rootUserPermMap = newFolderPermissions.get(normalizedRootPath);
+            const existingRootPermission = rootUserPermMap.get(requesterId);
+            if (existingRootPermission) {
+              // 기존 권한이 있으면 더 높은 권한 유지
+              rootUserPermMap.set(requesterId, getHigherPermission(existingRootPermission, requestedPermission));
+            } else {
+              // 기존 권한이 없으면 신청받은 권한 설정
+              rootUserPermMap.set(requesterId, requestedPermission);
+            }
+            
+            // 모든 하위 폴더에도 권한 설정 (기존 권한이 더 높으면 유지)
+            allSubfolderPaths.forEach(subfolderPath => {
+              const normalizedSubfolderPath = normalizePath(subfolderPath);
+              if (!newFolderPermissions.has(normalizedSubfolderPath)) {
+                newFolderPermissions.set(normalizedSubfolderPath, new Map());
+              }
+              const subfolderUserPermMap = newFolderPermissions.get(normalizedSubfolderPath);
+              const existingSubfolderPermission = subfolderUserPermMap.get(requesterId);
+              if (existingSubfolderPermission) {
+                // 기존 권한이 있으면 더 높은 권한 유지
+                subfolderUserPermMap.set(requesterId, getHigherPermission(existingSubfolderPermission, requestedPermission));
+              } else {
+                // 기존 권한이 없으면 신청받은 권한 설정
+                subfolderUserPermMap.set(requesterId, requestedPermission);
+              }
+            });
+            
+            // 사용자 정보 저장 (아직 없으면)
+            if (requesterId && permissionRequest.requester_username && !newUserInfoMap.has(requesterId)) {
+              newUserInfoMap.set(requesterId, {
+                username: permissionRequest.requester_username,
+                email: '',
+                is_admin: false
+              });
+            }
+          }
+          
+          setFolderPermissions(newFolderPermissions);
+          // 초기 권한도 저장 (삭제된 권한 추적용) - 깊은 복사
+          const deepCopiedPermissions = new Map();
+          newFolderPermissions.forEach((userPermMap, folderPath) => {
+            deepCopiedPermissions.set(folderPath, new Map(userPermMap));
+          });
+          setInitialFolderPermissions(deepCopiedPermissions);
+          setUserInfoMap(newUserInfoMap);
+          
+          setLoadingPermissions(false);
+        } catch (error) {
+          console.error('Failed to initialize review mode:', error);
+          setLoadingPermissions(false);
+        }
+        setLoadingAllFolders(false);
       } else {
         // 공유 모드: 선택한 폴더부터 시작
         const selectedFolder = {
@@ -165,7 +310,7 @@ const ShareDialog = ({
         await loadFolderChildren(rootPath);
         
         // 모든 하위 폴더를 재귀적으로 로드
-        const expandedPathsSet = await loadAllSubfoldersRecursive(rootPath);
+        const { expandedPathsSet, allSubfolderPaths } = await loadAllSubfoldersRecursive(rootPath);
         expandedPathsSet.add(rootPath);
         setExpandedPaths(expandedPathsSet);
         
@@ -209,6 +354,12 @@ const ShareDialog = ({
           });
           
           setFolderPermissions(newFolderPermissions);
+          // 초기 권한도 저장 (삭제된 권한 추적용) - 깊은 복사
+          const deepCopiedPermissions = new Map();
+          newFolderPermissions.forEach((userPermMap, folderPath) => {
+            deepCopiedPermissions.set(folderPath, new Map(userPermMap));
+          });
+          setInitialFolderPermissions(deepCopiedPermissions);
           setUserInfoMap(newUserInfoMap);
           
           setLoadingPermissions(false);
@@ -252,11 +403,13 @@ const ShareDialog = ({
   // 재귀적으로 모든 하위 폴더를 로드하는 함수
   const loadAllSubfoldersRecursive = async (parentPath) => {
     const expandedPathsSet = new Set();
+    const allSubfolderPaths = [];
     const loadRecursive = async (path) => {
       try {
         const children = await loadFolderChildren(path);
         expandedPathsSet.add(path);
         for (const child of children) {
+          allSubfolderPaths.push(child.path);
           await loadRecursive(child.path);
           await new Promise(resolve => setTimeout(resolve, 50)); // API 부하 방지
         }
@@ -265,7 +418,7 @@ const ShareDialog = ({
       }
     };
     await loadRecursive(parentPath);
-    return expandedPathsSet;
+    return { expandedPathsSet, allSubfolderPaths };
   };
 
   const loadFolderChildren = async (path) => {
@@ -361,12 +514,17 @@ const ShareDialog = ({
       // 관리자 모드: 선택한 사용자를 바로 추가
       if (!userId) return;
       
+      // 검토 모드일 때는 기본 권한을 신청받은 권한으로 설정
+      const defaultPermission = isReviewMode && permissionRequest 
+        ? (permissionRequest.requested_permission || 'read')
+        : 'write';
+      
       const newFolderPermissions = new Map(folderPermissions);
       if (!newFolderPermissions.has(folderPath)) {
         newFolderPermissions.set(folderPath, new Map());
       }
       const userPermMap = newFolderPermissions.get(folderPath);
-      userPermMap.set(userId, 'write'); // 기본 권한은 쓰기
+      userPermMap.set(userId, defaultPermission);
       
       // 모든 하위 폴더에도 동일한 권한 적용
       const subfolders = getAllSubfolderPaths(folderPath);
@@ -375,12 +533,12 @@ const ShareDialog = ({
           newFolderPermissions.set(subfolderPath, new Map());
         }
         const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
-        subfolderUserPermMap.set(userId, 'write');
+        subfolderUserPermMap.set(userId, defaultPermission);
       });
       
       setFolderPermissions(newFolderPermissions);
     } else {
-      // 공유 모드: (단일 메뉴 내) 사용자 선택 뷰로 전환
+      // 공유 모드 또는 검토 모드: (단일 메뉴 내) 사용자 선택 뷰로 전환
       setFolderMenuPath(folderPath);
       setFolderMenuView('selectUser');
     }
@@ -389,12 +547,17 @@ const ShareDialog = ({
   const handleUserSelect = (selectedUserId, selectedUsername) => {
     if (!folderMenuPath) return;
     
+    // 검토 모드일 때는 기본 권한을 신청받은 권한으로 설정
+    const defaultPermission = isReviewMode && permissionRequest 
+      ? (permissionRequest.requested_permission || 'read')
+      : 'write';
+    
     const newFolderPermissions = new Map(folderPermissions);
     if (!newFolderPermissions.has(folderMenuPath)) {
       newFolderPermissions.set(folderMenuPath, new Map());
     }
     const userPermMap = newFolderPermissions.get(folderMenuPath);
-    userPermMap.set(selectedUserId, 'write'); // 기본 권한은 쓰기
+    userPermMap.set(selectedUserId, defaultPermission);
     
     // 모든 하위 폴더에도 동일한 권한 적용
     const subfolders = getAllSubfolderPaths(folderMenuPath);
@@ -403,7 +566,7 @@ const ShareDialog = ({
         newFolderPermissions.set(subfolderPath, new Map());
       }
       const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
-      subfolderUserPermMap.set(selectedUserId, 'write');
+      subfolderUserPermMap.set(selectedUserId, defaultPermission);
     });
     
     setFolderPermissions(newFolderPermissions);
@@ -509,6 +672,34 @@ const ShareDialog = ({
     }
   };
 
+  // 권한이 변경되었는지 확인하는 함수
+  const hasPermissionChanged = (folderPath) => {
+    const currentPerms = folderPermissions.get(folderPath) || new Map();
+    const initialPerms = initialFolderPermissions.get(folderPath) || new Map();
+    
+    // 사용자 수가 다르면 변경됨
+    if (currentPerms.size !== initialPerms.size) {
+      return true;
+    }
+    
+    // 각 사용자의 권한이 변경되었는지 확인
+    for (const [userId, permission] of currentPerms.entries()) {
+      const initialPermission = initialPerms.get(userId);
+      if (initialPermission !== permission) {
+        return true;
+      }
+    }
+    
+    // 초기에는 있었는데 현재는 없는 사용자가 있는지 확인
+    for (const [userId] of initialPerms.entries()) {
+      if (!currentPerms.has(userId)) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   const renderFolderTree = (rootPath, level = 0) => {
     const node = folderTree.get(rootPath);
     if (!node) return null;
@@ -518,7 +709,7 @@ const ShareDialog = ({
     const hasChildren = node.children && node.children.length > 0;
 
     return (
-      <Box key={node.path} sx={{ width: '100%' }}>
+      <Box key={node.path} sx={{ width: '100%', overflow: 'visible' }}>
         <Box 
           sx={{ 
             display: 'flex', 
@@ -527,6 +718,7 @@ const ShareDialog = ({
             py: 0.5, 
             pl: level * 1, 
             width: '100%',
+            overflow: 'visible',
           }}
         >
           {/* 왼쪽: 폴더 트리 */}
@@ -644,6 +836,8 @@ const ShareDialog = ({
               return userName && userName.trim() !== '';
             }).length;
             
+            const isChanged = hasPermissionChanged(node.path);
+            
             return (
               <Box
                 component="button"
@@ -665,6 +859,7 @@ const ShareDialog = ({
                   pl: 1,
                   pr: 0,
                   gap: 0.5,
+                  overflow: 'visible',
                   '&:hover': {
                     backgroundColor: 'grey.400',
                   }
@@ -688,9 +883,32 @@ const ShareDialog = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
+                    position: 'relative',
+                    overflow: 'visible',
                   }}
                 >
                   <GroupAddIcon sx={{ fontSize: 16 }} />
+                  {isChanged && (
+                    <EditIcon
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        fontSize: 8,
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                        borderRadius: '50%',
+                        padding: '1px',
+                        border: '1px solid white',
+                        width: 12,
+                        height: 12,
+                        boxSizing: 'border-box',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    />
+                  )}
                 </Box>
               </Box>
             );
@@ -751,8 +969,106 @@ const ShareDialog = ({
           });
         }
       }
+    } else if (isReviewMode) {
+      // 검토 모드: 각 폴더의 각 사용자에게 권한 부여 및 삭제된 권한 취소 후 승인 API 호출
+      if (!permissionRequest || !permissionRequest.id) {
+        if (onMessage) {
+          onMessage({
+            text: '권한 신청 정보가 없습니다.',
+            type: 'error'
+          });
+        }
+        return;
+      }
+
+      setSaving(true);
+      try {
+        // 경로 정규화 헬퍼 함수 (끝의 슬래시 제거)
+        const normalizePath = (p) => {
+          if (!p || p === '/') return '/';
+          return p.endsWith('/') ? p.slice(0, -1) : p;
+        };
+        
+        // 삭제된 권한 찾기: 초기 권한에는 있지만 현재 권한에는 없는 것들
+        const permissionsToRevoke = [];
+        for (const [folderPath, initialUserPermMap] of initialFolderPermissions.entries()) {
+          const currentUserPermMap = folderPermissions.get(folderPath);
+          
+          // 초기 권한의 각 사용자에 대해
+          for (const [targetUserId] of initialUserPermMap.entries()) {
+            // 현재 권한에 없거나 다른 폴더로 이동한 경우 삭제 대상
+            if (!currentUserPermMap || !currentUserPermMap.has(targetUserId)) {
+              permissionsToRevoke.push({
+                userId: targetUserId,
+                folderPath: normalizePath(folderPath)
+              });
+            }
+          }
+        }
+        
+        // 삭제된 권한 취소
+        for (const { userId, folderPath } of permissionsToRevoke) {
+          try {
+            await axios.delete('/api/permissions/revoke', {
+              params: {
+                userId: userId,
+                folderPath: folderPath,
+                includeSubfolders: 'true'
+              }
+            });
+          } catch (error) {
+            console.error(`Failed to revoke permission for ${folderPath}:`, error);
+            // 권한 취소 실패는 경고만 하고 계속 진행
+          }
+        }
+        
+        // 각 폴더의 각 사용자에 대해 권한 부여 (원래 로직대로 모든 권한 부여)
+        for (const [folderPath, userPermMap] of folderPermissions.entries()) {
+          const normalizedPath = normalizePath(folderPath);
+          
+          for (const [targetUserId, permission] of userPermMap.entries()) {
+            try {
+              await axios.post('/api/permissions/grant', {
+                userId: targetUserId,
+                folderPath: normalizedPath,
+                permission: permission
+              });
+            } catch (error) {
+              console.error(`Failed to grant permission for ${normalizedPath}:`, error);
+              throw error;
+            }
+          }
+        }
+        
+        // 권한 부여 완료 후 승인 API 호출
+        await approvePermissionRequest(permissionRequest.id);
+        
+        if (onMessage) {
+          onMessage({
+            text: '권한 신청을 승인했습니다.',
+            type: 'success'
+          });
+        }
+        
+        if (onApprove) {
+          onApprove();
+        }
+        
+        onClose();
+      } catch (error) {
+        console.error('Failed to approve permission request:', error);
+        const errorMsg = error.response?.data?.error || '권한 신청 승인에 실패했습니다.';
+        if (onMessage) {
+          onMessage({
+            text: errorMsg,
+            type: 'error'
+          });
+        }
+      } finally {
+        setSaving(false);
+      }
     } else {
-      // 공유 모드: 각 폴더의 각 사용자에게 권한 부여
+      // 공유 모드: 각 폴더의 각 사용자에게 권한 부여 및 삭제된 권한 취소
       if (folderPermissions.size === 0) {
         if (onMessage) {
           onMessage({
@@ -771,7 +1087,40 @@ const ShareDialog = ({
           return p.endsWith('/') ? p.slice(0, -1) : p;
         };
         
-        // 각 폴더의 각 사용자에 대해 권한 부여
+        // 삭제된 권한 찾기: 초기 권한에는 있지만 현재 권한에는 없는 것들
+        const permissionsToRevoke = [];
+        for (const [folderPath, initialUserPermMap] of initialFolderPermissions.entries()) {
+          const currentUserPermMap = folderPermissions.get(folderPath);
+          
+          // 초기 권한의 각 사용자에 대해
+          for (const [targetUserId] of initialUserPermMap.entries()) {
+            // 현재 권한에 없거나 다른 폴더로 이동한 경우 삭제 대상
+            if (!currentUserPermMap || !currentUserPermMap.has(targetUserId)) {
+              permissionsToRevoke.push({
+                userId: targetUserId,
+                folderPath: normalizePath(folderPath)
+              });
+            }
+          }
+        }
+        
+        // 삭제된 권한 취소
+        for (const { userId, folderPath } of permissionsToRevoke) {
+          try {
+            await axios.delete('/api/permissions/revoke', {
+              params: {
+                userId: userId,
+                folderPath: folderPath,
+                includeSubfolders: 'true'
+              }
+            });
+          } catch (error) {
+            console.error(`Failed to revoke permission for ${folderPath}:`, error);
+            // 권한 취소 실패는 경고만 하고 계속 진행
+          }
+        }
+        
+        // 각 폴더의 각 사용자에 대해 권한 부여 (원래 로직대로 모든 권한 부여)
         for (const [folderPath, userPermMap] of folderPermissions.entries()) {
           const normalizedPath = normalizePath(folderPath);
           
@@ -814,6 +1163,7 @@ const ShareDialog = ({
 
   const handleClose = () => {
     setFolderPermissions(new Map());
+    setInitialFolderPermissions(new Map());
     setFolderTree(new Map());
     setExpandedPaths(new Set());
     setFolderMenuAnchor(null);
@@ -825,6 +1175,8 @@ const ShareDialog = ({
 
   const dialogTitle = isAdminMode 
     ? `권한 설정 - ${username}` 
+    : isReviewMode
+    ? `권한 검토 - ${folderName}`
     : `폴더 공유 - ${folderName}`;
 
   return (
@@ -869,7 +1221,7 @@ const ShareDialog = ({
               <Typography variant="body2" color="text.secondary">
                 폴더를 불러오는 중...
               </Typography>
-            ) : (isAdminMode && startFromUserHome && username) || (isShareMode && user && rootPath === `/${user.username}`) ? (
+            ) : (isAdminMode && startFromUserHome && username) || ((isShareMode || isReviewMode) && user && rootPath === `/${user.username}`) ? (
               // 관리자 모드에서 startFromUserHome이 true이거나 공유 모드에서 사용자 홈 디렉토리: 사용자 홈 디렉토리는 표시하지 않고 하위 폴더들만 표시
               (() => {
                 const userBaseNode = folderTree.get(rootPath);
@@ -1023,7 +1375,7 @@ const ShareDialog = ({
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isShareMode) {
+                  if (isShareMode || isReviewMode) {
                     setFolderMenuView('selectUser');
                   } else {
                     handleAddUser(folderMenuPath);
@@ -1046,6 +1398,52 @@ const ShareDialog = ({
           );
           
           const renderSelectUserView = () => {
+            // 검토 모드에서는 신청자만 표시
+            if (isReviewMode && permissionRequest) {
+              const requesterId = permissionRequest.requester_id;
+              const folderUserPerms = folderPermissions.get(folderMenuPath);
+              const isAlreadyAdded = folderUserPerms && folderUserPerms.has(requesterId);
+              
+              return (
+                <>
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFolderMenuView('manage');
+                    }}
+                  >
+                    <ListItemText primary="← 뒤로" />
+                  </MenuItem>
+                  
+                  <MenuItem disabled sx={{ py: 0 }}>
+                    <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
+                  </MenuItem>
+                  
+                  {!isAlreadyAdded ? (
+                    <MenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUserSelect(
+                          requesterId, 
+                          permissionRequest.requester_username || `사용자 ${requesterId}`
+                        );
+                      }}
+                    >
+                      <ListItemText 
+                        primary={permissionRequest.requester_username || `사용자 ${requesterId}`}
+                        secondary="신청자"
+                      />
+                    </MenuItem>
+                  ) : (
+                    <MenuItem disabled>
+                      <ListItemText primary="이미 추가된 사용자입니다." />
+                    </MenuItem>
+                  )}
+                </>
+              );
+            }
+            
+            // 공유 모드: 일반 사용자 선택
             const availableUsers = users.filter(u => {
               // 이미 선택된 사용자는 제외
               const folderUserPerms = folderPermissions.get(folderMenuPath);

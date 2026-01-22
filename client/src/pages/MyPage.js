@@ -39,6 +39,8 @@ const MyPage = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewPermissionRequest, setReviewPermissionRequest] = useState(null);
   const [requestTab, setRequestTab] = useState(0); // 0: inbox, 1: outbox
   const [requestLoading, setRequestLoading] = useState(false);
   const [inboxRequests, setInboxRequests] = useState([]);
@@ -420,15 +422,12 @@ const MyPage = () => {
                                     size="small"
                                     variant="contained"
                                     disabled={!isPending || isActionLoading}
-                                    onClick={() =>
-                                      withRequestActionLoading(r.id, async () => {
-                                        await approvePermissionRequest(r.id);
-                                        setMessage({ type: 'success', text: '요청을 승인했습니다.' });
-                                        await loadPermissionRequests();
-                                      })
-                                    }
+                                    onClick={() => {
+                                      setReviewPermissionRequest(r);
+                                      setReviewDialogOpen(true);
+                                    }}
                                   >
-                                    승인
+                                    검토
                                   </Button>
                                   <Button
                                     size="small"
@@ -476,17 +475,37 @@ const MyPage = () => {
       </Box>
 
       {!user?.is_admin && (
-        <ShareDialog
-          open={shareDialogOpen}
-          onClose={() => setShareDialogOpen(false)}
-          mode="share"
-          folderPath={user?.username ? `/${user.username}` : null}
-          folderName={user?.username || '홈 디렉토리'}
-          user={user}
-          onMessage={(msg) => {
-            setMessage({ type: msg.type, text: msg.text });
-          }}
-        />
+        <>
+          <ShareDialog
+            open={shareDialogOpen}
+            onClose={() => setShareDialogOpen(false)}
+            mode="share"
+            folderPath={user?.username ? `/${user.username}` : null}
+            folderName={user?.username || '홈 디렉토리'}
+            user={user}
+            onMessage={(msg) => {
+              setMessage({ type: msg.type, text: msg.text });
+            }}
+          />
+          <ShareDialog
+            open={reviewDialogOpen}
+            onClose={() => {
+              setReviewDialogOpen(false);
+              setReviewPermissionRequest(null);
+            }}
+            mode="review"
+            permissionRequest={reviewPermissionRequest}
+            folderPath={reviewPermissionRequest?.folder_path || null}
+            folderName={reviewPermissionRequest?.folder_path?.split('/').filter(Boolean).pop() || '폴더'}
+            user={user}
+            onMessage={(msg) => {
+              setMessage({ type: msg.type, text: msg.text });
+            }}
+            onApprove={async () => {
+              await loadPermissionRequests();
+            }}
+          />
+        </>
       )}
 
       <AccountEditDialog

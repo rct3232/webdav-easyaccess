@@ -62,17 +62,34 @@ router.delete('/revoke', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'User ID and folder path are required' });
     }
 
-    // Check admin permission (global admin bypasses per-folder admin checks)
+    // Check if user has permission to revoke access to this folder
     const User = require('../models/User');
     const requestingUser = await User.findById(req.user.id);
-    let hasAdmin = false;
-    if (requestingUser && requestingUser.is_admin) {
-      hasAdmin = true;
-    } else {
-      hasAdmin = await hasDirectFolderPermission(req.user.id, folderPath, 'admin');
+    if (!requestingUser) {
+      return res.status(403).json({ error: 'User not found' });
     }
-    if (!hasAdmin && parseInt(userId) !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied. Admin permission required' });
+    
+    let canRevoke = false;
+    
+    // 관리자는 모든 폴더에 대해 권한 취소 가능
+    if (requestingUser.is_admin) {
+      canRevoke = true;
+    } else {
+      // 폴더 소유자는 자신의 폴더에 대한 권한 취소 가능
+      if (isOwnerPath(requestingUser, folderPath)) {
+        canRevoke = true;
+      } else {
+        // 해당 폴더에 admin 권한이 있으면 권한 취소 가능
+        const hasAdmin = await hasDirectFolderPermission(req.user.id, folderPath, 'admin');
+        if (hasAdmin) {
+          canRevoke = true;
+        }
+      }
+    }
+    
+    // 자기 자신의 권한을 취소하는 경우는 항상 허용
+    if (!canRevoke && parseInt(userId) !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied. You do not have permission to revoke access to this folder' });
     }
 
     const normalizedFolderPath = normalizePath(folderPath);

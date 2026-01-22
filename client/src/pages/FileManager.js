@@ -41,6 +41,7 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   Sort as SortIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -213,6 +214,11 @@ const FileManager = () => {
   // Bulk delete 확인 다이얼로그 상태
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [bulkDeleteFilePaths, setBulkDeleteFilePaths] = useState([]);
+  
+  // 모바일 새로고침/폴더 이동 완료 상태
+  const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
+  const refreshSuccessTimeoutRef = useRef(null);
+  const wasLoadingRef = useRef(false);
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -237,6 +243,41 @@ const FileManager = () => {
       maxPullDistance: 80,
     }
   );
+
+  // 모바일에서 로딩 완료 시 체크 아이콘 표시
+  useEffect(() => {
+    if (isMobile) {
+      const isLoading = isRefreshing || loading;
+      
+      // 로딩이 완료되었을 때 (이전에 로딩 중이었고 지금은 완료된 경우)
+      if (wasLoadingRef.current && !isLoading) {
+        // 이전 타임아웃이 있으면 클리어
+        if (refreshSuccessTimeoutRef.current) {
+          clearTimeout(refreshSuccessTimeoutRef.current);
+        }
+        
+        // 체크 아이콘 표시
+        setShowRefreshSuccess(true);
+        
+        // 0.5초 후 사라지도록
+        refreshSuccessTimeoutRef.current = setTimeout(() => {
+          setShowRefreshSuccess(false);
+        }, 500);
+      } else if (isLoading) {
+        // 로딩 중이면 체크 아이콘 숨김
+        setShowRefreshSuccess(false);
+      }
+      
+      // 현재 로딩 상태 저장
+      wasLoadingRef.current = isLoading;
+    }
+    
+    return () => {
+      if (refreshSuccessTimeoutRef.current) {
+        clearTimeout(refreshSuccessTimeoutRef.current);
+      }
+    };
+  }, [isMobile, isRefreshing, loading]);
 
   // Processing map updater
   const { markProcessing, clearProcessing } = createProcessingUpdater(setProcessingMap);
@@ -1089,7 +1130,7 @@ const FileManager = () => {
           >
             {/* Pull-to-refresh 시각적 피드백 - 실제 콘텐츠 영역에 포함 */}
             {isMobile && (
-              <Collapse in={isPulling || isRefreshing || loading} timeout={400}>
+              <Collapse in={isPulling || isRefreshing || loading || showRefreshSuccess} timeout={400}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -1102,29 +1143,53 @@ const FileManager = () => {
                     transition: (isRefreshing || loading) 
                       ? 'margin-top 0.3s ease-out' 
                       : 'margin-top 0.15s ease-out',
-                    opacity: (isRefreshing || loading) ? 1 : Math.min(pullDistance / 40, 1),
+                    opacity: (isRefreshing || loading || showRefreshSuccess) ? 1 : Math.min(pullDistance / 40, 1),
                     minHeight: '60px',
                   }}
                 >
-                  <CircularProgress
-                    size={24}
-                    thickness={4}
+                  <Box
                     sx={{
+                      width: 24,
+                      height: 24,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       mb: 1,
-                      color: 'primary.main',
                     }}
-                  />
-                  {(isRefreshing || loading) && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: 'text.secondary',
-                        fontSize: '0.75rem',
-                      }}
-                    >
-                      로딩 중...
-                    </Typography>
-                  )}
+                  >
+                    {showRefreshSuccess ? (
+                      <CheckCircleIcon
+                        sx={{
+                          color: 'success.main',
+                          fontSize: 24,
+                          width: 24,
+                          height: 24,
+                        }}
+                      />
+                    ) : (
+                      <CircularProgress
+                        size={24}
+                        thickness={4}
+                        sx={{
+                          color: 'primary.main',
+                        }}
+                      />
+                    )}
+                  </Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: showRefreshSuccess ? 'success.main' : 'text.secondary',
+                      fontSize: '0.75rem',
+                      lineHeight: '1.2rem',
+                      height: '1.2rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      visibility: (isRefreshing || loading || showRefreshSuccess) ? 'visible' : 'hidden',
+                    }}
+                  >
+                    {showRefreshSuccess ? '완료' : '로딩 중...'}
+                  </Typography>
                 </Box>
               </Collapse>
             )}

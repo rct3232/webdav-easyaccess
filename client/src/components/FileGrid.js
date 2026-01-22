@@ -14,6 +14,7 @@ import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
+import { FileGridSkeleton } from './FileSkeletons';
 
 const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
@@ -91,7 +92,10 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         minHeight: files.length === 0 ? '200px' : 'auto',
       }}
     >
-      {files.map((file, index) => {
+      {loading && files.length === 0 ? (
+        <FileGridSkeleton selectionMode={selectionMode} />
+      ) : (
+        files.map((file, index) => {
         const thumbnail = getThumbnail(file);
         const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
@@ -234,7 +238,8 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             </Card>
           </Grid>
         );
-      })}
+        })
+      )}
       {!loading && files.length === 0 && (
         <Grid item xs={12}>
           <Box sx={{ textAlign: 'center', py: 4 }}>

@@ -16,6 +16,7 @@ import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIcon } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
+import { FileDetailSkeleton } from './FileSkeletons';
 
 const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
@@ -102,7 +103,10 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
         }}
       >
         <TableBody>
-          {files.map((file, index) => {
+          {loading && files.length === 0 ? (
+            <FileDetailSkeleton selectionMode={selectionMode} />
+          ) : (
+            files.map((file, index) => {
             const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
             const allowContextMenu = isPermissionDisabled && !isProcessing;
             const canOpenMenu = !isDisabled || allowContextMenu;
@@ -213,7 +217,8 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 )}
               </TableRow>
             );
-          })}
+            })
+          )}
           {!loading && files.length === 0 && (
             <TableRow>
               <TableCell colSpan={selectionMode ? 5 : 4} sx={{ border: 'none' }}>

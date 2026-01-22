@@ -12,6 +12,7 @@ import { useFileViewCommon } from '../hooks/useFileViewCommon';
 import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
+import { FileListSkeleton } from './FileSkeletons';
 
 const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false }) => {
   const { isMobile } = useResponsive();
@@ -86,7 +87,10 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         gap: 2,
       }}
     >
-      {files.map((file, index) => {
+      {loading && files.length === 0 ? (
+        <FileListSkeleton selectionMode={selectionMode} />
+      ) : (
+        files.map((file, index) => {
         const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
         const canOpenMenu = !isDisabled || allowContextMenu;
@@ -196,7 +200,8 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             )}
           </Box>
         );
-      })}
+        })
+      )}
       {!loading && files.length === 0 && (
         <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 4 }}>
           <Typography color="text.secondary">파일이 없습니다</Typography>

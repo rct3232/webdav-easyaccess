@@ -1297,11 +1297,7 @@ const FileManager = () => {
                   </Typography>
               </Box>
             )}
-            {!isMobile && loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Typography>로딩 중...</Typography>
-              </Box>
-            ) : viewMode === VIEW_MODES.LIST ? (
+            {viewMode === VIEW_MODES.LIST ? (
               <FileList
                 files={sortedFiles}
                 processingMap={processingMap}

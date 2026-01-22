@@ -69,10 +69,19 @@ const Login = () => {
           justifyContent: 'center',
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            WebDAV EasyAccess
-          </Typography>
+        <Paper elevation={0} sx={{ p: 4, width: '100%' }}>
+          <Box
+            component="img"
+            src="/logo.png"
+            alt="WebDAV EasyAccess"
+            sx={{
+              height: '96px',
+              maxWidth: '100%',
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto 16px',
+            }}
+          />
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary" sx={{ mb: 3 }}>
             로그인
           </Typography>

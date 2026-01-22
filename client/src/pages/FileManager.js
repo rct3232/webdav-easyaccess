@@ -877,17 +877,32 @@ const FileManager = () => {
         minHeight: 0,
       }}
     >
-      <AppBar position="sticky" sx={{ top: 0, zIndex: (theme) => theme.zIndex.appBar }} elevation={4}>
+      <AppBar 
+        position="sticky" 
+        sx={{ 
+          top: 0, 
+          zIndex: (theme) => theme.zIndex.appBar,
+          background: `
+            radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
+            radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
+            radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, transparent 40%),
+            linear-gradient(135deg, #4167ba, #52c597 85%, rgba(251, 229, 89, 0.5) 98%)
+          `.trim(),
+        }} 
+        elevation={0}
+      >
         <Toolbar>
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" component="div" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
-              WebDAV EasyAccess
-            </Typography>
-            {webdavUrl && !isMobile && (
-              <Typography variant="caption" sx={{ opacity: 0.8, fontSize: '0.7rem' }}>
-                {webdavUrl}
-              </Typography>
-            )}
+          <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+            <Box
+              component="img"
+              src="/logo_white.png"
+              alt="WebDAV EasyAccess"
+              sx={{
+                height: isMobile ? '27px' : '33.75px',
+                maxWidth: '100%',
+                objectFit: 'contain',
+              }}
+            />
           </Box>
           {!isMobile && (
             <Typography variant="body2" sx={{ mr: 2 }}>

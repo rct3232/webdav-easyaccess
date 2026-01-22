@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useResponsive } from '../hooks/useResponsive';
+import { FileTreeSkeleton } from './FileSkeletons';
 
 // mode: 'admin' | 'share'
 // admin mode: userId, username 필요, onSave 필요
@@ -65,6 +66,8 @@ const ShareDialog = ({
   const [userInfoMap, setUserInfoMap] = useState(new Map());
   const [expandedPaths, setExpandedPaths] = useState(new Set([rootPath]));
   const [loadingPaths, setLoadingPaths] = useState(new Set());
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [loadingAllFolders, setLoadingAllFolders] = useState(false);
   const [saving, setSaving] = useState(false);
   const [folderMenuAnchor, setFolderMenuAnchor] = useState(null);
   const [folderMenuPath, setFolderMenuPath] = useState(null);
@@ -86,6 +89,8 @@ const ShareDialog = ({
     setExpandedPaths(new Set([rootPath]));
     setFolderTree(new Map());
     setLoadingPaths(new Set());
+    setLoadingPermissions(false);
+    setLoadingAllFolders(true);
     
     try {
       if (isAdminMode) {
@@ -93,8 +98,13 @@ const ShareDialog = ({
         const userBaseFolder = `/${username}`;
         await loadFolderChildren(rootPath);
         
+        // 모든 하위 폴더를 재귀적으로 로드
+        const expandedPathsSet = await loadAllSubfoldersRecursive(rootPath);
+        setExpandedPaths(prev => new Set([...prev, ...expandedPathsSet]));
+        
         // Load user permissions
         if (userId) {
+          setLoadingPermissions(true);
           const permResponse = await axios.get(`/api/users/${userId}/permissions`);
           
           // 경로 정규화 헬퍼 함수
@@ -137,67 +147,11 @@ const ShareDialog = ({
           }
           
           setFolderPermissions(newFolderPermissions);
-          
-          // 권한에 있는 경로들의 부모 경로들을 folderTree에 로드하려고 시도 (에러는 무시)
-          const pathsToLoad = new Set();
-          permResponse.data.forEach(perm => {
-            const folderPath = perm.folder_path;
-            const normalizedPath = normalizePath(folderPath);
-            
-            let shouldInclude = true;
-            if (startFromUserHome) {
-              // 사용자 홈 디렉토리 하위 경로만 포함
-              shouldInclude = normalizedPath === userBaseFolder || normalizedPath.startsWith(userBaseFolder + '/');
-            }
-            
-            if (shouldInclude) {
-              const parts = normalizedPath.split('/').filter(Boolean);
-              
-              // 경로 수집: startFromUserHome이면 사용자 홈 디렉토리부터, 아니면 root부터
-              const startIndex = startFromUserHome ? 1 : 0;
-              for (let i = startIndex; i <= parts.length; i++) {
-                const parentPath = '/' + parts.slice(0, i).join('/');
-                const normalizedParentPath = normalizePath(parentPath);
-                if (normalizedParentPath && normalizedParentPath !== '') {
-                  pathsToLoad.add(normalizedParentPath || '/');
-                }
-              }
-            }
-          });
-          
-          // 각 경로의 부모를 순차적으로 로드 (에러는 무시)
-          const sortedPaths = Array.from(pathsToLoad).sort((a, b) => {
-            const aDepth = a === '/' ? 0 : a.split('/').filter(Boolean).length;
-            const bDepth = b === '/' ? 0 : b.split('/').filter(Boolean).length;
-            return aDepth - bDepth;
-          });
-          
-          // 부모 경로부터 하위 경로 순서로 로드 시도 (실패해도 계속 진행)
-          const expandedPathsSet = new Set([rootPath]); // rootPath는 항상 확장
-          
-          for (const pathToLoad of sortedPaths) {
-            if (pathToLoad === rootPath) continue; // rootPath는 이미 로드됨
-            
-            try {
-              const parentPath = pathToLoad.split('/').slice(0, -1).join('/') || '/';
-              
-              // 부모 폴더가 folderTree에 없으면 로드 시도
-              if (!folderTree.has(parentPath)) {
-                await loadFolderChildren(parentPath);
-                await new Promise(resolve => setTimeout(resolve, 50));
-              }
-              
-              // 확장 상태 설정
-              expandedPathsSet.add(parentPath);
-            } catch (err) {
-              // 경로 로드 실패해도 계속 진행 (폴더가 존재하지 않을 수 있음)
-              continue;
-            }
-          }
-          
-          // 확장 상태 설정
-          setExpandedPaths(expandedPathsSet);
+          setLoadingPermissions(false);
+        } else {
+          setLoadingPermissions(false);
         }
+        setLoadingAllFolders(false);
       } else {
         // 공유 모드: 선택한 폴더부터 시작
         const selectedFolder = {
@@ -210,7 +164,13 @@ const ShareDialog = ({
         // 선택한 폴더의 하위 폴더 로드
         await loadFolderChildren(rootPath);
         
+        // 모든 하위 폴더를 재귀적으로 로드
+        const expandedPathsSet = await loadAllSubfoldersRecursive(rootPath);
+        expandedPathsSet.add(rootPath);
+        setExpandedPaths(expandedPathsSet);
+        
         // 선택한 폴더와 모든 하위 폴더의 권한 정보 로드
+        setLoadingPermissions(true);
         try {
           const normalizePath = (p) => {
             if (!p || p === '/') return '/';
@@ -251,91 +211,17 @@ const ShareDialog = ({
           setFolderPermissions(newFolderPermissions);
           setUserInfoMap(newUserInfoMap);
           
-          // 사용자 홈 디렉토리인 경우: 하위의 모든 폴더를 재귀적으로 로드
-          const userBaseFolder = user && user.username ? `/${user.username}` : null;
-          const isUserHomeFolder = userBaseFolder && rootPath === userBaseFolder;
-          
-          if (isUserHomeFolder) {
-            // 사용자 홈 디렉토리 하위의 모든 폴더를 재귀적으로 로드
-            const loadAllSubfolders = async (parentPath) => {
-              try {
-                const children = await loadFolderChildren(parentPath);
-                const expandedPathsSet = new Set([rootPath]);
-                
-                for (const child of children) {
-                  expandedPathsSet.add(parentPath);
-                  await loadAllSubfolders(child.path);
-                  await new Promise(resolve => setTimeout(resolve, 50));
-                }
-                
-                return expandedPathsSet;
-              } catch (err) {
-                return new Set([rootPath]);
-              }
-            };
-            
-            const expandedPathsSet = await loadAllSubfolders(rootPath);
-            setExpandedPaths(expandedPathsSet);
-          } else {
-            // 일반 공유 모드: 권한에 있는 경로들의 부모 경로들을 folderTree에 로드
-            const pathsToLoad = new Set();
-            permResponse.data.forEach(perm => {
-              const folderPath = perm.folder_path;
-              const normalizedPath = normalizePath(folderPath);
-              const parts = normalizedPath.split('/').filter(Boolean);
-              
-              // 모든 부모 경로들을 수집
-              for (let i = 0; i <= parts.length; i++) {
-                const parentPath = '/' + parts.slice(0, i).join('/');
-                const normalizedParentPath = normalizePath(parentPath);
-                if (normalizedParentPath && normalizedParentPath !== '') {
-                  pathsToLoad.add(normalizedParentPath || '/');
-                }
-              }
-            });
-            
-            // 각 경로의 부모를 순차적으로 로드 (에러는 무시)
-            const sortedPaths = Array.from(pathsToLoad).sort((a, b) => {
-              const aDepth = a === '/' ? 0 : a.split('/').filter(Boolean).length;
-              const bDepth = b === '/' ? 0 : b.split('/').filter(Boolean).length;
-              return aDepth - bDepth;
-            });
-            
-            // 부모 경로부터 하위 경로 순서로 로드 시도 (실패해도 계속 진행)
-            const expandedPathsSet = new Set([rootPath]); // 선택한 폴더는 항상 확장
-            
-            for (const pathToLoad of sortedPaths) {
-              if (pathToLoad === rootPath) continue; // 선택한 폴더는 이미 로드됨
-              
-              try {
-                const parentPath = pathToLoad.split('/').slice(0, -1).join('/') || '/';
-                
-                // 부모 폴더가 folderTree에 없으면 로드 시도
-                if (!folderTree.has(parentPath)) {
-                  await loadFolderChildren(parentPath);
-                  await new Promise(resolve => setTimeout(resolve, 50));
-                }
-                
-                // 확장 상태 설정 (선택한 폴더의 하위 경로인 경우만)
-                if (pathToLoad.startsWith(rootPath + '/') || pathToLoad === rootPath) {
-                  expandedPathsSet.add(parentPath);
-                }
-              } catch (err) {
-                // 경로 로드 실패해도 계속 진행 (폴더가 존재하지 않을 수 있음)
-                continue;
-              }
-            }
-            
-            // 확장 상태 설정
-            setExpandedPaths(expandedPathsSet);
-          }
+          setLoadingPermissions(false);
         } catch (error) {
           // 권한 정보 로드 실패는 조용히 처리 (권한이 없을 수도 있음)
           console.log('Failed to load folder permissions:', error);
+          setLoadingPermissions(false);
         }
+        setLoadingAllFolders(false);
       }
     } catch (error) {
       console.error('Failed to initialize dialog:', error);
+      setLoadingAllFolders(false);
       if (onMessage) {
         onMessage({
           text: '다이얼로그 초기화에 실패했습니다.',
@@ -361,6 +247,25 @@ const ShareDialog = ({
     } finally {
       setLoadingUsers(false);
     }
+  };
+
+  // 재귀적으로 모든 하위 폴더를 로드하는 함수
+  const loadAllSubfoldersRecursive = async (parentPath) => {
+    const expandedPathsSet = new Set();
+    const loadRecursive = async (path) => {
+      try {
+        const children = await loadFolderChildren(path);
+        expandedPathsSet.add(path);
+        for (const child of children) {
+          await loadRecursive(child.path);
+          await new Promise(resolve => setTimeout(resolve, 50)); // API 부하 방지
+        }
+      } catch (err) {
+        // 에러는 조용히 처리 (존재하지 않는 폴더일 수 있음)
+      }
+    };
+    await loadRecursive(parentPath);
+    return expandedPathsSet;
   };
 
   const loadFolderChildren = async (path) => {
@@ -461,7 +366,18 @@ const ShareDialog = ({
         newFolderPermissions.set(folderPath, new Map());
       }
       const userPermMap = newFolderPermissions.get(folderPath);
-      userPermMap.set(userId, 'read'); // 기본 권한은 읽기
+      userPermMap.set(userId, 'write'); // 기본 권한은 쓰기
+      
+      // 모든 하위 폴더에도 동일한 권한 적용
+      const subfolders = getAllSubfolderPaths(folderPath);
+      subfolders.forEach(subfolderPath => {
+        if (!newFolderPermissions.has(subfolderPath)) {
+          newFolderPermissions.set(subfolderPath, new Map());
+        }
+        const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
+        subfolderUserPermMap.set(userId, 'write');
+      });
+      
       setFolderPermissions(newFolderPermissions);
     } else {
       // 공유 모드: (단일 메뉴 내) 사용자 선택 뷰로 전환
@@ -478,7 +394,18 @@ const ShareDialog = ({
       newFolderPermissions.set(folderMenuPath, new Map());
     }
     const userPermMap = newFolderPermissions.get(folderMenuPath);
-    userPermMap.set(selectedUserId, 'read'); // 기본 권한은 읽기
+    userPermMap.set(selectedUserId, 'write'); // 기본 권한은 쓰기
+    
+    // 모든 하위 폴더에도 동일한 권한 적용
+    const subfolders = getAllSubfolderPaths(folderMenuPath);
+    subfolders.forEach(subfolderPath => {
+      if (!newFolderPermissions.has(subfolderPath)) {
+        newFolderPermissions.set(subfolderPath, new Map());
+      }
+      const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
+      subfolderUserPermMap.set(selectedUserId, 'write');
+    });
+    
     setFolderPermissions(newFolderPermissions);
     
     // 사용자 정보도 함께 저장 (is_admin 포함)
@@ -508,6 +435,19 @@ const ShareDialog = ({
         newFolderPermissions.delete(folderPath);
       }
     }
+    
+    // 모든 하위 폴더에서도 동일한 사용자의 권한 제거
+    const subfolders = getAllSubfolderPaths(folderPath);
+    subfolders.forEach(subfolderPath => {
+      const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
+      if (subfolderUserPermMap) {
+        subfolderUserPermMap.delete(targetUserId);
+        if (subfolderUserPermMap.size === 0) {
+          newFolderPermissions.delete(subfolderPath);
+        }
+      }
+    });
+    
     setFolderPermissions(newFolderPermissions);
   };
 
@@ -518,8 +458,41 @@ const ShareDialog = ({
       const currentPermission = userPermMap.get(targetUserId) || 'read';
       const newPermission = currentPermission === 'read' ? 'write' : 'read';
       userPermMap.set(targetUserId, newPermission);
+      
+      // 모든 하위 폴더에서도 동일한 사용자의 권한 변경
+      const subfolders = getAllSubfolderPaths(folderPath);
+      subfolders.forEach(subfolderPath => {
+        const subfolderUserPermMap = newFolderPermissions.get(subfolderPath);
+        if (subfolderUserPermMap && subfolderUserPermMap.has(targetUserId)) {
+          const subfolderCurrentPermission = subfolderUserPermMap.get(targetUserId);
+          const subfolderNewPermission = subfolderCurrentPermission === 'read' ? 'write' : 'read';
+          subfolderUserPermMap.set(targetUserId, subfolderNewPermission);
+        }
+      });
     }
     setFolderPermissions(newFolderPermissions);
+  };
+
+  // 하위 폴더 경로 수집 함수
+  const getAllSubfolderPaths = (folderPath) => {
+    const subfolders = [];
+    const node = folderTree.get(folderPath);
+    if (!node || !node.children) return subfolders;
+    
+    const traverse = (path) => {
+      const currentNode = folderTree.get(path);
+      if (!currentNode) return;
+      
+      if (currentNode.children) {
+        currentNode.children.forEach(child => {
+          subfolders.push(child.path);
+          traverse(child.path);
+        });
+      }
+    };
+    
+    traverse(folderPath);
+    return subfolders;
   };
 
   const getUserName = (targetUserId) => {
@@ -697,9 +670,13 @@ const ShareDialog = ({
                   }
                 }}
               >
-                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
-                  {userCount}
-                </Typography>
+                {loadingPermissions ? (
+                  <CircularProgress size={12} sx={{ mr: 0.5 }} />
+                ) : (
+                  <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                    {userCount}
+                  </Typography>
+                )}
                 <Box
                   sx={{
                     width: 28,
@@ -720,9 +697,13 @@ const ShareDialog = ({
           })()}
         </Box>
         
-        {isExpanded && hasChildren && (
+        {isExpanded && (hasChildren || isLoading) && (
           <Box sx={{ pl: 1 }}>
-            {node.children.map(child => renderFolderTree(child.path, level + 1))}
+            {isLoading && !hasChildren ? (
+              <FileTreeSkeleton level={level + 1} count={3} />
+            ) : (
+              node.children.map(child => renderFolderTree(child.path, level + 1))
+            )}
           </Box>
         )}
       </Box>
@@ -876,8 +857,15 @@ const ShareDialog = ({
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
           {/* 폴더 트리 영역 */}
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            {folderTree.size === 0 ? (
+          <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+            {loadingAllFolders ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={40} />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  폴더를 불러오는 중...
+                </Typography>
+              </Box>
+            ) : folderTree.size === 0 ? (
               <Typography variant="body2" color="text.secondary">
                 폴더를 불러오는 중...
               </Typography>
@@ -907,7 +895,7 @@ const ShareDialog = ({
             onClick={handleSave} 
             variant="contained" 
             color="primary" 
-            disabled={saving} 
+            disabled={saving || loadingAllFolders} 
             sx={{ ml: 1 }}
           >
             {saving ? '저장 중...' : '확인'}

@@ -238,3 +238,57 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
     </>
   );
 };
+
+/**
+ * File tree skeleton loader
+ * Matches the layout of folder tree items: expand icon + folder icon + text
+ * Supports level-based indentation for nested folders
+ */
+export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, index) => (
+        <Box
+          key={index}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            py: 0.5,
+            pl: level * 2,
+            minHeight: 32,
+            ...getAnimationDelay(index),
+          }}
+        >
+          {/* Expand icon placeholder */}
+          <Box sx={{ minWidth: 24, mr: 0.5, display: 'flex', justifyContent: 'center' }}>
+            <Skeleton 
+              variant="circular" 
+              width={20} 
+              height={20} 
+              animation="wave"
+            />
+          </Box>
+          {/* Folder icon placeholder */}
+          <Box sx={{ minWidth: 24, mr: 0.5 }}>
+            <Skeleton 
+              variant="rectangular" 
+              width={20} 
+              height={20} 
+              animation="wave"
+              sx={{ borderRadius: 0.5 }}
+            />
+          </Box>
+          {/* Folder name placeholder */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Skeleton 
+              variant="text" 
+              width="60%" 
+              height={20} 
+              animation="wave"
+            />
+          </Box>
+        </Box>
+      ))}
+    </>
+  );
+};

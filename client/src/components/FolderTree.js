@@ -23,6 +23,7 @@ import {
 import { listFiles } from '../services/fileService';
 import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
 import axios from 'axios';
+import { FileTreeSkeleton } from './FileSkeletons';
 
 const FolderTreeItem = ({ 
   path, 
@@ -311,27 +312,31 @@ const FolderTreeItem = ({
           />
         </ListItemButton>
       </ListItem>
-      {hasChildren && (
-        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+      {(hasChildren || loading) && (
+        <Collapse in={isExpanded && (hasChildren || loading)} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
-            {children.map((child) => (
-              <FolderTreeItem
-                key={child.path}
-                path={child.path}
-                name={child.name}
-                level={level + 1}
-                currentPath={currentPath}
-                onPathClick={onPathClick}
-                expandedPaths={expandedPaths}
-                onToggleExpand={onToggleExpand}
-                user={user}
-                treeUpdateTrigger={treeUpdateTrigger}
-                hasReadPermission={child.hasReadPermission}
-                hasWritePermission={child.hasWritePermission}
-                onExplorerDrop={onExplorerDrop}
-                isMobile={isMobile}
-              />
-            ))}
+            {loading && !hasChildren ? (
+              <FileTreeSkeleton level={level + 1} count={3} />
+            ) : (
+              children.map((child) => (
+                <FolderTreeItem
+                  key={child.path}
+                  path={child.path}
+                  name={child.name}
+                  level={level + 1}
+                  currentPath={currentPath}
+                  onPathClick={onPathClick}
+                  expandedPaths={expandedPaths}
+                  onToggleExpand={onToggleExpand}
+                  user={user}
+                  treeUpdateTrigger={treeUpdateTrigger}
+                  hasReadPermission={child.hasReadPermission}
+                  hasWritePermission={child.hasWritePermission}
+                  onExplorerDrop={onExplorerDrop}
+                  isMobile={isMobile}
+                />
+              ))
+            )}
           </List>
         </Collapse>
       )}
@@ -981,39 +986,43 @@ const SharedFolderTreeItem = ({
           />
         </ListItemButton>
       </ListItem>
-      {hasChildren && (
-        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+      {(hasChildren || loading) && (
+        <Collapse in={isExpanded && (hasChildren || loading)} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
-            {children.map((child) => {
-              // child가 이미 노드 구조인지 확인
-              const childNode = typeof child === 'object' && child.path 
-                ? child 
-                : { path: child.path || child, name: child.name || child.path?.split('/').filter(Boolean).pop() || child, children: [] };
-              
-              // 권한 정보 포함 - 서버에서 반환한 권한 정보 사용
-              if (child.hasReadPermission !== undefined) {
-                childNode.hasReadPermission = child.hasReadPermission === true;
-              } else {
-                childNode.hasReadPermission = false;
-              }
-              
-              return (
-                <SharedFolderTreeItem
-                  key={childNode.path}
-                  node={childNode}
-                  level={level + 1}
-                  currentPath={currentPath}
-                  onPathClick={onPathClick}
-                  expandedPaths={expandedPaths}
-                  onToggleExpand={onToggleExpand}
-                  user={user}
-                  treeUpdateTrigger={treeUpdateTrigger}
-                  sharedFoldersMap={sharedFoldersMap}
-                  onExplorerDrop={onExplorerDrop}
-                  isMobile={isMobile}
-                />
-              );
-            })}
+            {loading && !hasChildren ? (
+              <FileTreeSkeleton level={level + 1} count={3} />
+            ) : (
+              children.map((child) => {
+                // child가 이미 노드 구조인지 확인
+                const childNode = typeof child === 'object' && child.path 
+                  ? child 
+                  : { path: child.path || child, name: child.name || child.path?.split('/').filter(Boolean).pop() || child, children: [] };
+                
+                // 권한 정보 포함 - 서버에서 반환한 권한 정보 사용
+                if (child.hasReadPermission !== undefined) {
+                  childNode.hasReadPermission = child.hasReadPermission === true;
+                } else {
+                  childNode.hasReadPermission = false;
+                }
+                
+                return (
+                  <SharedFolderTreeItem
+                    key={childNode.path}
+                    node={childNode}
+                    level={level + 1}
+                    currentPath={currentPath}
+                    onPathClick={onPathClick}
+                    expandedPaths={expandedPaths}
+                    onToggleExpand={onToggleExpand}
+                    user={user}
+                    treeUpdateTrigger={treeUpdateTrigger}
+                    sharedFoldersMap={sharedFoldersMap}
+                    onExplorerDrop={onExplorerDrop}
+                    isMobile={isMobile}
+                  />
+                );
+              })
+            )}
           </List>
         </Collapse>
       )}

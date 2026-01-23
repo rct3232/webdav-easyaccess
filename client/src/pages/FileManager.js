@@ -56,7 +56,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useFileOperations } from '../hooks/useFileOperations';
 import { uploadMultipleFiles } from '../services/fileService';
-import { showErrorMessage } from '../utils/errorUtils';
+import { useMessage } from '../hooks/useMessage';
 import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
 import FileList from '../components/FileList';
@@ -134,6 +134,7 @@ const FileManager = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
+  const { showError } = useMessage();
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
@@ -488,17 +489,17 @@ const FileManager = () => {
         if (!permission.hasRead) {
           // 권한 없음: 이전 경로로 롤백
           setCurrentPath(previousPath);
-          showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
+          showError('이 폴더에 대한 접근 권한이 없습니다.');
           return;
         }
       } catch (error) {
         // 에러 발생: 이전 경로로 롤백
         setCurrentPath(previousPath);
         if (error.response?.status === 403) {
-          showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
+          showError('이 폴더에 대한 접근 권한이 없습니다.');
         } else {
           console.error('Failed to check permission:', error);
-          showErrorMessage(setDropMessage, null, '권한 확인 중 오류가 발생했습니다.');
+          showError('권한 확인 중 오류가 발생했습니다.');
         }
         return;
       }
@@ -512,7 +513,7 @@ const FileManager = () => {
       if (file.type === 'directory') {
         // 권한이 없는 폴더는 클릭 불가 (이미 표시된 정보 활용)
         if (file.hasReadPermission === false) {
-          showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
+          showError('이 폴더에 대한 접근 권한이 없습니다.');
           return;
         }
         
@@ -529,17 +530,17 @@ const FileManager = () => {
             if (!permission.hasRead) {
               // 권한 없음: 롤백
               setCurrentPath(previousPath);
-              showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
+              showError('이 폴더에 대한 접근 권한이 없습니다.');
               return;
             }
           } catch (error) {
             // 에러 발생: 롤백
             setCurrentPath(previousPath);
             if (error.response?.status === 403) {
-              showErrorMessage(setDropMessage, null, '이 폴더에 대한 접근 권한이 없습니다.');
+              showError('이 폴더에 대한 접근 권한이 없습니다.');
             } else {
               console.error('Failed to check permission:', error);
-              showErrorMessage(setDropMessage, null, '권한 확인 중 오류가 발생했습니다.');
+              showError('권한 확인 중 오류가 발생했습니다.');
             }
             return;
           }

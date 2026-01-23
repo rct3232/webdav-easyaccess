@@ -98,6 +98,106 @@ async function getUserOrNull(userId) {
   }
 }
 
+/**
+ * Check if user can grant permission to a folder
+ * 
+ * @param {Object} user - User object (must have is_admin and username properties)
+ * @param {string} folderPath - Folder path to check
+ * @param {number} userId - User ID (for hasDirectFolderPermission check)
+ * @returns {Promise<boolean>} True if user can grant permission
+ * 
+ * @description
+ * A user can grant permission if:
+ * - User is admin
+ * - User owns the folder (isOwnerPath)
+ * - User has admin permission on the folder
+ */
+async function canGrantPermission(user, folderPath, userId) {
+  if (!user) return false;
+  
+  // 관리자는 모든 폴더에 대해 권한 부여 가능
+  if (isAdminUser(user)) {
+    return true;
+  }
+  
+  // 폴더 소유자는 자신의 폴더에 대한 권한 부여 가능
+  if (isOwnerPath(user, folderPath)) {
+    return true;
+  }
+  
+  // 해당 폴더에 admin 권한이 있으면 권한 부여 가능
+  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+}
+
+/**
+ * Check if user can revoke permission from a folder
+ * 
+ * @param {Object} user - User object (must have is_admin and username properties)
+ * @param {string} folderPath - Folder path to check
+ * @param {number} userId - User ID (for hasDirectFolderPermission check)
+ * @param {number} targetUserId - Target user ID whose permission is being revoked
+ * @returns {Promise<boolean>} True if user can revoke permission
+ * 
+ * @description
+ * A user can revoke permission if:
+ * - User is revoking their own permission (always allowed)
+ * - User is admin
+ * - User owns the folder (isOwnerPath)
+ * - User has admin permission on the folder
+ */
+async function canRevokePermission(user, folderPath, userId, targetUserId) {
+  if (!user) return false;
+  
+  // 자기 자신의 권한을 취소하는 경우는 항상 허용
+  if (userId === targetUserId) {
+    return true;
+  }
+  
+  // 관리자는 모든 폴더에 대해 권한 취소 가능
+  if (isAdminUser(user)) {
+    return true;
+  }
+  
+  // 폴더 소유자는 자신의 폴더에 대한 권한 취소 가능
+  if (isOwnerPath(user, folderPath)) {
+    return true;
+  }
+  
+  // 해당 폴더에 admin 권한이 있으면 권한 취소 가능
+  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+}
+
+/**
+ * Check if user can view permissions for a folder
+ * 
+ * @param {Object} user - User object (must have is_admin and username properties)
+ * @param {string} folderPath - Folder path to check
+ * @param {number} userId - User ID (for hasDirectFolderPermission check)
+ * @returns {Promise<boolean>} True if user can view permissions
+ * 
+ * @description
+ * A user can view permissions if:
+ * - User is admin
+ * - User owns the folder (isOwnerPath)
+ * - User has admin permission on the folder
+ */
+async function canViewPermissions(user, folderPath, userId) {
+  if (!user) return false;
+  
+  // 관리자는 모든 폴더의 권한 정보를 볼 수 있음
+  if (isAdminUser(user)) {
+    return true;
+  }
+  
+  // 폴더 소유자는 자신의 폴더의 권한 정보를 볼 수 있음
+  if (isOwnerPath(user, folderPath)) {
+    return true;
+  }
+  
+  // 해당 폴더에 admin 권한이 있으면 권한 정보를 볼 수 있음
+  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+}
+
 module.exports = {
   isAdminUser,
   isOwnerPath,
@@ -107,5 +207,8 @@ module.exports = {
   canWriteFolder,
   canWriteFileByParent,
   getUserOrNull,
+  canGrantPermission,
+  canRevokePermission,
+  canViewPermissions,
 };
 

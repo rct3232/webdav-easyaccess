@@ -98,6 +98,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'WebDAV EasyAccess API is running' });
 });
 
+// Error handler middleware (must be after all routes)
+const { errorHandler } = require('./utils/errorHandler');
+app.use(errorHandler);
+
 app.get('/api/webdav/test', async (req, res) => {
   try {
     const { testConnection } = require('./utils/webdav');

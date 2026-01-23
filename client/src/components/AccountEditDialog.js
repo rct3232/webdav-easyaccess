@@ -1,9 +1,5 @@
 import React from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
   Box,
   TextField,
@@ -11,7 +7,7 @@ import {
   Alert,
   Typography,
 } from '@mui/material';
-import { useResponsive } from '../hooks/useResponsive';
+import BaseDialog from './BaseDialog';
 
 const AccountEditDialog = ({
   open,
@@ -28,7 +24,6 @@ const AccountEditDialog = ({
   message,
   onClearMessage,
 }) => {
-  const { isMobile } = useResponsive();
   const passwordMismatch = String(confirmPassword || '').length > 0 && password !== confirmPassword;
 
   const handleSubmit = (e) => {
@@ -37,17 +32,22 @@ const AccountEditDialog = ({
   };
 
   return (
-    <Dialog
+    <BaseDialog
       open={open}
       onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      fullScreen={isMobile}
-      disableRestoreFocus
+      title="정보 변경"
+      actions={
+        <>
+          <Button onClick={onClose} disabled={loading}>
+            취소
+          </Button>
+          <Button type="submit" variant="contained" disabled={!canSave || loading} form="account-edit-form">
+            저장
+          </Button>
+        </>
+      }
     >
-      <DialogTitle>정보 변경</DialogTitle>
-      <Box component="form" onSubmit={handleSubmit}>
-        <DialogContent>
+      <Box component="form" id="account-edit-form" onSubmit={handleSubmit}>
           {message?.text ? (
             <Alert
               severity={message.type || 'info'}
@@ -96,17 +96,8 @@ const AccountEditDialog = ({
             error={passwordMismatch}
             helperText={passwordMismatch ? '비밀번호가 다릅니다.' : ' '}
           />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={onClose} disabled={loading}>
-            취소
-          </Button>
-          <Button type="submit" variant="contained" disabled={!canSave || loading}>
-            저장
-          </Button>
-        </DialogActions>
       </Box>
-    </Dialog>
+    </BaseDialog>
   );
 };
 

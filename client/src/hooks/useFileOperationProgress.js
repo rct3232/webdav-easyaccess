@@ -147,9 +147,102 @@ export const useFileOperationProgress = () => {
     setProgressItems([]);
   }, []);
 
+  /**
+   * Create a standard progress item for file operations
+   * @param {Object} options - Progress item options
+   * @param {string} options.type - Operation type
+   * @param {string} options.name - Operation name
+   * @param {number} options.total - Total items
+   * @param {string} [options.id] - Custom ID (auto-generated if not provided)
+   * @returns {Object} Progress item
+   */
+  const createProgressItem = useCallback((options) => {
+    const {
+      type,
+      name,
+      total = 1,
+      id = null,
+    } = options;
+
+    const progressId = id || `${type}_${Date.now()}`;
+    
+    return {
+      id: progressId,
+      type,
+      status: 'preparing',
+      progress: 0,
+      total,
+      current: '',
+      name,
+    };
+  }, []);
+
+  /**
+   * Update progress with error handling
+   * @param {string} progressId - Progress item ID
+   * @param {Object} progressData - Progress data
+   * @param {Error} [error] - Optional error object
+   * @param {string} [defaultErrorMsg] - Default error message
+   */
+  const updateProgressWithError = useCallback((progressId, progressData, error = null, defaultErrorMsg = null) => {
+    if (error) {
+      const { getErrorMessage } = require('../utils/errorUtils');
+      const errorMsg = getErrorMessage(error, defaultErrorMsg || '작업에 실패했습니다');
+      
+      updateProgress({
+        id: progressId,
+        ...progressData,
+        status: 'error',
+        error: errorMsg,
+        keepOnError: true,
+      });
+    } else {
+      updateProgress({
+        id: progressId,
+        ...progressData,
+      });
+    }
+  }, [updateProgress]);
+
+  /**
+   * Create and initialize a progress item
+   * @param {Object} options - Progress item options
+   * @returns {string} Progress item ID
+   */
+  const initProgress = useCallback((options) => {
+    const item = createProgressItem(options);
+    updateProgress(item);
+    return item.id;
+  }, [createProgressItem, updateProgress]);
+
+  /**
+   * Mark progress as completed and schedule removal
+   * @param {string} progressId - Progress item ID
+   * @param {number} [delay] - Delay before removal in ms (default: 3000)
+   */
+  const completeProgress = useCallback((progressId, delay = 3000) => {
+    updateProgress({
+      id: progressId,
+      status: 'completed',
+      progress: 1,
+      total: 1,
+      current: '완료',
+    });
+    
+    if (delay > 0) {
+      setTimeout(() => {
+        updateProgress({ id: progressId, remove: true });
+      }, delay);
+    }
+  }, [updateProgress]);
+
   return {
     progressItems,
     updateProgress,
     clearAllProgress,
+    createProgressItem,
+    updateProgressWithError,
+    initProgress,
+    completeProgress,
   };
 };

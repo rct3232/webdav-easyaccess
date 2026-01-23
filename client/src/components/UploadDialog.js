@@ -1,9 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
   Box,
   Typography,
@@ -14,10 +10,9 @@ import {
 } from '@mui/material';
 import { useDropzone } from 'react-dropzone';
 import { Close as CloseIcon } from '@mui/icons-material';
-import { useResponsive } from '../hooks/useResponsive';
+import BaseDialog from './BaseDialog';
 
 const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
-  const { isMobile } = useResponsive();
   const [files, setFiles] = useState([]);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -70,72 +65,64 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={handleClose} 
-      maxWidth="sm" 
-      fullWidth 
-      fullScreen={isMobile}
-      disableRestoreFocus
+    <BaseDialog
+      open={open}
+      onClose={handleClose}
+      title="파일 업로드"
+      actions={
+        <>
+          <Button onClick={handleClose}>
+            취소
+          </Button>
+          <Button onClick={handleUpload} variant="contained" disabled={files.length === 0}>
+            업로드
+          </Button>
+        </>
+      }
     >
-      <DialogTitle>파일 업로드</DialogTitle>
-      <DialogContent>
-        <Box
-          {...getRootProps()}
-          sx={{
-            border: '2px dashed',
-            borderColor: isDragActive ? 'primary.main' : 'grey.300',
-            borderRadius: 2,
-            p: 3,
-            textAlign: 'center',
-            cursor: 'pointer',
-            backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
-            mb: 2,
-          }}
-        >
-          <input {...getInputProps()} />
-          <Typography variant="body1">
-            {isDragActive ? '파일을 여기에 놓으세요' : '파일을 드래그하거나 클릭하여 선택하세요'}
-          </Typography>
-        </Box>
+      <Box
+        {...getRootProps()}
+        sx={{
+          border: '2px dashed',
+          borderColor: isDragActive ? 'primary.main' : 'grey.300',
+          borderRadius: 2,
+          p: 3,
+          textAlign: 'center',
+          cursor: 'pointer',
+          backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+          mb: 2,
+        }}
+      >
+        <input {...getInputProps()} />
+        <Typography variant="body1">
+          {isDragActive ? '파일을 여기에 놓으세요' : '파일을 드래그하거나 클릭하여 선택하세요'}
+        </Typography>
+      </Box>
 
-        {files.length > 0 && (
-          <List>
-            {files.map((fileItem, index) => (
-              <ListItem
-                key={index}
-                secondaryAction={
-                  <IconButton 
-                    edge="end" 
-                    onClick={() => handleRemove(index)}
-                    size="small"
-                  >
-                    <CloseIcon />
-                  </IconButton>
-                }
-              >
-                <ListItemText
-                  primary={fileItem.file.name}
-                  secondary={`${(fileItem.file.size / 1024 / 1024).toFixed(2)} MB`}
-                />
-              </ListItem>
-            ))}
-          </List>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose}>
-          취소
-        </Button>
-        <Button
-          onClick={handleUpload}
-          variant="contained"
-          disabled={files.length === 0}
-        >
-          업로드
-        </Button>
-      </DialogActions>
-    </Dialog>
+      {files.length > 0 && (
+        <List>
+          {files.map((fileItem, index) => (
+            <ListItem
+              key={index}
+              secondaryAction={
+                <IconButton 
+                  edge="end" 
+                  onClick={() => handleRemove(index)}
+                  size="small"
+                >
+                  <CloseIcon />
+                </IconButton>
+              }
+            >
+              <ListItemText
+                primary={fileItem.file.name}
+                secondary={`${(fileItem.file.size / 1024 / 1024).toFixed(2)} MB`}
+              />
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </BaseDialog>
   );
 };
 

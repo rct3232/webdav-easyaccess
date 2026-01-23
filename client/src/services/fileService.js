@@ -1,16 +1,16 @@
-import axios from 'axios';
+import { get, post, put, del, request } from './apiClient';
 
-const API_BASE = '/api/files';
+const API_BASE = '/files';
 
 export const listFiles = async (path = '/') => {
-  const response = await axios.get(`${API_BASE}/list`, {
+  const response = await get(`${API_BASE}/list`, {
     params: { path },
   });
   return response.data;
 };
 
 export const downloadFile = async (filePath) => {
-  const response = await axios.get(`${API_BASE}/download`, {
+  const response = await get(`${API_BASE}/download`, {
     params: { path: filePath },
     responseType: 'blob',
   });
@@ -41,7 +41,7 @@ export const uploadFile = async (file, path = '/', signal = null) => {
     config.signal = signal;
   }
 
-  const response = await axios.post(`${API_BASE}/upload`, formData, config);
+  const response = await post(`${API_BASE}/upload`, formData, config);
   return response.data;
 };
 
@@ -53,7 +53,7 @@ export const uploadFileWithPath = async (file, targetPath = '/', relativePath = 
     formData.append('relativePath', relativePath);
   }
 
-  const response = await axios.post(`${API_BASE}/upload`, formData, {
+  const response = await post(`${API_BASE}/upload`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -118,14 +118,14 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress) =
 };
 
 export const deleteFile = async (filePath) => {
-  const response = await axios.delete(`${API_BASE}/delete`, {
+  const response = await del(`${API_BASE}/delete`, {
     params: { path: filePath },
   });
   return response.data;
 };
 
 export const renameFile = async (oldPath, newName) => {
-  const response = await axios.put(`${API_BASE}/rename`, {
+  const response = await put(`${API_BASE}/rename`, {
     oldPath,
     newName,
   });
@@ -147,7 +147,7 @@ const getFileSize = async (filePath) => {
 const pollOperationProgress = async (operationId, fileSize, onProgress) => {
   const pollProgress = async () => {
     try {
-      const progressResponse = await axios.get(`/api/files/operation-progress/${operationId}`);
+      const progressResponse = await get(`/files/operation-progress/${operationId}`);
       const progress = progressResponse.data;
       
       onProgress({
@@ -187,7 +187,7 @@ export const moveFile = async (sourcePath, destinationPath, onProgress) => {
     });
   }
   
-  const response = await axios.put(`${API_BASE}/move`, {
+  const response = await put(`${API_BASE}/move`, {
     sourcePath,
     destinationPath,
   });
@@ -220,7 +220,7 @@ export const copyFile = async (sourcePath, destinationPath, onProgress) => {
     });
   }
   
-  const response = await axios.post(`${API_BASE}/copy`, {
+  const response = await post(`${API_BASE}/copy`, {
     sourcePath,
     destinationPath,
   });
@@ -242,14 +242,14 @@ export const copyFile = async (sourcePath, destinationPath, onProgress) => {
 };
 
 export const createFolder = async (folderPath) => {
-  const response = await axios.post('/api/folders/create', {
+  const response = await post('/folders/create', {
     path: folderPath,
   });
   return response.data;
 };
 
 export const getWebDAVInfo = async () => {
-  const response = await axios.get('/api/webdav/info');
+  const response = await get('/webdav/info');
   return response.data;
 };
 
@@ -278,8 +278,8 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
       // Ignore error
     }
     
-    const response = await axios.post(
-      '/api/files/download-multiple',
+    const response = await post(
+      '/files/download-multiple',
       { paths },
       {
         responseType: 'blob',
@@ -379,12 +379,12 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
 };
 
 export const getDownloadProgress = async (downloadId) => {
-  const response = await axios.get(`/api/files/download-progress/${downloadId}`);
+  const response = await get(`/files/download-progress/${downloadId}`);
   return response.data;
 };
 
 export const checkPermission = async (folderPath) => {
-  const response = await axios.get('/api/permissions/check', {
+  const response = await get('/permissions/check', {
     params: { path: folderPath },
   });
   return response.data;

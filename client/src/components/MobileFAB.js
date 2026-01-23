@@ -41,6 +41,11 @@ const MobileFAB = ({
     setOpen(false);
   };
 
+  // 쓰기 권한이 없거나 액션이 없으면 스피드 다이얼을 렌더링하지 않음
+  if (!hasWritePermission || actions.length === 0) {
+    return null;
+  }
+
   return (
     <SpeedDial
       ariaLabel="파일 작업"

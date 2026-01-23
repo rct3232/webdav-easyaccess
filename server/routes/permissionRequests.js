@@ -6,7 +6,6 @@ const { normalizePath } = require('../utils/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 
 const User = require('../models/User');
-const Permission = require('../models/Permission');
 const PermissionRequest = require('../models/PermissionRequest');
 
 function extractOwnerUsername(folderPath) {
@@ -149,8 +148,9 @@ router.post('/:id/approve', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Only pending requests can be approved' });
     }
 
-    // Grant requested permission
-    await Permission.grant(pr.requester_id, pr.folder_path, pr.requested_permission);
+    // Note: Permission granting is handled by the client in review mode.
+    // The client calls /api/permissions/grant before calling this approve endpoint.
+    // We only update the request status here.
 
     const updated = await PermissionRequest.updateStatus(id, { status: 'approved', resolvedBy: req.user.id });
     res.json(updated);

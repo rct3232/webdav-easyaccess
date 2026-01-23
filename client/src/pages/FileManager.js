@@ -98,7 +98,6 @@ const FileManager = () => {
     loading,
     sortMode,
     setSortMode,
-    webdavUrl,
     loadFiles,
     hasWritePermission,
   } = useFileManager(user, {

@@ -31,13 +31,14 @@ async function selectiveDelete({
   canEnterDirectory,
   canDeleteFileByParent,
   webdav = defaultWebdavAdapter(),
+  allowMetaPath = false,
 } = {}) {
   if (typeof canEnterDirectory !== 'function' || typeof canDeleteFileByParent !== 'function') {
     throw new Error('canEnterDirectory and canDeleteFileByParent are required');
   }
 
   const root = normalizePath(rootPath);
-  if (isMetaPath(root)) {
+  if (isMetaPath(root) && !allowMetaPath) {
     throw new Error('Access denied');
   }
 
@@ -57,10 +58,10 @@ async function selectiveDelete({
     // Delete files first
     for (const item of items) {
       if (!item?.basename) continue;
-      if (item.basename === '.wea') continue;
+      if (item.basename === '.wea' && !allowMetaPath) continue;
 
       const childPath = posixJoin(dirPath, item.basename);
-      if (isMetaPath(childPath)) continue;
+      if (isMetaPath(childPath) && !allowMetaPath) continue;
 
       if (item.type !== 'directory') {
         const ok = await canDeleteFileByParent(dirPath);
@@ -83,10 +84,10 @@ async function selectiveDelete({
     // Then recurse directories and delete only if subtree fully deletable.
     for (const item of items) {
       if (!item?.basename) continue;
-      if (item.basename === '.wea') continue;
+      if (item.basename === '.wea' && !allowMetaPath) continue;
 
       const childPath = posixJoin(dirPath, item.basename);
-      if (isMetaPath(childPath)) continue;
+      if (isMetaPath(childPath) && !allowMetaPath) continue;
 
       if (item.type === 'directory') {
         const ok = await canEnterDirectory(childPath);

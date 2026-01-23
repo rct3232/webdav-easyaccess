@@ -400,18 +400,31 @@ router.post('/cleanup/orphaned', authenticateToken, isAdmin, async (req, res) =>
   try {
     const results = {
       deletedPermissionFiles: 0,
+      deletedUserFiles: 0,
+      deletedEmailIndexFiles: 0,
+      cleanedPermissionRequests: 0,
       errors: [],
     };
 
     const allUsers = await User.findAll();
     const validUserIds = new Set(allUsers.map(u => String(u.id)));
+    const validUsernames = new Set(allUsers.map(u => u.username));
+    const validEmailHashes = new Set(allUsers.map(u => u.email_hash).filter(Boolean));
 
-    // Orphaned permission 파일 정리
+    const { listDir, deletePath, exists } = require('../store/storage');
+    const { 
+      PERMISSIONS_USERS_DIR, 
+      userPermissionsPathByUserId,
+      USERS_DIR,
+      USERS_INDEX_PATH,
+      userPathByUsername,
+      EMAIL_INDEX_DIR,
+      emailIndexPathByEmailHash,
+      basename: pathBasename,
+    } = require('../store/metaPaths');
+
+    // 1. Orphaned permission 파일 정리
     {
-      const { listDir } = require('../store/storage');
-      const { PERMISSIONS_USERS_DIR, userPermissionsPathByUserId } = require('../store/metaPaths');
-      const { deletePath, exists } = require('../store/storage');
-      
       try {
         const entries = await listDir(PERMISSIONS_USERS_DIR);
         for (const ent of entries) {
@@ -426,12 +439,125 @@ router.post('/cleanup/orphaned', authenticateToken, isAdmin, async (req, res) =>
                 results.deletedPermissionFiles++;
               }
             } catch (error) {
-              results.errors.push(`Failed to delete ${filePath}: ${error.message}`);
+              results.errors.push(`Failed to delete permission file ${filePath}: ${error.message}`);
             }
           }
         }
       } catch (error) {
         results.errors.push(`Failed to list permission files: ${error.message}`);
+      }
+    }
+
+    // 2. Orphaned user 메타데이터 파일 정리
+    {
+      try {
+        const entries = await listDir(USERS_DIR);
+        const indexBasename = pathBasename(USERS_INDEX_PATH);
+        
+        for (const ent of entries) {
+          if (!ent.basename || !ent.basename.endsWith('.json')) continue;
+          if (ent.basename === indexBasename) continue; // _index.json 제외
+          
+          const username = ent.basename.replace(/\.json$/, '');
+          
+          if (!validUsernames.has(username)) {
+            const filePath = userPathByUsername(username);
+            try {
+              if (await exists(filePath)) {
+                await deletePath(filePath);
+                results.deletedUserFiles++;
+              }
+            } catch (error) {
+              results.errors.push(`Failed to delete user file ${filePath}: ${error.message}`);
+            }
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Failed to list user files: ${error.message}`);
+      }
+    }
+
+    // 3. Orphaned email 인덱스 파일 정리
+    {
+      try {
+        const entries = await listDir(EMAIL_INDEX_DIR);
+        
+        for (const ent of entries) {
+          if (!ent.basename || !ent.basename.endsWith('.txt')) continue;
+          
+          const emailHash = ent.basename.replace(/\.txt$/, '');
+          
+          if (!validEmailHashes.has(emailHash)) {
+            const filePath = emailIndexPathByEmailHash(emailHash);
+            try {
+              if (await exists(filePath)) {
+                await deletePath(filePath);
+                results.deletedEmailIndexFiles++;
+              }
+            } catch (error) {
+              results.errors.push(`Failed to delete email index file ${filePath}: ${error.message}`);
+            }
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Failed to list email index files: ${error.message}`);
+      }
+    }
+
+    // 4. Orphaned permission request 항목 정리
+    {
+      try {
+        const { PERMISSION_REQUESTS_PATH } = require('../store/permissionRequestStore');
+        const { withLock } = require('../store/locks');
+        const { readFile, writeFile, exists, ensureDir } = require('../store/storage');
+        const { META_ROOT } = require('../store/metaPaths');
+        
+        await withLock('permission_requests', async () => {
+          // Ensure directory exists
+          await ensureDir(META_ROOT);
+          
+          if (!(await exists(PERMISSION_REQUESTS_PATH))) {
+            return; // 파일이 없으면 스킵
+          }
+          
+          // 파일 읽기
+          const buf = await readFile(PERMISSION_REQUESTS_PATH);
+          const text = Buffer.from(buf).toString('utf8');
+          let doc;
+          
+          try {
+            doc = JSON.parse(text);
+          } catch (parseError) {
+            results.errors.push(`Failed to parse permission requests file: ${parseError.message}`);
+            return;
+          }
+          
+          if (!doc || !Array.isArray(doc.requests)) {
+            return; // 잘못된 형식이면 스킵
+          }
+          
+          const originalCount = doc.requests.length;
+          
+          // 유효한 사용자 ID를 참조하는 요청만 유지
+          doc.requests = doc.requests.filter(req => {
+            if (!req || typeof req !== 'object') return false;
+            const requesterId = String(req.requester_id);
+            const ownerId = String(req.owner_id);
+            return validUserIds.has(requesterId) && validUserIds.has(ownerId);
+          });
+          
+          const cleanedCount = originalCount - doc.requests.length;
+          if (cleanedCount > 0) {
+            doc.updated_at = new Date().toISOString();
+            await writeFile(PERMISSION_REQUESTS_PATH, JSON.stringify(doc, null, 2), {
+              overwrite: true,
+              contentType: 'application/json; charset=utf-8',
+            });
+            results.cleanedPermissionRequests = cleanedCount;
+          }
+        });
+      } catch (error) {
+        results.errors.push(`Failed to clean permission requests: ${error.message}`);
       }
     }
 

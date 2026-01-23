@@ -24,7 +24,6 @@ import {
   DialogContentText,
   DialogActions,
   TextField,
-  FormControlLabel,
   Switch,
   Card,
   CardContent,
@@ -37,6 +36,7 @@ import {
   Close as CloseIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
+  CleaningServices as CleaningServicesIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -113,11 +113,24 @@ const AdminDashboard = () => {
     try {
       const res = await axios.post('/api/admin/cleanup/orphaned', {});
       const { results } = res.data;
+      
+      const totalCleaned = results.deletedPermissionFiles + 
+                          results.deletedUserFiles + 
+                          results.deletedEmailIndexFiles + 
+                          results.cleanedPermissionRequests;
+      
+      let messageText;
+      if (totalCleaned === 0) {
+        messageText = '정리할 데이터가 없습니다.';
+      } else if (results.errors?.length) {
+        messageText = `정리 완료. 총 ${totalCleaned}개 항목 삭제됨. 일부 실패.`;
+      } else {
+        messageText = `정리 완료. 총 ${totalCleaned}개 항목 삭제됨.`;
+      }
+      
       setMessage({
-        type: results.errors?.length ? 'warning' : 'success',
-        text: results.errors?.length
-          ? `정리 완료. permission ${results.deletedPermissionFiles}개 삭제. 일부 실패.`
-          : `정리 완료. permission ${results.deletedPermissionFiles}개 삭제됨.`,
+        type: results.errors?.length ? 'warning' : (totalCleaned > 0 ? 'success' : 'info'),
+        text: messageText,
       });
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data?.error || 'Orphaned 데이터 정리 실패' });
@@ -549,67 +562,59 @@ const AdminDashboard = () => {
             <Typography variant="h6" gutterBottom>
               시스템 설정
             </Typography>
-            <Box sx={{ mt: 3 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={tempSettings.registration_enabled === 'true'}
-                    onChange={handleToggleRegistration}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box>
-                    <Typography variant="body1">
-                      회원가입 허용
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      활성화 시 로그인 페이지에서 회원가입 버튼이 표시됩니다.
-                    </Typography>
-                  </Box>
-                }
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1">
+                  회원가입 허용
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  로그인 페이지에서 회원가입 버튼 표시
+                </Typography>
+              </Box>
+              <Switch
+                checked={tempSettings.registration_enabled === 'true'}
+                onChange={handleToggleRegistration}
+                color="primary"
+                sx={{ ml: 2 }}
               />
             </Box>
-            <Box sx={{ mt: 4 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showHiddenFiles}
-                    onChange={(e) => {
-                      const newValue = e.target.checked;
-                      setShowHiddenFiles(newValue);
-                      saveShowHiddenFiles(newValue);
-                    }}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box>
-                    <Typography variant="body1">
-                      숨김 파일 보기
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      활성화 시 숨김 처리된 파일과 폴더(.wea 등)가 목록에 표시됩니다.
-                    </Typography>
-                  </Box>
-                }
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1">
+                  숨김 파일 보기
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  숨김 파일 및 폴더 표시
+                </Typography>
+              </Box>
+              <Switch
+                checked={showHiddenFiles}
+                onChange={(e) => {
+                  const newValue = e.target.checked;
+                  setShowHiddenFiles(newValue);
+                  saveShowHiddenFiles(newValue);
+                }}
+                color="primary"
+                sx={{ ml: 2 }}
               />
             </Box>
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom>
-                데이터 정리
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                존재하지 않는 사용자의 permission 파일을 삭제합니다.
-              </Typography>
-              <Button
-                variant="outlined"
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1">
+                  데이터 정리
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  불필요한 데이터 정리
+                </Typography>
+              </Box>
+              <IconButton
                 onClick={() => setCleanupConfirmOpen(true)}
                 disabled={cleanupLoading}
-                startIcon={cleanupLoading ? <CircularProgress size={16} /> : null}
+                color="primary"
+                sx={{ ml: 2 }}
               >
-                Orphaned 데이터 정리
-              </Button>
+                {cleanupLoading ? <CircularProgress size={24} /> : <CleaningServicesIcon />}
+              </IconButton>
             </Box>
           </Paper>
         )}

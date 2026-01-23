@@ -593,6 +593,7 @@ router.delete('/delete', authenticateToken, async (req, res) => {
         rootPath: normalizedTargetPath,
         canEnterDirectory,
         canDeleteFileByParent,
+        allowMetaPath: user.is_admin && isMetaPath(normalizedTargetPath),
       });
 
       try {

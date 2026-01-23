@@ -1,29 +1,6 @@
 import React from 'react';
-import { Box, Skeleton, Grid, TableRow, TableCell, keyframes } from '@mui/material';
+import { Box, Skeleton, Grid, TableRow, TableCell } from '@mui/material';
 import { useResponsive } from '../hooks/useResponsive';
-
-// fade-in 후 펄스 효과 애니메이션
-const fadeInPulse = keyframes`
-  0% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-  75% {
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 1;
-  }
-`;
-
-// 애니메이션 지연을 위한 헬퍼 함수
-const getAnimationDelay = (index) => ({
-  animation: `${fadeInPulse} 2s ease-in-out infinite`,
-  opacity: 0,
-  animationDelay: `${index * 0.1}s`,
-});
 
 /**
  * List view skeleton loader
@@ -43,7 +20,6 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
             alignItems: 'center',
             p: 1.5,
             borderRadius: 1,
-            ...getAnimationDelay(index),
           }}
         >
           {selectionMode && (
@@ -115,7 +91,6 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
               overflow: 'hidden',
               border: '1px solid',
               borderColor: 'divider',
-              ...getAnimationDelay(index),
             }}
           >
             {selectionMode && (
@@ -179,7 +154,6 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
           key={index} 
           sx={{ 
             height: '40px',
-            ...getAnimationDelay(index),
           }}
         >
           {selectionMode && (
@@ -256,7 +230,6 @@ export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
             py: 0.5,
             pl: level * 2,
             minHeight: 32,
-            ...getAnimationDelay(index),
           }}
         >
           {/* Expand icon placeholder */}

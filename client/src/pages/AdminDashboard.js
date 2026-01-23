@@ -29,6 +29,7 @@ import {
   Card,
   CardContent,
   CardActions,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -41,6 +42,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import ShareDialog from '../components/ShareDialog';
 import { useResponsive } from '../hooks/useResponsive';
+import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../utils/localStorage';
 
 const AdminDashboard = () => {
   const { isMobile } = useResponsive();
@@ -55,6 +57,9 @@ const AdminDashboard = () => {
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false);
   const [permissionDialog, setPermissionDialog] = useState({ open: false, userId: null, username: '' });
+  const [showHiddenFiles, setShowHiddenFiles] = useState(() => getShowHiddenFiles());
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
 
   const loadPendingUsers = async () => {
     try {
@@ -99,6 +104,25 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Failed to update settings:', error);
       setMessage({ type: 'error', text: '설정 저장에 실패했습니다.' });
+    }
+  };
+
+  const handleCleanupOrphaned = async () => {
+    setCleanupConfirmOpen(false);
+    setCleanupLoading(true);
+    try {
+      const res = await axios.post('/api/admin/cleanup/orphaned', {});
+      const { results } = res.data;
+      setMessage({
+        type: results.errors?.length ? 'warning' : 'success',
+        text: results.errors?.length
+          ? `정리 완료. permission ${results.deletedPermissionFiles}개 삭제. 일부 실패.`
+          : `정리 완료. permission ${results.deletedPermissionFiles}개 삭제됨.`,
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error.response?.data?.error || 'Orphaned 데이터 정리 실패' });
+    } finally {
+      setCleanupLoading(false);
     }
   };
 
@@ -546,6 +570,47 @@ const AdminDashboard = () => {
                 }
               />
             </Box>
+            <Box sx={{ mt: 4 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showHiddenFiles}
+                    onChange={(e) => {
+                      const newValue = e.target.checked;
+                      setShowHiddenFiles(newValue);
+                      saveShowHiddenFiles(newValue);
+                    }}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body1">
+                      숨김 파일 보기
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      활성화 시 숨김 처리된 파일과 폴더(.wea 등)가 목록에 표시됩니다.
+                    </Typography>
+                  </Box>
+                }
+              />
+            </Box>
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h6" gutterBottom>
+                데이터 정리
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                존재하지 않는 사용자의 permission 파일을 삭제합니다.
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={() => setCleanupConfirmOpen(true)}
+                disabled={cleanupLoading}
+                startIcon={cleanupLoading ? <CircularProgress size={16} /> : null}
+              >
+                Orphaned 데이터 정리
+              </Button>
+            </Box>
           </Paper>
         )}
       </Box>
@@ -576,6 +641,31 @@ const AdminDashboard = () => {
           </Button>
           <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
             삭제
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Orphaned 데이터 정리 확인 다이얼로그 */}
+      <Dialog
+        open={cleanupConfirmOpen}
+        onClose={() => setCleanupConfirmOpen(false)}
+        fullScreen={isMobile}
+      >
+        <DialogTitle>Orphaned 데이터 정리 확인</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            존재하지 않는 사용자의 permission 파일을 삭제합니다.
+            <br />
+            <br />
+            이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCleanupConfirmOpen(false)} color="primary">
+            취소
+          </Button>
+          <Button onClick={handleCleanupOrphaned} color="error" variant="contained" autoFocus>
+            정리
           </Button>
         </DialogActions>
       </Dialog>

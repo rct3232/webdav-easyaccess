@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Permission = require('../models/Permission');
+const PermissionRequest = require('../models/PermissionRequest');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../utils/auth');
 const { sendApprovalEmail, sendRejectionEmail } = require('../utils/email');
@@ -106,35 +107,26 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
     const userFolder = `/${username}`;
     console.log('[Admin Create] Checking if folder exists:', userFolder);
     
-    try {
-      const folderExists = await pathExists(userFolder);
-      if (folderExists) {
-        return res.status(400).json({ 
-          error: '이미 사용 중인 사용자명입니다. WebDAV 서버에 동일한 이름의 폴더가 존재합니다.' 
-        });
-      }
-    } catch (error) {
-      console.error('[Admin Create] WebDAV folder check error:', error);
-      return res.status(500).json({ 
-        error: '폴더 확인 중 문제가 발생했습니다. 관리자에게 문의해주세요.' 
-      });
-    }
-
     // Create user with approved status (skip approval process)
     createdUser = await User.create(username, email, password, false);
     await User.updateStatus(createdUser.id, 'approved');
     console.log('[Admin Create] User created and approved:', createdUser.id);
 
-    // Create user folder
+    // Create user folder or reuse existing one
     try {
-      await createDirectory(userFolder);
-      console.log(`[Admin Create] Created user folder: ${userFolder}`);
+      const folderExists = await pathExists(userFolder);
+      if (folderExists) {
+        console.log(`[Admin Create] User folder already exists, reusing: ${userFolder}`);
+      } else {
+        await createDirectory(userFolder);
+        console.log(`[Admin Create] Created user folder: ${userFolder}`);
+      }
     } catch (folderError) {
-      console.error('[Admin Create] Failed to create user folder:', folderError);
+      console.error('[Admin Create] Failed to check or create user folder:', folderError);
       // Rollback user creation
       await User.delete(createdUser.id);
       return res.status(500).json({ 
-        error: '사용자 폴더 생성에 실패했습니다. 사용자 계정이 삭제되었습니다.' 
+        error: '사용자 폴더 확인/생성에 실패했습니다. 사용자 계정이 삭제되었습니다.' 
       });
     }
 
@@ -190,15 +182,22 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
     await User.updateStatus(userId, 'approved');
     console.log(`[Admin] User ${user.username} approved`);
 
-    // Create user folder
+    // Create user folder or reuse existing one
+    const userFolder = `/${user.username}`;
+    const { pathExists } = require('../utils/webdav');
     try {
-      await createDirectory(`/${user.username}`);
-      console.log(`[Admin] Created user folder: /${user.username}`);
+      const folderExists = await pathExists(userFolder);
+      if (folderExists) {
+        console.log(`[Admin] User folder already exists, reusing: ${userFolder}`);
+      } else {
+        await createDirectory(userFolder);
+        console.log(`[Admin] Created user folder: ${userFolder}`);
+      }
     } catch (folderError) {
-      console.error(`[Admin] Failed to create user folder:`, folderError);
+      console.error(`[Admin] Failed to check or create user folder:`, folderError);
       // Rollback approval
       await User.updateStatus(userId, 'pending');
-      return res.status(500).json({ error: '사용자 폴더 생성에 실패했습니다. 관리자에게 문의해주세요.' });
+      return res.status(500).json({ error: '사용자 폴더 확인/생성에 실패했습니다. 관리자에게 문의해주세요.' });
     }
 
     // Grant permissions
@@ -252,9 +251,21 @@ router.post('/users/:id/reject', authenticateToken, isAdmin, async (req, res) =>
       // Continue with deletion even if email fails
     }
 
+    // Clean up permission requests where user is requester
+    const requesterResult = await PermissionRequest.deleteByRequesterId(userId);
+    console.log(`[Admin] Deleted ${requesterResult.deletedCount} permission requests where user ${user.username} was requester`);
+
+    // Reject permission requests where user is owner
+    const ownerResult = await PermissionRequest.rejectByOwnerId(userId, req.user.id);
+    console.log(`[Admin] Rejected ${ownerResult.rejectedCount} pending permission requests where user ${user.username} was owner`);
+
     // Delete user permissions
     await Permission.revokeAllUserPermissions(userId);
     console.log(`[Admin] Revoked all permissions for user ${user.username}`);
+
+    // Delete permission file
+    await Permission.deleteUserPermissionsFile(userId);
+    console.log(`[Admin] Deleted permission file for user ${user.username}`);
 
     // Delete user from database
     await User.delete(userId);
@@ -292,9 +303,21 @@ router.delete('/users/:id', authenticateToken, isAdmin, async (req, res) => {
       return res.status(400).json({ error: '다른 관리자 계정은 삭제할 수 없습니다.' });
     }
 
+    // Clean up permission requests where user is requester
+    const requesterResult = await PermissionRequest.deleteByRequesterId(userId);
+    console.log(`[Admin] Deleted ${requesterResult.deletedCount} permission requests where user ${user.username} was requester`);
+
+    // Reject permission requests where user is owner
+    const ownerResult = await PermissionRequest.rejectByOwnerId(userId, adminId);
+    console.log(`[Admin] Rejected ${ownerResult.rejectedCount} pending permission requests where user ${user.username} was owner`);
+
     // Delete user permissions
     const permResult = await Permission.revokeAllUserPermissions(userId);
     console.log(`[Admin] Revoked ${permResult.deletedCount} permissions for user ${user.username}`);
+
+    // Delete permission file
+    await Permission.deleteUserPermissionsFile(userId);
+    console.log(`[Admin] Deleted permission file for user ${user.username}`);
 
     // Delete user from database
     await User.delete(userId);
@@ -369,6 +392,56 @@ router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
   } catch (error) {
     console.error('Update user permissions error:', error);
     res.status(500).json({ error: '권한 업데이트에 실패했습니다.' });
+  }
+});
+
+// Clean up orphaned data
+router.post('/cleanup/orphaned', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const results = {
+      deletedPermissionFiles: 0,
+      errors: [],
+    };
+
+    const allUsers = await User.findAll();
+    const validUserIds = new Set(allUsers.map(u => String(u.id)));
+
+    // Orphaned permission 파일 정리
+    {
+      const { listDir } = require('../store/storage');
+      const { PERMISSIONS_USERS_DIR, userPermissionsPathByUserId } = require('../store/metaPaths');
+      const { deletePath, exists } = require('../store/storage');
+      
+      try {
+        const entries = await listDir(PERMISSIONS_USERS_DIR);
+        for (const ent of entries) {
+          if (!ent.basename || !ent.basename.endsWith('.json')) continue;
+          const userId = ent.basename.replace(/\.json$/, '');
+          
+          if (!validUserIds.has(userId)) {
+            const filePath = userPermissionsPathByUserId(userId);
+            try {
+              if (await exists(filePath)) {
+                await deletePath(filePath);
+                results.deletedPermissionFiles++;
+              }
+            } catch (error) {
+              results.errors.push(`Failed to delete ${filePath}: ${error.message}`);
+            }
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Failed to list permission files: ${error.message}`);
+      }
+    }
+
+    res.json({
+      message: 'Orphaned data cleanup completed',
+      results,
+    });
+  } catch (error) {
+    console.error('Cleanup orphaned data error:', error);
+    res.status(500).json({ error: 'Failed to cleanup orphaned data' });
   }
 });
 

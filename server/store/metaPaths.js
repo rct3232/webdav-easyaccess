@@ -22,10 +22,6 @@ const PERMISSIONS_DIR = `${META_ROOT}/permissions`;
 const PERMISSIONS_USERS_DIR = `${PERMISSIONS_DIR}/users`;
 const userPermissionsPathByUserId = (userId) => `${PERMISSIONS_USERS_DIR}/${userId}.json`;
 
-const userMetaDirByUsername = (username) => `/${username}${META_ROOT}`;
-const userPermissionsMirrorPathByUsername = (username) =>
-  `${userMetaDirByUsername(username)}/permissions.json`;
-
 function sha256HexLower(input) {
   return crypto.createHash('sha256').update(String(input), 'utf8').digest('hex');
 }
@@ -43,9 +39,7 @@ function isMetaPath(webdavPath) {
   const normalized = normalizeWebdavPath(webdavPath);
   if (normalized === META_ROOT) return true;
   if (normalized.startsWith(`${META_ROOT}/`)) return true;
-  // User-scoped meta dir: /{username}/.wea/...
-  // We'll treat anything containing "/.wea/" as meta.
-  return normalized.includes(`${META_ROOT}/`);
+  return false;
 }
 
 function basename(webdavPath) {
@@ -66,8 +60,6 @@ module.exports = {
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
   userPermissionsPathByUserId,
-  userMetaDirByUsername,
-  userPermissionsMirrorPathByUsername,
   sha256HexLower,
   normalizeWebdavPath,
   isMetaPath,

@@ -100,6 +100,36 @@ router.get('/outbox', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/check-owner', authenticateToken, async (req, res) => {
+  try {
+    const { folderPath } = req.query;
+
+    if (!folderPath) {
+      return res.status(400).json({ error: 'folderPath is required' });
+    }
+
+    if (isMetaPath(folderPath)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const normalizedFolderPath = normalizePath(folderPath);
+    const ownerUsername = extractOwnerUsername(normalizedFolderPath);
+
+    if (!ownerUsername) {
+      return res.json({ ownerExists: false, ownerUsername: null });
+    }
+
+    const owner = await User.findByUsername(ownerUsername);
+    // owner가 null, undefined, 또는 falsy 값이면 false
+    const ownerExists = Boolean(owner);
+
+    res.json({ ownerExists, ownerUsername: ownerExists ? ownerUsername : null });
+  } catch (error) {
+    console.error('Check owner exists error:', error);
+    res.status(500).json({ error: 'Failed to check owner existence' });
+  }
+});
+
 router.post('/:id/approve', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);

@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { generateToken, authenticateToken } = require('../utils/auth');
 const { sendRegistrationPendingEmail } = require('../utils/email');
-const { pathExists } = require('../utils/webdav');
+const { ensureDefaultAdmin, ensureDirs } = require('../store/bootstrap');
 
 // Simple in-memory login rate limiter (best-effort, per-process).
 // Configure via env:
@@ -78,19 +78,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: '이미 사용 중인 이메일입니다.' });
     }
 
-    const userFolder = `/${username}`;
-    try {
-      const folderExists = await pathExists(userFolder);
-      if (folderExists) {
-        return res.status(400).json({ 
-          error: '이미 사용 중인 사용자명입니다. 관리자에게 문의해주세요.' 
-        });
-      }
-    } catch (error) {
-      return res.status(500).json({ 
-        error: '회원가입 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' 
-      });
-    }
+    // Note: WebDAV folder existence check removed - will be handled during approval
 
     createdUser = await User.create(username, email, password, false);
 
@@ -137,6 +125,23 @@ router.post('/login', async (req, res) => {
       return res.status(429).json({
         error: '로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.',
       });
+    }
+
+    // Admin 계정이 없으면 자동 복구 (/.wea 삭제 등으로 인한 복구)
+    if (username === 'admin') {
+      const adminExists = await User.findByUsername('admin');
+      if (!adminExists) {
+        try {
+          // 필요한 디렉토리 재생성
+          await ensureDirs();
+          // Admin 계정 재생성
+          await ensureDefaultAdmin();
+          console.log('[Auth] Admin account auto-recreated after .wea deletion');
+        } catch (recoveryError) {
+          console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);
+          // 복구 실패해도 계속 진행 (기존 로직대로 처리)
+        }
+      }
     }
 
     const user = await User.findByUsername(username);

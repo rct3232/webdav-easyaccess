@@ -39,6 +39,16 @@ function rejectMetaPath(res) {
   return res.status(403).json({ error: 'Access denied' });
 }
 
+// Admin만 meta path 접근 허용 체크
+function checkMetaPathAccess(user, path, res) {
+  if (isMetaPath(path)) {
+    if (!user || !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+  }
+  return null; // 통과
+}
+
 async function isDirectoryPath(webdavPath) {
   try {
     await listDirectory(webdavPath);
@@ -77,13 +87,15 @@ const upload = multer({
 router.get('/list', authenticateToken, async (req, res) => {
   try {
     let folderPath = normalizePath(req.query.path || '/');
-    if (isMetaPath(folderPath)) {
-      return rejectMetaPath(res);
-    }
     const user = await User.findById(req.user.id);
     
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(folderPath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
     
     // 권한 체크를 먼저 수행 (상위 경로 포함)
@@ -145,8 +157,11 @@ router.get('/list', authenticateToken, async (req, res) => {
     }
 
     const items = await listDirectory(folderPath);
-    // Hide metadata directories from UI
-    const filteredItems = items.filter(item => item.basename !== '.wea');
+    // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
+    // 일반 사용자는 여전히 필터링 (보안)
+    const filteredItems = user.is_admin 
+      ? items 
+      : items.filter(item => item.basename !== '.wea');
     const { ensureThumbnail } = require('../utils/thumbnail');
     
     // Files inherit write permission from the current directory (parent folder)
@@ -251,12 +266,16 @@ router.get('/list', authenticateToken, async (req, res) => {
           }
         }
         
+        // isHidden 플래그 추가
+        const isHidden = item.basename === '.wea';
+        
         return {
           ...item,
           path: normalizedPath,
           thumbnailUrl,
           hasReadPermission,
           hasWritePermission,
+          isHidden,
         };
       })
     );
@@ -284,11 +303,17 @@ router.get('/download', authenticateToken, async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'File path is required' });
     }
-    if (isMetaPath(filePath)) {
-      return rejectMetaPath(res);
-    }
 
     const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(filePath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
     }
@@ -360,12 +385,18 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     let folderPath = req.body.path || '/';
-    if (isMetaPath(folderPath)) {
-      return rejectMetaPath(res);
-    }
     const relativePath = req.body.relativePath || ''; // Support for nested folder uploads
     
     const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(folderPath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     
     // 관리자는 모든 경로에 파일 업로드 가능
     if (!user.is_admin) {
@@ -463,15 +494,18 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         }
       }
     }
-    if (isMetaPath(finalFolderPath)) {
-      return rejectMetaPath(res);
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(finalFolderPath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
     
     const filePath = finalFolderPath === '/' 
       ? '/' + originalFilename 
       : (finalFolderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
-    if (isMetaPath(filePath)) {
-      return rejectMetaPath(res);
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(filePath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Check if file already exists
@@ -501,13 +535,15 @@ router.delete('/delete', authenticateToken, async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: 'File path is required' });
     }
-    if (isMetaPath(filePath)) {
-      return rejectMetaPath(res);
-    }
 
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(filePath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
     const normalizedTargetPath = normalizePath(filePath);
     const isDir = await isDirectoryPath(filePath);
@@ -590,13 +626,15 @@ router.put('/rename', authenticateToken, async (req, res) => {
     if (!oldPath || !newName) {
       return res.status(400).json({ error: 'Old path and new name are required' });
     }
-    if (isMetaPath(oldPath)) {
-      return rejectMetaPath(res);
-    }
 
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(oldPath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const isDir = await isDirectoryPath(oldPath);
@@ -611,8 +649,10 @@ router.put('/rename', authenticateToken, async (req, res) => {
 
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName).replace(/\\/g, '/');
-    if (isMetaPath(newPath)) {
-      return rejectMetaPath(res);
+    
+    // Admin만 meta path 접근 가능
+    if (isMetaPath(newPath) && !user.is_admin) {
+      return res.status(403).json({ error: 'Access denied' });
     }
     const normalizedOldPath = oldPath.replace(/\\/g, '/');
     const normalizedNewPath = newPath.replace(/\\/g, '/');
@@ -984,16 +1024,16 @@ router.post('/download-multiple', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Paths array is required' });
     }
 
-    // Reject meta paths early
-    for (const p of paths) {
-      if (isMetaPath(p)) {
-        return rejectMetaPath(res);
-      }
-    }
-
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(403).json({ error: 'User not found' });
+    }
+    
+    // Admin만 meta path 접근 가능
+    for (const p of paths) {
+      if (isMetaPath(p) && !user.is_admin) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     // Download policy: recursive_strict + direct-only read (admin/owner bypass)

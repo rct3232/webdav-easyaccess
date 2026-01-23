@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
 import { sortFiles } from '../utils/fileUtils';
 import { SORT_MODES } from '../constants/fileManager';
+import { getShowHiddenFiles } from '../utils/localStorage';
 import axios from 'axios';
 
 export const useFileManager = (user, options = {}) => {
@@ -92,9 +93,14 @@ export const useFileManager = (user, options = {}) => {
       } else {
         try {
           const data = await listFiles(targetPath);
+          // 숨김 파일 필터링 (옵션이 꺼져있으면 isHidden === true인 항목 제외)
+          const showHiddenFiles = getShowHiddenFiles();
+          const filteredData = showHiddenFiles 
+            ? data 
+            : data.filter(item => !item.isHidden);
           // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
           if (requestId === requestIdRef.current) {
-            setFiles(data);
+            setFiles(filteredData);
           }
         } catch (error) {
           // 403 에러 등 권한 관련 에러 처리

@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { listFiles } from '../services/fileService';
 import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
+import { getShowHiddenFiles } from '../utils/localStorage';
 import axios from 'axios';
 import { FileTreeSkeleton } from './FileSkeletons';
 
@@ -111,13 +112,16 @@ const FolderTreeItem = ({
     setLoading(true);
     try {
       const data = await listFiles(path);
+      const showHiddenFiles = getShowHiddenFiles();
       const folders = data
         .filter(item => item.type === 'directory')
+        .filter(item => showHiddenFiles || !item.isHidden)
         .map(item => ({
           path: item.path,
           name: item.basename || item.name,
           hasReadPermission: item.hasReadPermission,
           hasWritePermission: item.hasWritePermission,
+          isHidden: item.isHidden,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setChildren(folders);
@@ -309,6 +313,9 @@ const FolderTreeItem = ({
                 {name}
               </Typography>
             }
+            sx={{
+              opacity: name === '.wea' ? 0.5 : 1,
+            }}
           />
         </ListItemButton>
       </ListItem>

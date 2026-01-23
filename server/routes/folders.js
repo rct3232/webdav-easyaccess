@@ -96,8 +96,11 @@ router.get('/list', authenticateToken, async (req, res) => {
     }
 
     const items = await listDirectory(folderPath);
-    // Hide metadata directories from UI
-    const filteredItems = items.filter(item => item.basename !== '.wea');
+    // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
+    // 일반 사용자는 여전히 필터링 (보안)
+    const filteredItems = user.is_admin 
+      ? items 
+      : items.filter(item => item.basename !== '.wea');
     
     // 각 항목에 대한 권한 체크 및 권한 정보 포함
     const itemsWithPermissions = await Promise.all(
@@ -121,10 +124,14 @@ router.get('/list', authenticateToken, async (req, res) => {
           }
         }
         
+        // isHidden 플래그 추가
+        const isHidden = item.basename === '.wea';
+        
         return {
           ...item,
           hasReadPermission,
           hasWritePermission,
+          isHidden,
         };
       })
     );

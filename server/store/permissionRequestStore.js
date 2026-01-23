@@ -236,6 +236,55 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
   });
 }
 
+async function deleteByRequesterId(userId) {
+  return await withLock('permission_requests', async () => {
+    const doc = await readDoc();
+    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
+
+    const initialCount = doc.requests.length;
+    doc.requests = doc.requests.filter((r) => {
+      const sanitized = sanitizeRequest(r);
+      return !sanitized || sanitized.requester_id !== Number(userId);
+    });
+
+    const deletedCount = initialCount - doc.requests.length;
+    if (deletedCount > 0) {
+      await writeDoc(doc);
+    }
+
+    return { deletedCount };
+  });
+}
+
+async function rejectByOwnerId(userId, resolvedBy = null) {
+  return await withLock('permission_requests', async () => {
+    const doc = await readDoc();
+    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
+
+    let rejectedCount = 0;
+    const now = nowIso();
+
+    for (let i = 0; i < doc.requests.length; i++) {
+      const sanitized = sanitizeRequest(doc.requests[i]);
+      if (sanitized && sanitized.owner_id === Number(userId) && sanitized.status === 'pending') {
+        doc.requests[i] = {
+          ...sanitized,
+          status: 'rejected',
+          resolved_at: now,
+          resolved_by: Number.isInteger(resolvedBy) ? resolvedBy : null,
+        };
+        rejectedCount++;
+      }
+    }
+
+    if (rejectedCount > 0) {
+      await writeDoc(doc);
+    }
+
+    return { rejectedCount };
+  });
+}
+
 module.exports = {
   PERMISSION_REQUESTS_PATH,
   ensurePermissionRequestsFile,
@@ -244,5 +293,7 @@ module.exports = {
   listInbox,
   listOutbox,
   updateStatus,
+  deleteByRequesterId,
+  rejectByOwnerId,
 };
 

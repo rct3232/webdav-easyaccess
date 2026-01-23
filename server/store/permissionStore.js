@@ -3,8 +3,6 @@ const {
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
   userPermissionsPathByUserId,
-  userMetaDirByUsername,
-  userPermissionsMirrorPathByUsername,
   normalizeWebdavPath,
 } = require('./metaPaths');
 const { ensureDir, exists, readFile, writeFile } = require('./storage');
@@ -80,24 +78,6 @@ async function writeUserPermissionsDoc(userId, doc) {
   }
 }
 
-async function mirrorToUserDirIfExists(userId, doc) {
-  try {
-    const user = await userStore.findById(userId);
-    if (!user?.username) return;
-    const userRoot = normalizeWebdavPath(`/${user.username}`);
-    if (!(await exists(userRoot))) return;
-
-    // Ensure /{username}/.wea exists and then write mirror file
-    await ensureDir(userMetaDirByUsername(user.username));
-    await writeFile(userPermissionsMirrorPathByUsername(user.username), JSON.stringify(doc.permissions, null, 2), {
-      overwrite: true,
-      contentType: 'application/json; charset=utf-8',
-    });
-  } catch {
-    // best-effort only
-  }
-}
-
 async function grant(userId, folderPath, permission) {
   const uid = String(userId);
   const folder = normalizeWebdavPath(folderPath);
@@ -105,7 +85,6 @@ async function grant(userId, folderPath, permission) {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
     doc.permissions[folder] = permission;
     await writeUserPermissionsDoc(uid, doc);
-    await mirrorToUserDirIfExists(uid, doc);
     return { id: undefined, userId: Number(uid), folderPath: folderPath, permission };
   });
 }
@@ -117,7 +96,6 @@ async function revoke(userId, folderPath) {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
     delete doc.permissions[folder];
     await writeUserPermissionsDoc(uid, doc);
-    await mirrorToUserDirIfExists(uid, doc);
     return { success: true };
   });
 }
@@ -129,9 +107,24 @@ async function revokeAllUserPermissions(userId) {
     const deletedCount = Object.keys(doc.permissions || {}).length;
     doc.permissions = {};
     await writeUserPermissionsDoc(uid, doc);
-    await mirrorToUserDirIfExists(uid, doc);
     return { success: true, deletedCount };
   });
+}
+
+async function deleteUserPermissionsFile(userId) {
+  const uid = String(userId);
+  const p = userPermissionsPathByUserId(uid);
+  try {
+    if (await exists(p)) {
+      const { deletePath } = require('./storage');
+      await deletePath(p);
+    }
+    // 캐시에서도 제거
+    cache.delete(uid);
+  } catch (error) {
+    console.error(`Failed to delete permission file for user ${uid}:`, error);
+    // best-effort: 에러가 나도 계속 진행
+  }
 }
 
 async function getUserPermissions(userId) {
@@ -377,7 +370,6 @@ async function rewritePermissionsForAllUsers(
 
         doc.permissions = out;
         await writeUserPermissionsDoc(userId, doc);
-        await mirrorToUserDirIfExists(userId, doc);
         return { changed: true, keysChanged };
       });
 
@@ -443,7 +435,6 @@ async function revokePermissionsPrefixForAllUsers(prefixes = []) {
 
         doc.permissions = out;
         await writeUserPermissionsDoc(userId, doc);
-        await mirrorToUserDirIfExists(userId, doc);
         return { changed: true, removed };
       });
 
@@ -461,6 +452,7 @@ module.exports = {
   grant,
   revoke,
   revokeAllUserPermissions,
+  deleteUserPermissionsFile,
   getUserPermissions,
   checkPermission,
   getFolderPermissions,

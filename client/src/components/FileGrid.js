@@ -119,7 +119,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
+                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
                 border: isDropTarget ? '2px solid' : checked ? '2px solid' : 'none',
                 borderColor: checked ? 'primary.main' : 'primary.main',
                 backgroundColor: checked ? 'action.selected' : 'transparent',

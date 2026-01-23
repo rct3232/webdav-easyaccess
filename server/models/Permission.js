@@ -13,6 +13,10 @@ class Permission {
     return await permissionStore.revokeAllUserPermissions(userId);
   }
 
+  static async deleteUserPermissionsFile(userId) {
+    return await permissionStore.deleteUserPermissionsFile(userId);
+  }
+
   static async getUserPermissions(userId) {
     return await permissionStore.getUserPermissions(userId);
   }

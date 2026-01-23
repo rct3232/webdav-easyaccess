@@ -125,7 +125,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 selected={checked}
                 sx={{ 
                   cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-                  opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
+                  opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
                   backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
                   transition: 'all 0.2s',
                   borderBottom: '1px solid',

@@ -19,6 +19,7 @@ import {
   cancelPermissionRequest,
   createPermissionRequest,
   listOutboxPermissionRequests,
+  checkOwnerExists,
 } from '../services/permissionRequestService';
 
 const SharedFolderManageDialog = ({ 
@@ -39,6 +40,7 @@ const SharedFolderManageDialog = ({
     read: { pending: false, id: null },
     write: { pending: false, id: null },
   });
+  const [ownerExists, setOwnerExists] = useState(null); // null: 체크 중, true: 존재함, false: 존재하지 않음
 
   const normalizeLocalPath = (p) => {
     if (!p) return '/';
@@ -72,6 +74,43 @@ const SharedFolderManageDialog = ({
     };
 
     loadPermissionInfo();
+  }, [open, folderPath, user]);
+
+  // 소유자 존재 여부 체크
+  useEffect(() => {
+    // 모달이 닫혔을 때 리셋
+    if (!open) {
+      setOwnerExists(null);
+      return;
+    }
+
+    const checkOwner = async () => {
+      if (!folderPath || !user) {
+        setOwnerExists(null);
+        return;
+      }
+
+      // 관리자는 항상 소유자가 존재하는 것으로 처리
+      if (user.is_admin) {
+        setOwnerExists(true);
+        return;
+      }
+
+      // 체크 시작 전에 null로 설정 (로딩 상태)
+      setOwnerExists(null);
+
+      try {
+        const result = await checkOwnerExists(folderPath);
+        const exists = result?.ownerExists === true;
+        setOwnerExists(exists);
+      } catch (error) {
+        console.error('Failed to check owner existence:', error);
+        // 에러 발생 시 사용자 경험을 위해 false로 설정하여 버튼 비활성화
+        setOwnerExists(false);
+      }
+    };
+
+    checkOwner();
   }, [open, folderPath, user]);
 
   // 이미 요청한 권한(대기중) 로드: 해당 권한 요청 버튼 disable + "요청됨" 표시
@@ -283,7 +322,7 @@ const SharedFolderManageDialog = ({
                   startIcon={<VisibilityIcon />}
                   onClick={() => handlePermissionRequest('read')}
                   fullWidth
-                  disabled={loading || pendingRequest.read.pending || pendingRequest.write.pending}
+                  disabled={loading || ownerExists === false || ownerExists === null || pendingRequest.read.pending || pendingRequest.write.pending}
                   sx={{ py: 1.5 }}
                 >
                   읽기 권한 요청
@@ -297,7 +336,7 @@ const SharedFolderManageDialog = ({
                       variant="text"
                       size="small"
                       onClick={() => handleCancelPendingRequest('read')}
-                      disabled={loading}
+                      disabled={loading || ownerExists === false || ownerExists === null}
                       sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
                     >
                       요청 회수
@@ -314,7 +353,7 @@ const SharedFolderManageDialog = ({
                   startIcon={<EditIcon />}
                   onClick={() => handlePermissionRequest('write')}
                   fullWidth
-                  disabled={loading || pendingRequest.write.pending}
+                  disabled={loading || ownerExists === false || ownerExists === null || pendingRequest.write.pending}
                   sx={{ py: 1.5 }}
                 >
                   쓰기 권한 요청
@@ -328,7 +367,7 @@ const SharedFolderManageDialog = ({
                       variant="text"
                       size="small"
                       onClick={() => handleCancelPendingRequest('write')}
-                      disabled={loading}
+                      disabled={loading || ownerExists === false || ownerExists === null}
                       sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
                     >
                       요청 회수
@@ -345,7 +384,7 @@ const SharedFolderManageDialog = ({
                 startIcon={<ExitToAppIcon />}
                 onClick={() => setConfirmDialogOpen(true)}
                 fullWidth
-                disabled={loading}
+                disabled={loading || ownerExists === false || ownerExists === null}
                 sx={{ py: 1.5 }}
               >
                 권한 반납
@@ -354,6 +393,11 @@ const SharedFolderManageDialog = ({
           </Box>
         </DialogContent>
         <DialogActions>
+          {ownerExists === false && (
+            <Typography variant="caption" color="error.main" sx={{ mr: 'auto' }}>
+              소유자가 삭제되어 권한을 요청할 수 없습니다.
+            </Typography>
+          )}
           <Button onClick={onClose} disabled={loading}>
             닫기
           </Button>

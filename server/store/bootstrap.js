@@ -67,5 +67,7 @@ async function initMetadataStore() {
 
 module.exports = {
   initMetadataStore,
+  ensureDefaultAdmin,
+  ensureDirs,
 };
 

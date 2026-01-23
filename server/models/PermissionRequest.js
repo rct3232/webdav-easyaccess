@@ -24,6 +24,14 @@ class PermissionRequest {
   static async updateStatus(id, opts) {
     return await permissionRequestStore.updateStatus(id, opts);
   }
+
+  static async deleteByRequesterId(userId) {
+    return await permissionRequestStore.deleteByRequesterId(userId);
+  }
+
+  static async rejectByOwnerId(userId, resolvedBy = null) {
+    return await permissionRequestStore.rejectByOwnerId(userId, resolvedBy);
+  }
 }
 
 module.exports = PermissionRequest;

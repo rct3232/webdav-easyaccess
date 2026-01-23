@@ -124,7 +124,9 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 backgroundColor: isDisabled ? 'transparent' : 'action.hover',
               },
               backgroundColor: dropTarget === file.path ? 'primary.main' : 'transparent',
-              opacity: draggedFile?.path === file.path ? 0.5 : (isDisabled ? 0.4 : 1),
+              opacity: draggedFile?.path === file.path 
+                ? 0.5 
+                : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
               cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
               transition: 'all 0.2s',
               color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),

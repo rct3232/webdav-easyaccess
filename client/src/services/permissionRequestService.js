@@ -36,3 +36,10 @@ export const cancelPermissionRequest = async (id) => {
   return response.data;
 };
 
+export const checkOwnerExists = async (folderPath) => {
+  const response = await axios.get(`${API_BASE}/check-owner`, {
+    params: { folderPath }
+  });
+  return response.data;
+};
+

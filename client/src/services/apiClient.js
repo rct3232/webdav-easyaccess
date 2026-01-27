@@ -38,9 +38,21 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor: Handle common errors
+// Response interceptor: Handle common errors and token refresh
 apiClient.interceptors.response.use(
   (response) => {
+    // Check for new token in response header and update it
+    const newToken = response.headers['x-new-token'];
+    if (newToken) {
+      // Update token in sessionStorage
+      sessionStorage.setItem('token', newToken);
+      
+      // Update axios default headers
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      
+      // Dispatch event for AuthContext to update its state
+      window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
+    }
     return response;
   },
   async (error) => {

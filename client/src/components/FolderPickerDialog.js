@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -36,11 +36,26 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
+  
+  // 모달이 열릴 때의 초기값들을 저장하기 위한 ref
+  const prevOpenRef = useRef(false);
+  const initialValuesRef = useRef({ currentPath: null, action: null, userId: null });
 
   useEffect(() => {
-    if (open) {
-      // 모달 오픈 시 현재 위치를 기준으로 시작 (없으면 루트)
+    // 모달이 닫혔다가 열릴 때만 초기화 (false -> true 전환)
+    const wasClosed = !prevOpenRef.current;
+    const isNowOpen = open;
+    
+    if (wasClosed && isNowOpen) {
+      // 모달이 열릴 때의 초기값 저장
       const initialPath = currentPath || '/';
+      initialValuesRef.current = {
+        currentPath: initialPath,
+        action: action,
+        userId: user?.id,
+      };
+      
+      // 모달 오픈 시 현재 위치를 기준으로 시작 (없으면 루트)
       setSelectedPath(initialPath);
       loadFolders(initialPath);
       // 복사 또는 이동 작업일 때 쓰기 권한 확인 (admin은 무조건 가능)
@@ -58,8 +73,10 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
         loadSharedFolders();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, currentPath, action, user]);
+    
+    // 이전 open 상태 업데이트
+    prevOpenRef.current = open;
+  }, [open]); // open만 의존성으로 사용
 
   const checkWritePermission = async (path) => {
     try {

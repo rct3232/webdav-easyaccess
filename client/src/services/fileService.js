@@ -396,3 +396,24 @@ export const requestThumbnailsBatch = async (paths) => {
   });
   return response.data;
 };
+
+export const batchDeleteFiles = async (paths) => {
+  const response = await post(`${API_BASE}/batch-delete`, {
+    paths,
+  });
+  return response.data;
+};
+
+export const batchMoveFiles = async (moves) => {
+  const response = await post(`${API_BASE}/batch-move`, {
+    moves,
+  });
+  return response.data;
+};
+
+export const batchCopyFiles = async (copies) => {
+  const response = await post(`${API_BASE}/batch-copy`, {
+    copies,
+  });
+  return response.data;
+};

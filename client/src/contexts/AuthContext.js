@@ -85,6 +85,22 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token, fetchUser]);
 
+  // Listen for token refresh events from apiClient
+  useEffect(() => {
+    const handleTokenRefresh = (event) => {
+      const { token: newToken } = event.detail;
+      if (newToken) {
+        setToken(newToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      }
+    };
+
+    window.addEventListener('token-refreshed', handleTokenRefresh);
+    return () => {
+      window.removeEventListener('token-refreshed', handleTokenRefresh);
+    };
+  }, []);
+
   const login = async (username, password) => {
     try {
       const response = await axios.post('/api/auth/login', { username, password });

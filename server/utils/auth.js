@@ -52,6 +52,12 @@ async function authenticateToken(req, res, next) {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
     req.user = decoded;
+    
+    // Generate new token to extend expiration (sliding window)
+    // This ensures token expiration is reset on every authenticated request
+    const newToken = generateToken(user);
+    res.setHeader('X-New-Token', newToken);
+    
     next();
   } catch (error) {
     return res.status(500).json({ error: 'Authentication failed' });

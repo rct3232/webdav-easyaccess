@@ -541,6 +541,115 @@ router.delete('/delete', authenticateToken, requireUser, normalizePathParam, che
   res.json({ message: 'File deleted successfully' });
 }));
 
+// Batch delete endpoint
+router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { paths } = req.body;
+  
+  if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    throw validationError('Paths array is required');
+  }
+
+  const user = req.user.full;
+  const results = {
+    succeeded: [],
+    failed: [],
+    skipped: [],
+    deletedDirPrefixes: []
+  };
+
+  const allDeletedDirPrefixes = new Set();
+
+  for (const filePath of paths) {
+    if (!filePath || typeof filePath !== 'string') {
+      results.failed.push({ path: filePath, error: 'Invalid path' });
+      continue;
+    }
+
+    try {
+      const normalizedTargetPath = normalizePath(filePath);
+      const isDir = await isDirectoryPath(filePath);
+      const hasPermission = isDir
+        ? await canWriteFolder(user, normalizedTargetPath)
+        : await canWriteFileByParent(user, normalizedTargetPath);
+      
+      if (!hasPermission) {
+        results.skipped.push(filePath);
+        continue;
+      }
+      
+      if (user.is_admin) {
+        try {
+          await listDirectory(filePath);
+          const normalizedPath = filePath.endsWith('/') ? filePath.slice(0, -1) : filePath;
+          const pathParts = normalizedPath.split('/').filter(Boolean);
+          if (pathParts.length === 1) {
+            const folderUsername = pathParts[0];
+            const folderUser = await User.findByUsername(folderUsername);
+            if (folderUser) {
+              results.skipped.push(filePath);
+              continue;
+            }
+          }
+        } catch (dirError) {
+          // Not a directory or doesn't exist, proceed with deletion
+        }
+      }
+
+      if (isDir) {
+        const canEnterDirectory = async (dirPath) => {
+          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+          return await hasDirectFolderPermission(user.id, dirPath, 'write');
+        };
+        const canDeleteFileByParent = async (parentDir) => canEnterDirectory(parentDir);
+
+        const result = await selectiveDelete({
+          rootPath: normalizedTargetPath,
+          canEnterDirectory,
+          canDeleteFileByParent,
+          allowMetaPath: user.is_admin && isMetaPath(normalizedTargetPath),
+        });
+
+        try {
+          const prefixes = (result.deletedDirPrefixes || []).map((p) => normalizePath(p));
+          if (prefixes.length > 0) {
+            await Permission.revokePermissionsPrefixForAllUsers(prefixes);
+            prefixes.forEach(p => allDeletedDirPrefixes.add(p));
+          }
+        } catch (permError) {
+          console.error('Failed to revoke permissions after directory deletion:', permError);
+        }
+
+        results.succeeded.push(filePath);
+        if (result.skippedPaths && result.skippedPaths.length > 0) {
+          result.skippedPaths.forEach(p => results.skipped.push(p));
+        }
+      } else {
+        await deleteFile(filePath);
+        results.succeeded.push(filePath);
+      }
+    } catch (error) {
+      console.error(`Failed to delete ${filePath}:`, error);
+      const errorStatus = error.status || error.response?.status;
+      if (errorStatus === 403 || errorStatus === 401) {
+        results.skipped.push(filePath);
+      } else {
+        results.failed.push({ 
+          path: filePath, 
+          error: error.message || 'Unknown error' 
+        });
+      }
+    }
+  }
+
+  res.json({
+    message: 'Batch delete completed',
+    succeeded: results.succeeded,
+    failed: results.failed,
+    skipped: results.skipped,
+    deletedDirPrefixes: Array.from(allDeletedDirPrefixes)
+  });
+}));
+
 router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { oldPath, newName } = req.body;
   if (!oldPath || !newName) {
@@ -725,6 +834,143 @@ router.put('/move', authenticateToken, requireUser, normalizePathParam, checkMet
   }
 }));
 
+// Batch move endpoint
+router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { moves } = req.body; // [{sourcePath, destinationPath}, ...]
+  
+  if (!moves || !Array.isArray(moves) || moves.length === 0) {
+    throw validationError('Moves array is required');
+  }
+
+  const user = req.user.full;
+  const results = {
+    succeeded: [],
+    failed: [],
+    skipped: [],
+    movedDirMappings: []
+  };
+
+  const allMovedDirMappings = [];
+
+  for (const move of moves) {
+    const { sourcePath, destinationPath } = move;
+    
+    if (!sourcePath || !destinationPath) {
+      results.failed.push({ 
+        sourcePath: sourcePath || 'unknown', 
+        destinationPath: destinationPath || 'unknown',
+        error: 'Source and destination paths are required' 
+      });
+      continue;
+    }
+
+    try {
+      const normalizedSourcePath = normalizePath(sourcePath);
+      const normalizedDestinationPath = normalizePath(destinationPath);
+      const isSourceDir = await isDirectoryPath(sourcePath);
+      const hasSourcePermission = isSourceDir
+        ? await canWriteFolder(user, normalizedSourcePath)
+        : await canWriteFileByParent(user, normalizedSourcePath);
+      
+      if (!hasSourcePermission) {
+        results.skipped.push(sourcePath);
+        continue;
+      }
+
+      const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
+      const hasDestPermission = await canWriteFolder(user, destParentPath);
+      
+      if (!hasDestPermission) {
+        results.skipped.push(sourcePath);
+        continue;
+      }
+
+      const destExists = await pathExists(destinationPath);
+      if (destExists) {
+        results.failed.push({ 
+          sourcePath, 
+          destinationPath, 
+          error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' 
+        });
+        continue;
+      }
+
+      if (isSourceDir) {
+        const canEnterDirectory = async (dirPath) => {
+          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+          return await hasDirectFolderPermission(user.id, dirPath, 'write');
+        };
+        const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+
+        const result = await selectiveTransfer({
+          sourceRoot: normalizedSourcePath,
+          destRoot: normalizedDestinationPath,
+          mode: 'move',
+          canEnterDirectory,
+          canTransferFile,
+        });
+
+        try {
+          const excludePrefixes = (result.skippedPaths || [])
+            .map((p) => normalizePath(p))
+            .filter((p) => p !== normalizedSourcePath && p.startsWith(`${normalizedSourcePath}/`));
+
+          const rootMovedFully = (result.movedDirMappings || []).some(
+            (m) => normalizePath(m.fromPrefix) === normalizedSourcePath
+          );
+
+          await Permission.rewritePermissionsForAllUsers(
+            [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
+            {
+              excludePrefixes,
+              duplicateExactMatches: !rootMovedFully,
+            }
+          );
+        } catch (permError) {
+          console.error('Failed to rewrite permissions after move:', permError);
+        }
+
+        if (result.movedDirMappings.length > 0) {
+          try {
+            await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
+            allMovedDirMappings.push(...result.movedDirMappings);
+          } catch (permError) {
+            console.error('Failed to rewrite permissions after move:', permError);
+          }
+        }
+
+        results.succeeded.push({ sourcePath, destinationPath });
+        if (result.skippedPaths && result.skippedPaths.length > 0) {
+          result.skippedPaths.forEach(p => results.skipped.push(p));
+        }
+      } else {
+        await moveFile(sourcePath, destinationPath);
+        results.succeeded.push({ sourcePath, destinationPath });
+      }
+    } catch (error) {
+      console.error(`Failed to move ${sourcePath} to ${destinationPath}:`, error);
+      const errorStatus = error.status || error.response?.status;
+      if (errorStatus === 403 || errorStatus === 401) {
+        results.skipped.push(sourcePath);
+      } else {
+        results.failed.push({ 
+          sourcePath, 
+          destinationPath, 
+          error: error.message || 'Unknown error' 
+        });
+      }
+    }
+  }
+
+  res.json({
+    message: 'Batch move completed',
+    succeeded: results.succeeded,
+    failed: results.failed,
+    skipped: results.skipped,
+    movedDirMappings: allMovedDirMappings
+  });
+}));
+
 router.post('/copy', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { sourcePath, destinationPath } = req.body;
   if (!sourcePath || !destinationPath) {
@@ -847,6 +1093,130 @@ router.post('/copy', authenticateToken, requireUser, normalizePathParam, checkMe
     });
     throw error;
   }
+}));
+
+// Batch copy endpoint
+router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { copies } = req.body; // [{sourcePath, destinationPath}, ...]
+  
+  if (!copies || !Array.isArray(copies) || copies.length === 0) {
+    throw validationError('Copies array is required');
+  }
+
+  const user = req.user.full;
+  const results = {
+    succeeded: [],
+    failed: [],
+    skipped: [],
+    createdDirs: []
+  };
+
+  const allCreatedDirs = new Set();
+
+  for (const copy of copies) {
+    const { sourcePath, destinationPath } = copy;
+    
+    if (!sourcePath || !destinationPath) {
+      results.failed.push({ 
+        sourcePath: sourcePath || 'unknown', 
+        destinationPath: destinationPath || 'unknown',
+        error: 'Source and destination paths are required' 
+      });
+      continue;
+    }
+
+    try {
+      const isSourceDir = await isDirectoryPath(sourcePath);
+      const hasSourcePermission = isSourceDir
+        ? await canReadFolder(req.user.id, sourcePath, 'read')
+        : await canReadFile(req.user.id, sourcePath, 'read');
+      
+      if (!hasSourcePermission) {
+        results.skipped.push(sourcePath);
+        continue;
+      }
+
+      const normalizedDest = normalizePath(destinationPath);
+      const destParentPath = path.posix.dirname(normalizedDest) || '/';
+      const hasDestPermission = await canWriteFolder(user, destParentPath);
+      
+      if (!hasDestPermission) {
+        results.skipped.push(sourcePath);
+        continue;
+      }
+
+      const destExists = await pathExists(destinationPath);
+      if (destExists) {
+        results.failed.push({ 
+          sourcePath, 
+          destinationPath, 
+          error: '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' 
+        });
+        continue;
+      }
+
+      if (isSourceDir) {
+        const normalizedSource = normalizePath(sourcePath);
+
+        const canEnterDirectory = async (dirPath) => {
+          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
+          return await hasDirectFolderPermission(user.id, dirPath, 'read');
+        };
+        const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+
+        const okRoot = await canEnterDirectory(normalizedSource);
+        if (!okRoot) {
+          results.skipped.push(sourcePath);
+          continue;
+        }
+
+        const result = await selectiveTransfer({
+          sourceRoot: normalizedSource,
+          destRoot: normalizedDest,
+          mode: 'copy',
+          canEnterDirectory,
+          canTransferFile,
+        });
+
+        try {
+          for (const dir of result.createdDirs) {
+            await Permission.grant(req.user.id, dir, 'write');
+            allCreatedDirs.add(dir);
+          }
+        } catch (permError) {
+          console.error('Failed to grant executor permissions after copy:', permError);
+        }
+
+        results.succeeded.push({ sourcePath, destinationPath });
+        if (result.skippedPaths && result.skippedPaths.length > 0) {
+          result.skippedPaths.forEach(p => results.skipped.push(p));
+        }
+      } else {
+        await copyFile(sourcePath, destinationPath);
+        results.succeeded.push({ sourcePath, destinationPath });
+      }
+    } catch (error) {
+      console.error(`Failed to copy ${sourcePath} to ${destinationPath}:`, error);
+      const errorStatus = error.status || error.response?.status;
+      if (errorStatus === 403 || errorStatus === 401) {
+        results.skipped.push(sourcePath);
+      } else {
+        results.failed.push({ 
+          sourcePath, 
+          destinationPath, 
+          error: error.message || 'Unknown error' 
+        });
+      }
+    }
+  }
+
+  res.json({
+    message: 'Batch copy completed',
+    succeeded: results.succeeded,
+    failed: results.failed,
+    skipped: results.skipped,
+    createdDirs: Array.from(allCreatedDirs)
+  });
 }));
 
 router.get('/thumbnail/:hash', asyncHandler(async (req, res) => {

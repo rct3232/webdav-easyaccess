@@ -2,6 +2,11 @@ import { useState, useCallback } from 'react';
 import { moveFile, copyFile, deleteFile, downloadMultipleFiles } from '../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
 import { getErrorMessage } from '../utils/errorUtils';
+import { 
+  applyRecentFilesAfterBulkDelete,
+  applyRecentFilesAfterBulkMove,
+} from '../utils/recentFiles';
+import { normalizePath } from '../utils/pathUtils';
 
 export const useBulkOperations = (
   selectedFiles,
@@ -153,6 +158,14 @@ export const useBulkOperations = (
     }, retryDataObj);
 
     if (successCount > 0) {
+      // 삭제 성공한 파일들을 최근항목에서 제거
+      try {
+        await applyRecentFilesAfterBulkDelete(filePaths, deletedFolders);
+      } catch (err) {
+        // 최근항목 정리 실패는 무시 (치명적이지 않음)
+        console.error('Failed to clean up recent files after bulk delete:', err);
+      }
+      
       deletedFolders.forEach(folderPath => {
         setTreeUpdateTrigger({
           type: 'deleted',
@@ -343,6 +356,37 @@ export const useBulkOperations = (
     }, retryDataObj);
 
     if (successCount > 0) {
+      // 이동 성공 시 최근항목 경로 업데이트
+      if (action === 'move') {
+        try {
+          const skippedPaths = Array.from(skippedSet);
+          const hasSkipped = skippedPaths.length > 0;
+          
+          if (!hasSkipped) {
+            // 이동된 파일/폴더별로 최근항목 업데이트
+            const moves = filePaths.map(sourcePath => {
+              const fileName = sourcePath.split('/').pop();
+              const destinationFilePath = destinationPath === '/' 
+                ? `/${fileName}` 
+                : `${destinationPath}/${fileName}`;
+              
+              const file = files.find(f => f.path === sourcePath);
+              
+              return {
+                oldPath: sourcePath,
+                newPath: destinationFilePath,
+                file: file || { type: 'file', name: fileName, basename: fileName },
+              };
+            });
+            
+            await applyRecentFilesAfterBulkMove(moves);
+          }
+        } catch (err) {
+          // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
+          console.error('Failed to update recent files after bulk move:', err);
+        }
+      }
+      
       if (!retryData) {
         setSelectedFiles(new Set());
         setSelectionMode(false);

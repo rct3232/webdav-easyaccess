@@ -42,8 +42,8 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     }
 
     const container = scrollContainerRef.current;
-    // iOS bounce 효과 고려: scrollTop <= 0
-    const isAtTop = container.scrollTop <= 0;
+    // 더 엄격한 최상단 체크: scrollTop <= 1
+    const isAtTop = container.scrollTop <= 1;
     setCanPull(isAtTop);
     
     // 당기는 중이 아닐 때만 리셋 (스크롤 이벤트와의 충돌 방지)
@@ -112,8 +112,9 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     if (!scrollContainerRef?.current) return;
     
     const container = scrollContainerRef.current;
-    // iOS bounce 효과 고려: scrollTop <= 0
-    const isAtTop = container.scrollTop <= 0;
+    // 더 엄격한 최상단 체크: scrollTop이 1 이하일 때만 허용 (iOS bounce 효과 미세 조정)
+    const currentScrollTop = container.scrollTop;
+    const isAtTop = currentScrollTop <= 1;
     
     // 다중 터치 처리: 단일 터치만 허용
     if (e.touches.length > 1) {
@@ -121,20 +122,33 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
       return;
     }
     
-    if (isAtTop && e.touches.length === 1) {
-      // 터치 시작 위치 저장 (X, Y 모두)
-      touchStartY.current = e.touches[0].clientY;
-      touchStartX.current = e.touches[0].clientX;
-      const containerRect = container.getBoundingClientRect();
-      touchStartContainerTop.current = containerRect.top;
-      touchStartScrollTop.current = container.scrollTop;
-      isDragging.current = true;
-      setCanPull(true);
+    // 터치 시작 위치와 스크롤 위치 저장 (resetPull 호출 전에 저장!)
+    touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
+    const containerRect = container.getBoundingClientRect();
+    touchStartContainerTop.current = containerRect.top;
+    touchStartScrollTop.current = currentScrollTop; // 실제 스크롤 위치 저장
+    
+    // 초기 상태: 항상 false로 시작 (실제로 아래로 당길 때만 true로 변경)
+    isDragging.current = false;
+    lastPullDistance.current = 0;
+    
+    // 스크롤이 상단에 있으면 pull-to-refresh 가능 상태로 설정
+    setCanPull(isAtTop);
+    
+    // 스크롤이 상단이 아니면 pull-to-refresh 비활성화 (하지만 touchStartScrollTop은 유지)
+    if (!isAtTop) {
+      // resetPull을 호출하면 touchStartScrollTop이 0으로 리셋되므로,
+      // 대신 필요한 것만 리셋
+      setPullDistance(0);
+      setIsPulling(false);
+      isDragging.current = false;
+      lastPullDistance.current = 0;
     }
   }, [scrollContainerRef, resetPull]);
 
   const handleTouchMove = useCallback((e) => {
-    if (!isDragging.current || !scrollContainerRef?.current) return;
+    if (!scrollContainerRef?.current) return;
 
     // 다중 터치 처리
     if (e.touches.length > 1) {
@@ -143,6 +157,43 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     }
 
     const container = scrollContainerRef.current;
+    
+    // 가장 먼저 스크롤 위치 확인 (매번 확인하여 스크롤이 발생했는지 체크)
+    const currentScrollTop = container.scrollTop;
+    const isAtTop = currentScrollTop <= 1;
+    
+    // 터치 시작 시점의 스크롤 위치 확인 (엄격하게 체크)
+    const startedAtTop = touchStartScrollTop.current <= 1;
+    
+    // 핵심 1: 시작 시점에 상단이 아니었으면 무조건 종료 (가장 먼저 체크)
+    if (!startedAtTop) {
+      if (isDragging.current) {
+        resetPull();
+      }
+      return; // preventDefault 호출하지 않음 → 정상 스크롤 가능
+    }
+    
+    // 핵심 2: 스크롤이 발생했는지 체크 (터치 시작 이후 스크롤 위치가 변경됨)
+    // 아래로 당길 때 스크롤이 발생하면 안 됨
+    if (currentScrollTop > touchStartScrollTop.current + 1) {
+      // 스크롤이 아래로 발생함 (정상 스크롤)
+      if (isDragging.current) {
+        resetPull();
+      }
+      return; // preventDefault 호출하지 않음 → 정상 스크롤 가능
+    }
+    
+    // 핵심 3: 현재 스크롤이 상단이 아니면 종료
+    if (!isAtTop) {
+      if (isDragging.current) {
+        resetPull();
+      }
+      return; // preventDefault 호출하지 않음 → 정상 스크롤 가능
+    }
+    
+    // 여기까지 왔으면: startedAtTop === true && isAtTop === true && 스크롤 발생하지 않음
+    // 즉, 시작 시점에도 상단이었고, 현재도 상단에 있으며, 스크롤이 발생하지 않음
+    
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
     
@@ -152,41 +203,67 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     
     // 수평 스크롤이 수직 스크롤보다 크면 무시
     if (deltaX > Math.abs(deltaY) && deltaX > 10) {
-      resetPull();
+      if (isDragging.current) {
+        resetPull();
+      }
       return;
     }
     
-    // 아래로 당기는 경우만 처리
+    // 아래로 당기는 경우만 처리 (스크롤이 상단에 있을 때만)
     if (deltaY > 0) {
-      // iOS bounce 효과 고려: scrollTop <= 0
-      const isAtTop = container.scrollTop <= 0;
+      // 추가 체크: 최소 당김 거리가 있어야 pull-to-refresh 활성화 (오탐지 방지)
+      const minDragDistance = 5; // 5px 이상 당겨야 활성화
       
-      if (isAtTop) {
-        // 즉시 preventDefault 호출 (10px 임계값 제거)
+      if (deltaY >= minDragDistance) {
+        // 실제로 아래로 당길 때만 isDragging 활성화
+        if (!isDragging.current) {
+          isDragging.current = true;
+          setCanPull(true);
+        }
+        
+        // preventDefault 호출하여 스크롤 방지
         e.preventDefault();
         
         // 최대 당김 거리 제한
         const distance = Math.min(deltaY, maxPullDistance);
         updatePullDistance(distance);
-      } else {
-        // 스크롤이 발생했을 때만 리셋 (임계값 5px)
-        if (container.scrollTop > 5) {
-          resetPull();
-        }
       }
     } else {
       // 위로 스크롤하는 경우 리셋
-      resetPull();
+      if (isDragging.current) {
+        resetPull();
+      }
     }
   }, [scrollContainerRef, maxPullDistance, resetPull, updatePullDistance]);
 
   const handleTouchEnd = useCallback(() => {
-    if (!isDragging.current) return;
+    // 스크롤 위치 최종 확인
+    if (!scrollContainerRef?.current) {
+      resetPull();
+      return;
+    }
+    
+    const container = scrollContainerRef.current;
+    const currentScrollTop = container.scrollTop;
+    const isAtTop = currentScrollTop <= 1;
+    const startedAtTop = touchStartScrollTop.current <= 1;
+    
+    // 스크롤이 상단이 아니거나, 시작 시점에 상단이 아니었으면 리셋하고 종료
+    if (!isAtTop || !startedAtTop) {
+      resetPull();
+      return;
+    }
+    
+    // isDragging이 false이거나 실제로 당기지 않았으면 리셋하고 종료
+    if (!isDragging.current) {
+      resetPull();
+      return;
+    }
 
     // 마지막 pullDistance 사용 (ref에서 가져오기)
     const finalDistance = lastPullDistance.current;
 
-    // 임계값을 넘었으면 새로고침 실행
+    // 실제로 당긴 거리가 임계값을 넘었고, 새로고침 중이 아니면 새로고침 실행
     if (finalDistance >= threshold && !isRefreshing) {
       setIsRefreshing(true);
       setIsPulling(false);
@@ -210,7 +287,7 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
       // 임계값을 넘지 않았으면 리셋
       resetPull();
     }
-  }, [threshold, isRefreshing, onRefresh, resetPull]);
+  }, [scrollContainerRef, threshold, isRefreshing, onRefresh, onRefreshComplete, resetPull]);
 
   // useEffect로 직접 이벤트 리스너 등록 (non-passive)
   useEffect(() => {

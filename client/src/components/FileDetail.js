@@ -117,7 +117,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
             
             return (
               <TableRow
-                key={index}
+                key={`${file.path}-${index}`}
                 {...dragHandlers}
                 {...dropHandlers}
                 {...getLongPressHandlers(file, canOpenMenu)}

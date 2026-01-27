@@ -1,0 +1,127 @@
+const express = require('express');
+const router = express.Router();
+const { asyncHandler } = require('../utils/errorHandler');
+const ShareLink = require('../models/ShareLink');
+const { pathExists } = require('../utils/webdav');
+const { getFileContents } = require('../utils/webdav');
+const { getFileType, getContentType } = require('../utils/fileTypeUtils');
+
+/**
+ * 공유 링크 정보 조회 (인증 불필요)
+ * GET /api/share/:token/info
+ */
+router.get('/:token/info', asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const link = await ShareLink.findByToken(token);
+  if (!link) {
+    return res.status(404).json({ error: 'Share link not found' });
+  }
+
+  // 만료 확인
+  if (ShareLink.isExpired(link)) {
+    return res.status(410).json({ error: 'Share link has expired' });
+  }
+
+  // 파일 존재 여부 확인
+  const exists = await pathExists(link.filePath);
+  if (!exists) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const fileName = link.filePath.split('/').pop();
+  const fileType = getFileType(fileName);
+
+  res.json({
+    token: link.token,
+    filePath: link.filePath,
+    fileName: fileName,
+    fileType: fileType,
+    createdAt: link.createdAt,
+    expiresAt: link.expiresAt,
+    downloadCount: link.downloadCount,
+    isExpired: ShareLink.isExpired(link),
+  });
+}));
+
+/**
+ * 공개 미리보기 엔드포인트 (인증 불필요)
+ * GET /api/share/:token/preview
+ */
+router.get('/:token/preview', asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const link = await ShareLink.findByToken(token);
+  if (!link) {
+    return res.status(404).json({ error: 'Share link not found' });
+  }
+
+  // 만료 확인
+  if (ShareLink.isExpired(link)) {
+    return res.status(410).json({ error: 'Share link has expired' });
+  }
+
+  // 파일 존재 여부 확인
+  const exists = await pathExists(link.filePath);
+  if (!exists) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  // 파일 미리보기 (inline)
+  try {
+    const buffer = await getFileContents(link.filePath);
+    const fileName = link.filePath.split('/').pop();
+    const fileType = getFileType(fileName);
+    const contentType = getContentType(fileName);
+
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Type', contentType);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Failed to preview file:', error);
+    res.status(500).json({ error: 'Failed to preview file' });
+  }
+}));
+
+/**
+ * 공개 다운로드 엔드포인트 (인증 불필요)
+ * GET /api/share/:token
+ */
+router.get('/:token', asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const link = await ShareLink.findByToken(token);
+  if (!link) {
+    return res.status(404).json({ error: 'Share link not found' });
+  }
+
+  // 만료 확인
+  if (ShareLink.isExpired(link)) {
+    return res.status(410).json({ error: 'Share link has expired' });
+  }
+
+  // 파일 존재 여부 확인
+  const exists = await pathExists(link.filePath);
+  if (!exists) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  // 파일 다운로드
+  try {
+    const buffer = await getFileContents(link.filePath);
+    const fileName = link.filePath.split('/').pop();
+
+    // 다운로드 횟수 증가
+    await ShareLink.incrementDownloadCount(token);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Failed to download file:', error);
+    res.status(500).json({ error: 'Failed to download file' });
+  }
+}));
+
+
+module.exports = router;

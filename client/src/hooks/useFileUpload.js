@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { uploadFile, listFiles } from '../services/fileService';
+import { getErrorMessageByType, ERROR_TYPES } from '../utils/errorUtils';
 
 /**
  * File upload hook
@@ -175,7 +176,7 @@ export const useFileUpload = ({
     const fileItems = files.map(file => ({
       fileName: file.name,
       status: existingNames.has(file.name) ? 'error' : 'pending',
-      error: existingNames.has(file.name) ? '같은 이름의 파일이 이미 존재합니다.' : undefined,
+      error: existingNames.has(file.name) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
       file: file,
     }));
 
@@ -320,7 +321,7 @@ export const useFileUpload = ({
     const fileItemsToRetry = failedFiles.map(fileItem => ({
       fileName: fileItem.fileName,
       status: existingNames.has(fileItem.fileName) ? 'error' : 'pending',
-      error: existingNames.has(fileItem.fileName) ? '같은 이름의 파일이 이미 존재합니다.' : undefined,
+      error: existingNames.has(fileItem.fileName) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
       file: fileItem.file,
     }));
 

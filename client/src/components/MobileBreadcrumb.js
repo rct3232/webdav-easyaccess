@@ -4,6 +4,7 @@ import {
   Home as HomeIcon,
   ChevronRight as ChevronRightIcon,
   Share as ShareIcon,
+  AccessTime as AccessTimeIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
@@ -60,7 +61,7 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
 
   // Parse path segments - FileTree처럼 표시 (유저 폴더 제외, 공유 폴더는 직접 권한이 있는 경로만)
   const getPathSegments = () => {
-    if (currentPath === '/__shared__') {
+    if (currentPath === '/__shared__' || currentPath === '/__recent__') {
       return [];
     }
 
@@ -162,10 +163,23 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
   };
 
   const segments = getPathSegments();
-  const isSharedView = currentPath === '/__shared__' || currentPath.startsWith('/__shared__') || (!user?.is_admin && currentPath && currentPath !== '/' && !currentPath.startsWith(`/${user?.username || ''}`));
-  const homeIcon = isSharedView ? <ShareIcon /> : <HomeIcon />;
-  const homeLabel = isSharedView ? '공유됨' : user?.is_admin ? '전체' : '홈';
-  const homePath = isSharedView ? '/__shared__' : (user?.is_admin ? '/' : `/${user?.username || ''}`);
+  const isRecentView = currentPath === '/__recent__';
+  const isSharedView = currentPath === '/__shared__' || currentPath.startsWith('/__shared__') || (!user?.is_admin && currentPath && currentPath !== '/' && !currentPath.startsWith(`/${user?.username || ''}`) && !isRecentView);
+  
+  let homeIcon, homeLabel, homePath;
+  if (isRecentView) {
+    homeIcon = <AccessTimeIcon />;
+    homeLabel = '최근항목';
+    homePath = '/__recent__';
+  } else if (isSharedView) {
+    homeIcon = <ShareIcon />;
+    homeLabel = '공유됨';
+    homePath = '/__shared__';
+  } else {
+    homeIcon = <HomeIcon />;
+    homeLabel = user?.is_admin ? '전체' : '홈';
+    homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+  }
 
   // Auto-scroll to the right when currentPath changes
   useEffect(() => {

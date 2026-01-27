@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import AdminDashboard from './pages/AdminDashboard';
+import ShareLinkView from './pages/ShareLinkView';
 
 const theme = createTheme({
   breakpoints: {
@@ -94,6 +95,7 @@ function App() {
                 </PrivateRoute>
               }
             />
+            <Route path="/share/:token" element={<ShareLinkView />} />
             <Route path="/" element={<Navigate to="/files" replace />} />
           </Routes>
         </Router>

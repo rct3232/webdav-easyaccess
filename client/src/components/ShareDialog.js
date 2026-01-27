@@ -13,6 +13,7 @@ import {
   Menu,
   MenuItem,
   ListItemText,
+  TextField,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -28,6 +29,12 @@ import axios from 'axios';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileTreeSkeleton } from './FileSkeletons';
 import { approvePermissionRequest } from '../services/permissionRequestService';
+import { createShareLink, getShareLinkUrl } from '../services/shareLinkService';
+import {
+  Link as LinkIcon,
+  ContentCopy as ContentCopyIcon,
+  Check as CheckIcon,
+} from '@mui/icons-material';
 
 // mode: 'admin' | 'share' | 'review'
 // admin mode: userId, username 필요, onSave 필요
@@ -50,7 +57,11 @@ const ShareDialog = ({
   permissionRequest = null, // 검토할 권한 신청 객체
   onApprove = null, // 검토 완료 후 승인 콜백 (선택사항)
   // Common props
-  onMessage = null
+  onMessage = null,
+  // External share link props
+  enableExternalShare = false, // 파일 컨텍스트에서 호출 시 true
+  filePath = null, // 외부 공유할 파일 경로 (enableExternalShare가 true일 때)
+  fileName = null, // 외부 공유할 파일 이름
 }) => {
   const { isMobile } = useResponsive();
   const isAdminMode = mode === 'admin';
@@ -80,6 +91,13 @@ const ShareDialog = ({
   const [folderMenuAnchor, setFolderMenuAnchor] = useState(null);
   const [folderMenuPath, setFolderMenuPath] = useState(null);
   const [folderMenuView, setFolderMenuView] = useState('manage'); // 'manage' | 'selectUser'
+  
+  // 외부 공유 링크 관련 상태
+  const [externalShareLoading, setExternalShareLoading] = useState(false);
+  const [externalShareLink, setExternalShareLink] = useState(null);
+  const [externalShareExpiresInDays, setExternalShareExpiresInDays] = useState(14);
+  const [externalShareUnlimited, setExternalShareUnlimited] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -92,6 +110,12 @@ const ShareDialog = ({
   }, [open, rootPath, isAdminMode, isShareMode, isReviewMode, userId, username, permissionRequest]);
 
   const initializeDialog = async () => {
+    // 외부 공유 링크 모드인 경우 폴더 권한 로드 불필요
+    if (enableExternalShare) {
+      setLoadingAllFolders(false);
+      return;
+    }
+    
     setFolderPermissions(new Map());
     setInitialFolderPermissions(new Map());
     setUserInfoMap(new Map());
@@ -108,7 +132,7 @@ const ShareDialog = ({
         await loadFolderChildren(rootPath);
         
         // 모든 하위 폴더를 재귀적으로 로드
-        const { expandedPathsSet, allSubfolderPaths } = await loadAllSubfoldersRecursive(rootPath);
+        const { expandedPathsSet } = await loadAllSubfoldersRecursive(rootPath);
         setExpandedPaths(prev => new Set([...prev, ...expandedPathsSet]));
         
         // Load user permissions
@@ -310,7 +334,7 @@ const ShareDialog = ({
         await loadFolderChildren(rootPath);
         
         // 모든 하위 폴더를 재귀적으로 로드
-        const { expandedPathsSet, allSubfolderPaths } = await loadAllSubfoldersRecursive(rootPath);
+        const { expandedPathsSet } = await loadAllSubfoldersRecursive(rootPath);
         expandedPathsSet.add(rootPath);
         setExpandedPaths(expandedPathsSet);
         
@@ -1170,6 +1194,11 @@ const ShareDialog = ({
     setFolderMenuPath(null);
     setFolderMenuView('manage');
     setUserInfoMap(new Map());
+    // 외부 공유 링크 상태 초기화
+    setExternalShareLink(null);
+    setExternalShareExpiresInDays(14);
+    setExternalShareUnlimited(false);
+    setLinkCopied(false);
     onClose();
   };
 
@@ -1205,11 +1234,190 @@ const ShareDialog = ({
         }}
       >
         <DialogTitle>
-          {dialogTitle}
+          {enableExternalShare ? '외부 공유 링크 생성' : dialogTitle}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
-          {/* 폴더 트리 영역 */}
-          <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          {/* 외부 공유 링크 섹션 (파일 컨텍스트에서만 표시) */}
+          {enableExternalShare && filePath && (
+            <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                외부 공유 링크
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {fileName || filePath.split('/').pop()}에 대한 공유 링크를 생성합니다.
+              </Typography>
+              
+              {!externalShareLink ? (
+                <>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" gutterBottom>
+                      유효기간
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Button
+                        variant={externalShareUnlimited ? 'outlined' : 'contained'}
+                        size="small"
+                        onClick={() => {
+                          setExternalShareUnlimited(true);
+                          setExternalShareExpiresInDays(null);
+                        }}
+                      >
+                        무제한
+                      </Button>
+                      <Button
+                        variant={!externalShareUnlimited ? 'outlined' : 'contained'}
+                        size="small"
+                        onClick={() => {
+                          setExternalShareUnlimited(false);
+                          setExternalShareExpiresInDays(14);
+                        }}
+                      >
+                        지정
+                      </Button>
+                      {!externalShareUnlimited && (
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={externalShareExpiresInDays}
+                          onChange={(e) => {
+                            const days = parseInt(e.target.value, 10);
+                            if (!isNaN(days) && days >= 0) {
+                              setExternalShareExpiresInDays(days);
+                            }
+                          }}
+                          inputProps={{ min: 0 }}
+                          sx={{ width: 100 }}
+                        />
+                      )}
+                      {!externalShareUnlimited && (
+                        <Typography variant="body2" color="text.secondary">
+                          일
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={async () => {
+                      setExternalShareLoading(true);
+                      try {
+                        const link = await createShareLink(
+                          filePath,
+                          externalShareUnlimited ? null : externalShareExpiresInDays
+                        );
+                        setExternalShareLink(link);
+                        if (onMessage) {
+                          onMessage({
+                            text: '공유 링크가 생성되었습니다.',
+                            type: 'success',
+                          });
+                        }
+                      } catch (error) {
+                        console.error('Failed to create share link:', error);
+                        if (onMessage) {
+                          onMessage({
+                            text: error.response?.data?.error || '공유 링크 생성에 실패했습니다.',
+                            type: 'error',
+                          });
+                        }
+                      } finally {
+                        setExternalShareLoading(false);
+                      }
+                    }}
+                    disabled={externalShareLoading}
+                    startIcon={<LinkIcon />}
+                  >
+                    {externalShareLoading ? '생성 중...' : '링크 생성'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                      공유 링크
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Typography
+                        component="span"
+                        onClick={() => {
+                          const url = getShareLinkUrl(externalShareLink.token);
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                        sx={{
+                          flex: 1,
+                          fontFamily: 'monospace',
+                          wordBreak: 'break-all',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textDecorationColor: 'rgba(0,0,0,0.3)',
+                          '&:hover': {
+                            textDecorationColor: 'rgba(0,0,0,0.8)',
+                          },
+                        }}
+                      >
+                        {getShareLinkUrl(externalShareLink.token)}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(getShareLinkUrl(externalShareLink.token));
+                            setLinkCopied(true);
+                            setTimeout(() => setLinkCopied(false), 2000);
+                            if (onMessage) {
+                              onMessage({
+                                text: '링크가 클립보드에 복사되었습니다.',
+                                type: 'success',
+                              });
+                            }
+                          } catch (error) {
+                            console.error('Failed to copy link:', error);
+                            if (onMessage) {
+                              onMessage({
+                                text: '링크 복사에 실패했습니다.',
+                                type: 'error',
+                              });
+                            }
+                          }
+                        }}
+                      >
+                        {linkCopied ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                      </IconButton>
+                    </Box>
+                  </Box>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      만료일: {externalShareLink.expiresAt 
+                        ? new Date(externalShareLink.expiresAt).toLocaleDateString('ko-KR')
+                        : '무제한'}
+                    </Typography>
+                  </Box>
+                  
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => {
+                      setExternalShareLink(null);
+                      setExternalShareExpiresInDays(14);
+                      setExternalShareUnlimited(false);
+                    }}
+                  >
+                    새 링크 생성
+                  </Button>
+                </>
+              )}
+            </Box>
+          )}
+          
+          {/* 폴더 공유 섹션 (외부 공유 링크가 활성화되어 있으면 표시하지 않음) */}
+          {!enableExternalShare && (
+            <>
+              {/* 폴더 트리 영역 */}
+              <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
             {loadingAllFolders ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4 }}>
                 <CircularProgress size={40} />
@@ -1238,20 +1446,24 @@ const ShareDialog = ({
               renderFolderTree(rootPath, 0)
             )}
           </Box>
+            </>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleClose} disabled={saving}>
-            취소
+          <Button onClick={handleClose} disabled={saving || externalShareLoading}>
+            {enableExternalShare ? '닫기' : '취소'}
           </Button>
-          <Button 
-            onClick={handleSave} 
-            variant="contained" 
-            color="primary" 
-            disabled={saving || loadingAllFolders} 
-            sx={{ ml: 1 }}
-          >
-            {saving ? '저장 중...' : '확인'}
-          </Button>
+          {!enableExternalShare && (
+            <Button 
+              onClick={handleSave} 
+              variant="contained" 
+              color="primary" 
+              disabled={saving || loadingAllFolders} 
+              sx={{ ml: 1 }}
+            >
+              {saving ? '저장 중...' : '확인'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

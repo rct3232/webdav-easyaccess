@@ -53,8 +53,13 @@ const FileActionSheet = ({
   const isDirectory = file.type === 'directory';
   const canPreview = file.canPreview;
   
-  // 공유 버튼 표시 조건: 디렉토리이고, 사용자 디렉토리 하위에 있는 경우
-  const canShare = isDirectory && user && !user.is_admin && file.path.startsWith(`/${user.username}/`);
+  // 공유 버튼 표시 조건: 
+  // 1. 디렉토리이고, 사용자 디렉토리 하위에 있는 경우 (폴더 공유)
+  // 2. 파일인 경우 (외부 공유 링크)
+  const canShare = (
+    (isDirectory && user && !user.is_admin && file.path.startsWith(`/${user.username}/`)) ||
+    (!isDirectory)
+  );
   
   // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
   const isSharedFolder = isDirectory && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);

@@ -628,7 +628,7 @@ const AdminDashboard = () => {
       >
         <DialogTitle>사용자 삭제 확인</DialogTitle>
         <DialogContent>
-          <DialogContentText>
+          <DialogContentText component="div">
             <strong>{deleteDialog.username}</strong> 계정을 정말 삭제하시겠습니까?
             <br />
             <br />

@@ -91,6 +91,7 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
               overflow: 'hidden',
               border: '1px solid',
               borderColor: 'divider',
+              position: 'relative',
             }}
           >
             {selectionMode && (

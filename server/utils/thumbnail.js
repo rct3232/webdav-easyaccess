@@ -332,6 +332,94 @@ async function ensureThumbnail(webdavPath) {
   }
 }
 
+// 동시 처리 수를 제한하는 헬퍼 함수
+async function limitConcurrency(tasks, concurrency = 10) {
+  const results = [];
+  const executing = [];
+  
+  for (const task of tasks) {
+    const promise = Promise.resolve().then(() => task());
+    results.push(promise);
+    
+    if (concurrency <= tasks.length) {
+      const cleanup = promise.then(() => {
+        executing.splice(executing.indexOf(cleanup), 1);
+      });
+      executing.push(cleanup);
+      
+      if (executing.length >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  
+  return Promise.all(results);
+}
+
+async function ensureThumbnailsBatch(webdavPaths) {
+  const CONCURRENCY_LIMIT = parseInt(process.env.THUMBNAIL_CONCURRENCY_LIMIT) || 10;
+  const results = [];
+  
+  // 먼저 캐시된 썸네일 확인
+  const cachedResults = [];
+  const uncachedPaths = [];
+  
+  for (const webdavPath of webdavPaths) {
+    const cached = getCachedThumbnail(webdavPath);
+    if (cached) {
+      cachedResults.push({
+        path: webdavPath,
+        thumbnailUrl: getThumbnailUrl(webdavPath)
+      });
+    } else {
+      uncachedPaths.push(webdavPath);
+    }
+  }
+  
+  // 캐시되지 않은 썸네일들을 생성
+  if (uncachedPaths.length > 0) {
+    const tasks = uncachedPaths.map(webdavPath => async () => {
+      try {
+        const filename = path.basename(webdavPath);
+        let thumbnailUrl = null;
+        
+        if (isImageFile(filename)) {
+          const result = await generateImageThumbnail(null, webdavPath);
+          if (result) {
+            thumbnailUrl = getThumbnailUrl(webdavPath);
+          }
+        } else if (isVideoFile(filename)) {
+          const status = await initFfmpegOnce();
+          if (status.available) {
+            const result = await generateVideoThumbnail(null, webdavPath);
+            if (result) {
+              thumbnailUrl = getThumbnailUrl(webdavPath);
+            }
+          }
+        }
+        
+        return {
+          path: webdavPath,
+          thumbnailUrl
+        };
+      } catch (error) {
+        console.error(`Error generating thumbnail for ${webdavPath}:`, error.message);
+        return {
+          path: webdavPath,
+          thumbnailUrl: null
+        };
+      }
+    });
+    
+    const generatedResults = await limitConcurrency(tasks, CONCURRENCY_LIMIT);
+    results.push(...cachedResults, ...generatedResults);
+  } else {
+    results.push(...cachedResults);
+  }
+  
+  return results;
+}
+
 module.exports = {
   getThumbnail,
   getThumbnailUrl,
@@ -339,6 +427,7 @@ module.exports = {
   generateImageThumbnail,
   generateVideoThumbnail,
   ensureThumbnail,
+  ensureThumbnailsBatch,
   getThumbnailHash,
   initFfmpegOnce,
   getFfmpegStatus,

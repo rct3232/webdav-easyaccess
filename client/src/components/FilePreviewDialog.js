@@ -15,6 +15,7 @@ import {
 import axios from 'axios';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../hooks/useResponsive';
+import { getFileType } from '../utils/fileTypeUtils';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -182,22 +183,6 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
     };
   }, [open, previewUrl]);
 
-  const getFileType = (filename) => {
-    const ext = filename.split('.').pop().toLowerCase();
-    
-    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
-    const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'];
-    const audioExts = ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac'];
-    const textExts = ['txt', 'md', 'json', 'xml', 'csv', 'log', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'sh'];
-    
-    if (imageExts.includes(ext)) return 'image';
-    if (videoExts.includes(ext)) return 'video';
-    if (audioExts.includes(ext)) return 'audio';
-    if (ext === 'pdf') return 'pdf';
-    if (textExts.includes(ext)) return 'text';
-    
-    return 'unknown';
-  };
 
   const handleDownload = () => {
     if (previewUrl) {

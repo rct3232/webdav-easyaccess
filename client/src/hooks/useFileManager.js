@@ -1,20 +1,21 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
-import { sortFiles } from '../utils/fileUtils';
-import { SORT_MODES } from '../constants/fileManager';
-import { getShowHiddenFiles } from '../utils/localStorage';
+import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
+import { getRecentFiles } from '../utils/recentFiles';
+import { normalizePath } from '../utils/pathUtils';
 import axios from 'axios';
 
 export const useFileManager = (user, options = {}) => {
-  const { onLoadComplete } = options;
+  const { onLoadComplete, onLoadError } = options;
   const onLoadCompleteRef = useRef(onLoadComplete);
+  const onLoadErrorRef = useRef(onLoadError);
   const [currentPath, setCurrentPath] = useState(() => {
     return user?.is_admin ? '/' : `/${user?.username || ''}`;
   });
   const [files, setFiles] = useState([]);
   // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
   const [loading, setLoading] = useState(true);
-  const [sortMode, setSortMode] = useState(SORT_MODES.NAME_ASC);
+  const [sortMode, setSortMode] = useState(() => getSortMode());
   const [webdavUrl, setWebdavUrl] = useState('');
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const requestIdRef = useRef(0);
@@ -23,24 +24,40 @@ export const useFileManager = (user, options = {}) => {
   // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
   useEffect(() => {
     onLoadCompleteRef.current = onLoadComplete;
-  }, [onLoadComplete]);
+    onLoadErrorRef.current = onLoadError;
+  }, [onLoadComplete, onLoadError]);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     const targetPath = currentPath;
     try {
-      // 공유됨 뷰인 경우 특별 처리
-      if (targetPath === '/__shared__') {
+      // 최근 파일 뷰인 경우 특별 처리
+      if (targetPath === '/__recent__') {
+        const recentFilesList = await getRecentFiles();
+        // 최근 파일을 파일 목록 형식으로 변환
+        const recentFilesAsList = recentFilesList.map((recentFile) => {
+          const fileName = recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1);
+          return {
+            path: recentFile.path,
+            basename: fileName,
+            name: fileName,
+            type: recentFile.type || 'file',
+            size: 0,
+            lastmodified: recentFile.lastAccessed,
+            hasReadPermission: true,
+            hasWritePermission: false, // 최근 파일은 읽기 전용으로 표시
+            isRecentFile: true, // 최근 파일임을 표시
+          };
+        });
+        
+        if (requestId === requestIdRef.current) {
+          setFiles(recentFilesAsList);
+        }
+      } else if (targetPath === '/__shared__') {
         // 공유된 폴더 목록을 가져옴
         const response = await axios.get(`/api/permissions/user/${user?.id}`);
         const userBaseFolder = `/${user?.username || ''}`;
-        
-        // 경로 정규화 함수 (끝의 / 제거)
-        const normalizePath = (path) => {
-          if (!path || path === '/') return '/';
-          return path.endsWith('/') ? path.slice(0, -1) : path;
-        };
         
         // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
         const sharedFolders = response.data.filter(perm => {
@@ -116,7 +133,14 @@ export const useFileManager = (user, options = {}) => {
         }
       }
     } catch (error) {
-      console.error('Failed to load files:', error);
+      // onLoadError 콜백 호출
+      if (onLoadErrorRef.current) {
+        try {
+          await onLoadErrorRef.current(error, targetPath);
+        } catch (callbackError) {
+          console.error('[useFileManager] Error in onLoadError callback:', callbackError);
+        }
+      }
       // 403 에러가 아닌 경우에만 빈 배열로 설정
       if (error.response?.status !== 403 && requestId === requestIdRef.current) {
         setFiles([]);
@@ -131,15 +155,11 @@ export const useFileManager = (user, options = {}) => {
     }
   }, [currentPath, user]);
 
-  const sortedFiles = useMemo(() => {
-    return sortFiles(files, sortMode);
-  }, [files, sortMode]);
-
   useEffect(() => {
     if (user && !user.is_admin) {
       const userFolder = `/${user.username}`;
-      // 공유됨 뷰는 리다이렉트하지 않음
-      if (currentPath === '/__shared__') {
+      // 특수 경로는 리다이렉트하지 않음
+      if (currentPath === '/__shared__' || currentPath === '/__recent__') {
         return;
       }
       // 공유된 폴더 접근을 허용하기 위해 경로 제한 완화
@@ -161,8 +181,8 @@ export const useFileManager = (user, options = {}) => {
       prevPathRef.current = currentPath;
 
       loadFiles();
-      // 공유됨 뷰는 쓰기 권한 체크 불필요 (읽기 전용 뷰)
-      if (currentPath === '/__shared__') {
+      // 특수 경로는 쓰기 권한 체크 불필요 (읽기 전용 뷰)
+      if (currentPath === '/__shared__' || currentPath === '/__recent__') {
         setHasWritePermission(false);
       } else {
         // 현재 경로의 쓰기 권한 확인
@@ -204,13 +224,13 @@ export const useFileManager = (user, options = {}) => {
     currentPath,
     setCurrentPath,
     files,
-    sortedFiles,
     loading,
     sortMode,
     setSortMode,
     webdavUrl,
     loadFiles,
     hasWritePermission,
+    onLoadErrorRef, // 외부에서 onLoadError를 업데이트하기 위해 반환
   };
 };
 

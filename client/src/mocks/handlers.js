@@ -124,5 +124,60 @@ export const handlers = [
     // Minimal stub for tests; app code expects an array of permission rows.
     return HttpResponse.json([]);
   }),
+
+  // 최근 파일 목록 조회
+  http.get('/api/recent-files', () => {
+    return HttpResponse.json([
+      {
+        path: '/testuser/document.pdf',
+        name: 'document.pdf',
+        type: 'file',
+        lastAccessed: new Date().toISOString(),
+      },
+      {
+        path: '/testuser/image.jpg',
+        name: 'image.jpg',
+        type: 'file',
+        lastAccessed: new Date(Date.now() - 3600000).toISOString(),
+      },
+    ]);
+  }),
+
+  // 최근 파일 추가
+  http.post('/api/recent-files', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json([
+      {
+        path: body.path,
+        name: body.name || body.basename,
+        type: body.type || 'file',
+        lastAccessed: new Date().toISOString(),
+      },
+      {
+        path: '/testuser/document.pdf',
+        name: 'document.pdf',
+        type: 'file',
+        lastAccessed: new Date().toISOString(),
+      },
+    ]);
+  }),
+
+  // 최근 파일 제거
+  http.delete('/api/recent-files/:filePath', ({ params }) => {
+    const filePath = decodeURIComponent(params.filePath);
+    return HttpResponse.json([
+      {
+        path: '/testuser/document.pdf',
+        name: 'document.pdf',
+        type: 'file',
+        lastAccessed: new Date().toISOString(),
+      },
+    ]);
+  }),
+
+  // 최근 파일 목록 초기화
+  http.delete('/api/recent-files', () => {
+    return HttpResponse.json({ message: 'Recent files cleared successfully' });
+  }),
 ];
 

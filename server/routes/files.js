@@ -136,13 +136,23 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
       }
     }
 
-    const items = await listDirectory(folderPath);
+    let items;
+    try {
+      items = await listDirectory(folderPath);
+    } catch (error) {
+      // Handle 404 errors (directory doesn't exist) with proper status code
+      if (error.status === 404) {
+        throw notFoundError(`Directory not found: ${folderPath}`);
+      }
+      // Re-throw other errors
+      throw error;
+    }
     // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
     // 일반 사용자는 여전히 필터링 (보안)
     const filteredItems = user.is_admin 
       ? items 
       : items.filter(item => item.basename !== '.wea');
-    const { ensureThumbnail } = require('../utils/thumbnail');
+    const { getThumbnailUrl } = require('../utils/thumbnail');
     
     // Files inherit write permission from the current directory (parent folder)
     let currentDirWritePermission = true;
@@ -238,12 +248,9 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
         }
         
         let thumbnailUrl = null;
+        // 썸네일 생성은 제거하고 캐시된 것만 반환
         if (isImageFile(item.basename) || isVideoFile(item.basename)) {
-          try {
-            thumbnailUrl = await ensureThumbnail(normalizedPath);
-          } catch (error) {
-            // Continue without thumbnail
-          }
+          thumbnailUrl = getThumbnailUrl(normalizedPath);
         }
         
         // isHidden 플래그 추가
@@ -861,6 +868,19 @@ router.get('/thumbnail/:hash', asyncHandler(async (req, res) => {
   } else {
     throw notFoundError('Thumbnail not found');
   }
+}));
+
+router.post('/thumbnails/batch', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { paths } = req.body;
+  
+  if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    throw validationError('Paths array is required');
+  }
+  
+  const { ensureThumbnailsBatch } = require('../utils/thumbnail');
+  const results = await ensureThumbnailsBatch(paths);
+  
+  res.json({ thumbnails: results });
 }));
 
 async function collectFilesFromDirectory(dirPath, basePath = '', files = []) {

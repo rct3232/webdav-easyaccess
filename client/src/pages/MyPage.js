@@ -19,14 +19,16 @@ import {
   ArrowBack as ArrowBackIcon,
   Share as ShareIcon,
   Edit as EditIcon,
+  ContentCopy as ContentCopyIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ShareDialog from '../components/ShareDialog';
 import AccountEditDialog from '../components/AccountEditDialog';
+import { getShareLinks, deleteShareLink, getShareLinkUrl, updateShareLink } from '../services/shareLinkService';
 import axios from 'axios';
 import {
-  approvePermissionRequest,
   cancelPermissionRequest,
   listInboxPermissionRequests,
   listOutboxPermissionRequests,
@@ -41,7 +43,7 @@ const MyPage = () => {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewPermissionRequest, setReviewPermissionRequest] = useState(null);
-  const [requestTab, setRequestTab] = useState(0); // 0: inbox, 1: outbox
+  const [requestTab, setRequestTab] = useState(0); // 0: inbox, 1: outbox, 2: links
   const [requestLoading, setRequestLoading] = useState(false);
   const [inboxRequests, setInboxRequests] = useState([]);
   const [outboxRequests, setOutboxRequests] = useState([]);
@@ -52,6 +54,11 @@ const MyPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  
+  // 공유 링크 관리 상태
+  const [shareLinks, setShareLinks] = useState([]);
+  const [shareLinksLoading, setShareLinksLoading] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -131,9 +138,62 @@ const MyPage = () => {
   useEffect(() => {
     if (user) {
       loadPermissionRequests();
+      // 어드민이 아닐 때만 공유 링크 로드
+      if (!user.is_admin) {
+        loadShareLinks();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  const loadShareLinks = async () => {
+    if (!user || user.is_admin) return;
+    setShareLinksLoading(true);
+    try {
+      const links = await getShareLinks();
+      setShareLinks(links);
+    } catch (error) {
+      console.error('Failed to load share links:', error);
+      setShareLinks([]);
+    } finally {
+      setShareLinksLoading(false);
+    }
+  };
+
+  const handleCopyLink = async (token) => {
+    try {
+      const url = getShareLinkUrl(token);
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(token);
+      setTimeout(() => setLinkCopied(null), 2000);
+      setMessage({ type: 'success', text: '링크가 클립보드에 복사되었습니다.' });
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      setMessage({ type: 'error', text: '링크 복사에 실패했습니다.' });
+    }
+  };
+
+  const handleDeleteLink = async (token) => {
+    try {
+      await deleteShareLink(token);
+      setMessage({ type: 'success', text: '공유 링크가 삭제되었습니다.' });
+      await loadShareLinks();
+    } catch (error) {
+      console.error('Failed to delete share link:', error);
+      setMessage({ type: 'error', text: error.response?.data?.error || '링크 삭제에 실패했습니다.' });
+    }
+  };
+
+  const handleExtendLink = async (token, days) => {
+    try {
+      await updateShareLink(token, { expiresInDays: days });
+      setMessage({ type: 'success', text: '링크 유효기간이 연장되었습니다.' });
+      await loadShareLinks();
+    } catch (error) {
+      console.error('Failed to extend link:', error);
+      setMessage({ type: 'error', text: error.response?.data?.error || '링크 연장에 실패했습니다.' });
+    }
+  };
 
   const handleOpenEditDialog = () => {
     if (!user) return;
@@ -374,9 +434,109 @@ const MyPage = () => {
               <Tabs value={requestTab} onChange={(e, v) => setRequestTab(v)} sx={{ mb: 2 }}>
                 <Tab label={`받은 요청 (${inboxRequests.length})`} />
                 <Tab label={`내 요청 (${outboxRequests.length})`} />
+                {!user?.is_admin && (
+                  <Tab label={`링크 (${shareLinks.length})`} />
+                )}
               </Tabs>
 
-              {requestLoading ? (
+              {requestTab === 2 && !user?.is_admin ? (
+                // 링크 탭
+                shareLinksLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                    <CircularProgress size={24} />
+                  </Box>
+                ) : shareLinks.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    생성한 공유 링크가 없습니다.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {shareLinks.map((link) => (
+                      <Paper key={link.token} variant="outlined" sx={{ p: 2 }}>
+                        <Stack spacing={1}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ wordBreak: 'break-all', mb: 0.5 }}>
+                                {link.filePath.split('/').pop()}
+                              </Typography>
+                              <Typography
+                                component="span"
+                                onClick={() => {
+                                  const url = getShareLinkUrl(link.token);
+                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                }}
+                                color="text.secondary"
+                                sx={{
+                                  display: 'block',
+                                  wordBreak: 'break-all',
+                                  fontSize: '0.75rem',
+                                  fontFamily: 'monospace',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  textDecorationColor: 'rgba(0,0,0,0.3)',
+                                  '&:hover': {
+                                    textDecorationColor: 'rgba(0,0,0,0.8)',
+                                  },
+                                }}
+                              >
+                                {getShareLinkUrl(link.token)}
+                              </Typography>
+                            </Box>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleCopyLink(link.token)}
+                              sx={{ ml: 1 }}
+                            >
+                              {linkCopied === link.token ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                            </IconButton>
+                          </Box>
+                          
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip
+                              size="small"
+                              label={link.isExpired ? '만료됨' : link.expiresAt ? `만료: ${new Date(link.expiresAt).toLocaleDateString('ko-KR')}` : '무제한'}
+                              color={link.isExpired ? 'error' : 'default'}
+                            />
+                            <Chip
+                              size="small"
+                              label={`다운로드: ${link.downloadCount || 0}회`}
+                            />
+                          </Box>
+                          
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            {!link.isExpired && link.expiresAt && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => {
+                                  const currentExpiry = new Date(link.expiresAt);
+                                  const now = new Date();
+                                  const daysLeft = Math.ceil((currentExpiry - now) / (1000 * 60 * 60 * 24));
+                                  handleExtendLink(link.token, daysLeft + 7);
+                                }}
+                              >
+                                +7일 연장
+                              </Button>
+                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              onClick={() => {
+                                if (window.confirm('정말로 이 링크를 삭제하시겠습니까?')) {
+                                  handleDeleteLink(link.token);
+                                }
+                              }}
+                            >
+                              삭제
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )
+              ) : requestLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                   <CircularProgress size={24} />
                 </Box>

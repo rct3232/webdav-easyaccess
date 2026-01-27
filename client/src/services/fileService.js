@@ -390,3 +390,9 @@ export const checkPermission = async (folderPath) => {
   return response.data;
 };
 
+export const requestThumbnailsBatch = async (paths) => {
+  const response = await post(`${API_BASE}/thumbnails/batch`, {
+    paths,
+  });
+  return response.data;
+};

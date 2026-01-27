@@ -1,8 +1,13 @@
 import { useCallback } from 'react';
 import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile } from '../services/fileService';
-import { getErrorMessage } from '../utils/errorUtils';
+import { getErrorMessage, determineErrorType, getErrorMessageByType, ERROR_TYPES } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
 import { normalizePath } from '../utils/refreshPolicy';
+import { 
+  applyRecentFilesAfterMove,
+  applyRecentFilesAfterRename,
+  applyRecentFilesAfterDelete,
+} from '../utils/recentFiles';
 
 /**
  * Common file operations hook
@@ -186,6 +191,21 @@ export const useFileOperations = ({
         }
       });
       
+      // 이동 성공 시 최근항목 경로 업데이트
+      if (operation === moveFile) {
+        try {
+          const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
+          const hasSkipped = skippedPaths.length > 0;
+          
+          if (!hasSkipped) {
+            await applyRecentFilesAfterMove(filePath, destPath, file);
+          }
+        } catch (err) {
+          // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
+          console.error('Failed to update recent files after move:', err);
+        }
+      }
+      
       if (onActionComplete) {
         onActionComplete({
           opType: operationType,
@@ -222,19 +242,20 @@ export const useFileOperations = ({
         }
       }
     } catch (error) {
-      const errorMsg = getErrorMessage(error, `${operationName}에 실패했습니다`);
-      const isDuplicate = error.response?.status === 409 || errorMsg.includes('already exists');
+      const errorType = determineErrorType(error);
+      const errorMsg = errorType === ERROR_TYPES.DUPLICATE_FILE 
+        ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE)
+        : getErrorMessage(error, `${operationName}에 실패했습니다`);
       
       if (onProgress) {
         onProgress({
           ...progressItem,
           status: 'error',
-          error: isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg,
+          error: errorMsg,
           keepOnError: true,
         });
       } else {
-        const displayMsg = isDuplicate ? '대상 디렉토리에 같은 이름의 파일이 이미 존재합니다' : errorMsg;
-        alert(displayMsg);
+        alert(errorMsg);
       }
     } finally {
       // Clear processing
@@ -303,6 +324,22 @@ export const useFileOperations = ({
       }
 
       await renameFile(filePath, newName);
+      
+      // 이름변경 성공 시 최근항목 경로 업데이트
+      try {
+        // 새 경로 계산
+        const parentPath = normalizePath(filePath.substring(0, filePath.lastIndexOf('/')) || '/');
+        const newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
+        
+        await applyRecentFilesAfterRename(filePath, newPath, {
+          ...file,
+          name: newName,
+          basename: newName,
+        });
+      } catch (err) {
+        // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
+        console.error('Failed to update recent files after rename:', err);
+      }
       
       if (onActionComplete) {
         onActionComplete({
@@ -394,6 +431,16 @@ export const useFileOperations = ({
       const result = await deleteFile(filePath);
       const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
       const hasSkipped = skippedPaths.length > 0;
+      
+      // 삭제 성공 시 최근항목에서 제거
+      if (!hasSkipped) {
+        try {
+          await applyRecentFilesAfterDelete(filePath, isDirectory);
+        } catch (err) {
+          // 최근항목 제거 실패는 무시 (치명적이지 않음)
+          console.error('Failed to remove from recent files:', err);
+        }
+      }
       
       if (onActionComplete) {
         onActionComplete({

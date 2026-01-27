@@ -24,6 +24,7 @@ import {
   DialogActions,
   TextField,
   CircularProgress,
+  InputAdornment,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
@@ -42,11 +43,18 @@ import {
   Download as DownloadIcon,
   Sort as SortIcon,
   CheckCircle as CheckCircleIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Search as SearchIcon,
+  Close as CloseIcon,
+  Home as HomeIcon,
+  Share as ShareIcon,
+  AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { VIEW_MODES, SORT_MODES } from '../constants/fileManager';
-import { canPreview } from '../utils/fileUtils';
+import { canPreview, sortFiles } from '../utils/fileUtils';
+import { getViewMode, setViewMode as saveViewMode, setSortMode as saveSortMode } from '../utils/localStorage';
 import { useFileManager } from '../hooks/useFileManager';
 import { useSelection } from '../hooks/useSelection';
 import { useBulkOperations } from '../hooks/useBulkOperations';
@@ -76,7 +84,13 @@ import ShareDialog from '../components/ShareDialog';
 import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
 import FilePropertiesDialog from '../components/FilePropertiesDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { moveFile, checkPermission, copyFile } from '../services/fileService';
+import { moveFile, checkPermission, copyFile, listFiles } from '../services/fileService';
+import { addRecentFile, removeRecentFile, getRecentFiles, onRecentFilesChange } from '../utils/recentFiles';
+import { determineErrorType, getErrorMessageByType, getErrorMessage, ERROR_TYPES } from '../utils/errorUtils';
+import { normalizePath } from '../utils/pathUtils';
+import { useRecentFileErrorHandler } from '../hooks/useRecentFileErrorHandler';
+import { useRecentFileNavigation } from '../hooks/useRecentFileNavigation';
+import { useRecentFilePreview } from '../hooks/useRecentFilePreview';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
@@ -91,22 +105,115 @@ const FileManager = () => {
   const [mobilePickerFile, setMobilePickerFile] = useState(null);
   const [mobilePickerAction, setMobilePickerAction] = useState(null);
   
+  // 최근 파일 경로 추적 훅
+  const {
+    recentFilePathsRef,
+    pathHistoryRef,
+    processingErrorRef,
+    trackRecentFileClick,
+    trackPathHistory,
+    clearTracking,
+    clearPathHistory,
+  } = useRecentFileNavigation();
+  
+  const { message, showError, clearMessage } = useMessage();
+  
   const {
     currentPath,
     setCurrentPath,
-    sortedFiles,
+    files: filesFromHook,
     loading,
     sortMode,
     setSortMode,
     loadFiles,
     hasWritePermission,
+    onLoadErrorRef,
   } = useFileManager(user, {
     onLoadComplete: isMobile ? (() => {
       if (handleLoadCompleteRef.current) {
         handleLoadCompleteRef.current();
       }
     }) : undefined,
+    onLoadError: null, // 나중에 설정
   });
+  
+  // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
+  const currentPathRef = useRef(null);
+  
+  // currentPathRef 업데이트
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+  
+  // 최근 파일 에러 처리 훅 (useFileManager 호출 후 정의)
+  const handleRecentFileError = useRecentFileErrorHandler({
+    recentFilePathsRef,
+    pathHistoryRef,
+    processingErrorRef,
+    setCurrentPath,
+    showError,
+    user,
+    currentPathRef,
+  });
+  
+  // useFileManager의 onLoadError ref 업데이트
+  useEffect(() => {
+    onLoadErrorRef.current = handleRecentFileError;
+  }, [handleRecentFileError, onLoadErrorRef]);
+
+  const [viewMode, setViewMode] = useState(() => getViewMode());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchMode, setIsSearchMode] = useState(false);
+
+  // 보기 모드 변경 시 저장
+  useEffect(() => {
+    saveViewMode(viewMode);
+  }, [viewMode]);
+
+  // 정렬 모드 변경 시 저장
+  useEffect(() => {
+    saveSortMode(sortMode);
+  }, [sortMode]);
+
+  // 파일 목록을 로컬 상태로 관리하여 썸네일 업데이트 가능하도록 함
+  const [files, setFiles] = useState([]);
+  
+  // useFileManager의 files가 변경되면 로컬 상태 업데이트
+  useEffect(() => {
+    setFiles(filesFromHook);
+  }, [filesFromHook]);
+
+  // 검색 필터링된 파일 목록
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return files;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return files.filter((file) => {
+      const name = (file.basename || file.name || '').toLowerCase();
+      return name.includes(query);
+    });
+  }, [files, searchQuery]);
+
+  // 정렬된 파일 목록
+  const sortedFiles = useMemo(() => {
+    return sortFiles(filteredFiles, sortMode);
+  }, [filteredFiles, sortMode]);
+
+  // 썸네일 로드 완료 핸들러
+  const handleThumbnailsLoaded = useCallback((thumbnailMap) => {
+    // files 상태를 업데이트하여 썸네일 URL 추가
+    setFiles(prevFiles => {
+      return prevFiles.map(file => {
+        const thumbnailUrl = thumbnailMap.get(file.path);
+        if (thumbnailUrl && !file.thumbnailUrl) {
+          return { ...file, thumbnailUrl };
+        }
+        return file;
+      });
+    });
+  }, []);
+
 
   const {
     selectionMode,
@@ -120,8 +227,6 @@ const FileManager = () => {
     setSelectedFiles,
   } = useSelection(sortedFiles);
 
-  const [viewMode, setViewMode] = useState(VIEW_MODES.LIST);
-
   // 모바일에서 Detail 모드로 전환 시도 시 List 모드로 자동 전환
   useEffect(() => {
     if (isMobile && viewMode === VIEW_MODES.DETAIL) {
@@ -134,21 +239,50 @@ const FileManager = () => {
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
-  const { showError } = useMessage();
+  
+  // 최근 파일 미리보기 훅
+  const [recentFileToPreview, setRecentFileToPreview] = useRecentFilePreview({
+    files,
+    loading,
+    currentPath,
+    setSelectedFile,
+    setPreviewDialogOpen,
+    handleRecentFileError,
+    showError,
+    clearTracking,
+  });
+  
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
   const [processingMap, setProcessingMap] = useState(new Map());
-  const currentPathRef = useRef(currentPath);
   const loadFilesRef = useRef(loadFiles);
   
+  // 파일 로드 성공 시 경로 히스토리 정리
   useEffect(() => {
-    currentPathRef.current = currentPath;
-  }, [currentPath]);
+    if (!loading && files.length >= 0 && currentPath) {
+      // 로딩이 완료되고 파일 목록이 로드되었으면 정상적인 이동으로 간주
+      // 히스토리에서 제거 (에러가 발생하지 않았음)
+      clearPathHistory(currentPath);
+    }
+  }, [loading, files, currentPath, clearPathHistory]);
   
   useEffect(() => {
     loadFilesRef.current = loadFiles;
   }, [loadFiles]);
+
+  // /__recent__ 경로일 때 최근항목 변경 이벤트 리스너 등록
+  useEffect(() => {
+    if (currentPath === '/__recent__') {
+      const unsubscribe = onRecentFilesChange(() => {
+        loadFiles();
+      });
+      
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [currentPath, loadFiles]);
   
   // Operation completion handler (stable; uses refs to avoid stale-closure refresh)
   const handleOperationComplete = useCallback((info = {}) => {
@@ -470,14 +604,21 @@ const FileManager = () => {
   };
 
   const handlePathClick = async (path) => {
-    // 공유됨 뷰는 바로 설정
-    if (path === '/__shared__') {
+    // 특수 경로는 바로 설정 (권한 체크 불필요)
+    if (path === '/__shared__' || path === '/__recent__') {
       setCurrentPath(path);
       return;
     }
     
     // 이전 경로 저장 (롤백용)
     const previousPath = currentPathRef.current;
+    
+    // 경로 정규화
+    const normalizedPath = normalizePath(path);
+    
+    // 경로 히스토리에 저장 (에러 발생 시 롤백용) - setCurrentPath 전에 저장!
+    trackPathHistory(normalizedPath, previousPath);
+    trackPathHistory(path, previousPath);
     
     // Optimistic update: 경로 즉시 변경
     setCurrentPath(path);
@@ -489,19 +630,15 @@ const FileManager = () => {
         if (!permission.hasRead) {
           // 권한 없음: 이전 경로로 롤백
           setCurrentPath(previousPath);
-          showError('이 폴더에 대한 접근 권한이 없습니다.');
-          return;
+          const permissionError = new Error('Permission denied');
+          permissionError.response = { status: 403 };
+          throw permissionError;
         }
       } catch (error) {
         // 에러 발생: 이전 경로로 롤백
         setCurrentPath(previousPath);
-        if (error.response?.status === 403) {
-          showError('이 폴더에 대한 접근 권한이 없습니다.');
-        } else {
-          console.error('Failed to check permission:', error);
-          showError('권한 확인 중 오류가 발생했습니다.');
-        }
-        return;
+        // 에러를 다시 throw하여 호출자가 처리할 수 있도록 함
+        throw error;
       }
     }
   };
@@ -511,9 +648,50 @@ const FileManager = () => {
       toggleFileSelection(file);
     } else {
       if (file.type === 'directory') {
+        // 최근 파일에서 클릭한 경우
+        if (file.isRecentFile) {
+          const filePath = file.path;
+          
+          // 경로 유효성 검사
+          if (!filePath || filePath === '/' || filePath.trim() === '') {
+            handleRecentFileError(
+              { message: 'Invalid path' },
+              filePath
+            );
+            return;
+          }
+          
+          // 폴더로 직접 이동 시도
+          // 경로 정규화
+          const normalizedFilePath = normalizePath(filePath);
+          
+          // 최근 파일 경로 추적에 추가 (handlePathClick 전에 설정)
+          trackRecentFileClick(filePath);
+          
+          try {
+            await handlePathClick(filePath);
+            // handlePathClick이 성공하면 loadFiles가 호출되고,
+            // 에러가 발생하면 onLoadError에서 처리됨
+            // 따라서 여기서는 에러를 잡지 않음
+          } catch (error) {
+            // handlePathClick에서 권한 체크 실패 등으로 즉시 에러 발생한 경우
+            clearTracking(filePath);
+            // 404 에러일 때만 최근 파일 제거
+            if (error.response?.status === 404) {
+              handleRecentFileError(error, filePath);
+            } else {
+              // 404가 아닌 에러는 최근 파일을 제거하지 않고 에러 메시지만 표시
+              const errorType = determineErrorType(error);
+              const errorMessage = getErrorMessageByType(errorType);
+              showError(errorMessage);
+            }
+          }
+          return;
+        }
+        
         // 권한이 없는 폴더는 클릭 불가 (이미 표시된 정보 활용)
         if (file.hasReadPermission === false) {
-          showError('이 폴더에 대한 접근 권한이 없습니다.');
+          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
           return;
         }
         
@@ -523,6 +701,12 @@ const FileManager = () => {
         // Optimistic update: 경로 즉시 변경
         setCurrentPath(file.path);
         
+        // 최근 파일에 추가 (파일만 추가, 폴더는 제외)
+        if (file.type !== 'directory') {
+          await addRecentFile(file);
+          // 이벤트 리스너가 자동으로 loadFiles() 호출
+        }
+        
         // 권한 체크는 백그라운드에서 수행 (서버 측 확인)
         if (!user?.is_admin) {
           try {
@@ -530,26 +714,78 @@ const FileManager = () => {
             if (!permission.hasRead) {
               // 권한 없음: 롤백
               setCurrentPath(previousPath);
-              showError('이 폴더에 대한 접근 권한이 없습니다.');
+              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
               return;
             }
           } catch (error) {
             // 에러 발생: 롤백
             setCurrentPath(previousPath);
-            if (error.response?.status === 403) {
-              showError('이 폴더에 대한 접근 권한이 없습니다.');
+            const errorType = determineErrorType(error);
+            if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
+              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
             } else {
               console.error('Failed to check permission:', error);
-              showError('권한 확인 중 오류가 발생했습니다.');
+              showError(getErrorMessage(error, '권한 확인 중 오류가 발생했습니다.'));
             }
             return;
           }
         }
       } else {
+        // 최근 파일에서 클릭한 경우 부모 폴더로 이동하고 미리보기 표시
+        if (file.isRecentFile) {
+          const filePath = normalizePath(file.path);
+          const fileName = file.basename || file.name;
+          
+          // 경로 유효성 검사
+          if (!filePath || filePath === '/' || filePath.trim() === '') {
+            handleRecentFileError(
+              { message: 'Invalid path' },
+              filePath
+            );
+            return;
+          }
+          
+          // 부모 경로 계산 (정규화된 경로 사용)
+          const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+          const normalizedParentPath = normalizePath(parentPath);
+          
+          // 부모 폴더 권한 확인 및 이동
+          try {
+            // 최근 파일 경로 추적에 추가 (부모 경로 -> 파일 경로 매핑)
+            trackRecentFileClick(filePath, normalizedParentPath);
+            // 부모 폴더로 이동 시도
+            await handlePathClick(normalizedParentPath);
+            
+            // 파일 정보를 저장하여 useEffect에서 처리
+            setRecentFileToPreview({
+              filePath,
+              fileName,
+              parentPath: normalizedParentPath,
+              originalFile: file,
+            });
+          } catch (error) {
+            // 부모 폴더 접근 실패 시 에러 처리
+            clearTracking(normalizedParentPath);
+            // 404 에러일 때만 최근 파일 제거
+            if (error.response?.status === 404) {
+              handleRecentFileError(error, filePath);
+            } else {
+              // 404가 아닌 에러는 최근 파일을 제거하지 않고 에러 메시지만 표시
+              const errorType = determineErrorType(error);
+              const errorMessage = getErrorMessageByType(errorType);
+              showError(errorMessage);
+            }
+          }
+          return;
+        }
+        
         const filename = file.basename || file.name;
         const canPreviewFile = canPreview(filename);
         setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
         setPreviewDialogOpen(true);
+        // 최근 파일에 추가
+        await addRecentFile(file);
+        // 이벤트 리스너가 자동으로 loadFiles() 호출
       }
     }
   };
@@ -892,42 +1128,156 @@ const FileManager = () => {
         elevation={0}
       >
         <Toolbar>
-          <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
-            <Box
-              component="img"
-              src="/logo_white.png"
-              alt="WebDAV EasyAccess"
-              sx={{
-                height: isMobile ? '27px' : '33.75px',
-                maxWidth: '100%',
-                objectFit: 'contain',
-              }}
-            />
-          </Box>
-          {!isMobile && (
-            <Typography variant="body2" sx={{ mr: 2 }}>
-              {user?.username}
-            </Typography>
+          {isMobile && isSearchMode ? (
+            // 모바일 검색 모드: 앱바 전체가 검색창
+            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TextField
+                autoFocus
+                fullWidth
+                size="small"
+                placeholder="파일 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    color: 'white',
+                    '& fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.7)',
+                    },
+                    '& input': {
+                      color: 'white',
+                      '&::placeholder': {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        opacity: 1,
+                      },
+                    },
+                  },
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <IconButton
+                color="inherit"
+                onClick={() => {
+                  setIsSearchMode(false);
+                  setSearchQuery('');
+                }}
+                title="검색 닫기"
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          ) : (
+            // 일반 모드: 로고와 버튼들 표시
+            <>
+              <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  component="img"
+                  src="/logo_white.png"
+                  alt="WebDAV EasyAccess"
+                  sx={{
+                    height: isMobile ? '27px' : '33.75px',
+                    maxWidth: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              </Box>
+              {!isMobile && (
+                // 데스크톱: 검색창 항상 표시 (우측)
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
+                  <TextField
+                    size="small"
+                    placeholder="파일 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setIsSearchMode(true)}
+                    sx={{
+                      width: 300,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                        color: 'white',
+                        '& fieldset': {
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: 'rgba(255, 255, 255, 0.5)',
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: 'rgba(255, 255, 255, 0.7)',
+                        },
+                        '& input': {
+                          color: 'white',
+                          '&::placeholder': {
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            opacity: 1,
+                          },
+                        },
+                      },
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: searchQuery && (
+                        <InputAdornment position="end">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setSearchQuery('');
+                              setIsSearchMode(false);
+                            }}
+                            sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+              )}
+              {isMobile && (
+                <IconButton color="inherit" onClick={() => setIsSearchMode(true)} title="검색">
+                  <SearchIcon />
+                </IconButton>
+              )}
+              {user?.is_admin && (
+                <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
+                  <AdminIcon />
+                </IconButton>
+              )}
+              <IconButton color="inherit" onClick={() => navigate('/mypage')} title="마이페이지">
+                <PersonIcon />
+              </IconButton>
+              <IconButton color="inherit" onClick={handleLogout} title="로그아웃">
+                <LogoutIcon />
+              </IconButton>
+            </>
           )}
-          {user?.is_admin && (
-            <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
-              <AdminIcon />
-            </IconButton>
-          )}
-          <IconButton color="inherit" onClick={() => navigate('/mypage')} title="마이페이지">
-            <PersonIcon />
-          </IconButton>
-          <IconButton color="inherit" onClick={handleLogout} title="로그아웃">
-            <LogoutIcon />
-          </IconButton>
         </Toolbar>
       </AppBar>
+
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {!isMobile && (
           <FolderTree
             currentPath={currentPath}
             onPathClick={handlePathClick}
+            onFileClick={handleFileClick}
             user={user}
             treeUpdateTrigger={treeUpdateTrigger}
             onCreateFolder={() => setCreateFolderDialogOpen(true)}
@@ -1010,6 +1360,10 @@ const FileManager = () => {
                       handlePathClick(path);
                       setDrawerOpen(false);
                     }}
+                    onFileClick={(file) => {
+                      handleFileClick(file);
+                      setDrawerOpen(false);
+                    }}
                     user={user}
                     treeUpdateTrigger={treeUpdateTrigger}
                     onCreateFolder={() => {
@@ -1030,7 +1384,8 @@ const FileManager = () => {
             </>
           )}
 
-          <Box sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+          {/* 정렬/선택/보기모드 */}
+          <Box sx={{ px: 2, py: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
             <IconButton
               onClick={(e) => setSortMenuAnchor(e.currentTarget)}
               title="정렬"
@@ -1153,7 +1508,8 @@ const FileManager = () => {
                 </RadioGroup>
               </Box>
             </Menu>
-          
+
+            {/* 보기 모드 버튼 */}
             {selectionMode ? (
               <>
                 <IconButton
@@ -1222,12 +1578,14 @@ const FileManager = () => {
                 <IconButton
                   color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
                   onClick={() => setViewMode(VIEW_MODES.LIST)}
+                  title="목록 보기"
                 >
                   <ViewStreamIcon />
                 </IconButton>
                 <IconButton
                   color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
                   onClick={() => setViewMode(VIEW_MODES.GRID)}
+                  title="그리드 보기"
                 >
                   <ViewModuleIcon />
                 </IconButton>
@@ -1235,6 +1593,7 @@ const FileManager = () => {
                   <IconButton
                     color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
                     onClick={() => setViewMode(VIEW_MODES.DETAIL)}
+                    title="상세 보기"
                   >
                     <ViewListIcon />
                   </IconButton>
@@ -1242,6 +1601,196 @@ const FileManager = () => {
               </Box>
             )}
           </Box>
+
+          {/* 뒤로가기 버튼 (데스크톱 전용) */}
+          {!isMobile && (() => {
+            const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+            
+            // 1. 일반 사용자: 홈 디렉토리에서는 클릭 불가 (홈 아이콘 + "홈" 텍스트)
+            if (!user?.is_admin && currentPath === homePath) {
+              return (
+                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                  <Button
+                    startIcon={<HomeIcon />}
+                    disabled
+                    sx={{
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                      '&.Mui-disabled': {
+                        color: 'text.primary',
+                      },
+                    }}
+                  >
+                    홈
+                  </Button>
+                </Box>
+              );
+            }
+            
+            // 2. 어드민: 루트 디렉토리에서는 클릭 불가 (홈 아이콘 + "홈" 텍스트)
+            if (user?.is_admin && currentPath === '/') {
+              return (
+                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                  <Button
+                    startIcon={<HomeIcon />}
+                    disabled
+                    sx={{
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                      '&.Mui-disabled': {
+                        color: 'text.primary',
+                      },
+                    }}
+                  >
+                    홈
+                  </Button>
+                </Box>
+              );
+            }
+            
+            // 3. 일반 사용자: 공유됨 디렉토리에서는 클릭 불가 (공유됨 아이콘 + "공유됨" 텍스트)
+            if (!user?.is_admin && currentPath === '/__shared__') {
+              return (
+                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                  <Button
+                    startIcon={<ShareIcon />}
+                    disabled
+                    sx={{
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                      '&.Mui-disabled': {
+                        color: 'text.primary',
+                      },
+                    }}
+                  >
+                    공유됨
+                  </Button>
+                </Box>
+              );
+            }
+            
+            // 4. 최근항목 디렉토리에서는 클릭 불가 (최근항목 아이콘 + "최근항목" 텍스트)
+            if (currentPath === '/__recent__') {
+              return (
+                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                  <Button
+                    startIcon={<AccessTimeIcon />}
+                    disabled
+                    sx={{
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                      '&.Mui-disabled': {
+                        color: 'text.primary',
+                      },
+                    }}
+                  >
+                    최근항목
+                  </Button>
+                </Box>
+              );
+            }
+            
+            // 5. 일반 경로에서 부모 경로 계산
+            const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+            
+            if (!parentPath || parentPath === currentPath) return null;
+            
+            // 6. 일반 사용자: 공유된 폴더에서 상위폴더가 권한 없는 경우
+            if (!user?.is_admin && parentPath !== '/' && !parentPath.startsWith(homePath)) {
+              return (
+                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                  <Button
+                    startIcon={<ChevronLeftIcon />}
+                    onClick={() => {
+                      setCurrentPath('/__shared__');
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                    }}
+                  >
+                    공유됨
+                  </Button>
+                </Box>
+              );
+            }
+            
+            // 7. 일반적인 뒤로가기 버튼
+            const parentName = parentPath === '/'
+              ? (user?.is_admin ? '루트' : '홈')
+              : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? '루트' : '홈');
+            
+            return (
+              <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
+                <Button
+                  startIcon={<ChevronLeftIcon />}
+                  onClick={async () => {
+                    // 일반 경로에서 부모 폴더로 이동
+                    const previousPath = currentPathRef.current;
+                    setCurrentPath(parentPath);
+                    
+                    // 권한 체크 (일반 사용자만)
+                    if (!user?.is_admin) {
+                      try {
+                        const permission = await checkPermission(parentPath);
+                        if (!permission.hasRead) {
+                          // 공유 폴더에서 상위 폴더 권한이 없으면 /__shared__로 이동
+                          const userBaseFolder = `/${user?.username || ''}`;
+                          if (!parentPath.startsWith(userBaseFolder)) {
+                            setCurrentPath('/__shared__');
+                            return;
+                          }
+                          // 자신의 폴더인데 권한이 없으면 이전 경로로 롤백
+                          setCurrentPath(previousPath);
+                          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+                          return;
+                        }
+                      } catch (error) {
+                        setCurrentPath(previousPath);
+                        const errorType = determineErrorType(error);
+                        if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
+                          const userBaseFolder = `/${user?.username || ''}`;
+                          if (!parentPath.startsWith(userBaseFolder)) {
+                            setCurrentPath('/__shared__');
+                            return;
+                          }
+                          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+                        } else {
+                          console.error('Failed to check permission:', error);
+                          showError(getErrorMessage(error, '권한 확인 중 오류가 발생했습니다.'));
+                        }
+                        return;
+                      }
+                    }
+                  }}
+                  sx={{
+                    textTransform: 'none',
+                    color: 'text.primary',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
+                  }}
+                >
+                  {parentName}
+                </Button>
+              </Box>
+            );
+          })()}
 
           <Box
             ref={scrollContainerRef}
@@ -1337,6 +1886,7 @@ const FileManager = () => {
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
                 loading={loading}
+                onThumbnailsLoaded={handleThumbnailsLoaded}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
@@ -1363,6 +1913,7 @@ const FileManager = () => {
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
                 loading={loading}
+                onThumbnailsLoaded={handleThumbnailsLoaded}
               />
             ) : (
               <FileDetail
@@ -1497,12 +2048,28 @@ const FileManager = () => {
         onClose={() => setDropMessage({ show: false, text: '', type: 'success' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setDropMessage({ show: false, text: '', type: 'success' })} 
+        <Alert
+          onClose={() => setDropMessage({ show: false, text: '', type: 'success' })}
           severity={dropMessage.type}
           sx={{ width: '100%' }}
         >
           {dropMessage.text}
+        </Alert>
+      </Snackbar>
+
+      {/* useMessage hook의 메시지 표시용 Snackbar */}
+      <Snackbar
+        open={message.show}
+        autoHideDuration={message.type === 'error' ? 5000 : 3000}
+        onClose={clearMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={clearMessage}
+          severity={message.type}
+          sx={{ width: '100%' }}
+        >
+          {message.text}
         </Alert>
       </Snackbar>
 
@@ -1679,6 +2246,12 @@ const FileManager = () => {
               setShareDialogOpen(true);
             }
           }}
+          onShareLink={() => {
+            if (actionSheetFile) {
+              setMobileShareFile(actionSheetFile);
+              setShareDialogOpen(true);
+            }
+          }}
           onManageShared={() => {
             if (actionSheetFile) {
               // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
@@ -1783,10 +2356,13 @@ const FileManager = () => {
             setShareDialogOpen(false);
             setMobileShareFile(null);
           }}
-          folderPath={(mobileShareFile || actionSheetFile)?.path}
-          folderName={(mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name}
+          folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+          folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
           user={user}
           onMessage={setDropMessage}
+          enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
+          filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+          fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
         />
       )}
 

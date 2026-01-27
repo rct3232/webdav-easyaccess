@@ -13,12 +13,16 @@ import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtil
 import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileListSkeleton } from './FileSkeletons';
+import { useThumbnailLazyLoad } from '../hooks/useThumbnailLazyLoad';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded }) => {
   const { isMobile } = useResponsive();
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
   const touchMovedRef = useRef(new Map());
+  
+  // 썸네일 레이지 로딩
+  useThumbnailLazyLoad(files, onThumbnailsLoaded);
   
   const {
     draggedFile,
@@ -38,7 +42,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   });
 
   // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file, canOpenMenu = false) => {
+  const getLongPressHandlers = useCallback((file, canOpenMenu) => {
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
@@ -47,9 +51,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          if (canOpenMenu) {
-            onContextMenu(e, file);
-          }
+          onContextMenu(e, file);
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -79,6 +81,18 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     };
   }, [isMobile, selectionMode, onContextMenu]);
 
+  if (loading && files.length === 0) {
+    return <FileListSkeleton selectionMode={selectionMode} />;
+  }
+
+  if (files.length === 0) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Typography color="text.secondary">파일이 없습니다</Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -87,10 +101,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         gap: 2,
       }}
     >
-      {loading && files.length === 0 ? (
-        <FileListSkeleton selectionMode={selectionMode} />
-      ) : (
-        files.map((file, index) => {
+      {files.map((file, index) => {
         const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
         const canOpenMenu = !isDisabled || allowContextMenu;
@@ -102,6 +113,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         return (
           <Box
             key={index}
+            data-file-path={file.path}
             {...dragHandlers}
             {...dropHandlers}
             {...longPressHandlers}
@@ -111,7 +123,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               }
             }}
             onContextMenu={(e) => {
-              if (!isDisabled || allowContextMenu) {
+              if (canOpenMenu) {
                 onContextMenu(e, file);
               }
             }}
@@ -124,9 +136,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 backgroundColor: isDisabled ? 'transparent' : 'action.hover',
               },
               backgroundColor: dropTarget === file.path ? 'primary.main' : 'transparent',
-              opacity: draggedFile?.path === file.path 
-                ? 0.5 
-                : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
+              opacity: draggedFile?.path === file.path ? 0.5 : (isDisabled ? 0.4 : 1),
               cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
               transition: 'all 0.2s',
               color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),
@@ -202,13 +212,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             )}
           </Box>
         );
-        })
-      )}
-      {!loading && files.length === 0 && (
-        <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 4 }}>
-          <Typography color="text.secondary">파일이 없습니다</Typography>
-        </Box>
-      )}
+      })}
     </Box>
   );
 };

@@ -15,13 +15,17 @@ import { renderProcessingIcon } from '../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
+import { useThumbnailLazyLoad } from '../hooks/useThumbnailLazyLoad';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded }) => {
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
   const touchMovedRef = useRef(new Map());
+  
+  // 썸네일 레이지 로딩
+  useThumbnailLazyLoad(files, onThumbnailsLoaded);
   
   const {
     draggedFile,
@@ -41,7 +45,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   });
 
   // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file, canOpenMenu = false) => {
+  const getLongPressHandlers = useCallback((file, canOpenMenu) => {
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
@@ -50,9 +54,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          if (canOpenMenu) {
-            onContextMenu(e, file);
-          }
+          onContextMenu(e, file);
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -82,6 +84,18 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     };
   }, [isMobile, selectionMode, onContextMenu]);
 
+  if (loading && files.length === 0) {
+    return <FileGridSkeleton selectionMode={selectionMode} />;
+  }
+
+  if (files.length === 0) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Typography color="text.secondary">파일이 없습니다</Typography>
+      </Box>
+    );
+  }
+
   return (
     <Grid 
       container 
@@ -89,13 +103,10 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       ref={gridRef}
       sx={{
         position: 'relative',
-        minHeight: files.length === 0 ? '200px' : 'auto',
+        minHeight: 'auto',
       }}
     >
-      {loading && files.length === 0 ? (
-        <FileGridSkeleton selectionMode={selectionMode} />
-      ) : (
-        files.map((file, index) => {
+      {files.map((file, index) => {
         const thumbnail = getThumbnail(file);
         const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
@@ -108,6 +119,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={index}>
             <Card
+              data-file-path={file.path}
               {...dragHandlers}
               {...dropHandlers}
               {...getLongPressHandlers(file, canOpenMenu)}
@@ -119,7 +131,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
+                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : 1),
                 border: isDropTarget ? '2px solid' : checked ? '2px solid' : 'none',
                 borderColor: checked ? 'primary.main' : 'primary.main',
                 backgroundColor: checked ? 'action.selected' : 'transparent',
@@ -142,7 +154,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                 }
               }}
               onContextMenu={(e) => {
-                if (!isDisabled || allowContextMenu) {
+                if (canOpenMenu) {
                   onContextMenu(e, file);
                 }
               }}
@@ -238,15 +250,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             </Card>
           </Grid>
         );
-        })
-      )}
-      {!loading && files.length === 0 && (
-        <Grid item xs={12}>
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">파일이 없습니다</Typography>
-          </Box>
-        </Grid>
-      )}
+      })}
     </Grid>
   );
 };

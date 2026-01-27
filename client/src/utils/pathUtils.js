@@ -3,6 +3,40 @@
  */
 
 /**
+ * Normalize a path by:
+ * - Ensuring it starts with /
+ * - Removing trailing / (except for root)
+ * - Replacing backslashes with forward slashes
+ * - Removing duplicate slashes
+ * 
+ * @param {string} path - The path to normalize
+ * @returns {string} The normalized path
+ */
+export const normalizePath = (path) => {
+  if (!path) return '/';
+  
+  let normalized = path.trim();
+  
+  // Replace backslashes first
+  normalized = normalized.replace(/\\/g, '/');
+  
+  // Ensure starts with /
+  if (!normalized.startsWith('/')) {
+    normalized = '/' + normalized;
+  }
+  
+  // Remove duplicate slashes
+  normalized = normalized.replace(/\/+/g, '/');
+  
+  // Remove trailing / (except for root)
+  if (normalized !== '/' && normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  
+  return normalized;
+};
+
+/**
  * Get parent path from current path
  * @param {string} currentPath - Current path
  * @returns {string} Parent path

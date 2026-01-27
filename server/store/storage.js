@@ -152,6 +152,30 @@ async function deletePath(p) {
   }
 }
 
+/**
+ * 디렉토리 안전하게 생성 (존재 확인 후 생성, 실패 시 재시도)
+ * @param {string} dirPath - 디렉토리 경로
+ * @returns {Promise<void>}
+ */
+async function ensureDirSafe(dirPath) {
+  const normalizedPath = normalizeWebdavPath(dirPath);
+  try {
+    // 디렉토리가 존재하는지 확인
+    const dirExists = await exists(normalizedPath);
+    if (!dirExists) {
+      // 디렉토리 생성
+      await ensureDir(normalizedPath);
+    }
+  } catch (error) {
+    // 에러 발생 시에도 디렉토리 생성 시도
+    try {
+      await ensureDir(normalizedPath);
+    } catch (e) {
+      // 디렉토리 생성 실패는 무시 (이미 존재할 수 있음)
+    }
+  }
+}
+
 async function listDir(dirPath) {
   const backend = getBackend();
   const normalized = normalizeWebdavPath(dirPath);
@@ -179,6 +203,7 @@ module.exports = {
   getBackend,
   getFsBaseDir,
   ensureDir,
+  ensureDirSafe,
   exists,
   readFile,
   writeFile,

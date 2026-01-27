@@ -19,10 +19,13 @@ import {
   CreateNewFolder as CreateNewFolderIcon,
   Upload as UploadIcon,
   Share as ShareIcon,
+  AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { listFiles } from '../services/fileService';
 import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
 import { getShowHiddenFiles } from '../utils/localStorage';
+import { getRecentFiles, onRecentFilesChange } from '../utils/recentFiles';
+import { getFileIcon } from '../utils/fileIconUtils';
 import axios from 'axios';
 import { FileTreeSkeleton } from './FileSkeletons';
 
@@ -351,12 +354,41 @@ const FolderTreeItem = ({
   );
 };
 
-const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission, onExplorerDrop, isMobile = false }) => {
+const FolderTree = ({ currentPath, onPathClick, onFileClick, user, treeUpdateTrigger, onCreateFolder, onUploadFile, selectionMode, hasWritePermission, onExplorerDrop, isMobile = false }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
+  const [recentExpanded, setRecentExpanded] = useState(false);
   const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
   const userBaseFolder = `/${user?.username || ''}`;
+  
+  // 최근 파일 로드
+  const [recentFilesList, setRecentFilesList] = useState([]);
+  
+  useEffect(() => {
+    const loadRecentFiles = async () => {
+      try {
+        const files = await getRecentFiles();
+        setRecentFilesList(files);
+      } catch (error) {
+        console.error('Failed to load recent files:', error);
+        setRecentFilesList([]);
+      }
+    };
+    
+    // 초기 로드
+    loadRecentFiles();
+    
+    // 이벤트 리스너 등록
+    const unsubscribe = onRecentFilesChange(() => {
+      loadRecentFiles();
+    });
+    
+    // 컴포넌트 언마운트 시 리스너 제거
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (user && user.id && !user.is_admin) {
@@ -481,6 +513,11 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
           setSharedExpanded(true);
         }
       }
+      
+      // 최근 파일 뷰인지 확인
+      if (currentPath === '/__recent__') {
+        setRecentExpanded(true);
+      }
     } else {
       setExpandedPaths(new Set([homePath]));
     }
@@ -515,6 +552,15 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
 
   const handleSharedFolderClick = (folderPath) => {
     onPathClick(folderPath);
+  };
+
+  const handleRecentClick = () => {
+    onPathClick('/__recent__');
+  };
+
+  const handleRecentToggle = (e) => {
+    e.stopPropagation();
+    setRecentExpanded(prev => !prev);
   };
 
   return (
@@ -709,6 +755,149 @@ const FolderTree = ({ currentPath, onPathClick, user, treeUpdateTrigger, onCreat
             </Collapse>
           </>
         )}
+        
+        {/* 최근 항목 섹션 - 항상 표시 */}
+        <ListItem
+          disablePadding
+          sx={{
+            '&:hover': {
+              backgroundColor: 'action.hover',
+            },
+          }}
+        >
+          <ListItemButton
+            onClick={handleRecentClick}
+            selected={currentPath === '/__recent__'}
+            sx={{
+              py: 0.5,
+              minHeight: 32,
+              pl: 0,
+              transition: 'all 0.2s',
+              '&.Mui-selected': {
+                backgroundColor: 'transparent',
+                color: 'primary.main',
+                borderLeft: '3px solid',
+                borderLeftColor: 'primary.main',
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+                '& .MuiListItemIcon-root': {
+                  color: 'primary.main',
+                },
+              },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
+              <Box
+                component="span"
+                onClick={handleRecentToggle}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  width: 20,
+                  height: 20,
+                  justifyContent: 'center',
+                }}
+              >
+                {recentExpanded ? (
+                  <ExpandMoreIcon fontSize="small" />
+                ) : (
+                  <ChevronRightIcon fontSize="small" />
+                )}
+              </Box>
+            </ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 24 }}>
+              <AccessTimeIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: '0.875rem',
+                    fontWeight: currentPath === '/__recent__' ? 700 : 400,
+                  }}
+                >
+                  최근 항목
+                </Typography>
+              }
+            />
+          </ListItemButton>
+        </ListItem>
+        <Collapse in={recentExpanded} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {recentFilesList.length === 0 ? (
+              <ListItem disablePadding>
+                <Box sx={{ pl: 3, py: 1 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    최근 항목이 없습니다
+                  </Typography>
+                </Box>
+              </ListItem>
+            ) : (
+              recentFilesList.slice(0, 10).map((recentFile) => (
+                <ListItem key={recentFile.path} disablePadding>
+                  <ListItemButton
+                    onClick={() => {
+                      if (recentFile.type === 'directory') {
+                        // 폴더인 경우 해당 폴더로 이동
+                        onPathClick(recentFile.path);
+                      } else {
+                        // 파일인 경우
+                        if (onFileClick) {
+                          // 파일 클릭 핸들러가 있으면 사용 (파일 미리보기용)
+                          onFileClick({
+                            ...recentFile,
+                            basename: recentFile.name,
+                            isRecentFile: true,
+                          });
+                        } else {
+                          // 파일의 부모 폴더로 이동
+                          const parentPath = recentFile.path.substring(0, recentFile.path.lastIndexOf('/')) || '/';
+                          onPathClick(parentPath);
+                        }
+                      }
+                    }}
+                    sx={{
+                      pl: 3,
+                      py: 0.5,
+                      minHeight: 32,
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 24, mr: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {recentFile.type === 'directory' ? (
+                        <FolderIcon fontSize="small" />
+                      ) : (
+                        <Box sx={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {getFileIcon({ type: 'file', basename: recentFile.name })}
+                        </Box>
+                      )}
+                    </ListItemIcon>
+                      <ListItemText
+                        primary={
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            {recentFile.name}
+                          </Typography>
+                        }
+                      />
+                  </ListItemButton>
+                </ListItem>
+              ))
+            )}
+          </List>
+        </Collapse>
         </List>
       </Box>
     </Box>

@@ -93,6 +93,9 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/permission-requests', require('./routes/permissionRequests'));
+app.use('/api/share-links', require('./routes/shareLinks'));
+app.use('/api/share', require('./routes/sharePublic'));
+app.use('/api/recent-files', require('./routes/recentFiles'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'WebDAV EasyAccess API is running' });

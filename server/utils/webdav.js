@@ -298,10 +298,20 @@ async function listDirectory(path = '/') {
       return item.basename && item.basename.trim() !== '';
     });
   } catch (error) {
-    if (error.status === 401 || error.response?.status === 401) {
-      throw new Error(`WebDAV authentication failed. Check credentials in .env file. Original: ${error.message}`);
+    const status = error.status || error.response?.status;
+    if (status === 401 || status === 403) {
+      const err = new Error(`WebDAV authentication failed. Check credentials in .env file. Original: ${error.message}`);
+      err.status = status;
+      throw err;
     }
-    throw new Error(`Failed to list directory: ${error.message}`);
+    if (status === 404) {
+      const err = new Error(`Directory not found: ${path}`);
+      err.status = 404;
+      throw err;
+    }
+    const err = new Error(`Failed to list directory: ${error.message}`);
+    err.status = status || 500;
+    throw err;
   }
 }
 

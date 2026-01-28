@@ -27,6 +27,7 @@ import {
 import { listFiles, checkPermission } from '../services/fileService';
 import axios from 'axios';
 import { useResponsive } from '../hooks/useResponsive';
+import { normalizePath, getParentPath } from '../utils/pathUtils';
 
 const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
   const { isMobile } = useResponsive();
@@ -109,12 +110,6 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
         const response = await axios.get(`/api/permissions/user/${user?.id}`);
         const userBaseFolder = `/${user?.username || ''}`;
         
-        // 경로 정규화 함수 (끝의 / 제거)
-        const normalizePath = (path) => {
-          if (!path || path === '/') return '/';
-          return path.endsWith('/') ? path.slice(0, -1) : path;
-        };
-        
         // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
         const sharedFolders = response.data.filter(perm => {
           const folderPath = normalizePath(perm.folder_path);
@@ -181,12 +176,6 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     try {
       const response = await axios.get(`/api/permissions/user/${user.id}`);
       const userBaseFolder = `/${user?.username || ''}`;
-      
-      // 경로 정규화 함수
-      const normalizePath = (path) => {
-        if (!path || path === '/') return '/';
-        return path.endsWith('/') ? path.slice(0, -1) : path;
-      };
       
       // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
       const filtered = response.data.filter(perm => {
@@ -274,80 +263,29 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     onClose();
   };
 
-  // 복사 파일의 부모 디렉토리와 선택된 경로가 같은지 확인
-  const isSameDirectory = (filePath, targetPath) => {
-    if (!filePath || !targetPath) return false;
-    
-    // 파일 경로의 부모 디렉토리 구하기
-    const parentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
-    
-    // 경로 정규화 (끝의 슬래시 제거)
-    const normalizedParent = parentDir === '/' ? '/' : parentDir.replace(/\/$/, '');
-    const normalizedTarget = targetPath === '/' ? '/' : targetPath.replace(/\/$/, '');
-    
-    return normalizedParent === normalizedTarget;
-  };
-
-  // 복사/이동 작업 시 출발 디렉토리와 타겟 디렉토리가 같은지 확인
-  const isCopyToSameDirectory = () => {
+  // 복사/이동 작업 시 유효하지 않은 대상인지 확인 (현위치, 자기 자신, 또는 하위 디렉토리)
+  const isInvalidDestination = () => {
     if (action !== 'copy' && action !== 'move') return false;
-    
-    // 단일 파일 복사/이동
-    if (sourceFilePath) {
-      return isSameDirectory(sourceFilePath, selectedPath);
-    }
-    
-    // 다중 파일 복사/이동
-    if (sourceFilePaths && sourceFilePaths.length > 0) {
-      return sourceFilePaths.some(filePath => isSameDirectory(filePath, selectedPath));
-    }
-    
-    return false;
-  };
 
-  // 이동 작업 시 선택한 디렉토리가 이동할 디렉토리의 하위 디렉토리이거나 자기 자신인지 확인
-  const isMovingToSubdirectory = () => {
-    if (action !== 'move') return false;
-    
-    // 경로 정규화 함수
-    const normalizePath = (path) => {
-      if (!path || path === '/') return '/';
-      return path.endsWith('/') ? path.slice(0, -1) : path;
-    };
-    
     const normalizedSelectedPath = normalizePath(selectedPath);
-    
-    // 단일 디렉토리 이동
-    if (sourceFilePath) {
-      const normalizedSourcePath = normalizePath(sourceFilePath);
-      // 선택한 경로가 이동할 디렉토리와 정확히 같은 경우 (자기 자신)
-      if (normalizedSelectedPath === normalizedSourcePath) {
+    const sourcePaths = sourceFilePath ? [sourceFilePath] : (sourceFilePaths || []);
+
+    return sourcePaths.some(path => {
+      const normalizedSourcePath = normalizePath(path);
+      
+      // 1. 현위치 확인 (이동/복사하려는 파일의 부모 디렉토리가 현재 선택된 디렉토리인 경우)
+      if (getParentPath(normalizedSourcePath) === normalizedSelectedPath) {
         return true;
       }
-      // 선택한 경로가 이동할 디렉토리의 하위 디렉토리인지 확인
-      // 예: sourceFilePath = '/user/folder1', selectedPath = '/user/folder1/subfolder' -> true
-      if (normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) {
+
+      // 2. 자기 자신 또는 하위 디렉토리 확인
+      if (normalizedSelectedPath === normalizedSourcePath || 
+          normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) {
         return true;
       }
-    }
-    
-    // 다중 디렉토리 이동
-    if (sourceFilePaths && sourceFilePaths.length > 0) {
-      return sourceFilePaths.some(filePath => {
-        const normalizedSourcePath = normalizePath(filePath);
-        // 선택한 경로가 이동할 디렉토리와 정확히 같은 경우 (자기 자신)
-        if (normalizedSelectedPath === normalizedSourcePath) {
-          return true;
-        }
-        // 선택한 경로가 이동할 디렉토리의 하위 디렉토리인지 확인
-        if (normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) {
-          return true;
-        }
-        return false;
-      });
-    }
-    
-    return false;
+
+      return false;
+    });
   };
 
   // 소스 파일 경로가 홈 디렉토리인지 공유됨 디렉토리인지 확인
@@ -392,12 +330,6 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     if (!action || (action !== 'copy' && action !== 'move')) return null;
     
     const userBaseFolder = `/${user?.username || ''}`;
-    
-    // 경로 정규화 함수
-    const normalizePath = (path) => {
-      if (!path || path === '/') return '/';
-      return path.endsWith('/') ? path.slice(0, -1) : path;
-    };
     
     // 소스 파일 경로 가져오기
     let sourcePaths = [];
@@ -570,11 +502,6 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   } else {
     // 공유받은 폴더 경로인 경우
     // 권한이 없는 부모 경로만 제외하고, 권한이 있는 경로는 계층 구조 유지
-    const normalizePath = (path) => {
-      if (!path || path === '/') return '/';
-      return path.endsWith('/') ? path.slice(0, -1) : path;
-    };
-    
     const normalizedSelectedPath = normalizePath(selectedPath);
     const pathParts = normalizedSelectedPath.split('/').filter(Boolean);
     
@@ -748,8 +675,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
           disabled={
             (selectedPath === '/__shared__') ||
             ((action === 'copy' || action === 'move') && !hasWritePermission) ||
-            isCopyToSameDirectory() ||
-            isMovingToSubdirectory()
+            isInvalidDestination()
           }
         >
           선택

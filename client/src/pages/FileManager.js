@@ -2103,7 +2103,7 @@ const FileManager = () => {
         action={folderPickerAction}
         sourceFilePath={mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined)}
         sourceFilePaths={
-          !mobilePickerFile && !actionSheetFile && folderPickerAction === 'copy' ? Array.from(selectedFiles) : undefined
+          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move') ? Array.from(selectedFiles) : undefined
         }
       />
 

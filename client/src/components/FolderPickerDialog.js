@@ -632,6 +632,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
               {folders.map((folder, index) => {
                 const hasReadPermission = folder.hasReadPermission !== false; // undefined나 true면 권한 있음
                 const isDisabled = !hasReadPermission;
+                const isHidden = folder.isHidden || folder.basename.startsWith('.');
                 
                 return (
                   <ListItem key={index} disablePadding>
@@ -639,7 +640,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
                       onClick={() => handleFolderClick(folder)}
                       disabled={isDisabled}
                       sx={{
-                        opacity: isDisabled ? 0.5 : 1,
+                        opacity: isDisabled ? 0.5 : (isHidden ? 0.5 : 1),
                         cursor: isDisabled ? 'not-allowed' : 'pointer',
                         '&:hover': {
                           backgroundColor: isDisabled ? 'transparent' : undefined,

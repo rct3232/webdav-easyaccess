@@ -317,7 +317,7 @@ const FolderTreeItem = ({
               </Typography>
             }
             sx={{
-              opacity: name === '.wea' ? 0.5 : 1,
+              opacity: name.startsWith('.') ? 0.5 : 1,
             }}
           />
         </ListItemButton>
@@ -988,6 +988,7 @@ const SharedFolderTreeItem = ({
             path: item.path,
             name: item.basename || item.name,
             hasReadPermission,
+            isHidden: item.isHidden,
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -1179,6 +1180,9 @@ const SharedFolderTreeItem = ({
                 {node.name}
               </Typography>
             }
+            sx={{
+              opacity: (node.isHidden || node.name.startsWith('.')) ? 0.5 : 1,
+            }}
           />
         </ListItemButton>
       </ListItem>

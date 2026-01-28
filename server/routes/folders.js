@@ -108,7 +108,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
         }
         
         // isHidden 플래그 추가
-        const isHidden = item.basename === '.wea';
+        const isHidden = item.basename.startsWith('.');
         
         return {
           ...item,

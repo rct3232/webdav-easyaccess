@@ -10,6 +10,7 @@ import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ShareLinkView from './pages/ShareLinkView';
+import MainLayout from './components/MainLayout';
 
 const theme = createTheme({
   breakpoints: {
@@ -71,31 +72,33 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route
-              path="/files/*"
-              element={
-                <PrivateRoute>
-                  <FileManager />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/mypage"
-              element={
-                <PrivateRoute>
-                  <MyPage />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <PrivateRoute>
-                  <AdminDashboard />
-                </PrivateRoute>
-              }
-            />
-            <Route path="/share/:token" element={<ShareLinkView />} />
+            <Route element={<MainLayout />}>
+              <Route
+                path="/files/*"
+                element={
+                  <PrivateRoute>
+                    <FileManager />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/mypage"
+                element={
+                  <PrivateRoute>
+                    <MyPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <PrivateRoute>
+                    <AdminDashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/share/:token" element={<ShareLinkView />} />
+            </Route>
             <Route path="/" element={<Navigate to="/files" replace />} />
           </Routes>
         </Router>

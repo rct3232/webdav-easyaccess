@@ -248,7 +248,15 @@ const ShareLinkView = () => {
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <AppBar position="static" sx={{ flexShrink: 0 }}>
+      <AppBar 
+        position="static" 
+        sx={{ 
+          flexShrink: 0,
+          backgroundColor: 'transparent',
+          backgroundImage: 'none',
+        }}
+        elevation={0}
+      >
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flex: 1, mr: 2 }} noWrap>
             {linkInfo?.fileName || '공유 파일'}

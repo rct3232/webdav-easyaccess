@@ -308,12 +308,8 @@ const MyPage = () => {
         sx={{ 
           top: 0, 
           zIndex: (theme) => theme.zIndex.appBar,
-          background: `
-            radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
-            radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
-            radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, transparent 40%),
-            linear-gradient(135deg, #4167ba, #52c597 85%, rgba(251, 229, 89, 0.5) 98%)
-          `.trim(),
+          backgroundColor: 'transparent',
+          backgroundImage: 'none',
         }}
         elevation={0}
       >

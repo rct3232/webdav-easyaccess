@@ -104,7 +104,18 @@ const FileManager = () => {
   // 모바일용 FolderPickerDialog를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
   const [mobilePickerFile, setMobilePickerFile] = useState(null);
   const [mobilePickerAction, setMobilePickerAction] = useState(null);
-  
+
+  // 로딩/새로고침 완료 콜백을 위한 ref (useFileManager 이전에 정의)
+  const handleLoadCompleteRef = useRef(null);
+  const handleRefreshCompleteRef = useRef(null);
+
+  // useFileManager에 전달할 메모이제이션된 콜백
+  const handleLoadCompleteCallback = useCallback(() => {
+    if (isMobile && handleLoadCompleteRef.current) {
+      handleLoadCompleteRef.current();
+    }
+  }, [isMobile]);
+
   // 최근 파일 경로 추적 훅
   const {
     recentFilePathsRef,
@@ -129,11 +140,7 @@ const FileManager = () => {
     hasWritePermission,
     onLoadErrorRef,
   } = useFileManager(user, {
-    onLoadComplete: isMobile ? (() => {
-      if (handleLoadCompleteRef.current) {
-        handleLoadCompleteRef.current();
-      }
-    }) : undefined,
+    onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
   });
   
@@ -424,16 +431,11 @@ const FileManager = () => {
     }, REFRESH_SUCCESS_DURATION);
   }, [isMobile, isRefreshing, resetPull]);
 
-  // 새로고침 완료 시 즉시 showRefreshSuccess를 true로 설정하는 콜백
-  // (usePullToRefresh보다 먼저 정의되어야 함)
-  const handleRefreshCompleteRef = useRef(null);
-  const handleLoadCompleteRef = useRef(null);
-  
   // 폴더 이동/로딩 완료 시 즉시 showRefreshSuccess를 true로 설정하는 콜백
   const handleLoadComplete = useCallback(() => {
     showRefreshSuccessIndicator({ shouldCheckRefreshing: true });
   }, [showRefreshSuccessIndicator]);
-  
+
   // ref에 콜백 저장
   handleLoadCompleteRef.current = handleLoadComplete;
 

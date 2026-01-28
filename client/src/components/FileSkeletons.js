@@ -1,17 +1,24 @@
 import React from 'react';
-import { Box, Skeleton, Grid, TableRow, TableCell } from '@mui/material';
+import { Box, Skeleton, TableRow, TableCell } from '@mui/material';
 import { useResponsive } from '../hooks/useResponsive';
 
 /**
  * List view skeleton loader
  * Matches the layout of FileList items: icon (40x40) + text area + metadata
+ * Uses responsive grid layout: single column on mobile, grid on desktop
  */
 export const FileListSkeleton = ({ count, selectionMode = false }) => {
   const { isMobile } = useResponsive();
   const skeletonCount = count || (isMobile ? 4 : 6);
 
   return (
-    <>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gap: 2,
+      }}
+    >
       {Array.from({ length: skeletonCount }).map((_, index) => (
         <Box
           key={index}
@@ -66,78 +73,90 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
           </Box>
         </Box>
       ))}
-    </>
+    </Box>
   );
 };
 
 /**
  * Grid view skeleton loader
  * Matches the layout of FileGrid cards: square image area + text
+ * Uses responsive grid layout for all screen sizes
  */
 export const FileGridSkeleton = ({ count, selectionMode = false }) => {
   const { isMobile } = useResponsive();
   const skeletonCount = count || (isMobile ? 4 : 8);
 
   return (
-    <>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: {
+          xs: 'repeat(2, 1fr)',
+          sm: 'repeat(3, 1fr)',
+          md: 'repeat(4, 1fr)',
+          lg: 'repeat(5, 1fr)',
+          xl: 'repeat(6, 1fr)',
+        },
+        gap: { xs: 1.5, sm: 2 },
+      }}
+    >
       {Array.from({ length: skeletonCount }).map((_, index) => (
-        <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={index}>
-          <Box
-            sx={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              borderRadius: 1,
-              overflow: 'hidden',
-              border: '1px solid',
-              borderColor: 'divider',
-              position: 'relative',
-            }}
-          >
-            {selectionMode && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  left: 8,
-                  zIndex: 1,
-                }}
-              >
-                <Skeleton 
-                  variant="rectangular" 
-                  width={24} 
-                  height={24} 
-                  animation="wave"
-                />
-              </Box>
-            )}
+        <Box
+          key={index}
+          sx={{
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 1,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+            position: 'relative',
+          }}
+        >
+          {selectionMode && (
             <Box
               sx={{
-                width: '100%',
-                aspectRatio: '1 / 1',
-                backgroundColor: 'grey.100',
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                zIndex: 1,
               }}
             >
               <Skeleton 
                 variant="rectangular" 
-                width="100%" 
-                height="100%" 
+                width={24} 
+                height={24} 
                 animation="wave"
               />
             </Box>
-            <Box sx={{ p: 1, pt: 0.5, pb: 1 }}>
-              <Skeleton 
-                variant="text" 
-                width="80%" 
-                height={20} 
-                animation="wave"
-                sx={{ mx: 'auto' }} 
-              />
-            </Box>
+          )}
+          <Box
+            sx={{
+              width: '100%',
+              aspectRatio: '1 / 1',
+              backgroundColor: 'grey.100',
+            }}
+          >
+            <Skeleton 
+              variant="rectangular" 
+              width="100%" 
+              height="100%" 
+              animation="wave"
+            />
           </Box>
-        </Grid>
+          <Box sx={{ p: 1, pt: 0.5, pb: 1 }}>
+            <Skeleton 
+              variant="text" 
+              width="80%" 
+              height={20} 
+              animation="wave"
+              sx={{ mx: 'auto' }} 
+            />
+          </Box>
+        </Box>
       ))}
-    </>
+    </Box>
   );
 };
 

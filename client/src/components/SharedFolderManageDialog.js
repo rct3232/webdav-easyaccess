@@ -74,7 +74,7 @@ const SharedFolderManageDialog = ({
     };
 
     loadPermissionInfo();
-  }, [open, folderPath, user]);
+  }, [open, folderPath, user?.is_admin]);
 
   // 소유자 존재 여부 체크
   useEffect(() => {
@@ -111,7 +111,7 @@ const SharedFolderManageDialog = ({
     };
 
     checkOwner();
-  }, [open, folderPath, user]);
+  }, [open, folderPath, user?.is_admin]);
 
   // 이미 요청한 권한(대기중) 로드: 해당 권한 요청 버튼 disable + "요청됨" 표시
   useEffect(() => {
@@ -149,7 +149,7 @@ const SharedFolderManageDialog = ({
 
     loadPendingRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, folderPath, user?.id]);
+  }, [open, folderPath, user?.id, user?.is_admin]);
 
   const hasReadPermission =
     typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionInfo.hasRead;

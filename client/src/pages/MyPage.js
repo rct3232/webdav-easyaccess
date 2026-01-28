@@ -65,7 +65,7 @@ const MyPage = () => {
       setEmail(user.email || '');
       setOriginalEmail(user.email || '');
     }
-  }, [user]);
+  }, [user?.email]);
 
   const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -136,7 +136,7 @@ const MyPage = () => {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       loadPermissionRequests();
       // 어드민이 아닐 때만 공유 링크 로드
       if (!user.is_admin) {
@@ -144,7 +144,7 @@ const MyPage = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, user?.is_admin]);
 
   const loadShareLinks = async () => {
     if (!user || user.is_admin) return;

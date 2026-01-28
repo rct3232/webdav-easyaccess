@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
 import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
 import { getRecentFiles } from '../utils/recentFiles';
@@ -7,11 +8,24 @@ import axios from 'axios';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError } = options;
+  const { '*' : urlPath } = useParams();
+  const navigate = useNavigate();
+  
   const onLoadCompleteRef = useRef(onLoadComplete);
   const onLoadErrorRef = useRef(onLoadError);
-  const [currentPath, setCurrentPath] = useState(() => {
-    return user?.is_admin ? '/' : `/${user?.username || ''}`;
-  });
+
+  const currentPath = useMemo(() => {
+    const path = urlPath ? `/${urlPath}` : '/';
+    return normalizePath(path);
+  }, [urlPath]);
+
+  const setCurrentPath = useCallback((path) => {
+    const normalizedPath = normalizePath(path);
+    // If the path starts with /, remove it for the URL parameter
+    const navigatePath = normalizedPath === '/' ? '' : normalizedPath.substring(1);
+    navigate(`/files/${navigatePath}`);
+  }, [navigate]);
+
   const [files, setFiles] = useState([]);
   // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
   const [loading, setLoading] = useState(true);

@@ -1,4 +1,5 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useFileManager } from '../useFileManager';
 import { listFiles, getWebDAVInfo, checkPermission } from '../../services/fileService';
 
@@ -21,6 +22,16 @@ function deferred() {
 describe('useFileManager', () => {
   const user = { id: 1, username: 'alice', is_admin: false };
 
+  const createWrapper = (initialPath = '/files/alice') => {
+    return ({ children }) => (
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/files/*" element={children} />
+        </Routes>
+      </MemoryRouter>
+    );
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     getWebDAVInfo.mockResolvedValue({ url: 'http://example.test/webdav' });
@@ -37,7 +48,9 @@ describe('useFileManager', () => {
     const next = deferred();
     listFiles.mockResolvedValueOnce(initialFiles).mockReturnValueOnce(next.promise);
 
-    const { result } = renderHook(() => useFileManager(user));
+    const { result } = renderHook(() => useFileManager(user), {
+      wrapper: createWrapper('/files/alice')
+    });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -67,7 +80,9 @@ describe('useFileManager', () => {
     const refresh = deferred();
     listFiles.mockResolvedValueOnce(initialFiles).mockReturnValueOnce(refresh.promise);
 
-    const { result } = renderHook(() => useFileManager(user));
+    const { result } = renderHook(() => useFileManager(user), {
+      wrapper: createWrapper('/files/alice')
+    });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

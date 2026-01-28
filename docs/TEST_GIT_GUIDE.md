@@ -325,7 +325,7 @@ npm test
 
 ---
 
-**마지막 업데이트**: 2026-01-12  
+**마지막 업데이트**: 2026-01-28  
 **프로젝트**: WebDAV EasyAccess  
 **테스트 프레임워크**: Jest, React Testing Library
 

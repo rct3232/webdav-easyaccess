@@ -2,336 +2,164 @@
 
 ## 개요
 
-WebDAV EasyAccess는 React 프론트엔드와 Express 백엔드로 구성된 파일 관리 시스템입니다. 이 문서는 주요 아키텍처 패턴과 데이터 플로우를 설명합니다.
+WebDAV EasyAccess는 React 프론트엔드와 Express 백엔드로 구성된 **설치형(Self-hosted) 다중 사용자 파일 관리 플랫폼**입니다. 기존 WebDAV 서버 위에 현대적인 웹 인터페이스와 정교한 사용자/권한 관리 레이어를 제공합니다.
 
-## 서버 아키텍처
+---
 
-### 미들웨어 구조
+## 1. 서버 아키텍처
 
-서버는 다음 순서로 미들웨어를 적용합니다:
+### 1.1 미들웨어 파이프라인
+
+모든 API 요청은 표준화된 미들웨어 체인을 통과하여 보안 및 데이터 정규화를 보장합니다:
 
 ```
-Request → CORS → Body Parser → Request Logger → Routes → Error Handler
+Request → CORS → Body Parser → Request Logger → Auth (JWT) → User Loader → Path Normalizer → Meta Path Guard → Route Handler → Error Handler
 ```
 
-#### 주요 미들웨어
+#### 핵심 미들웨어
+1.  **authenticateToken** (`server/utils/auth.js`): `Authorization: Bearer <JWT>` 헤더를 검증하고 `req.user.id`를 설정합니다.
+2.  **requireUser** (`server/middleware/requireUser.js`): DB(Metadata Store)에서 사용자 상세 정보를 로드하여 `req.user.full`에 주입합니다.
+3.  **normalizePathParam** (`server/middleware/normalizePathParam.js`): 요청의 `path` 파라미터를 POSIX 스타일로 정규화하고 중복 슬래시를 제거합니다.
+4.  **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`): 예약된 경로(`/.wea`)에 대한 비관리자의 접근을 원천 차단합니다.
+5.  **errorHandler** (`server/utils/errorHandler.js`): 모든 라우트 에러를 catch하여 표준화된 JSON 응답(status, error, message)을 반환합니다.
 
-1. **authenticateToken** (`server/utils/auth.js`)
-   - JWT 토큰 검증
-   - `req.user`에 사용자 ID 설정
+### 1.2 권한 정책 (ACL)
 
-2. **requireUser** (`server/middleware/requireUser.js`)
-   - 전체 사용자 객체를 `req.user.full`에 로드
-   - 모든 인증된 라우트에서 사용자 정보 접근 간소화
-
-3. **normalizePathParam** (`server/middleware/normalizePathParam.js`)
-   - 경로 파라미터 자동 정규화
-   - `req.query.path`, `req.body.path` 등을 정규화
-
-4. **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`)
-   - 메타 경로(`/.wea`) 접근 제어
-   - 관리자만 접근 허용
-
-5. **errorHandler** (`server/utils/errorHandler.js`)
-   - 모든 라우트 에러를 중앙에서 처리
-   - 표준화된 에러 응답 포맷
-
-### 에러 처리 플로우
+시스템은 WebDAV 서버의 기본 권한과 별개로 **자체적인 ACL(Access Control List)**을 운영합니다.
 
 ```mermaid
 flowchart TD
-    A[Route Handler] -->|asyncHandler| B{Error?}
-    B -->|No| C[Send Response]
-    B -->|Yes| D[Error Handler]
-    D --> E[Log Error]
-    E --> F[Format Response]
-    F --> G[Send Error Response]
+    A["Request (User, Path)"] --> B{"Admin?"}
+    B -->|"Yes"| C["Allow All"]
+    B -->|"No"| D{"Owner Path? (/{username}/...)"}
+    D -->|"Yes"| C
+    D -->|"No"| E{"Action Type?"}
+    E -->|"Read"| F["Check Inherited Permissions"]
+    E -->|"Write"| G["Check Direct Permissions"]
+    F --> H{"Has 'read' or higher?"}
+    G --> I{"Has 'write' or higher?"}
+    H -->|"Yes"| C
+    H -->|"No"| J["403 Forbidden"]
+    I -->|"Yes"| C
+    I -->|"No"| J
 ```
 
-#### 에러 처리 패턴
+*   **상속된 읽기 (Inherited Read)**: 부모 폴더에 권한이 있으면 하위 모든 항목에 접근 가능합니다.
+*   **직접 쓰기 (Direct Write)**: 보안을 위해 쓰기 권한은 해당 폴더에 명시적으로 부여된 경우에만 인정됩니다 (상속되지 않음).
+*   **소유자 예외**: `/{username}` 경로는 해당 사용자의 홈 디렉토리로 간주되어 항상 풀 권한이 부여됩니다.
 
-1. **asyncHandler 래퍼**
-   ```javascript
-   router.get('/path', asyncHandler(async (req, res) => {
-     // 에러가 자동으로 catch되어 errorHandler로 전달됨
-     const data = await someAsyncOperation();
-     res.json(data);
-   }));
-   ```
+---
 
-2. **에러 생성 헬퍼**
-   ```javascript
-   throw validationError('Invalid input');
-   throw forbiddenError('Access denied');
-   throw notFoundError('Resource not found');
-   ```
+## 2. 데이터 구조 및 저장소
 
-3. **에러 핸들러**
-   - 모든 에러를 표준 포맷으로 변환
-   - 개발 환경에서만 스택 트레이스 포함
-   - 적절한 HTTP 상태 코드 설정
+### 2.1 메타데이터 스토리지 (Metadata Store)
 
-### 권한 체크 플로우
+전용 데이터베이스(MySQL, MongoDB 등) 대신, **JSON 기반의 파일 스토리지**를 사용합니다. 이는 WebDAV 서버 하나만으로 시스템 전체를 구동할 수 있게 하기 위함입니다.
 
-```mermaid
-flowchart TD
-    A[Request] --> B[authenticateToken]
-    B --> C[requireUser]
-    C --> D{Admin?}
-    D -->|Yes| E[Allow All]
-    D -->|No| F{Owner Path?}
-    F -->|Yes| E
-    F -->|No| G[Check Permission]
-    G --> H{Has Permission?}
-    H -->|Yes| E
-    H -->|No| I[403 Forbidden]
+*   **스토리지 백엔드 선택**: `.env`의 `WEA_STORAGE_BACKEND` 설정에 따라 결정됩니다.
+    *   `webdav` (기본값): WebDAV 서버의 `/.wea` 폴더 내에 저장. (완전한 무상태성 유지 가능)
+    *   `fs`: 서버 로컬 파일시스템에 저장. (성능상 이점)
+
+#### 저장 구조 (Remote/Local)
+```
+/.wea/
+├── users/
+│   ├── _index.json      # 사용자 ID-Username 매핑 및 자동 증가 ID 관리
+│   └── user1.json       # 사용자 프로필, 비밀번호 해시, 상태 등
+├── permissions/
+│   └── users/
+│       └── 1.json       # User ID 1번의 폴더별 권한 설정 (ACL)
+├── index/
+│   └── email/
+│       └── <hash>.txt   # 이메일 중복 체크 및 조회를 위한 역인덱스
+├── locks/
+│   └── <hash>.lock      # 분산 락 파일 (동시성 제어)
+└── settings.json        # 시스템 전역 설정 (회원가입 활성화 여부 등)
 ```
 
-#### 권한 정책
+### 2.2 동시성 제어 (Metadata Locking)
 
-1. **읽기 권한 (Read)**
-   - 상위 경로 권한 상속 (effective/inherited)
-   - 부모 폴더에 읽기 권한이 있으면 하위 폴더 접근 가능
+여러 사용자가 동시에 메타데이터를 수정할 때 데이터 유실을 방지하기 위해 **분산 락(Distributed Lock)** 메커니즘을 사용합니다 (`server/store/locks.js`).
 
-2. **쓰기 권한 (Write)**
-   - 직접 권한만 인정 (direct-only)
-   - 상위 경로 권한 상속 없음
-   - 공유 폴더는 직접 권한 필요
+1.  WebDAV의 `If-None-Match: *` 헤더를 이용한 원자적 파일 생성을 시도합니다.
+2.  성공 시 락을 획득하고, 실패 시 일정 시간 대기 후 재시도합니다.
+3.  락 파일 내부에 TTL을 기록하여, 서버 장애로 인한 데드락을 자동으로 해소합니다.
 
-3. **소유자 예외**
-   - `/{username}` 경로는 항상 읽기/쓰기 가능
-   - 하위 경로도 자동으로 소유자 권한 적용
+---
 
-4. **관리자 예외**
-   - 관리자는 모든 경로에 접근 가능
-   - 권한 체크 건너뛰기
+## 3. 핵심 파일 처리 로직
 
-#### 권한 체크 헬퍼 함수
+### 3.1 썸네일 시스템 (Thumbnail Engine)
 
-- `canReadFolder(userId, folderPath)` - 폴더 읽기 권한 체크
-- `canWriteFolder(user, folderPath)` - 폴더 쓰기 권한 체크
-- `canGrantPermission(user, folderPath, userId)` - 권한 부여 권한 체크
-- `canRevokePermission(user, folderPath, userId, targetUserId)` - 권한 취소 권한 체크
-- `canViewPermissions(user, folderPath, userId)` - 권한 조회 권한 체크
-
-### 라우트 구조
-
-모든 라우트는 다음 패턴을 따릅니다:
-
-```javascript
-router.METHOD('/path', 
-  authenticateToken,      // 1. 인증
-  requireUser,            // 2. 사용자 로드
-  normalizePathParam,     // 3. 경로 정규화
-  checkMetaPathAccess,    // 4. 메타 경로 체크 (필요시)
-  asyncHandler(async (req, res) => {
-    // 5. 비즈니스 로직
-    const user = req.user.full; // 사용자 정보
-    // ...
-    res.json(result);
-  })
-);
-```
-
-## 클라이언트 아키텍처
-
-### 상태 관리 패턴
-
-#### Context API
-- `AuthContext`: 인증 상태 관리
-- JWT 토큰을 sessionStorage에 저장
-
-#### Custom Hooks
-
-1. **useFileManager**
-   - 파일 목록 관리
-   - 정렬, 필터링
-   - 경로 네비게이션
-
-2. **useFileOperations**
-   - 단일 파일 작업 (다운로드, 이름변경, 삭제, 이동, 복사)
-   - 진행 상태 관리
-
-3. **useBulkOperations**
-   - 다중 파일 작업
-   - 일괄 삭제, 다운로드, 이동, 복사
-
-4. **useFileOperationProgress**
-   - 진행 상태 중앙 관리
-   - 에러 처리 통합
-   - 재시도 로직
-
-5. **useMessage**
-   - 통합 메시지 표시
-   - 성공/에러/경고 메시지
-
-6. **useFormState**
-   - 폼 상태 관리
-   - 유효성 검사 통합
-
-### API 클라이언트
-
-#### 구조
-
-```javascript
-import { get, post, put, del } from './services/apiClient';
-
-// 자동 토큰 주입
-// 자동 에러 처리
-// 재시도 로직
-```
-
-#### 인터셉터
-
-1. **Request Interceptor**
-   - sessionStorage에서 토큰 읽기
-   - Authorization 헤더 자동 추가
-
-2. **Response Interceptor**
-   - 401 에러: 자동 로그아웃 및 리다이렉트
-   - 403 에러: 에러 메시지 표시
-   - 네트워크 에러: 사용자 친화적 메시지
-
-### 컴포넌트 구조
-
-#### BaseDialog
-모든 다이얼로그의 기본 컴포넌트:
-- 반응형 레이아웃 (모바일에서 fullScreen)
-- 표준화된 구조 (Title, Content, Actions)
-
-#### 파일 작업 진행
-- `FileOperationProgress`: 진행 상태 표시 컴포넌트
-- `useFileOperationProgress`: 진행 상태 관리 훅
-
-## 데이터 플로우
-
-### 파일 목록 조회
+미디어 파일의 쾌적한 탐색을 위해 서버 사이드 썸네일 생성을 지원합니다.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant API as API Client
     participant S as Server
+    participant Cache as Memory Cache
     participant W as WebDAV
-    participant P as Permission Store
-
-    C->>API: listFiles(path)
-    API->>S: GET /api/files/list?path=...
-    S->>P: Check Permission
-    P-->>S: Has Permission
-    S->>W: listDirectory(path)
-    W-->>S: File List
-    S->>P: Check Each Item Permission
-    P-->>S: Permissions
-    S->>S: Add Thumbnails
-    S-->>API: File List with Permissions
-    API-->>C: File List
+    
+    C->>S: GET /api/thumbnails/<hash>
+    S->>Cache: Check Cache
+    alt In Cache
+        Cache-->>S: Return Buffer
+        S-->>C: 200 OK (Image)
+    else Not In Cache
+        S->>W: Download Original (Partial/Full)
+        alt Image File
+            S->>S: Resize using Sharp
+        else Video File
+            S->>S: Extract frame using FFmpeg
+            S->>S: Resize frame using Sharp
+        end
+        S->>Cache: Store in Cache (LRU)
+        S-->>C: 200 OK (Image)
+    end
 ```
 
-### 파일 업로드
+*   **성능 최적화**: 
+    *   생성된 썸네일은 서버 메모리에 캐싱(최대 1000개)됩니다.
+    *   클라이언트는 `batch` API를 통해 현재 뷰포트 내의 여러 썸네일을 한 번에 확인 요청합니다.
+    *   비디오 썸네일은 FFmpeg가 설치된 환경에서만 동작하며, 서버 시작 시 1회만 가용성을 체크합니다.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant API as API Client
-    participant S as Server
-    participant W as WebDAV
-    participant P as Permission Store
+### 3.2 재귀적 작업 엔진 (Selective Transfer/Delete)
 
-    C->>API: uploadFile(file, path)
-    API->>S: POST /api/files/upload
-    S->>P: Check Write Permission
-    P-->>S: Has Permission
-    S->>W: putFileContents(path, buffer)
-    W-->>S: Success
-    S-->>API: Success
-    API-->>C: Success
-```
+WebDAV 서버에 따라 디렉토리 이동/삭제 시 권한 체크가 복잡해질 수 있습니다. 시스템은 이를 정교하게 처리하기 위해 `selective*` 서비스를 사용합니다.
 
-### 권한 부여
+*   **동작 방식**: 
+    1.  대상 폴더 트리를 재귀적으로 탐색합니다.
+    2.  각 단계에서 **현재 사용자의 ACL**을 확인합니다.
+    3.  권한이 있는 항목만 선별적으로 이동/복사/삭제를 수행합니다.
+    4.  작업 완료 후, 변경된 경로에 맞춰 ACL 데이터(`/.wea/permissions/...`)를 자동으로 갱신(Rewrite)하거나 삭제(Revoke)합니다.
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant C as Client
-    participant S as Server
-    participant P as Permission Store
+---
 
-    U->>C: Grant Permission
-    C->>S: POST /api/permissions/grant
-    S->>S: Check canGrantPermission
-    S->>P: Grant Permission
-    P-->>S: Success
-    S-->>C: Success
-    C-->>U: Permission Granted
-```
+## 4. API 가이드 (요약)
 
-## 보안 고려사항
+### 4.1 인증 (Auth)
+*   `POST /api/auth/login`: 로그인 및 토큰 발급.
+*   `POST /api/auth/register`: 회원 가입 요청.
 
-### 인증
-- JWT 토큰 기반 인증
-- sessionStorage 저장 (브라우저 종료 시 자동 로그아웃)
-- 토큰 만료 시 자동 로그아웃
+### 4.2 파일 및 폴더 (Files/Folders)
+*   `GET /api/files/list?path=...`: 폴더 목록 조회 (ACL 정보 포함).
+*   `GET /api/files/download?path=...`: 단일 파일 다운로드.
+*   `POST /api/files/upload`: 파일 업로드 (부모 권한 체크).
+*   `PUT /api/files/move`: 경로 이동 및 ACL 자동 갱신.
+*   `POST /api/files/download-multiple`: 다중 파일/폴더 선택 시 ZIP 압축 다운로드.
 
-### 권한
-- 경로 기반 권한 체크
-- 메타 경로(`/.wea`)는 관리자만 접근
-- 소유자 경로는 항상 접근 가능
+### 4.3 권한 (Permissions)
+*   `POST /api/permissions/grant`: 다른 사용자에게 폴더 권한 부여.
+*   `DELETE /api/permissions/revoke`: 권한 취소.
 
-### 입력 검증
-- 경로 정규화로 경로 조작 방지
-- 파일명 유효성 검사
-- SQL 인젝션 방지 (NoSQL 사용)
+---
 
-## 성능 최적화
+## 5. 보안 및 성능 최적화
 
-### 서버
-- WebDAV 클라이언트 캐싱
-- 썸네일 캐싱
-- 비동기 작업 진행 상태 추적
-
-### 클라이언트
-- React.memo로 불필요한 리렌더링 방지
-- 가상화된 리스트 (react-virtualized)
-- 이미지/비디오 지연 로딩
-
-## 확장성
-
-### 미들웨어 추가
-새로운 미들웨어는 `server/middleware/`에 추가하고 라우트에 적용:
-
-```javascript
-const myMiddleware = require('../middleware/myMiddleware');
-router.get('/path', authenticateToken, myMiddleware, handler);
-```
-
-### 새로운 권한 체크
-`server/utils/permissionPolicy.js`에 헬퍼 함수 추가:
-
-```javascript
-async function canDoSomething(user, path, userId) {
-  // 권한 체크 로직
-}
-```
-
-### 새로운 API 엔드포인트
-1. `server/routes/`에 새 라우트 파일 생성
-2. `server/index.js`에 등록
-3. `asyncHandler`, `requireUser` 등 미들웨어 사용
-
-## 테스트 전략
-
-### 단위 테스트
-- 유틸리티 함수
-- 권한 정책 함수
-- 모델 메서드
-
-### 통합 테스트
-- 라우트 핸들러
-- 미들웨어 체인
-- WebDAV 연동
-
-### E2E 테스트
-- 파일 업로드/다운로드
-- 권한 부여/취소
-- 사용자 승인 플로우
+*   **보안**:
+    *   JWT 토큰은 `sessionStorage`에만 저장되어 XSS 공격에 대한 노출을 최소화합니다.
+    *   비밀번호 변경 시 `token_version`을 증가시켜 기존의 모든 토큰을 즉시 무효화합니다.
+    *   경로 정규화를 통해 Directory Traversal 공격을 방지합니다.
+*   **성능**:
+    *   `asyncLimitSettled`를 사용하여 WebDAV 요청의 동시 실행 수를 제한(기본 5~10개), 서버 부하를 조절합니다.
+    *   빈번한 권한 체크 요청은 짧은 시간(TTL 1s) 동안 인메모리 캐싱됩니다.

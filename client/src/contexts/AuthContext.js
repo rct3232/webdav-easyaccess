@@ -79,11 +79,13 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      fetchUser();
+      if (!user) {
+        fetchUser();
+      }
     } else {
       setLoading(false);
     }
-  }, [token, fetchUser]);
+  }, [token, fetchUser, user]);
 
   // Listen for token refresh events from apiClient
   useEffect(() => {

@@ -398,7 +398,7 @@ const FolderTree = ({ currentPath, onPathClick, onFileClick, user, treeUpdateTri
       setSharedFolders([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.is_admin]);
+  }, [user]);
 
   const loadSharedFolders = async () => {
     if (!user || !user.id || user.is_admin) return;

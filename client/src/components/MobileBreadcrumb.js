@@ -57,7 +57,7 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
     } else {
       setSharedPermissionPaths(new Set());
     }
-  }, [user?.id, user?.username, user?.is_admin, currentPath]);
+  }, [user, currentPath]);
 
   // Parse path segments - FileTree처럼 표시 (유저 폴더 제외, 공유 폴더는 직접 권한이 있는 경로만)
   const getPathSegments = () => {

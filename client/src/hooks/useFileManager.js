@@ -167,7 +167,7 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [currentPath, user?.id, user?.username]);
+  }, [currentPath, user]);
 
   useEffect(() => {
     if (user && !user.is_admin) {
@@ -183,7 +183,7 @@ export const useFileManager = (user, options = {}) => {
       }
       // 다른 경로는 서버에서 권한 체크를 하므로 허용
     }
-  }, [user, user?.username, user?.is_admin, currentPath]);
+  }, [user, currentPath, setCurrentPath]);
 
   useEffect(() => {
     if (currentPath) {
@@ -220,7 +220,7 @@ export const useFileManager = (user, options = {}) => {
         loadPermission();
       }
     }
-  }, [currentPath, loadFiles, user?.id, user?.username, user?.is_admin]);
+  }, [currentPath, loadFiles, user]);
 
   useEffect(() => {
     const loadWebDAVUrl = async () => {

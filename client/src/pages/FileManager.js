@@ -739,7 +739,7 @@ const FileManager = () => {
         fileItems: [...fileItems],
       });
     }
-  }, [currentPath, dismissFailedItems, hasWritePermission, user?.is_admin, updateProgress, handleOperationComplete]);
+  }, [currentPath, dismissFailedItems, hasWritePermission, user, updateProgress, handleOperationComplete]);
 
   /**
    * Resolve upload conflicts

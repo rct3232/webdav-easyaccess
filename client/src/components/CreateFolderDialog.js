@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Button,
   TextField,
@@ -21,7 +21,6 @@ const validateFolderName = (value) => {
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
   const {
     values,
-    errors,
     isSubmitting,
     setValue,
     handleChange,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -42,44 +42,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   const prevOpenRef = useRef(false);
   const initialValuesRef = useRef({ currentPath: null, action: null, userId: null });
 
-  useEffect(() => {
-    // 모달이 닫혔다가 열릴 때만 초기화 (false -> true 전환)
-    const wasClosed = !prevOpenRef.current;
-    const isNowOpen = open;
-    
-    if (wasClosed && isNowOpen) {
-      // 모달이 열릴 때의 초기값 저장
-      const initialPath = currentPath || '/';
-      initialValuesRef.current = {
-        currentPath: initialPath,
-        action: action,
-        userId: user?.id,
-      };
-      
-      // 모달 오픈 시 현재 위치를 기준으로 시작 (없으면 루트)
-      setSelectedPath(initialPath);
-      loadFolders(initialPath);
-      // 복사 또는 이동 작업일 때 쓰기 권한 확인 (admin은 무조건 가능)
-      if (action === 'copy' || action === 'move') {
-        if (user?.is_admin) {
-          setHasWritePermission(true);
-        } else {
-          checkWritePermission(initialPath);
-        }
-      } else {
-        setHasWritePermission(true);
-      }
-      // 공유된 폴더 목록 로드 (일반 사용자만)
-      if (user && !user.is_admin && (action === 'copy' || action === 'move')) {
-        loadSharedFolders();
-      }
-    }
-    
-    // 이전 open 상태 업데이트
-    prevOpenRef.current = open;
-  }, [open]); // open만 의존성으로 사용
-
-  const checkWritePermission = async (path) => {
+  const checkWritePermission = useCallback(async (path) => {
     try {
       // 관리자는 항상 쓰기 가능하도록 처리
       if (user?.is_admin) {
@@ -99,9 +62,9 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
         setHasWritePermission(path.startsWith(userFolder));
       }
     }
-  };
+  }, [user]);
 
-  const loadFolders = async (path) => {
+  const loadFolders = useCallback(async (path) => {
     setLoading(true);
     try {
       // 공유됨 뷰인 경우 특별 처리
@@ -115,7 +78,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
           const folderPath = normalizePath(perm.folder_path);
           const normalizedUserBaseFolder = normalizePath(userBaseFolder);
           
-          // 사용자 기본 폴더로 시작하지 않는 경로만 포함
+          // 사용자 기본 폴더으로 시작하지 않는 경로만 포함
           return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
         });
         
@@ -168,9 +131,9 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
-  const loadSharedFolders = async () => {
+  const loadSharedFolders = useCallback(async () => {
     if (!user || !user.id || user.is_admin) return;
     
     try {
@@ -213,7 +176,44 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       setSharedFolders([]);
       setSharedPermissionPaths(new Set());
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    // 모달이 닫혔다가 열릴 때만 초기화 (false -> true 전환)
+    const wasClosed = !prevOpenRef.current;
+    const isNowOpen = open;
+    
+    if (wasClosed && isNowOpen) {
+      // 모달이 열릴 때의 초기값 저장
+      const initialPath = currentPath || '/';
+      initialValuesRef.current = {
+        currentPath: initialPath,
+        action: action,
+        userId: user?.id,
+      };
+      
+      // 모달 오픈 시 현재 위치를 기준으로 시작 (없으면 루트)
+      setSelectedPath(initialPath);
+      loadFolders(initialPath);
+      // 복사 또는 이동 작업일 때 쓰기 권한 확인 (admin은 무조건 가능)
+      if (action === 'copy' || action === 'move') {
+        if (user?.is_admin) {
+          setHasWritePermission(true);
+        } else {
+          checkWritePermission(initialPath);
+        }
+      } else {
+        setHasWritePermission(true);
+      }
+      // 공유된 폴더 목록 로드 (일반 사용자만)
+      if (user && !user.is_admin && (action === 'copy' || action === 'move')) {
+        loadSharedFolders();
+      }
+    }
+    
+    // 이전 open 상태 업데이트
+    prevOpenRef.current = open;
+  }, [open, currentPath, action, user, loadFolders, checkWritePermission, loadSharedFolders]);
 
   const handleFolderClick = (folder) => {
     // 권한이 없는 폴더는 클릭 불가

@@ -196,7 +196,7 @@ export const useRecentFileErrorHandler = ({
     // 처리 완료 표시 제거
     processingErrorRef.current.delete(path);
     processingErrorRef.current.delete(normalizedPath);
-  }, [recentFilePathsRef, pathHistoryRef, processingErrorRef, setCurrentPath, showError, user?.username, user?.is_admin, currentPathRef]);
+  }, [recentFilePathsRef, pathHistoryRef, processingErrorRef, setCurrentPath, showError, user, currentPathRef]);
 
   return handleRecentFileError;
 };

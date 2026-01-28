@@ -65,7 +65,7 @@ const MyPage = () => {
       setEmail(user.email || '');
       setOriginalEmail(user.email || '');
     }
-  }, [user, user?.email]);
+  }, [user]);
 
   const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -144,7 +144,7 @@ const MyPage = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.is_admin]);
+  }, [user]);
 
   const loadShareLinks = async () => {
     if (!user || user.is_admin) return;

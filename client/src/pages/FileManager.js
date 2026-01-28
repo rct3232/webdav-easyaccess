@@ -84,8 +84,9 @@ import ShareDialog from '../components/ShareDialog';
 import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
 import FilePropertiesDialog from '../components/FilePropertiesDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { moveFile, checkPermission, copyFile, listFiles } from '../services/fileService';
-import { addRecentFile, removeRecentFile, getRecentFiles, onRecentFilesChange } from '../utils/recentFiles';
+import ConflictResolveDialog from '../components/ConflictResolveDialog';
+import { moveFile, checkPermission, copyFile, checkConflicts } from '../services/fileService';
+import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, getErrorMessage, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath } from '../utils/pathUtils';
 import { useRecentFileErrorHandler } from '../hooks/useRecentFileErrorHandler';
@@ -248,7 +249,7 @@ const FileManager = () => {
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
   
   // 최근 파일 미리보기 훅
-  const [recentFileToPreview, setRecentFileToPreview] = useRecentFilePreview({
+  const [, setRecentFileToPreview] = useRecentFilePreview({
     files,
     loading,
     currentPath,
@@ -549,6 +550,9 @@ const FileManager = () => {
     dismissFailedItems,
     setFolderPickerOpen,
     setFolderPickerAction,
+    bulkConflictData,
+    resolveBulkConflict,
+    setBulkConflictData,
   } = useBulkOperations(
     selectedFiles,
     sortedFiles,
@@ -563,7 +567,6 @@ const FileManager = () => {
 
   // File upload hook
   const {
-    handleUploadStart: handleUploadStartHook,
     handleRetryUpload: handleRetryUploadHook,
     handleCancelUploadFile,
     handleCancelAllUpload,
@@ -579,6 +582,9 @@ const FileManager = () => {
     handleFileOperation: handleFileOperationOp,
     handleFileRename: handleFileRenameOp,
     handleFileDelete: handleFileDeleteOp,
+    conflictData,
+    resolveConflict,
+    setConflictData,
   } = useFileOperations({
     onProgress: updateProgress,
     setProcessingMap,
@@ -588,6 +594,173 @@ const FileManager = () => {
       setActionSheetFile(null);
     },
   });
+
+  const [uploadConflictData, setUploadConflictData] = useState(null);
+
+  const executeExplorerUpload = useCallback(async (filesToUpload, targetPath, onConflict = 'error') => {
+    // Use currentPath if targetPath is null
+    const uploadPath = targetPath || currentPath;
+    
+    if (!filesToUpload || filesToUpload.length === 0) return;
+
+    dismissFailedItems();
+
+    const progressId = `upload_drop_${Date.now()}`;
+    const fileItems = filesToUpload.map(({ file, relativePath }) => ({
+      fileName: relativePath || file?.name || 'unknown',
+      status: 'pending',
+      error: undefined,
+    }));
+
+    const baseProgress = {
+      id: progressId,
+      type: 'upload',
+      progress: 0,
+      total: filesToUpload.length,
+      current: '',
+      name: `${filesToUpload.length}개 파일 업로드`,
+      fileItems: [...fileItems],
+      cancellable: false,
+    };
+
+    // Check permissions
+    if (!hasWritePermission && !user?.is_admin) {
+      updateProgress({
+        ...baseProgress,
+        status: 'error',
+        error: '업로드 권한이 없습니다',
+        keepOnError: true,
+      });
+      return;
+    }
+
+    updateProgress({
+      ...baseProgress,
+      status: 'preparing',
+      current: '준비 중...',
+    });
+
+    try {
+      const { results, errors } = await uploadMultipleFiles(
+        filesToUpload,
+        uploadPath,
+        (progress) => {
+          const fileName = progress.currentFile;
+          const idx = fileItems.findIndex((it) => it.fileName === fileName);
+          if (idx !== -1) {
+            const status =
+              progress.status === 'uploading'
+                ? 'uploading'
+                : progress.status === 'success'
+                  ? 'completed'
+                  : progress.status === 'error'
+                    ? 'error'
+                    : 'pending';
+            fileItems[idx] = {
+              ...fileItems[idx],
+              status,
+              error: progress.status === 'error' ? progress.error : undefined,
+            };
+          }
+
+          const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+          const failCount = fileItems.filter((it) => it.status === 'error').length;
+
+          updateProgress({
+            ...baseProgress,
+            status: 'processing',
+            progress: completedCount,
+            total: progress.total,
+            current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
+            error: failCount > 0 ? `${failCount}개 실패` : undefined,
+            keepOnError: failCount > 0 || undefined,
+            fileItems: [...fileItems],
+          });
+        },
+        onConflict
+      );
+
+      const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+      const failCount = fileItems.filter((it) => it.status === 'error').length;
+      const failedItems = (errors || []).map((e) => ({
+        fileName: e.relativePath || e.file?.name || 'unknown',
+        error: e.error,
+      }));
+
+      if (failCount > 0) {
+        updateProgress({
+          ...baseProgress,
+          status: 'error',
+          progress: completedCount,
+          total: filesToUpload.length,
+          current: '완료 (일부 실패)',
+          error: `${failCount}개 파일 업로드 실패`,
+          keepOnError: true,
+          failedItems: failedItems.length > 0 ? failedItems : undefined,
+          fileItems: [...fileItems],
+        });
+      } else {
+        updateProgress({
+          ...baseProgress,
+          status: 'completed',
+          progress: filesToUpload.length,
+          total: filesToUpload.length,
+          current: '완료',
+          fileItems: [...fileItems],
+        });
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+        }, 3000);
+      }
+
+      // Refresh file list and tree
+      if (Array.isArray(results) && results.length > 0) {
+        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      
+      let errorMessage = error.response?.data?.error || error.message || '업로드에 실패했습니다';
+      if (error.response?.status === 403) {
+        errorMessage = '업로드 권한이 없습니다';
+      } else if (error.response?.status === 500) {
+        errorMessage = `서버 오류: ${errorMessage}`;
+      }
+      
+      updateProgress({
+        ...baseProgress,
+        status: 'error',
+        error: errorMessage,
+        keepOnError: true,
+        fileItems: [...fileItems],
+      });
+    }
+  }, [currentPath, dismissFailedItems, hasWritePermission, user?.is_admin, updateProgress, handleOperationComplete]);
+
+  /**
+   * Resolve upload conflicts
+   */
+  const resolveUploadConflict = useCallback(async (resolution) => {
+    if (!uploadConflictData) return;
+    
+    const { filesToUpload, targetPath } = uploadConflictData;
+    setUploadConflictData(null);
+    
+    let filteredFiles = filesToUpload;
+    if (resolution === 'skip') {
+      const { conflicts } = uploadConflictData;
+      const conflictNames = new Set(conflicts.map(c => c.sourcePath));
+      filteredFiles = filesToUpload.filter(f => !conflictNames.has(f.relativePath || f.file.name));
+    }
+    
+    if (filteredFiles.length > 0) {
+      await executeExplorerUpload(filteredFiles, targetPath, resolution);
+    }
+  }, [uploadConflictData, executeExplorerUpload]);
 
   const handleBulkDeleteConfirm = () => {
     setBulkDeleteDialogOpen(false);
@@ -664,9 +837,6 @@ const FileManager = () => {
           }
           
           // 폴더로 직접 이동 시도
-          // 경로 정규화
-          const normalizedFilePath = normalizePath(filePath);
-          
           // 최근 파일 경로 추적에 추가 (handlePathClick 전에 설정)
           trackRecentFileClick(filePath);
           
@@ -796,8 +966,32 @@ const FileManager = () => {
   // Upload handlers - useFileUpload hook handles this
   const handleUploadStart = useCallback(async (files, uploadPath) => {
     setUploadDialogOpen(false);
-    await handleUploadStartHook(files, uploadPath);
-  }, [handleUploadStartHook]);
+    
+    if (!files || files.length === 0) return;
+
+    const filesToUpload = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+
+    // Check conflicts before upload
+    try {
+      const operations = filesToUpload.map(({ file, relativePath }) => {
+        const fileName = relativePath || file.name;
+        const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
+        return { sourcePath: fileName, destinationPath, type: 'upload' };
+      });
+
+      const conflicts = await checkConflicts(operations);
+
+      if (conflicts && conflicts.length > 0) {
+        setUploadConflictData({ filesToUpload, targetPath: uploadPath, conflicts });
+        return;
+      }
+
+      await executeExplorerUpload(filesToUpload, uploadPath);
+    } catch (error) {
+      console.error('Upload conflict check failed:', error);
+      await executeExplorerUpload(filesToUpload, uploadPath);
+    }
+  }, [executeExplorerUpload]);
 
   // Cancel upload handlers - wrap to pass progressItems
   const handleCancelUploadFileWrapper = useCallback((progressId, fileName) => {
@@ -886,9 +1080,6 @@ const FileManager = () => {
 
     try {
       await handleFileOperationOp(targetFile, selectedPath, operation, operationName, actionVerb, { startedPath: currentPathRef.current });
-      setFolderPickerOpen(false);
-      setActionSheetOpen(false);
-      setActionSheetFile(null);
     } catch (error) {
       // Error is already handled by useFileOperations
     }
@@ -918,145 +1109,29 @@ const FileManager = () => {
   };
 
   const handleExplorerDrop = async (filesToUpload, targetPath) => {
-    // Use currentPath if targetPath is null
     const uploadPath = targetPath || currentPath;
     
     if (!filesToUpload || filesToUpload.length === 0) return;
 
-    dismissFailedItems();
-
-    const progressId = `upload_drop_${Date.now()}`;
-    const fileItems = filesToUpload.map(({ file, relativePath }) => ({
-      fileName: relativePath || file?.name || 'unknown',
-      status: 'pending',
-      error: undefined,
-    }));
-
-    const baseProgress = {
-      id: progressId,
-      type: 'upload',
-      progress: 0,
-      total: filesToUpload.length,
-      current: '',
-      name: `${filesToUpload.length}개 파일 업로드`,
-      fileItems: [...fileItems],
-      cancellable: false,
-    };
-
-    // Check permissions
-    if (!hasWritePermission && !user?.is_admin) {
-      updateProgress({
-        ...baseProgress,
-        status: 'error',
-        error: '업로드 권한이 없습니다',
-        keepOnError: true,
-      });
-      return;
-    }
-
-    updateProgress({
-      ...baseProgress,
-      status: 'preparing',
-      current: '준비 중...',
-    });
-
+    // Check conflicts before upload
     try {
-      const { results, errors } = await uploadMultipleFiles(
-        filesToUpload,
-        uploadPath,
-        (progress) => {
-          const fileName = progress.currentFile;
-          const idx = fileItems.findIndex((it) => it.fileName === fileName);
-          if (idx !== -1) {
-            const status =
-              progress.status === 'uploading'
-                ? 'uploading'
-                : progress.status === 'success'
-                  ? 'completed'
-                  : progress.status === 'error'
-                    ? 'error'
-                    : 'pending';
-            fileItems[idx] = {
-              ...fileItems[idx],
-              status,
-              error: progress.status === 'error' ? progress.error : undefined,
-            };
-          }
-
-          const completedCount = fileItems.filter((it) => it.status === 'completed').length;
-          const failCount = fileItems.filter((it) => it.status === 'error').length;
-
-          updateProgress({
-            ...baseProgress,
-            status: 'processing',
-            progress: completedCount,
-            total: progress.total,
-            current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
-            error: failCount > 0 ? `${failCount}개 실패` : undefined,
-            keepOnError: failCount > 0 || undefined,
-            fileItems: [...fileItems],
-          });
-        }
-      );
-
-      const completedCount = fileItems.filter((it) => it.status === 'completed').length;
-      const failCount = fileItems.filter((it) => it.status === 'error').length;
-      const failedItems = (errors || []).map((e) => ({
-        fileName: e.relativePath || e.file?.name || 'unknown',
-        error: e.error,
-      }));
-
-      if (failCount > 0) {
-        updateProgress({
-          ...baseProgress,
-          status: 'error',
-          progress: completedCount,
-          total: filesToUpload.length,
-          current: '완료 (일부 실패)',
-          error: `${failCount}개 파일 업로드 실패`,
-          keepOnError: true,
-          failedItems: failedItems.length > 0 ? failedItems : undefined,
-          fileItems: [...fileItems],
-        });
-      } else {
-        updateProgress({
-          ...baseProgress,
-          status: 'completed',
-          progress: filesToUpload.length,
-          total: filesToUpload.length,
-          current: '완료',
-          fileItems: [...fileItems],
-        });
-        setTimeout(() => {
-          updateProgress({ id: progressId, remove: true });
-        }, 3000);
-      }
-
-      // Refresh file list and tree
-      if (Array.isArray(results) && results.length > 0) {
-        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
-        setTreeUpdateTrigger({
-          type: 'refresh',
-          timestamp: Date.now(),
-        });
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      
-      let errorMessage = error.response?.data?.error || error.message || '업로드에 실패했습니다';
-      if (error.response?.status === 403) {
-        errorMessage = '업로드 권한이 없습니다';
-      } else if (error.response?.status === 500) {
-        errorMessage = `서버 오류: ${errorMessage}`;
-      }
-      
-      updateProgress({
-        ...baseProgress,
-        status: 'error',
-        error: errorMessage,
-        keepOnError: true,
-        fileItems: [...fileItems],
+      const operations = filesToUpload.map(({ file, relativePath }) => {
+        const fileName = relativePath || file.name;
+        const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
+        return { sourcePath: fileName, destinationPath, type: 'upload' };
       });
+
+      const conflicts = await checkConflicts(operations);
+
+      if (conflicts && conflicts.length > 0) {
+        setUploadConflictData({ filesToUpload, targetPath, conflicts });
+        return;
+      }
+
+      await executeExplorerUpload(filesToUpload, targetPath);
+    } catch (error) {
+      console.error('Upload conflict check failed:', error);
+      await executeExplorerUpload(filesToUpload, targetPath);
     }
   };
 
@@ -2007,27 +2082,15 @@ const FileManager = () => {
             const currentAction = mobilePickerAction;
             const currentFile = mobilePickerFile;
             
-            // 다이얼로그 닫기
-            setFolderPickerOpen(false);
-            setFolderPickerAction(null);
-            setMobilePickerFile(null);
-            setMobilePickerAction(null);
-            
             // 작업 수행 (currentFile을 사용)
             if (currentAction === 'move') {
               handleActionSheetFileOperation(selectedPath, moveFile, '이동', '이동', currentFile);
             } else if (currentAction === 'copy') {
               handleActionSheetFileOperation(selectedPath, copyFile, '복사', '복사', currentFile);
             }
-            
-            // ActionSheet도 닫기
-            setActionSheetOpen(false);
-            setActionSheetFile(null);
           } else {
             // 기존 bulk operation 로직 (데스크톱)
             handleFolderPickerSelect(selectedPath);
-            setFolderPickerOpen(false);
-            setFolderPickerAction(null);
           }
         }}
         title={
@@ -2181,6 +2244,30 @@ const FileManager = () => {
         onRetry={handleRetryUpload}
         onCancelFile={handleCancelUploadFileWrapper}
         onCancelAll={handleCancelAllUploadWrapper}
+      />
+
+      <ConflictResolveDialog
+        open={!!conflictData}
+        onClose={() => setConflictData(null)}
+        onResolve={resolveConflict}
+        conflicts={conflictData?.conflicts || []}
+        operationType={conflictData?.operationName || '이동'}
+      />
+
+      <ConflictResolveDialog
+        open={!!bulkConflictData}
+        onClose={() => setBulkConflictData(null)}
+        onResolve={resolveBulkConflict}
+        conflicts={bulkConflictData?.conflicts || []}
+        operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
+      />
+
+      <ConflictResolveDialog
+        open={!!uploadConflictData}
+        onClose={() => setUploadConflictData(null)}
+        onResolve={resolveUploadConflict}
+        conflicts={uploadConflictData?.conflicts || []}
+        operationType="업로드"
       />
 
       {/* Mobile FAB */}
@@ -2416,6 +2503,28 @@ const FileManager = () => {
         confirmText="삭제"
         cancelText="취소"
         confirmColor="error"
+      />
+
+      <ConflictResolveDialog
+        open={!!conflictData}
+        onClose={() => setConflictData(null)}
+        onResolve={resolveConflict}
+        conflicts={conflictData?.conflicts || []}
+        operationType={conflictData?.operationName || '이동'}
+      />
+      <ConflictResolveDialog
+        open={!!bulkConflictData}
+        onClose={() => setBulkConflictData(null)}
+        onResolve={resolveBulkConflict}
+        conflicts={bulkConflictData?.conflicts || []}
+        operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
+      />
+      <ConflictResolveDialog
+        open={!!uploadConflictData}
+        onClose={() => setUploadConflictData(null)}
+        onResolve={resolveUploadConflict}
+        conflicts={uploadConflictData?.conflicts || []}
+        operationType="업로드"
       />
     </Box>
   );

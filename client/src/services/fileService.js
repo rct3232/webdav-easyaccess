@@ -1,4 +1,4 @@
-import { get, post, put, del, request } from './apiClient';
+import { get, post, put, del } from './apiClient';
 
 const API_BASE = '/files';
 
@@ -26,10 +26,13 @@ export const downloadFile = async (filePath) => {
   window.URL.revokeObjectURL(url);
 };
 
-export const uploadFile = async (file, path = '/', signal = null) => {
+export const uploadFile = async (file, path = '/', signal = null, onConflict = 'error') => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('path', path);
+  if (onConflict) {
+    formData.append('onConflict', onConflict);
+  }
 
   const config = {
     headers: {
@@ -45,12 +48,15 @@ export const uploadFile = async (file, path = '/', signal = null) => {
   return response.data;
 };
 
-export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '') => {
+export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error') => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('path', targetPath);
   if (relativePath) {
     formData.append('relativePath', relativePath);
+  }
+  if (onConflict) {
+    formData.append('onConflict', onConflict);
   }
 
   const response = await post(`${API_BASE}/upload`, formData, {
@@ -61,7 +67,7 @@ export const uploadFileWithPath = async (file, targetPath = '/', relativePath = 
   return response.data;
 };
 
-export const uploadMultipleFiles = async (files, targetPath = '/', onProgress) => {
+export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, onConflict = 'error') => {
   const results = [];
   const errors = [];
   
@@ -78,7 +84,7 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress) =
         });
       }
       
-      const result = await uploadFileWithPath(file, targetPath, relativePath);
+      const result = await uploadFileWithPath(file, targetPath, relativePath, onConflict);
       results.push({ file, result, success: true });
       
       if (onProgress) {
@@ -175,7 +181,7 @@ const pollOperationProgress = async (operationId, fileSize, onProgress) => {
   setTimeout(pollProgress, 50);
 };
 
-export const moveFile = async (sourcePath, destinationPath, onProgress) => {
+export const moveFile = async (sourcePath, destinationPath, onProgress, onConflict = 'error') => {
   const fileSize = await getFileSize(sourcePath);
 
   if (onProgress && fileSize > 0) {
@@ -190,6 +196,7 @@ export const moveFile = async (sourcePath, destinationPath, onProgress) => {
   const response = await put(`${API_BASE}/move`, {
     sourcePath,
     destinationPath,
+    onConflict,
   });
   
   const operationId = response.data.operationId;
@@ -208,7 +215,7 @@ export const moveFile = async (sourcePath, destinationPath, onProgress) => {
   return response.data;
 };
 
-export const copyFile = async (sourcePath, destinationPath, onProgress) => {
+export const copyFile = async (sourcePath, destinationPath, onProgress, onConflict = 'error') => {
   const fileSize = await getFileSize(sourcePath);
 
   if (onProgress && fileSize > 0) {
@@ -223,6 +230,7 @@ export const copyFile = async (sourcePath, destinationPath, onProgress) => {
   const response = await post(`${API_BASE}/copy`, {
     sourcePath,
     destinationPath,
+    onConflict,
   });
   
   const operationId = response.data.operationId;
@@ -251,6 +259,13 @@ export const createFolder = async (folderPath) => {
 export const getWebDAVInfo = async () => {
   const response = await get('/webdav/info');
   return response.data;
+};
+
+export const checkConflicts = async (operations) => {
+  const response = await post(`${API_BASE}/check-conflicts`, {
+    operations,
+  });
+  return response.data.conflicts;
 };
 
 export const downloadMultipleFiles = async (paths, onProgress) => {
@@ -404,16 +419,18 @@ export const batchDeleteFiles = async (paths) => {
   return response.data;
 };
 
-export const batchMoveFiles = async (moves) => {
+export const batchMoveFiles = async (moves, onConflict = 'error') => {
   const response = await post(`${API_BASE}/batch-move`, {
     moves,
+    onConflict,
   });
   return response.data;
 };
 
-export const batchCopyFiles = async (copies) => {
+export const batchCopyFiles = async (copies, onConflict = 'error') => {
   const response = await post(`${API_BASE}/batch-copy`, {
     copies,
+    onConflict,
   });
   return response.data;
 };

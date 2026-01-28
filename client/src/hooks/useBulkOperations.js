@@ -1,12 +1,10 @@
 import { useState, useCallback } from 'react';
-import { moveFile, copyFile, deleteFile, downloadMultipleFiles, batchDeleteFiles, batchMoveFiles, batchCopyFiles } from '../services/fileService';
+import { downloadMultipleFiles, batchDeleteFiles, batchMoveFiles, batchCopyFiles, checkConflicts } from '../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
-import { getErrorMessage } from '../utils/errorUtils';
 import { 
   applyRecentFilesAfterBulkDelete,
   applyRecentFilesAfterBulkMove,
 } from '../utils/recentFiles';
-import { normalizePath } from '../utils/pathUtils';
 
 // Batch processing configuration
 const BATCH_SIZE = parseInt(process.env.REACT_APP_BATCH_SIZE || '50', 10);
@@ -25,6 +23,7 @@ export const useBulkOperations = (
 ) => {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [folderPickerAction, setFolderPickerAction] = useState(null);
+  const [bulkConflictData, setBulkConflictData] = useState(null);
   const { progressItems, updateProgress } = useFileOperationProgress();
 
   const { markProcessing: markProcessingImpl, clearProcessing: clearProcessingImpl } = options;
@@ -405,7 +404,10 @@ export const useBulkOperations = (
     }
   };
 
-  const handleFolderPickerSelect = useCallback(async (destinationPath, retryData = null) => {
+  /**
+   * Execute bulk operation after pre-checks
+   */
+  const executeBulkOperation = useCallback(async (destinationPath, retryData = null, onConflict = 'error') => {
     const action = retryData?.type || folderPickerAction;
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
     
@@ -449,9 +451,9 @@ export const useBulkOperations = (
       MAX_CONCURRENT_BATCHES,
       async (chunk) => {
         if (action === 'move') {
-          return await batchMoveFiles(chunk);
+          return await batchMoveFiles(chunk, onConflict);
         } else if (action === 'copy') {
-          return await batchCopyFiles(chunk);
+          return await batchCopyFiles(chunk, onConflict);
         }
         throw new Error('Invalid action');
       },
@@ -553,6 +555,58 @@ export const useBulkOperations = (
     }
   }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText, updateProgress, processInBatches, files]);
 
+  /**
+   * Handle folder picker selection with conflict check
+   */
+  const handleFolderPickerSelect = useCallback(async (destinationPath, retryData = null) => {
+    const action = retryData?.type || folderPickerAction;
+    const filePaths = retryData?.filePaths || Array.from(selectedFiles);
+    
+    if (!action || filePaths.length === 0) return;
+
+    // Prepare moves/copies array for conflict check
+    const operations = filePaths.map(sourcePath => {
+      const fileName = sourcePath.split('/').pop();
+      const destinationFilePath = destinationPath === '/' 
+        ? `/${fileName}` 
+        : `${destinationPath}/${fileName}`;
+      return { sourcePath, destinationPath: destinationFilePath, type: action };
+    });
+
+    try {
+      const conflicts = await checkConflicts(operations);
+
+      if (conflicts && conflicts.length > 0) {
+        setBulkConflictData({ destinationPath, retryData, conflicts, action });
+        return;
+      }
+
+      await executeBulkOperation(destinationPath, retryData);
+      setFolderPickerOpen(false);
+      setFolderPickerAction(null);
+    } catch (error) {
+      console.error('Bulk conflict check failed:', error);
+      // fallback to direct execution
+      await executeBulkOperation(destinationPath, retryData);
+      setFolderPickerOpen(false);
+      setFolderPickerAction(null);
+    }
+  }, [selectedFiles, folderPickerAction, executeBulkOperation]);
+
+  /**
+   * Resolve bulk conflicts
+   */
+  const resolveBulkConflict = useCallback(async (resolution) => {
+    if (!bulkConflictData) return;
+    
+    const { destinationPath, retryData } = bulkConflictData;
+    setBulkConflictData(null);
+    
+    await executeBulkOperation(destinationPath, retryData, resolution);
+    setFolderPickerOpen(false);
+    setFolderPickerAction(null);
+  }, [bulkConflictData, executeBulkOperation]);
+
   const handleRetry = async (progressId) => {
     const progressItem = progressItems.find(item => item.id === progressId);
     if (!progressItem || !progressItem.retryData) {
@@ -584,6 +638,8 @@ export const useBulkOperations = (
     dismissFailedItems,
     setFolderPickerOpen,
     setFolderPickerAction,
+    bulkConflictData,
+    resolveBulkConflict,
+    setBulkConflictData,
   };
 };
-

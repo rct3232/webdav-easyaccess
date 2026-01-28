@@ -1,5 +1,6 @@
 const path = require('path');
 const { normalizePath } = require('./pathUtils');
+const { asyncLimit } = require('./asyncUtils');
 
 const clientCache = new Map();
 
@@ -140,11 +141,11 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
       }
       
       const sourceItems = await listDirectory(normalizedSource);
-      for (const item of sourceItems) {
+      await asyncLimit(5, sourceItems, async (item) => {
         const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
         const destItemPath = `${normalizedDest}/${item.basename}`;
         await moveFileStreamed(sourceItemPath, destItemPath);
-      }
+      });
       
       await deleteFile(normalizedSource);
       return { success: true };
@@ -222,11 +223,11 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
       }
       
       const sourceItems = await listDirectory(normalizedSource);
-      for (const item of sourceItems) {
+      await asyncLimit(5, sourceItems, async (item) => {
         const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
         const destItemPath = `${normalizedDest}/${item.basename}`;
         await copyFileStreamed(sourceItemPath, destItemPath);
-      }
+      });
       
       return { success: true };
     } else {
@@ -441,7 +442,7 @@ async function deleteFile(path) {
   }
 }
 
-async function moveFile(sourcePath, destinationPath, progressCallback) {
+async function moveFile(sourcePath, destinationPath, progressCallback, overwrite = false) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
@@ -465,7 +466,7 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
       method: 'MOVE',
       headers: {
         Destination: destAbsolute,
-        Overwrite: 'F',
+        Overwrite: overwrite ? 'T' : 'F',
       },
       retry: false,
     });
@@ -484,7 +485,7 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
     });
     // If destination already exists or source missing, surface immediately
     const status = error?.status || error?.response?.status;
-    if (status === 409) {
+    if (status === 409 && !overwrite) {
       throw new Error(`Destination already exists: ${destinationPath}`);
     }
     if (status === 404) {
@@ -495,7 +496,7 @@ async function moveFile(sourcePath, destinationPath, progressCallback) {
   }
 }
 
-async function copyFile(sourcePath, destinationPath, progressCallback) {
+async function copyFile(sourcePath, destinationPath, progressCallback, overwrite = false) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
@@ -519,7 +520,7 @@ async function copyFile(sourcePath, destinationPath, progressCallback) {
       method: 'COPY',
       headers: {
         Destination: destAbsolute,
-        Overwrite: 'F',
+        Overwrite: overwrite ? 'T' : 'F',
         Depth: 'infinity',
       },
       retry: false,
@@ -538,7 +539,7 @@ async function copyFile(sourcePath, destinationPath, progressCallback) {
       destBase,
     });
     const status = error?.status || error?.response?.status;
-    if (status === 409) {
+    if (status === 409 && !overwrite) {
       throw new Error(`Destination already exists: ${destinationPath}`);
     }
     if (status === 404) {

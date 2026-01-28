@@ -169,7 +169,7 @@ export const useFileManager = (user, options = {}) => {
       }
       // 다른 경로는 서버에서 권한 체크를 하므로 허용
     }
-  }, [user?.username, user?.is_admin, currentPath]);
+  }, [user, user?.username, user?.is_admin, currentPath]);
 
   useEffect(() => {
     if (currentPath) {

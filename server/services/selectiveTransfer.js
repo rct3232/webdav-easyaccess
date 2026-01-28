@@ -1,6 +1,7 @@
 const path = require('path');
 const { normalizePath } = require('../utils/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
+const { asyncLimit } = require('../utils/asyncUtils');
 
 function posixJoin(a, b) {
   const left = a === '/' ? '' : String(a || '');
@@ -50,6 +51,7 @@ async function selectiveTransfer({
   mode,
   canEnterDirectory,
   canTransferFile,
+  onConflict = 'error', // 'error', 'overwrite', 'skip'
   webdav = defaultWebdavAdapter(),
 } = {}) {
   if (mode !== 'move' && mode !== 'copy') {
@@ -73,31 +75,43 @@ async function selectiveTransfer({
   const movedDirMappings = [];
 
   async function transferFile(srcPath, dstPath) {
-    if (mode === 'move') {
-      await webdav.moveFile(srcPath, dstPath);
-    } else {
-      await webdav.copyFile(srcPath, dstPath);
+    const exists = await webdav.pathExists(dstPath);
+    if (exists) {
+      if (onConflict === 'skip') {
+        skippedPaths.push(srcPath);
+        return false;
+      } else if (onConflict === 'error') {
+        throw new Error(`Conflict: Destination already exists: ${dstPath}`);
+      }
+      // 'overwrite' falls through to move/copy with Overwrite: 'T'
     }
+
+    if (mode === 'move') {
+      await webdav.moveFile(srcPath, dstPath, null, onConflict === 'overwrite');
+    } else {
+      await webdav.copyFile(srcPath, dstPath, null, onConflict === 'overwrite');
+    }
+    return true;
   }
 
   async function walkDir(srcDir, dstDir) {
     const items = await webdav.listDirectory(srcDir);
     let skippedCount = 0;
 
-    for (const item of items) {
-      if (!item?.basename) continue;
-      if (item.basename === '.wea') continue;
+    // Process items in parallel with a concurrency limit
+    const results = await asyncLimit(10, items, async (item) => {
+      if (!item?.basename) return { skipped: false };
+      if (item.basename === '.wea') return { skipped: false };
 
       const srcChild = posixJoin(srcDir, item.basename);
-      if (isMetaPath(srcChild)) continue;
+      if (isMetaPath(srcChild)) return { skipped: false };
       const dstChild = posixJoin(dstDir, item.basename);
 
       if (item.type === 'directory') {
         const ok = await canEnterDirectory(srcChild);
         if (!ok) {
           skippedPaths.push(srcChild);
-          skippedCount++;
-          continue;
+          return { skipped: true };
         }
 
         await safeEnsureDir(webdav, dstChild);
@@ -106,19 +120,22 @@ async function selectiveTransfer({
         const childResult = await walkDir(srcChild, dstChild);
         if (mode === 'move' && childResult.movedFully) {
           movedDirMappings.push({ fromPrefix: srcChild, toPrefix: dstChild });
-        } else if (mode === 'move') {
-          skippedCount++;
+          return { skipped: false };
+        } else {
+          return { skipped: mode === 'move' };
         }
       } else {
         const ok = await canTransferFile(srcDir);
         if (!ok) {
           skippedPaths.push(srcChild);
-          skippedCount++;
-          continue;
+          return { skipped: true };
         }
-        await transferFile(srcChild, dstChild);
+        const transferred = await transferFile(srcChild, dstChild);
+        return { skipped: !transferred };
       }
-    }
+    });
+
+    skippedCount = results.filter(r => r.skipped).length;
 
     if (mode !== 'move') return { movedFully: false };
     if (skippedCount > 0) return { movedFully: false };

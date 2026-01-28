@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { normalizePath } from '../utils/pathUtils';
 import { getRecentFiles, removeRecentFile } from '../utils/recentFiles';
 import { listFiles } from '../services/fileService';
-import { determineErrorType, getErrorMessageByType, ERROR_TYPES } from '../utils/errorUtils';
+import { determineErrorType, getErrorMessageByType } from '../utils/errorUtils';
 
 /**
  * 최근 파일 에러 처리 훅
@@ -196,7 +196,7 @@ export const useRecentFileErrorHandler = ({
     // 처리 완료 표시 제거
     processingErrorRef.current.delete(path);
     processingErrorRef.current.delete(normalizedPath);
-  }, [recentFilePathsRef, pathHistoryRef, processingErrorRef, setCurrentPath, showError, user?.id, user?.username, user?.is_admin, currentPathRef]);
+  }, [recentFilePathsRef, pathHistoryRef, processingErrorRef, setCurrentPath, showError, user?.username, user?.is_admin, currentPathRef]);
 
   return handleRecentFileError;
 };

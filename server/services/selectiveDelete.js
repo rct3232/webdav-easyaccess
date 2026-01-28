@@ -1,6 +1,7 @@
 const path = require('path');
 const { normalizePath } = require('../utils/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
+const { asyncLimit } = require('../utils/asyncUtils');
 
 function posixJoin(a, b) {
   const left = a === '/' ? '' : String(a || '');
@@ -53,59 +54,44 @@ async function selectiveDelete({
 
   async function walkDir(dirPath) {
     const items = await webdav.listDirectory(dirPath);
-    let hadSkipOrFailure = false;
-
-    // Delete files first
-    for (const item of items) {
-      if (!item?.basename) continue;
-      if (item.basename === '.wea' && !allowMetaPath) continue;
+    
+    // Track items that couldn't be deleted
+    const results = await asyncLimit(10, items, async (item) => {
+      if (!item?.basename) return { skipped: false };
+      if (item.basename === '.wea' && !allowMetaPath) return { skipped: false };
 
       const childPath = posixJoin(dirPath, item.basename);
-      if (isMetaPath(childPath) && !allowMetaPath) continue;
+      if (isMetaPath(childPath) && !allowMetaPath) return { skipped: false };
 
       if (item.type !== 'directory') {
         const ok = await canDeleteFileByParent(dirPath);
         if (!ok) {
           skippedPaths.push(childPath);
-          hadSkipOrFailure = true;
-          continue;
+          return { skipped: true };
         }
         try {
           await webdav.deleteFile(childPath);
           deletedPaths.push(childPath);
+          return { skipped: false };
         } catch {
-          // best-effort: if delete fails, keep it
           skippedPaths.push(childPath);
-          hadSkipOrFailure = true;
+          return { skipped: true };
         }
-      }
-    }
-
-    // Then recurse directories and delete only if subtree fully deletable.
-    for (const item of items) {
-      if (!item?.basename) continue;
-      if (item.basename === '.wea' && !allowMetaPath) continue;
-
-      const childPath = posixJoin(dirPath, item.basename);
-      if (isMetaPath(childPath) && !allowMetaPath) continue;
-
-      if (item.type === 'directory') {
+      } else {
         const ok = await canEnterDirectory(childPath);
         if (!ok) {
           skippedPaths.push(childPath);
-          hadSkipOrFailure = true;
-          continue;
+          return { skipped: true };
         }
 
         const childFullyDeleted = await walkDir(childPath);
-        if (!childFullyDeleted) {
-          hadSkipOrFailure = true;
-        }
+        return { skipped: !childFullyDeleted };
       }
-    }
+    });
+
+    const hadSkipOrFailure = results.some(r => r.skipped);
 
     // Critical: Never delete a directory if anything in its subtree was skipped or failed.
-    // Some WebDAV servers recursively delete non-empty directories, which would violate selective semantics.
     if (hadSkipOrFailure) {
       return false;
     }

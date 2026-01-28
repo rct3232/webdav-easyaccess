@@ -26,6 +26,7 @@ import FolderPickerDialog from './FolderPickerDialog';
 import ShareDialog from './ShareDialog';
 import SharedFolderManageDialog from './SharedFolderManageDialog';
 import ConfirmDialog from './ConfirmDialog';
+import ConflictResolveDialog from './ConflictResolveDialog';
 import { useFileOperations } from '../hooks/useFileOperations';
 
 const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, currentPath, onMessage, onProgress, hasWritePermission, onProcessingStart, onProcessingEnd }) => {
@@ -46,6 +47,9 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
     handleFileOperation: handleFileOp,
     handleFileRename,
     handleFileDelete,
+    conflictData,
+    resolveConflict,
+    setConflictData,
   } = useFileOperations({
     onProgress,
     onProcessingStart,
@@ -335,6 +339,14 @@ const FileContextMenu = ({ contextMenu, onClose, file, onActionComplete, user, c
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConflictResolveDialog
+        open={!!conflictData}
+        onClose={() => setConflictData(null)}
+        onResolve={resolveConflict}
+        conflicts={conflictData?.conflicts || []}
+        operationType={conflictData?.operationName || '이동'}
+      />
     </>
   );
 };

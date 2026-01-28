@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile } from '../services/fileService';
+import { useState, useCallback } from 'react';
+import { downloadFile, downloadMultipleFiles, renameFile, deleteFile, moveFile, checkConflicts } from '../services/fileService';
 import { getErrorMessage, determineErrorType, getErrorMessageByType, ERROR_TYPES } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
 import { normalizePath } from '../utils/refreshPolicy';
@@ -22,7 +22,7 @@ import {
  * @param {Function} options.onProcessingEnd - Processing end callback (for FileContextMenu)
  * @param {Function} options.onActionComplete - Action complete callback
  * @param {Function} options.onClose - Close callback (for dialogs)
- * @returns {Object} File operation handlers
+ * @returns {Object} File operation handlers and conflict state
  */
 export const useFileOperations = ({
   onProgress,
@@ -32,6 +32,174 @@ export const useFileOperations = ({
   onActionComplete,
   onClose,
 }) => {
+  const [conflictData, setConflictData] = useState(null);
+
+  /**
+   * Execute file operation after pre-checks
+   */
+  const executeFileOperation = useCallback(async (file, selectedPath, operation, operationName, actionVerb, context = {}, onConflict = 'error') => {
+    const destPath = selectedPath.endsWith('/')
+      ? selectedPath + file.basename
+      : selectedPath + '/' + file.basename;
+    
+    const filePath = file.path;
+    const progressId = `${operationName}_${Date.now()}`;
+    const operationType = operation === moveFile ? 'move' : 'copy';
+    const startedPath = context?.startedPath;
+    const targetFolderPath = normalizePath(selectedPath);
+
+    // Mark processing
+    if (setProcessingMap) {
+      markProcessing(setProcessingMap, filePath, operationType);
+    } else if (onProcessingStart) {
+      onProcessingStart([filePath], operationType);
+    }
+
+    const progressItem = {
+      id: progressId,
+      type: operationType,
+      status: 'preparing',
+      progress: 0,
+      total: 1,
+      current: '',
+      name: `${file.basename} ${operationName}`,
+    };
+    
+    if (onProgress) {
+      onProgress(progressItem);
+    }
+
+    try {
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'processing',
+          progress: 0,
+          total: 1,
+          current: `(0/1) ${actionVerb}중...`,
+        });
+      }
+      
+      const result = await operation(filePath, destPath, (progress) => {
+        if (onProgress) {
+          onProgress({
+            ...progressItem,
+            status: progress.stage === 'completed' ? 'completed' : 'processing',
+            progress: progress.stage === 'completed' ? 1 : 0,
+            total: 1,
+            current: progress.stage === 'completed' ? `(1/1) ${actionVerb}중...` : `(0/1) ${actionVerb}중...`,
+          });
+        }
+      }, onConflict);
+      
+      // If result is skipped (single file skip)
+      if (result?.skipped) {
+        if (onProgress) {
+          onProgress({
+            ...progressItem,
+            status: 'warning',
+            progress: 1,
+            total: 1,
+            current: '건너뜀',
+            error: '대상 파일이 이미 존재하여 건너뛰었습니다.',
+            keepOnError: true,
+          });
+        }
+        return;
+      }
+      
+      // 이동 성공 시 최근항목 경로 업데이트
+      if (operation === moveFile) {
+        try {
+          const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
+          const hasSkipped = skippedPaths.length > 0;
+          
+          if (!hasSkipped) {
+            await applyRecentFilesAfterMove(filePath, destPath, file);
+          }
+        } catch (err) {
+          // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
+          console.error('Failed to update recent files after move:', err);
+        }
+      }
+      
+      if (onActionComplete) {
+        onActionComplete({
+          opType: operationType,
+          startedPath,
+          targetPath: targetFolderPath,
+        });
+      }
+      
+      if (onClose) {
+        onClose();
+      }
+      
+      if (onProgress) {
+        const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
+        const hasSkipped = skippedPaths.length > 0;
+
+        onProgress({
+          ...progressItem,
+          status: hasSkipped ? 'warning' : 'completed',
+          progress: 1,
+          total: 1,
+          current: hasSkipped ? '일부 제외됨' : '완료',
+          error: hasSkipped ? `권한으로 제외된 항목: ${skippedPaths.length}개` : undefined,
+          keepOnError: hasSkipped || undefined,
+          skippedPaths: hasSkipped ? skippedPaths : undefined,
+          skippedCount: hasSkipped ? skippedPaths.length : undefined,
+          skippedTruncated: undefined,
+        });
+        
+        if (!hasSkipped) {
+          setTimeout(() => {
+            onProgress({ id: progressId, remove: true });
+          }, 3000);
+        }
+      }
+    } catch (error) {
+      const errorType = determineErrorType(error);
+      const errorMsg = errorType === ERROR_TYPES.DUPLICATE_FILE 
+        ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE)
+        : getErrorMessage(error, `${operationName}에 실패했습니다`);
+      
+      if (onProgress) {
+        onProgress({
+          ...progressItem,
+          status: 'error',
+          error: errorMsg,
+          keepOnError: true,
+        });
+      } else {
+        alert(errorMsg);
+      }
+    } finally {
+      // Clear processing
+      if (setProcessingMap) {
+        clearProcessing(setProcessingMap, filePath);
+      } else if (onProcessingEnd) {
+        onProcessingEnd([filePath]);
+      }
+    }
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+
+  /**
+   * Resolve conflicts and resume operation
+   * @param {string} resolution - 'overwrite' | 'skip'
+   */
+  const resolveConflict = useCallback(async (resolution) => {
+    if (!conflictData) return;
+    
+    const { file, selectedPath, operation, operationName, actionVerb, context } = conflictData;
+    setConflictData(null);
+    
+    await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context, resolution);
+    if (onClose) {
+      onClose();
+    }
+  }, [conflictData, executeFileOperation, onClose]);
+
   /**
    * Handle file download
    * @param {Object} file - File object
@@ -140,132 +308,26 @@ export const useFileOperations = ({
     const destPath = selectedPath.endsWith('/')
       ? selectedPath + file.basename
       : selectedPath + '/' + file.basename;
-    
-    const filePath = file.path;
-    const progressId = `${operationName}_${Date.now()}`;
-    const operationType = operation === moveFile ? 'move' : 'copy';
-    const startedPath = context?.startedPath;
-    const targetFolderPath = normalizePath(selectedPath);
-
-    // Mark processing
-    if (setProcessingMap) {
-      markProcessing(setProcessingMap, filePath, operationType);
-    } else if (onProcessingStart) {
-      onProcessingStart([filePath], operationType);
-    }
-
-    const progressItem = {
-      id: progressId,
-      type: operationType,
-      status: 'preparing',
-      progress: 0,
-      total: 1,
-      current: '',
-      name: `${file.basename} ${operationName}`,
-    };
-    
-    if (onProgress) {
-      onProgress(progressItem);
-    }
 
     try {
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'processing',
-          progress: 0,
-          total: 1,
-          current: `(0/1) ${actionVerb}중...`,
-        });
-      }
-      
-      const result = await operation(filePath, destPath, (progress) => {
-        if (onProgress) {
-          onProgress({
-            ...progressItem,
-            status: progress.stage === 'completed' ? 'completed' : 'processing',
-            progress: progress.stage === 'completed' ? 1 : 0,
-            total: 1,
-            current: progress.stage === 'completed' ? `(1/1) ${actionVerb}중...` : `(0/1) ${actionVerb}중...`,
-          });
-        }
-      });
-      
-      // 이동 성공 시 최근항목 경로 업데이트
-      if (operation === moveFile) {
-        try {
-          const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
-          const hasSkipped = skippedPaths.length > 0;
-          
-          if (!hasSkipped) {
-            await applyRecentFilesAfterMove(filePath, destPath, file);
-          }
-        } catch (err) {
-          // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
-          console.error('Failed to update recent files after move:', err);
-        }
-      }
-      
-      if (onActionComplete) {
-        onActionComplete({
-          opType: operationType,
-          startedPath,
-          targetPath: targetFolderPath,
-        });
-      }
-      
-      if (onClose) {
-        onClose();
-      }
-      
-      if (onProgress) {
-        const skippedPaths = Array.isArray(result?.skippedPaths) ? result.skippedPaths : [];
-        const hasSkipped = skippedPaths.length > 0;
+      const conflicts = await checkConflicts([{ 
+        sourcePath: file.path, 
+        destinationPath: destPath,
+        type: operation === moveFile ? 'move' : 'copy'
+      }]);
 
-        onProgress({
-          ...progressItem,
-          status: hasSkipped ? 'warning' : 'completed',
-          progress: 1,
-          total: 1,
-          current: hasSkipped ? '일부 제외됨' : '완료',
-          error: hasSkipped ? `권한으로 제외된 항목: ${skippedPaths.length}개` : undefined,
-          keepOnError: hasSkipped || undefined,
-          skippedPaths: hasSkipped ? skippedPaths : undefined,
-          skippedCount: hasSkipped ? skippedPaths.length : undefined,
-          skippedTruncated: undefined,
-        });
-        
-        if (!hasSkipped) {
-          setTimeout(() => {
-            onProgress({ id: progressId, remove: true });
-          }, 3000);
-        }
+      if (conflicts && conflicts.length > 0) {
+        setConflictData({ file, selectedPath, operation, operationName, actionVerb, context, conflicts });
+        return;
       }
+
+      await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context);
     } catch (error) {
-      const errorType = determineErrorType(error);
-      const errorMsg = errorType === ERROR_TYPES.DUPLICATE_FILE 
-        ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE)
-        : getErrorMessage(error, `${operationName}에 실패했습니다`);
-      
-      if (onProgress) {
-        onProgress({
-          ...progressItem,
-          status: 'error',
-          error: errorMsg,
-          keepOnError: true,
-        });
-      } else {
-        alert(errorMsg);
-      }
-    } finally {
-      // Clear processing
-      if (setProcessingMap) {
-        clearProcessing(setProcessingMap, filePath);
-      } else if (onProcessingEnd) {
-        onProcessingEnd([filePath]);
-      }
+      console.error('Conflict check failed:', error);
+      // fallback to direct execution if conflict check fails
+      await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context);
     }
-  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, executeFileOperation]);
 
   /**
    * Handle file rename
@@ -502,5 +564,8 @@ export const useFileOperations = ({
     handleFileOperation,
     handleFileRename,
     handleFileDelete,
+    conflictData,
+    resolveConflict,
+    setConflictData,
   };
 };

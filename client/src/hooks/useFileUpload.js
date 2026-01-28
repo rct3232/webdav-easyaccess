@@ -95,7 +95,8 @@ export const useFileUpload = ({
     abortController,
     cancelledSet,
     fileItems,
-    existingNames
+    existingNames,
+    onConflict = 'error'
   ) => {
     const fileName = fileItem.fileName;
 
@@ -119,7 +120,7 @@ export const useFileUpload = ({
     updateFileItemStatus(fileItems, fileName, 'uploading');
 
     try {
-      await uploadFile(fileItem.file, uploadPath, abortController.signal);
+      await uploadFile(fileItem.file, uploadPath, abortController.signal, onConflict);
 
       // Check if cancelled after upload
       if (isFileCancelled(progressId, fileName) || abortController.signal.aborted) {
@@ -150,7 +151,7 @@ export const useFileUpload = ({
   /**
    * Handle upload start
    */
-  const handleUploadStart = useCallback(async (files, uploadPath) => {
+  const handleUploadStart = useCallback(async (files, uploadPath, onConflict = 'error') => {
     if (!files || files.length === 0) return;
 
     if (dismissFailedItems) {
@@ -165,18 +166,20 @@ export const useFileUpload = ({
 
     // Check for existing files
     let existingNames = new Set();
-    try {
-      const existing = await listFiles(uploadPath || '/');
-      existingNames = new Set(existing.map(item => item.basename || item.name));
-    } catch (e) {
-      console.error('Failed to fetch existing files before upload:', e);
+    if (onConflict === 'error') {
+      try {
+        const existing = await listFiles(uploadPath || '/');
+        existingNames = new Set(existing.map(item => item.basename || item.name));
+      } catch (e) {
+        console.error('Failed to fetch existing files before upload:', e);
+      }
     }
 
     // Create file items
     const fileItems = files.map(file => ({
       fileName: file.name,
-      status: existingNames.has(file.name) ? 'error' : 'pending',
-      error: existingNames.has(file.name) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
+      status: (onConflict === 'error' && existingNames.has(file.name)) ? 'error' : 'pending',
+      error: (onConflict === 'error' && existingNames.has(file.name)) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
       file: file,
     }));
 
@@ -200,6 +203,7 @@ export const useFileUpload = ({
             status: 'pending',
           })),
         currentPath: uploadPath,
+        onConflict,
       },
       keepOnError: false,
     });
@@ -232,7 +236,8 @@ export const useFileUpload = ({
         abortController,
         cancelledSet,
         fileItems,
-        existingNames
+        existingNames,
+        onConflict
       );
 
       if (result.success) {
@@ -291,7 +296,7 @@ export const useFileUpload = ({
    * Handle retry upload
    */
   const handleRetryUpload = useCallback(async (progressId, retryData, existingFileItems) => {
-    const { fileItems: retryFileItems, currentPath: uploadPath } = retryData;
+    const { fileItems: retryFileItems, currentPath: uploadPath, onConflict = 'error' } = retryData;
 
     // Filter failed files
     const failedFiles = retryFileItems.filter(item => item.status === 'error' && item.file);
@@ -310,18 +315,20 @@ export const useFileUpload = ({
 
     // Check for existing files
     let existingNames = new Set();
-    try {
-      const existing = await listFiles(uploadPath || '/');
-      existingNames = new Set(existing.map(item => item.basename || item.name));
-    } catch (e) {
-      console.error('Failed to fetch existing files before retry:', e);
+    if (onConflict === 'error') {
+      try {
+        const existing = await listFiles(uploadPath || '/');
+        existingNames = new Set(existing.map(item => item.basename || item.name));
+      } catch (e) {
+        console.error('Failed to fetch existing files before retry:', e);
+      }
     }
 
     // Prepare retry file items
     const fileItemsToRetry = failedFiles.map(fileItem => ({
       fileName: fileItem.fileName,
-      status: existingNames.has(fileItem.fileName) ? 'error' : 'pending',
-      error: existingNames.has(fileItem.fileName) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
+      status: (onConflict === 'error' && existingNames.has(fileItem.fileName)) ? 'error' : 'pending',
+      error: (onConflict === 'error' && existingNames.has(fileItem.fileName)) ? getErrorMessageByType(ERROR_TYPES.DUPLICATE_FILE) : undefined,
       file: fileItem.file,
     }));
 
@@ -354,6 +361,7 @@ export const useFileUpload = ({
             status: 'pending',
           })),
         currentPath: uploadPath,
+        onConflict,
       },
       keepOnError: false,
       error: undefined,
@@ -385,7 +393,8 @@ export const useFileUpload = ({
         abortController,
         cancelledSet,
         mergedFileItems,
-        existingNames
+        existingNames,
+        onConflict
       );
 
       if (result.success) {

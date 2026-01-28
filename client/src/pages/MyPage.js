@@ -65,7 +65,7 @@ const MyPage = () => {
       setEmail(user.email || '');
       setOriginalEmail(user.email || '');
     }
-  }, [user?.email]);
+  }, [user, user?.email]);
 
   const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 

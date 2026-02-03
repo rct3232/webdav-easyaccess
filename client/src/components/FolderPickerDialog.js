@@ -122,8 +122,12 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       } else {
         const data = await listFiles(path);
         // Only show directories
-        const directories = data.filter(item => item.type === 'directory');
-        setFolders(directories);
+        if (Array.isArray(data)) {
+          const directories = data.filter(item => item.type === 'directory');
+          setFolders(directories);
+        } else {
+          setFolders([]);
+        }
       }
     } catch (error) {
       console.error('Failed to load folders:', error);
@@ -141,7 +145,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       const userBaseFolder = `/${user?.username || ''}`;
       
       // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
-      const filtered = response.data.filter(perm => {
+      const data = Array.isArray(response.data) ? response.data : [];
+      const filtered = data.filter(perm => {
         const folderPath = normalizePath(perm.folder_path);
         const normalizedUserBaseFolder = normalizePath(userBaseFolder);
         return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;

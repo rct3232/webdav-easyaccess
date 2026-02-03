@@ -58,7 +58,7 @@ async function authenticateToken(req, res, next) {
     const newToken = generateToken(user);
     res.setHeader('X-New-Token', newToken);
     
-    next();
+    return next();
   } catch (error) {
     return res.status(500).json({ error: 'Authentication failed' });
   }

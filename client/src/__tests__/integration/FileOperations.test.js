@@ -1,5 +1,5 @@
 import React from 'react';
-import { renderWithProviders, screen, waitFor, fireEvent } from '../../test-utils';
+import { renderWithProviders, screen, waitFor, fireEvent, act } from '../../test-utils';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../mocks/server';
 import FileContextMenu from '../../components/FileContextMenu';
@@ -35,6 +35,28 @@ describe('File Operations Integration Tests', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Use modern fake timers for better compatibility
+    jest.useFakeTimers();
+    
+    // Ensure folder list returns an array to avoid filter errors
+    server.use(
+      http.get('/api/files/list', () => {
+        return HttpResponse.json([]);
+      }),
+      http.get('/api/folders/list', () => {
+        return HttpResponse.json({ folders: [] });
+      }),
+      http.get('/api/permissions/user/:userId', () => {
+        return HttpResponse.json([]);
+      })
+    );
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
   });
 
   describe('File Delete', () => {
@@ -60,9 +82,9 @@ describe('File Operations Integration Tests', () => {
       // Mock delete failure
       server.use(
         http.delete('/api/files/delete', () => {
-          return new HttpResponse(null, {
-            status: 500,
-            statusText: 'Internal Server Error',
+          return new HttpResponse(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
           });
         })
       );
@@ -144,7 +166,6 @@ describe('File Operations Integration Tests', () => {
       const moveButton = screen.getByText('이동');
       fireEvent.click(moveButton);
 
-      // Check if processing started
       expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
@@ -219,4 +240,3 @@ describe('File Operations Integration Tests', () => {
     });
   });
 });
-

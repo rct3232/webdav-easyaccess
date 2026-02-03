@@ -178,7 +178,8 @@ describe('auth utilities', () => {
       };
       mockRes = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockReturnThis()
+        json: jest.fn().mockReturnThis(),
+        setHeader: jest.fn()
       };
       mockNext = jest.fn();
     });
@@ -296,7 +297,8 @@ describe('auth utilities', () => {
       };
       const mockRes = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
+        setHeader: jest.fn()
       };
       const mockNext = jest.fn();
       

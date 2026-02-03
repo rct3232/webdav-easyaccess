@@ -48,7 +48,7 @@ async function createTestUser(userData = {}) {
   await setupTestStore();
   const {
     username = 'testuser',
-    email = 'test@example.com',
+    email = `${userData.username || 'test'}@example.com`,
     password = 'password123',
     isAdmin = false,
     status = 'approved'

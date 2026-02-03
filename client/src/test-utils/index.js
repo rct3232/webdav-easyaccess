@@ -1,25 +1,24 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider as RealAuthProvider } from '../contexts/AuthContext';
+import { AuthProvider as RealAuthProvider, AuthContext } from '../contexts/AuthContext';
 
-// Mock AuthContext for testing
-const MockAuthContext = React.createContext();
-
+// Mock AuthProvider for testing
 export const MockAuthProvider = ({ children, value }) => {
   const defaultValue = {
     user: value?.user || { id: 1, username: 'testuser', is_admin: false },
     token: value?.token || 'test-token',
-    loading: false,
-    login: jest.fn(),
-    logout: jest.fn(),
-    register: jest.fn(),
+    loading: value?.loading ?? false,
+    login: value?.login || jest.fn(),
+    logout: value?.logout || jest.fn(),
+    register: value?.register || jest.fn(),
+    isAuthenticated: value?.isAuthenticated ?? !!(value?.user),
   };
   
   return (
-    <MockAuthContext.Provider value={defaultValue}>
+    <AuthContext.Provider value={defaultValue}>
       {children}
-    </MockAuthContext.Provider>
+    </AuthContext.Provider>
   );
 };
 
@@ -28,12 +27,13 @@ export function renderWithProviders(ui, options = {}) {
   const {
     user = { id: 1, username: 'testuser', is_admin: false, email: 'test@example.com' },
     token = 'test-token',
+    authContextValue = {},
     ...renderOptions
   } = options;
   
   const Wrapper = ({ children }) => (
     <BrowserRouter>
-      <MockAuthProvider value={{ user, token }}>
+      <MockAuthProvider value={{ user, token, ...authContextValue }}>
         {children}
       </MockAuthProvider>
     </BrowserRouter>

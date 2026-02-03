@@ -74,7 +74,7 @@ async function getShareLink(token) {
     const content = await storage.readFile(linkPath);
     return JSON.parse(content);
   } catch (error) {
-    if (error.message && error.message.includes('not found')) {
+    if (error.code === 'ENOENT' || (error.message && error.message.includes('not found'))) {
       return null;
     }
     throw error;
@@ -89,7 +89,7 @@ async function getShareLink(token) {
 async function getUserShareLinks(userId) {
   try {
     // 디렉토리 존재 확인 및 생성
-    await ensureShareLinksDir();
+    await storage.ensureDirSafe(SHARE_LINKS_DIR);
     
     // /.wea/share-links/ 디렉토리의 모든 파일 조회
     const linksDir = normalizeWebdavPath(SHARE_LINKS_DIR);

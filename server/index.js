@@ -182,9 +182,11 @@ initMetadataStore().then(async () => {
     console.warn('⚠ WebDAV connection test failed:', error.message);
   }
   
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
+  if (require.main === module) {
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  }
 }).catch(err => {
   console.error('Initialization failed:', err);
   process.exit(1);

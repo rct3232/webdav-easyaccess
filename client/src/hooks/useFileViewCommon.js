@@ -1,6 +1,19 @@
-import { useCallback } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { useDragAndDrop } from './useDragAndDrop';
 import { getFileItemState } from '../utils/fileViewUtils';
+
+// 빈 핸들러 객체를 미리 정의하여 재사용 (참조 동일성 유지)
+const emptyDragHandlers = {
+  draggable: false,
+  onDragStart: undefined,
+  onDragEnd: undefined,
+};
+
+const emptyDropHandlers = {
+  onDragOver: undefined,
+  onDragLeave: undefined,
+  onDrop: undefined,
+};
 
 /**
  * Common hook for file view components
@@ -25,6 +38,18 @@ export const useFileViewCommon = ({
   theme,
   isMobile = false,
 }) => {
+  // ref로 관리하여 useCallback 의존성에서 제거 (리렌더링 방지)
+  const selectionModeRef = useRef(selectionMode);
+  const isMobileRef = useRef(isMobile);
+  
+  useEffect(() => {
+    selectionModeRef.current = selectionMode;
+  }, [selectionMode]);
+  
+  useEffect(() => {
+    isMobileRef.current = isMobile;
+  }, [isMobile]);
+  
   const dragAndDrop = useDragAndDrop(onFileDrop, selectionMode, theme);
   
   /**
@@ -53,14 +78,11 @@ export const useFileViewCommon = ({
   
   /**
    * Get drag handlers for a file
+   * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
    */
   const getDragHandlers = useCallback((file, isDisabled) => {
-    if (isMobile || selectionMode || isDisabled) {
-      return {
-        draggable: false,
-        onDragStart: undefined,
-        onDragEnd: undefined,
-      };
+    if (isMobileRef.current || selectionModeRef.current || isDisabled) {
+      return emptyDragHandlers;
     }
     
     return {
@@ -68,18 +90,15 @@ export const useFileViewCommon = ({
       onDragStart: (e) => dragAndDrop.handleDragStart(e, file),
       onDragEnd: dragAndDrop.handleDragEnd,
     };
-  }, [isMobile, selectionMode, dragAndDrop]);
+  }, [dragAndDrop]);
   
   /**
    * Get drop handlers for a file
+   * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
    */
   const getDropHandlers = useCallback((file, isDisabled) => {
-    if (isMobile || selectionMode || isDisabled) {
-      return {
-        onDragOver: undefined,
-        onDragLeave: undefined,
-        onDrop: undefined,
-      };
+    if (isMobileRef.current || selectionModeRef.current || isDisabled) {
+      return emptyDropHandlers;
     }
     
     return {
@@ -87,7 +106,7 @@ export const useFileViewCommon = ({
       onDragLeave: dragAndDrop.handleDragLeave,
       onDrop: (e) => dragAndDrop.handleDrop(e, file),
     };
-  }, [isMobile, selectionMode, dragAndDrop]);
+  }, [dragAndDrop]);
   
   return {
     ...dragAndDrop,

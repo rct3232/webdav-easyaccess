@@ -1,8 +1,11 @@
 import { useState } from 'react';
 
-export const useSelection = (files) => {
+export const useSelection = (displayedFiles, allFiles = null) => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState(new Set());
+
+  // allFiles가 제공되면 전체 선택 시 모든 파일 선택, 없으면 displayedFiles만 선택 (하위 호환성)
+  const filesForSelectAll = allFiles || displayedFiles;
 
   const handleToggleSelectionMode = () => {
     setSelectionMode(prev => !prev);
@@ -10,7 +13,7 @@ export const useSelection = (files) => {
   };
 
   const handleSelectAll = () => {
-    setSelectedFiles(new Set(files.map(file => file.path)));
+    setSelectedFiles(new Set(filesForSelectAll.map(file => file.path)));
   };
 
   const handleDeselectAll = () => {

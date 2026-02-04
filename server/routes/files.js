@@ -584,7 +584,6 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
               }
             } catch (createError) {
               // Directory might already exist or be created by another request
-              console.log('Directory creation skipped or failed:', currentPath, createError.message);
             }
           }
         }

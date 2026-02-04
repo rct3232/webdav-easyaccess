@@ -52,7 +52,6 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   // 사용자가 생성한 폴더에 대해 자동으로 쓰기 권한 부여
   try {
     await Permission.grant(req.user.id, folderPath, 'write');
-    console.log(`Granted write permission to user ${req.user.id} for folder ${folderPath}`);
   } catch (permError) {
     console.error('Failed to grant permission after folder creation:', permError);
     // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행

@@ -40,7 +40,6 @@ router.put('/settings', authenticateToken, isAdmin, async (req, res) => {
     
     if (registration_enabled !== undefined) {
       await Settings.set('registration_enabled', String(registration_enabled));
-      console.log(`[Admin] Registration enabled set to: ${registration_enabled}`);
     }
     
     const settings = await Settings.getAll();
@@ -105,21 +104,22 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
 
     // Check if folder with same name already exists in WebDAV
     const userFolder = `/${username}`;
-    console.log('[Admin Create] Checking if folder exists:', userFolder);
     
     // Create user with approved status (skip approval process)
     createdUser = await User.create(username, email, password, false);
     await User.updateStatus(createdUser.id, 'approved');
-    console.log('[Admin Create] User created and approved:', createdUser.id);
 
     // Create user folder or reuse existing one
     try {
       const folderExists = await pathExists(userFolder);
-      if (folderExists) {
-        console.log(`[Admin Create] User folder already exists, reusing: ${userFolder}`);
-      } else {
+      if (!folderExists) {
         await createDirectory(userFolder);
-        console.log(`[Admin Create] Created user folder: ${userFolder}`);
+      }
+      
+      // Verify folder was created/exists
+      const folderExistsAfter = await pathExists(userFolder);
+      if (!folderExistsAfter) {
+        throw new Error(`Failed to verify folder exists: ${userFolder}`);
       }
     } catch (folderError) {
       console.error('[Admin Create] Failed to check or create user folder:', folderError);
@@ -133,10 +133,19 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
     // Grant permissions
     try {
       await Permission.grant(createdUser.id, userFolder, 'admin');
-      console.log(`[Admin Create] Granted permissions to ${username}`);
+      
+      // Verify permissions were granted successfully
+      const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, 'admin');
+      if (!hasPermission) {
+        throw new Error('Permission verification failed');
+      }
     } catch (permError) {
       console.error('[Admin Create] Failed to grant permissions:', permError);
-      // Continue anyway - admin can manually fix this
+      // Rollback user creation - permissions are essential
+      await User.delete(createdUser.id);
+      return res.status(500).json({ 
+        error: '사용자 권한 부여에 실패했습니다. 사용자 계정이 삭제되었습니다.' 
+      });
     }
 
     res.status(201).json({
@@ -155,7 +164,6 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
     if (createdUser && createdUser.id) {
       try {
         await User.delete(createdUser.id);
-        console.log('[Admin Create] User deleted due to error');
       } catch (deleteError) {
         console.error('[Admin Create] Failed to delete user after error:', deleteError);
       }
@@ -180,18 +188,20 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
 
     // Update user status
     await User.updateStatus(userId, 'approved');
-    console.log(`[Admin] User ${user.username} approved`);
 
     // Create user folder or reuse existing one
     const userFolder = `/${user.username}`;
     const { pathExists } = require('../utils/webdav');
     try {
       const folderExists = await pathExists(userFolder);
-      if (folderExists) {
-        console.log(`[Admin] User folder already exists, reusing: ${userFolder}`);
-      } else {
+      if (!folderExists) {
         await createDirectory(userFolder);
-        console.log(`[Admin] Created user folder: ${userFolder}`);
+      }
+      
+      // Verify folder was created/exists
+      const folderExistsAfter = await pathExists(userFolder);
+      if (!folderExistsAfter) {
+        throw new Error(`Failed to verify folder exists: ${userFolder}`);
       }
     } catch (folderError) {
       console.error(`[Admin] Failed to check or create user folder:`, folderError);
@@ -203,16 +213,24 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
     // Grant permissions
     try {
       await Permission.grant(userId, `/${user.username}`, 'admin');
-      console.log(`[Admin] Granted permissions to ${user.username}`);
+      
+      // Verify permissions were granted successfully
+      const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, 'admin');
+      if (!hasPermission) {
+        throw new Error('Permission verification failed');
+      }
     } catch (permError) {
       console.error(`[Admin] Failed to grant permissions:`, permError);
-      // Continue anyway - can be fixed manually
+      // Rollback approval - permissions are essential
+      await User.updateStatus(userId, 'pending');
+      return res.status(500).json({ 
+        error: '사용자 권한 부여에 실패했습니다. 승인이 취소되었습니다. 다시 시도해주세요.' 
+      });
     }
 
     // Send approval email
     try {
       await sendApprovalEmail(user.email, user.username);
-      console.log(`[Admin] Approval email sent to ${user.email}`);
     } catch (emailError) {
       console.error('[Admin] Failed to send approval email:', emailError);
       // Continue anyway - user is approved
@@ -245,31 +263,25 @@ router.post('/users/:id/reject', authenticateToken, isAdmin, async (req, res) =>
     // Send rejection email first
     try {
       await sendRejectionEmail(user.email, user.username);
-      console.log(`[Admin] Rejection email sent to ${user.email}`);
     } catch (emailError) {
       console.error('[Admin] Failed to send rejection email:', emailError);
       // Continue with deletion even if email fails
     }
 
     // Clean up permission requests where user is requester
-    const requesterResult = await PermissionRequest.deleteByRequesterId(userId);
-    console.log(`[Admin] Deleted ${requesterResult.deletedCount} permission requests where user ${user.username} was requester`);
+    await PermissionRequest.deleteByRequesterId(userId);
 
     // Reject permission requests where user is owner
-    const ownerResult = await PermissionRequest.rejectByOwnerId(userId, req.user.id);
-    console.log(`[Admin] Rejected ${ownerResult.rejectedCount} pending permission requests where user ${user.username} was owner`);
+    await PermissionRequest.rejectByOwnerId(userId, req.user.id);
 
     // Delete user permissions
     await Permission.revokeAllUserPermissions(userId);
-    console.log(`[Admin] Revoked all permissions for user ${user.username}`);
 
     // Delete permission file
     await Permission.deleteUserPermissionsFile(userId);
-    console.log(`[Admin] Deleted permission file for user ${user.username}`);
 
     // Delete user from database
     await User.delete(userId);
-    console.log(`[Admin] User ${user.username} (ID: ${userId}) deleted after rejection`);
 
     res.json({ 
       message: '사용자 가입이 거절되었으며, 계정이 삭제되었습니다.',
@@ -304,24 +316,19 @@ router.delete('/users/:id', authenticateToken, isAdmin, async (req, res) => {
     }
 
     // Clean up permission requests where user is requester
-    const requesterResult = await PermissionRequest.deleteByRequesterId(userId);
-    console.log(`[Admin] Deleted ${requesterResult.deletedCount} permission requests where user ${user.username} was requester`);
+    await PermissionRequest.deleteByRequesterId(userId);
 
     // Reject permission requests where user is owner
-    const ownerResult = await PermissionRequest.rejectByOwnerId(userId, adminId);
-    console.log(`[Admin] Rejected ${ownerResult.rejectedCount} pending permission requests where user ${user.username} was owner`);
+    await PermissionRequest.rejectByOwnerId(userId, adminId);
 
     // Delete user permissions
-    const permResult = await Permission.revokeAllUserPermissions(userId);
-    console.log(`[Admin] Revoked ${permResult.deletedCount} permissions for user ${user.username}`);
+    await Permission.revokeAllUserPermissions(userId);
 
     // Delete permission file
     await Permission.deleteUserPermissionsFile(userId);
-    console.log(`[Admin] Deleted permission file for user ${user.username}`);
 
     // Delete user from database
     await User.delete(userId);
-    console.log(`[Admin] User ${user.username} (ID: ${userId}) deleted by admin`);
 
     res.json({ 
       message: '사용자가 삭제되었습니다.',

@@ -1,21 +1,16 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import {
   Typography,
   Box,
-  Checkbox,
-  Avatar,
-  CircularProgress,
   useTheme,
 } from '@mui/material';
-import { formatFileSize, formatDate } from '../utils/format';
 import { useFileViewCommon } from '../hooks/useFileViewCommon';
-import { renderProcessingIcon, getDropTargetStyles } from '../utils/fileViewUtils';
-import { getFileIcon, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileListSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../hooks/useThumbnailLazyLoad';
+import FileListItem from './FileListItem';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore }) => {
   const { isMobile } = useResponsive();
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
@@ -94,6 +89,15 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     };
   }, [isMobile, selectionMode, onContextMenu]);
 
+  // 컴포넌트 언마운트 시 모든 타이머 정리
+  useEffect(() => {
+    return () => {
+      longPressTimersRef.current.forEach(timer => clearTimeout(timer));
+      longPressTimersRef.current.clear();
+      touchMovedRef.current.clear();
+    };
+  }, []);
+
   if (loading && files.length === 0) {
     return <FileListSkeleton selectionMode={selectionMode} />;
   }
@@ -114,18 +118,19 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         gap: 2,
       }}
     >
-      {files.map((file, index) => {
-        const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
+      {files.map((file) => {
+        const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
         const canOpenMenu = !isDisabled || allowContextMenu;
-        const thumbnail = getThumbnail(file);
+        const isDragging = draggedFile?.path === file.path;
+        const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
         const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
         
         return (
           <Box
-            key={index}
+            key={file.path}
             data-file-path={file.path}
             {...dragHandlers}
             {...dropHandlers}
@@ -145,19 +150,15 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               alignItems: 'center',
               p: 1.5,
               borderRadius: 1,
+              transition: 'all 0.2s',
+              position: 'relative',
               '&:hover': {
                 backgroundColor: isDisabled ? 'transparent' : 'action.hover',
               },
-              backgroundColor: dropTarget === file.path ? 'primary.main' : 'transparent',
-              opacity: draggedFile?.path === file.path 
-                ? 0.5 
-                : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
+              backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
+              opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
               cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-              transition: 'all 0.2s',
-              color: isDisabled ? 'text.disabled' : (dropTarget === file.path ? 'white' : 'inherit'),
-              position: 'relative',
-              ...getDropTargetStyles(dropTarget === file.path),
-              // Prevent text selection on mobile long-press
+              color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),
               ...(isMobile && {
                 userSelect: 'none',
                 WebkitUserSelect: 'none',
@@ -168,66 +169,33 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               }),
             }}
           >
-            {selectionMode && (
-              <Box sx={{ minWidth: 40, display: 'flex', alignItems: 'center' }}>
-                <Checkbox
-                  checked={checked}
-                  onChange={(e) => handleCheck(file, e.target.checked, e)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Box>
-            )}
-            <Box sx={{ minWidth: 56, display: 'flex', justifyContent: 'center', mr: 2 }}>
-              {thumbnail ? (
-                <Avatar
-                  src={thumbnail}
-                  alt={file.basename}
-                  variant="rounded"
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    bgcolor: 'grey.200',
-                  }}
-                />
-              ) : (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40 }}>
-                  {getFileIcon(file)}
-                </Box>
-              )}
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2" noWrap>
-                {file.basename}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
-                <Typography variant="caption" color="text.secondary">
-                  {file.type === 'directory' ? '폴더' : formatFileSize(file.size)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {formatDate(file.lastmod)}
-                </Typography>
-              </Box>
-            </Box>
-            {isProcessing && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  right: 16,
-                  transform: 'translateY(-50%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  pointerEvents: 'none',
-                }}
-              >
-                <CircularProgress size={18} thickness={5} />
-                {renderProcessingIcon(processingType)}
-              </Box>
-            )}
+            <FileListItem
+              file={file}
+              isSelected={isSelected}
+              isDisabled={isDisabled}
+              isProcessing={isProcessing}
+              processingType={processingType}
+              isDropTarget={isDropTarget}
+              isDragging={isDragging}
+              selectionMode={selectionMode}
+              isMobile={isMobile}
+              onCheck={handleCheck}
+            />
           </Box>
         );
       })}
+      {hasMore && (
+        <Box
+          ref={loadMoreRef}
+          sx={{
+            height: 20,
+            gridColumn: '1 / -1',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        />
+      )}
     </Box>
   );
 };

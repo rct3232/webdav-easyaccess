@@ -230,7 +230,10 @@ const AdminDashboard = () => {
         password: newUser.password,
       });
       
-      setMessage({ type: 'success', text: `${newUser.username} 계정이 추가되었습니다.` });
+      setMessage({ 
+        type: 'success', 
+        text: `${newUser.username} 계정이 추가되었습니다. 사용자가 로그인하면 자동으로 홈 디렉토리로 이동합니다.` 
+      });
       setCreateDialog({ open: false });
       setNewUser({ username: '', email: '', password: '', confirmPassword: '' });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);

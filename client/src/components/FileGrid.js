@@ -1,23 +1,17 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import {
   Grid,
-  Card,
-  CardMedia,
-  CardContent,
   Typography,
   Box,
-  Checkbox,
-  CircularProgress,
   useTheme,
 } from '@mui/material';
 import { useFileViewCommon } from '../hooks/useFileViewCommon';
-import { renderProcessingIcon } from '../utils/fileViewUtils';
-import { getFileIconForGrid, getThumbnail } from '../utils/fileIconUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../hooks/useThumbnailLazyLoad';
+import FileGridItem from './FileGridItem';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore }) => {
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
@@ -97,6 +91,15 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     };
   }, [isMobile, selectionMode, onContextMenu]);
 
+  // 컴포넌트 언마운트 시 모든 타이머 정리
+  useEffect(() => {
+    return () => {
+      longPressTimersRef.current.forEach(timer => clearTimeout(timer));
+      longPressTimersRef.current.clear();
+      touchMovedRef.current.clear();
+    };
+  }, []);
+
   if (loading && files.length === 0) {
     return <FileGridSkeleton selectionMode={selectionMode} />;
   }
@@ -119,9 +122,8 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         minHeight: 'auto',
       }}
     >
-      {files.map((file, index) => {
-        const thumbnail = getThumbnail(file);
-        const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
+      {files.map((file) => {
+        const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
         const canOpenMenu = !isDisabled || allowContextMenu;
         const isDragging = draggedFile?.path === file.path;
@@ -131,37 +133,12 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
         
         return (
-          <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={index}>
-            <Card
+          <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={file.path}>
+            <Box
               data-file-path={file.path}
               {...dragHandlers}
               {...dropHandlers}
               {...longPressHandlers}
-              sx={{
-                cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-                '&:hover': {
-                  boxShadow: isDisabled ? 2 : 4,
-                },
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
-                border: isDropTarget ? '2px solid' : checked ? '2px solid' : 'none',
-                borderColor: checked ? 'primary.main' : 'primary.main',
-                backgroundColor: checked ? 'action.selected' : 'transparent',
-                transition: 'all 0.2s',
-                position: 'relative',
-                color: isDisabled ? 'text.disabled' : 'inherit',
-                // Prevent text selection on mobile long-press
-                ...(isMobile && {
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none',
-                  WebkitTouchCallout: 'none',
-                  touchAction: 'manipulation',
-                }),
-              }}
               onClick={() => {
                 if (!isDisabled) {
                   onFileClick(file);
@@ -172,99 +149,37 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
                   onContextMenu(e, file);
                 }
               }}
+              sx={{ height: '100%' }}
             >
-              {selectionMode && (
-                <Checkbox
-                  checked={checked}
-                  onChange={(e) => handleCheck(file, e.target.checked, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  sx={{
-                    position: 'absolute',
-                    top: 8,
-                    left: 8,
-                    zIndex: 1,
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  }}
-                />
-              )}
-              <Box
-                sx={{
-                  width: '100%',
-                  aspectRatio: '1 / 1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDropTarget ? 'primary.main' : 'grey.100',
-                  position: 'relative',
-                  transition: 'all 0.2s',
-                  overflow: 'hidden',
-                  ...(isDropTarget && {
-                    '& .MuiSvgIcon-root': {
-                      color: 'white',
-                    },
-                    '& img': {
-                      filter: 'brightness(0.7)',
-                    },
-                  }),
-                }}
-              >
-                {thumbnail ? (
-                  <CardMedia
-                    component="img"
-                    image={thumbnail}
-                    alt={file.basename}
-                    sx={{ 
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover' 
-                    }}
-                  />
-                ) : (
-                  getFileIconForGrid(file)
-                )}
-              </Box>
-              <CardContent sx={{ 
-                p: 1, 
-                pt: 0.5, 
-                pb: 1,
-                ...(isDropTarget && {
-                  backgroundColor: 'primary.main',
-                }),
-              }}>
-                <Typography
-                  variant="body2"
-                  noWrap
-                  title={file.basename}
-                  sx={{ 
-                    fontWeight: 'medium',
-                    fontSize: '0.875rem',
-                    textAlign: 'center',
-                    color: isDropTarget ? 'white' : 'inherit',
-                  }}
-                >
-                  {file.basename}
-                </Typography>
-              </CardContent>
-              {isProcessing && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <CircularProgress size={18} thickness={5} />
-                  {renderProcessingIcon(processingType)}
-                </Box>
-              )}
-            </Card>
+              <FileGridItem
+                file={file}
+                isSelected={isSelected}
+                isDisabled={isDisabled}
+                isProcessing={isProcessing}
+                processingType={processingType}
+                isDropTarget={isDropTarget}
+                isDragging={isDragging}
+                selectionMode={selectionMode}
+                isMobile={isMobile}
+                onCheck={handleCheck}
+              />
+            </Box>
           </Grid>
         );
       })}
+      {hasMore && (
+        <Grid item xs={12}>
+          <Box
+            ref={loadMoreRef}
+            sx={{
+              height: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
+        </Grid>
+      )}
     </Grid>
   );
 };

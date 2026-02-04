@@ -136,7 +136,6 @@ router.post('/login', async (req, res) => {
           await ensureDirs();
           // Admin 계정 재생성
           await ensureDefaultAdmin();
-          console.log('[Auth] Admin account auto-recreated after .wea deletion');
         } catch (recoveryError) {
           console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);
           // 복구 실패해도 계속 진행 (기존 로직대로 처리)

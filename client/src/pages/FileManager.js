@@ -37,6 +37,7 @@ import { uploadMultipleFiles } from '../services/fileService';
 import { useMessage } from '../hooks/useMessage';
 import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
 import FileDetail from '../components/FileDetail';
@@ -75,6 +76,10 @@ const FileManager = () => {
   const scrollContainerRef = useRef(null);
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  
+  // 디바운스 타이머 ref 및 최신 핸들러 ref
+  const fileClickDebounceTimer = useRef(null);
+  const handleFileClickInternalRef = useRef(null);
 
   // 로딩/새로고침 완료 콜백을 위한 ref (useFileManager 이전에 정의)
   const handleLoadCompleteRef = useRef(null);
@@ -178,16 +183,35 @@ const FileManager = () => {
     return sortFiles(filteredFiles, sortMode);
   }, [filteredFiles, sortMode]);
 
-  // 썸네일 로드 완료 핸들러
+  // 무한 스크롤 훅 - 성능 최적화를 위해 초기 50개만 렌더링
+  const { 
+    displayedFiles, 
+    loadMoreRef, 
+    hasMore 
+  } = useInfiniteScroll(sortedFiles, {
+    initialCount: 50,
+    incrementCount: 50,
+  });
+
+  // 썸네일 로드 완료 핸들러 - 변경된 파일만 업데이트하도록 최적화
   const handleThumbnailsLoaded = useCallback((thumbnailMap) => {
-    // files 상태를 업데이트하여 썸네일 URL 추가
     setFiles(prevFiles => {
+      // 실제로 변경이 필요한지 먼저 확인
+      const hasChanges = Array.from(thumbnailMap.keys()).some(path => {
+        const file = prevFiles.find(f => f.path === path);
+        return file && !file.thumbnailUrl;
+      });
+      
+      // 변경사항이 없으면 동일한 참조 반환 (재렌더링 방지)
+      if (!hasChanges) return prevFiles;
+      
+      // 변경된 파일만 새 객체로 생성, 나머지는 동일 참조 유지
       return prevFiles.map(file => {
         const thumbnailUrl = thumbnailMap.get(file.path);
         if (thumbnailUrl && !file.thumbnailUrl) {
           return { ...file, thumbnailUrl };
         }
-        return file;
+        return file; // 변경 없는 파일은 동일 참조 유지
       });
     });
   }, []);
@@ -203,7 +227,7 @@ const FileManager = () => {
     toggleFileSelection,
     setSelectionMode,
     setSelectedFiles,
-  } = useSelection(sortedFiles);
+  } = useSelection(displayedFiles, sortedFiles);
 
   // 모바일에서 Detail 모드로 전환 시도 시 List 모드로 자동 전환
   useEffect(() => {
@@ -788,7 +812,8 @@ const FileManager = () => {
     }
   };
 
-  const handleFileClick = async (file) => {
+  // 실제 파일 클릭 처리 함수
+  const handleFileClickInternal = async (file) => {
     if (selectionMode) {
       toggleFileSelection(file);
     } else {
@@ -931,6 +956,39 @@ const FileManager = () => {
       }
     }
   };
+
+  // ref 업데이트 - 항상 최신 함수를 가리키도록
+  useEffect(() => {
+    handleFileClickInternalRef.current = handleFileClickInternal;
+  });
+
+  // 디바운스된 파일 클릭 핸들러 (200ms)
+  const handleFileClick = useCallback((file) => {
+    // 선택 모드에서는 즉시 실행 (디바운스 없음)
+    if (selectionMode) {
+      handleFileClickInternalRef.current(file);
+      return;
+    }
+    
+    // 기존 타이머 취소
+    if (fileClickDebounceTimer.current) {
+      clearTimeout(fileClickDebounceTimer.current);
+    }
+    
+    // 새 타이머 설정
+    fileClickDebounceTimer.current = setTimeout(() => {
+      handleFileClickInternalRef.current(file);
+    }, 200);
+  }, [selectionMode]);
+  
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (fileClickDebounceTimer.current) {
+        clearTimeout(fileClickDebounceTimer.current);
+      }
+    };
+  }, []);
 
 
   // Upload handlers - useFileUpload hook handles this
@@ -1558,7 +1616,7 @@ const FileManager = () => {
             )}
             {viewMode === VIEW_MODES.LIST ? (
               <FileList
-                files={sortedFiles}
+                files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
@@ -1581,10 +1639,12 @@ const FileManager = () => {
                 onPathClick={handlePathClick}
                 loading={loading}
                 onThumbnailsLoaded={handleThumbnailsLoaded}
+                loadMoreRef={loadMoreRef}
+                hasMore={hasMore}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
-                files={sortedFiles}
+                files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {
@@ -1607,10 +1667,12 @@ const FileManager = () => {
                 onPathClick={handlePathClick}
                 loading={loading}
                 onThumbnailsLoaded={handleThumbnailsLoaded}
+                loadMoreRef={loadMoreRef}
+                hasMore={hasMore}
               />
             ) : (
               <FileDetail
-                files={sortedFiles}
+                files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
                 onContextMenu={(e, file) => {

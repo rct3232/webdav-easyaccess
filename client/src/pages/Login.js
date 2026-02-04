@@ -45,7 +45,9 @@ const Login = () => {
     const result = await login(username, password);
     
     if (result.success) {
-      navigate('/files');
+      // Navigate to user's home directory to avoid cache issues
+      const userHomeDir = result.user?.username ? `/files/${result.user.username}` : '/files';
+      navigate(userHomeDir);
     } else {
       if (result.status === 'pending') {
         setWarning(result.message || '계정이 승인 대기 중입니다. 관리자의 승인을 기다려 주세요.');

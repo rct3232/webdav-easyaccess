@@ -74,3 +74,50 @@ export const getFolderName = (path) => {
   return parts[parts.length - 1] || 'Root';
 };
 
+/**
+ * Get file/folder name from path (without localization)
+ * @param {string} path - Path
+ * @returns {string} File/folder name
+ */
+export const getFileName = (path) => {
+  if (!path) return '';
+  return path.split('/').filter(Boolean).pop() || '';
+};
+
+/**
+ * Split path into parts
+ * @param {string} path - Path to split
+ * @returns {string[]} Array of path parts
+ */
+export const getPathParts = (path) => {
+  if (!path) return [];
+  return path.split('/').filter(Boolean);
+};
+
+/**
+ * Join path parts
+ * @param {...string} parts - Path parts to join
+ * @returns {string} Joined path
+ */
+export const joinPath = (...parts) => {
+  const joined = parts
+    .filter(Boolean)
+    .map(p => p.replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean)
+    .join('/');
+  return '/' + joined;
+};
+
+/**
+ * Check if childPath is a subpath of parentPath
+ * @param {string} childPath - Potential child path
+ * @param {string} parentPath - Potential parent path
+ * @returns {boolean} True if childPath is under parentPath
+ */
+export const isSubPath = (childPath, parentPath) => {
+  const normalizedChild = normalizePath(childPath);
+  const normalizedParent = normalizePath(parentPath);
+  
+  if (normalizedParent === '/') return true;
+  return normalizedChild.startsWith(normalizedParent + '/');
+};

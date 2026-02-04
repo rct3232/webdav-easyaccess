@@ -1,58 +1,28 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
-  AppBar,
-  Toolbar,
   Typography,
-  IconButton,
   Button,
   Snackbar,
   Alert,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Radio,
-  RadioGroup,
-  FormControlLabel,
-  Divider,
-  Paper,
-  Collapse,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
+  Collapse,
   CircularProgress,
-  InputAdornment,
 } from '@mui/material';
 import {
-  Logout as LogoutIcon,
-  ViewList as ViewListIcon,
-  ViewModule as ViewModuleIcon,
-  ViewStream as ViewStreamIcon,
-  Person as PersonIcon,
-  AdminPanelSettings as AdminIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  SelectAll as SelectAllIcon,
-  Deselect as DeselectIcon,
-  DriveFileMove as MoveIcon,
-  ContentCopy as CopyIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
-  Sort as SortIcon,
   CheckCircle as CheckCircleIcon,
   ChevronLeft as ChevronLeftIcon,
-  Search as SearchIcon,
-  Close as CloseIcon,
   Home as HomeIcon,
   Share as ShareIcon,
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { VIEW_MODES, SORT_MODES } from '../constants/fileManager';
+import { VIEW_MODES } from '../constants/fileManager';
 import { canPreview, sortFiles } from '../utils/fileUtils';
 import { getViewMode, setViewMode as saveViewMode, setSortMode as saveSortMode } from '../utils/localStorage';
 import { useFileManager } from '../hooks/useFileManager';
@@ -92,6 +62,11 @@ import { normalizePath } from '../utils/pathUtils';
 import { useRecentFileErrorHandler } from '../hooks/useRecentFileErrorHandler';
 import { useRecentFileNavigation } from '../hooks/useRecentFileNavigation';
 import { useRecentFilePreview } from '../hooks/useRecentFilePreview';
+import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
+
+import FileManagerHeader from '../components/FileManagerHeader';
+import FileManagerControls from '../components/FileManagerControls';
+import BulkActionToolbar from '../components/BulkActionToolbar';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
@@ -100,11 +75,6 @@ const FileManager = () => {
   const scrollContainerRef = useRef(null);
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const [actionSheetFile, setActionSheetFile] = useState(null);
-  // 모바일용 FolderPickerDialog를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
-  const [mobilePickerFile, setMobilePickerFile] = useState(null);
-  const [mobilePickerAction, setMobilePickerAction] = useState(null);
 
   // 로딩/새로고침 완료 콜백을 위한 ref (useFileManager 이전에 정의)
   const handleLoadCompleteRef = useRef(null);
@@ -241,14 +211,34 @@ const FileManager = () => {
       setViewMode(VIEW_MODES.LIST);
     }
   }, [isMobile, viewMode]);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
-  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const {
+    uploadDialogOpen, openUploadDialog, closeUploadDialog,
+    createFolderDialogOpen, openCreateFolderDialog, closeCreateFolderDialog,
+    previewDialogOpen, setPreviewDialogOpen, openPreviewDialog, closePreviewDialog,
+    renameDialogOpen, openRenameDialog, closeRenameDialog,
+    shareDialogOpen, openShareDialog, closeShareDialog,
+    sharedFolderManageDialogOpen, openSharedFolderManageDialog, closeSharedFolderManageDialog,
+    deleteDialogOpen, openDeleteDialog, closeDeleteDialog,
+    propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,
+    bulkDeleteDialogOpen, openBulkDeleteDialog, closeBulkDeleteDialog,
+    actionSheetOpen, setActionSheetOpen, closeActionSheet,
+    actionSheetFile, setActionSheetFile,
+    selectedFile, setSelectedFile,
+    contextMenu, setContextMenu,
+    renameNewName, setRenameNewName,
+    renameError, setRenameError,
+    mobileRenameFile,
+    mobileDeleteFile,
+    mobileShareFile,
+    mobileSharedManageFile,
+    mobilePropertiesFile,
+    bulkDeleteFilePaths,
+    mobilePickerFile, setMobilePickerFile,
+    mobilePickerAction, setMobilePickerAction,
+  } = useFileManagerDialogs();
+
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
   
-  // 최근 파일 미리보기 훅
   const [, setRecentFileToPreview] = useRecentFilePreview({
     files,
     loading,
@@ -342,26 +332,7 @@ const FileManager = () => {
   }, [setTreeUpdateTrigger]);
   
   // FileActionSheet 관련 다이얼로그 상태
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [sharedFolderManageDialogOpen, setSharedFolderManageDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [renameNewName, setRenameNewName] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
-  const [renameError, setRenameError] = useState('');
-  // 모바일용 이름 변경/삭제/공유/공유 관리를 위한 별도 상태 (actionSheetFile이 초기화되어도 유지)
-  const [mobileRenameFile, setMobileRenameFile] = useState(null);
-  const [mobileDeleteFile, setMobileDeleteFile] = useState(null);
-  const [mobileShareFile, setMobileShareFile] = useState(null);
-  const [mobileSharedManageFile, setMobileSharedManageFile] = useState(null);
-  const [mobilePropertiesFile, setMobilePropertiesFile] = useState(null);
-  
-  // 속성 다이얼로그 상태
-  const [propertiesDialogOpen, setPropertiesDialogOpen] = useState(false);
-  
-  // Bulk delete 확인 다이얼로그 상태
-  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
-  const [bulkDeleteFilePaths, setBulkDeleteFilePaths] = useState([]);
   
   // 모바일 새로고침/폴더 이동 완료 상태
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
@@ -763,9 +734,8 @@ const FileManager = () => {
   }, [uploadConflictData, executeExplorerUpload]);
 
   const handleBulkDeleteConfirm = () => {
-    setBulkDeleteDialogOpen(false);
     const filePaths = [...bulkDeleteFilePaths];
-    setBulkDeleteFilePaths([]);
+    closeBulkDeleteDialog();
     // 선택모드 해제
     setSelectedFiles(new Set());
     setSelectionMode(false);
@@ -954,7 +924,7 @@ const FileManager = () => {
         const filename = file.basename || file.name;
         const canPreviewFile = canPreview(filename);
         setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
-        setPreviewDialogOpen(true);
+        openPreviewDialog();
         // 최근 파일에 추가
         await addRecentFile(file);
         // 이벤트 리스너가 자동으로 loadFiles() 호출
@@ -965,7 +935,7 @@ const FileManager = () => {
 
   // Upload handlers - useFileUpload hook handles this
   const handleUploadStart = useCallback(async (files, uploadPath) => {
-    setUploadDialogOpen(false);
+    closeUploadDialog();
     
     if (!files || files.length === 0) return;
 
@@ -991,7 +961,7 @@ const FileManager = () => {
       console.error('Upload conflict check failed:', error);
       await executeExplorerUpload(filesToUpload, uploadPath);
     }
-  }, [executeExplorerUpload]);
+  }, [executeExplorerUpload, closeUploadDialog]);
 
   // Cancel upload handlers - wrap to pass progressItems
   const handleCancelUploadFileWrapper = useCallback((progressId, fileName) => {
@@ -1026,7 +996,7 @@ const FileManager = () => {
     });
     
     handleOperationComplete({ opType: 'createFolder', startedPath: parentPath });
-    setCreateFolderDialogOpen(false);
+    closeCreateFolderDialog();
     
     setTimeout(() => {
       setTreeUpdateTrigger({
@@ -1048,11 +1018,8 @@ const FileManager = () => {
     try {
       setRenameError('');
       await handleFileRenameOp(targetFile, renameNewName, { startedPath: currentPathRef.current });
-      setRenameDialogOpen(false);
-      setRenameNewName('');
-      setMobileRenameFile(null);
-      setActionSheetOpen(false);
-      setActionSheetFile(null);
+      closeRenameDialog();
+      closeActionSheet();
     } finally {
       setRenameLoading(false);
     }
@@ -1064,10 +1031,8 @@ const FileManager = () => {
 
     try {
       await handleFileDeleteOp(targetFile, { startedPath: currentPathRef.current });
-      setDeleteDialogOpen(false);
-      setMobileDeleteFile(null);
-      setActionSheetOpen(false);
-      setActionSheetFile(null);
+      closeDeleteDialog();
+      closeActionSheet();
     } catch (error) {
       // Error is already handled by useFileOperations
     }
@@ -1089,8 +1054,7 @@ const FileManager = () => {
     if (!actionSheetFile) return;
     try {
       await handleFileDownloadOp(actionSheetFile);
-      setActionSheetOpen(false);
-      setActionSheetFile(null);
+      closeActionSheet();
     } catch (error) {
       // Error is already handled by useFileOperations
     }
@@ -1190,159 +1154,16 @@ const FileManager = () => {
         minHeight: 0,
       }}
     >
-      <AppBar 
-        position="sticky" 
-        sx={{ 
-          top: 0, 
-          zIndex: (theme) => theme.zIndex.appBar,
-          backgroundColor: 'transparent',
-          backgroundImage: 'none',
-        }} 
-        elevation={0}
-      >
-        <Toolbar>
-          {isMobile && isSearchMode ? (
-            // 모바일 검색 모드: 앱바 전체가 검색창
-            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TextField
-                autoFocus
-                fullWidth
-                size="small"
-                placeholder="파일 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                    color: 'white',
-                    '& fieldset': {
-                      borderColor: 'rgba(255, 255, 255, 0.3)',
-                    },
-                    '&:hover fieldset': {
-                      borderColor: 'rgba(255, 255, 255, 0.5)',
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: 'rgba(255, 255, 255, 0.7)',
-                    },
-                    '& input': {
-                      color: 'white',
-                      '&::placeholder': {
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        opacity: 1,
-                      },
-                    },
-                  },
-                }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <IconButton
-                color="inherit"
-                onClick={() => {
-                  setIsSearchMode(false);
-                  setSearchQuery('');
-                }}
-                title="검색 닫기"
-              >
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          ) : (
-            // 일반 모드: 로고와 버튼들 표시
-            <>
-              <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box
-                  component="img"
-                  src="/logo_white.png"
-                  alt="WebDAV EasyAccess"
-                  sx={{
-                    height: isMobile ? '27px' : '33.75px',
-                    maxWidth: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
-              </Box>
-              {!isMobile && (
-                // 데스크톱: 검색창 항상 표시 (우측)
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
-                  <TextField
-                    size="small"
-                    placeholder="파일 검색..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setIsSearchMode(true)}
-                    sx={{
-                      width: 300,
-                      '& .MuiOutlinedInput-root': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                        color: 'white',
-                        '& fieldset': {
-                          borderColor: 'rgba(255, 255, 255, 0.3)',
-                        },
-                        '&:hover fieldset': {
-                          borderColor: 'rgba(255, 255, 255, 0.5)',
-                        },
-                        '&.Mui-focused fieldset': {
-                          borderColor: 'rgba(255, 255, 255, 0.7)',
-                        },
-                        '& input': {
-                          color: 'white',
-                          '&::placeholder': {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            opacity: 1,
-                          },
-                        },
-                      },
-                    }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
-                        </InputAdornment>
-                      ),
-                      endAdornment: searchQuery && (
-                        <InputAdornment position="end">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setSearchQuery('');
-                              setIsSearchMode(false);
-                            }}
-                            sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                          >
-                            <CloseIcon fontSize="small" />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Box>
-              )}
-              {isMobile && (
-                <IconButton color="inherit" onClick={() => setIsSearchMode(true)} title="검색">
-                  <SearchIcon />
-                </IconButton>
-              )}
-              {user?.is_admin && (
-                <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
-                  <AdminIcon />
-                </IconButton>
-              )}
-              <IconButton color="inherit" onClick={() => navigate('/mypage')} title="마이페이지">
-                <PersonIcon />
-              </IconButton>
-              <IconButton color="inherit" onClick={handleLogout} title="로그아웃">
-                <LogoutIcon />
-              </IconButton>
-            </>
-          )}
-        </Toolbar>
-      </AppBar>
+      <FileManagerHeader
+        isMobile={isMobile}
+        isSearchMode={isSearchMode}
+        setIsSearchMode={setIsSearchMode}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        user={user}
+        navigate={navigate}
+        handleLogout={handleLogout}
+      />
 
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
@@ -1353,8 +1174,8 @@ const FileManager = () => {
             onFileClick={handleFileClick}
             user={user}
             treeUpdateTrigger={treeUpdateTrigger}
-            onCreateFolder={() => setCreateFolderDialogOpen(true)}
-            onUploadFile={() => setUploadDialogOpen(true)}
+            onCreateFolder={openCreateFolderDialog}
+            onUploadFile={openUploadDialog}
             selectionMode={selectionMode}
             hasWritePermission={hasWritePermission}
             onExplorerDrop={handleExplorerDrop}
@@ -1440,11 +1261,11 @@ const FileManager = () => {
                     user={user}
                     treeUpdateTrigger={treeUpdateTrigger}
                     onCreateFolder={() => {
-                      setCreateFolderDialogOpen(true);
+                      openCreateFolderDialog();
                       setDrawerOpen(false);
                     }}
                     onUploadFile={() => {
-                      setUploadDialogOpen(true);
+                      openUploadDialog();
                       setDrawerOpen(false);
                     }}
                     selectionMode={selectionMode}
@@ -1457,223 +1278,24 @@ const FileManager = () => {
             </>
           )}
 
-          {/* 정렬/선택/보기모드 */}
-          <Box sx={{ px: 2, py: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-            <IconButton
-              onClick={(e) => setSortMenuAnchor(e.currentTarget)}
-              title="정렬"
-            >
-              <SortIcon />
-            </IconButton>
-
-            <IconButton
-              color={selectionMode ? 'primary' : 'default'}
-              onClick={handleToggleSelectionMode}
-              title={selectionMode ? '선택 모드' : '선택'}
-              sx={{
-                backgroundColor: selectionMode ? 'primary.main' : 'transparent',
-                color: selectionMode ? 'primary.contrastText' : 'inherit',
-                '&:hover': {
-                  backgroundColor: selectionMode ? 'primary.dark' : 'action.hover',
-                },
-              }}
-            >
-              {selectionMode ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />}
-            </IconButton>
-
-            {selectionMode && (
-              <>
-                {isMobile ? (
-                  <>
-                    <IconButton size="small" onClick={handleSelectAll} title="모두 선택">
-                      <SelectAllIcon />
-                    </IconButton>
-                    <IconButton size="small" onClick={handleDeselectAll} title="모두 해제">
-                      <DeselectIcon />
-                    </IconButton>
-                    <Typography variant="caption" sx={{ ml: 1, fontSize: '0.75rem' }}>
-                      {selectedFiles.size}개
-                    </Typography>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      size="small"
-                      startIcon={<SelectAllIcon />}
-                      onClick={handleSelectAll}
-                    >
-                      모두 선택
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<DeselectIcon />}
-                      onClick={handleDeselectAll}
-                    >
-                      모두 해제
-                    </Button>
-                    <Typography variant="body2" sx={{ ml: 1 }}>
-                      {selectedFiles.size}개 선택됨
-                    </Typography>
-                  </>
-                )}
-              </>
-            )}
-
-            <Box sx={{ flexGrow: 1 }} />
-            <Menu
-              anchorEl={sortMenuAnchor}
-              open={Boolean(sortMenuAnchor)}
-              onClose={() => setSortMenuAnchor(null)}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'left',
-              }}
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'left',
-              }}
-            >
-              <Box sx={{ px: 2, py: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                  이름
-                </Typography>
-                <RadioGroup
-                  value={sortMode}
-                  onChange={(e) => {
-                    setSortMode(e.target.value);
-                    setSortMenuAnchor(null);
-                  }}
-                >
-                  <FormControlLabel
-                    value={SORT_MODES.NAME_ASC}
-                    control={<Radio size="small" />}
-                    label="오름차순"
-                  />
-                  <FormControlLabel
-                    value={SORT_MODES.NAME_DESC}
-                    control={<Radio size="small" />}
-                    label="내림차순"
-                  />
-                </RadioGroup>
-              </Box>
-              <Divider />
-              <Box sx={{ px: 2, py: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                  수정 날짜
-                </Typography>
-                <RadioGroup
-                  value={sortMode}
-                  onChange={(e) => {
-                    setSortMode(e.target.value);
-                    setSortMenuAnchor(null);
-                  }}
-                >
-                  <FormControlLabel
-                    value={SORT_MODES.DATE_ASC}
-                    control={<Radio size="small" />}
-                    label="오름차순"
-                  />
-                  <FormControlLabel
-                    value={SORT_MODES.DATE_DESC}
-                    control={<Radio size="small" />}
-                    label="내림차순"
-                  />
-                </RadioGroup>
-              </Box>
-            </Menu>
-
-            {/* 보기 모드 버튼 */}
-            {selectionMode ? (
-              <>
-                <IconButton
-                  onClick={(e) => setViewModeMenuAnchor(e.currentTarget)}
-                  title="보기 모드"
-                >
-                  {viewMode === VIEW_MODES.LIST && <ViewStreamIcon />}
-                  {viewMode === VIEW_MODES.GRID && <ViewModuleIcon />}
-                  {viewMode === VIEW_MODES.DETAIL && <ViewListIcon />}
-                </IconButton>
-                <Menu
-                  anchorEl={viewModeMenuAnchor}
-                  open={Boolean(viewModeMenuAnchor)}
-                  onClose={() => setViewModeMenuAnchor(null)}
-                  anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'right',
-                  }}
-                  transformOrigin={{
-                    vertical: 'top',
-                    horizontal: 'right',
-                  }}
-                >
-                  <MenuItem
-                    onClick={() => {
-                      setViewMode(VIEW_MODES.LIST);
-                      setViewModeMenuAnchor(null);
-                    }}
-                    selected={viewMode === VIEW_MODES.LIST}
-                  >
-                    <ListItemIcon>
-                      <ViewStreamIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText>리스트 보기</ListItemText>
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setViewMode(VIEW_MODES.GRID);
-                      setViewModeMenuAnchor(null);
-                    }}
-                    selected={viewMode === VIEW_MODES.GRID}
-                  >
-                    <ListItemIcon>
-                      <ViewModuleIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText>그리드 보기</ListItemText>
-                  </MenuItem>
-                  {!isMobile && (
-                    <MenuItem
-                      onClick={() => {
-                        setViewMode(VIEW_MODES.DETAIL);
-                        setViewModeMenuAnchor(null);
-                      }}
-                      selected={viewMode === VIEW_MODES.DETAIL}
-                    >
-                      <ListItemIcon>
-                        <ViewListIcon fontSize="small" />
-                      </ListItemIcon>
-                      <ListItemText>상세 보기</ListItemText>
-                    </MenuItem>
-                  )}
-                </Menu>
-              </>
-            ) : (
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <IconButton
-                  color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-                  onClick={() => setViewMode(VIEW_MODES.LIST)}
-                  title="목록 보기"
-                >
-                  <ViewStreamIcon />
-                </IconButton>
-                <IconButton
-                  color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-                  onClick={() => setViewMode(VIEW_MODES.GRID)}
-                  title="그리드 보기"
-                >
-                  <ViewModuleIcon />
-                </IconButton>
-                {!isMobile && (
-                  <IconButton
-                    color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
-                    onClick={() => setViewMode(VIEW_MODES.DETAIL)}
-                    title="상세 보기"
-                  >
-                    <ViewListIcon />
-                  </IconButton>
-                )}
-              </Box>
-            )}
-          </Box>
+          <FileManagerControls
+            isMobile={isMobile}
+            selectionMode={selectionMode}
+            handleToggleSelectionMode={handleToggleSelectionMode}
+            handleSelectAll={handleSelectAll}
+            handleDeselectAll={handleDeselectAll}
+            selectedFiles={selectedFiles}
+            setSortMenuAnchor={setSortMenuAnchor}
+            sortMenuAnchor={sortMenuAnchor}
+            sortMode={sortMode}
+            setSortMode={setSortMode}
+            saveSortMode={saveSortMode}
+            setViewModeMenuAnchor={setViewModeMenuAnchor}
+            viewModeMenuAnchor={viewModeMenuAnchor}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            saveViewMode={saveViewMode}
+          />
 
           {/* 뒤로가기 버튼 (데스크톱 전용) */}
           {!isMobile && (() => {
@@ -2021,14 +1643,14 @@ const FileManager = () => {
 
       <UploadDialog
         open={uploadDialogOpen}
-        onClose={() => setUploadDialogOpen(false)}
+        onClose={closeUploadDialog}
         currentPath={currentPath}
         onUploadStart={handleUploadStart}
       />
 
       <CreateFolderDialog
         open={createFolderDialogOpen}
-        onClose={() => setCreateFolderDialogOpen(false)}
+        onClose={closeCreateFolderDialog}
         onComplete={handleCreateFolderComplete}
         currentPath={currentPath}
         onProgress={updateProgress}
@@ -2037,7 +1659,7 @@ const FileManager = () => {
       <FilePreviewDialog
         open={previewDialogOpen}
         onClose={() => {
-          setPreviewDialogOpen(false);
+          closePreviewDialog();
           setSelectedFile(null);
         }}
         file={selectedFile}
@@ -2135,101 +1757,15 @@ const FileManager = () => {
       </Snackbar>
 
       {selectionMode && selectedFiles.size > 0 && (
-        <Paper
-          elevation={8}
-          sx={{
-            position: 'fixed',
-            bottom: isMobile ? 0 : 24,
-            left: isMobile ? 0 : '50%',
-            right: isMobile ? 0 : 'auto',
-            transform: isMobile ? 'none' : 'translateX(-50%)',
-            width: isMobile ? '100%' : 'auto',
-            display: 'flex',
-            gap: isMobile ? 0.5 : 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: isMobile ? 1 : 1.5,
-            borderRadius: isMobile ? 0 : 3,
-            zIndex: 1000,
-            backgroundColor: 'background.paper',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-            paddingBottom: isMobile ? 'calc(8px + env(safe-area-inset-bottom))' : 1.5,
-          }}
-        >
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              mr: isMobile ? 0.5 : 1, 
-              fontWeight: 500, 
-              minWidth: isMobile ? 'auto' : '60px',
-              fontSize: isMobile ? '0.875rem' : '0.875rem',
-            }}
-          >
-            {selectedFiles.size}개
-          </Typography>
-          <IconButton
-            color="primary"
-            size={isMobile ? "medium" : "small"}
-            onClick={handleBulkMove}
-            disabled={!hasWritePermission}
-            title="이동"
-            sx={{ 
-              backgroundColor: 'primary.main',
-              color: 'white',
-              '&:hover': { backgroundColor: 'primary.dark' },
-              '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
-            }}
-          >
-            <MoveIcon fontSize={isMobile ? "medium" : "small"} />
-          </IconButton>
-          <IconButton
-            color="primary"
-            size={isMobile ? "medium" : "small"}
-            onClick={handleBulkCopy}
-            title="복사"
-            sx={{ 
-              backgroundColor: 'primary.main',
-              color: 'white',
-              '&:hover': { backgroundColor: 'primary.dark' },
-            }}
-          >
-            <CopyIcon fontSize={isMobile ? "medium" : "small"} />
-          </IconButton>
-          <IconButton
-            color="primary"
-            size={isMobile ? "medium" : "small"}
-            onClick={handleBulkDownload}
-            title="다운로드"
-            sx={{ 
-              backgroundColor: 'primary.main',
-              color: 'white',
-              '&:hover': { backgroundColor: 'primary.dark' },
-            }}
-          >
-            <DownloadIcon fontSize={isMobile ? "medium" : "small"} />
-          </IconButton>
-          <IconButton
-            color="error"
-            size={isMobile ? "medium" : "small"}
-            onClick={() => {
-              const filePaths = Array.from(selectedFiles);
-              if (filePaths.length > 0) {
-                setBulkDeleteFilePaths(filePaths);
-                setBulkDeleteDialogOpen(true);
-              }
-            }}
-            disabled={!hasWritePermission}
-            title="삭제"
-            sx={{ 
-              backgroundColor: 'error.main',
-              color: 'white',
-              '&:hover': { backgroundColor: 'error.dark' },
-              '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
-            }}
-          >
-            <DeleteIcon fontSize={isMobile ? "medium" : "small"} />
-          </IconButton>
-        </Paper>
+        <BulkActionToolbar
+          isMobile={isMobile}
+          selectedFiles={selectedFiles}
+          handleBulkMove={handleBulkMove}
+          handleBulkCopy={handleBulkCopy}
+          handleBulkDownload={handleBulkDownload}
+          openBulkDeleteDialog={openBulkDeleteDialog}
+          hasWritePermission={hasWritePermission}
+        />
       )}
 
       <FileOperationProgress
@@ -2269,12 +1805,8 @@ const FileManager = () => {
       {/* Mobile FAB */}
       {isMobile && !selectionMode && (
         <MobileFAB
-          onUpload={() => {
-            setUploadDialogOpen(true);
-          }}
-          onCreateFolder={() => {
-            setCreateFolderDialogOpen(true);
-          }}
+          onUpload={openUploadDialog}
+          onCreateFolder={openCreateFolderDialog}
           hasWritePermission={hasWritePermission}
         />
       )}
@@ -2283,20 +1815,14 @@ const FileManager = () => {
       {isMobile && (
         <FileActionSheet
           open={actionSheetOpen}
-          onClose={() => {
-            setActionSheetOpen(false);
-            setActionSheetFile(null);
-          }}
+          onClose={closeActionSheet}
           file={actionSheetFile}
           hasWritePermission={hasWritePermission}
           user={user}
           onDownload={handleActionSheetDownload}
           onRename={() => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
-              setMobileRenameFile(actionSheetFile);
-              setRenameNewName(actionSheetFile.basename);
-              setRenameDialogOpen(true);
+              openRenameDialog(actionSheetFile);
             }
           }}
           onMove={() => {
@@ -2319,29 +1845,22 @@ const FileManager = () => {
           }}
           onDelete={() => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
-              setMobileDeleteFile(actionSheetFile);
-              setDeleteDialogOpen(true);
+              openDeleteDialog(actionSheetFile);
             }
           }}
           onShare={() => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
-              setMobileShareFile(actionSheetFile);
-              setShareDialogOpen(true);
+              openShareDialog(actionSheetFile);
             }
           }}
           onShareLink={() => {
             if (actionSheetFile) {
-              setMobileShareFile(actionSheetFile);
-              setShareDialogOpen(true);
+              openShareDialog(actionSheetFile);
             }
           }}
           onManageShared={() => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
-              setMobileSharedManageFile(actionSheetFile);
-              setSharedFolderManageDialogOpen(true);
+              openSharedFolderManageDialog(actionSheetFile);
             }
           }}
           onPreview={() => {
@@ -2349,14 +1868,12 @@ const FileManager = () => {
               const filename = actionSheetFile.basename || actionSheetFile.name;
               const canPreviewFile = canPreview(filename);
               setSelectedFile({ ...actionSheetFile, name: filename, canPreview: canPreviewFile });
-              setPreviewDialogOpen(true);
+              openPreviewDialog();
             }
           }}
           onProperties={() => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (다이얼로그가 닫혀도 유지)
-              setMobilePropertiesFile(actionSheetFile);
-              setPropertiesDialogOpen(true);
+              openPropertiesDialog(actionSheetFile);
             }
           }}
         />
@@ -2365,12 +1882,7 @@ const FileManager = () => {
       {/* Rename Dialog */}
       <Dialog 
         open={renameDialogOpen} 
-        onClose={() => {
-          setRenameDialogOpen(false);
-          setRenameNewName('');
-          setRenameError('');
-          setMobileRenameFile(null);
-        }}
+        onClose={closeRenameDialog}
         fullScreen={isMobile}
       >
         <DialogTitle>이름 변경</DialogTitle>
@@ -2397,12 +1909,7 @@ const FileManager = () => {
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => {
-              setRenameDialogOpen(false);
-              setRenameNewName('');
-              setRenameError('');
-              setMobileRenameFile(null);
-            }} 
+            onClick={closeRenameDialog} 
             disabled={renameLoading}
           >
             취소
@@ -2420,10 +1927,7 @@ const FileManager = () => {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         open={deleteDialogOpen}
-        onClose={() => {
-          setDeleteDialogOpen(false);
-          setMobileDeleteFile(null);
-        }}
+        onClose={closeDeleteDialog}
         onConfirm={handleDelete}
         title="삭제 확인"
         message={`정말로 "${(mobileDeleteFile || actionSheetFile)?.basename}"을(를) 삭제하시겠습니까?`}
@@ -2437,10 +1941,7 @@ const FileManager = () => {
       {(mobileShareFile || actionSheetFile) && (
         <ShareDialog
           open={shareDialogOpen}
-          onClose={() => {
-            setShareDialogOpen(false);
-            setMobileShareFile(null);
-          }}
+          onClose={closeShareDialog}
           folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
           folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
           user={user}
@@ -2455,10 +1956,7 @@ const FileManager = () => {
       {(mobileSharedManageFile || actionSheetFile) && (
         <SharedFolderManageDialog
           open={sharedFolderManageDialogOpen}
-          onClose={() => {
-            setSharedFolderManageDialogOpen(false);
-            setMobileSharedManageFile(null);
-          }}
+          onClose={closeSharedFolderManageDialog}
           folderPath={(mobileSharedManageFile || actionSheetFile)?.path}
           folderName={(mobileSharedManageFile || actionSheetFile)?.basename || (mobileSharedManageFile || actionSheetFile)?.name}
           directHasReadPermission={
@@ -2478,10 +1976,7 @@ const FileManager = () => {
       {(mobilePropertiesFile || actionSheetFile) && (
         <FilePropertiesDialog
           open={propertiesDialogOpen}
-          onClose={() => {
-            setPropertiesDialogOpen(false);
-            setMobilePropertiesFile(null);
-          }}
+          onClose={closePropertiesDialog}
           file={mobilePropertiesFile || actionSheetFile}
         />
       )}
@@ -2489,10 +1984,7 @@ const FileManager = () => {
       {/* Bulk Delete Confirmation Dialog */}
       <ConfirmDialog
         open={bulkDeleteDialogOpen}
-        onClose={() => {
-          setBulkDeleteDialogOpen(false);
-          setBulkDeleteFilePaths([]);
-        }}
+        onClose={closeBulkDeleteDialog}
         onConfirm={handleBulkDeleteConfirm}
         title="삭제 확인"
         message={`선택한 ${bulkDeleteFilePaths.length}개의 파일/폴더를 삭제하시겠습니까?`}

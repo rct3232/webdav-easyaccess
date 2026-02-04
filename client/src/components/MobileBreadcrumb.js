@@ -9,6 +9,7 @@ import {
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { normalizePath } from '../utils/pathUtils';
 
 /**
  * Mobile-friendly breadcrumb navigation component
@@ -25,12 +26,6 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
         try {
           const response = await axios.get(`/api/permissions/user/${user?.id}`);
           const userBaseFolder = `/${user?.username || ''}`;
-          
-          // 경로 정규화 함수
-          const normalizePath = (path) => {
-            if (!path || path === '/') return '/';
-            return path.endsWith('/') ? path.slice(0, -1) : path;
-          };
           
           // 자기 자신의 폴더 제외
           const sharedFolders = response.data.filter(perm => {
@@ -101,11 +96,6 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
     if (!user?.is_admin && !currentPath.startsWith(homePath)) {
       // FolderPickerDialog의 breadcrumb 로직과 동일하게 처리
       // 권한이 없는 부모 경로만 제외하고, 권한이 있는 경로는 계층 구조 유지
-      const normalizePath = (path) => {
-        if (!path || path === '/') return '/';
-        return path.endsWith('/') ? path.slice(0, -1) : path;
-      };
-      
       const normalizedCurrentPath = normalizePath(currentPath);
       const pathParts = normalizedCurrentPath.split('/').filter(Boolean);
       

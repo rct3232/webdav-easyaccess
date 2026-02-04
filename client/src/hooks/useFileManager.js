@@ -31,7 +31,7 @@ export const useFileManager = (user, options = {}) => {
   const [loading, setLoading] = useState(true);
   const [sortMode, setSortMode] = useState(() => getSortMode());
   const [webdavUrl, setWebdavUrl] = useState('');
-  const [hasWritePermission, setHasWritePermission] = useState(true);
+  const [hasWritePermission, setHasWritePermission] = useState(false);
   const requestIdRef = useRef(0);
   const prevPathRef = useRef(currentPath);
   
@@ -199,6 +199,13 @@ export const useFileManager = (user, options = {}) => {
       if (currentPath === '/__shared__' || currentPath === '/__recent__') {
         setHasWritePermission(false);
       } else {
+        // user가 설정되지 않았으면 권한 체크 건너뛰기
+        if (!user) {
+          // 초기 로딩 중이므로 권한 체크 대기
+          // user가 설정되면 이 useEffect가 다시 실행됨
+          return;
+        }
+        
         // 현재 경로의 쓰기 권한 확인
         const loadPermission = async () => {
           try {

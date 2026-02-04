@@ -1567,7 +1567,6 @@ const FileManager = () => {
                   }
                   if (isMobile) {
                     setActionSheetFile(file);
-                    setActionSheetOpen(true);
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);
@@ -1594,7 +1593,6 @@ const FileManager = () => {
                   }
                   if (isMobile) {
                     setActionSheetFile(file);
-                    setActionSheetOpen(true);
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);
@@ -1621,7 +1619,6 @@ const FileManager = () => {
                   }
                   if (isMobile) {
                     setActionSheetFile(file);
-                    setActionSheetOpen(true);
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);

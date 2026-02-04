@@ -49,12 +49,25 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
-      if (e.cancelable) e.preventDefault();
       touchMovedRef.current.set(file.path, false);
+      
+      // 터치 이벤트에서 좌표 추출 (touches 배열 사용)
+      const touch = e.touches?.[0] || e.changedTouches?.[0] || {};
+      const syntheticEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        target: e.target,
+        currentTarget: e.currentTarget,
+        cancelable: false,
+        preventDefault: () => {},
+      };
+      
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          onContextMenu(e, file);
+          onContextMenu(syntheticEvent, file);
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -115,6 +128,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
+        const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
         
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={index}>
@@ -122,7 +136,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               data-file-path={file.path}
               {...dragHandlers}
               {...dropHandlers}
-              {...getLongPressHandlers(file, canOpenMenu)}
+              {...longPressHandlers}
               sx={{
                 cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
                 '&:hover': {

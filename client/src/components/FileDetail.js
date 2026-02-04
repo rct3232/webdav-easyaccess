@@ -47,13 +47,26 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
     if (!isMobile || selectionMode) return {};
     
     const handleTouchStart = (e) => {
-      if (e.cancelable) e.preventDefault();
       touchMovedRef.current.set(file.path, false);
+      
+      // 터치 이벤트에서 좌표 추출 (touches 배열 사용)
+      const touch = e.touches?.[0] || e.changedTouches?.[0] || {};
+      const syntheticEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        target: e.target,
+        currentTarget: e.currentTarget,
+        cancelable: false,
+        preventDefault: () => {},
+      };
+      
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
           if (canOpenMenu) {
-            onContextMenu(e, file);
+            onContextMenu(syntheticEvent, file);
           }
         }
       }, 500);

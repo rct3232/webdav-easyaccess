@@ -1741,12 +1741,14 @@ const FileManager = () => {
         onMove={(file) => {
           setContextMenu(null);
           setMobilePickerFile(file);
+          setMobilePickerAction('move');
           setFolderPickerAction('move');
           setFolderPickerOpen(true);
         }}
         onCopy={(file) => {
           setContextMenu(null);
           setMobilePickerFile(file);
+          setMobilePickerAction('copy');
           setFolderPickerAction('copy');
           setFolderPickerOpen(true);
         }}

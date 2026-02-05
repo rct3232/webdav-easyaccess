@@ -1728,17 +1728,39 @@ const FileManager = () => {
         contextMenu={contextMenu}
         onClose={() => setContextMenu(null)}
         file={selectedFile}
-        onActionComplete={handleOperationComplete}
         user={user}
-        currentPath={currentPath}
-        onMessage={setDropMessage}
         hasWritePermission={hasWritePermission}
-        onProgress={updateProgress}
-        onProcessingStart={(paths, type) => {
-          markProcessing(paths, type);
+        onDownload={(file) => {
+          setContextMenu(null);
+          handleFileDownloadOp(file);
         }}
-        onProcessingEnd={(paths) => {
-          clearProcessing(paths);
+        onRename={(file) => {
+          setContextMenu(null);
+          openRenameDialog(file);
+        }}
+        onMove={(file) => {
+          setContextMenu(null);
+          setMobilePickerFile(file);
+          setFolderPickerAction('move');
+          setFolderPickerOpen(true);
+        }}
+        onCopy={(file) => {
+          setContextMenu(null);
+          setMobilePickerFile(file);
+          setFolderPickerAction('copy');
+          setFolderPickerOpen(true);
+        }}
+        onShare={(file) => {
+          setContextMenu(null);
+          openShareDialog(file);
+        }}
+        onManageShared={(file) => {
+          setContextMenu(null);
+          openSharedFolderManageDialog(file);
+        }}
+        onDelete={(file) => {
+          setContextMenu(null);
+          openDeleteDialog(file);
         }}
       />
 

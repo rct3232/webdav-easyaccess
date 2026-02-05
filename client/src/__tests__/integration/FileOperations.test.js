@@ -1,7 +1,5 @@
 import React from 'react';
-import { renderWithProviders, screen, waitFor, fireEvent, act } from '../../test-utils';
-import { http, HttpResponse } from 'msw';
-import { server } from '../../mocks/server';
+import { renderWithProviders, screen, fireEvent } from '../../test-utils';
 import FileContextMenu from '../../components/FileContextMenu';
 
 describe('File Operations Integration Tests', () => {
@@ -23,193 +21,76 @@ describe('File Operations Integration Tests', () => {
     contextMenu: { mouseX: 100, mouseY: 100 },
     onClose: jest.fn(),
     file: mockFile,
-    onActionComplete: jest.fn(),
     user: mockUser,
-    currentPath: '/',
-    onMessage: jest.fn(),
-    onProgress: jest.fn(),
     hasWritePermission: true,
-    onProcessingStart: jest.fn(),
-    onProcessingEnd: jest.fn(),
+    onDownload: jest.fn(),
+    onRename: jest.fn(),
+    onMove: jest.fn(),
+    onCopy: jest.fn(),
+    onShare: jest.fn(),
+    onManageShared: jest.fn(),
+    onDelete: jest.fn(),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Use modern fake timers for better compatibility
-    jest.useFakeTimers();
-    
-    // Ensure folder list returns an array to avoid filter errors
-    server.use(
-      http.get('/api/files/list', () => {
-        return HttpResponse.json([]);
-      }),
-      http.get('/api/folders/list', () => {
-        return HttpResponse.json({ folders: [] });
-      }),
-      http.get('/api/permissions/user/:userId', () => {
-        return HttpResponse.json([]);
-      })
-    );
-  });
-
-  afterEach(() => {
-    act(() => {
-      jest.runOnlyPendingTimers();
-    });
-    jest.useRealTimers();
   });
 
   describe('File Delete', () => {
-    it('should delete a file successfully', async () => {
-      renderWithProviders(<FileContextMenu {...defaultProps} />);
-
-      // Click delete button
-      const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
-      fireEvent.click(deleteMenuItem);
-      expect(defaultProps.onClose).toHaveBeenCalled();
-
-      // Confirm delete
-      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
-      fireEvent.click(confirmDeleteButton);
-
-      // Wait for delete confirmation
-      await waitFor(() => {
-        expect(defaultProps.onActionComplete).toHaveBeenCalled();
-      });
-    });
-
-    it('should handle delete errors', async () => {
-      // Mock delete failure
-      server.use(
-        http.delete('/api/files/delete', () => {
-          return new HttpResponse(JSON.stringify({ error: 'Forbidden' }), {
-            status: 403,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
-      );
-
+    it('should call onClose and onDelete with file when delete is clicked', () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
       fireEvent.click(deleteMenuItem);
+
       expect(defaultProps.onClose).toHaveBeenCalled();
-
-      // Confirm delete
-      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
-      fireEvent.click(confirmDeleteButton);
-
-      await waitFor(() => {
-        expect(defaultProps.onProgress).toHaveBeenCalledWith(
-          expect.objectContaining({
-            type: 'delete',
-            status: 'error',
-          })
-        );
-      }, { timeout: 3000 });
+      expect(defaultProps.onDelete).toHaveBeenCalledWith(mockFile);
     });
   });
 
   describe('File Rename', () => {
-    it('should rename a file successfully', async () => {
-      renderWithProviders(<FileContextMenu {...defaultProps} />);
-
-      // Click rename button
-      const renameMenuItem = screen.getByRole('menuitem', { name: '이름 변경' });
-      fireEvent.click(renameMenuItem);
-      expect(defaultProps.onClose).toHaveBeenCalled();
-
-      // Wait for dialog
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      // Enter new name
-      const input = screen.getByDisplayValue('test.txt');
-      fireEvent.change(input, { target: { value: 'renamed.txt' } });
-
-      // Submit
-      const submitButton = screen.getByText('변경');
-      fireEvent.click(submitButton);
-
-      await waitFor(() => {
-        expect(defaultProps.onActionComplete).toHaveBeenCalled();
-      });
-    });
-
-    it('should validate empty file name', async () => {
+    it('should call onClose and onRename with file when rename is clicked', () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       const renameMenuItem = screen.getByRole('menuitem', { name: '이름 변경' });
       fireEvent.click(renameMenuItem);
+
       expect(defaultProps.onClose).toHaveBeenCalled();
-
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      const input = screen.getByDisplayValue('test.txt');
-      fireEvent.change(input, { target: { value: '' } });
-
-      const submitButton = screen.getByText('변경');
-      fireEvent.click(submitButton);
-
-      // Dialog should still be open (validation failed)
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(defaultProps.onRename).toHaveBeenCalledWith(mockFile);
     });
   });
 
   describe('File Move/Copy', () => {
-    it('should open folder picker for move operation', async () => {
+    it('should call onClose and onMove with file when move is clicked', () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       const moveButton = screen.getByText('이동');
       fireEvent.click(moveButton);
 
       expect(defaultProps.onClose).toHaveBeenCalled();
+      expect(defaultProps.onMove).toHaveBeenCalledWith(mockFile);
     });
 
-    it('should open folder picker for copy operation', async () => {
+    it('should call onClose and onCopy with file when copy is clicked', () => {
       renderWithProviders(<FileContextMenu {...defaultProps} />);
 
       const copyButton = screen.getByText('복사');
       fireEvent.click(copyButton);
 
       expect(defaultProps.onClose).toHaveBeenCalled();
+      expect(defaultProps.onCopy).toHaveBeenCalledWith(mockFile);
     });
   });
 
-  describe('Progress Tracking', () => {
-    it('should call processing callbacks during delete operation', async () => {
-      const onProcessingStart = jest.fn();
-      const onProcessingEnd = jest.fn();
-      const onActionComplete = jest.fn();
-      
-      renderWithProviders(
-        <FileContextMenu 
-          {...defaultProps} 
-          onProcessingStart={onProcessingStart}
-          onProcessingEnd={onProcessingEnd}
-          onActionComplete={onActionComplete}
-        />
-      );
+  describe('File Download', () => {
+    it('should call onClose and onDownload with file when download is clicked', () => {
+      renderWithProviders(<FileContextMenu {...defaultProps} />);
 
-      // Trigger delete operation
-      const deleteMenuItem = screen.getByRole('menuitem', { name: '삭제' });
-      fireEvent.click(deleteMenuItem);
+      const downloadMenuItem = screen.getByRole('menuitem', { name: '다운로드' });
+      fireEvent.click(downloadMenuItem);
+
       expect(defaultProps.onClose).toHaveBeenCalled();
-
-      const confirmDeleteButton = await screen.findByRole('button', { name: '삭제' });
-      fireEvent.click(confirmDeleteButton);
-
-      // Wait for action to complete
-      await waitFor(() => {
-        expect(onActionComplete).toHaveBeenCalled();
-      }, { timeout: 5000 });
-      
-      // Processing callbacks should have been called
-      expect(onProcessingStart).toHaveBeenCalledWith([mockFile.path], 'delete');
-      expect(onProcessingEnd).toHaveBeenCalledWith([mockFile.path]);
+      expect(defaultProps.onDownload).toHaveBeenCalledWith(mockFile);
     });
   });
 
@@ -219,11 +100,9 @@ describe('File Operations Integration Tests', () => {
         <FileContextMenu {...defaultProps} hasWritePermission={false} />
       );
 
-      // Write operations should be disabled
       const deleteButton = screen.getByText('삭제');
       const moveButton = screen.getByText('이동');
 
-      // Check if buttons have disabled class (MUI style)
       expect(deleteButton.closest('li')).toHaveClass('Mui-disabled');
       expect(moveButton.closest('li')).toHaveClass('Mui-disabled');
     });
@@ -233,7 +112,6 @@ describe('File Operations Integration Tests', () => {
         <FileContextMenu {...defaultProps} hasWritePermission={false} />
       );
 
-      // Download should still be available and not disabled
       const downloadButton = screen.getByText('다운로드');
       expect(downloadButton).toBeInTheDocument();
       expect(downloadButton.closest('li')).not.toHaveClass('Mui-disabled');

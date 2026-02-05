@@ -110,10 +110,14 @@ export const AuthProvider = ({ children }) => {
       
       sessionStorage.setItem('token', newToken);
       setToken(newToken);
-      setUser(userData);
+      const normalizedUser = {
+        ...userData,
+        is_admin: Boolean(userData.is_admin),
+      };
+      setUser(normalizedUser);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       
-      return { success: true, user: userData };
+      return { success: true, user: normalizedUser };
     } catch (error) {
       const errorData = error.response?.data || {};
       return { 

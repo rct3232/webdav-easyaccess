@@ -2,7 +2,15 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Settings = require('../models/Settings');
-const { generateToken, authenticateToken } = require('../utils/auth');
+const {
+  generateToken,
+  authenticateToken,
+  generateRefreshTokenId,
+  addRefreshToken,
+  validateRefreshToken,
+  deleteAllRefreshTokensForUser,
+  REFRESH_TOKEN_EXPIRES_IN_DAYS,
+} = require('../utils/auth');
 const { sendRegistrationPendingEmail } = require('../utils/email');
 const { ensureDefaultAdmin, ensureDirs } = require('../store/bootstrap');
 
@@ -174,21 +182,39 @@ router.post('/login', async (req, res) => {
     }
 
     const token = generateToken(user);
+    const refreshTokenId = generateRefreshTokenId();
+    const refreshExpiresAt = Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000;
+    addRefreshToken(refreshTokenId, user.id, refreshExpiresAt);
     clearLoginFailures(limit.key);
 
     res.json({
       message: '로그인 성공',
       token,
-      user: { 
-        id: user.id, 
-        username: user.username, 
+      refreshToken: refreshTokenId,
+      user: {
+        id: user.id,
+        username: user.username,
         email: user.email,
         is_admin: user.is_admin,
-        status: user.status
+        status: user.status,
       },
     });
   } catch (error) {
     res.status(500).json({ error: '로그인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+  }
+});
+
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    const user = await validateRefreshToken(refreshToken);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+    const token = generateToken(user);
+    return res.json({ token });
+  } catch (error) {
+    res.status(500).json({ error: '토큰 갱신 중 문제가 발생했습니다.' });
   }
 });
 

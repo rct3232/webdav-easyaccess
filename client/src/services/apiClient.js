@@ -58,19 +58,31 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized - token expired or invalid
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      // Clear token and redirect to login
-      sessionStorage.removeItem('token');
-      window.location.href = '/login';
-      return Promise.reject(error);
-    }
+    // 401 or 403: try refresh once if we have a refresh token, then retry or redirect
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
+      const refreshToken = sessionStorage.getItem('refreshToken');
+      if (refreshToken) {
+        originalRequest._retry = true;
+        try {
+          // Use axios directly so this call does not go through apiClient interceptors
+          const refreshRes = await axios.post('/api/auth/refresh', { refreshToken });
+          const newToken = refreshRes.data?.token;
+          if (newToken) {
+            sessionStorage.setItem('token', newToken);
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
+            return apiClient(originalRequest);
+          }
+        } catch (refreshErr) {
+          // Refresh failed; fall through to clear and redirect
+        }
+      }
 
-    // Handle 403 Forbidden
-    if (error.response?.status === 403) {
-      // Error message is already in error.response.data.error
+      // No refresh token or refresh failed: clear and redirect to login
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('refreshToken');
+      window.location.href = '/login';
       return Promise.reject(error);
     }
 

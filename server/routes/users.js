@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { authenticateToken } = require('../utils/auth');
+const { authenticateToken, deleteAllRefreshTokensForUser } = require('../utils/auth');
 const { asyncHandler, notFoundError, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
 
 // Get all users (admin only - simplified for now)
@@ -49,7 +49,9 @@ router.put('/:id/password', authenticateToken, asyncHandler(async (req, res) => 
     throw validationError('Password is required');
   }
 
-  await User.updatePassword(req.params.id, password);
+  const userId = parseInt(req.params.id, 10);
+  await User.updatePassword(userId, password);
+  deleteAllRefreshTokensForUser(userId);
   res.json({ message: 'Password updated successfully' });
 }));
 

@@ -30,12 +30,16 @@ async function requireUser(req, res, next) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    // Skip userStore if authenticateToken already set req.user.full (e.g. from cache)
+    if (req.user.full && typeof req.user.full === 'object') {
+      return next();
+    }
+
     const user = await User.findById(req.user.id);
     if (!user) {
       throw notFoundError('User not found');
     }
 
-    // Attach full user object to request
     req.user.full = user;
     next();
   } catch (error) {

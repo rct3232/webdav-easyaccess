@@ -29,12 +29,13 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(() => {
     try {
       sessionStorage.removeItem('token');
+      sessionStorage.removeItem('refreshToken');
     } catch {
       // ignore
     }
-    // Cleanup legacy persistence from older versions.
     try {
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
     } catch {
       // ignore
     }
@@ -106,9 +107,10 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const response = await axios.post('/api/auth/login', { username, password });
-      const { token: newToken, user: userData } = response.data;
-      
+      const { token: newToken, refreshToken: newRefreshToken, user: userData } = response.data;
+
       sessionStorage.setItem('token', newToken);
+      if (newRefreshToken) sessionStorage.setItem('refreshToken', newRefreshToken);
       setToken(newToken);
       const normalizedUser = {
         ...userData,
@@ -116,7 +118,7 @@ export const AuthProvider = ({ children }) => {
       };
       setUser(normalizedUser);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      
+
       return { success: true, user: normalizedUser };
     } catch (error) {
       const errorData = error.response?.data || {};
@@ -138,12 +140,13 @@ export const AuthProvider = ({ children }) => {
         return { success: true, status: 'pending' };
       }
 
-      const { token: newToken, user: userData } = response.data;
+      const { token: newToken, refreshToken: newRefreshToken, user: userData } = response.data;
       sessionStorage.setItem('token', newToken);
+      if (newRefreshToken) sessionStorage.setItem('refreshToken', newRefreshToken);
       setToken(newToken);
       setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      
+
       return { success: true };
     } catch (error) {
       return { success: false, error: error.response?.data?.error || 'Registration failed' };

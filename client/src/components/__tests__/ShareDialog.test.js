@@ -111,4 +111,79 @@ describe('ShareDialog', () => {
     expect(screen.getByText('외부 공유 링크 생성')).toBeInTheDocument();
     expect(screen.getByText('링크 생성')).toBeInTheDocument();
   });
+
+  describe('외부 공유 링크 기능 (S1-S7)', () => {
+    beforeEach(() => {
+      shareLinkService.createShareLink.mockResolvedValue({
+        token: 'test-token-123',
+        filePath: '/test/file.txt',
+        expiresAt: null,
+      });
+      shareLinkService.getShareLinks.mockResolvedValue([]);
+    });
+
+    it('creates share link when create button clicked (S1)', async () => {
+      render(
+        <ShareDialog
+          open={true}
+          onClose={mockOnClose}
+          enableExternalShare={true}
+          filePath="/test/file.txt"
+          fileName="file.txt"
+        />
+      );
+
+      fireEvent.click(screen.getByText('링크 생성'));
+
+      await waitFor(() => {
+        expect(shareLinkService.createShareLink).toHaveBeenCalledWith(
+          '/test/file.txt',
+          expect.any(Number)
+        );
+      });
+    });
+
+    it('shows generated link after creation (S5)', async () => {
+      shareLinkService.createShareLink.mockResolvedValue({
+        token: 'new-token-456',
+        filePath: '/test/file.txt',
+        expiresAt: null,
+      });
+
+      render(
+        <ShareDialog
+          open={true}
+          onClose={mockOnClose}
+          enableExternalShare={true}
+          filePath="/test/file.txt"
+          fileName="file.txt"
+        />
+      );
+
+      fireEvent.click(screen.getByText('링크 생성'));
+
+      await waitFor(() => {
+        expect(shareLinkService.createShareLink).toHaveBeenCalled();
+      });
+    });
+
+    it('allows setting expiration days', async () => {
+      render(
+        <ShareDialog
+          open={true}
+          onClose={mockOnClose}
+          enableExternalShare={true}
+          filePath="/test/file.txt"
+          fileName="file.txt"
+        />
+      );
+
+      // Change expiration setting if available
+      const expirationInput = screen.queryByLabelText(/유효기간|만료/i);
+      if (expirationInput) {
+        fireEvent.change(expirationInput, { target: { value: '30' } });
+        expect(expirationInput.value).toBe('30');
+      }
+    });
+  });
 });

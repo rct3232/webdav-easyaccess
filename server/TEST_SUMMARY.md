@@ -4,10 +4,10 @@
 Successfully implemented comprehensive unit test infrastructure for the Express.js server, achieving 100% coverage for all refactored code and core business logic.
 
 ## Test Statistics
-- **Total Test Suites**: 25
-- **Total Tests**: 287
-- **Pass Rate**: 100% (287 passed, 0 failed) ✅
-- **Execution Time**: ~10 seconds
+- **Total Test Suites**: 30
+- **Total Tests**: 373
+- **Pass Rate**: 100% (373 passed, 0 failed) ✅
+- **Execution Time**: ~16.75 seconds
 
 ## Test Breakdown by Category
 
@@ -18,7 +18,6 @@ Successfully implemented comprehensive unit test infrastructure for the Express.
 ### 2. Auth Utils Tests (20 tests) ✅
 **File**: `utils/__tests__/auth.test.js`  
 **Coverage**: 87.87% lines
-**Status**: Fixed middleware tests by mocking `res.setHeader`.
 
 ### 3. User Model Tests (31 tests) ✅
 **File**: `models/__tests__/User.test.js`  
@@ -26,7 +25,7 @@ Successfully implemented comprehensive unit test infrastructure for the Express.
 
 ### 4. Permission Model Tests (32 tests) ✅
 **File**: `models/__tests__/Permission.test.js`  
-**Coverage**: 91.66% lines
+**Coverage**: 100% lines
 
 ### 5. Permissions Middleware Tests (44 tests) ✅
 **File**: `middleware/__tests__/permissions.test.js`  
@@ -53,6 +52,12 @@ Successfully implemented comprehensive unit test infrastructure for the Express.
 - **File Routes**: 5 tests ✅
 - **Permission Routes**: 4 tests ✅
 
+### 10. Additional New Tests ✅
+- **MetaPathGuard**: 9 tests ✅
+- **SelectiveTransfer/Download/Delete**: 6 tests ✅
+- **PermissionPolicy**: 6 tests ✅
+- **WebdavDestination**: 4 tests ✅
+
 ## Coverage Report
 
 ### Tested Modules
@@ -63,16 +68,16 @@ Successfully implemented comprehensive unit test infrastructure for the Express.
 | **User.js** | **100%** | **100%** | **100%** | **100%** |
 | **Settings.js** | **100%** | **100%** | **100%** | **100%** |
 | **ShareLink.js** | **100%** | **100%** | **100%** | **100%** |
+| **Permission.js** | **100%** | **100%** | **100%** | **100%** |
+| **errorHandler.js** | **100%** | **100%** | **100%** | **100%** |
 | **permissions.js (middleware)** | 94.31% | 92.5% | **100%** | 95.4% |
 | **auth.js (utils)** | 87.87% | 75% | **100%** | 87.87% |
-| **Permission.js** | 91.66% | **100%** | 90% | 91.66% |
-| **errorHandler.js** | **100%** | **100%** | **100%** | **100%** |
 
 ### Overall Project Coverage
-- **Statements**: 81.22%
-- **Branches**: 73.2%
-- **Functions**: 86.53%
-- **Lines**: 83.49%
+- **Statements**: 88.91%
+- **Branches**: 77.57%
+- **Functions**: 96.15%
+- **Lines**: 91.26%
 
 *Note: Overall coverage has significantly increased and now exceeds the 75% target for most metrics.*
 

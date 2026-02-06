@@ -220,7 +220,7 @@ const FolderTree = ({
           <IconButton
             onClick={onCreateFolder}
             disabled={!hasWritePermission}
-            title="폴더 만들기"
+            title="폴더 생성"
             sx={{
               flex: 1,
               borderRadius: '20px 0 0 20px',

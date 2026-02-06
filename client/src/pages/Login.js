@@ -45,8 +45,8 @@ const Login = () => {
     const result = await login(username, password);
     
     if (result.success) {
-      // Navigate to user's home directory to avoid cache issues
-      const userHomeDir = result.user?.username ? `/files/${result.user.username}` : '/files';
+      // Admin always has root (/) as home; others go to /files/{username}
+      const userHomeDir = result.user?.is_admin ? '/files' : (result.user?.username ? `/files/${result.user.username}` : '/files');
       navigate(userHomeDir);
     } else {
       if (result.status === 'pending') {
@@ -106,6 +106,7 @@ const Login = () => {
               label="사용자명"
               variant="outlined"
               margin="normal"
+              name="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -117,6 +118,7 @@ const Login = () => {
               type="password"
               variant="outlined"
               margin="normal"
+              name="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

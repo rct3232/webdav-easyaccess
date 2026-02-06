@@ -94,6 +94,39 @@ describe('AuthContext', () => {
     expect(sessionStorage.getItem('token')).toBe(mockToken);
   });
 
+  it('should return user data on successful login (INIT1)', async () => {
+    axios.get.mockRejectedValue(new Error('No token')); // initial check
+
+    let loginResult;
+    const TestLoginComponent = () => {
+      const { login } = useAuth();
+      const handleLogin = async () => {
+        loginResult = await login('testuser', 'password');
+      };
+      return <button onClick={handleLogin}>Login</button>;
+    };
+
+    render(
+      <AuthProvider>
+        <TestLoginComponent />
+      </AuthProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Login'));
+    });
+
+    await waitFor(() => {
+      expect(loginResult).toMatchObject({
+        success: true,
+        user: expect.objectContaining({
+          id: 1,
+          username: 'testuser',
+        }),
+      });
+    });
+  });
+
   it('handles logout', async () => {
     sessionStorage.setItem('token', 'valid-token');
     render(

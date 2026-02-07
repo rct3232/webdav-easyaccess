@@ -235,6 +235,12 @@ const FileManager = () => {
       setViewMode(VIEW_MODES.LIST);
     }
   }, [isMobile, viewMode]);
+
+  // 디렉토리 이동 시 선택 모드 해제
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedFiles(new Set());
+  }, [currentPath]);
   const {
     uploadDialogOpen, openUploadDialog, closeUploadDialog,
     createFolderDialogOpen, openCreateFolderDialog, closeCreateFolderDialog,

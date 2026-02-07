@@ -85,14 +85,15 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
       }
       
       const result = await uploadFileWithPath(file, targetPath, relativePath, onConflict);
-      results.push({ file, result, success: true });
+      const skipped = result?.skipped === true;
+      results.push({ file, result, success: true, skipped });
       
       if (onProgress) {
         onProgress({
           current: i + 1,
           total: files.length,
           currentFile: relativePath || file.name,
-          status: 'success',
+          status: skipped ? 'skipped' : 'success',
         });
       }
     } catch (error) {
@@ -261,9 +262,11 @@ export const getWebDAVInfo = async () => {
   return response.data;
 };
 
-export const checkConflicts = async (operations) => {
+export const checkConflicts = async (operations, options = {}) => {
+  const { limit = true } = options;
   const response = await post(`${API_BASE}/check-conflicts`, {
     operations,
+    limit,
   });
   return response.data.conflicts;
 };

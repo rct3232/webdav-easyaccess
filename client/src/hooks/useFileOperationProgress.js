@@ -131,6 +131,26 @@ export const useFileOperationProgress = () => {
           if (typeof existing.skippedTruncated === 'boolean' || typeof progressItem.skippedTruncated === 'boolean') {
             merged.skippedTruncated = Boolean(existing.skippedTruncated || progressItem.skippedTruncated);
           }
+          if (Array.isArray(existing.skippedPathsByConflict) || Array.isArray(progressItem.skippedPathsByConflict)) {
+            const a = Array.isArray(existing.skippedPathsByConflict) ? existing.skippedPathsByConflict : [];
+            const b = Array.isArray(progressItem.skippedPathsByConflict) ? progressItem.skippedPathsByConflict : [];
+            merged.skippedPathsByConflict = Array.from(new Set([...a, ...b]));
+          }
+          if (Array.isArray(existing.skippedPathsByPermission) || Array.isArray(progressItem.skippedPathsByPermission)) {
+            const a = Array.isArray(existing.skippedPathsByPermission) ? existing.skippedPathsByPermission : [];
+            const b = Array.isArray(progressItem.skippedPathsByPermission) ? progressItem.skippedPathsByPermission : [];
+            merged.skippedPathsByPermission = Array.from(new Set([...a, ...b]));
+          }
+          if (typeof existing.skippedCountByConflict === 'number' || typeof progressItem.skippedCountByConflict === 'number') {
+            const a = typeof existing.skippedCountByConflict === 'number' ? existing.skippedCountByConflict : 0;
+            const b = typeof progressItem.skippedCountByConflict === 'number' ? progressItem.skippedCountByConflict : 0;
+            merged.skippedCountByConflict = Math.max(a, b);
+          }
+          if (typeof existing.skippedCountByPermission === 'number' || typeof progressItem.skippedCountByPermission === 'number') {
+            const a = typeof existing.skippedCountByPermission === 'number' ? existing.skippedCountByPermission : 0;
+            const b = typeof progressItem.skippedCountByPermission === 'number' ? progressItem.skippedCountByPermission : 0;
+            merged.skippedCountByPermission = Math.max(a, b);
+          }
           
           return prev.map(item => item.id === progressItem.id ? merged : item);
         } else {

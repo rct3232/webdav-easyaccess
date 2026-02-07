@@ -667,9 +667,11 @@ const FileManager = () => {
                 ? 'uploading'
                 : progress.status === 'success'
                   ? 'completed'
-                  : progress.status === 'error'
-                    ? 'error'
-                    : 'pending';
+                  : progress.status === 'skipped'
+                    ? 'skipped'
+                    : progress.status === 'error'
+                      ? 'error'
+                      : 'pending';
             fileItems[idx] = {
               ...fileItems[idx],
               status,
@@ -678,16 +680,17 @@ const FileManager = () => {
           }
 
           const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+          const skippedCount = fileItems.filter((it) => it.status === 'skipped').length;
           const failCount = fileItems.filter((it) => it.status === 'error').length;
 
           updateProgress({
             ...baseProgress,
             status: 'processing',
-            progress: completedCount,
+            progress: completedCount + skippedCount,
             total: progress.total,
             current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
             error: failCount > 0 ? `${failCount}개 실패` : undefined,
-            keepOnError: failCount > 0 || undefined,
+            keepOnError: failCount > 0 || skippedCount > 0 || undefined,
             fileItems: [...fileItems],
           });
         },
@@ -695,6 +698,7 @@ const FileManager = () => {
       );
 
       const completedCount = fileItems.filter((it) => it.status === 'completed').length;
+      const skippedCount = fileItems.filter((it) => it.status === 'skipped').length;
       const failCount = fileItems.filter((it) => it.status === 'error').length;
       const failedItems = (errors || []).map((e) => ({
         fileName: e.relativePath || e.file?.name || 'unknown',
@@ -705,12 +709,23 @@ const FileManager = () => {
         updateProgress({
           ...baseProgress,
           status: 'error',
-          progress: completedCount,
+          progress: completedCount + skippedCount,
           total: filesToUpload.length,
           current: '완료 (일부 실패)',
           error: `${failCount}개 파일 업로드 실패`,
           keepOnError: true,
           failedItems: failedItems.length > 0 ? failedItems : undefined,
+          fileItems: [...fileItems],
+        });
+      } else if (skippedCount > 0) {
+        updateProgress({
+          ...baseProgress,
+          status: 'warning',
+          progress: completedCount + skippedCount,
+          total: filesToUpload.length,
+          current: '완료',
+          error: `건너뛴 항목: ${skippedCount}개`,
+          keepOnError: true,
           fileItems: [...fileItems],
         });
       } else {
@@ -764,15 +779,8 @@ const FileManager = () => {
     const { filesToUpload, targetPath } = uploadConflictData;
     setUploadConflictData(null);
     
-    let filteredFiles = filesToUpload;
-    if (resolution === 'skip') {
-      const { conflicts } = uploadConflictData;
-      const conflictNames = new Set(conflicts.map(c => c.sourcePath));
-      filteredFiles = filesToUpload.filter(f => !conflictNames.has(f.relativePath || f.file.name));
-    }
-    
-    if (filteredFiles.length > 0) {
-      await executeExplorerUpload(filteredFiles, targetPath, resolution);
+    if (filesToUpload.length > 0) {
+      await executeExplorerUpload(filesToUpload, targetPath, resolution);
     }
   }, [uploadConflictData, executeExplorerUpload]);
 

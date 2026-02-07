@@ -134,6 +134,8 @@ export const useBulkOperations = (
     const allSucceeded = [];
     const allFailed = [];
     const allSkipped = [];
+    const allSkippedByConflict = [];
+    const allSkippedByPermission = [];
 
     // Process chunks with concurrency control
     for (let i = 0; i < chunks.length; i += maxConcurrent) {
@@ -172,7 +174,13 @@ export const useBulkOperations = (
             if (result.failed) {
               allFailed.push(...(Array.isArray(result.failed) ? result.failed : []));
             }
-            if (result.skipped) {
+            if (result.skippedByConflict) {
+              allSkippedByConflict.push(...(Array.isArray(result.skippedByConflict) ? result.skippedByConflict : []));
+            }
+            if (result.skippedByPermission) {
+              allSkippedByPermission.push(...(Array.isArray(result.skippedByPermission) ? result.skippedByPermission : []));
+            }
+            if (result.skipped && !result.skippedByConflict && !result.skippedByPermission) {
               allSkipped.push(...(Array.isArray(result.skipped) ? result.skipped : []));
             }
           } else {
@@ -207,7 +215,14 @@ export const useBulkOperations = (
       }
     }
 
-    return { succeeded: allSucceeded, failed: allFailed, skipped: allSkipped };
+    const skipped = allSkipped.length > 0 ? allSkipped : [...allSkippedByConflict, ...allSkippedByPermission];
+    return {
+      succeeded: allSucceeded,
+      failed: allFailed,
+      skipped,
+      skippedByConflict: allSkippedByConflict,
+      skippedByPermission: allSkippedByPermission,
+    };
   }, [retryOperation, isRetryableError]);
 
   const handleBulkDelete = useCallback(async (retryData = null, onConfirm = null) => {
@@ -475,7 +490,11 @@ export const useBulkOperations = (
 
     const successCount = batchResults.succeeded.length;
     const failCount = batchResults.failed.length;
-    const skippedSet = new Set(batchResults.skipped);
+    const skippedByConflict = batchResults.skippedByConflict || [];
+    const skippedByPermission = batchResults.skippedByPermission || [];
+    const hasSkippedByConflict = skippedByConflict.length > 0;
+    const hasSkippedByPermission = skippedByPermission.length > 0;
+    const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
     const failedItems = batchResults.failed.map(f => {
       const path = f.sourcePath || f.path || (typeof f === 'string' ? f : '');
       return {
@@ -484,28 +503,37 @@ export const useBulkOperations = (
       };
     });
 
+    let skippedErrorMsg;
+    if (hasAnySkipped) {
+      const parts = [];
+      if (hasSkippedByConflict) parts.push(`건너뛴 항목: ${skippedByConflict.length}개`);
+      if (hasSkippedByPermission) parts.push(`권한으로 제외된 항목: ${skippedByPermission.length}개`);
+      skippedErrorMsg = parts.join(', ');
+    }
+
     updateProgressWithRetry(progressId, {
       type: action,
-      status: failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'),
+      status: failCount > 0 ? 'error' : (hasAnySkipped ? 'warning' : 'completed'),
       progress: successCount,
       total: filePaths.length,
       current: failCount > 0 
         ? `(${successCount}/${filePaths.length}) ${actionText} 완료 (${failCount}개 실패)` 
         : `(${successCount}/${filePaths.length}) ${actionText} 완료`,
       name: `${filePaths.length}개 항목 ${actionName}`,
-      error: failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined),
+      error: failCount > 0 ? `${failCount}개 실패` : skippedErrorMsg,
       failedItems: failedItems.length > 0 ? failedItems : undefined,
-      keepOnError: failCount > 0 || skippedSet.size > 0,
-      skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
-      skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
+      keepOnError: failCount > 0 || hasAnySkipped,
+      skippedPathsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
+      skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
+      skippedPathsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
+      skippedCountByPermission: hasSkippedByPermission ? skippedByPermission.length : undefined,
     }, retryDataObj);
 
     if (successCount > 0) {
       // 이동 성공 시 최근항목 경로 업데이트
       if (action === 'move') {
         try {
-          const skippedPaths = Array.from(skippedSet);
-          const hasSkipped = skippedPaths.length > 0;
+          const hasSkipped = hasAnySkipped;
           
           if (!hasSkipped) {
             // 이동된 파일/폴더별로 최근항목 업데이트
@@ -537,7 +565,7 @@ export const useBulkOperations = (
       }
     }
 
-    if (failCount === 0 && skippedSet.size === 0) {
+    if (failCount === 0 && !hasAnySkipped) {
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
         clearProcessing(filePaths);

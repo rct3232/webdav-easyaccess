@@ -78,9 +78,9 @@ const upload = multer({
   preservePath: true,
 });
 
-async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = [], depth = 0, cache = {}) {
-  // Limit depth and total conflicts
-  if (depth > 5 || conflicts.length > 100) return conflicts;
+async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = [], depth = 0, cache = {}, opts = {}) {
+  const limit = opts.limit !== false;
+  if (limit && (depth > 5 || conflicts.length > 100)) return conflicts;
 
   const getItems = async (p) => {
     if (cache[p] !== undefined) return cache[p];
@@ -115,28 +115,30 @@ async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = 
     if (!exists) return conflicts;
   }
 
-  // Add the current path if it exists
-  conflicts.push({
-    path: destinationPath,
-    type: isDestDir ? 'directory' : 'file',
-    sourcePath: sourcePath
-  });
+  // conflict에 파일만 포함 (폴더는 conflict로 처리하지 않음)
+  if (!isDestDir) {
+    conflicts.push({
+      path: destinationPath,
+      type: 'file',
+      sourcePath: sourcePath
+    });
+  }
 
-  if (conflicts.length > 100) return conflicts;
+  if (limit && conflicts.length > 100) return conflicts;
 
   // If both are directories, check children
   if (isSourceDir && isDestDir && sourceItems && destItems) {
     const destItemNames = new Set(destItems.map(item => item.basename));
 
     const itemResults = await Promise.all(sourceItems.map(async (item) => {
-      if (conflicts.length > 100) return;
-      
+      if (limit && conflicts.length > 100) return;
+
       if (destItemNames.has(item.basename)) {
         const childSourcePath = sourcePath === '/' ? '/' + item.basename : sourcePath + '/' + item.basename;
         const childDestPath = destinationPath === '/' ? '/' + item.basename : destinationPath + '/' + item.basename;
         
         if (item.type === 'directory') {
-          await checkConflictsRecursive(childSourcePath, childDestPath, conflicts, depth + 1, cache);
+          await checkConflictsRecursive(childSourcePath, childDestPath, conflicts, depth + 1, cache, opts);
         } else {
           conflicts.push({
             path: childDestPath,
@@ -151,12 +153,8 @@ async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = 
   return conflicts;
 }
 
-router.post('/check-conflicts', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { operations } = req.body; // [{ sourcePath, destinationPath, type }]
-  if (!operations || !Array.isArray(operations)) {
-    throw validationError('Operations array is required');
-  }
-
+async function getConflicts(operations, opts = {}) {
+  const limit = opts.limit !== false;
   const conflicts = [];
   const cache = {};
 
@@ -180,24 +178,22 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
     return exists;
   };
 
-  // Group upload operations by parent directory for faster checking
   const uploadOps = operations.filter(op => op.type === 'upload');
   const otherOps = operations.filter(op => op.type !== 'upload');
 
-  // Process upload operations in parallel
   await asyncLimitSettled(10, uploadOps, async (op) => {
-    if (conflicts.length > 100) return;
+    if (limit && conflicts.length > 100) return;
     const { sourcePath, destinationPath } = op;
     const parentPath = getParentPath(destinationPath);
     const fileName = path.posix.basename(destinationPath);
     const items = await getItems(parentPath);
-    
+
     if (items) {
       const item = items.find(i => i.basename === fileName);
-      if (item) {
+      if (item && item.type !== 'directory') {
         conflicts.push({
           path: destinationPath,
-          type: item.type === 'directory' ? 'directory' : 'file',
+          type: 'file',
           sourcePath: sourcePath || destinationPath
         });
       }
@@ -205,21 +201,32 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
       const exists = await getExists(destinationPath);
       if (exists) {
         const isDir = await isDirectoryPath(destinationPath);
-        conflicts.push({
-          path: destinationPath,
-          type: isDir ? 'directory' : 'file',
-          sourcePath: sourcePath || destinationPath
-        });
+        if (!isDir) {
+          conflicts.push({
+            path: destinationPath,
+            type: 'file',
+            sourcePath: sourcePath || destinationPath
+          });
+        }
       }
     }
   });
 
-  // Process other operations (move/copy) in parallel
   await asyncLimitSettled(5, otherOps, async (op) => {
-    if (conflicts.length > 100) return;
-    await checkConflictsRecursive(op.sourcePath, op.destinationPath, conflicts, 0, cache);
+    if (limit && conflicts.length > 100) return;
+    await checkConflictsRecursive(op.sourcePath, op.destinationPath, conflicts, 0, cache, opts);
   });
 
+  return conflicts;
+}
+
+router.post('/check-conflicts', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { operations, limit = true } = req.body;
+  if (!operations || !Array.isArray(operations)) {
+    throw validationError('Operations array is required');
+  }
+
+  const conflicts = await getConflicts(operations, { limit });
   res.json({ conflicts });
 }));
 
@@ -511,14 +518,14 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
 
   // Check if file already exists
   const fileExists = await pathExists(filePath);
-  
-  if (fileExists && onConflict !== 'overwrite') {
-    throw conflictError(`파일 업로드 실패: "${originalFilename}" 이름의 파일이 이미 존재합니다.`);
-  }
 
-  // If onConflict is 'skip' and file exists, we return success but don't actually upload
+  // If onConflict is 'skip' and file exists, return success without uploading
   if (fileExists && onConflict === 'skip') {
     return res.json({ message: 'File upload skipped', path: filePath, skipped: true });
+  }
+
+  if (fileExists && onConflict !== 'overwrite') {
+    throw conflictError(`파일 업로드 실패: "${originalFilename}" 이름의 파일이 이미 존재합니다.`);
   }
 
   // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
@@ -825,27 +832,13 @@ router.put('/move', authenticateToken, requireUser, normalizePathParam, checkMet
   }
 
   if (destExists && onConflict === 'skip') {
-    return res.json({ message: 'Move skipped', path: destinationPath, skipped: true });
+    const isDestDir = await isDirectoryPath(destinationPath);
+    if (!isDestDir) {
+      return res.json({ message: 'Move skipped', path: destinationPath, skipped: true });
+    }
   }
 
   if (isSourceDir) {
-    if (user.is_admin || isOwnerPath(user, normalizedSourcePath)) {
-      const overwrite = onConflict === 'overwrite';
-      await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-      
-      try {
-        await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }]);
-      } catch (permError) {
-        console.error('Failed to rewrite permissions after direct move:', permError);
-      }
-      
-      return res.json({
-        message: 'Directory moved successfully',
-        movedDirMappings: [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
-        skippedPaths: [],
-      });
-    }
-
     const canEnterDirectory = async (dirPath) => {
       if (user.is_admin || isOwnerPath(user, dirPath)) return true;
       return await hasDirectFolderPermission(user.id, dirPath, 'write');
@@ -957,16 +950,17 @@ router.put('/move', authenticateToken, requireUser, normalizePathParam, checkMet
 }));
 
 // Helper to handle onConflict in single operations
+// 폴더는 conflict 적용 안 함 (항상 merge), 파일만 skip/overwrite 적용
 const handleSingleOpConflict = async (destPath, onConflict) => {
   const destExists = await pathExists(destPath);
-  if (destExists) {
-    if (onConflict === 'skip') return 'skip';
-    if (onConflict !== 'overwrite') {
-      throw conflictError('대상 디렉토리에 같은 이름의 파일이 이미 존재합니다');
-    }
-    return 'overwrite';
+  if (!destExists) return 'none';
+  const isDestDir = await isDirectoryPath(destPath);
+  if (isDestDir) return 'none';
+  if (onConflict === 'skip') return 'skip';
+  if (onConflict !== 'overwrite') {
+    throw conflictError('대상 디렉토리에 같은 이름의 파일이 이미 존재합니다');
   }
-  return 'none';
+  return 'overwrite';
 };
 
 // Batch move endpoint
@@ -984,14 +978,31 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
   const results = {
     succeeded: [],
     failed: [],
-    skipped: [],
+    skippedByConflict: [],
+    skippedByPermission: [],
     movedDirMappings: []
   };
 
   const allMovedDirMappings = [];
 
+  let movesToProcess = moves;
+  if (onConflict === 'skip') {
+    const operations = moves.map(m => ({
+      sourcePath: m.sourcePath,
+      destinationPath: m.destinationPath,
+      type: 'move'
+    }));
+    const conflicts = await getConflicts(operations, { limit: false });
+    const conflictPaths = new Set(
+      conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
+    );
+    const excluded = moves.filter(m => conflictPaths.has(normalizePath(m.destinationPath)));
+    excluded.forEach(m => results.skippedByConflict.push(m.sourcePath));
+    movesToProcess = moves.filter(m => !conflictPaths.has(normalizePath(m.destinationPath)));
+  }
+
   // Concurrency 1: WebDAV MOVE fails with 500 when multiple MOVE requests run in parallel (single move works).
-  await asyncLimitSettled(1, moves, async (move) => {
+  await asyncLimitSettled(1, movesToProcess, async (move) => {
     const { sourcePath, destinationPath } = move;
     
     if (!sourcePath || !destinationPath) {
@@ -1012,7 +1023,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
         : canWriteFileByParentSync(normalizedSourcePath);
       
       if (!hasSourcePermission) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
         return;
       }
 
@@ -1020,32 +1031,17 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
       const hasDestPermission = canWriteDirSync(destParentPath);
       
       if (!hasDestPermission) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
         return;
       }
 
       const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict);
       if (conflictStatus === 'skip') {
-        results.skipped.push(sourcePath);
+        results.skippedByConflict.push(sourcePath);
         return;
       }
 
       if (isSourceDir) {
-        if (user.is_admin || isOwnerPath(user, normalizedSourcePath)) {
-          const overwrite = onConflict === 'overwrite';
-          await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-          
-          try {
-            await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }]);
-            allMovedDirMappings.push({ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath });
-          } catch (permError) {
-            console.error('Failed to rewrite permissions after direct move:', permError);
-          }
-          
-          results.succeeded.push({ sourcePath, destinationPath });
-          return;
-        }
-
         const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
         const canTransferFile = (parentDir) => canWriteDirSync(parentDir);
 
@@ -1089,7 +1085,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
 
         results.succeeded.push({ sourcePath, destinationPath });
         if (result.skippedPaths && result.skippedPaths.length > 0) {
-          result.skippedPaths.forEach(p => results.skipped.push(p));
+          result.skippedPaths.forEach(p => results.skippedByConflict.push(p));
         }
       } else {
         const overwrite = onConflict === 'overwrite';
@@ -1100,7 +1096,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
       console.error(`Failed to move ${sourcePath} to ${destinationPath}:`, error);
       const errorStatus = error.status || error.response?.status;
       if (errorStatus === 403 || errorStatus === 401) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
       } else {
         results.failed.push({ 
           sourcePath, 
@@ -1111,11 +1107,14 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
     }
   });
 
+  const skipped = [...results.skippedByConflict, ...results.skippedByPermission];
   res.json({
     message: 'Batch move completed',
     succeeded: results.succeeded,
     failed: results.failed,
-    skipped: results.skipped,
+    skipped,
+    skippedByConflict: results.skippedByConflict,
+    skippedByPermission: results.skippedByPermission,
     movedDirMappings: allMovedDirMappings
   });
 }));
@@ -1151,23 +1150,6 @@ router.post('/copy', authenticateToken, requireUser, normalizePathParam, checkMe
   }
 
   if (isSourceDir) {
-    if (user.is_admin || isOwnerPath(user, sourcePath)) {
-      const overwrite = onConflict === 'overwrite';
-      await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-      
-      try {
-        await Permission.grant(req.user.id, normalizedDest, 'write');
-      } catch (permError) {
-        console.error('Failed to grant executor permissions after direct copy:', permError);
-      }
-      
-      return res.json({
-        message: 'Directory copied successfully',
-        createdDirs: [normalizedDest],
-        skippedPaths: [],
-      });
-    }
-
     const normalizedSource = normalizePath(sourcePath);
 
     const canEnterDirectory = async (dirPath) => {
@@ -1278,14 +1260,31 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
   const results = {
     succeeded: [],
     failed: [],
-    skipped: [],
+    skippedByConflict: [],
+    skippedByPermission: [],
     createdDirs: []
   };
 
   const allCreatedDirs = new Set();
 
+  let copiesToProcess = copies;
+  if (onConflict === 'skip') {
+    const operations = copies.map(c => ({
+      sourcePath: c.sourcePath,
+      destinationPath: c.destinationPath,
+      type: 'copy'
+    }));
+    const conflicts = await getConflicts(operations, { limit: false });
+    const conflictPaths = new Set(
+      conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
+    );
+    const excluded = copies.filter(c => conflictPaths.has(normalizePath(c.destinationPath)));
+    excluded.forEach(c => results.skippedByConflict.push(c.sourcePath));
+    copiesToProcess = copies.filter(c => !conflictPaths.has(normalizePath(c.destinationPath)));
+  }
+
   // Concurrency 1: WebDAV COPY fails with 500 when multiple COPY requests run in parallel (single copy works).
-  await asyncLimitSettled(1, copies, async (copy) => {
+  await asyncLimitSettled(1, copiesToProcess, async (copy) => {
     const { sourcePath, destinationPath } = copy;
     
     if (!sourcePath || !destinationPath) {
@@ -1305,7 +1304,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
         : canReadDirSync(path.posix.dirname(normalizedSource) || '/');
       
       if (!hasSourcePermission) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
         return;
       }
 
@@ -1314,38 +1313,23 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
       const hasDestPermission = canWriteDirSync(destParentPath);
       
       if (!hasDestPermission) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
         return;
       }
 
       const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict);
       if (conflictStatus === 'skip') {
-        results.skipped.push(sourcePath);
+        results.skippedByConflict.push(sourcePath);
         return;
       }
 
       if (isSourceDir) {
-        if (user.is_admin || isOwnerPath(user, sourcePath)) {
-          const overwrite = onConflict === 'overwrite';
-          await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-          
-          try {
-            await Permission.grant(req.user.id, normalizedDest, 'write');
-            allCreatedDirs.add(normalizedDest);
-          } catch (permError) {
-            console.error('Failed to grant executor permissions after direct copy:', permError);
-          }
-          
-          results.succeeded.push({ sourcePath, destinationPath });
-          return;
-        }
-
         const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
         const canTransferFile = (parentDir) => canReadDirSync(parentDir);
 
         const okRoot = canEnterDirectory(normalizedSource);
         if (!okRoot) {
-          results.skipped.push(sourcePath);
+          results.skippedByPermission.push(sourcePath);
           return;
         }
 
@@ -1369,7 +1353,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
 
         results.succeeded.push({ sourcePath, destinationPath });
         if (result.skippedPaths && result.skippedPaths.length > 0) {
-          result.skippedPaths.forEach(p => results.skipped.push(p));
+          result.skippedPaths.forEach(p => results.skippedByConflict.push(p));
         }
       } else {
         const overwrite = onConflict === 'overwrite';
@@ -1380,7 +1364,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
       console.error(`Failed to copy ${sourcePath} to ${destinationPath}:`, error);
       const errorStatus = error.status || error.response?.status;
       if (errorStatus === 403 || errorStatus === 401) {
-        results.skipped.push(sourcePath);
+        results.skippedByPermission.push(sourcePath);
       } else {
         results.failed.push({ 
           sourcePath, 
@@ -1391,11 +1375,14 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
     }
   });
 
+  const skipped = [...results.skippedByConflict, ...results.skippedByPermission];
   res.json({
     message: 'Batch copy completed',
     succeeded: results.succeeded,
     failed: results.failed,
-    skipped: results.skipped,
+    skipped,
+    skippedByConflict: results.skippedByConflict,
+    skippedByPermission: results.skippedByPermission,
     createdDirs: Array.from(allCreatedDirs)
   });
 }));

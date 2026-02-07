@@ -27,6 +27,7 @@ import {
   WarningAmber as WarningIcon,
   Refresh as RefreshIcon,
   Close as CloseIcon,
+  SkipNext as SkipNextIcon,
 } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 import { useResponsive } from '../hooks/useResponsive';
@@ -560,6 +561,11 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                                     color="success"
                                     sx={{ fontSize: 16 }}
                                   />
+                                ) : fileStatus === 'skipped' ? (
+                                  <Typography variant="caption" color="warning.main" sx={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <SkipNextIcon sx={{ fontSize: 16 }} />
+                                    건너뜀
+                                  </Typography>
                                 ) : fileStatus === 'error' ? (
                                   <ErrorIcon 
                                     fontSize="small" 
@@ -585,6 +591,10 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                                     <Typography variant="caption" color="success.main" sx={{ fontSize: 11 }}>
                                       완료
                                     </Typography>
+                                  ) : fileStatus === 'skipped' ? (
+                                    <Typography variant="caption" color="warning.main" sx={{ fontSize: 11 }}>
+                                      건너뜀
+                                    </Typography>
                                   ) : fileStatus === 'error' ? (
                                     <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
                                       {fileItem.error || '업로드 실패'}
@@ -607,62 +617,61 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                     </Box>
                   )}
 
-                  {/* 선택적 작업에서 제외된 경로 리스트 */}
-                  {(((typeof item.skippedCount === 'number' ? item.skippedCount : 0) > 0) ||
-                    (Array.isArray(item.skippedPaths) && item.skippedPaths.length > 0)) && (
+                  {/* 건너뛴 항목 (중복) */}
+                  {(Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0) && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                        <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                        <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main' }}>
+                          건너뛴 항목: {(item.skippedCountByConflict ?? item.skippedPathsByConflict.length)}개
+                        </Typography>
+                      </Box>
+                      <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+                        {item.skippedPathsByConflict.map((p, idx) => (
+                          <ListItem key={idx} sx={{ px: 0, py: 0.25 }} secondaryAction={<SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />}>
+                            <ListItemText
+                              primary={p}
+                              primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  )}
+
+                  {/* 권한으로 제외된 항목 (하위호환: skippedPaths만 있으면 권한 제외로 간주) */}
+                  {(() => {
+                    const hasSkippedByPermission = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0;
+                    const hasLegacySkipped = (typeof item.skippedCount === 'number' ? item.skippedCount : 0) > 0 || (Array.isArray(item.skippedPaths) && item.skippedPaths.length > 0);
+                    const hasSkippedByConflict = Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0;
+                    return (hasSkippedByPermission || (hasLegacySkipped && !hasSkippedByConflict));
+                  })() && (
                     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
                       {(() => {
-                        const skippedCount =
-                          typeof item.skippedCount === 'number'
-                            ? item.skippedCount
-                            : (Array.isArray(item.skippedPaths) ? item.skippedPaths.length : 0);
-                        const skippedPaths = Array.isArray(item.skippedPaths) ? item.skippedPaths : [];
-                        const truncated =
-                          Boolean(item.skippedTruncated) || (typeof item.skippedCount === 'number' && skippedPaths.length < item.skippedCount);
+                        const skippedPaths = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0
+                          ? item.skippedPathsByPermission
+                          : (Array.isArray(item.skippedPaths) ? item.skippedPaths : []);
+                        const skippedCount = typeof item.skippedCountByPermission === 'number'
+                          ? item.skippedCountByPermission
+                          : (typeof item.skippedCount === 'number' ? item.skippedCount : skippedPaths.length);
+                        const truncated = Boolean(item.skippedTruncated) || (typeof skippedCount === 'number' && skippedPaths.length < skippedCount);
                         return (
                           <>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                fontWeight: 'medium',
-                                mb: 1,
-                                display: 'block',
-                                color: 'warning.main',
-                              }}
-                            >
-                              제외된 항목: {skippedCount}개{truncated ? ' (일부만 표시됨)' : ''}
+                            <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main', mb: 1, display: 'block' }}>
+                              권한으로 제외된 항목: {skippedCount}개{truncated ? ' (일부만 표시됨)' : ''}
                             </Typography>
-                            <List
-                              dense
-                              sx={{
-                                py: 0,
-                                maxHeight: 140,
-                                overflowY: 'auto',
-                                scrollbarWidth: 'none',
-                                '&::-webkit-scrollbar': { display: 'none' },
-                              }}
-                            >
+                            <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
                               {skippedPaths.map((p, idx) => (
                                 <ListItem key={idx} sx={{ px: 0, py: 0.25 }}>
                                   <ListItemText
                                     primary={p}
-                                    primaryTypographyProps={{
-                                      variant: 'caption',
-                                      sx: {
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                      },
-                                    }}
+                                    primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
                                   />
                                 </ListItem>
                               ))}
                               {skippedPaths.length === 0 && (
                                 <ListItem sx={{ px: 0, py: 0.25 }}>
-                                  <ListItemText
-                                    primary="(목록 없음)"
-                                    primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
-                                  />
+                                  <ListItemText primary="(목록 없음)" primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }} />
                                 </ListItem>
                               )}
                             </List>

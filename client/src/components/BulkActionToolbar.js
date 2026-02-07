@@ -19,7 +19,10 @@ const BulkActionToolbar = ({
   handleBulkDownload,
   openBulkDeleteDialog,
   hasWritePermission,
+  disabled: bulkActionsDisabled = false,
 }) => {
+  const buttonDisabled = bulkActionsDisabled || !hasWritePermission;
+  const downloadDisabled = bulkActionsDisabled;
   return (
     <Paper
       elevation={8}
@@ -57,7 +60,7 @@ const BulkActionToolbar = ({
         color="primary"
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkMove}
-        disabled={!hasWritePermission}
+        disabled={buttonDisabled}
         title="이동"
         sx={{ 
           backgroundColor: 'primary.main',
@@ -72,11 +75,13 @@ const BulkActionToolbar = ({
         color="primary"
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkCopy}
+        disabled={buttonDisabled}
         title="복사"
         sx={{ 
           backgroundColor: 'primary.main',
           color: 'white',
           '&:hover': { backgroundColor: 'primary.dark' },
+          '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
         }}
       >
         <CopyIcon fontSize={isMobile ? "medium" : "small"} />
@@ -85,11 +90,13 @@ const BulkActionToolbar = ({
         color="primary"
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkDownload}
+        disabled={downloadDisabled}
         title="다운로드"
         sx={{ 
           backgroundColor: 'primary.main',
           color: 'white',
           '&:hover': { backgroundColor: 'primary.dark' },
+          '&.Mui-disabled': { backgroundColor: 'action.disabledBackground' },
         }}
       >
         <DownloadIcon fontSize={isMobile ? "medium" : "small"} />
@@ -103,7 +110,7 @@ const BulkActionToolbar = ({
             openBulkDeleteDialog(filePaths);
           }
         }}
-        disabled={!hasWritePermission}
+        disabled={buttonDisabled}
         title="삭제"
         sx={{ 
           backgroundColor: 'error.main',

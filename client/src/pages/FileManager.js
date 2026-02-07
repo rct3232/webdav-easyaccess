@@ -560,6 +560,15 @@ const FileManager = () => {
     { markProcessing, clearProcessing }
   );
 
+  const bulkMoveCopyInProgress = useMemo(() => {
+    if (folderPickerOpen && (folderPickerAction === 'move' || folderPickerAction === 'copy')) return true;
+    if (bulkConflictData != null) return true;
+    const hasActiveBulkMoveCopy = progressItems.some(
+      (item) => (item.type === 'move' || item.type === 'copy') && (item.status === 'preparing' || item.status === 'processing')
+    );
+    return !!hasActiveBulkMoveCopy;
+  }, [folderPickerOpen, folderPickerAction, bulkConflictData, progressItems]);
+
   // File upload hook
   const {
     handleRetryUpload: handleRetryUploadHook,
@@ -998,32 +1007,45 @@ const FileManager = () => {
   // Upload handlers - useFileUpload hook handles this
   const handleUploadStart = useCallback(async (files, uploadPath) => {
     closeUploadDialog();
-    
+
     if (!files || files.length === 0) return;
 
     const filesToUpload = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
 
-    // Check conflicts before upload
-    try {
-      const operations = filesToUpload.map(({ file, relativePath }) => {
-        const fileName = relativePath || file.name;
-        const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
-        return { sourcePath: fileName, destinationPath, type: 'upload' };
-      });
+    const operations = filesToUpload.map(({ file, relativePath }) => {
+      const fileName = relativePath || file.name;
+      const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
+      return { sourcePath: fileName, destinationPath, type: 'upload' };
+    });
 
+    const progressId = `upload_check_${Date.now()}`;
+    updateProgress({
+      id: progressId,
+      type: 'upload',
+      status: 'preparing',
+      progress: 0,
+      total: filesToUpload.length,
+      current: '충돌 확인 중...',
+      name: `${filesToUpload.length}개 파일 업로드`,
+    });
+
+    try {
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
+        updateProgress({ id: progressId, remove: true });
         setUploadConflictData({ filesToUpload, targetPath: uploadPath, conflicts });
         return;
       }
 
+      updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, uploadPath);
     } catch (error) {
       console.error('Upload conflict check failed:', error);
+      updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, uploadPath);
     }
-  }, [executeExplorerUpload, closeUploadDialog]);
+  }, [executeExplorerUpload, closeUploadDialog, updateProgress]);
 
   // Cancel upload handlers - wrap to pass progressItems
   const handleCancelUploadFileWrapper = useCallback((progressId, fileName) => {
@@ -1134,32 +1156,45 @@ const FileManager = () => {
     }
   };
 
-  const handleExplorerDrop = async (filesToUpload, targetPath) => {
+  const handleExplorerDrop = useCallback(async (filesToUpload, targetPath) => {
     const uploadPath = targetPath || currentPath;
-    
+
     if (!filesToUpload || filesToUpload.length === 0) return;
 
-    // Check conflicts before upload
-    try {
-      const operations = filesToUpload.map(({ file, relativePath }) => {
-        const fileName = relativePath || file.name;
-        const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
-        return { sourcePath: fileName, destinationPath, type: 'upload' };
-      });
+    const operations = filesToUpload.map(({ file, relativePath }) => {
+      const fileName = relativePath || file.name;
+      const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
+      return { sourcePath: fileName, destinationPath, type: 'upload' };
+    });
 
+    const progressId = `upload_check_${Date.now()}`;
+    updateProgress({
+      id: progressId,
+      type: 'upload',
+      status: 'preparing',
+      progress: 0,
+      total: filesToUpload.length,
+      current: '충돌 확인 중...',
+      name: `${filesToUpload.length}개 파일 업로드`,
+    });
+
+    try {
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
+        updateProgress({ id: progressId, remove: true });
         setUploadConflictData({ filesToUpload, targetPath, conflicts });
         return;
       }
 
+      updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, targetPath);
     } catch (error) {
       console.error('Upload conflict check failed:', error);
+      updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, targetPath);
     }
-  };
+  }, [currentPath, updateProgress, executeExplorerUpload]);
 
   // Handle drops on the entire file content area
   const handleContentAreaDragOver = (e) => {
@@ -1357,6 +1392,7 @@ const FileManager = () => {
             viewMode={viewMode}
             setViewMode={setViewMode}
             saveViewMode={saveViewMode}
+            selectionActionsDisabled={bulkMoveCopyInProgress}
           />
 
           {/* 뒤로가기 버튼 (데스크톱 전용) */}
@@ -1852,6 +1888,7 @@ const FileManager = () => {
           handleBulkDownload={handleBulkDownload}
           openBulkDeleteDialog={openBulkDeleteDialog}
           hasWritePermission={hasWritePermission}
+          disabled={bulkMoveCopyInProgress}
         />
       )}
 

@@ -7,6 +7,7 @@ import {
   Button,
   Box,
   Typography,
+  CircularProgress,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -34,6 +35,7 @@ const SharedFolderManageDialog = ({
   onActionComplete
 }) => {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [permissionInfo, setPermissionInfo] = useState({ hasRead: false, hasWrite: false });
   const [pendingRequest, setPendingRequest] = useState({
@@ -121,9 +123,11 @@ const SharedFolderManageDialog = ({
           read: { pending: false, id: null },
           write: { pending: false, id: null },
         });
+        setInitialLoading(false);
         return;
       }
 
+      setInitialLoading(true);
       try {
         const outbox = await listOutboxPermissionRequests({ status: 'pending' });
         const normalizedTarget = normalizeLocalPath(folderPath);
@@ -139,17 +143,18 @@ const SharedFolderManageDialog = ({
           write: { pending: Boolean(pendingWrite), id: pendingWrite?.id ?? null },
         });
       } catch (error) {
-        // 조용히 실패 처리 (요청 버튼은 기본 활성으로 둠)
         setPendingRequest({
           read: { pending: false, id: null },
           write: { pending: false, id: null },
         });
+      } finally {
+        setInitialLoading(false);
       }
     };
 
     loadPendingRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [open, folderPath, user]);
 
   const hasReadPermission =
     typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionInfo.hasRead;
@@ -310,11 +315,17 @@ const SharedFolderManageDialog = ({
       >
         <DialogTitle>공유 관리</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            폴더: {folderName}
-          </Typography>
-          
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              폴더: {folderName}
+            </Typography>
+
+            {initialLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {!hasReadPermission && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                 <Button
@@ -390,7 +401,9 @@ const SharedFolderManageDialog = ({
                 권한 반납
               </Button>
             )}
-          </Box>
+              </Box>
+            )}
+          </>
         </DialogContent>
         <DialogActions>
           {ownerExists === false && (

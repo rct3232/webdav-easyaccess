@@ -313,25 +313,57 @@ export const useFileOperations = ({
       ? selectedPath + file.basename
       : selectedPath + '/' + file.basename;
 
+    const operationType = operation === moveFile ? 'move' : 'copy';
+    const progressId = `${operationType}_check_${Date.now()}`;
+
+    if (setProcessingMap) {
+      markProcessing(setProcessingMap, file.path, operationType);
+    }
+    if (onProgress) {
+      onProgress({
+        id: progressId,
+        type: operationType,
+        status: 'preparing',
+        progress: 0,
+        total: 1,
+        current: '충돌 확인 중...',
+        name: `${file.basename || file.name || ''} ${operationName}`.trim(),
+      });
+    }
+
     try {
-      const conflicts = await checkConflicts([{ 
-        sourcePath: file.path, 
+      const conflicts = await checkConflicts([{
+        sourcePath: file.path,
         destinationPath: destPath,
-        type: operation === moveFile ? 'move' : 'copy'
+        type: operationType,
       }]);
 
       if (conflicts && conflicts.length > 0) {
+        if (onProgress) {
+          onProgress({ id: progressId, remove: true });
+        }
+        if (setProcessingMap) {
+          clearProcessing(setProcessingMap, file.path);
+        }
         setConflictData({ file, selectedPath, operation, operationName, actionVerb, context, conflicts });
         return;
       }
 
+      if (onProgress) {
+        onProgress({ id: progressId, remove: true });
+      }
       await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context);
     } catch (error) {
       console.error('Conflict check failed:', error);
-      // fallback to direct execution if conflict check fails
+      if (onProgress) {
+        onProgress({ id: progressId, remove: true });
+      }
+      if (setProcessingMap) {
+        clearProcessing(setProcessingMap, file.path);
+      }
       await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context);
     }
-  }, [onProgress, executeFileOperation]);
+  }, [onProgress, executeFileOperation, setProcessingMap]);
 
   /**
    * Handle file rename

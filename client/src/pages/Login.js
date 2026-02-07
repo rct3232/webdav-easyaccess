@@ -8,6 +8,7 @@ import {
   Typography,
   Box,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -19,18 +20,21 @@ const Login = () => {
   const [warning, setWarning] = useState('');
   const [loading, setLoading] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     const loadSettings = async () => {
+      setSettingsLoading(true);
       try {
         const response = await axios.get('/api/settings/public');
         setRegistrationEnabled(response.data.registration_enabled);
       } catch (error) {
         console.error('Failed to load settings:', error);
-        // Default to false if settings can't be loaded
         setRegistrationEnabled(false);
+      } finally {
+        setSettingsLoading(false);
       }
     };
     loadSettings();
@@ -100,49 +104,57 @@ const Login = () => {
             </Alert>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="사용자명"
-              variant="outlined"
-              margin="normal"
-              name="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoFocus
-            />
-            <TextField
-              fullWidth
-              label="비밀번호"
-              type="password"
-              variant="outlined"
-              margin="normal"
-              name="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              color="primary"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? '로그인 중...' : '로그인'}
-            </Button>
-            {registrationEnabled && (
-              <Box textAlign="center">
-                <Link to="/register" style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <Typography variant="body2" color="primary">
-                    계정이 없으신가요? 회원가입
-                  </Typography>
-                </Link>
-              </Box>
-            )}
-          </form>
+          {settingsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              <form onSubmit={handleSubmit}>
+                <TextField
+                  fullWidth
+                  label="사용자명"
+                  variant="outlined"
+                  margin="normal"
+                  name="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                />
+                <TextField
+                  fullWidth
+                  label="비밀번호"
+                  type="password"
+                  variant="outlined"
+                  margin="normal"
+                  name="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <Button
+                  type="submit"
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  sx={{ mt: 3, mb: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? '로그인 중...' : '로그인'}
+                </Button>
+                {registrationEnabled && (
+                  <Box textAlign="center">
+                    <Link to="/register" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <Typography variant="body2" color="primary">
+                        계정이 없으신가요? 회원가입
+                      </Typography>
+                    </Link>
+                  </Box>
+                )}
+              </form>
+            </>
+          )}
         </Paper>
       </Box>
     </Container>

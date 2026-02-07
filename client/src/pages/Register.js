@@ -8,6 +8,7 @@ import {
   Typography,
   Box,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import EmailNotificationMessage from '../components/EmailNotificationMessage';
@@ -22,16 +23,20 @@ const Register = () => {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     const loadSettings = async () => {
+      setSettingsLoading(true);
       try {
         const response = await axios.get('/api/settings/public');
         setEmailEnabled(response.data.email_enabled || false);
       } catch (error) {
         console.error('Failed to load settings:', error);
+      } finally {
+        setSettingsLoading(false);
       }
     };
     loadSettings();
@@ -119,65 +124,71 @@ const Register = () => {
             </Alert>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="사용자명"
-              variant="outlined"
-              margin="normal"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoFocus
-            />
-            <TextField
-              fullWidth
-              label="이메일"
-              type="email"
-              variant="outlined"
-              margin="normal"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <TextField
-              fullWidth
-              label="비밀번호"
-              type="password"
-              variant="outlined"
-              margin="normal"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <TextField
-              fullWidth
-              label="비밀번호 확인"
-              type="password"
-              variant="outlined"
-              margin="normal"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              color="primary"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading || success}
-            >
-              {loading ? '가입 중...' : '회원가입'}
-            </Button>
-            <Box textAlign="center">
-              <Link to="/login" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <Typography variant="body2" color="primary">
-                  이미 계정이 있으신가요? 로그인
-                </Typography>
-              </Link>
+          {settingsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
             </Box>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <TextField
+                fullWidth
+                label="사용자명"
+                variant="outlined"
+                margin="normal"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus
+              />
+              <TextField
+                fullWidth
+                label="이메일"
+                type="email"
+                variant="outlined"
+                margin="normal"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <TextField
+                fullWidth
+                label="비밀번호"
+                type="password"
+                variant="outlined"
+                margin="normal"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <TextField
+                fullWidth
+                label="비밀번호 확인"
+                type="password"
+                variant="outlined"
+                margin="normal"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                color="primary"
+                sx={{ mt: 3, mb: 2 }}
+                disabled={loading || success}
+              >
+                {loading ? '가입 중...' : '회원가입'}
+              </Button>
+              <Box textAlign="center">
+                <Link to="/login" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <Typography variant="body2" color="primary">
+                    이미 계정이 있으신가요? 로그인
+                  </Typography>
+                </Link>
+              </Box>
+            </form>
+          )}
         </Paper>
       </Box>
     </Container>

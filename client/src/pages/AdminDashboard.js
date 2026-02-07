@@ -60,6 +60,11 @@ const AdminDashboard = () => {
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => getShowHiddenFiles());
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [actionLoadingIds, setActionLoadingIds] = useState(new Set());
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [saveSettingsLoading, setSaveSettingsLoading] = useState(false);
+  const [createUserLoading, setCreateUserLoading] = useState(false);
 
   const loadPendingUsers = async () => {
     try {
@@ -97,6 +102,7 @@ const AdminDashboard = () => {
   };
 
   const handleSaveSettings = async () => {
+    setSaveSettingsLoading(true);
     try {
       await axios.put('/api/admin/settings', tempSettings);
       setMessage({ type: 'success', text: '설정이 저장되었습니다.' });
@@ -104,6 +110,8 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Failed to update settings:', error);
       setMessage({ type: 'error', text: '설정 저장에 실패했습니다.' });
+    } finally {
+      setSaveSettingsLoading(false);
     }
   };
 
@@ -141,33 +149,52 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([loadPendingUsers(), loadAllUsers(), loadSettings()]);
+      setInitialLoading(true);
+      try {
+        await Promise.all([loadPendingUsers(), loadAllUsers(), loadSettings()]);
+      } finally {
+        setInitialLoading(false);
+      }
     };
     loadData();
   }, []);
 
   const handleApprove = async (userId, username) => {
+    setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
       await axios.post(`/api/admin/users/${userId}/approve`);
       setMessage({ type: 'success', text: `${username} 계정이 승인되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '승인에 실패했습니다.' 
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || '승인에 실패했습니다.',
+      });
+    } finally {
+      setActionLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
       });
     }
   };
 
   const handleReject = async (userId, username) => {
+    setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
       await axios.post(`/api/admin/users/${userId}/reject`);
       setMessage({ type: 'success', text: `${username} 계정이 거절되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '거절에 실패했습니다.' 
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || '거절에 실패했습니다.',
+      });
+    } finally {
+      setActionLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
       });
     }
   };
@@ -178,17 +205,19 @@ const AdminDashboard = () => {
 
   const handleDeleteConfirm = async () => {
     const { userId, username } = deleteDialog;
-    setDeleteDialog({ open: false, userId: null, username: '' });
-    
+    setDeleteLoading(true);
     try {
       await axios.delete(`/api/admin/users/${userId}`);
+      setDeleteDialog({ open: false, userId: null, username: '' });
       setMessage({ type: 'success', text: `${username} 계정이 삭제되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '삭제에 실패했습니다.' 
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || '삭제에 실패했습니다.',
       });
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -223,25 +252,28 @@ const AdminDashboard = () => {
       return;
     }
 
+    setCreateUserLoading(true);
     try {
       await axios.post('/api/admin/users', {
         username: newUser.username,
         email: newUser.email,
         password: newUser.password,
       });
-      
-      setMessage({ 
-        type: 'success', 
-        text: `${newUser.username} 계정이 추가되었습니다. 사용자가 로그인하면 자동으로 홈 디렉토리로 이동합니다.` 
+
+      setMessage({
+        type: 'success',
+        text: `${newUser.username} 계정이 추가되었습니다. 사용자가 로그인하면 자동으로 홈 디렉토리로 이동합니다.`,
       });
       setCreateDialog({ open: false });
       setNewUser({ username: '', email: '', password: '', confirmPassword: '' });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.error || '사용자 추가에 실패했습니다.' 
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || '사용자 추가에 실패했습니다.',
       });
+    } finally {
+      setCreateUserLoading(false);
     }
   };
 
@@ -342,11 +374,12 @@ const AdminDashboard = () => {
               variant="contained"
               color="primary"
               onClick={handleSaveSettings}
-              disabled={!hasSettingsChanges}
+              disabled={!hasSettingsChanges || saveSettingsLoading}
               sx={{ ml: isMobile ? 1 : 2 }}
               size={isMobile ? "small" : "medium"}
+              startIcon={saveSettingsLoading ? <CircularProgress size={18} color="inherit" /> : null}
             >
-              저장
+              {saveSettingsLoading ? '저장 중...' : '저장'}
             </Button>
           ) : (
             <Button
@@ -364,7 +397,11 @@ const AdminDashboard = () => {
 
         {tab === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            {isMobile ? (
+            {initialLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, py: 6 }}>
+                <CircularProgress />
+              </Box>
+            ) : isMobile ? (
               // 모바일: Card 기반 레이아웃
               <Box sx={{ 
                 flex: 1, 
@@ -421,8 +458,9 @@ const AdminDashboard = () => {
                               variant="contained"
                               color="success"
                               size="small"
-                              startIcon={<CheckIcon />}
+                              startIcon={actionLoadingIds.has(user.id) ? <CircularProgress size={16} color="inherit" /> : <CheckIcon />}
                               onClick={() => handleApprove(user.id, user.username)}
+                              disabled={actionLoadingIds.has(user.id)}
                               sx={{ flex: 1 }}
                             >
                               승인
@@ -431,8 +469,9 @@ const AdminDashboard = () => {
                               variant="contained"
                               color="error"
                               size="small"
-                              startIcon={<CloseIcon />}
+                              startIcon={actionLoadingIds.has(user.id) ? <CircularProgress size={16} color="inherit" /> : <CloseIcon />}
                               onClick={() => handleReject(user.id, user.username)}
+                              disabled={actionLoadingIds.has(user.id)}
                               sx={{ flex: 1 }}
                             >
                               거절
@@ -506,25 +545,27 @@ const AdminDashboard = () => {
                           <TableCell align="center" onClick={(e) => e.stopPropagation()}>
                             {user.status === 'pending' ? (
                               <>
-                                <Button
-                                  variant="contained"
-                                  color="success"
-                                  size="small"
-                                  startIcon={<CheckIcon />}
-                                  onClick={() => handleApprove(user.id, user.username)}
-                                  sx={{ mr: 1 }}
-                                >
-                                  승인
-                                </Button>
-                                <Button
-                                  variant="contained"
-                                  color="error"
-                                  size="small"
-                                  startIcon={<CloseIcon />}
-                                  onClick={() => handleReject(user.id, user.username)}
-                                >
-                                  거절
-                                </Button>
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              startIcon={actionLoadingIds.has(user.id) ? <CircularProgress size={16} color="inherit" /> : <CheckIcon />}
+                              onClick={() => handleApprove(user.id, user.username)}
+                              disabled={actionLoadingIds.has(user.id)}
+                              sx={{ mr: 1 }}
+                            >
+                              승인
+                            </Button>
+                            <Button
+                              variant="contained"
+                              color="error"
+                              size="small"
+                              startIcon={actionLoadingIds.has(user.id) ? <CircularProgress size={16} color="inherit" /> : <CloseIcon />}
+                              onClick={() => handleReject(user.id, user.username)}
+                              disabled={actionLoadingIds.has(user.id)}
+                            >
+                              거절
+                            </Button>
                               </>
                             ) : (
                               !user.is_admin && (
@@ -640,11 +681,11 @@ const AdminDashboard = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDeleteCancel} color="primary">
+          <Button onClick={handleDeleteCancel} color="primary" disabled={deleteLoading}>
             취소
           </Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
-            삭제
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus disabled={deleteLoading}>
+            {deleteLoading ? <CircularProgress size={20} color="inherit" /> : '삭제'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -726,11 +767,11 @@ const AdminDashboard = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCreateCancel} color="primary">
+          <Button onClick={handleCreateCancel} color="primary" disabled={createUserLoading}>
             취소
           </Button>
-          <Button onClick={handleCreateSubmit} color="primary" variant="contained">
-            추가
+          <Button onClick={handleCreateSubmit} color="primary" variant="contained" disabled={createUserLoading}>
+            {createUserLoading ? <CircularProgress size={20} color="inherit" /> : '추가'}
           </Button>
         </DialogActions>
       </Dialog>

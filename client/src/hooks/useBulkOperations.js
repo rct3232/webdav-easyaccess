@@ -570,10 +570,25 @@ export const useBulkOperations = (
       return { sourcePath, destinationPath: destinationFilePath, type: action };
     });
 
+    const progressId = retryData?.progressId || `${action}_${Date.now()}`;
+    const startedPath = retryData?.startedPath ?? (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
+    const actionName = getActionName(action);
+    const retryDataForModal = { type: action, filePaths, destinationPath, startedPath, progressId };
+
+    updateProgressWithRetry(progressId, {
+      type: action,
+      status: 'preparing',
+      progress: 0,
+      total: filePaths.length,
+      current: '충돌 확인 중...',
+      name: `${filePaths.length}개 항목 ${actionName}`,
+    }, retryDataForModal);
+
     try {
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
+        updateProgress({ id: progressId, remove: true });
         setBulkConflictData({
           destinationPath,
           retryData: retryData ?? { type: action, filePaths },
@@ -583,17 +598,16 @@ export const useBulkOperations = (
         return;
       }
 
-      await executeBulkOperation(destinationPath, retryData);
+      await executeBulkOperation(destinationPath, { type: action, filePaths, destinationPath, startedPath, progressId });
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     } catch (error) {
       console.error('Bulk conflict check failed:', error);
-      // fallback to direct execution
-      await executeBulkOperation(destinationPath, retryData);
+      await executeBulkOperation(destinationPath, { type: action, filePaths, destinationPath, startedPath, progressId });
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, executeBulkOperation]);
+  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation]);
 
   /**
    * Resolve bulk conflicts

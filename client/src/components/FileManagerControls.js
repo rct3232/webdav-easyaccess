@@ -42,6 +42,7 @@ const FileManagerControls = ({
   viewMode,
   setViewMode,
   saveViewMode,
+  selectionActionsDisabled = false,
 }) => {
   return (
     <Box sx={{ px: 2, py: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -55,6 +56,7 @@ const FileManagerControls = ({
       <IconButton
         color={selectionMode ? 'primary' : 'default'}
         onClick={handleToggleSelectionMode}
+        disabled={selectionActionsDisabled}
         title={selectionMode ? '선택 모드' : '선택'}
         sx={{
           backgroundColor: selectionMode ? 'primary.main' : 'transparent',
@@ -71,10 +73,10 @@ const FileManagerControls = ({
         <>
           {isMobile ? (
             <>
-              <IconButton size="small" onClick={handleSelectAll} title="모두 선택">
+              <IconButton size="small" onClick={handleSelectAll} title="모두 선택" disabled={selectionActionsDisabled}>
                 <SelectAllIcon />
               </IconButton>
-              <IconButton size="small" onClick={handleDeselectAll} title="모두 해제">
+              <IconButton size="small" onClick={handleDeselectAll} title="모두 해제" disabled={selectionActionsDisabled}>
                 <DeselectIcon />
               </IconButton>
               <Typography variant="caption" sx={{ ml: 1, fontSize: '0.75rem' }}>
@@ -87,6 +89,7 @@ const FileManagerControls = ({
                 size="small"
                 startIcon={<SelectAllIcon />}
                 onClick={handleSelectAll}
+                disabled={selectionActionsDisabled}
               >
                 모두 선택
               </Button>
@@ -94,6 +97,7 @@ const FileManagerControls = ({
                 size="small"
                 startIcon={<DeselectIcon />}
                 onClick={handleDeselectAll}
+                disabled={selectionActionsDisabled}
               >
                 모두 해제
               </Button>

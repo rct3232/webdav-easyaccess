@@ -584,11 +584,14 @@ export const useBulkOperations = (
       name: `${filePaths.length}개 항목 ${actionName}`,
     }, retryDataForModal);
 
+    markProcessing(filePaths, action);
+
     try {
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
         updateProgress({ id: progressId, remove: true });
+        clearProcessing(filePaths);
         setBulkConflictData({
           destinationPath,
           retryData: retryData ?? { type: action, filePaths },
@@ -603,11 +606,12 @@ export const useBulkOperations = (
       setFolderPickerAction(null);
     } catch (error) {
       console.error('Bulk conflict check failed:', error);
+      clearProcessing(filePaths);
       await executeBulkOperation(destinationPath, { type: action, filePaths, destinationPath, startedPath, progressId });
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation]);
+  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation, markProcessing, clearProcessing]);
 
   /**
    * Resolve bulk conflicts

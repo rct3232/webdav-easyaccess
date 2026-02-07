@@ -53,9 +53,11 @@ export const getRecentFiles = async () => {
 /**
  * 최근 파일에 추가
  * @param {Object} file - 파일 정보 { path, name, type, basename }
+ * @param {Object} [options] - { silent: true } to skip getRecentFiles + notify (for bulk updates)
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
-export const addRecentFile = async (file) => {
+export const addRecentFile = async (file, options = {}) => {
+  const silent = options.silent === true;
   try {
     // 경로 정규화하여 전송
     const normalizedPath = normalizePath(file.path);
@@ -65,15 +67,14 @@ export const addRecentFile = async (file) => {
       type: file.type || 'file',
       basename: file.basename,
     });
-    
+    if (silent) return [];
     // 작업 완료 후 최신 리스트 조회하여 반환 (자동 새로고침)
     const result = await getRecentFiles();
-    // 이벤트 알림
     notifyRecentFilesChange();
     return result;
   } catch (error) {
     console.error('Failed to save recent file:', error);
-    // 에러 발생 시에도 최신 리스트 조회 시도
+    if (silent) return [];
     try {
       const result = await getRecentFiles();
       notifyRecentFilesChange();
@@ -87,21 +88,20 @@ export const addRecentFile = async (file) => {
 /**
  * 최근 파일에서 제거
  * @param {string} filePath - 파일 경로
+ * @param {Object} [options] - { silent: true } to skip notify (for bulk updates)
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
-export const removeRecentFile = async (filePath) => {
+export const removeRecentFile = async (filePath, options = {}) => {
+  const silent = options.silent === true;
   try {
-    // 경로 정규화 후 URL 인코딩하여 경로 전달
     const normalizedPath = normalizePath(filePath);
     const encodedPath = encodeURIComponent(normalizedPath);
     const response = await del(`/recent-files/${encodedPath}`);
     const result = Array.isArray(response.data) ? response.data : [];
-    // 이벤트 알림
-    notifyRecentFilesChange();
+    if (!silent) notifyRecentFilesChange();
     return result;
   } catch (error) {
     console.error('Failed to remove recent file:', error);
-    // 에러 발생 시에도 조용히 처리
     return [];
   }
 };
@@ -125,29 +125,24 @@ export const clearRecentFiles = async () => {
  * 폴더 이동/이름변경 시 하위 경로 업데이트
  * @param {string} oldPath - 기존 폴더 경로
  * @param {string} newPath - 새 폴더 경로
+ * @param {Object} [options] - { silent: true } to skip getRecentFiles + notify (for bulk move)
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
-export const updateSubPathsOnPathChange = async (oldPath, newPath) => {
+export const updateSubPathsOnPathChange = async (oldPath, newPath, options = {}) => {
+  const silent = options.silent === true;
   try {
     const recentFiles = await getRecentFiles();
     const normalizedOldPath = normalizePath(oldPath);
     const normalizedNewPath = normalizePath(newPath);
-    
-    // 이동된 폴더의 하위 경로인 항목들 찾아서 경로 업데이트
+
     for (const recentFile of recentFiles) {
       const normalizedRecentPath = normalizePath(recentFile.path);
-      
-      // 이동된 폴더 경로로 시작하는 모든 경로 업데이트
-      // 예: /tst를 /a/tst로 이동하면 /tst/ㅇㅇㅇ.ㅇㅇ -> /a/tst/ㅇㅇㅇ.ㅇㅇ
-      if (normalizedRecentPath.startsWith(normalizedOldPath + '/') || 
+      if (normalizedRecentPath.startsWith(normalizedOldPath + '/') ||
           normalizedRecentPath === normalizedOldPath) {
-        // 기존 경로 제거
-        await removeRecentFile(recentFile.path);
-        
-        // 새 경로로 추가 (파일만, 폴더는 제외)
+        await removeRecentFile(recentFile.path, { silent });
         if (recentFile.type !== 'directory') {
-          const relativePath = normalizedRecentPath === normalizedOldPath 
-            ? '' 
+          const relativePath = normalizedRecentPath === normalizedOldPath
+            ? ''
             : normalizedRecentPath.substring(normalizedOldPath.length);
           const updatedPath = normalizedNewPath + relativePath;
           await addRecentFile({
@@ -155,19 +150,17 @@ export const updateSubPathsOnPathChange = async (oldPath, newPath) => {
             name: recentFile.name,
             type: recentFile.type || 'file',
             basename: recentFile.basename || recentFile.name,
-          });
+          }, { silent });
         }
       }
     }
-    
-    // 작업 완료 후 최신 리스트 조회하여 반환 (자동 새로고침)
+    if (silent) return [];
     const result = await getRecentFiles();
-    // 이벤트 알림
     notifyRecentFilesChange();
     return result;
   } catch (error) {
     console.error('Failed to update sub-paths in recent files:', error);
-    // 에러 발생 시에도 최신 리스트 조회 시도
+    if (silent) return [];
     try {
       const result = await getRecentFiles();
       notifyRecentFilesChange();
@@ -256,28 +249,25 @@ export const removeMultiplePaths = async (filePaths) => {
  * @param {string} oldPath - 기존 경로
  * @param {string} newPath - 새 경로
  * @param {Object} file - 파일 정보 { type, name, basename }
+ * @param {Object} [options] - { silent: true } to skip getRecentFiles + notify (for bulk move)
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
-export const applyRecentFilesAfterMove = async (oldPath, newPath, file) => {
+export const applyRecentFilesAfterMove = async (oldPath, newPath, file, options = {}) => {
+  const silent = options.silent === true;
   try {
-    // 기존 경로 제거
-    await removeRecentFile(oldPath);
-    
-    // 새 경로 추가 (파일만, 폴더는 제외)
+    await removeRecentFile(oldPath, { silent });
     if (file?.type !== 'directory') {
       await addRecentFile({
         path: newPath,
         name: file?.name || file?.basename,
         type: file?.type || 'file',
         basename: file?.basename,
-      });
+      }, { silent });
     }
-    
-    // 폴더인 경우 하위 경로들도 업데이트
     if (file?.type === 'directory') {
-      await updateSubPathsOnPathChange(oldPath, newPath);
+      await updateSubPathsOnPathChange(oldPath, newPath, { silent });
     }
-    
+    if (silent) return [];
     return await getRecentFiles();
   } catch (error) {
     console.error('Failed to update recent files after move:', error);
@@ -342,24 +332,21 @@ export const applyRecentFilesAfterDelete = async (path, isDirectory = false) => 
 };
 
 /**
- * 일괄 삭제 후 최근 파일 갱신
- * @param {Array<string>} filePaths - 삭제된 파일 경로 배열
- * @param {Array<string>} folderPaths - 삭제된 폴더 경로 배열
+ * 일괄 삭제 후 최근 파일 갱신 (서버 배치 API 1회 호출로 N번 DELETE 대체)
+ * @param {Array<string>} filePaths - 삭제된 파일/폴더 경로 배열 (전체 성공 경로)
+ * @param {Array<string>} folderPaths - 삭제된 폴더 경로 배열 (하위 경로 제거용)
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
 export const applyRecentFilesAfterBulkDelete = async (filePaths = [], folderPaths = []) => {
+  if (!filePaths?.length && !folderPaths?.length) return await getRecentFiles();
   try {
-    // 여러 파일 경로 제거
-    if (filePaths.length > 0) {
-      await removeMultiplePaths(filePaths);
-    }
-    
-    // 여러 폴더의 하위 경로 제거
-    for (const folderPath of folderPaths) {
-      await removeSubPathsOnFolderDelete(folderPath);
-    }
-    
-    return await getRecentFiles();
+    await post('/recent-files/remove-paths', {
+      filePaths: filePaths || [],
+      folderPaths: folderPaths || [],
+    });
+    const result = await getRecentFiles();
+    notifyRecentFilesChange();
+    return result;
   } catch (error) {
     console.error('Failed to clean up recent files after bulk delete:', error);
     return [];
@@ -367,18 +354,22 @@ export const applyRecentFilesAfterBulkDelete = async (filePaths = [], folderPath
 };
 
 /**
- * 일괄 이동 후 최근 파일 갱신
+ * 일괄 이동 후 최근 파일 갱신 (서버 배치 API 1회 호출로 N번 DELETE/POST 대체)
  * @param {Array<Object>} moves - 이동 정보 배열 { oldPath, newPath, file }
  * @returns {Promise<Array>} 업데이트된 최근 파일 목록
  */
 export const applyRecentFilesAfterBulkMove = async (moves = []) => {
+  if (!moves || moves.length === 0) return await getRecentFiles();
   try {
-    // 이동된 파일/폴더별로 최근항목 업데이트
-    for (const { oldPath, newPath, file } of moves) {
-      await applyRecentFilesAfterMove(oldPath, newPath, file);
-    }
-    
-    return await getRecentFiles();
+    const payload = moves.map(({ oldPath, newPath, file }) => ({
+      oldPath,
+      newPath,
+      file: file ? { type: file.type, name: file.name, basename: file.basename } : undefined,
+    }));
+    await post('/recent-files/apply-moves', { moves: payload });
+    const result = await getRecentFiles();
+    notifyRecentFilesChange();
+    return result;
   } catch (error) {
     console.error('Failed to update recent files after bulk move:', error);
     return [];

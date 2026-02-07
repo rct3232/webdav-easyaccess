@@ -75,4 +75,38 @@ router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res)
   res.json({ message: 'Recent files cleared successfully' });
 }));
 
+/**
+ * 일괄 이동 적용 (벌크 이동 시 N번 DELETE/POST 대신 1회 호출)
+ * POST /api/recent-files/apply-moves
+ * Body: { moves: Array<{ oldPath, newPath, file?: { type, name, basename } }> }
+ */
+router.post('/apply-moves', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { moves } = req.body;
+  const user = req.user.full;
+
+  if (!Array.isArray(moves)) {
+    throw validationError('moves array is required');
+  }
+
+  const updatedFiles = await recentFilesStore.applyBulkMove(user.id, moves);
+  res.json(updatedFiles);
+}));
+
+/**
+ * 일괄 경로 제거 (벌크 삭제 시 N번 DELETE 대신 1회 호출)
+ * POST /api/recent-files/remove-paths
+ * Body: { filePaths: string[], folderPaths: string[] }
+ */
+router.post('/remove-paths', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { filePaths = [], folderPaths = [] } = req.body;
+  const user = req.user.full;
+
+  if (!Array.isArray(filePaths) || !Array.isArray(folderPaths)) {
+    throw validationError('filePaths and folderPaths must be arrays');
+  }
+
+  const updatedFiles = await recentFilesStore.removePaths(user.id, filePaths, folderPaths);
+  res.json(updatedFiles);
+}));
+
 module.exports = router;

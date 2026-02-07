@@ -4,7 +4,7 @@ const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
-const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
+const { normalizePath, getParentPath } = require('../utils/pathUtils');
 const { canReadFolder, canWriteFolder, isOwnerPath } = require('../utils/permissionPolicy');
 const { isMetaPath } = require('../store/metaPaths');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
@@ -38,7 +38,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   }
 
   // Normalize folder path
-  folderPath = normalizePathWithSlash(folderPath);
+  folderPath = normalizePath(folderPath, { isDirectory: true });
 
   // Check if folder already exists
   const folderExists = await pathExists(folderPath);

@@ -53,5 +53,24 @@ describe('buildDestinationAbsoluteUrl', () => {
 
     expect(url).toBe('https://example.com/webdav/k.txt');
   });
+
+  test('adds trailing slash for directory destination when isDirectory is true', () => {
+    const base = 'https://example.com/webdav';
+    const dest = '/a/b';
+
+    const url = buildDestinationAbsoluteUrl(base, dest, { isDirectory: true });
+
+    expect(url).toBe('https://example.com/webdav/a/b/');
+    expect(hasNonLatin1Chars(url)).toBe(false);
+  });
+
+  test('does not double-add trailing slash when dest already ends with / and isDirectory is true', () => {
+    const base = 'https://example.com/webdav';
+    const dest = '/a/b/';
+
+    const url = buildDestinationAbsoluteUrl(base, dest, { isDirectory: true });
+
+    expect(url).toBe('https://example.com/webdav/a/b/');
+  });
 });
 

@@ -25,6 +25,18 @@ class Permission {
     return await permissionStore.checkPermission(userId, folderPath, requiredPermission);
   }
 
+  static checkPermissionSync(doc, folderPath, requiredPermission) {
+    return permissionStore.checkPermissionSync(doc, folderPath, requiredPermission);
+  }
+
+  static async getPermissionDoc(userId) {
+    return await permissionStore.getPermissionDoc(userId);
+  }
+
+  static async checkPermissions(userId, paths, requiredPermission) {
+    return await permissionStore.checkPermissions(userId, paths, requiredPermission);
+  }
+
   static async getFolderPermissions(folderPath) {
     return await permissionStore.getFolderPermissions(folderPath);
   }

@@ -4,7 +4,26 @@
 
 const Permission = require('../models/Permission');
 const User = require('../models/User');
-const { normalizePath, normalizePathWithSlash, getParentPaths } = require('../utils/pathUtils');
+const { normalizePath, getParentPaths } = require('../utils/pathUtils');
+
+const userCache = new Map(); // userId -> { user, expiresAt }
+const USER_CACHE_TTL_MS =
+  process.env.NODE_ENV === 'test'
+    ? 0
+    : parseInt(process.env.USER_CACHE_TTL_MS || '3000', 10) || 3000;
+
+async function getCachedUser(userId) {
+  const key = String(userId);
+  const cached = userCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user;
+  }
+  const user = await User.findById(userId);
+  if (user && USER_CACHE_TTL_MS > 0) {
+    userCache.set(key, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+  }
+  return user;
+}
 
 function isOwnerPathSafe(user, targetPath) {
   if (!user?.username) return false;
@@ -23,7 +42,7 @@ function isOwnerPathSafe(user, targetPath) {
  * @returns {Promise<boolean>} True if user has permission
  */
 async function checkFilePermission(userId, filePath, requiredPermission = 'read') {
-  const user = await User.findById(userId);
+  const user = await getCachedUser(userId);
   if (!user) {
     return false;
   }
@@ -34,7 +53,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
   }
 
   const folderPath = require('path').dirname(filePath) || '/';
-  const normalizedFolderPath = normalizePathWithSlash(folderPath);
+  const normalizedFolderPath = normalizePath(folderPath, { isDirectory: true });
   
   // Check exact path permission
   let hasPermission = await Permission.checkPermission(userId, normalizedFolderPath, requiredPermission);
@@ -48,7 +67,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
   if (!hasPermission && normalizedFolderPath !== '/') {
     const parentPaths = getParentPaths(normalizedFolderPath);
     for (const parentPath of parentPaths) {
-      const parentDirPath = normalizePathWithSlash(parentPath);
+      const parentDirPath = normalizePath(parentPath, { isDirectory: true });
       hasPermission = await Permission.checkPermission(userId, parentDirPath, requiredPermission);
       if (!hasPermission && parentPath !== '/') {
         hasPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
@@ -79,7 +98,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
  * @returns {Promise<boolean>} True if user has permission
  */
 async function checkFolderPermission(userId, folderPath, requiredPermission = 'read') {
-  const user = await User.findById(userId);
+  const user = await getCachedUser(userId);
   if (!user) {
     return false;
   }
@@ -89,11 +108,11 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = 'r
     return true;
   }
 
-  const normalizedPath = normalizePathWithSlash(folderPath);
-  
+  const normalizedPath = normalizePath(folderPath, { isDirectory: true });
+
   // Check exact path permission
   let hasPermission = await Permission.checkPermission(userId, normalizedPath, requiredPermission);
-  
+
   // Check without trailing slash for backward compatibility
   if (!hasPermission && folderPath !== '/') {
     hasPermission = await Permission.checkPermission(userId, normalizePath(folderPath), requiredPermission);
@@ -103,7 +122,7 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = 'r
   if (!hasPermission && normalizedPath !== '/') {
     const parentPaths = getParentPaths(normalizedPath);
     for (const parentPath of parentPaths) {
-      const parentDirPath = normalizePathWithSlash(parentPath);
+      const parentDirPath = normalizePath(parentPath, { isDirectory: true });
       hasPermission = await Permission.checkPermission(userId, parentDirPath, requiredPermission);
       if (!hasPermission && parentPath !== '/') {
         hasPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
@@ -132,7 +151,7 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = 'r
  * @returns {Promise<boolean>} True if user can access
  */
 async function canAccessPath(userId, requestedPath) {
-  const user = await User.findById(userId);
+  const user = await getCachedUser(userId);
   
   if (!user) {
     return false;

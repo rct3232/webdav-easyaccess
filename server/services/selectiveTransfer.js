@@ -87,9 +87,9 @@ async function selectiveTransfer({
     }
 
     if (mode === 'move') {
-      await webdav.moveFile(srcPath, dstPath, null, onConflict === 'overwrite');
+      await webdav.moveFile(srcPath, dstPath, null, onConflict === 'overwrite', { isDirectory: false });
     } else {
-      await webdav.copyFile(srcPath, dstPath, null, onConflict === 'overwrite');
+      await webdav.copyFile(srcPath, dstPath, null, onConflict === 'overwrite', { isDirectory: false });
     }
     return true;
   }
@@ -108,7 +108,8 @@ async function selectiveTransfer({
       const dstChild = posixJoin(dstDir, item.basename);
 
       if (item.type === 'directory') {
-        const ok = await canEnterDirectory(srcChild);
+        let ok = canEnterDirectory(srcChild);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(srcChild);
           return { skipped: true };
@@ -125,7 +126,8 @@ async function selectiveTransfer({
           return { skipped: mode === 'move' };
         }
       } else {
-        const ok = await canTransferFile(srcDir);
+        let ok = canTransferFile(srcDir);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(srcChild);
           return { skipped: true };
@@ -141,14 +143,15 @@ async function selectiveTransfer({
     if (skippedCount > 0) return { movedFully: false };
 
     try {
-      await webdav.deleteFile(srcDir);
+      await webdav.deleteFile(srcDir, { isDirectory: true });
       return { movedFully: true };
     } catch {
       return { movedFully: false };
     }
   }
 
-  const canEnterRoot = await canEnterDirectory(srcRoot);
+  let canEnterRoot = canEnterDirectory(srcRoot);
+  if (typeof canEnterRoot?.then === 'function') canEnterRoot = await canEnterRoot;
   if (!canEnterRoot) {
     return {
       movedDirMappings: [],

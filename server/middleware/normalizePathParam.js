@@ -28,7 +28,6 @@ function normalizePathParam(req, res, next) {
   if (req.body.sourcePath) {
     req.body.sourcePath = normalizePath(req.body.sourcePath);
   }
-  
   if (req.body.destinationPath) {
     req.body.destinationPath = normalizePath(req.body.destinationPath);
   }

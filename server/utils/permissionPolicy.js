@@ -10,7 +10,7 @@
  */
 const path = require('path');
 const Permission = require('../models/Permission');
-const { normalizePath, normalizePathWithSlash } = require('./pathUtils');
+const { normalizePath } = require('./pathUtils');
 const { checkFilePermission, checkFolderPermission } = require('../middleware/permissions');
 const User = require('../models/User');
 
@@ -39,7 +39,7 @@ function isOwnerPath(user, targetPath) {
  * Uses Permission.checkPermission only (no ancestor traversal).
  */
 async function hasDirectFolderPermission(userId, folderPath, requiredPermission = 'read') {
-  const dirPath = normalizePathWithSlash(folderPath);
+  const dirPath = normalizePath(folderPath, { isDirectory: true });
   const noSlashPath = normalizePath(folderPath);
 
   let ok = await Permission.checkPermission(userId, dirPath, requiredPermission);
@@ -84,6 +84,43 @@ async function canWriteFileByParent(user, filePath) {
   const normalized = normalizePath(filePath);
   const parent = path.posix.dirname(normalized) || '/';
   return await hasDirectFolderPermission(user.id, parent, 'write');
+}
+
+/**
+ * Build a synchronous write checker (path) => boolean using a preloaded permission doc.
+ * Use for batch operations to avoid per-path async permission calls.
+ */
+function buildSyncWriteChecker(user, doc) {
+  return (folderPath) => {
+    if (!user) return false;
+    if (isAdminUser(user) || isOwnerPath(user, folderPath)) return true;
+    return Permission.checkPermissionSync(doc, folderPath, 'write');
+  };
+}
+
+/**
+ * Build a synchronous read checker (path) => boolean using a preloaded permission doc.
+ */
+function buildSyncReadChecker(user, doc) {
+  return (folderPath) => {
+    if (!user) return false;
+    if (isAdminUser(user) || isOwnerPath(user, folderPath)) return true;
+    return Permission.checkPermissionSync(doc, folderPath, 'read');
+  };
+}
+
+/**
+ * Build a synchronous "write by parent folder" checker (filePath) => boolean using a preloaded doc.
+ */
+function buildSyncWriteFileByParentChecker(user, doc) {
+  const canWriteDir = buildSyncWriteChecker(user, doc);
+  return (filePath) => {
+    if (!user) return false;
+    if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
+    const normalized = normalizePath(filePath);
+    const parent = path.posix.dirname(normalized) || '/';
+    return canWriteDir(parent);
+  };
 }
 
 /**
@@ -206,6 +243,9 @@ module.exports = {
   canReadFile,
   canWriteFolder,
   canWriteFileByParent,
+  buildSyncWriteChecker,
+  buildSyncReadChecker,
+  buildSyncWriteFileByParentChecker,
   getUserOrNull,
   canGrantPermission,
   canRevokePermission,

@@ -75,8 +75,9 @@ async function createTestUser(userData = {}) {
  * @returns {string} JWT token
  */
 function createTestToken(user) {
+  const is_admin = user?.is_admin ? 1 : 0;
   return jwt.sign(
-    { id: user.id, username: user.username },
+    { id: user.id, username: user.username, is_admin },
     JWT_SECRET,
     { expiresIn: '7d' }
   );

@@ -25,12 +25,15 @@ function logWebdavError(context, error, extra = {}) {
   console.error(`[WebDAV] ${context}`, details);
 }
 
-function getRequestPath(normalizedPath, baseUrlOverride = null) {
+function getRequestPath(normalizedPath, baseUrlOverride = null, options = {}) {
+  const path = options?.isDirectory
+    ? normalizePath(normalizedPath, { isDirectory: true })
+    : normalizedPath;
   const baseUrl = baseUrlOverride?.trim?.() || process.env.WEBDAV_URL?.trim() || '';
   if (baseUrl.includes('/') && baseUrl.split('/').length > 3) {
-    return normalizedPath === '/' ? '' : normalizedPath.substring(1);
+    return path === '/' ? '' : path.substring(1);
   }
-  return normalizedPath;
+  return path;
 }
 
 /**
@@ -41,11 +44,15 @@ function getRequestPath(normalizedPath, baseUrlOverride = null) {
  *
  * @param {string} destBase - Absolute base URL (may include a path prefix like /webdav)
  * @param {string} normalizedDest - WebDAV destination path (absolute, normalized)
+ * @param {object} [options] - Optional settings
+ * @param {boolean} [options.isDirectory] - If true, ensure destination path ends with /
  * @returns {string} Absolute, percent-encoded URL string
  */
-function buildDestinationAbsoluteUrl(destBase, normalizedDest) {
+function buildDestinationAbsoluteUrl(destBase, normalizedDest, options = {}) {
   const base = (destBase || '').trim();
-  const destNormalized = normalizePath(normalizedDest);
+  const destNormalized = options?.isDirectory
+    ? normalizePath(normalizedDest, { isDirectory: true })
+    : normalizePath(normalizedDest);
 
   // If base is missing, fall back to a best-effort encoded request path.
   if (!base) {
@@ -147,7 +154,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
         await moveFileStreamed(sourceItemPath, destItemPath);
       });
       
-      await deleteFile(normalizedSource);
+      await deleteFile(normalizedSource, { isDirectory: true });
       return { success: true };
     } else {
       let fileSize = 0;
@@ -176,7 +183,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
       }
       await putFileContents(normalizedDest, buffer);
       
-      await deleteFile(normalizedSource);
+      await deleteFile(normalizedSource, { isDirectory: false });
       
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
@@ -387,47 +394,13 @@ async function customRequest(path, requestOptions, baseUrlOverride = null) {
   return client.customRequest(requestPath, requestOptions);
 }
 
-async function deleteFile(path) {
+async function deleteFile(path, options = {}) {
   const client = await getWebDAVClient();
   try {
     const normalizedPath = normalizePath(path);
-    let isDirectory = false;
-    
-    try {
-      const parentPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/')) || '/';
-      const items = await client.getDirectoryContents(getRequestPath(parentPath));
-      const item = items.find(i => {
-        const itemPath = i.filename || i.basename;
-        return itemPath === normalizedPath || itemPath === normalizedPath + '/' || itemPath + '/' === normalizedPath;
-      });
-      if (item) {
-        isDirectory = item.type === 'directory';
-      }
-    } catch (err) {
-      // Ignore error, continue
-    }
-    
-    let deletePath = normalizedPath;
-    if (isDirectory && !deletePath.endsWith('/')) {
-      deletePath = deletePath + '/';
-    }
-    
-    try {
-      await client.deleteFile(getRequestPath(deletePath));
-      return { success: true };
-    } catch (firstError) {
-      if (isDirectory) {
-        const alternatePath = deletePath.endsWith('/') ? deletePath.slice(0, -1) : deletePath + '/';
-        try {
-          await client.deleteFile(getRequestPath(alternatePath));
-          return { success: true };
-        } catch (secondError) {
-          throw firstError;
-        }
-      } else {
-        throw firstError;
-      }
-    }
+    const requestPath = getRequestPath(normalizedPath, null, options);
+    await client.deleteFile(requestPath);
+    return { success: true };
   } catch (error) {
     if (error.status === 404 || error.response?.status === 404) {
       throw new Error(`File or folder not found: ${path}`);
@@ -442,7 +415,7 @@ async function deleteFile(path) {
   }
 }
 
-async function moveFile(sourcePath, destinationPath, progressCallback, overwrite = false) {
+async function moveFile(sourcePath, destinationPath, progressCallback, overwrite = false, options = {}) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
@@ -453,15 +426,15 @@ async function moveFile(sourcePath, destinationPath, progressCallback, overwrite
     return { success: true };
   }
 
-  const destRequestPath = getRequestPath(normalizedDest, destBase);
+  const sourceRequestPath = getRequestPath(normalizedSource, sourceBase, options);
+  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest, options);
+  const destRequestPath = getRequestPath(normalizedDest, destBase, options);
   const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
   const destAbsoluteRaw = destBaseTrimmed
     ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
     : destRequestPath;
-  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest);
 
   try {
-    const sourceRequestPath = getRequestPath(normalizedSource);
     await client.customRequest(sourceRequestPath, {
       method: 'MOVE',
       headers: {
@@ -476,14 +449,13 @@ async function moveFile(sourcePath, destinationPath, progressCallback, overwrite
     return { success: true };
   } catch (error) {
     logWebdavError('MOVE failed (will fallback)', error, {
-      sourcePath: sourcePath,
-      destinationPath: destinationPath,
+      sourcePath,
+      destinationPath,
       destinationAbsolute: destAbsolute,
       destinationAbsoluteRaw: destAbsoluteRaw,
       sourceBase,
       destBase,
     });
-    // If destination already exists or source missing, surface immediately
     const status = error?.status || error?.response?.status;
     if (status === 409 && !overwrite) {
       throw new Error(`Destination already exists: ${destinationPath}`);
@@ -491,12 +463,11 @@ async function moveFile(sourcePath, destinationPath, progressCallback, overwrite
     if (status === 404) {
       throw new Error(`Source not found: ${sourcePath}`);
     }
-    // Fallback to streaming move
     return await moveFileStreamed(sourcePath, destinationPath, progressCallback);
   }
 }
 
-async function copyFile(sourcePath, destinationPath, progressCallback, overwrite = false) {
+async function copyFile(sourcePath, destinationPath, progressCallback, overwrite = false, options = {}) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
   const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
@@ -507,15 +478,15 @@ async function copyFile(sourcePath, destinationPath, progressCallback, overwrite
     return { success: true };
   }
 
-  const destRequestPath = getRequestPath(normalizedDest, destBase);
+  const sourceRequestPath = getRequestPath(normalizedSource, sourceBase, options);
+  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest, options);
+  const destRequestPath = getRequestPath(normalizedDest, destBase, options);
   const destBaseTrimmed = destBase?.endsWith('/') ? destBase.slice(0, -1) : destBase;
   const destAbsoluteRaw = destBaseTrimmed
     ? `${destBaseTrimmed}${destRequestPath.startsWith('/') ? '' : '/'}${destRequestPath}`
     : destRequestPath;
-  const destAbsolute = buildDestinationAbsoluteUrl(destBase, normalizedDest);
 
   try {
-    const sourceRequestPath = getRequestPath(normalizedSource);
     await client.customRequest(sourceRequestPath, {
       method: 'COPY',
       headers: {

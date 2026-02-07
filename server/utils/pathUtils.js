@@ -5,47 +5,42 @@
 /**
  * Normalize a path by:
  * - Ensuring it starts with /
- * - Removing trailing / (except for root)
+ * - Removing trailing / (except for root), unless options.isDirectory is true
  * - Replacing backslashes with forward slashes
  * - Removing duplicate slashes
- * 
+ *
  * @param {string} path - The path to normalize
+ * @param {object} [options] - Optional settings
+ * @param {boolean} [options.isDirectory] - If true, ensure path ends with / (for directory paths)
  * @returns {string} The normalized path
  */
-function normalizePath(path) {
+function normalizePath(path, options) {
   if (!path) return '/';
-  
+
   let normalized = path.trim();
-  
+
   // Replace backslashes first
   normalized = normalized.replace(/\\/g, '/');
-  
+
   // Ensure starts with /
   if (!normalized.startsWith('/')) {
     normalized = '/' + normalized;
   }
-  
+
   // Remove duplicate slashes
   normalized = normalized.replace(/\/+/g, '/');
-  
-  // Remove trailing / (except for root)
-  if (normalized !== '/' && normalized.endsWith('/')) {
+
+  // Remove trailing / (except for root), unless isDirectory
+  if (normalized !== '/' && normalized.endsWith('/') && !options?.isDirectory) {
     normalized = normalized.slice(0, -1);
   }
-  
-  return normalized;
-}
 
-/**
- * Normalize a path and ensure it ends with / (for directory paths)
- * 
- * @param {string} path - The path to normalize
- * @returns {string} The normalized path with trailing /
- */
-function normalizePathWithSlash(path) {
-  const normalized = normalizePath(path);
-  if (normalized === '/') return '/';
-  return normalized + '/';
+  // Add trailing / for directory paths
+  if (options?.isDirectory && normalized !== '/' && !normalized.endsWith('/')) {
+    normalized = normalized + '/';
+  }
+
+  return normalized;
 }
 
 /**
@@ -119,7 +114,6 @@ function getParentPaths(path) {
 
 module.exports = {
   normalizePath,
-  normalizePathWithSlash,
   getParentPath,
   getBasename,
   isPathUnder,

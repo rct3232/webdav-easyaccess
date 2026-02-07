@@ -47,7 +47,8 @@ async function selectiveDelete({
   const deletedDirPrefixes = [];
   const skippedPaths = [];
 
-  const canEnterRoot = await canEnterDirectory(root);
+  let canEnterRoot = canEnterDirectory(root);
+  if (typeof canEnterRoot?.then === 'function') canEnterRoot = await canEnterRoot;
   if (!canEnterRoot) {
     return { deletedPaths, deletedDirPrefixes, skippedPaths: [root] };
   }
@@ -64,13 +65,14 @@ async function selectiveDelete({
       if (isMetaPath(childPath) && !allowMetaPath) return { skipped: false };
 
       if (item.type !== 'directory') {
-        const ok = await canDeleteFileByParent(dirPath);
+        let ok = canDeleteFileByParent(dirPath);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);
           return { skipped: true };
         }
         try {
-          await webdav.deleteFile(childPath);
+          await webdav.deleteFile(childPath, { isDirectory: item.type === 'directory' });
           deletedPaths.push(childPath);
           return { skipped: false };
         } catch {
@@ -78,7 +80,8 @@ async function selectiveDelete({
           return { skipped: true };
         }
       } else {
-        const ok = await canEnterDirectory(childPath);
+        let ok = canEnterDirectory(childPath);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);
           return { skipped: true };
@@ -97,7 +100,7 @@ async function selectiveDelete({
     }
 
     try {
-      await webdav.deleteFile(dirPath);
+      await webdav.deleteFile(dirPath, { isDirectory: true });
       deletedPaths.push(dirPath);
       deletedDirPrefixes.push(dirPath);
       return true;

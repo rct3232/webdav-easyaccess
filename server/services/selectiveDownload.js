@@ -43,7 +43,8 @@ async function selectiveCollectFiles({
   const files = [];
   const skippedPaths = [];
 
-  const canEnterRoot = await canEnterDirectory(root);
+  let canEnterRoot = canEnterDirectory(root);
+  if (typeof canEnterRoot?.then === 'function') canEnterRoot = await canEnterRoot;
   if (!canEnterRoot) {
     return { files, skippedPaths: [root] };
   }
@@ -59,14 +60,16 @@ async function selectiveCollectFiles({
       const childRel = relBase ? `${relBase}/${item.basename}` : item.basename;
 
       if (item.type === 'directory') {
-        const ok = await canEnterDirectory(childPath);
+        let ok = canEnterDirectory(childPath);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);
           continue;
         }
         await walkDir(childPath, childRel);
       } else {
-        const ok = await canIncludeFile(dirPath);
+        let ok = canIncludeFile(dirPath);
+        if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);
           continue;

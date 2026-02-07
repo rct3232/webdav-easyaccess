@@ -128,9 +128,106 @@ async function clearRecentFiles(userId) {
   }
 }
 
+/**
+ * 일괄 이동 적용 (한 번의 읽기/쓰기로 N개 이동 반영)
+ * @param {number} userId - 사용자 ID
+ * @param {Array<{ oldPath: string, newPath: string, file?: { type?: string, name?: string, basename?: string } }>} moves
+ * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ */
+async function applyBulkMove(userId, moves) {
+  if (!moves || moves.length === 0) return await getUserRecentFiles(userId);
+  try {
+    await storage.ensureDirSafe(RECENT_FILES_DIR);
+    let files = await getUserRecentFiles(userId);
+
+    for (const { oldPath, newPath, file } of moves) {
+      const oldNorm = normalizePath(oldPath);
+      const newNorm = normalizePath(newPath);
+      const isDir = file?.type === 'directory';
+
+      if (isDir) {
+        const toReAdd = [];
+        files = files.filter((f) => {
+          const p = normalizePath(f.path);
+          if (p === oldNorm || p.startsWith(oldNorm + '/')) {
+            const rel = p === oldNorm ? '' : p.slice(oldNorm.length);
+            toReAdd.push({ ...f, path: newNorm + rel });
+            return false;
+          }
+          return true;
+        });
+        const now = new Date().toISOString();
+        for (const f of toReAdd) {
+          if (f.type === 'directory') continue;
+          files.unshift({ ...f, lastAccessed: now });
+        }
+      } else {
+        files = files.filter((f) => normalizePath(f.path) !== oldNorm);
+        const name = file?.name || file?.basename || newNorm.split('/').pop();
+        files.unshift({
+          path: newNorm,
+          name,
+          type: file?.type || 'file',
+          lastAccessed: new Date().toISOString(),
+        });
+      }
+    }
+
+    const seen = new Set();
+    const deduped = files.filter((f) => {
+      const p = normalizePath(f.path);
+      if (seen.has(p)) return false;
+      seen.add(p);
+      return true;
+    });
+    const result = deduped.slice(0, MAX_RECENT_FILES);
+    const filePath = getUserRecentFilesPath(userId);
+    await storage.writeFile(filePath, JSON.stringify(result, null, 2), { overwrite: true });
+    return result;
+  } catch (error) {
+    console.error('Failed to apply bulk move to recent files:', error);
+    throw error;
+  }
+}
+
+/**
+ * 일괄 경로 제거 (한 번의 읽기/쓰기로 N개 삭제 반영)
+ * @param {number} userId - 사용자 ID
+ * @param {string[]} filePaths - 제거할 파일/폴더 경로 배열 (삭제된 항목 전체)
+ * @param {string[]} folderPaths - 제거할 폴더 경로 배열 (하위 경로도 제거용, filePaths의 부분집합)
+ * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ */
+async function removePaths(userId, filePaths = [], folderPaths = []) {
+  if (!filePaths.length && !folderPaths.length) return await getUserRecentFiles(userId);
+  try {
+    await storage.ensureDirSafe(RECENT_FILES_DIR);
+    let files = await getUserRecentFiles(userId);
+    const filePathsSet = new Set((filePaths || []).map((p) => normalizePath(p)));
+    const folderPathsNorm = (folderPaths || []).map((p) => normalizePath(p));
+
+    files = files.filter((f) => {
+      const p = normalizePath(f.path);
+      if (filePathsSet.has(p)) return false;
+      for (const folder of folderPathsNorm) {
+        if (p === folder || p.startsWith(folder + '/')) return false;
+      }
+      return true;
+    });
+
+    const filePath = getUserRecentFilesPath(userId);
+    await storage.writeFile(filePath, JSON.stringify(files, null, 2), { overwrite: true });
+    return files;
+  } catch (error) {
+    console.error('Failed to remove paths from recent files:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   getUserRecentFiles,
   addRecentFile,
   removeRecentFile,
   clearRecentFiles,
+  applyBulkMove,
+  removePaths,
 };

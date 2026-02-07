@@ -17,7 +17,7 @@ const {
   pathExists,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
-const { normalizePath, normalizePathWithSlash, getParentPath } = require('../utils/pathUtils');
+const { normalizePath, getParentPath } = require('../utils/pathUtils');
 const {
   canReadFolder,
   canReadFile,
@@ -25,6 +25,9 @@ const {
   canWriteFileByParent,
   hasDirectFolderPermission,
   isOwnerPath,
+  buildSyncWriteChecker,
+  buildSyncReadChecker,
+  buildSyncWriteFileByParentChecker,
 } = require('../utils/permissionPolicy');
 const { selectiveTransfer } = require('../services/selectiveTransfer');
 const { selectiveCollectFiles } = require('../services/selectiveDownload');
@@ -223,58 +226,35 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
 router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   let folderPath = normalizePath(req.query.path || '/');
   const user = req.user.full;
-    
-    // 권한 체크를 먼저 수행 (상위 경로 포함)
-    // 디렉토리 경로 정규화 (끝에 / 추가)
-    const normalizedDirPath = folderPath === '/' ? '/' : folderPath + '/';
-    let hasPermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'read');
-    
-    // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-    if (!hasPermission && folderPath !== '/') {
-      hasPermission = await Permission.checkPermission(req.user.id, folderPath, 'read');
-    }
-    
-    // 상위 경로들을 체크 (예: /a/b/c -> /a/b, /a, /)
+  const doc = await Permission.getPermissionDoc(req.user.id);
+
+    // 권한 체크 (doc 1회 로드 후 동기 판별)
+    let hasPermission =
+      user.is_admin ||
+      isOwnerPath(user, folderPath) ||
+      Permission.checkPermissionSync(doc, folderPath, 'read');
     if (!hasPermission && folderPath !== '/') {
       const pathParts = folderPath.split('/').filter(Boolean);
       for (let i = pathParts.length; i > 0; i--) {
         const parentPath = '/' + pathParts.slice(0, i).join('/');
-        const parentDirPath = parentPath + '/';
-        
-        // 부모 경로에 직접 권한이 있는지 확인
-        const parentHasPermission = await Permission.checkPermission(req.user.id, parentDirPath, 'read');
-        if (parentHasPermission) {
+        if (Permission.checkPermissionSync(doc, parentPath, 'read')) {
           hasPermission = true;
           break;
         }
-        
-        // 부모 경로 끝에 /가 없는 경우도 체크
-        if (!parentHasPermission) {
-          const parentHasPermissionNoSlash = await Permission.checkPermission(req.user.id, parentPath, 'read');
-          if (parentHasPermissionNoSlash) {
-            hasPermission = true;
-            break;
-          }
-        }
       }
     }
-    
-    // 루트 경로 체크
     if (!hasPermission && folderPath !== '/') {
-      hasPermission = await Permission.checkPermission(req.user.id, '/', 'read');
+      hasPermission = Permission.checkPermissionSync(doc, '/', 'read');
     }
-    
     if (!hasPermission) {
-      // 관리자는 모든 경로에 접근 가능
       if (user.is_admin) {
         // 권한 체크 건너뛰기
       } else {
-        // 권한이 없으면, 비관리자의 경우 자신의 폴더인지 확인
         const userFolder = `/${user.username}`;
         if (folderPath === '/' || folderPath === '') {
           folderPath = userFolder;
         } else if (!folderPath.startsWith(userFolder)) {
-          return res.status(403).json({ 
+          return res.status(403).json({
             error: 'Access denied',
             message: '이 폴더에 대한 접근 권한이 없습니다.'
           });
@@ -300,118 +280,52 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
       : items.filter(item => item.basename !== '.wea');
     const { getThumbnailUrl } = require('../utils/thumbnail');
     
-    // Files inherit write permission from the current directory (parent folder)
-    let currentDirWritePermission = true;
-    if (!user.is_admin) {
-      currentDirWritePermission = false;
-      const normalizedFolderPathForCheck = folderPath === '/' ? '/' : folderPath;
-      const normalizedDirPath = normalizedFolderPathForCheck === '/' ? '/' : normalizedFolderPathForCheck + '/';
-      
-      // Direct write permission on this directory (slash + no-slash for compatibility)
-      currentDirWritePermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'write');
-      if (!currentDirWritePermission && normalizedFolderPathForCheck !== '/') {
-        currentDirWritePermission = await Permission.checkPermission(req.user.id, normalizedFolderPathForCheck, 'write');
+    // Current directory write permission (sync from doc)
+    const currentDirWritePermission =
+      user.is_admin ||
+      isOwnerPath(user, folderPath) ||
+      Permission.checkPermissionSync(doc, folderPath, 'write');
+
+    // 항목별 권한 체크 (동기, doc 기반)
+    const itemsWithThumbnails = filteredItems.map((item) => {
+      if (!item.basename || item.basename.includes('/') || item.basename.includes('\\')) {
+        return null;
       }
-      
-      // User's own folder is writable
-      if (!currentDirWritePermission) {
-        const userFolder = `/${user.username}`;
-        if (normalizedFolderPathForCheck.startsWith(userFolder) || normalizedDirPath.startsWith(userFolder)) {
-          currentDirWritePermission = true;
+      const cleanFolderPath = folderPath === '/' ? '/' : folderPath;
+      const fullPath =
+        cleanFolderPath === '/' ? '/' + item.basename : cleanFolderPath + '/' + item.basename;
+      const normalizedPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+
+      let hasReadPermission = true;
+      let hasWritePermission = item.type === 'directory' ? true : currentDirWritePermission;
+
+      if (item.type === 'directory') {
+        if (user.is_admin) {
+          hasReadPermission = true;
+          hasWritePermission = true;
+        } else {
+          hasReadPermission =
+            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, 'read');
+          hasWritePermission =
+            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, 'write');
         }
       }
-    }
-    
-    // 각 항목에 대한 권한 체크 및 필터링
-    const itemsWithThumbnails = await Promise.all(
-      filteredItems.map(async (item) => {
-        // 경로 구성: folderPath와 basename을 조합하여 직접 자식만 표시되도록 함
-        // folderPath는 이미 정규화되어 있고 끝에 /가 없음
-        // basename이 경로 구분자를 포함하지 않도록 검증 (직접 자식만)
-        if (!item.basename || item.basename.includes('/') || item.basename.includes('\\')) {
-          // basename이 경로를 포함하고 있으면 직접 자식이 아니므로 필터링
-          return null;
-        }
-        
-        const cleanFolderPath = folderPath === '/' ? '/' : folderPath;
-        const fullPath = cleanFolderPath === '/' 
-          ? '/' + item.basename 
-          : cleanFolderPath + '/' + item.basename;
-        
-        // 경로 정규화 (중복 슬래시 제거)
-        const normalizedPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
-        
-        // 권한 체크 (모든 항목에 대해)
-        let hasReadPermission = true;
-        // For files: inherit from current directory write permission
-        let hasWritePermission = item.type === 'directory' ? true : currentDirWritePermission;
-        
-        if (item.type === 'directory') {
-          // 관리자는 모든 디렉토리에 접근 가능
-          if (user.is_admin) {
-            hasReadPermission = true;
-            hasWritePermission = true;
-          } else {
-            // 디렉토리 경로 정규화 (끝에 / 추가)
-            const normalizedDirPath = normalizedPath.endsWith('/') ? normalizedPath : normalizedPath + '/';
-            
-            // 해당 경로에 직접 권한이 있는지 확인 (상위 경로 체크 제거 - 각 폴더의 직접 권한만 확인)
-            hasReadPermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'read');
-            
-            // 경로 끝에 /가 없는 경우도 체크 (하위 호환성)
-            if (!hasReadPermission && !normalizedPath.endsWith('/')) {
-              hasReadPermission = await Permission.checkPermission(req.user.id, normalizedPath, 'read');
-            }
-            
-            // 비관리자의 경우 자신의 폴더인지 확인 (항상 표시)
-            if (!hasReadPermission) {
-              const userFolder = `/${user.username}`;
-              if (normalizedPath.startsWith(userFolder) || normalizedDirPath.startsWith(userFolder)) {
-                hasReadPermission = true;
-                hasWritePermission = true;
-              }
-            }
-            
-            // 참고: 상위 경로에 권한이 있어도 하위 폴더에 직접 권한이 없으면
-            // hasReadPermission은 false로 설정되어 비활성화 상태로 표시됨
-            
-            // 쓰기 권한 체크
-            if (hasReadPermission) {
-              hasWritePermission = await Permission.checkPermission(req.user.id, normalizedDirPath, 'write');
-              if (!hasWritePermission && !normalizedPath.endsWith('/')) {
-                hasWritePermission = await Permission.checkPermission(req.user.id, normalizedPath, 'write');
-              }
-              
-              // 자신의 폴더인 경우 쓰기 권한 확인
-              if (!hasWritePermission) {
-                const userFolder = `/${user.username}`;
-                if (normalizedPath.startsWith(userFolder) || normalizedDirPath.startsWith(userFolder)) {
-                  hasWritePermission = true;
-                }
-              }
-            }
-          }
-        }
-        
-        let thumbnailUrl = null;
-        // 썸네일 생성은 제거하고 캐시된 것만 반환
-        if (isImageFile(item.basename) || isVideoFile(item.basename)) {
-          thumbnailUrl = getThumbnailUrl(normalizedPath);
-        }
-        
-        // isHidden 플래그 추가
-        const isHidden = item.basename.startsWith('.');
-        
-        return {
-          ...item,
-          path: normalizedPath,
-          thumbnailUrl,
-          hasReadPermission,
-          hasWritePermission,
-          isHidden,
-        };
-      })
-    );
+
+      let thumbnailUrl = null;
+      if (isImageFile(item.basename) || isVideoFile(item.basename)) {
+        thumbnailUrl = getThumbnailUrl(normalizedPath);
+      }
+      const isHidden = item.basename.startsWith('.');
+
+      return {
+        ...item,
+        path: normalizedPath,
+        thumbnailUrl,
+        hasReadPermission,
+        hasWritePermission,
+        isHidden,
+      };
+    });
 
   // 모든 항목 반환 (권한 정보 포함)
   // 직접 권한이 없는 디렉토리도 표시하되, 비활성화 상태로 표시됨
@@ -661,7 +575,7 @@ router.delete('/delete', authenticateToken, requireUser, normalizePathParam, che
   if (isDir) {
     if (user.is_admin || isOwnerPath(user, normalizedTargetPath)) {
       // Direct delete for admin/owner
-      await deleteFile(filePath);
+      await deleteFile(filePath, { isDirectory: isDir });
       
       try {
         await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
@@ -707,7 +621,7 @@ router.delete('/delete', authenticateToken, requireUser, normalizePathParam, che
     });
   }
 
-  await deleteFile(filePath);
+  await deleteFile(filePath, { isDirectory: isDir });
   res.json({ message: 'File deleted successfully' });
 }));
 
@@ -720,6 +634,9 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
   }
 
   const user = req.user.full;
+  const doc = await Permission.getPermissionDoc(req.user.id);
+  const canWriteDirSync = buildSyncWriteChecker(user, doc);
+  const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
   const results = {
     succeeded: [],
     failed: [],
@@ -739,8 +656,8 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
       const normalizedTargetPath = normalizePath(filePath);
       const isDir = await isDirectoryPath(filePath);
       const hasPermission = isDir
-        ? await canWriteFolder(user, normalizedTargetPath)
-        : await canWriteFileByParent(user, normalizedTargetPath);
+        ? canWriteDirSync(normalizedTargetPath)
+        : canWriteFileByParentSync(normalizedTargetPath);
       
       if (!hasPermission) {
         results.skipped.push(filePath);
@@ -768,7 +685,7 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
       if (isDir) {
         if (user.is_admin || isOwnerPath(user, normalizedTargetPath)) {
           // Direct delete for admin/owner
-          await deleteFile(filePath);
+          await deleteFile(filePath, { isDirectory: isDir });
           
           try {
             await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
@@ -781,11 +698,8 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
           return;
         }
 
-        const canEnterDirectory = async (dirPath) => {
-          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
-          return await hasDirectFolderPermission(user.id, dirPath, 'write');
-        };
-        const canDeleteFileByParent = async (parentDir) => canEnterDirectory(parentDir);
+        const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
+        const canDeleteFileByParent = (parentDir) => canWriteDirSync(parentDir);
 
         const result = await selectiveDelete({
           rootPath: normalizedTargetPath,
@@ -809,7 +723,7 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
           result.skippedPaths.forEach(p => results.skipped.push(p));
         }
       } else {
-        await deleteFile(filePath);
+        await deleteFile(filePath, { isDirectory: isDir });
         results.succeeded.push(filePath);
       }
     } catch (error) {
@@ -867,7 +781,7 @@ router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkM
     throw conflictError(`파일 이름 변경 실패: "${newName}" 이름의 파일이 이미 존재합니다.`);
   }
 
-  await moveFile(oldPath, newPath);
+  await moveFile(oldPath, newPath, null, false, { isDirectory: isDir });
   if (isDir) {
     try {
       const normalizedNew = normalizePath(newPath);
@@ -917,7 +831,7 @@ router.put('/move', authenticateToken, requireUser, normalizePathParam, checkMet
   if (isSourceDir) {
     if (user.is_admin || isOwnerPath(user, normalizedSourcePath)) {
       const overwrite = onConflict === 'overwrite';
-      await moveFile(sourcePath, destinationPath, null, overwrite);
+      await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
       
       try {
         await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }]);
@@ -1017,7 +931,7 @@ router.put('/move', authenticateToken, requireUser, normalizePathParam, checkMet
 
   try {
     const overwrite = onConflict === 'overwrite';
-    await moveFile(sourcePath, destinationPath, progressCallback, overwrite);
+    await moveFile(sourcePath, destinationPath, progressCallback, overwrite, { isDirectory: false });
     operationProgress.set(operationId, {
       stage: 'completed',
       progress: fileSize,
@@ -1064,6 +978,9 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
   }
 
   const user = req.user.full;
+  const doc = await Permission.getPermissionDoc(req.user.id);
+  const canWriteDirSync = buildSyncWriteChecker(user, doc);
+  const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
   const results = {
     succeeded: [],
     failed: [],
@@ -1073,7 +990,8 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
 
   const allMovedDirMappings = [];
 
-  await asyncLimitSettled(5, moves, async (move) => {
+  // Concurrency 1: WebDAV MOVE fails with 500 when multiple MOVE requests run in parallel (single move works).
+  await asyncLimitSettled(1, moves, async (move) => {
     const { sourcePath, destinationPath } = move;
     
     if (!sourcePath || !destinationPath) {
@@ -1090,8 +1008,8 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
       const normalizedDestinationPath = normalizePath(destinationPath);
       const isSourceDir = await isDirectoryPath(sourcePath);
       const hasSourcePermission = isSourceDir
-        ? await canWriteFolder(user, normalizedSourcePath)
-        : await canWriteFileByParent(user, normalizedSourcePath);
+        ? canWriteDirSync(normalizedSourcePath)
+        : canWriteFileByParentSync(normalizedSourcePath);
       
       if (!hasSourcePermission) {
         results.skipped.push(sourcePath);
@@ -1099,7 +1017,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
       }
 
       const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
-      const hasDestPermission = await canWriteFolder(user, destParentPath);
+      const hasDestPermission = canWriteDirSync(destParentPath);
       
       if (!hasDestPermission) {
         results.skipped.push(sourcePath);
@@ -1115,7 +1033,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
       if (isSourceDir) {
         if (user.is_admin || isOwnerPath(user, normalizedSourcePath)) {
           const overwrite = onConflict === 'overwrite';
-          await moveFile(sourcePath, destinationPath, null, overwrite);
+          await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
           
           try {
             await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }]);
@@ -1128,11 +1046,8 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
           return;
         }
 
-        const canEnterDirectory = async (dirPath) => {
-          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
-          return await hasDirectFolderPermission(user.id, dirPath, 'write');
-        };
-        const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+        const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
+        const canTransferFile = (parentDir) => canWriteDirSync(parentDir);
 
         const result = await selectiveTransfer({
           sourceRoot: normalizedSourcePath,
@@ -1178,7 +1093,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
         }
       } else {
         const overwrite = onConflict === 'overwrite';
-        await moveFile(sourcePath, destinationPath, null, overwrite);
+        await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
         results.succeeded.push({ sourcePath, destinationPath });
       }
     } catch (error) {
@@ -1238,7 +1153,7 @@ router.post('/copy', authenticateToken, requireUser, normalizePathParam, checkMe
   if (isSourceDir) {
     if (user.is_admin || isOwnerPath(user, sourcePath)) {
       const overwrite = onConflict === 'overwrite';
-      await copyFile(sourcePath, destinationPath, null, overwrite);
+      await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
       
       try {
         await Permission.grant(req.user.id, normalizedDest, 'write');
@@ -1323,7 +1238,7 @@ router.post('/copy', authenticateToken, requireUser, normalizePathParam, checkMe
 
   try {
     const overwrite = onConflict === 'overwrite';
-    await copyFile(sourcePath, destinationPath, progressCallback, overwrite);
+    await copyFile(sourcePath, destinationPath, progressCallback, overwrite, { isDirectory: false });
     operationProgress.set(operationId, {
       stage: 'completed',
       progress: fileSize,
@@ -1357,6 +1272,9 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
   }
 
   const user = req.user.full;
+  const doc = await Permission.getPermissionDoc(req.user.id);
+  const canReadDirSync = buildSyncReadChecker(user, doc);
+  const canWriteDirSync = buildSyncWriteChecker(user, doc);
   const results = {
     succeeded: [],
     failed: [],
@@ -1366,7 +1284,8 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
 
   const allCreatedDirs = new Set();
 
-  await asyncLimitSettled(5, copies, async (copy) => {
+  // Concurrency 1: WebDAV COPY fails with 500 when multiple COPY requests run in parallel (single copy works).
+  await asyncLimitSettled(1, copies, async (copy) => {
     const { sourcePath, destinationPath } = copy;
     
     if (!sourcePath || !destinationPath) {
@@ -1380,9 +1299,10 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
 
     try {
       const isSourceDir = await isDirectoryPath(sourcePath);
+      const normalizedSource = normalizePath(sourcePath);
       const hasSourcePermission = isSourceDir
-        ? await canReadFolder(req.user.id, sourcePath, 'read')
-        : await canReadFile(req.user.id, sourcePath, 'read');
+        ? canReadDirSync(normalizedSource)
+        : canReadDirSync(path.posix.dirname(normalizedSource) || '/');
       
       if (!hasSourcePermission) {
         results.skipped.push(sourcePath);
@@ -1391,7 +1311,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
 
       const normalizedDest = normalizePath(destinationPath);
       const destParentPath = path.posix.dirname(normalizedDest) || '/';
-      const hasDestPermission = await canWriteFolder(user, destParentPath);
+      const hasDestPermission = canWriteDirSync(destParentPath);
       
       if (!hasDestPermission) {
         results.skipped.push(sourcePath);
@@ -1407,7 +1327,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
       if (isSourceDir) {
         if (user.is_admin || isOwnerPath(user, sourcePath)) {
           const overwrite = onConflict === 'overwrite';
-          await copyFile(sourcePath, destinationPath, null, overwrite);
+          await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
           
           try {
             await Permission.grant(req.user.id, normalizedDest, 'write');
@@ -1420,15 +1340,10 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
           return;
         }
 
-        const normalizedSource = normalizePath(sourcePath);
+        const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
+        const canTransferFile = (parentDir) => canReadDirSync(parentDir);
 
-        const canEnterDirectory = async (dirPath) => {
-          if (user.is_admin || isOwnerPath(user, dirPath)) return true;
-          return await hasDirectFolderPermission(user.id, dirPath, 'read');
-        };
-        const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
-
-        const okRoot = await canEnterDirectory(normalizedSource);
+        const okRoot = canEnterDirectory(normalizedSource);
         if (!okRoot) {
           results.skipped.push(sourcePath);
           return;
@@ -1458,7 +1373,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
         }
       } else {
         const overwrite = onConflict === 'overwrite';
-        await copyFile(sourcePath, destinationPath, null, overwrite);
+        await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
         results.succeeded.push({ sourcePath, destinationPath });
       }
     } catch (error) {
@@ -1548,13 +1463,10 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
   }
 
   const user = req.user.full;
-
-    // Download policy: recursive_strict + direct-only read (admin/owner bypass)
-    const canEnterDirectory = async (dirPath) => {
-      if (user.is_admin || isOwnerPath(user, dirPath)) return true;
-      return await hasDirectFolderPermission(user.id, dirPath, 'read');
-    };
-    const canIncludeFile = async (parentDir) => canEnterDirectory(parentDir);
+  const doc = await Permission.getPermissionDoc(req.user.id);
+  const canReadDirSync = buildSyncReadChecker(user, doc);
+  const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
+  const canIncludeFile = (parentDir) => canReadDirSync(parentDir);
 
     const skippedPaths = [];
 

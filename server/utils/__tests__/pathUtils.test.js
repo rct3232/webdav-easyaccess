@@ -5,7 +5,6 @@
 
 const {
   normalizePath,
-  normalizePathWithSlash,
   getParentPath,
   getBasename,
   isPathUnder,
@@ -58,30 +57,35 @@ describe('pathUtils', () => {
     });
   });
 
-  describe('normalizePathWithSlash', () => {
-    it('should normalize path with trailing slash', () => {
-      expect(normalizePathWithSlash('/folder')).toBe('/folder/');
-      expect(normalizePathWithSlash('/folder/subfolder')).toBe('/folder/subfolder/');
+  describe('normalizePath with isDirectory option', () => {
+    it('should normalize path with trailing slash when isDirectory is true', () => {
+      expect(normalizePath('/folder', { isDirectory: true })).toBe('/folder/');
+      expect(normalizePath('/folder/subfolder', { isDirectory: true })).toBe('/folder/subfolder/');
     });
 
     it('should handle root path specially', () => {
-      expect(normalizePathWithSlash('/')).toBe('/');
-      expect(normalizePathWithSlash('')).toBe('/');
+      expect(normalizePath('/', { isDirectory: true })).toBe('/');
+      expect(normalizePath('', { isDirectory: true })).toBe('/');
     });
 
     it('should not double-add trailing slash', () => {
-      expect(normalizePathWithSlash('/folder/')).toBe('/folder/');
-      expect(normalizePathWithSlash('/folder/subfolder/')).toBe('/folder/subfolder/');
+      expect(normalizePath('/folder/', { isDirectory: true })).toBe('/folder/');
+      expect(normalizePath('/folder/subfolder/', { isDirectory: true })).toBe('/folder/subfolder/');
     });
 
     it('should handle paths without leading slash', () => {
-      expect(normalizePathWithSlash('folder')).toBe('/folder/');
-      expect(normalizePathWithSlash('folder/subfolder')).toBe('/folder/subfolder/');
+      expect(normalizePath('folder', { isDirectory: true })).toBe('/folder/');
+      expect(normalizePath('folder/subfolder', { isDirectory: true })).toBe('/folder/subfolder/');
     });
 
     it('should handle complex cases with normalization', () => {
-      expect(normalizePathWithSlash('//folder///subfolder//')).toBe('/folder/subfolder/');
-      expect(normalizePathWithSlash('\\folder\\subfolder')).toBe('/folder/subfolder/');
+      expect(normalizePath('//folder///subfolder//', { isDirectory: true })).toBe('/folder/subfolder/');
+      expect(normalizePath('\\folder\\subfolder', { isDirectory: true })).toBe('/folder/subfolder/');
+    });
+
+    it('should not add trailing slash when isDirectory is false or omitted', () => {
+      expect(normalizePath('/folder')).toBe('/folder');
+      expect(normalizePath('/folder', { isDirectory: false })).toBe('/folder');
     });
   });
 
@@ -225,14 +229,14 @@ describe('pathUtils', () => {
   describe('Edge Cases and Integration', () => {
     it('should handle empty strings consistently', () => {
       expect(normalizePath('')).toBe('/');
-      expect(normalizePathWithSlash('')).toBe('/');
+      expect(normalizePath('', { isDirectory: true })).toBe('/');
       expect(getParentPath('')).toBe('/');
       expect(getParentPaths('')).toEqual([]);
     });
 
     it('should handle whitespace consistently', () => {
       expect(normalizePath('   ')).toBe('/');
-      expect(normalizePathWithSlash('   ')).toBe('/');
+      expect(normalizePath('   ', { isDirectory: true })).toBe('/');
     });
 
     it('should handle very long paths', () => {

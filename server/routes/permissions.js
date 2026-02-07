@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
-const { normalizePath, normalizePathWithSlash } = require('../utils/pathUtils');
+const { normalizePath } = require('../utils/pathUtils');
 const { canReadFolder, canWriteFolder, hasDirectFolderPermission, isOwnerPath, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
 const requireUser = require('../middleware/requireUser');
 const normalizePathParam = require('../middleware/normalizePathParam');
@@ -52,7 +52,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
   }
 
   const normalizedFolderPath = normalizePath(folderPath);
-  const normalizedFolderPathWithSlash = normalizePathWithSlash(folderPath);
+  const normalizedFolderPathWithSlash = normalizePath(folderPath, { isDirectory: true });
 
   if (includeSubfolders === 'true') {
     // 하위 폴더 포함하여 모든 권한 삭제

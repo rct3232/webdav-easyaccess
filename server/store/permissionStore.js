@@ -22,7 +22,10 @@ function safeJsonParse(text) {
 }
 
 const cache = new Map(); // userId -> { expiresAt:number, data: object }
-const CACHE_TTL_MS = process.env.NODE_ENV === 'test' ? 0 : 1000;
+const CACHE_TTL_MS =
+  process.env.NODE_ENV === 'test'
+    ? 0
+    : parseInt(process.env.PERMISSION_CACHE_TTL_MS || '5000', 10) || 5000;
 
 async function ensureDirs() {
   await ensureDir(META_ROOT);
@@ -171,6 +174,49 @@ function rewriteKeyByMapping(key, mapping) {
     return mapping.toWithSlash + keyNorm.slice(fromWithSlash.length);
   }
   return null;
+}
+
+/**
+ * Synchronous permission check using a preloaded doc (slash + no-slash compatible).
+ * @param {object} doc - Permission doc from getPermissionDoc(userId)
+ * @param {string} folderPath - Folder path to check
+ * @param {string} requiredPermission - 'read', 'write', or 'admin'
+ * @returns {boolean}
+ */
+function checkPermissionSync(doc, folderPath, requiredPermission) {
+  if (!doc || !doc.permissions) return false;
+  const withSlash = normalizeWithSlash(folderPath);
+  const noSlash = normalizeNoSlash(folderPath);
+  const actual = doc.permissions[withSlash] || doc.permissions[noSlash];
+  if (!actual) return false;
+  return permissionRank(actual) >= permissionRank(requiredPermission);
+}
+
+/**
+ * Get the permission doc for a user (uses cache). Use with checkPermissionSync for request-scoped bulk checks.
+ * @param {number|string} userId
+ * @returns {Promise<object>}
+ */
+async function getPermissionDoc(userId) {
+  return await readUserPermissionsDoc(userId);
+}
+
+/**
+ * Check permissions for multiple paths in one doc read.
+ * @param {number|string} userId
+ * @param {string[]} paths
+ * @param {string} requiredPermission
+ * @returns {Promise<Map<string,boolean>>}
+ */
+async function checkPermissions(userId, paths, requiredPermission) {
+  const doc = await getPermissionDoc(userId);
+  const result = new Map();
+  if (!Array.isArray(paths)) return result;
+  for (const p of paths) {
+    if (typeof p !== 'string') continue;
+    result.set(p, checkPermissionSync(doc, p, requiredPermission));
+  }
+  return result;
 }
 
 async function checkPermission(userId, folderPath, requiredPermission) {
@@ -455,6 +501,9 @@ module.exports = {
   deleteUserPermissionsFile,
   getUserPermissions,
   checkPermission,
+  checkPermissionSync,
+  getPermissionDoc,
+  checkPermissions,
   getFolderPermissions,
   hasPermissionsInPath,
   rewritePermissionsForAllUsers,

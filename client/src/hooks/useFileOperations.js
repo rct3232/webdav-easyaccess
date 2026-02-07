@@ -22,6 +22,7 @@ import {
  * @param {Function} options.onProcessingEnd - Processing end callback (for FileContextMenu)
  * @param {Function} options.onActionComplete - Action complete callback
  * @param {Function} options.onClose - Close callback (for dialogs)
+ * @param {Function} [options.onConflictResolveStart] - Called when user chooses overwrite/skip (before running); e.g. clear selection mode
  * @returns {Object} File operation handlers and conflict state
  */
 export const useFileOperations = ({
@@ -31,6 +32,7 @@ export const useFileOperations = ({
   onProcessingEnd,
   onActionComplete,
   onClose,
+  onConflictResolveStart,
 }) => {
   const [conflictData, setConflictData] = useState(null);
 
@@ -38,6 +40,9 @@ export const useFileOperations = ({
    * Execute file operation after pre-checks
    */
   const executeFileOperation = useCallback(async (file, selectedPath, operation, operationName, actionVerb, context = {}, onConflict = 'error') => {
+    if (typeof onConflictResolveStart === 'function') {
+      onConflictResolveStart();
+    }
     const destPath = selectedPath.endsWith('/')
       ? selectedPath + file.basename
       : selectedPath + '/' + file.basename;
@@ -182,7 +187,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose, onConflictResolveStart]);
 
   /**
    * Resolve conflicts and resume operation
@@ -190,10 +195,9 @@ export const useFileOperations = ({
    */
   const resolveConflict = useCallback(async (resolution) => {
     if (!conflictData) return;
-    
+
     const { file, selectedPath, operation, operationName, actionVerb, context } = conflictData;
     setConflictData(null);
-    
     await executeFileOperation(file, selectedPath, operation, operationName, actionVerb, context, resolution);
     if (onClose) {
       onClose();

@@ -413,10 +413,11 @@ export const useBulkOperations = (
     
     if (!action || filePaths.length === 0) return;
     const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
-    
+
+    setSelectionMode(false);
+    setSelectedFiles(new Set());
     if (!retryData) {
       dismissFailedItems();
-      setSelectionMode(false);
     }
 
     markProcessing(filePaths, action);
@@ -526,11 +527,7 @@ export const useBulkOperations = (
           console.error('Failed to update recent files after bulk move:', err);
         }
       }
-      
-      if (!retryData) {
-        setSelectedFiles(new Set());
-        setSelectionMode(false);
-      }
+
       if (onOperationComplete) {
         onOperationComplete({
           opType: action,
@@ -577,7 +574,12 @@ export const useBulkOperations = (
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
-        setBulkConflictData({ destinationPath, retryData, conflicts, action });
+        setBulkConflictData({
+          destinationPath,
+          retryData: retryData ?? { type: action, filePaths },
+          conflicts,
+          action,
+        });
         return;
       }
 
@@ -598,10 +600,9 @@ export const useBulkOperations = (
    */
   const resolveBulkConflict = useCallback(async (resolution) => {
     if (!bulkConflictData) return;
-    
+
     const { destinationPath, retryData } = bulkConflictData;
     setBulkConflictData(null);
-    
     await executeBulkOperation(destinationPath, retryData, resolution);
     setFolderPickerOpen(false);
     setFolderPickerAction(null);

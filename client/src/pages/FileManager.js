@@ -588,6 +588,10 @@ const FileManager = () => {
       setActionSheetOpen(false);
       setActionSheetFile(null);
     },
+    onConflictResolveStart: () => {
+      setSelectionMode(false);
+      setSelectedFiles(new Set());
+    },
   });
 
   const [uploadConflictData, setUploadConflictData] = useState(null);

@@ -218,6 +218,8 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
             <CircularProgress 
               size={20} 
               thickness={4}
+              value={overallStatus === 'processing' && overallProgress > 0 ? overallProgress : undefined}
+              variant={overallStatus === 'processing' && overallProgress > 0 ? 'determinate' : 'indeterminate'}
               sx={{ position: 'absolute', top: 0, left: 0 }}
             />
             <Box
@@ -364,7 +366,12 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                 },
               }}
             >
-              {items.map((item, index) => (
+              {items.map((item, index) => {
+                const canShowDeterminate =
+                  item.total > 0 &&
+                  item.status !== 'preparing' &&
+                  ['move', 'copy', 'delete', 'upload', 'download'].includes(item.type);
+                return (
               <Box key={index} sx={{ mb: 2, '&:last-child': { mb: 0 }, display: 'flex', flexDirection: 'column' }}>
                 {/* 아이템 헤더 (고정 영역) */}
                 <Box sx={{ 
@@ -451,19 +458,8 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                     />
                   ) : (
                     <LinearProgress
-                      variant={
-                        item.type === 'move' ||
-                        item.type === 'copy' ||
-                        item.type === 'delete' ||
-                        item.type === 'upload' ||
-                        item.type === 'rename' ||
-                        item.type === 'createFolder' ||
-                        item.status === 'preparing' ||
-                        item.total === 0
-                          ? 'indeterminate'
-                          : 'determinate'
-                      }
-                      value={item.type === 'move' || item.type === 'copy' || item.type === 'delete' || item.type === 'upload' ? undefined : getProgress(item)}
+                      variant={canShowDeterminate ? 'determinate' : 'indeterminate'}
+                      value={canShowDeterminate ? getProgress(item) : undefined}
                       sx={{ 
                         mb: 0.5, 
                         height: 6, 
@@ -724,7 +720,8 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                   )}
                 </Box>
               </Box>
-              ))}
+              );
+              })}
             </Box>
           </Collapse>
         </Paper>

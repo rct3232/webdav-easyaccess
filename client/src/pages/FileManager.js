@@ -56,7 +56,7 @@ import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
 import FilePropertiesDialog from '../components/FilePropertiesDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ConflictResolveDialog from '../components/ConflictResolveDialog';
-import { moveFile, checkPermission, copyFile, checkConflicts } from '../services/fileService';
+import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, getErrorMessage, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath } from '../utils/pathUtils';
@@ -248,7 +248,6 @@ const FileManager = () => {
     renameDialogOpen, openRenameDialog, closeRenameDialog,
     shareDialogOpen, openShareDialog, closeShareDialog,
     sharedFolderManageDialogOpen, openSharedFolderManageDialog, closeSharedFolderManageDialog,
-    deleteDialogOpen, openDeleteDialog, closeDeleteDialog,
     propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,
     bulkDeleteDialogOpen, openBulkDeleteDialog, closeBulkDeleteDialog,
     actionSheetOpen, setActionSheetOpen, closeActionSheet,
@@ -258,7 +257,6 @@ const FileManager = () => {
     renameNewName, setRenameNewName,
     renameError, setRenameError,
     mobileRenameFile,
-    mobileDeleteFile,
     mobileShareFile,
     mobileSharedManageFile,
     mobilePropertiesFile,
@@ -589,12 +587,7 @@ const FileManager = () => {
   // File operations hook for mobile actions
   const {
     handleFileDownload: handleFileDownloadOp,
-    handleFileOperation: handleFileOperationOp,
     handleFileRename: handleFileRenameOp,
-    handleFileDelete: handleFileDeleteOp,
-    conflictData,
-    resolveConflict,
-    setConflictData,
   } = useFileOperations({
     onProgress: updateProgress,
     setProcessingMap,
@@ -1123,31 +1116,6 @@ const FileManager = () => {
     }
   };
 
-  const handleDelete = async () => {
-    const targetFile = mobileDeleteFile || actionSheetFile;
-    if (!targetFile) return;
-
-    try {
-      await handleFileDeleteOp(targetFile, { startedPath: currentPathRef.current });
-      closeDeleteDialog();
-      closeActionSheet();
-    } catch (error) {
-      // Error is already handled by useFileOperations
-    }
-  };
-
-  // FileContextMenu.handleFileOperation과 동일한 패턴의 공통 핸들러
-  const handleActionSheetFileOperation = async (selectedPath, operation, operationName, actionVerb, file = null) => {
-    const targetFile = file || actionSheetFile;
-    if (!targetFile) return;
-
-    try {
-      await handleFileOperationOp(targetFile, selectedPath, operation, operationName, actionVerb, { startedPath: currentPathRef.current });
-    } catch (error) {
-      // Error is already handled by useFileOperations
-    }
-  };
-
   const handleActionSheetDownload = async () => {
     if (!actionSheetFile) return;
     try {
@@ -1159,14 +1127,11 @@ const FileManager = () => {
   };
 
   const handleFileDrop = async (draggedFile, targetFolder) => {
-      if (draggedFile.path === targetFolder.path) {
-        return;
-      }
-
+    if (draggedFile.path === targetFolder.path) return;
     try {
-      await handleFileOperationOp(draggedFile, targetFolder.path, moveFile, '이동', '이동', { startedPath: currentPathRef.current });
+      await handleFolderPickerSelect(targetFolder.path, { type: 'move', filePaths: [draggedFile.path] });
     } catch (error) {
-      // Error is already handled by useFileOperations
+      // Error is already handled by useBulkOperations
     }
   };
 
@@ -1816,7 +1781,7 @@ const FileManager = () => {
         }}
         onDelete={(file) => {
           setContextMenu(null);
-          openDeleteDialog(file);
+          openBulkDeleteDialog([file.path]);
         }}
       />
 
@@ -1832,20 +1797,10 @@ const FileManager = () => {
           }
         }}
         onSelect={(selectedPath) => {
-          // mobilePickerFile이 있으면 모바일에서 호출된 것
-          if (mobilePickerFile) {
-            const currentAction = mobilePickerAction;
-            const currentFile = mobilePickerFile;
-            
-            // 작업 수행 (currentFile을 사용)
-            if (currentAction === 'move') {
-              handleActionSheetFileOperation(selectedPath, moveFile, '이동', '이동', currentFile);
-            } else if (currentAction === 'copy') {
-              handleActionSheetFileOperation(selectedPath, copyFile, '복사', '복사', currentFile);
-            }
-          } else {
-            // 기존 bulk operation 로직 (데스크톱)
-            handleFolderPickerSelect(selectedPath);
+          const sourceFilePath = mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined);
+          const filePaths = sourceFilePath ? [sourceFilePath] : Array.from(selectedFiles);
+          if (filePaths.length > 0 && folderPickerAction) {
+            handleFolderPickerSelect(selectedPath, { type: folderPickerAction, filePaths });
           }
         }}
         title={
@@ -1917,14 +1872,6 @@ const FileManager = () => {
       />
 
       <ConflictResolveDialog
-        open={!!conflictData}
-        onClose={() => setConflictData(null)}
-        onResolve={resolveConflict}
-        conflicts={conflictData?.conflicts || []}
-        operationType={conflictData?.operationName || '이동'}
-      />
-
-      <ConflictResolveDialog
         open={!!bulkConflictData}
         onClose={() => setBulkConflictData(null)}
         onResolve={resolveBulkConflict}
@@ -1983,7 +1930,7 @@ const FileManager = () => {
           }}
           onDelete={() => {
             if (actionSheetFile) {
-              openDeleteDialog(actionSheetFile);
+              openBulkDeleteDialog([actionSheetFile.path]);
             }
           }}
           onShare={() => {
@@ -2062,19 +2009,6 @@ const FileManager = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        open={deleteDialogOpen}
-        onClose={closeDeleteDialog}
-        onConfirm={handleDelete}
-        title="삭제 확인"
-        message={`정말로 "${(mobileDeleteFile || actionSheetFile)?.basename}"을(를) 삭제하시겠습니까?`}
-        confirmText="삭제"
-        cancelText="취소"
-        confirmColor="error"
-        loading={processingMap.has((mobileDeleteFile || actionSheetFile)?.path)}
-      />
-
       {/* Share Dialog */}
       {(mobileShareFile || actionSheetFile) && (
         <ShareDialog
@@ -2131,13 +2065,6 @@ const FileManager = () => {
         confirmColor="error"
       />
 
-      <ConflictResolveDialog
-        open={!!conflictData}
-        onClose={() => setConflictData(null)}
-        onResolve={resolveConflict}
-        conflicts={conflictData?.conflicts || []}
-        operationType={conflictData?.operationName || '이동'}
-      />
       <ConflictResolveDialog
         open={!!bulkConflictData}
         onClose={() => setBulkConflictData(null)}

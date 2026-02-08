@@ -1,4 +1,4 @@
-import { get, post, put, del } from './apiClient';
+import { get, post, put } from './apiClient';
 
 const API_BASE = '/files';
 
@@ -124,129 +124,11 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
   return { results, errors };
 };
 
-export const deleteFile = async (filePath) => {
-  const response = await del(`${API_BASE}/delete`, {
-    params: { path: filePath },
-  });
-  return response.data;
-};
-
 export const renameFile = async (oldPath, newName) => {
   const response = await put(`${API_BASE}/rename`, {
     oldPath,
     newName,
   });
-  return response.data;
-};
-
-const getFileSize = async (filePath) => {
-  try {
-    const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
-    const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
-    const files = await listFiles(parentPath);
-    const fileItem = files.find(item => item.basename === fileName);
-    return fileItem?.size || 0;
-  } catch (err) {
-    return 0;
-  }
-};
-
-const pollOperationProgress = async (operationId, fileSize, onProgress) => {
-  const pollProgress = async () => {
-    try {
-      const progressResponse = await get(`/files/operation-progress/${operationId}`);
-      const progress = progressResponse.data;
-      
-      onProgress({
-        stage: progress.stage,
-        progress: progress.progress,
-        total: progress.total,
-        percentage: progress.percentage,
-      });
-      
-      if (progress.stage !== 'completed' && progress.stage !== 'error') {
-        setTimeout(pollProgress, 100);
-      }
-    } catch (err) {
-      if (onProgress) {
-        onProgress({
-          stage: 'completed',
-          progress: fileSize,
-          total: fileSize,
-          percentage: 100,
-        });
-      }
-    }
-  };
-  
-  setTimeout(pollProgress, 50);
-};
-
-export const moveFile = async (sourcePath, destinationPath, onProgress, onConflict = 'error') => {
-  const fileSize = await getFileSize(sourcePath);
-
-  if (onProgress && fileSize > 0) {
-    onProgress({
-      stage: 'downloading',
-      progress: 0,
-      total: fileSize,
-      percentage: 0,
-    });
-  }
-  
-  const response = await put(`${API_BASE}/move`, {
-    sourcePath,
-    destinationPath,
-    onConflict,
-  });
-  
-  const operationId = response.data.operationId;
-  
-  if (onProgress && operationId && fileSize > 0) {
-    pollOperationProgress(operationId, fileSize, onProgress);
-  } else if (onProgress && fileSize > 0) {
-    onProgress({
-      stage: 'completed',
-      progress: fileSize,
-      total: fileSize,
-      percentage: 100,
-    });
-  }
-  
-  return response.data;
-};
-
-export const copyFile = async (sourcePath, destinationPath, onProgress, onConflict = 'error') => {
-  const fileSize = await getFileSize(sourcePath);
-
-  if (onProgress && fileSize > 0) {
-    onProgress({
-      stage: 'downloading',
-      progress: 0,
-      total: fileSize,
-      percentage: 0,
-    });
-  }
-  
-  const response = await post(`${API_BASE}/copy`, {
-    sourcePath,
-    destinationPath,
-    onConflict,
-  });
-  
-  const operationId = response.data.operationId;
-  
-  if (onProgress && operationId && fileSize > 0) {
-    pollOperationProgress(operationId, fileSize, onProgress);
-  } else if (onProgress && fileSize > 0) {
-    onProgress({
-      stage: 'completed',
-      progress: fileSize,
-      total: fileSize,
-      percentage: 100,
-    });
-  }
-  
   return response.data;
 };
 

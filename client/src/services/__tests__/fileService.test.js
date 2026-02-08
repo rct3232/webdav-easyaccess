@@ -1,15 +1,12 @@
-import { get, post, put, del } from '../apiClient';
+import { get, post, put } from '../apiClient';
 import { 
   listFiles, 
-  deleteFile, 
   renameFile, 
   createFolder, 
   getWebDAVInfo,
   uploadFile,
   uploadFileWithPath,
   uploadMultipleFiles,
-  moveFile,
-  copyFile,
   checkConflicts,
   downloadMultipleFiles,
   checkPermission,
@@ -23,7 +20,6 @@ jest.mock('../apiClient', () => ({
   get: jest.fn(),
   post: jest.fn(),
   put: jest.fn(),
-  del: jest.fn(),
 }));
 
 describe('fileService', () => {
@@ -40,14 +36,6 @@ describe('fileService', () => {
 
       expect(get).toHaveBeenCalledWith('/files/list', { params: { path: '/test' } });
       expect(result).toEqual(mockData);
-    });
-
-    it('deleteFile calls del with correct params', async () => {
-      del.mockResolvedValue({ data: { message: 'deleted' } });
-
-      await deleteFile('/test/file.txt');
-
-      expect(del).toHaveBeenCalledWith('/files/delete', { params: { path: '/test/file.txt' } });
     });
 
     it('renameFile calls put with correct body', async () => {
@@ -142,28 +130,33 @@ describe('fileService', () => {
   });
 
   describe('Complex operations', () => {
-    it('moveFile calls put and handles progress if no operationId', async () => {
-      put.mockResolvedValue({ data: { success: true } });
-      get.mockResolvedValue({ data: [] }); // for getFileSize
+    it('batchDeleteFiles calls post with paths array', async () => {
+      post.mockResolvedValue({ data: { succeeded: ['/test/file.txt'], failed: [] } });
 
-      await moveFile('/src', '/dest');
+      const result = await batchDeleteFiles(['/test/file.txt']);
 
-      expect(put).toHaveBeenCalledWith('/files/move', {
-        sourcePath: '/src',
-        destinationPath: '/dest',
+      expect(post).toHaveBeenCalledWith('/files/batch-delete', { paths: ['/test/file.txt'] });
+      expect(result.succeeded).toContain('/test/file.txt');
+    });
+
+    it('batchMoveFiles calls post with moves array', async () => {
+      post.mockResolvedValue({ data: { succeeded: [{ sourcePath: '/src', destinationPath: '/dest' }], failed: [] } });
+
+      await batchMoveFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
+
+      expect(post).toHaveBeenCalledWith('/files/batch-move', {
+        moves: [{ sourcePath: '/src', destinationPath: '/dest' }],
         onConflict: 'error'
       });
     });
 
-    it('copyFile calls post', async () => {
-      post.mockResolvedValue({ data: { success: true } });
-      get.mockResolvedValue({ data: [] }); // for getFileSize
+    it('batchCopyFiles calls post with copies array', async () => {
+      post.mockResolvedValue({ data: { succeeded: [{ sourcePath: '/src', destinationPath: '/dest' }], failed: [] } });
 
-      await copyFile('/src', '/dest');
+      await batchCopyFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
 
-      expect(post).toHaveBeenCalledWith('/files/copy', {
-        sourcePath: '/src',
-        destinationPath: '/dest',
+      expect(post).toHaveBeenCalledWith('/files/batch-copy', {
+        copies: [{ sourcePath: '/src', destinationPath: '/dest' }],
         onConflict: 'error'
       });
     });

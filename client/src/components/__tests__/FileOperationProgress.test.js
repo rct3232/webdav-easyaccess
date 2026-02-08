@@ -23,7 +23,7 @@ describe('FileOperationProgress', () => {
       />
     );
 
-    expect(screen.getByText('제외된 항목: 1개')).toBeInTheDocument();
+    expect(screen.getAllByText(/권한으로 제외된 항목: 1개/).length).toBeGreaterThan(0);
     expect(screen.getByText('/a/b')).toBeInTheDocument();
   });
 });

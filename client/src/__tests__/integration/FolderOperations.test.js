@@ -54,113 +54,115 @@ describe('Folder Operations Integration Tests (F8, F9, F10, F21)', () => {
 
   describe('폴더 삭제 (F9)', () => {
     it('deletes an empty folder successfully', async () => {
-      fileService.deleteFile.mockResolvedValue({ success: true });
+      fileService.batchDeleteFiles.mockResolvedValue({ succeeded: ['/testuser/emptyfolder'], failed: [] });
 
-      const result = await fileService.deleteFile('/testuser/emptyfolder');
+      const result = await fileService.batchDeleteFiles(['/testuser/emptyfolder']);
 
-      expect(fileService.deleteFile).toHaveBeenCalledWith('/testuser/emptyfolder');
-      expect(result.success).toBe(true);
+      expect(fileService.batchDeleteFiles).toHaveBeenCalledWith(['/testuser/emptyfolder']);
+      expect(result.succeeded).toContain('/testuser/emptyfolder');
     });
 
     it('deletes a folder with contents', async () => {
-      fileService.deleteFile.mockResolvedValue({ success: true });
+      fileService.batchDeleteFiles.mockResolvedValue({ succeeded: ['/testuser/folder-with-files'], failed: [] });
 
-      const result = await fileService.deleteFile('/testuser/folder-with-files');
+      const result = await fileService.batchDeleteFiles(['/testuser/folder-with-files']);
 
-      expect(result.success).toBe(true);
+      expect(result.succeeded).toContain('/testuser/folder-with-files');
     });
 
     it('handles delete failure (permission denied)', async () => {
-      fileService.deleteFile.mockRejectedValue(new Error('Permission denied'));
+      fileService.batchDeleteFiles.mockRejectedValue(new Error('Permission denied'));
 
       await expect(
-        fileService.deleteFile('/otheruser/protected')
+        fileService.batchDeleteFiles(['/otheruser/protected'])
       ).rejects.toThrow('Permission denied');
     });
   });
 
   describe('폴더 이동 (F10)', () => {
     it('moves folder to a new location', async () => {
-      fileService.moveFile.mockResolvedValue({ success: true });
+      fileService.batchMoveFiles.mockResolvedValue({
+        succeeded: [{ sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' }],
+        failed: [],
+      });
 
-      const result = await fileService.moveFile(
-        '/testuser/source/folder',
-        '/testuser/destination/folder'
-      );
+      const result = await fileService.batchMoveFiles([
+        { sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' },
+      ]);
 
-      expect(fileService.moveFile).toHaveBeenCalledWith(
-        '/testuser/source/folder',
-        '/testuser/destination/folder'
-      );
-      expect(result.success).toBe(true);
+      expect(fileService.batchMoveFiles).toHaveBeenCalledWith([
+        { sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' },
+      ]);
+      expect(result.succeeded).toHaveLength(1);
     });
 
     it('handles move to same location', async () => {
-      // Moving to same location should either succeed silently or be prevented
-      fileService.moveFile.mockResolvedValue({ success: true });
+      fileService.batchMoveFiles.mockResolvedValue({
+        succeeded: [{ sourcePath: '/testuser/folder', destinationPath: '/testuser/folder' }],
+        failed: [],
+      });
 
-      const result = await fileService.moveFile(
-        '/testuser/folder',
-        '/testuser/folder'
-      );
+      const result = await fileService.batchMoveFiles([
+        { sourcePath: '/testuser/folder', destinationPath: '/testuser/folder' },
+      ]);
 
-      expect(result.success).toBe(true);
+      expect(result.succeeded).toHaveLength(1);
     });
 
     it('handles move with naming conflict', async () => {
-      fileService.moveFile.mockRejectedValue(
+      fileService.batchMoveFiles.mockRejectedValue(
         new Error('A folder with that name already exists')
       );
 
       await expect(
-        fileService.moveFile('/testuser/folder', '/testuser/existing')
+        fileService.batchMoveFiles([
+          { sourcePath: '/testuser/folder', destinationPath: '/testuser/existing' },
+        ])
       ).rejects.toThrow('already exists');
     });
   });
 
   describe('폴더 복사 (F21)', () => {
     it('copies folder to a new location', async () => {
-      fileService.copyFile.mockResolvedValue({ success: true });
+      fileService.batchCopyFiles.mockResolvedValue({
+        succeeded: [{ sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' }],
+        failed: [],
+      });
 
-      const result = await fileService.copyFile(
-        '/testuser/source/folder',
-        '/testuser/destination/folder'
-      );
+      const result = await fileService.batchCopyFiles([
+        { sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' },
+      ]);
 
-      expect(fileService.copyFile).toHaveBeenCalledWith(
-        '/testuser/source/folder',
-        '/testuser/destination/folder'
-      );
-      expect(result.success).toBe(true);
+      expect(fileService.batchCopyFiles).toHaveBeenCalledWith([
+        { sourcePath: '/testuser/source/folder', destinationPath: '/testuser/destination/folder' },
+      ]);
+      expect(result.succeeded).toHaveLength(1);
     });
 
     it('copies folder with all contents', async () => {
-      fileService.copyFile.mockResolvedValue({
-        success: true,
-        copiedFiles: 5,
-        copiedFolders: 2,
+      fileService.batchCopyFiles.mockResolvedValue({
+        succeeded: [{ sourcePath: '/testuser/folder-with-contents', destinationPath: '/testuser/destination/folder-with-contents' }],
+        failed: [],
       });
 
-      const result = await fileService.copyFile(
-        '/testuser/folder-with-contents',
-        '/testuser/destination/folder-with-contents'
-      );
+      const result = await fileService.batchCopyFiles([
+        { sourcePath: '/testuser/folder-with-contents', destinationPath: '/testuser/destination/folder-with-contents' },
+      ]);
 
-      expect(result.success).toBe(true);
+      expect(result.succeeded).toHaveLength(1);
     });
 
     it('handles copy with naming conflict (auto-rename)', async () => {
-      fileService.copyFile.mockResolvedValue({
-        success: true,
-        newPath: '/testuser/destination/folder (1)',
+      fileService.batchCopyFiles.mockResolvedValue({
+        succeeded: [{ sourcePath: '/testuser/folder', destinationPath: '/testuser/destination/folder (1)' }],
+        failed: [],
       });
 
-      const result = await fileService.copyFile(
-        '/testuser/folder',
-        '/testuser/destination/folder'
-      );
+      const result = await fileService.batchCopyFiles([
+        { sourcePath: '/testuser/folder', destinationPath: '/testuser/destination/folder' },
+      ]);
 
-      expect(result.success).toBe(true);
+      expect(result.succeeded).toHaveLength(1);
     });
   });
 

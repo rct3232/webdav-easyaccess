@@ -91,19 +91,19 @@ describe('Files Routes', () => {
     });
   });
 
-  describe('DELETE /api/files/delete', () => {
-    it('deletes a file from user directory', async () => {
-      // Mock isDirectoryPath result by making listDirectory fail (not a dir)
+  describe('POST /api/files/batch-delete', () => {
+    it('deletes a file from user directory (single path)', async () => {
       webdav.listDirectory.mockRejectedValue({ status: 404 });
       webdav.deleteFile.mockResolvedValue(undefined);
 
       const response = await request(app)
-        .delete('/api/files/delete')
+        .post('/api/files/batch-delete')
         .set('Authorization', `Bearer ${token}`)
-        .query({ path: '/testuser/file.txt' });
+        .send({ paths: ['/testuser/file.txt'] });
 
       expect(response.status).toBe(200);
-      expect(webdav.deleteFile).toHaveBeenCalledWith('/testuser/file.txt');
+      expect(webdav.deleteFile).toHaveBeenCalledWith('/testuser/file.txt', { isDirectory: false });
+      expect(response.body.succeeded).toContain('/testuser/file.txt');
     });
   });
 });

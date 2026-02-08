@@ -15,7 +15,6 @@ export const useFileManagerDialogs = () => {
   // Dialogs with file data
   const shareDialog = useDialog();
   const sharedFolderManageDialog = useDialog();
-  const deleteDialog = useDialog();
   const propertiesDialog = useDialog();
   const bulkDeleteDialog = useDialog();
   const actionSheet = useDialog();
@@ -60,7 +59,6 @@ export const useFileManagerDialogs = () => {
     renameDialogOpen: renameDialog.isOpen,
     shareDialogOpen: shareDialog.isOpen,
     sharedFolderManageDialogOpen: sharedFolderManageDialog.isOpen,
-    deleteDialogOpen: deleteDialog.isOpen,
     propertiesDialogOpen: propertiesDialog.isOpen,
     bulkDeleteDialogOpen: bulkDeleteDialog.isOpen,
     actionSheetOpen: actionSheet.isOpen,
@@ -71,7 +69,6 @@ export const useFileManagerDialogs = () => {
     renameNewName,
     renameError,
     mobileRenameFile: renameDialog.data,
-    mobileDeleteFile: deleteDialog.data,
     mobileShareFile: shareDialog.data,
     mobileSharedManageFile: sharedFolderManageDialog.data,
     mobilePropertiesFile: propertiesDialog.data,
@@ -86,7 +83,6 @@ export const useFileManagerDialogs = () => {
     setRenameDialogOpen: (open) => open ? renameDialog.open() : closeRenameDialog(),
     setShareDialogOpen: (open) => open ? shareDialog.open() : shareDialog.close(),
     setSharedFolderManageDialogOpen: (open) => open ? sharedFolderManageDialog.open() : sharedFolderManageDialog.close(),
-    setDeleteDialogOpen: (open) => open ? deleteDialog.open() : deleteDialog.close(),
     setPropertiesDialogOpen: (open) => open ? propertiesDialog.open() : propertiesDialog.close(),
     setBulkDeleteDialogOpen: (open) => open ? bulkDeleteDialog.open() : bulkDeleteDialog.close(),
     setActionSheetOpen: (open) => open ? actionSheet.open() : actionSheet.close(),
@@ -96,7 +92,6 @@ export const useFileManagerDialogs = () => {
     setRenameNewName,
     setRenameError,
     setMobileRenameFile: (file) => file ? renameDialog.open(file) : renameDialog.close(),
-    setMobileDeleteFile: (file) => file ? deleteDialog.open(file) : deleteDialog.close(),
     setMobileShareFile: (file) => file ? shareDialog.open(file) : shareDialog.close(),
     setMobileSharedManageFile: (file) => file ? sharedFolderManageDialog.open(file) : sharedFolderManageDialog.close(),
     setMobilePropertiesFile: (file) => file ? propertiesDialog.open(file) : propertiesDialog.close(),
@@ -117,8 +112,6 @@ export const useFileManagerDialogs = () => {
     closeShareDialog: shareDialog.close,
     openSharedFolderManageDialog: sharedFolderManageDialog.open,
     closeSharedFolderManageDialog: sharedFolderManageDialog.close,
-    openDeleteDialog: deleteDialog.open,
-    closeDeleteDialog: deleteDialog.close,
     openPropertiesDialog: propertiesDialog.open,
     closePropertiesDialog: propertiesDialog.close,
     openBulkDeleteDialog: bulkDeleteDialog.open,

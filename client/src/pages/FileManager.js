@@ -240,7 +240,7 @@ const FileManager = () => {
   useEffect(() => {
     setSelectionMode(false);
     setSelectedFiles(new Set());
-  }, [currentPath]);
+  }, [currentPath, setSelectionMode, setSelectedFiles]);
   const {
     uploadDialogOpen, openUploadDialog, closeUploadDialog,
     createFolderDialogOpen, openCreateFolderDialog, closeCreateFolderDialog,

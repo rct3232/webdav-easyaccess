@@ -41,7 +41,11 @@ const FolderShareSection = ({
               </Typography>
             );
           }
-          return userBaseNode.children.map(child => renderFolderTreeWrapper(child.path, 0));
+          return userBaseNode.children.map(child => (
+            <React.Fragment key={child.path}>
+              {renderFolderTreeWrapper(child.path, 0)}
+            </React.Fragment>
+          ));
         })()
       ) : (
         renderFolderTreeWrapper(rootPath, 0)

@@ -604,6 +604,9 @@ const FileManager = () => {
   });
 
   const [uploadConflictData, setUploadConflictData] = useState(null);
+  const explorerUploadAbortControllersRef = useRef(new Map());
+  const explorerUploadCancelledRef = useRef(new Map());
+  const explorerUploadCancelAllRequestedRef = useRef(new Set());
 
   const executeExplorerUpload = useCallback(async (filesToUpload, targetPath, onConflict = 'error') => {
     // Use currentPath if targetPath is null
@@ -614,6 +617,9 @@ const FileManager = () => {
     dismissFailedItems();
 
     const progressId = `upload_drop_${Date.now()}`;
+    explorerUploadAbortControllersRef.current.set(progressId, new Map());
+    explorerUploadCancelledRef.current.set(progressId, new Set());
+
     const fileItems = filesToUpload.map(({ file, relativePath }) => ({
       fileName: relativePath || file?.name || 'unknown',
       status: 'pending',
@@ -628,7 +634,7 @@ const FileManager = () => {
       current: '',
       name: `${filesToUpload.length}개 파일 업로드`,
       fileItems: [...fileItems],
-      cancellable: false,
+      cancellable: true,
     };
 
     // Check permissions
@@ -648,6 +654,19 @@ const FileManager = () => {
       current: '준비 중...',
     });
 
+    const cancelledSet = explorerUploadCancelledRef.current.get(progressId);
+    const abortControllers = explorerUploadAbortControllersRef.current.get(progressId);
+    const getSignalForFile = (fileName) => {
+      if (cancelledSet?.has(fileName)) {
+        const ac = new AbortController();
+        ac.abort();
+        return ac.signal;
+      }
+      const controller = new AbortController();
+      abortControllers?.set(fileName, controller);
+      return controller.signal;
+    };
+
     try {
       const { results, errors } = await uploadMultipleFiles(
         filesToUpload,
@@ -665,7 +684,9 @@ const FileManager = () => {
                     ? 'skipped'
                     : progress.status === 'error'
                       ? 'error'
-                      : 'pending';
+                      : progress.status === 'cancelled'
+                        ? 'cancelled'
+                        : 'pending';
             fileItems[idx] = {
               ...fileItems[idx],
               status,
@@ -688,7 +709,8 @@ const FileManager = () => {
             fileItems: [...fileItems],
           });
         },
-        onConflict
+        onConflict,
+        { getSignalForFile }
       );
 
       const completedCount = fileItems.filter((it) => it.status === 'completed').length;
@@ -698,6 +720,10 @@ const FileManager = () => {
         fileName: e.relativePath || e.file?.name || 'unknown',
         error: e.error,
       }));
+
+      if (explorerUploadCancelAllRequestedRef.current.has(progressId)) {
+        return;
+      }
 
       if (failCount > 0) {
         updateProgress({
@@ -761,6 +787,10 @@ const FileManager = () => {
         keepOnError: true,
         fileItems: [...fileItems],
       });
+    } finally {
+      explorerUploadAbortControllersRef.current.delete(progressId);
+      explorerUploadCancelledRef.current.delete(progressId);
+      explorerUploadCancelAllRequestedRef.current.delete(progressId);
     }
   }, [currentPath, dismissFailedItems, hasWritePermission, user, updateProgress, handleOperationComplete]);
 
@@ -1057,22 +1087,68 @@ const FileManager = () => {
 
   // Cancel upload handlers - wrap to pass progressItems
   const handleCancelUploadFileWrapper = useCallback((progressId, fileName) => {
+    if (progressId.startsWith('upload_drop_')) {
+      const controllers = explorerUploadAbortControllersRef.current.get(progressId);
+      const cancelledSet = explorerUploadCancelledRef.current.get(progressId);
+      controllers?.get(fileName)?.abort();
+      cancelledSet?.add(fileName);
+      const progressItem = progressItems.find((item) => item.id === progressId);
+      if (progressItem?.fileItems) {
+        const updatedFileItems = progressItem.fileItems.map((item) =>
+          item.fileName === fileName ? { ...item, status: 'cancelled' } : item
+        );
+        updateProgress({ id: progressId, fileItems: updatedFileItems });
+      }
+      return;
+    }
     handleCancelUploadFile(progressId, fileName, progressItems);
-  }, [handleCancelUploadFile, progressItems]);
+  }, [handleCancelUploadFile, progressItems, updateProgress]);
 
   const handleCancelAllUploadWrapper = useCallback((progressId) => {
+    if (progressId.startsWith('upload_drop_')) {
+      explorerUploadCancelAllRequestedRef.current.add(progressId);
+      const controllers = explorerUploadAbortControllersRef.current.get(progressId);
+      controllers?.forEach((ac) => ac.abort());
+      const cancelledSet = explorerUploadCancelledRef.current.get(progressId);
+      const progressItem = progressItems.find((item) => item.id === progressId);
+      if (progressItem?.fileItems && cancelledSet) {
+        progressItem.fileItems.forEach((item) => {
+          if (item.status === 'pending' || item.status === 'uploading') {
+            cancelledSet.add(item.fileName);
+          }
+        });
+        const updatedFileItems = progressItem.fileItems.map((item) =>
+          item.status === 'pending' || item.status === 'uploading'
+            ? { ...item, status: 'cancelled' }
+            : item
+        );
+        updateProgress({
+          id: progressId,
+          fileItems: updatedFileItems,
+          status: 'error',
+          error: '업로드가 취소되었습니다.',
+        });
+        setTimeout(() => {
+          updateProgress({ id: progressId, remove: true });
+          explorerUploadAbortControllersRef.current.delete(progressId);
+          explorerUploadCancelledRef.current.delete(progressId);
+          explorerUploadCancelAllRequestedRef.current.delete(progressId);
+        }, 3000);
+      }
+      return;
+    }
     handleCancelAllUpload(progressId, progressItems);
-  }, [handleCancelAllUpload, progressItems]);
+  }, [handleCancelAllUpload, progressItems, updateProgress]);
 
   const handleCancelAllWrapper = useCallback((progressId) => {
     const item = progressItems.find((i) => i.id === progressId);
     if (!item) return;
     if (item.type === 'upload') {
-      handleCancelAllUpload(progressId, progressItems);
+      handleCancelAllUploadWrapper(progressId);
     } else if ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId) {
       handleCancelBulkOperation(progressId);
     }
-  }, [progressItems, handleCancelAllUpload, handleCancelBulkOperation]);
+  }, [progressItems, handleCancelAllUploadWrapper, handleCancelBulkOperation]);
 
   // 업로드 재시도 (실패한 파일만 재시도)
   const handleRetryUpload = useCallback(async (progressId) => {

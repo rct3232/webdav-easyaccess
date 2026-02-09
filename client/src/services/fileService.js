@@ -48,7 +48,7 @@ export const uploadFile = async (file, path = '/', signal = null, onConflict = '
   return response.data;
 };
 
-export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error') => {
+export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error', signal = null) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('path', targetPath);
@@ -59,68 +59,99 @@ export const uploadFileWithPath = async (file, targetPath = '/', relativePath = 
     formData.append('onConflict', onConflict);
   }
 
-  const response = await post(`${API_BASE}/upload`, formData, {
+  const config = {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-  });
+  };
+  if (signal) {
+    config.signal = signal;
+  }
+
+  const response = await post(`${API_BASE}/upload`, formData, config);
   return response.data;
 };
 
-export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, onConflict = 'error') => {
+export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, onConflict = 'error', options = {}) => {
   const results = [];
   const errors = [];
-  
+  const { getSignalForFile } = options;
+
   for (let i = 0; i < files.length; i++) {
     const { file, relativePath } = files[i];
-    
+    const fileName = relativePath || file.name;
+    const signal = getSignalForFile?.(fileName);
+
+    if (signal?.aborted) {
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: files.length,
+          currentFile: fileName,
+          status: 'cancelled',
+        });
+      }
+      continue;
+    }
+
     try {
       if (onProgress) {
         onProgress({
           current: i + 1,
           total: files.length,
-          currentFile: relativePath || file.name,
+          currentFile: fileName,
           status: 'uploading',
         });
       }
-      
-      const result = await uploadFileWithPath(file, targetPath, relativePath, onConflict);
+
+      const result = await uploadFileWithPath(file, targetPath, relativePath, onConflict, signal);
       const skipped = result?.skipped === true;
       results.push({ file, result, success: true, skipped });
-      
+
       if (onProgress) {
         onProgress({
           current: i + 1,
           total: files.length,
-          currentFile: relativePath || file.name,
+          currentFile: fileName,
           status: skipped ? 'skipped' : 'success',
         });
       }
     } catch (error) {
-      // 409 Conflict는 중복 파일로 인한 정상적인 거부이므로 에러로 로깅하지 않음
+      if (error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+        if (onProgress) {
+          onProgress({
+            current: i + 1,
+            total: files.length,
+            currentFile: fileName,
+            status: 'cancelled',
+          });
+        }
+        continue;
+      }
+
       const isDuplicate = error.response?.status === 409;
       if (!isDuplicate) {
-        console.error(`Failed to upload ${relativePath || file.name}:`, error);
+        console.error(`Failed to upload ${fileName}:`, error);
       }
-      
-      errors.push({ 
-        file, 
-        relativePath: relativePath || file.name,
-        error: error.response?.data?.error || error.message 
+
+      errors.push({
+        file,
+        relativePath: fileName,
+        error: error.response?.data?.error || error.message,
       });
-      
+
       if (onProgress) {
         onProgress({
           current: i + 1,
           total: files.length,
-          currentFile: relativePath || file.name,
+          currentFile: fileName,
           status: 'error',
           error: error.response?.data?.error || error.message,
         });
       }
     }
   }
-  
+
   return { results, errors };
 };
 

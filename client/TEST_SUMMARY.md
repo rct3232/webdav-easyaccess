@@ -26,7 +26,6 @@ This document summarizes the full test results for the WebDAV EasyAccess client 
 - **useFileManagerNavigation**: Tested optimistic path updates and rollback logic on permission failure.
 - **useSelection**: 100% coverage for multi-file selection logic.
 - **useDialog**: Generic state management for various UI dialogs.
-- **useFileUpload**: Handles multi-file uploads with progress tracking and conflict resolution.
 - **useInfiniteScroll**: Efficiently manages long file lists.
 - **useLongPress**: Supports touch-based multi-selection for mobile.
 

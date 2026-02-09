@@ -635,6 +635,7 @@ const FileManager = () => {
       name: `${filesToUpload.length}개 파일 업로드`,
       fileItems: [...fileItems],
       cancellable: true,
+      retryData: { currentPath: uploadPath },
     };
 
     // Check permissions
@@ -672,6 +673,7 @@ const FileManager = () => {
         filesToUpload,
         uploadPath,
         (progress) => {
+          if (explorerUploadCancelAllRequestedRef.current.has(progressId)) return;
           const fileName = progress.currentFile;
           const idx = fileItems.findIndex((it) => it.fileName === fileName);
           if (idx !== -1) {
@@ -722,6 +724,7 @@ const FileManager = () => {
       }));
 
       if (explorerUploadCancelAllRequestedRef.current.has(progressId)) {
+        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
         return;
       }
 
@@ -762,14 +765,12 @@ const FileManager = () => {
         }, 3000);
       }
 
-      // Refresh file list and tree
-      if (Array.isArray(results) && results.length > 0) {
-        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
-        setTreeUpdateTrigger({
-          type: 'refresh',
-          timestamp: Date.now(),
-        });
-      }
+      // Refresh file list and tree (all outcomes: success, partial, fail, skip)
+      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+      setTreeUpdateTrigger({
+        type: 'refresh',
+        timestamp: Date.now(),
+      });
     } catch (error) {
       console.error('Upload error:', error);
       
@@ -787,6 +788,7 @@ const FileManager = () => {
         keepOnError: true,
         fileItems: [...fileItems],
       });
+      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
     } finally {
       explorerUploadAbortControllersRef.current.delete(progressId);
       explorerUploadCancelledRef.current.delete(progressId);
@@ -1125,20 +1127,19 @@ const FileManager = () => {
         updateProgress({
           id: progressId,
           fileItems: updatedFileItems,
-          status: 'error',
+          status: 'warning',
           error: '업로드가 취소되었습니다.',
+          keepOnError: true,
         });
-        setTimeout(() => {
-          updateProgress({ id: progressId, remove: true });
-          explorerUploadAbortControllersRef.current.delete(progressId);
-          explorerUploadCancelledRef.current.delete(progressId);
-          explorerUploadCancelAllRequestedRef.current.delete(progressId);
-        }, 3000);
+        // 1. 모달 유지: remove 스케줄 제거 (warning 상태로 모달 유지)
+        // 2. 즉시 새로고침: handleOperationComplete + setTreeUpdateTrigger 호출
+        handleOperationComplete({ opType: 'upload', startedPath: progressItem.retryData?.currentPath ?? currentPathRef.current });
+        setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() });
       }
       return;
     }
     handleCancelAllUpload(progressId, progressItems);
-  }, [handleCancelAllUpload, progressItems, updateProgress]);
+  }, [handleCancelAllUpload, progressItems, updateProgress, handleOperationComplete, setTreeUpdateTrigger]);
 
   const handleCancelAllWrapper = useCallback((progressId) => {
     const item = progressItems.find((i) => i.id === progressId);

@@ -75,7 +75,7 @@ describe('useFileUpload', () => {
     await uploadPromise;
 
     expect(mockUpdateProgress).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
+      status: 'warning',
       error: '업로드가 취소되었습니다.'
     }));
   });

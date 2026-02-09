@@ -269,8 +269,8 @@ export const useFileUpload = ({
       }
     }
 
-    // Refresh file list if successful
-    if (successCount > 0 && onOperationComplete) {
+    // Refresh file list when operation ends (success, partial, fail, or cancel)
+    if (onOperationComplete) {
       onOperationComplete({
         opType: 'upload',
         startedPath: uploadPath,
@@ -424,8 +424,8 @@ export const useFileUpload = ({
       }
     }
 
-    // Refresh if successful
-    if (successCount > completedCount && onOperationComplete) {
+    // Refresh file list when retry operation ends
+    if (onOperationComplete) {
       onOperationComplete({
         opType: 'upload',
         startedPath: uploadPath,
@@ -500,9 +500,17 @@ export const useFileUpload = ({
       updateProgress({
         id: progressId,
         fileItems: updatedFileItems,
-        status: 'error',
+        status: 'warning',
         error: '업로드가 취소되었습니다.',
       });
+
+      const hasCompleted = progressItem.fileItems.some((item) => item.status === 'completed');
+      if (hasCompleted && onOperationComplete) {
+        onOperationComplete({
+          opType: 'upload',
+          startedPath: progressItem.retryData?.currentPath,
+        });
+      }
 
       setTimeout(() => {
         updateProgress({ id: progressId, remove: true });
@@ -510,7 +518,7 @@ export const useFileUpload = ({
         cancelledFilesRef.current.delete(progressId);
       }, 3000);
     }
-  }, [markFileCancelled, updateProgress]);
+  }, [markFileCancelled, updateProgress, onOperationComplete]);
 
   return {
     handleUploadStart,

@@ -183,14 +183,14 @@ export const useBulkOperations = (
             deletedFolders.forEach(folderPath => {
               setTreeUpdateTrigger({ type: 'deleted', folderPath, timestamp: Date.now() });
             });
-            if (onOperationComplete) {
-              onOperationComplete({ opType: 'delete', startedPath, deletedFolderPaths: deletedFolders });
-            }
             if (deletedFolders.length > 0) {
               setTimeout(() => setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() }), 500);
             }
           }
           clearProcessing(filePaths);
+          if (onOperationComplete) {
+            onOperationComplete({ opType: 'delete', startedPath, deletedFolderPaths: deletedFolders });
+          }
           if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
             setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
           }
@@ -386,11 +386,11 @@ export const useBulkOperations = (
                 console.error('Failed to update recent files after bulk move:', err);
               }
             }
-            if (onOperationComplete) {
-              onOperationComplete({ opType: action, startedPath, targetPath: destinationPath });
-            }
           }
           clearProcessing(filePaths);
+          if (onOperationComplete) {
+            onOperationComplete({ opType: action, startedPath, targetPath: destinationPath });
+          }
           if (failCount === 0 && !hasAnySkipped && jobStatus !== 'cancelled') {
             setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
           }

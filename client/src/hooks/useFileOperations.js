@@ -215,6 +215,9 @@ export const useFileOperations = ({
       } else {
         alert(errorMsg);
       }
+      if (onActionComplete) {
+        onActionComplete({ opType: 'rename', startedPath });
+      }
     } finally {
       // Clear processing
       if (setProcessingMap) {

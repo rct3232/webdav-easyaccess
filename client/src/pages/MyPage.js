@@ -28,6 +28,7 @@ import ShareDialog from '../components/ShareDialog';
 import AccountEditDialog from '../components/AccountEditDialog';
 import { getShareLinks, deleteShareLink, getShareLinkUrl, updateShareLink } from '../services/shareLinkService';
 import axios from 'axios';
+import { validateEmail, validatePassword, validateMatch } from '../utils/validation';
 import {
   cancelPermissionRequest,
   listInboxPermissionRequests,
@@ -220,9 +221,12 @@ const MyPage = () => {
     const shouldUpdatePassword = passwordEntered;
 
     // Defensive validation (button should be disabled already, but keep safe).
-    if (shouldUpdateEmail && normalizeEmail(trimmedEmail).length === 0) {
-      setMessage({ type: 'error', text: '이메일을 입력해주세요.' });
-      return;
+    if (shouldUpdateEmail) {
+      const emailError = validateEmail(trimmedEmail);
+      if (emailError) {
+        setMessage({ type: 'error', text: emailError });
+        return;
+      }
     }
 
     if (shouldUpdatePassword) {
@@ -230,12 +234,14 @@ const MyPage = () => {
         setMessage({ type: 'error', text: '비밀번호 확인을 입력해주세요.' });
         return;
       }
-      if (passwordMismatch) {
-        setMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+      const matchError = validateMatch(password, confirmPassword, '비밀번호');
+      if (matchError) {
+        setMessage({ type: 'error', text: matchError });
         return;
       }
-      if (password.length < 4) {
-        setMessage({ type: 'error', text: '비밀번호는 최소 4자 이상이어야 합니다.' });
+      const passwordError = validatePassword(password, { minLength: 4 });
+      if (passwordError) {
+        setMessage({ type: 'error', text: passwordError });
         return;
       }
     }

@@ -36,6 +36,7 @@ import { uploadMultipleFiles } from '../services/fileService';
 import { useMessage } from '../hooks/useMessage';
 import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
+import { validateFileName } from '../utils/validation';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import FileList from '../components/FileList';
 import FileGrid from '../components/FileGrid';
@@ -1208,8 +1209,10 @@ const FileManager = () => {
   // FileActionSheet 핸들러 함수들
   const handleRename = async () => {
     const targetFile = mobileRenameFile || actionSheetFile;
-    if (!targetFile || !renameNewName.trim()) {
-      setRenameError('이름을 입력하세요');
+    if (!targetFile) return;
+    const nameError = validateFileName(renameNewName);
+    if (nameError) {
+      setRenameError(nameError);
       return;
     }
 

@@ -30,16 +30,20 @@ describe('Registration Integration Tests (A3)', () => {
   describe('회원가입 폼 렌더링', () => {
     it('renders registration form correctly', async () => {
       renderWithProviders(<Register />);
-      
-      // Check form elements exist
-      expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+
+      // Wait for settings to load and form to be visible
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       expect(screen.getByRole('textbox', { name: /이메일/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /회원가입/i })).toBeInTheDocument();
     });
 
-    it('shows login link', () => {
+    it('shows login link', async () => {
       renderWithProviders(<Register />);
-      expect(screen.getByText(/로그인/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/로그인/i)).toBeInTheDocument();
+      });
     });
   });
 
@@ -50,6 +54,9 @@ describe('Registration Integration Tests (A3)', () => {
         authContextValue: { register: mockRegister }
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       fireEvent.change(screen.getByRole('textbox', { name: /사용자명/i }), { target: { value: 'testuser' } });
       fireEvent.change(screen.getByRole('textbox', { name: /이메일/i }), { target: { value: 'test@example.com' } });
       
@@ -72,6 +79,9 @@ describe('Registration Integration Tests (A3)', () => {
         authContextValue: { register: mockRegister }
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       fireEvent.change(screen.getByRole('textbox', { name: /사용자명/i }), { target: { value: 'testuser' } });
       fireEvent.change(screen.getByRole('textbox', { name: /이메일/i }), { target: { value: 'test@example.com' } });
       
@@ -100,6 +110,9 @@ describe('Registration Integration Tests (A3)', () => {
         authContextValue: { register: mockRegister }
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       fireEvent.change(screen.getByRole('textbox', { name: /사용자명/i }), { target: { value: 'newuser' } });
       fireEvent.change(screen.getByRole('textbox', { name: /이메일/i }), { target: { value: 'new@example.com' } });
       
@@ -129,6 +142,9 @@ describe('Registration Integration Tests (A3)', () => {
         authContextValue: { register: mockRegister }
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       fireEvent.change(screen.getByRole('textbox', { name: /사용자명/i }), { target: { value: 'newuser' } });
       fireEvent.change(screen.getByRole('textbox', { name: /이메일/i }), { target: { value: 'new@example.com' } });
       
@@ -159,6 +175,9 @@ describe('Registration Integration Tests (A3)', () => {
         authContextValue: { register: mockRegister }
       });
 
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /사용자명/i })).toBeInTheDocument();
+      });
       fireEvent.change(screen.getByRole('textbox', { name: /사용자명/i }), { target: { value: 'existinguser' } });
       fireEvent.change(screen.getByRole('textbox', { name: /이메일/i }), { target: { value: 'new@example.com' } });
       

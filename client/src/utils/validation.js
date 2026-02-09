@@ -13,7 +13,8 @@ export const validateFileName = (name) => {
     return '이름을 입력하세요';
   }
   
-  // Check for invalid characters
+  // Check for invalid characters (control chars \x00-\x1f are intentional for validation)
+  // eslint-disable-next-line no-control-regex
   const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
   if (invalidChars.test(name)) {
     return '파일명에 사용할 수 없는 문자가 포함되어 있습니다';
@@ -34,30 +35,6 @@ export const validateFileName = (name) => {
   // Check length
   if (name.length > 255) {
     return '이름은 255자를 초과할 수 없습니다';
-  }
-  
-  return null;
-};
-
-/**
- * Validate folder path
- * @param {string} path - Path to validate
- * @returns {string|null} Error message or null if valid
- */
-export const validatePath = (path) => {
-  if (!path || typeof path !== 'string') {
-    return '경로를 입력하세요';
-  }
-  
-  // Check for invalid characters
-  const invalidChars = /[<>:"|?*\x00-\x1f]/;
-  if (invalidChars.test(path)) {
-    return '경로에 사용할 수 없는 문자가 포함되어 있습니다';
-  }
-  
-  // Check for relative path components
-  if (path.includes('../') || path.includes('..\\')) {
-    return '상대 경로는 사용할 수 없습니다';
   }
   
   return null;
@@ -174,37 +151,5 @@ export const validateRequired = (value, fieldName = '필드') => {
   if (typeof value === 'string' && !value.trim()) {
     return `${fieldName}를 입력하세요`;
   }
-  return null;
-};
-
-/**
- * Validate number range
- * @param {number} value - Value to validate
- * @param {Object} options - Validation options
- * @param {number} options.min - Minimum value
- * @param {number} options.max - Maximum value
- * @param {string} fieldName - Field name for error message
- * @returns {string|null} Error message or null if valid
- */
-export const validateNumberRange = (value, options = {}, fieldName = '값') => {
-  const { min, max } = options;
-  
-  if (value === null || value === undefined || value === '') {
-    return `${fieldName}를 입력하세요`;
-  }
-  
-  const numValue = Number(value);
-  if (isNaN(numValue)) {
-    return `${fieldName}는 숫자여야 합니다`;
-  }
-  
-  if (min !== undefined && numValue < min) {
-    return `${fieldName}는 ${min} 이상이어야 합니다`;
-  }
-  
-  if (max !== undefined && numValue > max) {
-    return `${fieldName}는 ${max} 이하여야 합니다`;
-  }
-  
   return null;
 };

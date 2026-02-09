@@ -11,6 +11,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import { validateRequired } from '../utils/validation';
 import axios from 'axios';
 
 const Login = () => {
@@ -44,6 +45,11 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setWarning('');
+    const requiredError = validateRequired(username, '사용자명') || validateRequired(password, '비밀번호');
+    if (requiredError) {
+      setError(requiredError);
+      return;
+    }
     setLoading(true);
 
     const result = await login(username, password);

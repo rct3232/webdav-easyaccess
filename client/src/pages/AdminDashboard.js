@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
 import ShareDialog from '../components/ShareDialog';
 import { useResponsive } from '../hooks/useResponsive';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../utils/localStorage';
@@ -237,18 +238,29 @@ const AdminDashboard = () => {
 
   const handleCreateSubmit = async () => {
     // Validation
-    if (!newUser.username || !newUser.email || !newUser.password) {
-      setMessage({ type: 'error', text: '모든 필드를 입력해주세요.' });
+    const requiredError = validateRequired(newUser.username, '사용자명') || validateRequired(newUser.email, '이메일') || validateRequired(newUser.password, '비밀번호');
+    if (requiredError) {
+      setMessage({ type: 'error', text: requiredError });
       return;
     }
-
-    if (newUser.password !== newUser.confirmPassword) {
-      setMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+    const usernameError = validateUsername(newUser.username);
+    if (usernameError) {
+      setMessage({ type: 'error', text: usernameError });
       return;
     }
-
-    if (newUser.password.length < 6) {
-      setMessage({ type: 'error', text: '비밀번호는 최소 6자 이상이어야 합니다.' });
+    const emailError = validateEmail(newUser.email);
+    if (emailError) {
+      setMessage({ type: 'error', text: emailError });
+      return;
+    }
+    const matchError = validateMatch(newUser.password, newUser.confirmPassword, '비밀번호');
+    if (matchError) {
+      setMessage({ type: 'error', text: matchError });
+      return;
+    }
+    const passwordError = validatePassword(newUser.password);
+    if (passwordError) {
+      setMessage({ type: 'error', text: passwordError });
       return;
     }
 

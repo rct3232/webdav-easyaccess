@@ -184,11 +184,23 @@ export const checkConflicts = async (operations, options = {}) => {
   return response.data.conflicts;
 };
 
+function serverProgressToPercent(server) {
+  if (!server || !server.status) return 0;
+  if (server.status === 'preparing') return 0;
+  if (server.status === 'completed') return 100;
+  if (server.status === 'error') return 0;
+  if (server.status === 'downloading' && server.total > 0) {
+    return (server.progress / server.total) * 100;
+  }
+  return 0;
+}
+
 export const downloadMultipleFiles = async (paths, onProgress) => {
   const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
   let lastProgressEvent = null;
-  
+  let lastServerProgress = null;
+  let pollTimer = null;
+
   try {
     let totalSize = 0;
     try {
@@ -208,30 +220,49 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
     } catch (err) {
       // Ignore error
     }
-    
+
+    const pushProgress = (server, loaded, total) => {
+      if (!onProgress) return;
+      const byteTotal = total || totalSize || 0;
+      const bytePercent = byteTotal > 0 ? Math.min(100, (loaded / byteTotal) * 100) : 0;
+      const serverPercent = serverProgressToPercent(server);
+      const combined = Math.min(100, 0.5 * serverPercent + 0.5 * bytePercent);
+      const currentFromServer = server?.current;
+      const zipNameFromServer = server?.zipName || '';
+      const status = server?.status === 'preparing' ? 'preparing' : 'downloading';
+      const currentLabel = status === 'preparing' ? '준비 중…' : (currentFromServer ? `${currentFromServer} · ${Math.round(combined)}%` : `다운로드 중 (${Math.round(combined)}%)`);
+      onProgress({
+        id: downloadId,
+        type: 'download',
+        status,
+        progress: loaded,
+        total: byteTotal,
+        percentage: combined,
+        current: currentLabel,
+        zipName: zipNameFromServer,
+      });
+    };
+
+    pollTimer = setInterval(async () => {
+      try {
+        const data = await getDownloadProgress(downloadId);
+        lastServerProgress = data;
+        pushProgress(data, lastProgressEvent?.loaded ?? 0, lastProgressEvent?.total || totalSize);
+      } catch (e) {
+        // 404 or network error: keep lastServerProgress unchanged
+      }
+    }, 400);
+
     const response = await post(
       '/files/download-multiple',
-      { paths },
+      { paths, downloadId },
       {
         responseType: 'blob',
         onDownloadProgress: (progressEvent) => {
           lastProgressEvent = progressEvent;
-          if (onProgress) {
-            const loaded = progressEvent.loaded || 0;
-            const total = progressEvent.total || totalSize || 0;
-            const percentage = total > 0 ? Math.min(100, (loaded / total) * 100) : 0;
-            
-            onProgress({
-              id: downloadId,
-              type: 'download',
-              status: 'downloading',
-              progress: loaded,
-              total: total,
-              percentage: percentage,
-              current: `다운로드 중 (${Math.round(percentage)}%)`,
-              zipName: '',
-            });
-          }
+          const loaded = progressEvent.loaded || 0;
+          const total = progressEvent.total || totalSize || 0;
+          pushProgress(lastServerProgress, loaded, total);
         },
       }
     );
@@ -306,6 +337,8 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
       });
     }
     throw error;
+  } finally {
+    if (pollTimer) clearInterval(pollTimer);
   }
 };
 

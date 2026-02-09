@@ -1079,10 +1079,9 @@ async function collectFilesFromDirectory(dirPath, basePath = '', files = []) {
 }
 
 router.post('/download-multiple', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  const { paths } = req.body;
-  
+  const { paths, downloadId: clientDownloadId } = req.body;
+  const downloadId = clientDownloadId || `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
     throw validationError('Paths array is required');
   }

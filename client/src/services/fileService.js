@@ -26,28 +26,6 @@ export const downloadFile = async (filePath) => {
   window.URL.revokeObjectURL(url);
 };
 
-export const uploadFile = async (file, path = '/', signal = null, onConflict = 'error') => {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('path', path);
-  if (onConflict) {
-    formData.append('onConflict', onConflict);
-  }
-
-  const config = {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  };
-
-  if (signal) {
-    config.signal = signal;
-  }
-
-  const response = await post(`${API_BASE}/upload`, formData, config);
-  return response.data;
-};
-
 export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error', signal = null) => {
   const formData = new FormData();
   formData.append('file', file);

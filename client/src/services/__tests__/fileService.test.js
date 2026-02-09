@@ -4,7 +4,6 @@ import {
   renameFile,
   createFolder,
   getWebDAVInfo,
-  uploadFile,
   uploadFileWithPath,
   uploadMultipleFiles,
   checkConflicts,
@@ -71,19 +70,6 @@ describe('fileService', () => {
   });
 
   describe('Upload operations', () => {
-    it('uploadFile calls post with FormData', async () => {
-      post.mockResolvedValue({ data: { success: true } });
-      const mockFile = new File(['test'], 'test.txt', { type: 'text/plain' });
-
-      await uploadFile(mockFile, '/dest', null, 'overwrite');
-
-      expect(post).toHaveBeenCalledWith('/files/upload', expect.any(FormData), expect.any(Object));
-      const formData = post.mock.calls[0][1];
-      expect(formData.get('file')).toBe(mockFile);
-      expect(formData.get('path')).toBe('/dest');
-      expect(formData.get('onConflict')).toBe('overwrite');
-    });
-
     it('uploadFileWithPath calls post with relativePath', async () => {
       post.mockResolvedValue({ data: { success: true } });
       const mockFile = new File(['test'], 'test.txt', { type: 'text/plain' });

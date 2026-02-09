@@ -62,16 +62,3 @@ export const getDropTargetStyles = (isDropTarget) => {
     },
   };
 };
-
-/**
- * Common styles for processing overlay
- * @returns {Object} MUI sx style object
- */
-export const getProcessingOverlayStyles = () => ({
-  position: 'absolute',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 0.5,
-  pointerEvents: 'none',
-});
-

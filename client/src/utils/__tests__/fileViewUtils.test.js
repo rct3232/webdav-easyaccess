@@ -3,7 +3,6 @@ import {
   renderProcessingIcon,
   getFileItemState,
   getDropTargetStyles,
-  getProcessingOverlayStyles,
 } from '../fileViewUtils';
 
 describe('fileViewUtils', () => {
@@ -208,25 +207,6 @@ describe('fileViewUtils', () => {
       expect(styles['& .MuiAvatar-root'].filter).toBe('brightness(0) invert(1)');
       expect(styles['& .MuiSvgIcon-root'].color).toBe('white');
       expect(styles['& .MuiTypography-root'].color).toBe('white');
-    });
-  });
-
-  describe('getProcessingOverlayStyles', () => {
-    it('should return overlay styles', () => {
-      const styles = getProcessingOverlayStyles();
-      
-      expect(styles.position).toBe('absolute');
-      expect(styles.display).toBe('flex');
-      expect(styles.alignItems).toBe('center');
-      expect(styles.gap).toBe(0.5);
-      expect(styles.pointerEvents).toBe('none');
-    });
-
-    it('should always return same styles', () => {
-      const styles1 = getProcessingOverlayStyles();
-      const styles2 = getProcessingOverlayStyles();
-      
-      expect(styles1).toEqual(styles2);
     });
   });
 });

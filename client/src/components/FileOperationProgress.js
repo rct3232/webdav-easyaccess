@@ -283,20 +283,6 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
             {overallProgress}%
           </Typography>
         </Box>
-        {onClose && (
-          <IconButton
-            size="small"
-            aria-label="dismiss-all"
-            onClick={(e) => {
-              e.stopPropagation();
-              // Dismiss all visible items (best-effort)
-              (items || []).forEach((it) => onClose(it.id));
-            }}
-            sx={{ padding: 0.5 }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        )}
         <IconButton
           size="small"
           onClick={(e) => {
@@ -419,18 +405,37 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                     >
                       {item.name || item.zipName || '작업 중...'}
                     </Typography>
-                    {onClose && (
-                      <IconButton
-                        size="small"
-                        aria-label={`dismiss-${item.id}`}
+                    {onCancelAll && (
+                      (item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading'))
+                      || ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId && (item.status === 'preparing' || item.status === 'processing'))
+                    ) && (
+                      <Typography
+                        component="button"
+                        variant="caption"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onClose(item.id);
+                          onCancelAll(item.id);
                         }}
-                        sx={{ ml: 0.5 }}
+                        sx={{
+                          ml: 0.5,
+                          color: 'text.secondary',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          border: 'none',
+                          background: 'none',
+                          padding: 0,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          '&:hover': {
+                            color: 'text.primary',
+                          },
+                        }}
                       >
-                        <CloseIcon fontSize="small" />
-                      </IconButton>
+                        <CloseIcon fontSize="small" sx={{ fontSize: '0.875rem' }} />
+                        작업 취소
+                      </Typography>
                     )}
                   </Box>
                   
@@ -494,45 +499,20 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                         )}
                       </Typography>
                     )}
-                    {/* 업로드 또는 벌크 삭제/이동/복사 시 전체 취소 버튼 */}
-                  {onCancelAll && (
-                    (item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading'))
-                    || ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId && (item.status === 'preparing' || item.status === 'processing'))
-                  ) && (
-                      <Typography
-                        component="button"
-                        variant="caption"
-                        onClick={() => onCancelAll(item.id)}
-                        sx={{
-                          ml: 1,
-                          color: 'text.secondary',
-                          fontSize: '0.75rem',
-                          cursor: 'pointer',
-                          border: 'none',
-                          background: 'none',
-                          padding: 0,
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                          '&:hover': {
-                            color: 'text.primary',
-                          },
-                        }}
-                      >
-                        <CloseIcon fontSize="small" sx={{ fontSize: '0.875rem' }} />
-                        작업 취소
-                      </Typography>
-                    )}
                   </Box>
                 </Box>
                 
                 {/* 아이템 본문 (스크롤 가능) */}
-                <Box sx={{ 
-                  flex: 1, 
-                  minHeight: 0,
-                }}>
-
+                <Box
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    maxHeight: 200,
+                    scrollbarWidth: 'none',
+                    '&::-webkit-scrollbar': { display: 'none' },
+                  }}
+                >
                   {/* 업로드 타입일 때 개별 파일 목록 표시 */}
                   {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
                     <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -686,7 +666,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
                         실패한 항목:
                       </Typography>
-                      <List dense sx={{ py: 0, mb: 2 }}>
+                      <List dense sx={{ py: 0 }}>
                         {item.failedItems.map((failedItem, failedIndex) => (
                           <ListItem key={failedIndex} sx={{ px: 0, py: 0.5 }}>
                             <ListItemText
@@ -698,30 +678,34 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                           </ListItem>
                         ))}
                       </List>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                        {onRetry && (
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<RefreshIcon />}
-                            onClick={() => onRetry(item.id)}
-                            sx={{ flex: 1 }}
-                          >
-                            재시도
-                          </Button>
-                        )}
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => onClose && onClose(item.id)}
-                          sx={{ flex: 1 }}
-                        >
-                          확인
-                        </Button>
-                      </Box>
                     </Box>
                   )}
                 </Box>
+
+                {/* 확인/재시도 - 본문 밖, 항상 노출 */}
+                {(item.status === 'error' || item.status === 'warning') && (
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1, flexShrink: 0 }}>
+                    {item.status === 'error' && item.failedItems?.length > 0 && onRetry && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<RefreshIcon />}
+                        onClick={() => onRetry(item.id)}
+                        sx={{ flex: 1 }}
+                      >
+                        재시도
+                      </Button>
+                    )}
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => onClose?.(item.id)}
+                      sx={{ flex: 1 }}
+                    >
+                      확인
+                    </Button>
+                  </Box>
+                )}
               </Box>
               );
               })}

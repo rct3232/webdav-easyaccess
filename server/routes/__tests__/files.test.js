@@ -92,7 +92,7 @@ describe('Files Routes', () => {
   });
 
   describe('POST /api/files/batch-delete', () => {
-    it('deletes a file from user directory (single path)', async () => {
+    it('accepts delete job and returns 202 with jobId', async () => {
       webdav.listDirectory.mockRejectedValue({ status: 404 });
       webdav.deleteFile.mockResolvedValue(undefined);
 
@@ -101,9 +101,8 @@ describe('Files Routes', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ paths: ['/testuser/file.txt'] });
 
-      expect(response.status).toBe(200);
-      expect(webdav.deleteFile).toHaveBeenCalledWith('/testuser/file.txt', { isDirectory: false });
-      expect(response.body.succeeded).toContain('/testuser/file.txt');
+      expect(response.status).toBe(202);
+      expect(response.body.jobId).toBeDefined();
     });
   });
 });

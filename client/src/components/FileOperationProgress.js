@@ -494,8 +494,11 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                         )}
                       </Typography>
                     )}
-                    {/* 업로드 타입일 때 전체 취소 버튼 */}
-                  {item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading') && onCancelAll && (
+                    {/* 업로드 또는 벌크 삭제/이동/복사 시 전체 취소 버튼 */}
+                  {onCancelAll && (
+                    (item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading'))
+                    || ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId && (item.status === 'preparing' || item.status === 'processing'))
+                  ) && (
                       <Typography
                         component="button"
                         variant="caption"

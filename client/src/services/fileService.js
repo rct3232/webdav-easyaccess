@@ -297,25 +297,32 @@ export const requestThumbnailsBatch = async (paths) => {
   return response.data;
 };
 
+/** Starts bulk delete job. Returns { jobId }. Poll with getBulkOperationStatus(jobId). */
 export const batchDeleteFiles = async (paths) => {
-  const response = await post(`${API_BASE}/batch-delete`, {
-    paths,
-  });
+  const response = await post(`${API_BASE}/batch-delete`, { paths });
   return response.data;
 };
 
+/** Starts bulk move job. Returns { jobId }. Poll with getBulkOperationStatus(jobId). */
 export const batchMoveFiles = async (moves, onConflict = 'error') => {
-  const response = await post(`${API_BASE}/batch-move`, {
-    moves,
-    onConflict,
-  });
+  const response = await post(`${API_BASE}/batch-move`, { moves, onConflict });
   return response.data;
 };
 
+/** Starts bulk copy job. Returns { jobId }. Poll with getBulkOperationStatus(jobId). */
 export const batchCopyFiles = async (copies, onConflict = 'error') => {
-  const response = await post(`${API_BASE}/batch-copy`, {
-    copies,
-    onConflict,
-  });
+  const response = await post(`${API_BASE}/batch-copy`, { copies, onConflict });
+  return response.data;
+};
+
+/** Poll bulk operation status. Returns { status, progress, total, results, errorMessage }. */
+export const getBulkOperationStatus = async (jobId) => {
+  const response = await get(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}`);
+  return response.data;
+};
+
+/** Request cancellation of a bulk operation. */
+export const cancelBulkOperation = async (jobId) => {
+  const response = await post(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}/cancel`);
   return response.data;
 };

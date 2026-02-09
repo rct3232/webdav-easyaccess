@@ -144,9 +144,22 @@ describe('Folders and Batch Operations Routes', () => {
     });
   });
 
+  async function waitForJob(app, jobId, token, maxWait = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      const res = await request(app)
+        .get(`/api/files/bulk-operation/${jobId}`)
+        .set('Authorization', `Bearer ${token}`);
+      if (res.status !== 200) return res.body;
+      if (['completed', 'cancelled', 'failed'].includes(res.body.status)) return res.body;
+      await new Promise(r => setTimeout(r, 80));
+    }
+    return { status: 'running' };
+  }
+
   describe('POST /api/files/batch-delete (F11: 일괄 삭제)', () => {
-    it('deletes multiple files', async () => {
-      webdav.listDirectory.mockRejectedValue({ status: 404 }); // Not directories
+    it('accepts delete job and returns jobId', async () => {
+      webdav.listDirectory.mockRejectedValue({ status: 404 });
       webdav.deleteFile.mockResolvedValue(true);
 
       const response = await request(app)
@@ -156,8 +169,12 @@ describe('Folders and Batch Operations Routes', () => {
           paths: ['/testuser/file1.txt', '/testuser/file2.txt'],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(2);
+      expect(response.status).toBe(202);
+      expect(response.body.jobId).toBeDefined();
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded').map(r => r.path);
+      expect(succeeded).toHaveLength(2);
     });
 
     it('skips files without permission', async () => {
@@ -171,9 +188,13 @@ describe('Folders and Batch Operations Routes', () => {
           paths: ['/testuser/file1.txt', '/otheruser/file2.txt'],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toContain('/testuser/file1.txt');
-      expect(response.body.skipped).toContain('/otheruser/file2.txt');
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded').map(r => r.path);
+      const skipped = (job.results || []).filter(r => r.status === 'skipped').map(r => r.path);
+      expect(succeeded).toContain('/testuser/file1.txt');
+      expect(skipped).toContain('/otheruser/file2.txt');
     });
 
     it('fails with empty paths array', async () => {
@@ -198,15 +219,17 @@ describe('Folders and Batch Operations Routes', () => {
           paths: ['/testuser/file1.txt', '/testuser/file2.txt'],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded.length + response.body.failed.length + response.body.skipped.length).toBe(2);
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      expect((job.results || []).length).toBe(2);
     });
   });
 
   describe('POST /api/files/batch-move (F12: 일괄 이동)', () => {
-    it('moves multiple files', async () => {
-      webdav.listDirectory.mockRejectedValue({ status: 404 }); // Not directories
-      webdav.pathExists.mockResolvedValue(false); // No conflicts
+    it('accepts move job and returns jobId', async () => {
+      webdav.listDirectory.mockRejectedValue({ status: 404 });
+      webdav.pathExists.mockResolvedValue(false);
       webdav.moveFile.mockResolvedValue(true);
 
       const response = await request(app)
@@ -219,8 +242,12 @@ describe('Folders and Batch Operations Routes', () => {
           ],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(2);
+      expect(response.status).toBe(202);
+      expect(response.body.jobId).toBeDefined();
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded');
+      expect(succeeded).toHaveLength(2);
     });
 
     it('skips moves without source permission', async () => {
@@ -238,14 +265,18 @@ describe('Folders and Batch Operations Routes', () => {
           ],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(1);
-      expect(response.body.skipped).toContain('/otheruser/file2.txt');
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded');
+      const skippedByPermission = (job.results || []).filter(r => r.status === 'skippedByPermission').map(r => r.sourcePath);
+      expect(succeeded).toHaveLength(1);
+      expect(skippedByPermission).toContain('/otheruser/file2.txt');
     });
 
     it('handles conflict with skip option', async () => {
       webdav.listDirectory.mockRejectedValue({ status: 404 });
-      webdav.pathExists.mockResolvedValue(true); // Conflict exists
+      webdav.pathExists.mockResolvedValue(true);
       webdav.moveFile.mockResolvedValue(true);
 
       const response = await request(app)
@@ -258,8 +289,11 @@ describe('Folders and Batch Operations Routes', () => {
           onConflict: 'skip',
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.skipped).toContain('/testuser/file1.txt');
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const skippedByConflict = (job.results || []).filter(r => r.status === 'skippedByConflict').map(r => r.sourcePath);
+      expect(skippedByConflict).toContain('/testuser/file1.txt');
     });
 
     it('fails with empty moves array', async () => {
@@ -273,9 +307,9 @@ describe('Folders and Batch Operations Routes', () => {
   });
 
   describe('POST /api/files/batch-copy (F21: 일괄 복사)', () => {
-    it('copies multiple files', async () => {
-      webdav.listDirectory.mockRejectedValue({ status: 404 }); // Not directories
-      webdav.pathExists.mockResolvedValue(false); // No conflicts
+    it('accepts copy job and returns jobId', async () => {
+      webdav.listDirectory.mockRejectedValue({ status: 404 });
+      webdav.pathExists.mockResolvedValue(false);
       webdav.copyFile.mockResolvedValue(true);
 
       const response = await request(app)
@@ -288,8 +322,12 @@ describe('Folders and Batch Operations Routes', () => {
           ],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(2);
+      expect(response.status).toBe(202);
+      expect(response.body.jobId).toBeDefined();
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded');
+      expect(succeeded).toHaveLength(2);
     });
 
     it('skips copies without destination permission', async () => {
@@ -307,14 +345,18 @@ describe('Folders and Batch Operations Routes', () => {
           ],
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(1);
-      expect(response.body.skipped).toContain('/testuser/file2.txt');
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      const succeeded = (job.results || []).filter(r => r.status === 'succeeded');
+      const skippedByPermission = (job.results || []).filter(r => r.status === 'skippedByPermission').map(r => r.sourcePath);
+      expect(succeeded).toHaveLength(1);
+      expect(skippedByPermission).toContain('/testuser/file2.txt');
     });
 
     it('handles conflict with overwrite option', async () => {
       webdav.listDirectory.mockRejectedValue({ status: 404 });
-      webdav.pathExists.mockResolvedValue(true); // Conflict exists
+      webdav.pathExists.mockResolvedValue(true);
       webdav.copyFile.mockResolvedValue(true);
 
       const response = await request(app)
@@ -327,8 +369,10 @@ describe('Folders and Batch Operations Routes', () => {
           onConflict: 'overwrite',
         });
 
-      expect(response.status).toBe(200);
-      expect(response.body.succeeded).toHaveLength(1);
+      expect(response.status).toBe(202);
+      const job = await waitForJob(app, response.body.jobId, userToken);
+      expect(job.status).toBe('completed');
+      expect((job.results || []).filter(r => r.status === 'succeeded')).toHaveLength(1);
     });
 
     it('fails with empty copies array', async () => {
@@ -338,6 +382,46 @@ describe('Folders and Batch Operations Routes', () => {
         .send({ copies: [] });
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/files/bulk-operation/:jobId', () => {
+    it('returns job status for own job', async () => {
+      webdav.listDirectory.mockRejectedValue({ status: 404 });
+      webdav.deleteFile.mockResolvedValue(true);
+      const createRes = await request(app)
+        .post('/api/files/batch-delete')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paths: ['/testuser/a.txt'] });
+      const jobId = createRes.body.jobId;
+      const job = await waitForJob(app, jobId, userToken);
+      expect(job.status).toBe('completed');
+      expect(job.results).toBeDefined();
+    });
+
+    it('returns 404 for unknown jobId', async () => {
+      const response = await request(app)
+        .get('/api/files/bulk-operation/nonexistent-id')
+        .set('Authorization', `Bearer ${userToken}`);
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/files/bulk-operation/:jobId/cancel', () => {
+    it('sets job cancelled and returns 200', async () => {
+      webdav.listDirectory.mockRejectedValue({ status: 404 });
+      webdav.deleteFile.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(true), 500)));
+      const createRes = await request(app)
+        .post('/api/files/batch-delete')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paths: ['/testuser/slow1.txt', '/testuser/slow2.txt'] });
+      const jobId = createRes.body.jobId;
+      const cancelRes = await request(app)
+        .post(`/api/files/bulk-operation/${jobId}/cancel`)
+        .set('Authorization', `Bearer ${userToken}`);
+      expect(cancelRes.status).toBe(200);
+      const job = await waitForJob(app, jobId, userToken);
+      expect(['completed', 'cancelled']).toContain(job.status);
     });
   });
 

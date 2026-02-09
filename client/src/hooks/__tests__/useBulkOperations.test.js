@@ -34,22 +34,32 @@ describe('useBulkOperations', () => {
     expect(result.current.folderPickerAction).toBe('move');
   });
 
-  it('handles bulk delete', async () => {
+  it('handles bulk delete (job + polling)', async () => {
     const { result } = renderHook(() => useBulkOperations(
       new Set(['/f1', '/f2']),
       [],
       null, null, null, mockSetSelectedFiles, mockSetSelectionMode, () => '/'
     ));
 
-    fileService.batchDeleteFiles.mockResolvedValue({ succeeded: ['/f1', '/f2'], failed: [], skipped: [] });
+    fileService.batchDeleteFiles.mockResolvedValue({ jobId: 'job-delete-1' });
+    fileService.getBulkOperationStatus.mockResolvedValue({
+      status: 'completed',
+      progress: 2,
+      total: 2,
+      results: [
+        { path: '/f1', status: 'succeeded' },
+        { path: '/f2', status: 'succeeded' },
+      ],
+    });
 
     await act(async () => {
       await result.current.handleBulkDelete();
     });
 
     expect(fileService.batchDeleteFiles).toHaveBeenCalledWith(['/f1', '/f2']);
+    expect(fileService.getBulkOperationStatus).toHaveBeenCalledWith('job-delete-1');
     expect(mockUpdateProgress).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'completed'
+      status: 'completed',
     }));
   });
 

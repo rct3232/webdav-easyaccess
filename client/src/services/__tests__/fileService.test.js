@@ -1,8 +1,8 @@
 import { get, post, put } from '../apiClient';
-import { 
-  listFiles, 
-  renameFile, 
-  createFolder, 
+import {
+  listFiles,
+  renameFile,
+  createFolder,
   getWebDAVInfo,
   uploadFile,
   uploadFileWithPath,
@@ -13,7 +13,9 @@ import {
   requestThumbnailsBatch,
   batchDeleteFiles,
   batchMoveFiles,
-  batchCopyFiles
+  batchCopyFiles,
+  getBulkOperationStatus,
+  cancelBulkOperation,
 } from '../fileService';
 
 jest.mock('../apiClient', () => ({
@@ -130,35 +132,37 @@ describe('fileService', () => {
   });
 
   describe('Complex operations', () => {
-    it('batchDeleteFiles calls post with paths array', async () => {
-      post.mockResolvedValue({ data: { succeeded: ['/test/file.txt'], failed: [] } });
+    it('batchDeleteFiles calls post with paths array and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'job-123' } });
 
       const result = await batchDeleteFiles(['/test/file.txt']);
 
       expect(post).toHaveBeenCalledWith('/files/batch-delete', { paths: ['/test/file.txt'] });
-      expect(result.succeeded).toContain('/test/file.txt');
+      expect(result.jobId).toBe('job-123');
     });
 
-    it('batchMoveFiles calls post with moves array', async () => {
-      post.mockResolvedValue({ data: { succeeded: [{ sourcePath: '/src', destinationPath: '/dest' }], failed: [] } });
+    it('batchMoveFiles calls post with moves array and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'job-456' } });
 
-      await batchMoveFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
+      const result = await batchMoveFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
 
       expect(post).toHaveBeenCalledWith('/files/batch-move', {
         moves: [{ sourcePath: '/src', destinationPath: '/dest' }],
         onConflict: 'error'
       });
+      expect(result.jobId).toBe('job-456');
     });
 
-    it('batchCopyFiles calls post with copies array', async () => {
-      post.mockResolvedValue({ data: { succeeded: [{ sourcePath: '/src', destinationPath: '/dest' }], failed: [] } });
+    it('batchCopyFiles calls post with copies array and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'job-789' } });
 
-      await batchCopyFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
+      const result = await batchCopyFiles([{ sourcePath: '/src', destinationPath: '/dest' }]);
 
       expect(post).toHaveBeenCalledWith('/files/batch-copy', {
         copies: [{ sourcePath: '/src', destinationPath: '/dest' }],
         onConflict: 'error'
       });
+      expect(result.jobId).toBe('job-789');
     });
 
     it('checkConflicts calls post', async () => {
@@ -182,24 +186,40 @@ describe('fileService', () => {
   });
 
   describe('Batch operations', () => {
-    it('batchDeleteFiles calls post', async () => {
-      post.mockResolvedValue({ data: { success: true } });
-      await batchDeleteFiles(['/p1', '/p2']);
+    it('batchDeleteFiles calls post and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'j1' } });
+      const result = await batchDeleteFiles(['/p1', '/p2']);
       expect(post).toHaveBeenCalledWith('/files/batch-delete', { paths: ['/p1', '/p2'] });
+      expect(result.jobId).toBe('j1');
     });
 
-    it('batchMoveFiles calls post', async () => {
-      post.mockResolvedValue({ data: { success: true } });
+    it('batchMoveFiles calls post and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'j2' } });
       const moves = [{ sourcePath: '/s1', destinationPath: '/d1' }];
-      await batchMoveFiles(moves);
+      const result = await batchMoveFiles(moves);
       expect(post).toHaveBeenCalledWith('/files/batch-move', { moves, onConflict: 'error' });
+      expect(result.jobId).toBe('j2');
     });
 
-    it('batchCopyFiles calls post', async () => {
-      post.mockResolvedValue({ data: { success: true } });
+    it('batchCopyFiles calls post and returns jobId', async () => {
+      post.mockResolvedValue({ data: { jobId: 'j3' } });
       const copies = [{ sourcePath: '/s1', destinationPath: '/d1' }];
-      await batchCopyFiles(copies);
+      const result = await batchCopyFiles(copies);
       expect(post).toHaveBeenCalledWith('/files/batch-copy', { copies, onConflict: 'error' });
+      expect(result.jobId).toBe('j3');
+    });
+
+    it('getBulkOperationStatus calls get', async () => {
+      get.mockResolvedValue({ data: { status: 'completed', progress: 2, total: 2, results: [] } });
+      const result = await getBulkOperationStatus('job-1');
+      expect(get).toHaveBeenCalledWith('/files/bulk-operation/job-1');
+      expect(result.status).toBe('completed');
+    });
+
+    it('cancelBulkOperation calls post', async () => {
+      post.mockResolvedValue({ data: { message: 'Cancel requested', jobId: 'job-1' } });
+      await cancelBulkOperation('job-1');
+      expect(post).toHaveBeenCalledWith('/files/bulk-operation/job-1/cancel');
     });
   });
 });

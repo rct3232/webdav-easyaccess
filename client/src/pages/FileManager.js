@@ -546,6 +546,7 @@ const FileManager = () => {
     handleBulkDownload,
     handleFolderPickerSelect,
     handleRetry,
+    handleCancelBulkOperation,
     dismissFailedItems,
     setFolderPickerOpen,
     setFolderPickerAction,
@@ -1062,6 +1063,16 @@ const FileManager = () => {
   const handleCancelAllUploadWrapper = useCallback((progressId) => {
     handleCancelAllUpload(progressId, progressItems);
   }, [handleCancelAllUpload, progressItems]);
+
+  const handleCancelAllWrapper = useCallback((progressId) => {
+    const item = progressItems.find((i) => i.id === progressId);
+    if (!item) return;
+    if (item.type === 'upload') {
+      handleCancelAllUpload(progressId, progressItems);
+    } else if ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId) {
+      handleCancelBulkOperation(progressId);
+    }
+  }, [progressItems, handleCancelAllUpload, handleCancelBulkOperation]);
 
   // 업로드 재시도 (실패한 파일만 재시도)
   const handleRetryUpload = useCallback(async (progressId) => {
@@ -1868,7 +1879,7 @@ const FileManager = () => {
         }}
         onRetry={handleRetryUpload}
         onCancelFile={handleCancelUploadFileWrapper}
-        onCancelAll={handleCancelAllUploadWrapper}
+        onCancelAll={handleCancelAllWrapper}
       />
 
       <ConflictResolveDialog

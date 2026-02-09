@@ -33,7 +33,8 @@ const { selectiveTransfer } = require('../services/selectiveTransfer');
 const { selectiveCollectFiles } = require('../services/selectiveDownload');
 const { selectiveDelete } = require('../services/selectiveDelete');
 const { isMetaPath } = require('../store/metaPaths');
-const { asyncLimitSettled } = require('../utils/asyncUtils');
+const { createJob, getJob, setJobCancelled, updateJob } = require('../store/bulkJobStore');
+const { asyncLimitSettled, asyncLimitSettledWithCancel } = require('../utils/asyncUtils');
 const path = require('path');
 const requireUser = require('../middleware/requireUser');
 const { checkMetaPathAccess } = require('../middleware/metaPathGuard');
@@ -218,6 +219,370 @@ async function getConflicts(operations, opts = {}) {
   });
 
   return conflicts;
+}
+
+async function runBulkJobWorker(jobId) {
+  const job = getJob(jobId);
+  if (!job || job.status !== 'pending') return;
+  updateJob(jobId, { status: 'running' });
+
+  const userId = job.userId;
+  let user;
+  try {
+    user = await User.findById(userId);
+    if (!user) {
+      updateJob(jobId, { status: 'failed', errorMessage: 'User not found' });
+      return;
+    }
+    user = user.toObject ? user.toObject() : user;
+  } catch (e) {
+    updateJob(jobId, { status: 'failed', errorMessage: e.message });
+    return;
+  }
+
+  const doc = await Permission.getPermissionDoc(userId);
+  const canWriteDirSync = buildSyncWriteChecker(user, doc);
+  const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
+  const canReadDirSync = buildSyncReadChecker(user, doc);
+
+  const getJobRef = () => getJob(jobId);
+  const pushResult = (entry) => {
+    const j = getJobRef();
+    if (j) {
+      j.results.push(entry);
+      j.progress = j.results.length;
+    }
+  };
+
+  try {
+    if (job.operation === 'delete') {
+      const paths = job.payload.paths || [];
+      const allDeletedDirPrefixes = new Set();
+      const settled = await asyncLimitSettledWithCancel(
+        5,
+        paths,
+        async (filePath) => {
+          if (!filePath || typeof filePath !== 'string') {
+            pushResult({ path: filePath, status: 'failed', error: 'Invalid path' });
+            return;
+          }
+          try {
+            const normalizedTargetPath = normalizePath(filePath);
+            const isDir = await isDirectoryPath(filePath);
+            const hasPermission = isDir
+              ? canWriteDirSync(normalizedTargetPath)
+              : canWriteFileByParentSync(normalizedTargetPath);
+            if (!hasPermission) {
+              pushResult({ path: filePath, status: 'skipped' });
+              return;
+            }
+            if (user.is_admin) {
+              try {
+                await listDirectory(filePath);
+                const normalizedPath = filePath.endsWith('/') ? filePath.slice(0, -1) : filePath;
+                const pathParts = normalizedPath.split('/').filter(Boolean);
+                if (pathParts.length === 1) {
+                  const folderUsername = pathParts[0];
+                  const folderUser = await User.findByUsername(folderUsername);
+                  if (folderUser) {
+                    pushResult({ path: filePath, status: 'skipped' });
+                    return;
+                  }
+                }
+              } catch (dirError) {
+                // proceed
+              }
+            }
+            if (isDir) {
+              if (user.is_admin || isOwnerPath(user, normalizedTargetPath)) {
+                await deleteFile(filePath, { isDirectory: true });
+                try {
+                  await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
+                  allDeletedDirPrefixes.add(normalizedTargetPath);
+                } catch (permError) {
+                  console.error('Failed to revoke permissions after direct directory deletion:', permError);
+                }
+                pushResult({ path: filePath, status: 'succeeded' });
+                return;
+              }
+              const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
+              const canDeleteFileByParent = (parentDir) => canWriteDirSync(parentDir);
+              const result = await selectiveDelete({
+                rootPath: normalizedTargetPath,
+                canEnterDirectory,
+                canDeleteFileByParent,
+                allowMetaPath: user.is_admin && isMetaPath(normalizedTargetPath),
+              });
+              try {
+                const prefixes = (result.deletedDirPrefixes || []).map((p) => normalizePath(p));
+                if (prefixes.length > 0) {
+                  await Permission.revokePermissionsPrefixForAllUsers(prefixes);
+                  prefixes.forEach(p => allDeletedDirPrefixes.add(p));
+                }
+              } catch (permError) {
+                console.error('Failed to revoke permissions after directory deletion:', permError);
+              }
+              pushResult({ path: filePath, status: 'succeeded' });
+              if (result.skippedPaths && result.skippedPaths.length > 0) {
+                result.skippedPaths.forEach(p => pushResult({ path: p, status: 'skipped' }));
+              }
+            } else {
+              await deleteFile(filePath, { isDirectory: false });
+              pushResult({ path: filePath, status: 'succeeded' });
+            }
+          } catch (error) {
+            console.error(`Failed to delete ${filePath}:`, error);
+            const errorStatus = error.status || error.response?.status;
+            if (errorStatus === 403 || errorStatus === 401) {
+              pushResult({ path: filePath, status: 'skipped' });
+            } else {
+              pushResult({ path: filePath, status: 'failed', error: error.message || 'Unknown error' });
+            }
+          }
+        },
+        () => (getJobRef() && getJobRef().cancelled)
+      );
+      const finalJob = getJobRef();
+      if (finalJob) {
+        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+      }
+      return;
+    }
+
+    if (job.operation === 'move') {
+      const { moves, onConflict } = job.payload;
+      let movesToProcess = moves || [];
+      if (onConflict === 'skip') {
+        const operations = (moves || []).map(m => ({
+          sourcePath: m.sourcePath,
+          destinationPath: m.destinationPath,
+          type: 'move',
+        }));
+        const conflicts = await getConflicts(operations, { limit: false });
+        const conflictPaths = new Set(
+          conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
+        );
+        moves.filter(m => conflictPaths.has(normalizePath(m.destinationPath))).forEach(m => {
+          pushResult({ sourcePath: m.sourcePath, destinationPath: m.destinationPath, status: 'skippedByConflict' });
+        });
+        movesToProcess = moves.filter(m => !conflictPaths.has(normalizePath(m.destinationPath)));
+      }
+      const settled = await asyncLimitSettledWithCancel(
+        1,
+        movesToProcess,
+        async (move) => {
+          const { sourcePath, destinationPath } = move;
+          if (!sourcePath || !destinationPath) {
+            pushResult({
+              sourcePath: sourcePath || 'unknown',
+              destinationPath: destinationPath || 'unknown',
+              status: 'failed',
+              error: 'Source and destination paths are required',
+            });
+            return;
+          }
+          try {
+            const normalizedSourcePath = normalizePath(sourcePath);
+            const normalizedDestinationPath = normalizePath(destinationPath);
+            const isSourceDir = await isDirectoryPath(sourcePath);
+            const hasSourcePermission = isSourceDir
+              ? canWriteDirSync(normalizedSourcePath)
+              : canWriteFileByParentSync(normalizedSourcePath);
+            if (!hasSourcePermission) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+              return;
+            }
+            const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
+            if (!canWriteDirSync(destParentPath)) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+              return;
+            }
+            const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict || 'error');
+            if (conflictStatus === 'skip') {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByConflict' });
+              return;
+            }
+            if (isSourceDir) {
+              const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
+              const canTransferFile = (parentDir) => canWriteDirSync(parentDir);
+              const result = await selectiveTransfer({
+                sourceRoot: normalizedSourcePath,
+                destRoot: normalizedDestinationPath,
+                mode: 'move',
+                canEnterDirectory,
+                canTransferFile,
+                onConflict: onConflict || 'error',
+              });
+              try {
+                const excludePrefixes = (result.skippedPaths || [])
+                  .map((p) => normalizePath(p))
+                  .filter((p) => p !== normalizedSourcePath && p.startsWith(`${normalizedSourcePath}/`));
+                const rootMovedFully = (result.movedDirMappings || []).some(
+                  (m) => normalizePath(m.fromPrefix) === normalizedSourcePath
+                );
+                await Permission.rewritePermissionsForAllUsers(
+                  [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
+                  { excludePrefixes, duplicateExactMatches: !rootMovedFully }
+                );
+              } catch (permError) {
+                console.error('Failed to rewrite permissions after move:', permError);
+              }
+              if (result.movedDirMappings && result.movedDirMappings.length > 0) {
+                try {
+                  await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
+                } catch (permError) {
+                  console.error('Failed to rewrite permissions after move:', permError);
+                }
+              }
+              pushResult({ sourcePath, destinationPath, status: 'succeeded' });
+              if (result.skippedPaths && result.skippedPaths.length > 0) {
+                result.skippedPaths.forEach(p => pushResult({ path: p, status: 'skippedByConflict' }));
+              }
+            } else {
+              const overwrite = onConflict === 'overwrite';
+              await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
+              pushResult({ sourcePath, destinationPath, status: 'succeeded' });
+            }
+          } catch (error) {
+            console.error(`Failed to move ${sourcePath} to ${destinationPath}:`, error);
+            const errorStatus = error.status || error.response?.status;
+            if (errorStatus === 403 || errorStatus === 401) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+            } else {
+              pushResult({
+                sourcePath,
+                destinationPath,
+                status: 'failed',
+                error: error.message || 'Unknown error',
+              });
+            }
+          }
+        },
+        () => (getJobRef() && getJobRef().cancelled)
+      );
+      const finalJob = getJobRef();
+      if (finalJob) {
+        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+      }
+      return;
+    }
+
+    if (job.operation === 'copy') {
+      const { copies, onConflict } = job.payload;
+      let copiesToProcess = copies || [];
+      if (onConflict === 'skip') {
+        const operations = (copies || []).map(c => ({
+          sourcePath: c.sourcePath,
+          destinationPath: c.destinationPath,
+          type: 'copy',
+        }));
+        const conflicts = await getConflicts(operations, { limit: false });
+        const conflictPaths = new Set(
+          conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
+        );
+        copies.filter(c => conflictPaths.has(normalizePath(c.destinationPath))).forEach(c => {
+          pushResult({ sourcePath: c.sourcePath, destinationPath: c.destinationPath, status: 'skippedByConflict' });
+        });
+        copiesToProcess = copies.filter(c => !conflictPaths.has(normalizePath(c.destinationPath)));
+      }
+      const allCreatedDirs = new Set();
+      const settled = await asyncLimitSettledWithCancel(
+        1,
+        copiesToProcess,
+        async (copy) => {
+          const { sourcePath, destinationPath } = copy;
+          if (!sourcePath || !destinationPath) {
+            pushResult({
+              sourcePath: sourcePath || 'unknown',
+              destinationPath: destinationPath || 'unknown',
+              status: 'failed',
+              error: 'Source and destination paths are required',
+            });
+            return;
+          }
+          try {
+            const isSourceDir = await isDirectoryPath(sourcePath);
+            const normalizedSource = normalizePath(sourcePath);
+            const hasSourcePermission = isSourceDir
+              ? canReadDirSync(normalizedSource)
+              : canReadDirSync(path.posix.dirname(normalizedSource) || '/');
+            if (!hasSourcePermission) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+              return;
+            }
+            const normalizedDest = normalizePath(destinationPath);
+            const destParentPath = path.posix.dirname(normalizedDest) || '/';
+            if (!canWriteDirSync(destParentPath)) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+              return;
+            }
+            const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict || 'error');
+            if (conflictStatus === 'skip') {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByConflict' });
+              return;
+            }
+            if (isSourceDir) {
+              const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
+              const canTransferFile = (parentDir) => canReadDirSync(parentDir);
+              const okRoot = canEnterDirectory(normalizedSource);
+              if (!okRoot) {
+                pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+                return;
+              }
+              const result = await selectiveTransfer({
+                sourceRoot: normalizedSource,
+                destRoot: normalizedDest,
+                mode: 'copy',
+                canEnterDirectory,
+                canTransferFile,
+                onConflict: onConflict || 'error',
+              });
+              try {
+                for (const dir of result.createdDirs || []) {
+                  await Permission.grant(userId, dir, 'write');
+                  allCreatedDirs.add(dir);
+                }
+              } catch (permError) {
+                console.error('Failed to grant executor permissions after copy:', permError);
+              }
+              pushResult({ sourcePath, destinationPath, status: 'succeeded' });
+              if (result.skippedPaths && result.skippedPaths.length > 0) {
+                result.skippedPaths.forEach(p => pushResult({ path: p, status: 'skippedByConflict' }));
+              }
+            } else {
+              const overwrite = onConflict === 'overwrite';
+              await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
+              pushResult({ sourcePath, destinationPath, status: 'succeeded' });
+            }
+          } catch (error) {
+            console.error(`Failed to copy ${sourcePath} to ${destinationPath}:`, error);
+            const errorStatus = error.status || error.response?.status;
+            if (errorStatus === 403 || errorStatus === 401) {
+              pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
+            } else {
+              pushResult({
+                sourcePath,
+                destinationPath,
+                status: 'failed',
+                error: error.message || 'Unknown error',
+              });
+            }
+          }
+        },
+        () => (getJobRef() && getJobRef().cancelled)
+      );
+      const finalJob = getJobRef();
+      if (finalJob) {
+        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+      }
+      return;
+    }
+
+    updateJob(jobId, { status: 'failed', errorMessage: 'Unknown operation' });
+  } catch (err) {
+    console.error('runBulkJobWorker error:', err);
+    updateJob(jobId, { status: 'failed', errorMessage: err.message || 'Unknown error' });
+  }
 }
 
 router.post('/check-conflicts', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
@@ -536,128 +901,15 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
   res.json({ message: 'File uploaded successfully', path: filePath });
 }));
 
-// Batch delete endpoint
+// Batch delete endpoint (Job-based: returns 202 + jobId, worker runs in background)
 router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { paths } = req.body;
-  
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
     throw validationError('Paths array is required');
   }
-
-  const user = req.user.full;
-  const doc = await Permission.getPermissionDoc(req.user.id);
-  const canWriteDirSync = buildSyncWriteChecker(user, doc);
-  const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
-  const results = {
-    succeeded: [],
-    failed: [],
-    skipped: [],
-    deletedDirPrefixes: []
-  };
-
-  const allDeletedDirPrefixes = new Set();
-
-  await asyncLimitSettled(5, paths, async (filePath) => {
-    if (!filePath || typeof filePath !== 'string') {
-      results.failed.push({ path: filePath, error: 'Invalid path' });
-      return;
-    }
-
-    try {
-      const normalizedTargetPath = normalizePath(filePath);
-      const isDir = await isDirectoryPath(filePath);
-      const hasPermission = isDir
-        ? canWriteDirSync(normalizedTargetPath)
-        : canWriteFileByParentSync(normalizedTargetPath);
-      
-      if (!hasPermission) {
-        results.skipped.push(filePath);
-        return;
-      }
-      
-      if (user.is_admin) {
-        try {
-          await listDirectory(filePath);
-          const normalizedPath = filePath.endsWith('/') ? filePath.slice(0, -1) : filePath;
-          const pathParts = normalizedPath.split('/').filter(Boolean);
-          if (pathParts.length === 1) {
-            const folderUsername = pathParts[0];
-            const folderUser = await User.findByUsername(folderUsername);
-            if (folderUser) {
-              results.skipped.push(filePath);
-              return;
-            }
-          }
-        } catch (dirError) {
-          // Not a directory or doesn't exist, proceed with deletion
-        }
-      }
-
-      if (isDir) {
-        if (user.is_admin || isOwnerPath(user, normalizedTargetPath)) {
-          // Direct delete for admin/owner
-          await deleteFile(filePath, { isDirectory: isDir });
-          
-          try {
-            await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
-            allDeletedDirPrefixes.add(normalizedTargetPath);
-          } catch (permError) {
-            console.error('Failed to revoke permissions after direct directory deletion:', permError);
-          }
-          
-          results.succeeded.push(filePath);
-          return;
-        }
-
-        const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
-        const canDeleteFileByParent = (parentDir) => canWriteDirSync(parentDir);
-
-        const result = await selectiveDelete({
-          rootPath: normalizedTargetPath,
-          canEnterDirectory,
-          canDeleteFileByParent,
-          allowMetaPath: user.is_admin && isMetaPath(normalizedTargetPath),
-        });
-
-        try {
-          const prefixes = (result.deletedDirPrefixes || []).map((p) => normalizePath(p));
-          if (prefixes.length > 0) {
-            await Permission.revokePermissionsPrefixForAllUsers(prefixes);
-            prefixes.forEach(p => allDeletedDirPrefixes.add(p));
-          }
-        } catch (permError) {
-          console.error('Failed to revoke permissions after directory deletion:', permError);
-        }
-
-        results.succeeded.push(filePath);
-        if (result.skippedPaths && result.skippedPaths.length > 0) {
-          result.skippedPaths.forEach(p => results.skipped.push(p));
-        }
-      } else {
-        await deleteFile(filePath, { isDirectory: isDir });
-        results.succeeded.push(filePath);
-      }
-    } catch (error) {
-      console.error(`Failed to delete ${filePath}:`, error);
-      const errorStatus = error.status || error.response?.status;
-      if (errorStatus === 403 || errorStatus === 401) {
-        results.skipped.push(filePath);
-      } else {
-        results.failed.push({ 
-          path: filePath, 
-          error: error.message || 'Unknown error' 
-        });
-      }
-    }
-  });
-
-  res.json({
-    message: 'Batch delete completed',
-    succeeded: results.succeeded,
-    failed: results.failed,
-    skipped: results.skipped,
-    deletedDirPrefixes: Array.from(allDeletedDirPrefixes)
-  });
+  const { jobId } = createJob(req.user.id, 'delete', { paths });
+  setImmediate(runBulkJobWorker, jobId);
+  res.status(202).json({ jobId });
 }));
 
 router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
@@ -718,302 +970,59 @@ const handleSingleOpConflict = async (destPath, onConflict) => {
   return 'overwrite';
 };
 
-// Batch move endpoint
+// Batch move endpoint (Job-based: returns 202 + jobId)
 router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { moves, onConflict } = req.body; // [{sourcePath, destinationPath}, ...]
-  
+  const { moves, onConflict } = req.body;
   if (!moves || !Array.isArray(moves) || moves.length === 0) {
     throw validationError('Moves array is required');
   }
-
-  const user = req.user.full;
-  const doc = await Permission.getPermissionDoc(req.user.id);
-  const canWriteDirSync = buildSyncWriteChecker(user, doc);
-  const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
-  const results = {
-    succeeded: [],
-    failed: [],
-    skippedByConflict: [],
-    skippedByPermission: [],
-    movedDirMappings: []
-  };
-
-  const allMovedDirMappings = [];
-
-  let movesToProcess = moves;
-  if (onConflict === 'skip') {
-    const operations = moves.map(m => ({
-      sourcePath: m.sourcePath,
-      destinationPath: m.destinationPath,
-      type: 'move'
-    }));
-    const conflicts = await getConflicts(operations, { limit: false });
-    const conflictPaths = new Set(
-      conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
-    );
-    const excluded = moves.filter(m => conflictPaths.has(normalizePath(m.destinationPath)));
-    excluded.forEach(m => results.skippedByConflict.push(m.sourcePath));
-    movesToProcess = moves.filter(m => !conflictPaths.has(normalizePath(m.destinationPath)));
-  }
-
-  // Concurrency 1: WebDAV MOVE fails with 500 when multiple MOVE requests run in parallel (single move works).
-  await asyncLimitSettled(1, movesToProcess, async (move) => {
-    const { sourcePath, destinationPath } = move;
-    
-    if (!sourcePath || !destinationPath) {
-      results.failed.push({ 
-        sourcePath: sourcePath || 'unknown', 
-        destinationPath: destinationPath || 'unknown',
-        error: 'Source and destination paths are required' 
-      });
-      return;
-    }
-
-    try {
-      const normalizedSourcePath = normalizePath(sourcePath);
-      const normalizedDestinationPath = normalizePath(destinationPath);
-      const isSourceDir = await isDirectoryPath(sourcePath);
-      const hasSourcePermission = isSourceDir
-        ? canWriteDirSync(normalizedSourcePath)
-        : canWriteFileByParentSync(normalizedSourcePath);
-      
-      if (!hasSourcePermission) {
-        results.skippedByPermission.push(sourcePath);
-        return;
-      }
-
-      const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
-      const hasDestPermission = canWriteDirSync(destParentPath);
-      
-      if (!hasDestPermission) {
-        results.skippedByPermission.push(sourcePath);
-        return;
-      }
-
-      const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict);
-      if (conflictStatus === 'skip') {
-        results.skippedByConflict.push(sourcePath);
-        return;
-      }
-
-      if (isSourceDir) {
-        const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
-        const canTransferFile = (parentDir) => canWriteDirSync(parentDir);
-
-        const result = await selectiveTransfer({
-          sourceRoot: normalizedSourcePath,
-          destRoot: normalizedDestinationPath,
-          mode: 'move',
-          canEnterDirectory,
-          canTransferFile,
-          onConflict: onConflict || 'error',
-        });
-
-        try {
-          const excludePrefixes = (result.skippedPaths || [])
-            .map((p) => normalizePath(p))
-            .filter((p) => p !== normalizedSourcePath && p.startsWith(`${normalizedSourcePath}/`));
-
-          const rootMovedFully = (result.movedDirMappings || []).some(
-            (m) => normalizePath(m.fromPrefix) === normalizedSourcePath
-          );
-
-          await Permission.rewritePermissionsForAllUsers(
-            [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
-            {
-              excludePrefixes,
-              duplicateExactMatches: !rootMovedFully,
-            }
-          );
-        } catch (permError) {
-          console.error('Failed to rewrite permissions after move:', permError);
-        }
-
-        if (result.movedDirMappings.length > 0) {
-          try {
-            await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
-            allMovedDirMappings.push(...result.movedDirMappings);
-          } catch (permError) {
-            console.error('Failed to rewrite permissions after move:', permError);
-          }
-        }
-
-        results.succeeded.push({ sourcePath, destinationPath });
-        if (result.skippedPaths && result.skippedPaths.length > 0) {
-          result.skippedPaths.forEach(p => results.skippedByConflict.push(p));
-        }
-      } else {
-        const overwrite = onConflict === 'overwrite';
-        await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-        results.succeeded.push({ sourcePath, destinationPath });
-      }
-    } catch (error) {
-      console.error(`Failed to move ${sourcePath} to ${destinationPath}:`, error);
-      const errorStatus = error.status || error.response?.status;
-      if (errorStatus === 403 || errorStatus === 401) {
-        results.skippedByPermission.push(sourcePath);
-      } else {
-        results.failed.push({ 
-          sourcePath, 
-          destinationPath, 
-          error: error.message || 'Unknown error' 
-        });
-      }
-    }
-  });
-
-  const skipped = [...results.skippedByConflict, ...results.skippedByPermission];
-  res.json({
-    message: 'Batch move completed',
-    succeeded: results.succeeded,
-    failed: results.failed,
-    skipped,
-    skippedByConflict: results.skippedByConflict,
-    skippedByPermission: results.skippedByPermission,
-    movedDirMappings: allMovedDirMappings
-  });
+  const { jobId } = createJob(req.user.id, 'move', { moves, onConflict });
+  setImmediate(runBulkJobWorker, jobId);
+  res.status(202).json({ jobId });
 }));
 
-// Batch copy endpoint
+// Batch copy endpoint (Job-based: returns 202 + jobId)
 router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { copies, onConflict } = req.body; // [{sourcePath, destinationPath}, ...]
-  
+  const { copies, onConflict } = req.body;
   if (!copies || !Array.isArray(copies) || copies.length === 0) {
     throw validationError('Copies array is required');
   }
+  const { jobId } = createJob(req.user.id, 'copy', { copies, onConflict });
+  setImmediate(runBulkJobWorker, jobId);
+  res.status(202).json({ jobId });
+}));
 
-  const user = req.user.full;
-  const doc = await Permission.getPermissionDoc(req.user.id);
-  const canReadDirSync = buildSyncReadChecker(user, doc);
-  const canWriteDirSync = buildSyncWriteChecker(user, doc);
-  const results = {
-    succeeded: [],
-    failed: [],
-    skippedByConflict: [],
-    skippedByPermission: [],
-    createdDirs: []
-  };
-
-  const allCreatedDirs = new Set();
-
-  let copiesToProcess = copies;
-  if (onConflict === 'skip') {
-    const operations = copies.map(c => ({
-      sourcePath: c.sourcePath,
-      destinationPath: c.destinationPath,
-      type: 'copy'
-    }));
-    const conflicts = await getConflicts(operations, { limit: false });
-    const conflictPaths = new Set(
-      conflicts.filter(c => c.type === 'file').map(c => normalizePath(c.path))
-    );
-    const excluded = copies.filter(c => conflictPaths.has(normalizePath(c.destinationPath)));
-    excluded.forEach(c => results.skippedByConflict.push(c.sourcePath));
-    copiesToProcess = copies.filter(c => !conflictPaths.has(normalizePath(c.destinationPath)));
+// Get bulk operation status (polling)
+router.get('/bulk-operation/:jobId', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const job = getJob(jobId);
+  if (!job) {
+    throw notFoundError('Job not found or expired');
   }
-
-  // Concurrency 1: WebDAV COPY fails with 500 when multiple COPY requests run in parallel (single copy works).
-  await asyncLimitSettled(1, copiesToProcess, async (copy) => {
-    const { sourcePath, destinationPath } = copy;
-    
-    if (!sourcePath || !destinationPath) {
-      results.failed.push({ 
-        sourcePath: sourcePath || 'unknown', 
-        destinationPath: destinationPath || 'unknown',
-        error: 'Source and destination paths are required' 
-      });
-      return;
-    }
-
-    try {
-      const isSourceDir = await isDirectoryPath(sourcePath);
-      const normalizedSource = normalizePath(sourcePath);
-      const hasSourcePermission = isSourceDir
-        ? canReadDirSync(normalizedSource)
-        : canReadDirSync(path.posix.dirname(normalizedSource) || '/');
-      
-      if (!hasSourcePermission) {
-        results.skippedByPermission.push(sourcePath);
-        return;
-      }
-
-      const normalizedDest = normalizePath(destinationPath);
-      const destParentPath = path.posix.dirname(normalizedDest) || '/';
-      const hasDestPermission = canWriteDirSync(destParentPath);
-      
-      if (!hasDestPermission) {
-        results.skippedByPermission.push(sourcePath);
-        return;
-      }
-
-      const conflictStatus = await handleSingleOpConflict(destinationPath, onConflict);
-      if (conflictStatus === 'skip') {
-        results.skippedByConflict.push(sourcePath);
-        return;
-      }
-
-      if (isSourceDir) {
-        const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-        const canTransferFile = (parentDir) => canReadDirSync(parentDir);
-
-        const okRoot = canEnterDirectory(normalizedSource);
-        if (!okRoot) {
-          results.skippedByPermission.push(sourcePath);
-          return;
-        }
-
-        const result = await selectiveTransfer({
-          sourceRoot: normalizedSource,
-          destRoot: normalizedDest,
-          mode: 'copy',
-          canEnterDirectory,
-          canTransferFile,
-          onConflict: onConflict || 'error',
-        });
-
-        try {
-          for (const dir of result.createdDirs) {
-            await Permission.grant(req.user.id, dir, 'write');
-            allCreatedDirs.add(dir);
-          }
-        } catch (permError) {
-          console.error('Failed to grant executor permissions after copy:', permError);
-        }
-
-        results.succeeded.push({ sourcePath, destinationPath });
-        if (result.skippedPaths && result.skippedPaths.length > 0) {
-          result.skippedPaths.forEach(p => results.skippedByConflict.push(p));
-        }
-      } else {
-        const overwrite = onConflict === 'overwrite';
-        await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: isSourceDir });
-        results.succeeded.push({ sourcePath, destinationPath });
-      }
-    } catch (error) {
-      console.error(`Failed to copy ${sourcePath} to ${destinationPath}:`, error);
-      const errorStatus = error.status || error.response?.status;
-      if (errorStatus === 403 || errorStatus === 401) {
-        results.skippedByPermission.push(sourcePath);
-      } else {
-        results.failed.push({ 
-          sourcePath, 
-          destinationPath, 
-          error: error.message || 'Unknown error' 
-        });
-      }
-    }
-  });
-
-  const skipped = [...results.skippedByConflict, ...results.skippedByPermission];
+  if (String(job.userId) !== String(req.user.id)) {
+    throw forbiddenError('Access denied');
+  }
   res.json({
-    message: 'Batch copy completed',
-    succeeded: results.succeeded,
-    failed: results.failed,
-    skipped,
-    skippedByConflict: results.skippedByConflict,
-    skippedByPermission: results.skippedByPermission,
-    createdDirs: Array.from(allCreatedDirs)
+    status: job.status,
+    progress: job.progress,
+    total: job.total,
+    results: job.results,
+    errorMessage: job.errorMessage,
   });
+}));
+
+// Cancel bulk operation
+router.post('/bulk-operation/:jobId/cancel', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const job = getJob(jobId);
+  if (!job) {
+    throw notFoundError('Job not found or expired');
+  }
+  if (String(job.userId) !== String(req.user.id)) {
+    throw forbiddenError('Access denied');
+  }
+  setJobCancelled(jobId);
+  res.json({ message: 'Cancel requested', jobId });
 }));
 
 router.get('/thumbnail/:hash', asyncHandler(async (req, res) => {

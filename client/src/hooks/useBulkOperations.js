@@ -1,14 +1,20 @@
 import { useState, useCallback } from 'react';
-import { downloadMultipleFiles, batchDeleteFiles, batchMoveFiles, batchCopyFiles, checkConflicts } from '../services/fileService';
+import {
+  downloadMultipleFiles,
+  batchDeleteFiles,
+  batchMoveFiles,
+  batchCopyFiles,
+  checkConflicts,
+  getBulkOperationStatus,
+  cancelBulkOperation,
+} from '../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
-import { 
+import {
   applyRecentFilesAfterBulkDelete,
   applyRecentFilesAfterBulkMove,
 } from '../utils/recentFiles';
 
-// Batch processing configuration
-const BATCH_SIZE = parseInt(process.env.REACT_APP_BATCH_SIZE || '50', 10);
-const MAX_CONCURRENT_BATCHES = parseInt(process.env.REACT_APP_MAX_CONCURRENT_BATCHES || '3', 10);
+const POLL_INTERVAL_MS = 400;
 
 export const useBulkOperations = (
   selectedFiles,
@@ -79,158 +85,11 @@ export const useBulkOperations = (
     setFolderPickerOpen(true);
   };
 
-  // Helper function to retry a failed operation with exponential backoff
-  const retryOperation = useCallback(async (operationFn, maxRetries = 3, baseDelay = 1000) => {
-    let lastError;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await operationFn();
-      } catch (error) {
-        lastError = error;
-        
-        // Don't retry on client errors (4xx)
-        if (error.response?.status >= 400 && error.response?.status < 500) {
-          throw error;
-        }
-        
-        // Don't retry on last attempt
-        if (attempt === maxRetries) {
-          break;
-        }
-        
-        // Calculate delay with exponential backoff
-        const delay = baseDelay * Math.pow(2, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    throw lastError;
-  }, []);
-
-  // Helper function to check if error is retryable
-  const isRetryableError = useCallback((error) => {
-    // Network errors, timeouts, and server errors (5xx) are retryable
-    if (!error.response) {
-      return true; // Network error
-    }
-    const status = error.response?.status;
-    if (status >= 500) {
-      return true; // Server error
-    }
-    if (status === 408 || status === 429) {
-      return true; // Timeout or rate limit
-    }
-    return false;
-  }, []);
-
-  // Helper function to process items in batches with concurrency control
-  const processInBatches = useCallback(async (items, batchSize, maxConcurrent, operationFn, progressId, updateProgressFn, retryDataObj) => {
-    const chunks = [];
-    for (let i = 0; i < items.length; i += batchSize) {
-      chunks.push(items.slice(i, i + batchSize));
-    }
-
-    const totalChunks = chunks.length;
-    let processedCount = 0;
-    const allSucceeded = [];
-    const allFailed = [];
-    const allSkipped = [];
-    const allSkippedByConflict = [];
-    const allSkippedByPermission = [];
-
-    // Process chunks with concurrency control
-    for (let i = 0; i < chunks.length; i += maxConcurrent) {
-      const batchChunks = chunks.slice(i, i + maxConcurrent);
-      
-      const batchResults = await Promise.allSettled(
-        batchChunks.map(async (chunk, chunkIndex) => {
-          try {
-            // Retry on network/timeout errors
-            const result = await retryOperation(
-              () => operationFn(chunk),
-              3, // max retries
-              1000 // base delay 1s
-            );
-            return { success: true, result, chunk };
-          } catch (error) {
-            // Check if error is retryable but already exhausted retries
-            if (isRetryableError(error)) {
-              // Log retry exhaustion
-              console.warn(`Batch operation failed after retries for chunk:`, error);
-            }
-            return { success: false, error, chunk };
-          }
-        })
-      );
-
-      // Process batch results
-      for (const batchResult of batchResults) {
-        if (batchResult.status === 'fulfilled') {
-          const { success, result, chunk, error } = batchResult.value;
-          if (success && result) {
-            // Handle batch API response format
-            if (result.succeeded) {
-              allSucceeded.push(...(Array.isArray(result.succeeded) ? result.succeeded : []));
-            }
-            if (result.failed) {
-              allFailed.push(...(Array.isArray(result.failed) ? result.failed : []));
-            }
-            if (result.skippedByConflict) {
-              allSkippedByConflict.push(...(Array.isArray(result.skippedByConflict) ? result.skippedByConflict : []));
-            }
-            if (result.skippedByPermission) {
-              allSkippedByPermission.push(...(Array.isArray(result.skippedByPermission) ? result.skippedByPermission : []));
-            }
-            if (result.skipped && !result.skippedByConflict && !result.skippedByPermission) {
-              allSkipped.push(...(Array.isArray(result.skipped) ? result.skipped : []));
-            }
-          } else {
-            // If batch failed, treat all items in chunk as failed
-            chunk.forEach(item => {
-              allFailed.push({
-                path: typeof item === 'string' ? item : (item.sourcePath || item.path),
-                error: error?.message || 'Batch operation failed'
-              });
-            });
-          }
-        } else {
-          // Promise rejected - try to extract chunk from error or use empty array
-          const errorInfo = batchResult.reason || {};
-          const chunk = errorInfo.chunk || [];
-          chunk.forEach(item => {
-            allFailed.push({
-              path: typeof item === 'string' ? item : (item.sourcePath || item.path),
-              error: errorInfo.message || 'Unknown error'
-            });
-          });
-        }
-        processedCount++;
-        
-        // Update progress
-        updateProgressFn(progressId, {
-          status: 'processing',
-          progress: processedCount,
-          total: totalChunks,
-          current: `배치 처리 중... (${processedCount}/${totalChunks})`,
-        }, retryDataObj);
-      }
-    }
-
-    const skipped = allSkipped.length > 0 ? allSkipped : [...allSkippedByConflict, ...allSkippedByPermission];
-    return {
-      succeeded: allSucceeded,
-      failed: allFailed,
-      skipped,
-      skippedByConflict: allSkippedByConflict,
-      skippedByPermission: allSkippedByPermission,
-    };
-  }, [retryOperation, isRetryableError]);
-
   const handleBulkDelete = useCallback(async (retryData = null, onConfirm = null) => {
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
-    
     if (filePaths.length === 0) return;
     const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
-    
+
     if (!retryData) {
       dismissFailedItems();
       if (onConfirm) {
@@ -244,123 +103,111 @@ export const useBulkOperations = (
     markProcessing(filePaths, 'delete');
     const progressId = retryData?.progressId || `delete_${Date.now()}`;
     const retryDataObj = { type: 'delete', filePaths, startedPath };
-    
-    const totalBatches = Math.ceil(filePaths.length / BATCH_SIZE);
+
     updateProgressWithRetry(progressId, {
       type: 'delete',
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: `준비 중... (총 ${totalBatches}개 배치)`,
+      current: '준비 중...',
       name: `${filePaths.length}개 항목 삭제`,
     }, retryDataObj);
 
-    // Process in batches
-    const batchResults = await processInBatches(
-      filePaths,
-      BATCH_SIZE,
-      MAX_CONCURRENT_BATCHES,
-      async (chunk) => {
-        const result = await batchDeleteFiles(chunk);
-        return result;
-      },
-      progressId,
-      (id, updates, retry) => {
-        const batchProgress = updates.progress || 0;
-        const batchTotal = updates.total || totalBatches;
-        const itemProgress = Math.floor((batchProgress / batchTotal) * filePaths.length);
-        updateProgressWithRetry(id, {
-          ...updates,
-          progress: itemProgress,
-          total: filePaths.length,
-          current: `배치 처리 중... (${batchProgress}/${batchTotal} 배치, ${itemProgress}/${filePaths.length} 항목)`,
-        }, retry);
-      },
-      retryDataObj
-    );
+    let jobId;
+    try {
+      const data = await batchDeleteFiles(filePaths);
+      jobId = data?.jobId;
+    } catch (err) {
+      console.error('Bulk delete start failed:', err);
+      updateProgressWithRetry(progressId, {
+        type: 'delete',
+        status: 'error',
+        error: err.message || '삭제 시작 실패',
+        keepOnError: true,
+      }, retryDataObj);
+      clearProcessing(filePaths);
+      return;
+    }
 
-    const successCount = batchResults.succeeded.length;
-    const failCount = batchResults.failed.length;
-    const skippedSet = new Set(batchResults.skipped);
-    const failedItems = batchResults.failed.map(f => {
-      const path = f.path || (typeof f === 'string' ? f : '');
-      return {
-        fileName: path.split('/').pop() || '알 수 없음',
-        error: f.error || '알 수 없는 오류',
-      };
-    });
+    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: '삭제 중...' }, retryDataObj);
 
-    // Identify deleted folders
-    const deletedFolders = [];
-    batchResults.succeeded.forEach(filePath => {
-      const file = files.find(f => f.path === filePath);
-      if (file?.type === 'directory') {
-        deletedFolders.push(filePath);
-      }
-    });
-
-    updateProgressWithRetry(progressId, {
-      type: 'delete',
-      status: failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'),
-      progress: successCount,
-      total: filePaths.length,
-      current: failCount > 0 
-        ? `(${successCount}/${filePaths.length}) 삭제 완료 (${failCount}개 실패)` 
-        : `(${successCount}/${filePaths.length}) 삭제 완료`,
-      name: `${filePaths.length}개 항목 삭제`,
-      error: failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined),
-      failedItems: failedItems.length > 0 ? failedItems : undefined,
-      keepOnError: failCount > 0 || skippedSet.size > 0,
-      skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
-      skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
-    }, retryDataObj);
-
-    if (successCount > 0) {
-      // 삭제 성공한 파일들을 최근항목에서 제거
+    const poll = async () => {
       try {
-        await applyRecentFilesAfterBulkDelete(batchResults.succeeded, deletedFolders);
-      } catch (err) {
-        // 최근항목 정리 실패는 무시 (치명적이지 않음)
-        console.error('Failed to clean up recent files after bulk delete:', err);
-      }
-      
-      deletedFolders.forEach(folderPath => {
-        setTreeUpdateTrigger({
-          type: 'deleted',
-          folderPath,
-          timestamp: Date.now(),
-        });
-      });
+        const job = await getBulkOperationStatus(jobId);
+        const { status: jobStatus, progress: jobProgress, total: jobTotal, results: jobResults = [] } = job;
+        const succeeded = jobResults.filter(r => r.status === 'succeeded').map(r => r.path);
+        const failed = jobResults.filter(r => r.status === 'failed');
+        const skipped = jobResults.filter(r => r.status === 'skipped').map(r => r.path);
+        const skippedSet = new Set(skipped);
+        const failCount = failed.length;
+        const successCount = succeeded.length;
+        const failedItems = failed.map(f => ({
+          fileName: (f.path || '').split('/').pop() || '알 수 없음',
+          error: f.error || '알 수 없는 오류',
+        }));
 
-      if (!retryData) {
-        setSelectedFiles(new Set());
-      }
-      if (onOperationComplete) {
-        onOperationComplete({
-          opType: 'delete',
-          startedPath,
-          deletedFolderPaths: deletedFolders,
-        });
-      }
-      
-      if (deletedFolders.length > 0) {
-        setTimeout(() => {
-          setTreeUpdateTrigger({
-            type: 'refresh',
-            timestamp: Date.now(),
+        updateProgressWithRetry(progressId, {
+          progress: jobProgress,
+          total: jobTotal,
+          current: jobStatus === 'running' ? '삭제 중...' : undefined,
+        }, retryDataObj);
+
+        if (jobStatus !== 'pending' && jobStatus !== 'running') {
+          clearInterval(intervalId);
+          const deletedFolders = [];
+          succeeded.forEach(filePath => {
+            const file = files.find(f => f.path === filePath);
+            if (file?.type === 'directory') deletedFolders.push(filePath);
           });
-        }, 500);
+          const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'));
+          const currentMsg = jobStatus === 'cancelled'
+            ? `취소됨 (${successCount}/${filePaths.length} 완료)`
+            : failCount > 0
+              ? `(${successCount}/${filePaths.length}) 삭제 완료 (${failCount}개 실패)`
+              : `(${successCount}/${filePaths.length}) 삭제 완료`;
+          updateProgressWithRetry(progressId, {
+            type: 'delete',
+            status: finalStatus,
+            progress: successCount,
+            total: filePaths.length,
+            current: currentMsg,
+            name: `${filePaths.length}개 항목 삭제`,
+            error: jobStatus === 'cancelled' ? '사용자에 의해 취소됨' : (failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined)),
+            failedItems: failedItems.length > 0 ? failedItems : undefined,
+            keepOnError: failCount > 0 || skippedSet.size > 0 || jobStatus === 'cancelled',
+            skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
+            skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
+          }, retryDataObj);
+
+          if (successCount > 0) {
+            try {
+              await applyRecentFilesAfterBulkDelete(succeeded, deletedFolders);
+            } catch (err) {
+              console.error('Failed to clean up recent files after bulk delete:', err);
+            }
+            deletedFolders.forEach(folderPath => {
+              setTreeUpdateTrigger({ type: 'deleted', folderPath, timestamp: Date.now() });
+            });
+            if (onOperationComplete) {
+              onOperationComplete({ opType: 'delete', startedPath, deletedFolderPaths: deletedFolders });
+            }
+            if (deletedFolders.length > 0) {
+              setTimeout(() => setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() }), 500);
+            }
+          }
+          clearProcessing(filePaths);
+          if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
+            setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
+          }
+        }
+      } catch (err) {
+        console.error('Poll bulk delete status failed:', err);
       }
-    }
+    };
 
-    clearProcessing(filePaths);
-
-    if (failCount === 0 && skippedSet.size === 0) {
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-      }, 3000);
-    }
-  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress, processInBatches]);
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    poll();
+  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress]);
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
@@ -420,165 +267,152 @@ export const useBulkOperations = (
   };
 
   /**
-   * Execute bulk operation after pre-checks
+   * Execute bulk operation after pre-checks (Job + polling)
    */
   const executeBulkOperation = useCallback(async (destinationPath, retryData = null, onConflict = 'error') => {
     const action = retryData?.type || folderPickerAction;
     const filePaths = retryData?.filePaths || Array.from(selectedFiles);
-    
     if (!action || filePaths.length === 0) return;
     const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
 
     setSelectionMode(false);
     setSelectedFiles(new Set());
-    if (!retryData) {
-      dismissFailedItems();
-    }
+    if (!retryData) dismissFailedItems();
 
     markProcessing(filePaths, action);
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
     const actionName = getActionName(action);
     const actionText = getActionText(action);
     const retryDataObj = { type: action, filePaths, destinationPath, startedPath };
-    
-    const totalBatches = Math.ceil(filePaths.length / BATCH_SIZE);
+
+    const operations = filePaths.map(sourcePath => {
+      const fileName = sourcePath.split('/').pop();
+      const destinationFilePath = destinationPath === '/' ? `/${fileName}` : `${destinationPath}/${fileName}`;
+      return { sourcePath, destinationPath: destinationFilePath };
+    });
+
     updateProgressWithRetry(progressId, {
       type: action,
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: `준비 중... (총 ${totalBatches}개 배치)`,
+      current: '준비 중...',
       name: `${filePaths.length}개 항목 ${actionName}`,
     }, retryDataObj);
 
-    // Prepare moves/copies array
-    const operations = filePaths.map(sourcePath => {
-      const fileName = sourcePath.split('/').pop();
-      const destinationFilePath = destinationPath === '/' 
-        ? `/${fileName}` 
-        : `${destinationPath}/${fileName}`;
-      return { sourcePath, destinationPath: destinationFilePath };
-    });
-
-    // Process in batches
-    const batchResults = await processInBatches(
-      operations,
-      BATCH_SIZE,
-      MAX_CONCURRENT_BATCHES,
-      async (chunk) => {
-        if (action === 'move') {
-          return await batchMoveFiles(chunk, onConflict);
-        } else if (action === 'copy') {
-          return await batchCopyFiles(chunk, onConflict);
-        }
-        throw new Error('Invalid action');
-      },
-      progressId,
-      (id, updates, retry) => {
-        const batchProgress = updates.progress || 0;
-        const batchTotal = updates.total || totalBatches;
-        const itemProgress = Math.floor((batchProgress / batchTotal) * filePaths.length);
-        updateProgressWithRetry(id, {
-          ...updates,
-          progress: itemProgress,
-          total: filePaths.length,
-          current: `배치 처리 중... (${batchProgress}/${batchTotal} 배치, ${itemProgress}/${filePaths.length} 항목)`,
-        }, retry);
-      },
-      retryDataObj
-    );
-
-    const successCount = batchResults.succeeded.length;
-    const failCount = batchResults.failed.length;
-    const skippedByConflict = batchResults.skippedByConflict || [];
-    const skippedByPermission = batchResults.skippedByPermission || [];
-    const hasSkippedByConflict = skippedByConflict.length > 0;
-    const hasSkippedByPermission = skippedByPermission.length > 0;
-    const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
-    const failedItems = batchResults.failed.map(f => {
-      const path = f.sourcePath || f.path || (typeof f === 'string' ? f : '');
-      return {
-        fileName: path.split('/').pop() || '알 수 없음',
-        error: f.error || '알 수 없는 오류',
-      };
-    });
-
-    let skippedErrorMsg;
-    if (hasAnySkipped) {
-      const parts = [];
-      if (hasSkippedByConflict) parts.push(`건너뛴 항목: ${skippedByConflict.length}개`);
-      if (hasSkippedByPermission) parts.push(`권한으로 제외된 항목: ${skippedByPermission.length}개`);
-      skippedErrorMsg = parts.join(', ');
-    }
-
-    updateProgressWithRetry(progressId, {
-      type: action,
-      status: failCount > 0 ? 'error' : (hasAnySkipped ? 'warning' : 'completed'),
-      progress: successCount,
-      total: filePaths.length,
-      current: failCount > 0 
-        ? `(${successCount}/${filePaths.length}) ${actionText} 완료 (${failCount}개 실패)` 
-        : `(${successCount}/${filePaths.length}) ${actionText} 완료`,
-      name: `${filePaths.length}개 항목 ${actionName}`,
-      error: failCount > 0 ? `${failCount}개 실패` : skippedErrorMsg,
-      failedItems: failedItems.length > 0 ? failedItems : undefined,
-      keepOnError: failCount > 0 || hasAnySkipped,
-      skippedPathsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
-      skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
-      skippedPathsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
-      skippedCountByPermission: hasSkippedByPermission ? skippedByPermission.length : undefined,
-    }, retryDataObj);
-
-    if (successCount > 0) {
-      // 이동 성공 시 최근항목 경로 업데이트
-      if (action === 'move') {
-        try {
-          const hasSkipped = hasAnySkipped;
-          
-          if (!hasSkipped) {
-            // 이동된 파일/폴더별로 최근항목 업데이트
-            const moves = batchResults.succeeded.map(({ sourcePath, destinationPath: destPath }) => {
-              const file = files.find(f => f.path === sourcePath);
-              const fileName = sourcePath.split('/').pop();
-              
-              return {
-                oldPath: sourcePath,
-                newPath: destPath,
-                file: file || { type: 'file', name: fileName, basename: fileName },
-              };
-            });
-            
-            await applyRecentFilesAfterBulkMove(moves);
-          }
-        } catch (err) {
-          // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
-          console.error('Failed to update recent files after bulk move:', err);
-        }
-      }
-
-      if (onOperationComplete) {
-        onOperationComplete({
-          opType: action,
-          startedPath,
-          targetPath: destinationPath,
-        });
-      }
-    }
-
-    if (failCount === 0 && !hasAnySkipped) {
-      setTimeout(() => {
-        updateProgress({ id: progressId, remove: true });
-        clearProcessing(filePaths);
-      }, 3000);
-    } else {
+    let jobId;
+    try {
+      const data = action === 'move'
+        ? await batchMoveFiles(operations, onConflict)
+        : await batchCopyFiles(operations, onConflict);
+      jobId = data?.jobId;
+    } catch (err) {
+      console.error('Bulk move/copy start failed:', err);
+      updateProgressWithRetry(progressId, {
+        type: action,
+        status: 'error',
+        error: err.message || '시작 실패',
+        keepOnError: true,
+      }, retryDataObj);
       clearProcessing(filePaths);
-    }
-
-    if (!retryData) {
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
+      return;
     }
-  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText, updateProgress, processInBatches, files]);
+
+    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: `${actionText} 중...` }, retryDataObj);
+
+    const poll = async () => {
+      try {
+        const job = await getBulkOperationStatus(jobId);
+        const { status: jobStatus, progress: jobProgress, total: jobTotal, results: jobResults = [] } = job;
+        const succeeded = jobResults.filter(r => r.status === 'succeeded').map(r => ({ sourcePath: r.sourcePath, destinationPath: r.destinationPath }));
+        const failed = jobResults.filter(r => r.status === 'failed');
+        const skippedByConflict = jobResults.filter(r => r.status === 'skippedByConflict').map(r => r.sourcePath || r.path);
+        const skippedByPermission = jobResults.filter(r => r.status === 'skippedByPermission').map(r => r.sourcePath || r.path);
+        const failCount = failed.length;
+        const successCount = succeeded.length;
+        const hasSkippedByConflict = skippedByConflict.length > 0;
+        const hasSkippedByPermission = skippedByPermission.length > 0;
+        const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
+        const failedItems = failed.map(f => ({
+          fileName: (f.sourcePath || f.path || '').split('/').pop() || '알 수 없음',
+          error: f.error || '알 수 없는 오류',
+        }));
+
+        updateProgressWithRetry(progressId, {
+          progress: jobProgress,
+          total: jobTotal,
+          current: jobStatus === 'running' ? `${actionText} 중...` : undefined,
+        }, retryDataObj);
+
+        if (jobStatus !== 'pending' && jobStatus !== 'running') {
+          clearInterval(intervalId);
+          let skippedErrorMsg;
+          if (hasAnySkipped) {
+            const parts = [];
+            if (hasSkippedByConflict) parts.push(`건너뛴 항목: ${skippedByConflict.length}개`);
+            if (hasSkippedByPermission) parts.push(`권한으로 제외된 항목: ${skippedByPermission.length}개`);
+            skippedErrorMsg = parts.join(', ');
+          }
+          const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (hasAnySkipped ? 'warning' : 'completed'));
+          const currentMsg = jobStatus === 'cancelled'
+            ? `취소됨 (${successCount}/${filePaths.length} 완료)`
+            : failCount > 0
+              ? `(${successCount}/${filePaths.length}) ${actionText} 완료 (${failCount}개 실패)`
+              : `(${successCount}/${filePaths.length}) ${actionText} 완료`;
+          updateProgressWithRetry(progressId, {
+            type: action,
+            status: finalStatus,
+            progress: successCount,
+            total: filePaths.length,
+            current: currentMsg,
+            name: `${filePaths.length}개 항목 ${actionName}`,
+            error: jobStatus === 'cancelled' ? '사용자에 의해 취소됨' : (failCount > 0 ? `${failCount}개 실패` : skippedErrorMsg),
+            failedItems: failedItems.length > 0 ? failedItems : undefined,
+            keepOnError: failCount > 0 || hasAnySkipped || jobStatus === 'cancelled',
+            skippedPathsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
+            skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
+            skippedPathsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
+            skippedCountByPermission: hasSkippedByPermission ? skippedByPermission.length : undefined,
+          }, retryDataObj);
+
+          if (successCount > 0) {
+            if (action === 'move') {
+              try {
+                if (!hasAnySkipped) {
+                  const moves = succeeded.map(({ sourcePath, destinationPath: destPath }) => {
+                    const file = files.find(f => f.path === sourcePath);
+                    const fileName = sourcePath.split('/').pop();
+                    return { oldPath: sourcePath, newPath: destPath, file: file || { type: 'file', name: fileName, basename: fileName } };
+                  });
+                  await applyRecentFilesAfterBulkMove(moves);
+                }
+              } catch (err) {
+                console.error('Failed to update recent files after bulk move:', err);
+              }
+            }
+            if (onOperationComplete) {
+              onOperationComplete({ opType: action, startedPath, targetPath: destinationPath });
+            }
+          }
+          clearProcessing(filePaths);
+          if (failCount === 0 && !hasAnySkipped && jobStatus !== 'cancelled') {
+            setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
+          }
+          if (!retryData) {
+            setFolderPickerOpen(false);
+            setFolderPickerAction(null);
+          }
+        }
+      } catch (err) {
+        console.error('Poll bulk move/copy status failed:', err);
+      }
+    };
+
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    poll();
+  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText, updateProgress, files]);
 
   /**
    * Handle folder picker selection with conflict check
@@ -660,16 +494,24 @@ export const useBulkOperations = (
       console.error('Retry data not found for progress item:', progressId);
       return;
     }
-
     const { type, filePaths, destinationPath, startedPath } = progressItem.retryData;
-
-    // 기존 progressItem 재사용하여 재시도
     if (type === 'delete') {
       await handleBulkDelete({ filePaths, progressId, startedPath });
     } else if (type === 'move' || type === 'copy') {
       await handleFolderPickerSelect(destinationPath, { type, filePaths, progressId, startedPath });
     }
   };
+
+  const handleCancelBulkOperation = useCallback(async (progressId) => {
+    const progressItem = progressItems.find(item => item.id === progressId);
+    const jobId = progressItem?.jobId;
+    if (!jobId) return;
+    try {
+      await cancelBulkOperation(jobId);
+    } catch (err) {
+      console.error('Cancel bulk operation failed:', err);
+    }
+  }, [progressItems]);
 
   return {
     folderPickerOpen,
@@ -682,6 +524,7 @@ export const useBulkOperations = (
     handleBulkDownload,
     handleFolderPickerSelect,
     handleRetry,
+    handleCancelBulkOperation,
     dismissFailedItems,
     setFolderPickerOpen,
     setFolderPickerAction,

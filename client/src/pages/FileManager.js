@@ -659,7 +659,7 @@ const FileManager = () => {
     };
 
     try {
-      const { results, errors } = await uploadMultipleFiles(
+      const { errors } = await uploadMultipleFiles(
         filesToUpload,
         uploadPath,
         (progress) => {
@@ -701,7 +701,7 @@ const FileManager = () => {
             keepOnError: failCount > 0 || skippedCount > 0 || undefined,
             updatedFileItem: {
               fileName,
-              ['status']: fileStatus,
+              status: fileStatus,
               error: progress.status === 'error' ? progress.error : undefined,
             },
           };

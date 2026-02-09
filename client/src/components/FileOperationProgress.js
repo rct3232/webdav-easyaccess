@@ -28,6 +28,7 @@ import {
   Refresh as RefreshIcon,
   Close as CloseIcon,
   SkipNext as SkipNextIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 import { useResponsive } from '../hooks/useResponsive';
@@ -564,75 +565,57 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       <List dense sx={{ py: 0 }}>
                         {item.fileItems.map((fileItem, fileIndex) => {
                           const fileStatus = fileItem.status;
-                          const canCancel = item.cancellable !== false && (fileStatus === 'pending' || fileStatus === 'uploading') && onCancelFile;
+                          const canCancel = item.cancellable !== false && fileStatus === 'pending' && onCancelFile;
                           
                           return (
                             <ListItem 
                               key={fileIndex} 
-                              sx={{ px: 0, py: 0.5 }}
+                              sx={{ px: 0, py: 0.25 }}
                               secondaryAction={
-                                canCancel ? (
-                                  <IconButton
-                                    edge="end"
-                                    size="small"
-                                    onClick={() => onCancelFile(item.id, fileItem.fileName)}
-                                  >
-                                    <CloseIcon fontSize="small" />
-                                  </IconButton>
-                                ) : fileStatus === 'completed' ? (
-                                  <CheckCircleIcon 
-                                    fontSize="small" 
-                                    color="success"
-                                    sx={{ fontSize: 16 }}
-                                  />
-                                ) : fileStatus === 'skipped' ? (
-                                  <Typography variant="caption" color="warning.main" sx={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                    <SkipNextIcon sx={{ fontSize: 16 }} />
-                                    건너뜀
-                                  </Typography>
-                                ) : fileStatus === 'error' ? (
-                                  <ErrorIcon 
-                                    fontSize="small" 
-                                    color="error"
-                                    sx={{ fontSize: 16 }}
-                                  />
-                                ) : fileStatus === 'cancelled' ? (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-                                    취소됨
-                                  </Typography>
-                                ) : null
+                                <Box
+                                  sx={{
+                                    width: 24,
+                                    height: 24,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {canCancel ? (
+                                    <IconButton
+                                      edge="end"
+                                      size="small"
+                                      onClick={() => onCancelFile(item.id, fileItem.fileName)}
+                                      sx={{ p: 0, minWidth: 24, minHeight: 24 }}
+                                    >
+                                      <CloseIcon fontSize="small" sx={{ fontSize: 16 }} />
+                                    </IconButton>
+                                  ) : fileStatus === 'uploading' ? (
+                                    <CircularProgress size={16} variant="indeterminate" />
+                                  ) : fileStatus === 'completed' ? (
+                                    <CheckCircleIcon
+                                      fontSize="small"
+                                      color="success"
+                                      sx={{ fontSize: 16 }}
+                                    />
+                                  ) : fileStatus === 'skipped' ? (
+                                    <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                                  ) : fileStatus === 'error' ? (
+                                    <ErrorIcon
+                                      fontSize="small"
+                                      color="error"
+                                      sx={{ fontSize: 16 }}
+                                    />
+                                  ) : fileStatus === 'cancelled' ? (
+                                    <CancelIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                  ) : null}
+                                </Box>
                               }
                             >
                               <ListItemText
                                 primary={fileItem.fileName}
                                 primaryTypographyProps={{ variant: 'caption' }}
-                                secondary={
-                                  fileStatus === 'uploading' ? (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                                      업로드 중...
-                                    </Typography>
-                                  ) : fileStatus === 'completed' ? (
-                                    <Typography variant="caption" color="success.main" sx={{ fontSize: 11 }}>
-                                      완료
-                                    </Typography>
-                                  ) : fileStatus === 'skipped' ? (
-                                    <Typography variant="caption" color="warning.main" sx={{ fontSize: 11 }}>
-                                      건너뜀
-                                    </Typography>
-                                  ) : fileStatus === 'error' ? (
-                                    <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
-                                      {fileItem.error || '업로드 실패'}
-                                    </Typography>
-                                  ) : fileStatus === 'cancelled' ? (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                                      취소됨
-                                    </Typography>
-                                  ) : (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                                      대기 중
-                                    </Typography>
-                                  )
-                                }
                               />
                             </ListItem>
                           );
@@ -652,7 +635,11 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       </Box>
                       <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
                         {item.skippedPathsByConflict.map((p, idx) => (
-                          <ListItem key={idx} sx={{ px: 0, py: 0.25 }} secondaryAction={<SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />}>
+                          <ListItem key={idx} sx={{ px: 0, py: 0.25 }} secondaryAction={
+                            <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                            </Box>
+                          }>
                             <ListItemText
                               primary={p}
                               primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
@@ -713,13 +700,48 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       </Typography>
                       <List dense sx={{ py: 0 }}>
                         {item.failedItems.map((failedItem, failedIndex) => (
-                          <ListItem key={failedIndex} sx={{ px: 0, py: 0.5 }}>
-                            <ListItemText
-                              primary={failedItem.fileName}
-                              secondary={failedItem.error}
-                              primaryTypographyProps={{ variant: 'caption' }}
-                              secondaryTypographyProps={{ variant: 'caption', color: 'error' }}
-                            />
+                          <ListItem key={failedIndex} sx={{ px: 0, py: 0.25 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'flex-start',
+                                width: '100%',
+                                gap: 0.5,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                title={failedItem.fileName}
+                                sx={{
+                                  flex: '1 1 0',
+                                  minWidth: 0,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {failedItem.fileName}
+                              </Typography>
+                              {failedItem.error != null && failedItem.error !== '' && (
+                                <Typography
+                                  variant="caption"
+                                  component="span"
+                                  title={failedItem.error}
+                                  sx={{
+                                    flex: '0 1 auto',
+                                    maxWidth: '100%',
+                                    textAlign: 'right',
+                                    fontSize: 11,
+                                    color: 'error.main',
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                  }}
+                                >
+                                  {failedItem.error}
+                                </Typography>
+                              )}
+                            </Box>
                           </ListItem>
                         ))}
                       </List>

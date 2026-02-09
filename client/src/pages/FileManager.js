@@ -675,23 +675,23 @@ const FileManager = () => {
         (progress) => {
           if (explorerUploadCancelAllRequestedRef.current.has(progressId)) return;
           const fileName = progress.currentFile;
+          const fileStatus =
+            progress.status === 'uploading'
+              ? 'uploading'
+              : progress.status === 'success'
+                ? 'completed'
+                : progress.status === 'skipped'
+                  ? 'skipped'
+                  : progress.status === 'error'
+                    ? 'error'
+                    : progress.status === 'cancelled'
+                      ? 'cancelled'
+                      : 'pending';
           const idx = fileItems.findIndex((it) => it.fileName === fileName);
           if (idx !== -1) {
-            const status =
-              progress.status === 'uploading'
-                ? 'uploading'
-                : progress.status === 'success'
-                  ? 'completed'
-                  : progress.status === 'skipped'
-                    ? 'skipped'
-                    : progress.status === 'error'
-                      ? 'error'
-                      : progress.status === 'cancelled'
-                        ? 'cancelled'
-                        : 'pending';
             fileItems[idx] = {
               ...fileItems[idx],
-              status,
+              status: fileStatus,
               error: progress.status === 'error' ? progress.error : undefined,
             };
           }
@@ -700,7 +700,8 @@ const FileManager = () => {
           const skippedCount = fileItems.filter((it) => it.status === 'skipped').length;
           const failCount = fileItems.filter((it) => it.status === 'error').length;
 
-          updateProgress({
+          // 업데이트 최소화: fileItems는 보내지 않고 updatedFileItem만 전달 (merged.fileItems가 초기 스냅샷으로 덮어씌워지는 것 방지)
+          const progressPayload = {
             ...baseProgress,
             status: 'processing',
             progress: completedCount + skippedCount,
@@ -708,8 +709,14 @@ const FileManager = () => {
             current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
             error: failCount > 0 ? `${failCount}개 실패` : undefined,
             keepOnError: failCount > 0 || skippedCount > 0 || undefined,
-            fileItems: [...fileItems],
-          });
+            updatedFileItem: {
+              fileName,
+              ['status']: fileStatus,
+              error: progress.status === 'error' ? progress.error : undefined,
+            },
+          };
+          delete progressPayload.fileItems;
+          updateProgress(progressPayload);
         },
         onConflict,
         { getSignalForFile }

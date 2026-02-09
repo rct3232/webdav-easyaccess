@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 /**
  * Custom hook for managing file operation progress
@@ -30,6 +30,8 @@ import { useState, useCallback } from 'react';
  */
 export const useFileOperationProgress = () => {
   const [progressItems, setProgressItems] = useState([]);
+  /** progressId별 최신 fileItems (배치/이중 호출 시 prev 대신 사용해 델타 누적) */
+  const fileItemsByProgressIdRef = useRef(new Map());
 
   /**
    * Update, add, or remove a progress item
@@ -53,6 +55,7 @@ export const useFileOperationProgress = () => {
    */
   const updateProgress = useCallback((progressItem) => {
     if (progressItem.remove) {
+      fileItemsByProgressIdRef.current.delete(progressItem.id);
       setProgressItems(prev => prev.filter(item => item.id !== progressItem.id));
     } else {
       setProgressItems(prev => {
@@ -71,8 +74,26 @@ export const useFileOperationProgress = () => {
             merged.status = nextStatus;
           }
           
-          // fileItems 배열이 있는 경우 병합
-          if (progressItem.fileItems && existing.fileItems) {
+          // 단일 파일 상태만 갱신 (progress 콜백용, 성능 유지)
+          if (progressItem.updatedFileItem && existing.fileItems) {
+            const ufi = progressItem.updatedFileItem;
+            const fileName = ufi.fileName;
+            const fileStatus = ufi.status;
+            const fileError = ufi.error;
+            const base = fileItemsByProgressIdRef.current.get(progressItem.id) ?? existing.fileItems;
+            const idx = base.findIndex((it) => it.fileName === fileName);
+            if (idx !== -1) {
+              const next = [...base];
+              next[idx] = { ...next[idx], status: fileStatus, ...(fileError !== undefined && { error: fileError }) };
+              fileItemsByProgressIdRef.current.set(progressItem.id, next);
+              merged.fileItems = next;
+            } else {
+              merged.fileItems = base;
+            }
+            delete merged.updatedFileItem;
+          }
+          // fileItems 배열이 있는 경우 병합 (updatedFileItem으로 이미 반영한 경우 스킵)
+          if (progressItem.fileItems && existing.fileItems && !progressItem.updatedFileItem) {
             const existingFileItemsMap = new Map();
             existing.fileItems.forEach(item => {
               existingFileItemsMap.set(item.fileName, item);
@@ -100,9 +121,10 @@ export const useFileOperationProgress = () => {
               return newItem;
             });
             
-            // 기존에만 있고 새 항목에 없는 fileItems 추가 (취소된 파일 등)
+            // 기존에만 있고 새 항목에 없는 fileItems 추가 (취소된 파일 등) - O(1) 조회를 위해 Set 사용
+            const newFileNames = new Set(progressItem.fileItems.map(item => item.fileName));
             existing.fileItems.forEach(existingItem => {
-              if (!progressItem.fileItems.find(item => item.fileName === existingItem.fileName)) {
+              if (!newFileNames.has(existingItem.fileName)) {
                 // 취소된 파일은 항상 유지
                 if (existingItem.status === 'cancelled') {
                   mergedFileItems.push(existingItem);
@@ -111,9 +133,11 @@ export const useFileOperationProgress = () => {
             });
             
             merged.fileItems = mergedFileItems;
+            fileItemsByProgressIdRef.current.set(progressItem.id, mergedFileItems);
           } else if (progressItem.fileItems) {
             // 기존에 fileItems가 없고 새로 추가하는 경우
             merged.fileItems = progressItem.fileItems;
+            fileItemsByProgressIdRef.current.set(progressItem.id, progressItem.fileItems);
           }
           // 기존 fileItems가 있고 새로 전달하지 않은 경우는 기존 것 유지
 
@@ -154,6 +178,9 @@ export const useFileOperationProgress = () => {
           
           return prev.map(item => item.id === progressItem.id ? merged : item);
         } else {
+          if (progressItem.fileItems) {
+            fileItemsByProgressIdRef.current.set(progressItem.id, progressItem.fileItems);
+          }
           return [...prev, progressItem];
         }
       });

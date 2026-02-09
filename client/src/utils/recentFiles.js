@@ -245,37 +245,6 @@ export const removeMultiplePaths = async (filePaths) => {
 };
 
 /**
- * 파일 이동 후 최근 파일 갱신
- * @param {string} oldPath - 기존 경로
- * @param {string} newPath - 새 경로
- * @param {Object} file - 파일 정보 { type, name, basename }
- * @param {Object} [options] - { silent: true } to skip getRecentFiles + notify (for bulk move)
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
- */
-export const applyRecentFilesAfterMove = async (oldPath, newPath, file, options = {}) => {
-  const silent = options.silent === true;
-  try {
-    await removeRecentFile(oldPath, { silent });
-    if (file?.type !== 'directory') {
-      await addRecentFile({
-        path: newPath,
-        name: file?.name || file?.basename,
-        type: file?.type || 'file',
-        basename: file?.basename,
-      }, { silent });
-    }
-    if (file?.type === 'directory') {
-      await updateSubPathsOnPathChange(oldPath, newPath, { silent });
-    }
-    if (silent) return [];
-    return await getRecentFiles();
-  } catch (error) {
-    console.error('Failed to update recent files after move:', error);
-    return [];
-  }
-};
-
-/**
  * 파일 이름변경 후 최근 파일 갱신
  * @param {string} oldPath - 기존 경로
  * @param {string} newPath - 새 경로
@@ -305,28 +274,6 @@ export const applyRecentFilesAfterRename = async (oldPath, newPath, file) => {
     return await getRecentFiles();
   } catch (error) {
     console.error('Failed to update recent files after rename:', error);
-    return [];
-  }
-};
-
-/**
- * 파일 삭제 후 최근 파일 갱신
- * @param {string} path - 삭제된 경로
- * @param {boolean} isDirectory - 폴더 여부
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
- */
-export const applyRecentFilesAfterDelete = async (path, isDirectory = false) => {
-  try {
-    await removeRecentFile(path);
-    
-    // 폴더인 경우 하위 경로들도 제거
-    if (isDirectory) {
-      await removeSubPathsOnFolderDelete(path);
-    }
-    
-    return await getRecentFiles();
-  } catch (error) {
-    console.error('Failed to remove from recent files:', error);
     return [];
   }
 };

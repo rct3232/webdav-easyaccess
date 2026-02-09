@@ -28,7 +28,7 @@ import { getViewMode, setViewMode as saveViewMode, setSortMode as saveSortMode }
 import { useFileManager } from '../hooks/useFileManager';
 import { useSelection } from '../hooks/useSelection';
 import { useBulkOperations } from '../hooks/useBulkOperations';
-import { useExplorerDragAndDrop } from '../hooks/useExplorerDragAndDrop';
+import { useDropToUpload } from '../hooks/useDropToUpload';
 import { useResponsive } from '../hooks/useResponsive';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useFileOperations } from '../hooks/useFileOperations';
@@ -61,9 +61,7 @@ import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
-import { useRecentFileErrorHandler } from '../hooks/useRecentFileErrorHandler';
-import { useRecentFileNavigation } from '../hooks/useRecentFileNavigation';
-import { useRecentFilePreview } from '../hooks/useRecentFilePreview';
+import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
 
 import FileManagerHeader from '../components/FileManagerHeader';
@@ -93,17 +91,6 @@ const FileManager = () => {
     }
   }, [isMobile]);
 
-  // 최근 파일 경로 추적 훅
-  const {
-    recentFilePathsRef,
-    pathHistoryRef,
-    processingErrorRef,
-    trackRecentFileClick,
-    trackPathHistory,
-    clearTracking,
-    clearPathHistory,
-  } = useRecentFileNavigation();
-  
   const { message, showError, clearMessage } = useMessage();
   
   const {
@@ -123,27 +110,10 @@ const FileManager = () => {
   
   // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
   const currentPathRef = useRef(null);
-  
-  // currentPathRef 업데이트
+
   useEffect(() => {
     currentPathRef.current = currentPath;
   }, [currentPath]);
-  
-  // 최근 파일 에러 처리 훅 (useFileManager 호출 후 정의)
-  const handleRecentFileError = useRecentFileErrorHandler({
-    recentFilePathsRef,
-    pathHistoryRef,
-    processingErrorRef,
-    setCurrentPath,
-    showError,
-    user,
-    currentPathRef,
-  });
-  
-  // useFileManager의 onLoadError ref 업데이트
-  useEffect(() => {
-    onLoadErrorRef.current = handleRecentFileError;
-  }, [handleRecentFileError, onLoadErrorRef]);
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
   const [searchQuery, setSearchQuery] = useState('');
@@ -267,18 +237,34 @@ const FileManager = () => {
   } = useFileManagerDialogs();
 
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
-  
-  const [, setRecentFileToPreview] = useRecentFilePreview({
+
+  const {
+    recentFilePathsRef,
+    pathHistoryRef,
+    processingErrorRef,
+    trackRecentFileClick,
+    trackPathHistory,
+    clearTracking,
+    clearPathHistory,
+    handleRecentFileError,
+    recentFileToPreview,
+    setRecentFileToPreview,
+  } = useRecentFile({
+    setCurrentPath,
+    showError,
+    user,
+    currentPathRef,
+    setSelectedFile,
+    setPreviewDialogOpen,
     files,
     loading,
     currentPath,
-    setSelectedFile,
-    setPreviewDialogOpen,
-    handleRecentFileError,
-    showError,
-    clearTracking,
   });
-  
+
+  useEffect(() => {
+    onLoadErrorRef.current = handleRecentFileError;
+  }, [handleRecentFileError, onLoadErrorRef]);
+
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
   const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
@@ -379,7 +365,7 @@ const FileManager = () => {
     handleDragOver: handleFileAreaDragOver,
     handleDragLeave: handleFileAreaDragLeave,
     handleDrop: handleFileAreaDrop,
-  } = useExplorerDragAndDrop();
+  } = useDropToUpload();
 
   // Pull-to-refresh hook (모바일에서만 활성화)
   const {

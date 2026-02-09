@@ -16,7 +16,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { listFiles } from '../services/fileService';
-import useFolderDragHandlers from '../hooks/useFolderDragHandlers';
+import { useDropToUpload } from '../hooks/useDropToUpload';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { FileTreeSkeleton } from './FileSkeletons';
 
@@ -97,7 +97,7 @@ const BaseFolderTreeItem = ({
     handleFolderDragEnter,
     handleFolderDragLeave,
     handleFolderDrop,
-  } = useFolderDragHandlers({
+  } = useDropToUpload({
     path,
     isDisabled,
     hasWritePermission,

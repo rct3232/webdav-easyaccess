@@ -8,9 +8,8 @@ jest.mock('../../services/fileService', () => ({
   listFiles: jest.fn(),
 }));
 
-jest.mock('../../hooks/useFolderDragHandlers', () => ({
-  __esModule: true,
-  default: () => ({
+jest.mock('../../hooks/useDropToUpload', () => ({
+  useDropToUpload: () => ({
     isDropTarget: false,
     isDraggingOver: false,
     handleFolderDragOver: jest.fn(),

@@ -64,11 +64,6 @@ export const useBulkOperations = (
     });
   }, [updateProgress]);
 
-  // Action text 상수
-  const getActionText = useCallback((action) => {
-    return action === 'move' ? '이동중' : '복사중';
-  }, []);
-
   const getActionName = useCallback((action) => {
     return action === 'move' ? '이동' : '복사';
   }, []);
@@ -282,7 +277,6 @@ export const useBulkOperations = (
     markProcessing(filePaths, action);
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
     const actionName = getActionName(action);
-    const actionText = getActionText(action);
     const retryDataObj = { type: action, filePaths, destinationPath, startedPath };
 
     const operations = filePaths.map(sourcePath => {
@@ -320,7 +314,7 @@ export const useBulkOperations = (
       return;
     }
 
-    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: `${actionText} 중...` }, retryDataObj);
+    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: `${actionName} 중...` }, retryDataObj);
 
     const poll = async () => {
       try {
@@ -343,7 +337,7 @@ export const useBulkOperations = (
         updateProgressWithRetry(progressId, {
           progress: jobProgress,
           total: jobTotal,
-          current: jobStatus === 'running' ? `${actionText} 중...` : undefined,
+          current: jobStatus === 'running' ? `${actionName} 중...` : undefined,
         }, retryDataObj);
 
         if (jobStatus !== 'pending' && jobStatus !== 'running') {
@@ -359,8 +353,8 @@ export const useBulkOperations = (
           const currentMsg = jobStatus === 'cancelled'
             ? `취소됨 (${successCount}/${filePaths.length} 완료)`
             : failCount > 0
-              ? `(${successCount}/${filePaths.length}) ${actionText} 완료 (${failCount}개 실패)`
-              : `(${successCount}/${filePaths.length}) ${actionText} 완료`;
+              ? `(${successCount}/${filePaths.length}) ${actionName} 완료 (${failCount}개 실패)`
+              : `(${successCount}/${filePaths.length}) ${actionName} 완료`;
           updateProgressWithRetry(progressId, {
             type: action,
             status: finalStatus,
@@ -412,7 +406,7 @@ export const useBulkOperations = (
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     poll();
-  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, getActionText, updateProgress, files]);
+  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files]);
 
   /**
    * Handle folder picker selection with conflict check

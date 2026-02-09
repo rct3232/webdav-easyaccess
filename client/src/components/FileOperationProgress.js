@@ -164,6 +164,57 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
     return items[0]?.type || 'download';
   };
 
+  const PROCESSING_STATUSES = ['preparing', 'processing', 'downloading', 'uploading'];
+  const getRepresentativeProcessingItem = () => {
+    if (!items?.length) return null;
+    return items.find(item => PROCESSING_STATUSES.includes(item.status)) ?? null;
+  };
+
+  const BATCH_TYPES = ['copy', 'move', 'delete', 'upload', 'download', 'rename', 'createFolder'];
+  const getMinimizedPrimaryLabel = () => {
+    if (overallStatus === 'completed') return '완료';
+    if (overallStatus === 'warning') return '일부 제외됨';
+    if (overallStatus === 'error') return overallProgress > 0 ? '일부 실패' : '실패';
+    if (overallStatus === 'processing') {
+      const rep = getRepresentativeProcessingItem();
+      if (!rep) return '작업 중';
+      const cur = rep.current || '';
+      if (cur.includes('충돌 확인')) return '준비 중';
+      if (cur === '' || cur.includes('준비 중') || cur.includes('업로드 준비') || cur.includes('재시도 준비')) return '준비 중';
+      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return '준비 중';
+      const typeLabels = {
+        delete: '삭제 중',
+        copy: '복사 중',
+        move: '이동 중',
+        upload: '업로드 중',
+        download: '다운로드 중',
+        rename: '이름 변경 중',
+        createFolder: '폴더 생성 중',
+      };
+      return typeLabels[rep.type] ?? '작업 중';
+    }
+    return '작업 중';
+  };
+
+  const getMinimizedSecondaryLabel = () => {
+    if (overallStatus === 'completed') return '100%';
+    if (overallStatus === 'warning') return '100%';
+    if (overallStatus === 'error') return overallProgress > 0 ? `${overallProgress}%` : '0%';
+    if (overallStatus === 'processing') {
+      const rep = getRepresentativeProcessingItem();
+      if (!rep) return `${overallProgress}%`;
+      const cur = rep.current || '';
+      if (cur.includes('충돌 확인')) return '중복 확인 중';
+      if (cur === '') return '처리 중';
+      if (cur === '준비 중...') return '준비 중';
+      if (cur.includes('업로드 준비 중')) return '업로드 준비 중';
+      if (cur.includes('재시도 준비 중')) return '재시도 준비 중';
+      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return '처리 중';
+      return `${overallProgress}%`;
+    }
+    return `${overallProgress}%`;
+  };
+
   const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -271,16 +322,10 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
         {renderStatusIcon()}
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography variant="caption" sx={{ fontWeight: 'medium', display: 'block' }}>
-            {overallStatus === 'completed'
-              ? '완료'
-              : overallStatus === 'error'
-                ? '오류 발생'
-                : overallStatus === 'warning'
-                  ? '일부 제외됨'
-                  : '작업 중'}
+            {getMinimizedPrimaryLabel()}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            {overallProgress}%
+            {getMinimizedSecondaryLabel()}
           </Typography>
         </Box>
         <IconButton

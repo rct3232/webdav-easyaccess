@@ -10,6 +10,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { normalizePath } from '../utils/pathUtils';
+import { isUserOwnFolder, filterOutUserOwnFolders } from '../utils/userUtils';
 
 /**
  * Mobile-friendly breadcrumb navigation component
@@ -21,33 +22,24 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
 
   // 공유된 폴더 권한 정보 로드
   useEffect(() => {
-    if (!user?.is_admin && currentPath && !currentPath.startsWith(`/${user?.username || ''}`) && currentPath !== '/') {
+    if (!user?.is_admin && currentPath && currentPath !== '/' && !isUserOwnFolder(currentPath, user)) {
       const loadSharedFolders = async () => {
         try {
           const response = await axios.get(`/api/permissions/user/${user?.id}`);
-          const userBaseFolder = `/${user?.username || ''}`;
-          
-          // 자기 자신의 폴더 제외
-          const sharedFolders = response.data.filter(perm => {
-            const folderPath = normalizePath(perm.folder_path);
-            const normalizedUserBaseFolder = normalizePath(userBaseFolder);
-            return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
-          });
-          
-          // 직접 권한이 있는 경로만 저장
+          const sharedFolders = filterOutUserOwnFolders(response.data, user);
+
           const permissionPaths = new Set();
           sharedFolders.forEach(perm => {
-            const normalized = normalizePath(perm.folder_path);
-            permissionPaths.add(normalized);
+            permissionPaths.add(normalizePath(perm.folder_path));
           });
-          
+
           setSharedPermissionPaths(permissionPaths);
         } catch (error) {
           console.error('Failed to load shared folders:', error);
           setSharedPermissionPaths(new Set());
         }
       };
-      
+
       loadSharedFolders();
     } else {
       setSharedPermissionPaths(new Set());

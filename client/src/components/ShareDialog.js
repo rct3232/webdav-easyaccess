@@ -11,6 +11,7 @@ import { useResponsive } from '../hooks/useResponsive';
 import { approvePermissionRequest } from '../services/permissionRequestService';
 import { createShareLink, getShareLinkUrl } from '../services/shareLinkService';
 import { normalizePath } from '../utils/pathUtils';
+import { getUserBaseFolder } from '../utils/userUtils';
 
 import { usePermissionManager } from '../hooks/usePermissionManager';
 import ShareFolderTree from './ShareFolderTree';
@@ -53,7 +54,7 @@ const ShareDialog = ({
   // Admin mode: startFromUserHome이 true이면 사용자 홈 디렉토리부터, 아니면 root부터 시작
   // Share mode: 선택한 폴더부터 시작
   const rootPath = isAdminMode 
-    ? (startFromUserHome && username ? `/${username}` : '/')
+    ? (startFromUserHome && username ? getUserBaseFolder({ username }) : '/')
     : (folderPath && folderPath !== '/' && folderPath.endsWith('/') ? folderPath.slice(0, -1) : (folderPath || '/'));
   
   const [users, setUsers] = useState([]);
@@ -127,7 +128,7 @@ const ShareDialog = ({
     try {
       if (isAdminMode) {
         // 관리자 모드: root부터 시작 또는 사용자 홈 디렉토리부터 시작
-        const userBaseFolder = `/${username}`;
+        const userBaseFolder = getUserBaseFolder({ username });
         await loadFolderChildren(rootPath);
         
         // 모든 하위 폴더를 재귀적으로 로드
@@ -636,7 +637,7 @@ const ShareDialog = ({
     if (isAdminMode) {
       // 관리자 모드: 사용자 권한 일괄 업데이트
       try {
-        const userBaseFolder = `/${username}`;
+        const userBaseFolder = getUserBaseFolder({ username });
         const permissions = [];
         
         folderPermissions.forEach((userPermMap, folderPath) => {

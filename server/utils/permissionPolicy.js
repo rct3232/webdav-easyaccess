@@ -10,7 +10,7 @@
  */
 const path = require('path');
 const Permission = require('../models/Permission');
-const { normalizePath } = require('./pathUtils');
+const { normalizePath, getParentPath } = require('./pathUtils');
 const { checkFilePermission, checkFolderPermission } = require('../middleware/permissions');
 const User = require('../models/User');
 
@@ -82,7 +82,7 @@ async function canWriteFileByParent(user, filePath) {
   if (!user) return false;
   if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
   const normalized = normalizePath(filePath);
-  const parent = path.posix.dirname(normalized) || '/';
+  const parent = getParentPath(normalized);
   return await hasDirectFolderPermission(user.id, parent, 'write');
 }
 
@@ -118,7 +118,7 @@ function buildSyncWriteFileByParentChecker(user, doc) {
     if (!user) return false;
     if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
     const normalized = normalizePath(filePath);
-    const parent = path.posix.dirname(normalized) || '/';
+    const parent = getParentPath(normalized);
     return canWriteDir(parent);
   };
 }

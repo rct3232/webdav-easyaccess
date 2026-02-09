@@ -11,6 +11,7 @@ import {
 } from '@mui/icons-material';
 import { getRecentFiles, onRecentFilesChange } from '../utils/recentFiles';
 import { normalizePath } from '../utils/pathUtils';
+import { getUserBaseFolder, filterOutUserOwnFolders } from '../utils/userUtils';
 import axios from 'axios';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 import SharedFoldersSection from './SharedFoldersSection';
@@ -34,8 +35,7 @@ const FolderTree = ({
   const [sharedExpanded, setSharedExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
 
-  const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-  const userBaseFolder = `/${user?.username || ''}`;
+  const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
 
   useEffect(() => {
     const loadRecentFiles = async () => {
@@ -64,17 +64,13 @@ const FolderTree = ({
     try {
       const response = await axios.get(`/api/permissions/user/${user.id}`);
       
-      const filtered = response.data.filter(perm => {
-        const folderPath = normalizePath(perm.folder_path);
-        const normalizedUserBaseFolder = normalizePath(userBaseFolder);
-        return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
-      });
+      const filtered = filterOutUserOwnFolders(response.data, user);
       setSharedFolders(filtered);
     } catch (error) {
       console.error('Failed to load shared folders:', error);
       setSharedFolders([]);
     }
-  }, [user, userBaseFolder]);
+  }, [user]);
 
   useEffect(() => {
     if (user && user.id && !user.is_admin) {

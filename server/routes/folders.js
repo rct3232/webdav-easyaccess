@@ -29,7 +29,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
       throw forbiddenError('Access denied');
     }
     if (!isOwnerPath(user, folderPath)) {
-      const parentPath = path.posix.dirname(folderPath) || '/';
+      const parentPath = getParentPath(folderPath);
       const ok = await canWriteFolder(user, parentPath);
       if (!ok) {
         throw forbiddenError('Access denied');

@@ -1,5 +1,6 @@
 const path = require('path');
-const { normalizePath } = require('./pathUtils');
+const { normalizePath, getParentPath, getBasename } = require('./pathUtils');
+const { getFileType } = require('./fileTypeUtils');
 const { asyncLimit } = require('./asyncUtils');
 
 const clientCache = new Map();
@@ -159,8 +160,8 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
     } else {
       let fileSize = 0;
       try {
-        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
-        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
+        const parentPath = getParentPath(normalizedSource);
+        const fileName = getBasename(normalizedSource);
         const items = await listDirectory(parentPath);
         const fileItem = items.find(item => item.basename === fileName);
         if (fileItem && fileItem.size) {
@@ -240,8 +241,8 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
     } else {
       let fileSize = 0;
       try {
-        const parentPath = normalizedSource.substring(0, normalizedSource.lastIndexOf('/')) || '/';
-        const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
+        const parentPath = getParentPath(normalizedSource);
+        const fileName = getBasename(normalizedSource);
         const items = await listDirectory(parentPath);
         const fileItem = items.find(item => item.basename === fileName);
         if (fileItem && fileItem.size) {
@@ -532,15 +533,11 @@ async function createDirectory(path) {
 }
 
 function isImageFile(filename) {
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
-  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
-  return imageExtensions.includes(ext);
+  return getFileType(filename) === 'image';
 }
 
 function isVideoFile(filename) {
-  const videoExtensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv'];
-  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
-  return videoExtensions.includes(ext);
+  return getFileType(filename) === 'video';
 }
 
 async function testConnection() {
@@ -595,8 +592,8 @@ async function pathExists(path) {
       return exists;
     } catch (existsError) {
       try {
-        const parentDir = normalizedPath.substring(0, normalizedPath.lastIndexOf('/')) || '/';
-        const filename = normalizedPath.substring(normalizedPath.lastIndexOf('/') + 1);
+        const parentDir = getParentPath(normalizedPath);
+        const filename = getBasename(normalizedPath);
         const items = await client.getDirectoryContents(getRequestPath(parentDir));
         return items.some(item => item.basename === filename);
       } catch (listError) {

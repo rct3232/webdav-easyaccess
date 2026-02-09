@@ -108,3 +108,14 @@ export const getErrorMessage = (error, defaultMsg = '오류가 발생했습니�
   
   return defaultMsg;
 };
+
+/**
+ * Show user-facing error message from an error object.
+ * Uses determineErrorType and getErrorMessage internally, then calls the given show function.
+ * @param {Error} error - Error object
+ * @param {Function} showErrorFn - Function to display the message (e.g. useMessage().showError)
+ * @param {string} [defaultMessage='오류가 발생했습니다'] - Default message when message cannot be extracted
+ */
+export const showErrorFromError = (error, showErrorFn, defaultMessage = '오류가 발생했습니다') => {
+  showErrorFn(getErrorMessage(error, defaultMessage));
+};

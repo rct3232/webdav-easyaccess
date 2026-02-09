@@ -4,7 +4,7 @@
 
 const Permission = require('../models/Permission');
 const User = require('../models/User');
-const { normalizePath, getParentPaths } = require('../utils/pathUtils');
+const { normalizePath, getParentPath, getParentPaths } = require('../utils/pathUtils');
 
 const userCache = new Map(); // userId -> { user, expiresAt }
 const USER_CACHE_TTL_MS =
@@ -52,7 +52,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
     return true;
   }
 
-  const folderPath = require('path').dirname(filePath) || '/';
+  const folderPath = getParentPath(filePath);
   const normalizedFolderPath = normalizePath(folderPath, { isDirectory: true });
   
   // Check exact path permission

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { requestThumbnailsBatch } from '../services/fileService';
+import { getFileType } from '../utils/fileTypeUtils';
 
 const DEBOUNCE_MS = 200;
 const ROOT_MARGIN = '100px'; // 뷰포트 밖 100px까지 미리 로드
@@ -11,18 +12,13 @@ const isImageOrVideoFile = (file) => {
   if (file.type === 'directory') return false;
   const basename = file.basename || file.name || '';
   const mime = file.mime || '';
-  
-  // MIME 타입으로 확인
+
   if (mime.startsWith('image/') || mime.startsWith('video/')) {
     return true;
   }
-  
-  // 확장자로 확인
-  const ext = basename.toLowerCase().split('.').pop();
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico'];
-  const videoExts = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
-  
-  return imageExts.includes(ext) || videoExts.includes(ext);
+
+  const type = getFileType(basename);
+  return type === 'image' || type === 'video';
 };
 
 /**

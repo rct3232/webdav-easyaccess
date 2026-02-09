@@ -7,6 +7,7 @@ const Settings = require('../models/Settings');
 const { authenticateToken } = require('../utils/auth');
 const { sendApprovalEmail, sendRejectionEmail } = require('../utils/email');
 const { createDirectory } = require('../utils/webdav');
+const { createError } = require('../utils/errorHandler');
 
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
@@ -119,7 +120,7 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
       // Verify folder was created/exists
       const folderExistsAfter = await pathExists(userFolder);
       if (!folderExistsAfter) {
-        throw new Error(`Failed to verify folder exists: ${userFolder}`);
+        throw createError(`Failed to verify folder exists: ${userFolder}`, 500);
       }
     } catch (folderError) {
       console.error('[Admin Create] Failed to check or create user folder:', folderError);
@@ -137,7 +138,7 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
       // Verify permissions were granted successfully
       const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, 'admin');
       if (!hasPermission) {
-        throw new Error('Permission verification failed');
+        throw createError('Permission verification failed', 500);
       }
     } catch (permError) {
       console.error('[Admin Create] Failed to grant permissions:', permError);
@@ -201,7 +202,7 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
       // Verify folder was created/exists
       const folderExistsAfter = await pathExists(userFolder);
       if (!folderExistsAfter) {
-        throw new Error(`Failed to verify folder exists: ${userFolder}`);
+        throw createError(`Failed to verify folder exists: ${userFolder}`, 500);
       }
     } catch (folderError) {
       console.error(`[Admin] Failed to check or create user folder:`, folderError);
@@ -217,7 +218,7 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
       // Verify permissions were granted successfully
       const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, 'admin');
       if (!hasPermission) {
-        throw new Error('Permission verification failed');
+        throw createError('Permission verification failed', 500);
       }
     } catch (permError) {
       console.error(`[Admin] Failed to grant permissions:`, permError);

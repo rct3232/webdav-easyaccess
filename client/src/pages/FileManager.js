@@ -58,8 +58,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ConflictResolveDialog from '../components/ConflictResolveDialog';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
-import { determineErrorType, getErrorMessageByType, getErrorMessage, ERROR_TYPES } from '../utils/errorUtils';
+import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath } from '../utils/pathUtils';
+import { getUserBaseFolder } from '../utils/userUtils';
 import { useRecentFileErrorHandler } from '../hooks/useRecentFileErrorHandler';
 import { useRecentFileNavigation } from '../hooks/useRecentFileNavigation';
 import { useRecentFilePreview } from '../hooks/useRecentFilePreview';
@@ -899,10 +900,7 @@ const FileManager = () => {
             if (error.response?.status === 404) {
               handleRecentFileError(error, filePath);
             } else {
-              // 404가 아닌 에러는 최근 파일을 제거하지 않고 에러 메시지만 표시
-              const errorType = determineErrorType(error);
-              const errorMessage = getErrorMessageByType(errorType);
-              showError(errorMessage);
+              showErrorFromError(error, showError);
             }
           }
           return;
@@ -937,14 +935,13 @@ const FileManager = () => {
               return;
             }
           } catch (error) {
-            // 에러 발생: 롤백
             setCurrentPath(previousPath);
             const errorType = determineErrorType(error);
             if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
               showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
             } else {
               console.error('Failed to check permission:', error);
-              showError(getErrorMessage(error, '권한 확인 중 오류가 발생했습니다.'));
+              showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
             }
             return;
           }
@@ -989,10 +986,7 @@ const FileManager = () => {
             if (error.response?.status === 404) {
               handleRecentFileError(error, filePath);
             } else {
-              // 404가 아닌 에러는 최근 파일을 제거하지 않고 에러 메시지만 표시
-              const errorType = determineErrorType(error);
-              const errorMessage = getErrorMessageByType(errorType);
-              showError(errorMessage);
+              showErrorFromError(error, showError);
             }
           }
           return;
@@ -1633,7 +1627,7 @@ const FileManager = () => {
                         const permission = await checkPermission(parentPath);
                         if (!permission.hasRead) {
                           // 공유 폴더에서 상위 폴더 권한이 없으면 /__shared__로 이동
-                          const userBaseFolder = `/${user?.username || ''}`;
+                          const userBaseFolder = getUserBaseFolder(user);
                           if (!parentPath.startsWith(userBaseFolder)) {
                             setCurrentPath('/__shared__');
                             return;
@@ -1647,7 +1641,7 @@ const FileManager = () => {
                         setCurrentPath(previousPath);
                         const errorType = determineErrorType(error);
                         if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
-                          const userBaseFolder = `/${user?.username || ''}`;
+                          const userBaseFolder = getUserBaseFolder(user);
                           if (!parentPath.startsWith(userBaseFolder)) {
                             setCurrentPath('/__shared__');
                             return;
@@ -1655,7 +1649,7 @@ const FileManager = () => {
                           showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
                         } else {
                           console.error('Failed to check permission:', error);
-                          showError(getErrorMessage(error, '권한 확인 중 오류가 발생했습니다.'));
+                          showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
                         }
                         return;
                       }

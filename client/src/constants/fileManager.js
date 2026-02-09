@@ -1,3 +1,5 @@
+import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, TEXT_EXTENSIONS } from '../utils/fileTypeUtils';
+
 export const VIEW_MODES = {
   LIST: 'list',
   GRID: 'grid',
@@ -12,10 +14,10 @@ export const SORT_MODES = {
 };
 
 export const PREVIEWABLE_EXTENSIONS = [
-  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
-  'mp4', 'webm', 'ogg', 'mov',
-  'mp3', 'wav', 'ogg', 'aac', 'm4a',
+  ...IMAGE_EXTENSIONS,
+  ...VIDEO_EXTENSIONS,
+  ...AUDIO_EXTENSIONS,
   'pdf',
-  'txt', 'md', 'json', 'xml', 'csv', 'log', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'py', 'java', 'c', 'cpp', 'h', 'sh'
+  ...TEXT_EXTENSIONS,
 ];
 

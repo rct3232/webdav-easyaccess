@@ -17,7 +17,8 @@ const {
   pathExists,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
-const { normalizePath, getParentPath } = require('../utils/pathUtils');
+const { normalizePath, getParentPath, getBasename } = require('../utils/pathUtils');
+const { getContentType } = require('../utils/fileTypeUtils');
 const {
   canReadFolder,
   canReadFile,
@@ -392,7 +393,7 @@ async function runBulkJobWorker(jobId) {
               pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
               return;
             }
-            const destParentPath = path.posix.dirname(normalizedDestinationPath) || '/';
+            const destParentPath = getParentPath(normalizedDestinationPath);
             if (!canWriteDirSync(destParentPath)) {
               pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
               return;
@@ -505,13 +506,13 @@ async function runBulkJobWorker(jobId) {
             const normalizedSource = normalizePath(sourcePath);
             const hasSourcePermission = isSourceDir
               ? canReadDirSync(normalizedSource)
-              : canReadDirSync(path.posix.dirname(normalizedSource) || '/');
+              : canReadDirSync(getParentPath(normalizedSource));
             if (!hasSourcePermission) {
               pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
               return;
             }
             const normalizedDest = normalizePath(destinationPath);
-            const destParentPath = path.posix.dirname(normalizedDest) || '/';
+            const destParentPath = getParentPath(normalizedDest);
             if (!canWriteDirSync(destParentPath)) {
               pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
               return;
@@ -720,7 +721,7 @@ router.get('/download', authenticateToken, requireUser, normalizePathParam, chec
       hasPermission = true;
     } else {
       const normalized = normalizePath(filePath);
-      const parentDir = path.posix.dirname(normalized) || '/';
+      const parentDir = getParentPath(normalized);
       hasPermission = await hasDirectFolderPermission(user.id, parentDir, 'read');
     }
     if (!hasPermission) {
@@ -736,22 +737,7 @@ router.get('/download', authenticateToken, requireUser, normalizePathParam, chec
     res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
     
     if (inline) {
-      const ext = path.extname(filename).toLowerCase();
-      const mimeTypes = {
-        '.pdf': 'application/pdf',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.svg': 'image/svg+xml',
-        '.mp4': 'video/mp4',
-        '.webm': 'video/webm',
-        '.ogg': 'video/ogg',
-        '.mp3': 'audio/mpeg',
-        '.wav': 'audio/wav',
-      };
-      res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      res.setHeader('Content-Type', getContentType(filename));
     } else {
       res.setHeader('Content-Type', 'application/octet-stream');
   }
@@ -1121,8 +1107,8 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
       try {
         let isDirectory = false;
         try {
-          const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
-          const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+          const parentPath = getParentPath(filePath);
+          const fileName = getBasename(filePath);
           const parentItems = await listDirectory(parentPath);
           const item = parentItems.find(i => i.basename === fileName);
           if (item) {
@@ -1167,7 +1153,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
             } else {
               zipName = fileName.replace(/\.[^/.]+$/, '');
             }
-            const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+            const parentDirForPerm = getParentPath(normalizePath(filePath));
             const ok = await canIncludeFile(parentDirForPerm);
             if (!ok) {
               skippedPaths.push(filePath);
@@ -1177,7 +1163,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
           } else {
             if (commonParentDir && commonParentDir !== '/') {
               const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
-              const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+              const parentDirForPerm = getParentPath(normalizePath(filePath));
               const ok = await canIncludeFile(parentDirForPerm);
               if (!ok) {
                 skippedPaths.push(filePath);
@@ -1185,7 +1171,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
                 allFiles.push({ path: filePath, relativePath });
               }
             } else {
-              const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+              const parentDirForPerm = getParentPath(normalizePath(filePath));
               const ok = await canIncludeFile(parentDirForPerm);
               if (!ok) {
                 skippedPaths.push(filePath);
@@ -1198,7 +1184,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
       } catch (error) {
         const fileName = path.basename(filePath);
         // If we can't determine type, treat as file and apply direct-only read check
-        const parentDirForPerm = path.posix.dirname(normalizePath(filePath)) || '/';
+        const parentDirForPerm = getParentPath(normalizePath(filePath));
         const ok = await canIncludeFile(parentDirForPerm);
         if (!ok) {
           skippedPaths.push(filePath);

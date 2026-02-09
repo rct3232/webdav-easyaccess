@@ -4,6 +4,7 @@ import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileServi
 import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
 import { getRecentFiles } from '../utils/recentFiles';
 import { normalizePath } from '../utils/pathUtils';
+import { filterOutUserOwnFolders } from '../utils/userUtils';
 import axios from 'axios';
 
 export const useFileManager = (user, options = {}) => {
@@ -71,16 +72,7 @@ export const useFileManager = (user, options = {}) => {
       } else if (targetPath === '/__shared__') {
         // 공유된 폴더 목록을 가져옴
         const response = await axios.get(`/api/permissions/user/${user?.id}`);
-        const userBaseFolder = `/${user?.username || ''}`;
-        
-        // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
-        const sharedFolders = response.data.filter(perm => {
-          const folderPath = normalizePath(perm.folder_path);
-          const normalizedUserBaseFolder = normalizePath(userBaseFolder);
-          
-          // 사용자 기본 폴더로 시작하지 않는 경로만 포함
-          return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
-        });
+        const sharedFolders = filterOutUserOwnFolders(response.data, user);
         
         // 권한이 직접 부여된 경로를 정규화된 경로로 저장
         const permissionPaths = new Map();

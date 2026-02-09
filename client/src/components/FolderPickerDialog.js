@@ -28,6 +28,7 @@ import { listFiles, checkPermission } from '../services/fileService';
 import axios from 'axios';
 import { useResponsive } from '../hooks/useResponsive';
 import { normalizePath, getParentPath } from '../utils/pathUtils';
+import { getUserBaseFolder, filterOutUserOwnFolders } from '../utils/userUtils';
 
 const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
   const { isMobile } = useResponsive();
@@ -58,8 +59,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       if (user?.is_admin) {
         setHasWritePermission(true);
       } else {
-        const userFolder = `/${user?.username || ''}`;
-        setHasWritePermission(path.startsWith(userFolder));
+        setHasWritePermission(path.startsWith(getUserBaseFolder(user)));
       }
     }
   }, [user]);
@@ -71,22 +71,11 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       if (path === '/__shared__') {
         // 공유된 폴더 목록을 가져옴
         const response = await axios.get(`/api/permissions/user/${user?.id}`);
-        const userBaseFolder = `/${user?.username || ''}`;
-        
-        // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
-        const sharedFolders = response.data.filter(perm => {
-          const folderPath = normalizePath(perm.folder_path);
-          const normalizedUserBaseFolder = normalizePath(userBaseFolder);
-          
-          // 사용자 기본 폴더으로 시작하지 않는 경로만 포함
-          return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
-        });
-        
-        // 권한이 직접 부여된 경로를 정규화된 경로로 저장
+        const sharedFolders = filterOutUserOwnFolders(response.data, user);
+
         const permissionPaths = new Map();
         sharedFolders.forEach(perm => {
-          const normalized = normalizePath(perm.folder_path);
-          permissionPaths.set(normalized, perm);
+          permissionPaths.set(normalizePath(perm.folder_path), perm);
         });
         
         // 최상위 디렉토리만 필터링 (부모 경로가 permissionPaths에 없으면 최상위)
@@ -139,24 +128,15 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
 
   const loadSharedFolders = useCallback(async () => {
     if (!user || !user.id || user.is_admin) return;
-    
+
     try {
       const response = await axios.get(`/api/permissions/user/${user.id}`);
-      const userBaseFolder = `/${user?.username || ''}`;
-      
-      // 자기 자신의 폴더 및 그 하위 모든 디렉토리는 제외
       const data = Array.isArray(response.data) ? response.data : [];
-      const filtered = data.filter(perm => {
-        const folderPath = normalizePath(perm.folder_path);
-        const normalizedUserBaseFolder = normalizePath(userBaseFolder);
-        return !folderPath.startsWith(normalizedUserBaseFolder + '/') && folderPath !== normalizedUserBaseFolder;
-      });
-      
-      // 권한이 직접 부여된 경로를 정규화된 경로로 저장
+      const filtered = filterOutUserOwnFolders(data, user);
+
       const permissionPaths = new Map();
       filtered.forEach(perm => {
-        const normalized = normalizePath(perm.folder_path);
-        permissionPaths.set(normalized, perm);
+        permissionPaths.set(normalizePath(perm.folder_path), perm);
       });
       
       // 전체 권한 경로 목록 저장 (breadcrumb 생성 시 사용)
@@ -314,15 +294,11 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       return false;
     }
     
-    // 일반 사용자의 경우
-    const userBaseFolder = `/${user?.username || ''}`;
-    
-    // 단일 파일
+    const userBaseFolder = getUserBaseFolder(user);
+
     if (sourceFilePath) {
       return sourceFilePath.startsWith(userBaseFolder);
     }
-    
-    // 다중 파일
     if (sourceFilePaths && sourceFilePaths.length > 0) {
       return sourceFilePaths.some(filePath => filePath.startsWith(userBaseFolder));
     }
@@ -333,8 +309,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   // 공유된 폴더의 최상위 경로 찾기
   const getSharedRootPath = () => {
     if (!action || (action !== 'copy' && action !== 'move')) return null;
-    
-    const userBaseFolder = `/${user?.username || ''}`;
+
+    const userBaseFolder = getUserBaseFolder(user);
     
     // 소스 파일 경로 가져오기
     let sourcePaths = [];
@@ -385,8 +361,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   // 홈/공유됨 토글 핸들러
   const handleTogglePath = (event, newValue) => {
     if (!newValue) return;
-    
-    const userBaseFolder = `/${user?.username || ''}`;
+
+    const userBaseFolder = getUserBaseFolder(user);
     const homePath = user?.is_admin ? '/' : userBaseFolder;
     const isSourceHome = isSourceInHome();
     
@@ -459,7 +435,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
 
   // 현재 경로가 홈인지 공유됨인지 확인
   const getCurrentPathType = () => {
-    const userBaseFolder = `/${user?.username || ''}`;
+    const userBaseFolder = getUserBaseFolder(user);
     const homePath = user?.is_admin ? '/' : userBaseFolder;
     
     if (selectedPath === '/__shared__') {
@@ -477,7 +453,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
   };
 
   // Build breadcrumbs
-  const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+  const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
   const homeLabel = user?.is_admin ? 'root' : '홈';
   let breadcrumbs = [];
   

@@ -3,19 +3,10 @@
  *
  * Goal: prevent stale-closure refreshes from reloading the wrong directory
  * after the user navigates elsewhere.
+ *
+ * Path normalization for comparison (refresh decision) uses pathUtils.normalizePath.
  */
-
-export const normalizePath = (path) => {
-  if (!path) return '/';
-  if (path === '/') return '/';
-  // Keep shared marker path stable
-  if (path === '/__shared__') return '/__shared__';
-  if (path.startsWith('/__shared__/')) {
-    // trim trailing slash only
-    return path.endsWith('/') ? path.slice(0, -1) : path;
-  }
-  return path.endsWith('/') ? path.slice(0, -1) : path;
-};
+import { normalizePath } from './pathUtils';
 
 /**
  * Decide whether to refresh the file list after an operation completes.

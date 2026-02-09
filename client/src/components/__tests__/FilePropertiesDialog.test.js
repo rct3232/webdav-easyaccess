@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import FilePropertiesDialog from '../FilePropertiesDialog';
+import FilePropertiesDialog from '../dialogs/FilePropertiesDialog';
 
 describe('FilePropertiesDialog', () => {
   const mockFile = {

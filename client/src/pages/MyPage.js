@@ -24,8 +24,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import ShareDialog from '../components/ShareDialog';
-import AccountEditDialog from '../components/AccountEditDialog';
+import { ShareDialog, AccountEditDialog } from '../components/dialogs';
 import { getShareLinks, deleteShareLink, getShareLinkUrl, updateShareLink } from '../services/shareLinkService';
 import axios from 'axios';
 import { validateEmail, validatePassword, validateMatch } from '../utils/validation';

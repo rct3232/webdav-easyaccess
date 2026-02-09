@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '../../test-utils';
 import { Box } from '@mui/material';
-import FileListItem, { getFileListItemContainerStyles } from '../FileListItem';
+import FileListItem, { getFileListItemContainerStyles } from '../file-manager/FileListItem';
 
 // FileListItem returns a Fragment, so wrap it in a Box for testing
 const FileListItemWrapper = (props) => (

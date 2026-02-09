@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import AccountEditDialog from '../AccountEditDialog';
+import AccountEditDialog from '../dialogs/AccountEditDialog';
 
 describe('AccountEditDialog', () => {
   const defaultProps = {

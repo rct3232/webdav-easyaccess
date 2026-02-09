@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderWithProviders, screen, fireEvent, waitFor } from '../../test-utils';
-import BaseFolderTreeItem from '../BaseFolderTreeItem';
+import BaseFolderTreeItem from '../folder-tree/BaseFolderTreeItem';
 import { listFiles } from '../../services/fileService';
 
 // Mock services and hooks

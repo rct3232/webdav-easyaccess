@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '../../test-utils';
-import BulkActionToolbar from '../BulkActionToolbar';
+import BulkActionToolbar from '../file-manager/BulkActionToolbar';
 
 describe('BulkActionToolbar (F11-F14)', () => {
   const defaultProps = {

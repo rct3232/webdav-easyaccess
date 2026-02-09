@@ -11,7 +11,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import EmailNotificationMessage from '../components/EmailNotificationMessage';
+import { EmailNotificationMessage } from '../components/feedback';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
 import axios from 'axios';
 

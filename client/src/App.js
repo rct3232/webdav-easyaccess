@@ -3,14 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
-import PrivateRoute from './components/PrivateRoute';
+import { MainLayout, PrivateRoute } from './components/layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ShareLinkView from './pages/ShareLinkView';
-import MainLayout from './components/MainLayout';
 
 const theme = createTheme({
   breakpoints: {

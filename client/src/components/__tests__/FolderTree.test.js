@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderWithProviders, screen, waitFor, fireEvent } from '../../test-utils';
-import FolderTree from '../FolderTree';
+import FolderTree from '../folder-tree/FolderTree';
 import { listFiles } from '../../services/fileService';
 import { getRecentFiles, onRecentFilesChange } from '../../utils/recentFiles';
 import axios from 'axios';

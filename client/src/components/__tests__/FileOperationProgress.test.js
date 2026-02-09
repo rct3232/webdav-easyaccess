@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '../../test-utils';
-import FileOperationProgress from '../FileOperationProgress';
+import FileOperationProgress from '../file-manager/FileOperationProgress';
 
 describe('FileOperationProgress', () => {
   it('shows skipped paths list for warning items', () => {

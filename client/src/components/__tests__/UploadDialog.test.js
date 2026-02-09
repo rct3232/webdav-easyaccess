@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import UploadDialog from '../UploadDialog';
+import UploadDialog from '../dialogs/UploadDialog';
 
 // Mock react-dropzone
 jest.mock('react-dropzone', () => ({

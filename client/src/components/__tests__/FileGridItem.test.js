@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '../../test-utils';
-import FileGridItem from '../FileGridItem';
+import FileGridItem from '../file-manager/FileGridItem';
 
 describe('FileGridItem', () => {
   const mockFile = {

@@ -5,11 +5,6 @@ import {
   Button,
   Snackbar,
   Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   Collapse,
   CircularProgress,
 } from '@mui/material';
@@ -38,24 +33,31 @@ import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
 import { validateFileName } from '../utils/validation';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import FileList from '../components/FileList';
-import FileGrid from '../components/FileGrid';
-import FileDetail from '../components/FileDetail';
-import UploadDialog from '../components/UploadDialog';
-import CreateFolderDialog from '../components/CreateFolderDialog';
-import FileContextMenu from '../components/FileContextMenu';
-import FilePreviewDialog from '../components/FilePreviewDialog';
-import FileOperationProgress from '../components/FileOperationProgress';
-import FolderTree from '../components/FolderTree';
-import FolderPickerDialog from '../components/FolderPickerDialog';
-import MobileBreadcrumb from '../components/MobileBreadcrumb';
-import MobileFAB from '../components/MobileFAB';
-import FileActionSheet from '../components/FileActionSheet';
-import ShareDialog from '../components/ShareDialog';
-import SharedFolderManageDialog from '../components/SharedFolderManageDialog';
-import FilePropertiesDialog from '../components/FilePropertiesDialog';
-import ConfirmDialog from '../components/ConfirmDialog';
-import ConflictResolveDialog from '../components/ConflictResolveDialog';
+import {
+  FileList,
+  FileGrid,
+  FileDetail,
+  FileContextMenu,
+  FileOperationProgress,
+  FileActionSheet,
+  FileManagerHeader,
+  FileManagerControls,
+  BulkActionToolbar,
+} from '../components/file-manager';
+import {
+  UploadDialog,
+  CreateFolderDialog,
+  FilePreviewDialog,
+  FolderPickerDialog,
+  ShareDialog,
+  SharedFolderManageDialog,
+  FilePropertiesDialog,
+  ConfirmDialog,
+  ConflictResolveDialog,
+  RenameDialog,
+} from '../components/dialogs';
+import { FolderTree } from '../components/folder-tree';
+import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
@@ -63,10 +65,6 @@ import { normalizePath } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
-
-import FileManagerHeader from '../components/FileManagerHeader';
-import FileManagerControls from '../components/FileManagerControls';
-import BulkActionToolbar from '../components/BulkActionToolbar';
 
 const FileManager = () => {
   const { user, logout } = useAuth();
@@ -2055,50 +2053,17 @@ const FileManager = () => {
         />
       )}
 
-      {/* Rename Dialog */}
-      <Dialog 
-        open={renameDialogOpen} 
+      <RenameDialog
+        open={renameDialogOpen}
         onClose={closeRenameDialog}
+        value={renameNewName}
+        onChange={setRenameNewName}
+        error={renameError}
+        onClearError={() => setRenameError('')}
+        loading={renameLoading}
+        onConfirm={handleRename}
         fullScreen={isMobile}
-      >
-        <DialogTitle>이름 변경</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="새 이름"
-            fullWidth
-            variant="outlined"
-            value={renameNewName}
-            onChange={(e) => {
-              setRenameNewName(e.target.value);
-              if (renameError) setRenameError('');
-            }}
-            error={Boolean(renameError)}
-            helperText={renameError || ' '}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !renameLoading) {
-                handleRename();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={closeRenameDialog} 
-            disabled={renameLoading}
-          >
-            취소
-          </Button>
-          <Button 
-            onClick={handleRename} 
-            variant="contained" 
-            disabled={renameLoading || !renameNewName.trim()}
-          >
-            변경
-          </Button>
-        </DialogActions>
-      </Dialog>
+      />
 
       {/* Share Dialog */}
       {(mobileShareFile || actionSheetFile) && (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderWithProviders, screen, fireEvent } from '../../test-utils';
-import FileContextMenu from '../../components/FileContextMenu';
+import { FileContextMenu } from '../../components/file-manager';
 
 describe('File Operations Integration Tests', () => {
   const mockFile = {

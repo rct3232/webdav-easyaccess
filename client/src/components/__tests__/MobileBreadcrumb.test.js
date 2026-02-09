@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import MobileBreadcrumb from '../MobileBreadcrumb';
+import MobileBreadcrumb from '../mobile/MobileBreadcrumb';
 import axios from 'axios';
 
 jest.mock('axios');

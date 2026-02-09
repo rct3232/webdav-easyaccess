@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import ShareDialog from '../ShareDialog';
+import ShareDialog from '../dialogs/ShareDialog';
 import axios from 'axios';
 import * as shareLinkService from '../../services/shareLinkService';
 

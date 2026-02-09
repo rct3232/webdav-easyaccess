@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import ConflictResolveDialog from '../ConflictResolveDialog';
+import ConflictResolveDialog from '../dialogs/ConflictResolveDialog';
 
 describe('ConflictResolveDialog', () => {
   const mockOnClose = jest.fn();

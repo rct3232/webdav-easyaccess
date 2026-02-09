@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '../../test-utils';
-import FileList from '../FileList';
+import FileList from '../file-manager/FileList';
 import { mockFiles } from '../../test-utils';
 
 describe('FileList Component', () => {

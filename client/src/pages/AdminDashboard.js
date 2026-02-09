@@ -41,7 +41,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
-import ShareDialog from '../components/ShareDialog';
+import { ShareDialog } from '../components/dialogs';
 import { useResponsive } from '../hooks/useResponsive';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../utils/localStorage';
 

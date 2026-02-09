@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent, createDragEvent } from '../../test-utils';
-import FileList from '../../components/FileList';
+import { FileList } from '../../components/file-manager';
 import { mockFiles } from '../../test-utils';
 
 describe('Drag and Drop Integration Tests', () => {

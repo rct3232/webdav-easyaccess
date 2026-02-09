@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { checkPermission } from '../services/fileService';
 import {
   cancelPermissionRequest,
@@ -94,8 +95,8 @@ export function useSharedFolderManage({
         const list = Array.isArray(outbox) ? outbox : [];
         const findPending = (perm) =>
           list.find((r) => normalizeLocalPath(r.folder_path) === normalizedTarget && r.requested_permission === perm);
-        const pendingRead = findPending('read');
-        const pendingWrite = findPending('write');
+        const pendingRead = findPending(PERMISSIONS.READ);
+        const pendingWrite = findPending(PERMISSIONS.WRITE);
         setPendingRequest({
           read: { pending: Boolean(pendingRead), id: pendingRead?.id ?? null },
           write: { pending: Boolean(pendingWrite), id: pendingWrite?.id ?? null },
@@ -126,7 +127,7 @@ export function useSharedFolderManage({
       if (onMessage) {
         onMessage({
           show: true,
-          text: `${permissionToCancel === 'read' ? '읽기' : '쓰기'} 권한 요청을 회수했습니다.`,
+          text: `${permissionToCancel === PERMISSIONS.READ ? '읽기' : '쓰기'} 권한 요청을 회수했습니다.`,
           type: 'success',
         });
         setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
@@ -148,7 +149,7 @@ export function useSharedFolderManage({
     setLoading(true);
     try {
       if (
-        requestedPermission === 'write' &&
+        requestedPermission === PERMISSIONS.WRITE &&
         !hasReadPermission &&
         pendingRequest.read.pending &&
         pendingRequest.read.id

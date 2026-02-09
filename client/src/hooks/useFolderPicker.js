@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { listFiles, checkPermission } from '../services/fileService';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath, getParentPath } from '../utils/pathUtils';
 import { getUserBaseFolder, filterOutUserOwnFolders } from '../utils/userUtils';
 
@@ -71,7 +72,7 @@ export function useFolderPicker({
             size: 0,
             lastmodified: null,
             hasReadPermission: true,
-            hasWritePermission: perm.permission === 'write' || perm.permission === 'admin',
+            hasWritePermission: perm.permission === PERMISSIONS.WRITE || perm.permission === PERMISSIONS.ADMIN,
           };
         });
         setFolders(sharedFolderList);

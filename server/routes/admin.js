@@ -1,5 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const {
+  PERMISSIONS,
+  HTTP_STATUS,
+  USER_STATUS,
+} = require('@webdav-easyaccess/shared/constants');
 const User = require('../models/User');
 const Permission = require('../models/Permission');
 const PermissionRequest = require('../models/PermissionRequest');
@@ -14,12 +19,12 @@ const isAdmin = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user || !user.is_admin) {
-      return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: '관리자 권한이 필요합니다.' });
     }
     next();
   } catch (error) {
     console.error('Admin check error:', error);
-    res.status(500).json({ error: '권한 확인 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '권한 확인 중 문제가 발생했습니다.' });
   }
 };
 
@@ -30,7 +35,7 @@ router.get('/settings', authenticateToken, isAdmin, async (req, res) => {
     res.json(settings);
   } catch (error) {
     console.error('Get settings error:', error);
-    res.status(500).json({ error: '설정을 불러오는 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '설정을 불러오는 중 문제가 발생했습니다.' });
   }
 });
 
@@ -50,18 +55,18 @@ router.put('/settings', authenticateToken, isAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Update settings error:', error);
-    res.status(500).json({ error: '설정 저장 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '설정 저장 중 문제가 발생했습니다.' });
   }
 });
 
 // Get all pending users
 router.get('/users/pending', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const users = await User.findByStatus('pending');
+    const users = await User.findByStatus(USER_STATUS.PENDING);
     res.json(users);
   } catch (error) {
     console.error('Get pending users error:', error);
-    res.status(500).json({ error: '사용자 목록을 불러오는 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 목록을 불러오는 중 문제가 발생했습니다.' });
   }
 });
 
@@ -72,7 +77,7 @@ router.get('/users', authenticateToken, isAdmin, async (req, res) => {
     res.json(users);
   } catch (error) {
     console.error('Get all users error:', error);
-    res.status(500).json({ error: '사용자 목록을 불러오는 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 목록을 불러오는 중 문제가 발생했습니다.' });
   }
 });
 
@@ -85,22 +90,22 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(400).json({ error: '사용자명, 이메일, 비밀번호를 모두 입력해주세요.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '사용자명, 이메일, 비밀번호를 모두 입력해주세요.' });
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ error: '비밀번호는 최소 6자 이상이어야 합니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '비밀번호는 최소 6자 이상이어야 합니다.' });
     }
 
     // Check if user already exists
     const existingUser = await User.findByUsername(username);
     if (existingUser) {
-      return res.status(400).json({ error: '이미 사용 중인 사용자명입니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '이미 사용 중인 사용자명입니다.' });
     }
 
     const existingEmail = await User.findByEmail(email);
     if (existingEmail) {
-      return res.status(400).json({ error: '이미 사용 중인 이메일입니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '이미 사용 중인 이메일입니다.' });
     }
 
     // Check if folder with same name already exists in WebDAV
@@ -108,7 +113,7 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
     
     // Create user with approved status (skip approval process)
     createdUser = await User.create(username, email, password, false);
-    await User.updateStatus(createdUser.id, 'approved');
+    await User.updateStatus(createdUser.id, USER_STATUS.APPROVED);
 
     // Create user folder or reuse existing one
     try {
@@ -126,17 +131,17 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
       console.error('[Admin Create] Failed to check or create user folder:', folderError);
       // Rollback user creation
       await User.delete(createdUser.id);
-      return res.status(500).json({ 
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
         error: '사용자 폴더 확인/생성에 실패했습니다. 사용자 계정이 삭제되었습니다.' 
       });
     }
 
     // Grant permissions
     try {
-      await Permission.grant(createdUser.id, userFolder, 'admin');
+      await Permission.grant(createdUser.id, userFolder, PERMISSIONS.ADMIN);
       
       // Verify permissions were granted successfully
-      const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, 'admin');
+      const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, PERMISSIONS.ADMIN);
       if (!hasPermission) {
         throw createError('Permission verification failed', 500);
       }
@@ -144,18 +149,18 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
       console.error('[Admin Create] Failed to grant permissions:', permError);
       // Rollback user creation - permissions are essential
       await User.delete(createdUser.id);
-      return res.status(500).json({ 
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
         error: '사용자 권한 부여에 실패했습니다. 사용자 계정이 삭제되었습니다.' 
       });
     }
 
-    res.status(201).json({
+    res.status(HTTP_STATUS.CREATED).json({
       message: '사용자가 추가되었습니다.',
       user: { 
         id: createdUser.id, 
         username: createdUser.username, 
         email: createdUser.email, 
-        status: 'approved',
+        status: USER_STATUS.APPROVED,
         is_admin: false
       }
     });
@@ -169,7 +174,7 @@ router.post('/users', authenticateToken, isAdmin, async (req, res) => {
         console.error('[Admin Create] Failed to delete user after error:', deleteError);
       }
     }
-    res.status(500).json({ error: '사용자 추가 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 추가 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
@@ -180,15 +185,15 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
     const user = await User.findById(userId);
     
     if (!user) {
-      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: '사용자를 찾을 수 없습니다.' });
     }
 
-    if (user.status !== 'pending') {
-      return res.status(400).json({ error: '승인 대기 중인 사용자가 아닙니다.' });
+    if (user.status !== USER_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '승인 대기 중인 사용자가 아닙니다.' });
     }
 
     // Update user status
-    await User.updateStatus(userId, 'approved');
+    await User.updateStatus(userId, USER_STATUS.APPROVED);
 
     // Create user folder or reuse existing one
     const userFolder = `/${user.username}`;
@@ -207,24 +212,24 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
     } catch (folderError) {
       console.error(`[Admin] Failed to check or create user folder:`, folderError);
       // Rollback approval
-      await User.updateStatus(userId, 'pending');
-      return res.status(500).json({ error: '사용자 폴더 확인/생성에 실패했습니다. 관리자에게 문의해주세요.' });
+      await User.updateStatus(userId, USER_STATUS.PENDING);
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 폴더 확인/생성에 실패했습니다. 관리자에게 문의해주세요.' });
     }
 
     // Grant permissions
     try {
-      await Permission.grant(userId, `/${user.username}`, 'admin');
+      await Permission.grant(userId, `/${user.username}`, PERMISSIONS.ADMIN);
       
       // Verify permissions were granted successfully
-      const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, 'admin');
+      const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, PERMISSIONS.ADMIN);
       if (!hasPermission) {
         throw createError('Permission verification failed', 500);
       }
     } catch (permError) {
       console.error(`[Admin] Failed to grant permissions:`, permError);
       // Rollback approval - permissions are essential
-      await User.updateStatus(userId, 'pending');
-      return res.status(500).json({ 
+      await User.updateStatus(userId, USER_STATUS.PENDING);
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
         error: '사용자 권한 부여에 실패했습니다. 승인이 취소되었습니다. 다시 시도해주세요.' 
       });
     }
@@ -239,11 +244,11 @@ router.post('/users/:id/approve', authenticateToken, isAdmin, async (req, res) =
 
     res.json({ 
       message: '사용자가 승인되었습니다.',
-      user: { id: user.id, username: user.username, email: user.email, status: 'approved' }
+      user: { id: user.id, username: user.username, email: user.email, status: USER_STATUS.APPROVED }
     });
   } catch (error) {
     console.error('Approve user error:', error);
-    res.status(500).json({ error: '승인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '승인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
@@ -254,11 +259,11 @@ router.post('/users/:id/reject', authenticateToken, isAdmin, async (req, res) =>
     const user = await User.findById(userId);
     
     if (!user) {
-      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: '사용자를 찾을 수 없습니다.' });
     }
 
-    if (user.status !== 'pending') {
-      return res.status(400).json({ error: '승인 대기 중인 사용자가 아닙니다.' });
+    if (user.status !== USER_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '승인 대기 중인 사용자가 아닙니다.' });
     }
 
     // Send rejection email first
@@ -290,7 +295,7 @@ router.post('/users/:id/reject', authenticateToken, isAdmin, async (req, res) =>
     });
   } catch (error) {
     console.error('Reject user error:', error);
-    res.status(500).json({ error: '거절 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '거절 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
@@ -302,18 +307,18 @@ router.delete('/users/:id', authenticateToken, isAdmin, async (req, res) => {
     
     // Prevent admin from deleting themselves
     if (userId === adminId) {
-      return res.status(400).json({ error: '자기 자신의 계정은 삭제할 수 없습니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '자기 자신의 계정은 삭제할 수 없습니다.' });
     }
 
     const user = await User.findById(userId);
     
     if (!user) {
-      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: '사용자를 찾을 수 없습니다.' });
     }
 
     // Prevent deleting other admin accounts
     if (user.is_admin) {
-      return res.status(400).json({ error: '다른 관리자 계정은 삭제할 수 없습니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '다른 관리자 계정은 삭제할 수 없습니다.' });
     }
 
     // Clean up permission requests where user is requester
@@ -337,7 +342,7 @@ router.delete('/users/:id', authenticateToken, isAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Delete user error:', error);
-    res.status(500).json({ error: '사용자 삭제 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 삭제 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
   }
 });
 
@@ -360,7 +365,7 @@ router.get('/folders/list', authenticateToken, isAdmin, async (req, res) => {
     res.json(folders);
   } catch (error) {
     console.error('Get folder list error:', error);
-    res.status(500).json({ error: '폴더 목록을 불러오는데 실패했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '폴더 목록을 불러오는데 실패했습니다.' });
   }
 });
 
@@ -372,7 +377,7 @@ router.get('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
     res.json(permissions);
   } catch (error) {
     console.error('Get user permissions error:', error);
-    res.status(500).json({ error: '사용자 권한을 불러오는데 실패했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 권한을 불러오는데 실패했습니다.' });
   }
 });
 
@@ -383,7 +388,7 @@ router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
     const { permissions } = req.body; // Array of { folderPath, permission: 'read' | 'write' }
     
     if (!Array.isArray(permissions)) {
-      return res.status(400).json({ error: '권한 목록이 올바르지 않습니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '권한 목록이 올바르지 않습니다.' });
     }
 
     // Revoke all existing permissions first
@@ -391,7 +396,7 @@ router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
 
     // Grant new permissions
     for (const perm of permissions) {
-      if (perm.folderPath && perm.permission && ['read', 'write', 'admin'].includes(perm.permission)) {
+      if (perm.folderPath && perm.permission && PERMISSIONS.isValid(perm.permission)) {
         await Permission.grant(userId, perm.folderPath, perm.permission);
       }
     }
@@ -399,7 +404,7 @@ router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
     res.json({ message: '권한이 업데이트되었습니다.' });
   } catch (error) {
     console.error('Update user permissions error:', error);
-    res.status(500).json({ error: '권한 업데이트에 실패했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '권한 업데이트에 실패했습니다.' });
   }
 });
 
@@ -575,7 +580,7 @@ router.post('/cleanup/orphaned', authenticateToken, isAdmin, async (req, res) =>
     });
   } catch (error) {
     console.error('Cleanup orphaned data error:', error);
-    res.status(500).json({ error: 'Failed to cleanup orphaned data' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to cleanup orphaned data' });
   }
 });
 

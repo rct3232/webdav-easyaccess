@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { asyncHandler } = require('../utils/errorHandler');
 const ShareLink = require('../models/ShareLink');
 const { pathExists } = require('../utils/webdav');
 const { getFileContents } = require('../utils/webdav');
-const { getFileType, getContentType } = require('../utils/fileTypeUtils');
+const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 
 /**
  * 공유 링크 정보 조회 (인증 불필요)
@@ -15,18 +16,18 @@ router.get('/:token/info', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(404).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(410).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(404).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
   }
 
   const fileName = link.filePath.split('/').pop();
@@ -53,18 +54,18 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(404).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(410).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(404).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
   }
 
   // 파일 미리보기 (inline)
@@ -79,7 +80,7 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Failed to preview file:', error);
-    res.status(500).json({ error: 'Failed to preview file' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to preview file' });
   }
 }));
 
@@ -92,18 +93,18 @@ router.get('/:token', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(404).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(410).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(404).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
   }
 
   // 파일 다운로드
@@ -119,7 +120,7 @@ router.get('/:token', asyncHandler(async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Failed to download file:', error);
-    res.status(500).json({ error: 'Failed to download file' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to download file' });
   }
 }));
 

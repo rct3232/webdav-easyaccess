@@ -91,10 +91,12 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
 
   // 컴포넌트 언마운트 시 모든 타이머 정리
   useEffect(() => {
+    const timers = longPressTimersRef.current;
+    const touchMoved = touchMovedRef.current;
     return () => {
-      longPressTimersRef.current.forEach(timer => clearTimeout(timer));
-      longPressTimersRef.current.clear();
-      touchMovedRef.current.clear();
+      timers.forEach(timer => clearTimeout(timer));
+      timers.clear();
+      touchMoved.clear();
     };
   }, []);
 

@@ -6,7 +6,7 @@ const { asyncHandler, validationError, forbiddenError, notFoundError } = require
 const ShareLink = require('../models/ShareLink');
 const { pathExists } = require('../utils/webdav');
 const { getFileContents } = require('../utils/webdav');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 
 /**

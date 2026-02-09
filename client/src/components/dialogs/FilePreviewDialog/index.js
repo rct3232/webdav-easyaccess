@@ -15,7 +15,7 @@ import {
 import axios from 'axios';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
-import { getFileType } from '../../../utils/fileTypeUtils';
+import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 

@@ -6,7 +6,7 @@ import {
 import { createFolder } from '../../services/fileService';
 import BaseDialog from './BaseDialog';
 import { useFormState } from '../../hooks/useFormState';
-import { validateFileName } from '../../utils/validation';
+import { validateFileName } from '@webdav-easyaccess/shared/validation';
 
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
   const {

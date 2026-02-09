@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { PERMISSIONS, HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { approvePermissionRequest } from '../services/permissionRequestService';
@@ -114,7 +115,7 @@ export function useShareDialog({
 
       return folders;
     } catch (error) {
-      if (error.response?.status === 404) return [];
+      if (error.response?.status === HTTP_STATUS.NOT_FOUND) return [];
       console.error(`Failed to load folder children for ${path}:`, error);
       return [];
     } finally {
@@ -183,7 +184,7 @@ export function useShareDialog({
           });
           if (startFromUserHome) {
             if (!newFolderPermissions.has(userBaseFolder)) newFolderPermissions.set(userBaseFolder, new Map());
-            newFolderPermissions.get(userBaseFolder).set(userId, 'write');
+            newFolderPermissions.get(userBaseFolder).set(userId, PERMISSIONS.WRITE);
           }
           setFolderPermissions(newFolderPermissions);
           setLoadingPermissions(false);
@@ -201,7 +202,7 @@ export function useShareDialog({
 
         setLoadingPermissions(true);
         try {
-          const getPermissionPriority = (p) => (p === 'admin' ? 3 : p === 'write' ? 2 : p === 'read' ? 1 : 0);
+          const getPermissionPriority = (p) => (p === PERMISSIONS.ADMIN ? 3 : p === PERMISSIONS.WRITE ? 2 : p === PERMISSIONS.READ ? 1 : 0);
           const getHigherPermission = (a, b) => (getPermissionPriority(a) >= getPermissionPriority(b) ? a : b);
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
@@ -228,7 +229,7 @@ export function useShareDialog({
 
           if (permissionRequest) {
             const requesterId = permissionRequest.requester_id;
-            const requestedPermission = permissionRequest.requested_permission || 'read';
+            const requestedPermission = permissionRequest.requested_permission || PERMISSIONS.READ;
             const normalizedRootPath = normalizePath(rootPath);
             if (!newFolderPermissions.has(normalizedRootPath)) newFolderPermissions.set(normalizedRootPath, new Map());
             const rootMap = newFolderPermissions.get(normalizedRootPath);
@@ -376,7 +377,7 @@ export function useShareDialog({
     if (isAdminMode) {
       if (!userId) return;
       const defaultPermission =
-        isReviewMode && permissionRequest ? (permissionRequest.requested_permission || 'read') : 'write';
+        isReviewMode && permissionRequest ? (permissionRequest.requested_permission || PERMISSIONS.READ) : PERMISSIONS.WRITE;
       const subfolders = getAllSubfolderPaths(folderPathArg);
       handleAddUserPermission(folderPathArg, userId, defaultPermission, subfolders);
     } else {
@@ -388,7 +389,7 @@ export function useShareDialog({
   const handleUserSelect = useCallback((selectedUserId) => {
     if (!folderMenuPath) return;
     const defaultPermission =
-      isReviewMode && permissionRequest ? (permissionRequest.requested_permission || 'read') : 'write';
+      isReviewMode && permissionRequest ? (permissionRequest.requested_permission || PERMISSIONS.READ) : PERMISSIONS.WRITE;
     const subfolders = getAllSubfolderPaths(folderMenuPath);
     handleAddUserPermission(folderMenuPath, selectedUserId, defaultPermission, subfolders);
     const selectedUser = users.find(u => u.id === selectedUserId);

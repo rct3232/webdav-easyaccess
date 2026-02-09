@@ -98,20 +98,6 @@ const FileListItem = React.memo(({
 }) => {
   const thumbnail = getThumbnail(file);
 
-  // 동적 스타일 계산 (필요한 것만)
-  const dynamicStyles = {
-    ...baseStyles,
-    '&:hover': {
-      backgroundColor: isDisabled ? 'transparent' : 'action.hover',
-    },
-    backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
-    opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
-    cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-    color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),
-    ...getDropTargetStyles(isDropTarget),
-    ...(isMobile && mobileStyles),
-  };
-
   return (
     <>
       {selectionMode && (

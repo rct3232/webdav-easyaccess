@@ -13,6 +13,7 @@
  * const result = await post('/users', { name: 'John' });
  */
 import axios from 'axios';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 
 // Create axios instance
 const apiClient = axios.create({
@@ -87,7 +88,7 @@ apiClient.interceptors.response.use(
     }
 
     // Handle 409 Conflict
-    if (error.response?.status === 409) {
+    if (error.response?.status === HTTP_STATUS.CONFLICT) {
       // Conflict errors are expected in some cases (e.g., file already exists)
       return Promise.reject(error);
     }

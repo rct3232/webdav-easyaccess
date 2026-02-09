@@ -1,8 +1,13 @@
 const express = require('express');
 const router = express.Router();
 
+const {
+  PERMISSIONS,
+  HTTP_STATUS,
+  PERMISSION_REQUEST_STATUS,
+} = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../utils/auth');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 
 const User = require('../models/User');
@@ -16,12 +21,11 @@ function extractOwnerUsername(folderPath) {
 }
 
 function normalizePermission(p) {
-  return p === 'read' || p === 'write' ? p : null;
+  return p === PERMISSIONS.READ || p === PERMISSIONS.WRITE ? p : null;
 }
 
 function normalizeStatus(s) {
-  const allowed = new Set(['pending', 'approved', 'rejected', 'cancelled']);
-  return allowed.has(s) ? s : null;
+  return PERMISSION_REQUEST_STATUS.isValid(s) ? s : null;
 }
 
 router.post('/', authenticateToken, async (req, res) => {
@@ -29,35 +33,35 @@ router.post('/', authenticateToken, async (req, res) => {
     const { folderPath, permission, message } = req.body || {};
 
     if (!folderPath || !permission) {
-      return res.status(400).json({ error: 'folderPath and permission are required' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'folderPath and permission are required' });
     }
     if (isMetaPath(folderPath)) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
 
     const perm = normalizePermission(permission);
     if (!perm) {
-      return res.status(400).json({ error: 'Invalid permission. Must be read or write' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid permission. Must be read or write' });
     }
 
     const requester = await User.findById(req.user.id);
     if (!requester) {
-      return res.status(403).json({ error: 'User not found' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'User not found' });
     }
 
     const normalizedFolderPath = normalizePath(folderPath);
     const ownerUsername = extractOwnerUsername(normalizedFolderPath);
     if (!ownerUsername) {
-      return res.status(400).json({ error: 'Invalid folder path for owner-only requests' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid folder path for owner-only requests' });
     }
 
     const owner = await User.findByUsername(ownerUsername);
     if (!owner) {
-      return res.status(400).json({ error: 'Owner not found for this path' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Owner not found for this path' });
     }
 
     if (Number(owner.id) === Number(requester.id)) {
-      return res.status(400).json({ error: 'Cannot request permissions for your own path' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Cannot request permissions for your own path' });
     }
 
     const created = await PermissionRequest.create({
@@ -73,7 +77,7 @@ router.post('/', authenticateToken, async (req, res) => {
     res.json(created);
   } catch (error) {
     console.error('Create permission request error:', error);
-    res.status(500).json({ error: 'Failed to create permission request' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create permission request' });
   }
 });
 
@@ -84,7 +88,7 @@ router.get('/inbox', authenticateToken, async (req, res) => {
     res.json(list);
   } catch (error) {
     console.error('List inbox permission requests error:', error);
-    res.status(500).json({ error: 'Failed to list permission requests' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to list permission requests' });
   }
 });
 
@@ -95,7 +99,7 @@ router.get('/outbox', authenticateToken, async (req, res) => {
     res.json(list);
   } catch (error) {
     console.error('List outbox permission requests error:', error);
-    res.status(500).json({ error: 'Failed to list permission requests' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to list permission requests' });
   }
 });
 
@@ -104,11 +108,11 @@ router.get('/check-owner', authenticateToken, async (req, res) => {
     const { folderPath } = req.query;
 
     if (!folderPath) {
-      return res.status(400).json({ error: 'folderPath is required' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'folderPath is required' });
     }
 
     if (isMetaPath(folderPath)) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
 
     const normalizedFolderPath = normalizePath(folderPath);
@@ -125,7 +129,7 @@ router.get('/check-owner', authenticateToken, async (req, res) => {
     res.json({ ownerExists, ownerUsername: ownerExists ? ownerUsername : null });
   } catch (error) {
     console.error('Check owner exists error:', error);
-    res.status(500).json({ error: 'Failed to check owner existence' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to check owner existence' });
   }
 });
 
@@ -133,30 +137,30 @@ router.post('/:id/approve', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: 'Invalid request id' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid request id' });
     }
 
     const pr = await PermissionRequest.findById(id);
     if (!pr) {
-      return res.status(404).json({ error: 'Request not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Request not found' });
     }
 
     if (pr.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
-    if (pr.status !== 'pending') {
-      return res.status(400).json({ error: 'Only pending requests can be approved' });
+    if (pr.status !== PERMISSION_REQUEST_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Only pending requests can be approved' });
     }
 
     // Note: Permission granting is handled by the client in review mode.
     // The client calls /api/permissions/grant before calling this approve endpoint.
     // We only update the request status here.
 
-    const updated = await PermissionRequest.updateStatus(id, { status: 'approved', resolvedBy: req.user.id });
+    const updated = await PermissionRequest.updateStatus(id, { status: PERMISSION_REQUEST_STATUS.APPROVED, resolvedBy: req.user.id });
     res.json(updated);
   } catch (error) {
     console.error('Approve permission request error:', error);
-    res.status(500).json({ error: 'Failed to approve permission request' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to approve permission request' });
   }
 });
 
@@ -164,26 +168,26 @@ router.post('/:id/reject', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: 'Invalid request id' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid request id' });
     }
 
     const pr = await PermissionRequest.findById(id);
     if (!pr) {
-      return res.status(404).json({ error: 'Request not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Request not found' });
     }
 
     if (pr.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
-    if (pr.status !== 'pending') {
-      return res.status(400).json({ error: 'Only pending requests can be rejected' });
+    if (pr.status !== PERMISSION_REQUEST_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Only pending requests can be rejected' });
     }
 
-    const updated = await PermissionRequest.updateStatus(id, { status: 'rejected', resolvedBy: req.user.id });
+    const updated = await PermissionRequest.updateStatus(id, { status: PERMISSION_REQUEST_STATUS.REJECTED, resolvedBy: req.user.id });
     res.json(updated);
   } catch (error) {
     console.error('Reject permission request error:', error);
-    res.status(500).json({ error: 'Failed to reject permission request' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to reject permission request' });
   }
 });
 
@@ -191,26 +195,26 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: 'Invalid request id' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid request id' });
     }
 
     const pr = await PermissionRequest.findById(id);
     if (!pr) {
-      return res.status(404).json({ error: 'Request not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Request not found' });
     }
 
     if (pr.requester_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
-    if (pr.status !== 'pending') {
-      return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+    if (pr.status !== PERMISSION_REQUEST_STATUS.PENDING) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Only pending requests can be cancelled' });
     }
 
-    const updated = await PermissionRequest.updateStatus(id, { status: 'cancelled', resolvedBy: req.user.id });
+    const updated = await PermissionRequest.updateStatus(id, { status: PERMISSION_REQUEST_STATUS.CANCELLED, resolvedBy: req.user.id });
     res.json(updated);
   } catch (error) {
     console.error('Cancel permission request error:', error);
-    res.status(500).json({ error: 'Failed to cancel permission request' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to cancel permission request' });
   }
 });
 

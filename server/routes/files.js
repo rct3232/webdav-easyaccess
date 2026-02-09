@@ -17,8 +17,9 @@ const {
   pathExists,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
-const { normalizePath, getParentPath, getBasename } = require('../utils/pathUtils');
-const { getContentType } = require('../utils/fileTypeUtils');
+const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
+const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const {
   canReadFolder,
   canReadFile,
@@ -72,7 +73,7 @@ async function isDirectoryPath(webdavPath) {
 }
 
 async function hasDirectFolderWritePermission(userId, folderPath) {
-  return await hasDirectFolderPermission(userId, folderPath, 'write');
+  return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.WRITE);
 }
 
 const upload = multer({ 
@@ -540,7 +541,7 @@ async function runBulkJobWorker(jobId) {
               });
               try {
                 for (const dir of result.createdDirs || []) {
-                  await Permission.grant(userId, dir, 'write');
+                  await Permission.grant(userId, dir, PERMISSIONS.WRITE);
                   allCreatedDirs.add(dir);
                 }
               } catch (permError) {
@@ -605,19 +606,19 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
     let hasPermission =
       user.is_admin ||
       isOwnerPath(user, folderPath) ||
-      Permission.checkPermissionSync(doc, folderPath, 'read');
+      Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.READ);
     if (!hasPermission && folderPath !== '/') {
       const pathParts = folderPath.split('/').filter(Boolean);
       for (let i = pathParts.length; i > 0; i--) {
         const parentPath = '/' + pathParts.slice(0, i).join('/');
-        if (Permission.checkPermissionSync(doc, parentPath, 'read')) {
+        if (Permission.checkPermissionSync(doc, parentPath, PERMISSIONS.READ)) {
           hasPermission = true;
           break;
         }
       }
     }
     if (!hasPermission && folderPath !== '/') {
-      hasPermission = Permission.checkPermissionSync(doc, '/', 'read');
+      hasPermission = Permission.checkPermissionSync(doc, '/', PERMISSIONS.READ);
     }
     if (!hasPermission) {
       if (user.is_admin) {
@@ -627,7 +628,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
         if (folderPath === '/' || folderPath === '') {
           folderPath = userFolder;
         } else if (!folderPath.startsWith(userFolder)) {
-          return res.status(403).json({
+          return res.status(HTTP_STATUS.FORBIDDEN).json({
             error: 'Access denied',
             message: '이 폴더에 대한 접근 권한이 없습니다.'
           });
@@ -640,7 +641,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
       items = await listDirectory(folderPath);
     } catch (error) {
       // Handle 404 errors (directory doesn't exist) with proper status code
-      if (error.status === 404) {
+      if (error.status === HTTP_STATUS.NOT_FOUND) {
         throw notFoundError(`Directory not found: ${folderPath}`);
       }
       // Re-throw other errors
@@ -657,7 +658,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
     const currentDirWritePermission =
       user.is_admin ||
       isOwnerPath(user, folderPath) ||
-      Permission.checkPermissionSync(doc, folderPath, 'write');
+      Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE);
 
     // 항목별 권한 체크 (동기, doc 기반)
     const itemsWithThumbnails = filteredItems.map((item) => {
@@ -678,9 +679,9 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
           hasWritePermission = true;
         } else {
           hasReadPermission =
-            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, 'read');
+            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, PERMISSIONS.READ);
           hasWritePermission =
-            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, 'write');
+            isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
         }
       }
 
@@ -722,10 +723,10 @@ router.get('/download', authenticateToken, requireUser, normalizePathParam, chec
     } else {
       const normalized = normalizePath(filePath);
       const parentDir = getParentPath(normalized);
-      hasPermission = await hasDirectFolderPermission(user.id, parentDir, 'read');
+      hasPermission = await hasDirectFolderPermission(user.id, parentDir, PERMISSIONS.READ);
     }
     if (!hasPermission) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
 
     const buffer = await getFileContents(filePath);
@@ -776,7 +777,7 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
       } else {
         const ok = await canWriteFolder(user, normalizedPath);
         if (!ok) {
-          return res.status(403).json({ error: 'Access denied' });
+          return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
         }
         folderPath = normalizedPath;
       }
@@ -814,7 +815,7 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
           const parentPermissions = await Permission.getFolderPermissions(folderPath);
           // Filter users with write or admin permissions
           parentFolderOwners = parentPermissions
-            .filter(perm => perm.permission === 'write' || perm.permission === 'admin')
+            .filter(perm => perm.permission === PERMISSIONS.WRITE || perm.permission === PERMISSIONS.ADMIN)
             .map(perm => perm.id);
         } catch (permQueryError) {
           console.error('Failed to query parent folder permissions:', permQueryError);
@@ -836,14 +837,14 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
               
               // Grant permissions to the user who created it
               try {
-                await Permission.grant(req.user.id, currentPath, 'write');
+                await Permission.grant(req.user.id, currentPath, PERMISSIONS.WRITE);
                 
                 // Grant permissions to parent folder owners (users with write/admin permissions on parent folder)
                 for (const ownerId of parentFolderOwners) {
                   try {
                     // Skip if it's the same user (already granted above)
                     if (ownerId !== req.user.id) {
-                      await Permission.grant(ownerId, currentPath, 'write');
+                      await Permission.grant(ownerId, currentPath, PERMISSIONS.WRITE);
                     }
                   } catch (ownerPermError) {
                     console.error(`Failed to grant permission to parent folder owner ${ownerId} for ${currentPath}:`, ownerPermError);
@@ -895,7 +896,7 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
   }
   const { jobId } = createJob(req.user.id, 'delete', { paths });
   setImmediate(runBulkJobWorker, jobId);
-  res.status(202).json({ jobId });
+  res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
 router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
@@ -964,7 +965,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
   }
   const { jobId } = createJob(req.user.id, 'move', { moves, onConflict });
   setImmediate(runBulkJobWorker, jobId);
-  res.status(202).json({ jobId });
+  res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
 // Batch copy endpoint (Job-based: returns 202 + jobId)
@@ -975,7 +976,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
   }
   const { jobId } = createJob(req.user.id, 'copy', { copies, onConflict });
   setImmediate(runBulkJobWorker, jobId);
-  res.status(202).json({ jobId });
+  res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
 // Get bulk operation status (polling)
@@ -1270,7 +1271,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
         error: err.message,
       });
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to create zip archive' });
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create zip archive' });
       }
     });
 

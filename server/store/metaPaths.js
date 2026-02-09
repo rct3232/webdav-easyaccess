@@ -1,5 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 // WebDAV paths (POSIX-style) for metadata storage.
 // NOTE: These are remote WebDAV paths, not local filesystem paths.
@@ -27,12 +28,7 @@ function sha256HexLower(input) {
 }
 
 function normalizeWebdavPath(p) {
-  if (!p) return '/';
-  const replaced = String(p).replace(/\\/g, '/');
-  const normalized = replaced.replace(/\/+/g, '/');
-  if (normalized === '') return '/';
-  if (!normalized.startsWith('/')) return `/${normalized}`;
-  return normalized;
+  return normalizePath(p);
 }
 
 function isMetaPath(webdavPath) {

@@ -1,6 +1,6 @@
 const storage = require('./storage');
 const { normalizeWebdavPath } = require('./metaPaths');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 const RECENT_FILES_DIR = '/.wea/recent-files/';
 const MAX_RECENT_FILES = 20;

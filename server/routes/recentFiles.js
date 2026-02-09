@@ -4,7 +4,7 @@ const { authenticateToken } = require('../utils/auth');
 const requireUser = require('../middleware/requireUser');
 const { asyncHandler, validationError } = require('../utils/errorHandler');
 const recentFilesStore = require('../store/recentFilesStore');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 /**
  * 사용자의 최근 파일 목록 조회

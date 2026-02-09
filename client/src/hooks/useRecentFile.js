@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { getRecentFiles, removeRecentFile } from '../utils/recentFiles';
 import { listFiles } from '../services/fileService';
@@ -135,8 +136,8 @@ export const useRecentFile = ({
         } catch (verifyError) {
           console.error('Failed to verify file existence on 404:', verifyError);
           if (
-            verifyError.response?.status === 404 ||
-            verifyError.response?.status === 403
+            verifyError.response?.status === HTTP_STATUS.NOT_FOUND ||
+            verifyError.response?.status === HTTP_STATUS.FORBIDDEN
           ) {
             try {
               const recentFiles = await getRecentFiles();
@@ -265,7 +266,7 @@ export const useRecentFile = ({
               clearTracking(parentPath);
             } else {
               handleRecentFileError(
-                { response: { status: 404 }, message: 'File not found' },
+                { response: { status: HTTP_STATUS.NOT_FOUND }, message: 'File not found' },
                 filePath
               );
               setRecentFileToPreview(null);
@@ -274,9 +275,9 @@ export const useRecentFile = ({
             }
           } catch (error) {
             console.error('Failed to verify file existence:', error);
-            if (error.response?.status === 404 || error.response?.status === 403) {
+            if (error.response?.status === HTTP_STATUS.NOT_FOUND || error.response?.status === HTTP_STATUS.FORBIDDEN) {
               handleRecentFileError(
-                { response: { status: 404 }, message: 'File not found' },
+                { response: { status: HTTP_STATUS.NOT_FOUND }, message: 'File not found' },
                 filePath
               );
             } else {

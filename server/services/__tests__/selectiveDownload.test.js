@@ -1,5 +1,5 @@
 const { selectiveCollectFiles } = require('../selectiveDownload');
-const { normalizePath } = require('../../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 function makeFakeWebdav({ dirs = [], files = [] } = {}) {
   const dirSet = new Set(dirs.map((d) => normalizePath(d)));

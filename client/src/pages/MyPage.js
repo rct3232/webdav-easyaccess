@@ -27,7 +27,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { ShareDialog, AccountEditDialog } from '../components/dialogs';
 import { getShareLinks, deleteShareLink, getShareLinkUrl, updateShareLink } from '../services/shareLinkService';
 import axios from 'axios';
-import { validateEmail, validatePassword, validateMatch } from '../utils/validation';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
+import { validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import {
   cancelPermissionRequest,
   listInboxPermissionRequests,
@@ -81,8 +82,8 @@ const MyPage = () => {
     !(passwordEntered && (passwordMismatch || passwordTooShort || passwordConfirmMissing));
 
   const formatPermissionLabel = (p) => {
-    if (p === 'read') return '읽기';
-    if (p === 'write') return '쓰기';
+    if (p === PERMISSIONS.READ) return '읽기';
+    if (p === PERMISSIONS.WRITE) return '쓰기';
     return String(p || '');
   };
 
@@ -561,7 +562,7 @@ const MyPage = () => {
                               <Chip
                                 size="small"
                                 label={permLabel}
-                                color={r.requested_permission === 'write' ? 'primary' : 'default'}
+                                color={r.requested_permission === PERMISSIONS.WRITE ? 'primary' : 'default'}
                               />
                               <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
                               <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>

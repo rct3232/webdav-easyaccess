@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
-const { normalizePath, getParentPath } = require('../utils/pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 const { canReadFolder, canWriteFolder, isOwnerPath } = require('../utils/permissionPolicy');
 const { isMetaPath } = require('../store/metaPaths');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
@@ -51,7 +52,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   
   // 사용자가 생성한 폴더에 대해 자동으로 쓰기 권한 부여
   try {
-    await Permission.grant(req.user.id, folderPath, 'write');
+    await Permission.grant(req.user.id, folderPath, PERMISSIONS.WRITE);
   } catch (permError) {
     console.error('Failed to grant permission after folder creation:', permError);
     // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
@@ -71,9 +72,9 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
       if (folderPath === '/' || folderPath === '') {
         folderPath = `/${user.username}`;
       }
-      hasPermission = await canReadFolder(req.user.id, folderPath, 'read');
+      hasPermission = await canReadFolder(req.user.id, folderPath, PERMISSIONS.READ);
       if (!hasPermission) {
-        return res.status(403).json({ error: 'Access denied' });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
       }
     }
 
@@ -101,7 +102,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
               : (folderPath.endsWith('/') ? folderPath : folderPath + '/') + item.basename;
             const normalizedPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
 
-            hasReadPermission = await canReadFolder(req.user.id, normalizedPath, 'read');
+            hasReadPermission = await canReadFolder(req.user.id, normalizedPath, PERMISSIONS.READ);
             hasWritePermission = await canWriteFolder(user, normalizedPath);
           }
         }

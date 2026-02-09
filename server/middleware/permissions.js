@@ -2,9 +2,10 @@
  * Permission check middleware for Express routes
  */
 
+const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
-const { normalizePath, getParentPath, getParentPaths } = require('../utils/pathUtils');
+const { normalizePath, getParentPath, getParentPaths } = require('@webdav-easyaccess/shared/pathUtils');
 
 const userCache = new Map(); // userId -> { user, expiresAt }
 const USER_CACHE_TTL_MS =
@@ -41,7 +42,7 @@ function isOwnerPathSafe(user, targetPath) {
  * @param {string} requiredPermission - Required permission level ('read' or 'write')
  * @returns {Promise<boolean>} True if user has permission
  */
-async function checkFilePermission(userId, filePath, requiredPermission = 'read') {
+async function checkFilePermission(userId, filePath, requiredPermission = PERMISSIONS.READ) {
   const user = await getCachedUser(userId);
   if (!user) {
     return false;
@@ -97,7 +98,7 @@ async function checkFilePermission(userId, filePath, requiredPermission = 'read'
  * @param {string} requiredPermission - Required permission level ('read' or 'write')
  * @returns {Promise<boolean>} True if user has permission
  */
-async function checkFolderPermission(userId, folderPath, requiredPermission = 'read') {
+async function checkFolderPermission(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
   const user = await getCachedUser(userId);
   if (!user) {
     return false;
@@ -179,24 +180,24 @@ async function canAccessPath(userId, requestedPath) {
  * @param {function} pathExtractor - Function to extract path from req (default: req.query.path)
  * @returns {function} Express middleware function
  */
-function requirePermission(permissionType = 'read', pathExtractor = (req) => req.query.path || req.body.path) {
+function requirePermission(permissionType = PERMISSIONS.READ, pathExtractor = (req) => req.query.path || req.body.path) {
   return async (req, res, next) => {
     try {
       const path = pathExtractor(req);
       if (!path) {
-        return res.status(400).json({ error: 'Path is required' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
       }
 
       const hasPermission = await checkFilePermission(req.user.id, path, permissionType);
       
       if (!hasPermission) {
-        return res.status(403).json({ error: 'Access denied' });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
       }
 
       next();
     } catch (error) {
       console.error('Permission check error:', error);
-      res.status(500).json({ error: 'Failed to check permissions' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to check permissions' });
     }
   };
 }
@@ -208,24 +209,24 @@ function requirePermission(permissionType = 'read', pathExtractor = (req) => req
  * @param {function} pathExtractor - Function to extract path from req
  * @returns {function} Express middleware function
  */
-function requireFolderPermission(permissionType = 'read', pathExtractor = (req) => req.query.path || req.body.path) {
+function requireFolderPermission(permissionType = PERMISSIONS.READ, pathExtractor = (req) => req.query.path || req.body.path) {
   return async (req, res, next) => {
     try {
       const path = pathExtractor(req);
       if (!path) {
-        return res.status(400).json({ error: 'Path is required' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
       }
 
       const hasPermission = await checkFolderPermission(req.user.id, path, permissionType);
       
       if (!hasPermission) {
-        return res.status(403).json({ error: 'Access denied' });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
       }
 
       next();
     } catch (error) {
       console.error('Permission check error:', error);
-      res.status(500).json({ error: 'Failed to check permissions' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to check permissions' });
     }
   };
 }

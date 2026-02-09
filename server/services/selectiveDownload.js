@@ -1,5 +1,5 @@
 const path = require('path');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 
 function posixJoin(a, b) {

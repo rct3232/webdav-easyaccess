@@ -9,8 +9,9 @@
  * NOTE: Permission storage supports both "/path" and "/path/" keys for compatibility.
  */
 const path = require('path');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../models/Permission');
-const { normalizePath, getParentPath } = require('./pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 const { checkFilePermission, checkFolderPermission } = require('../middleware/permissions');
 const User = require('../models/User');
 
@@ -38,7 +39,7 @@ function isOwnerPath(user, targetPath) {
  * Direct folder permission check (slash + no-slash compatibility).
  * Uses Permission.checkPermission only (no ancestor traversal).
  */
-async function hasDirectFolderPermission(userId, folderPath, requiredPermission = 'read') {
+async function hasDirectFolderPermission(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
   const dirPath = normalizePath(folderPath, { isDirectory: true });
   const noSlashPath = normalizePath(folderPath);
 
@@ -53,7 +54,7 @@ async function hasDirectFolderPermission(userId, folderPath, requiredPermission 
  * Effective/inherited read check for folders.
  * Delegates to existing middleware logic (includes admin + owner exceptions).
  */
-async function canReadFolder(userId, folderPath, requiredPermission = 'read') {
+async function canReadFolder(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
   return await checkFolderPermission(userId, folderPath, requiredPermission);
 }
 
@@ -61,7 +62,7 @@ async function canReadFolder(userId, folderPath, requiredPermission = 'read') {
  * Effective/inherited read check for files.
  * Delegates to existing middleware logic (includes admin + owner exceptions).
  */
-async function canReadFile(userId, filePath, requiredPermission = 'read') {
+async function canReadFile(userId, filePath, requiredPermission = PERMISSIONS.READ) {
   return await checkFilePermission(userId, filePath, requiredPermission);
 }
 
@@ -71,7 +72,7 @@ async function canReadFile(userId, filePath, requiredPermission = 'read') {
 async function canWriteFolder(user, folderPath) {
   if (!user) return false;
   if (isAdminUser(user) || isOwnerPath(user, folderPath)) return true;
-  return await hasDirectFolderPermission(user.id, folderPath, 'write');
+  return await hasDirectFolderPermission(user.id, folderPath, PERMISSIONS.WRITE);
 }
 
 /**
@@ -83,7 +84,7 @@ async function canWriteFileByParent(user, filePath) {
   if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
   const normalized = normalizePath(filePath);
   const parent = getParentPath(normalized);
-  return await hasDirectFolderPermission(user.id, parent, 'write');
+  return await hasDirectFolderPermission(user.id, parent, PERMISSIONS.WRITE);
 }
 
 /**
@@ -94,7 +95,7 @@ function buildSyncWriteChecker(user, doc) {
   return (folderPath) => {
     if (!user) return false;
     if (isAdminUser(user) || isOwnerPath(user, folderPath)) return true;
-    return Permission.checkPermissionSync(doc, folderPath, 'write');
+    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE);
   };
 }
 
@@ -105,7 +106,7 @@ function buildSyncReadChecker(user, doc) {
   return (folderPath) => {
     if (!user) return false;
     if (isAdminUser(user) || isOwnerPath(user, folderPath)) return true;
-    return Permission.checkPermissionSync(doc, folderPath, 'read');
+    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.READ);
   };
 }
 
@@ -163,7 +164,7 @@ async function canGrantPermission(user, folderPath, userId) {
   }
   
   // 해당 폴더에 admin 권한이 있으면 권한 부여 가능
-  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+  return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 
 /**
@@ -201,7 +202,7 @@ async function canRevokePermission(user, folderPath, userId, targetUserId) {
   }
   
   // 해당 폴더에 admin 권한이 있으면 권한 취소 가능
-  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+  return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 
 /**
@@ -232,7 +233,7 @@ async function canViewPermissions(user, folderPath, userId) {
   }
   
   // 해당 폴더에 admin 권한이 있으면 권한 정보를 볼 수 있음
-  return await hasDirectFolderPermission(userId, folderPath, 'admin');
+  return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 
 module.exports = {

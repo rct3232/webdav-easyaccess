@@ -1,7 +1,11 @@
+const {
+  PERMISSIONS,
+  PERMISSION_REQUEST_STATUS,
+} = require('@webdav-easyaccess/shared/constants');
 const { META_ROOT } = require('./metaPaths');
 const { ensureDir, exists, readFile, writeFile } = require('./storage');
 const { withLock } = require('./locks');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 const PERMISSION_REQUESTS_PATH = `${META_ROOT}/permission_requests.json`;
 
@@ -18,14 +22,12 @@ function safeJsonParse(text) {
 }
 
 function normalizePermission(p) {
-  if (p === 'read' || p === 'write') return p;
+  if (p === PERMISSIONS.READ || p === PERMISSIONS.WRITE) return p;
   return null;
 }
 
 function normalizeStatus(s) {
-  const allowed = new Set(['pending', 'approved', 'rejected', 'cancelled']);
-  if (allowed.has(s)) return s;
-  return null;
+  return PERMISSION_REQUEST_STATUS.isValid(s) ? s : null;
 }
 
 async function ensurePermissionRequestsFile() {
@@ -133,7 +135,7 @@ async function createRequest({
       .filter(Boolean)
       .find(
         (r) =>
-          r.status === 'pending' &&
+          r.status === PERMISSION_REQUEST_STATUS.PENDING &&
           r.requester_id === requesterId &&
           r.owner_id === ownerId &&
           r.folder_path === folder_path &&
@@ -155,7 +157,7 @@ async function createRequest({
       owner_username: ownerUsername || '',
       folder_path,
       requested_permission: perm,
-      status: 'pending',
+      status: PERMISSION_REQUEST_STATUS.PENDING,
       message: typeof message === 'string' ? message : '',
       created_at: nowIso(),
       resolved_at: '',
@@ -226,8 +228,8 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     const updated = {
       ...current,
       status: nextStatus,
-      resolved_at: nextStatus === 'pending' ? '' : nowIso(),
-      resolved_by: nextStatus === 'pending' ? null : (Number.isInteger(resolvedBy) ? resolvedBy : null),
+      resolved_at: nextStatus === PERMISSION_REQUEST_STATUS.PENDING ? '' : nowIso(),
+      resolved_by: nextStatus === PERMISSION_REQUEST_STATUS.PENDING ? null : (Number.isInteger(resolvedBy) ? resolvedBy : null),
     };
 
     doc.requests[idx] = updated;
@@ -266,10 +268,10 @@ async function rejectByOwnerId(userId, resolvedBy = null) {
 
     for (let i = 0; i < doc.requests.length; i++) {
       const sanitized = sanitizeRequest(doc.requests[i]);
-      if (sanitized && sanitized.owner_id === Number(userId) && sanitized.status === 'pending') {
+      if (sanitized && sanitized.owner_id === Number(userId) && sanitized.status === PERMISSION_REQUEST_STATUS.PENDING) {
         doc.requests[i] = {
           ...sanitized,
-          status: 'rejected',
+          status: PERMISSION_REQUEST_STATUS.REJECTED,
           resolved_at: now,
           resolved_by: Number.isInteger(resolvedBy) ? resolvedBy : null,
         };

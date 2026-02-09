@@ -475,9 +475,26 @@ export const useBulkOperations = (
   const resolveBulkConflict = useCallback(async (resolution) => {
     if (!bulkConflictData) return;
 
-    const { destinationPath, retryData } = bulkConflictData;
+    const { destinationPath, retryData, conflicts } = bulkConflictData;
     setBulkConflictData(null);
-    await executeBulkOperation(destinationPath, retryData, resolution);
+
+    // When user chooses skip: exclude conflicting source paths from the operation payload
+    // so the server receives only non-conflicting files and skips redundant getConflicts.
+    let effectiveRetryData = retryData;
+    if (resolution === 'skip' && conflicts && Array.isArray(conflicts) && conflicts.length > 0) {
+      const conflictSourcePaths = new Set(
+        conflicts.map((c) => c.sourcePath).filter(Boolean)
+      );
+      const filteredPaths = (retryData.filePaths || []).filter(
+        (p) => !conflictSourcePaths.has(p)
+      );
+      effectiveRetryData = { ...retryData, filePaths: filteredPaths };
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useBulkOperations.js:resolveBulkConflict',message:'post-fix filtered',data:{originalCount:retryData.filePaths?.length,filteredCount:filteredPaths.length},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
+      // #endregion
+    }
+
+    await executeBulkOperation(destinationPath, effectiveRetryData, resolution);
     setFolderPickerOpen(false);
     setFolderPickerAction(null);
   }, [bulkConflictData, executeBulkOperation]);

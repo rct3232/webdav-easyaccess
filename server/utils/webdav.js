@@ -1,6 +1,7 @@
 const path = require('path');
-const { normalizePath, getParentPath, getBasename } = require('./pathUtils');
-const { getFileType } = require('./fileTypeUtils');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
+const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
 const { asyncLimit } = require('./asyncUtils');
 
 const clientCache = new Map();
@@ -197,7 +198,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
     if (error.message.includes('does not exist') || error.message.includes('already exists')) {
       throw error;
     }
-    if (error.status === 502 || error.response?.status === 502) {
+    if (error.status === HTTP_STATUS.BAD_GATEWAY || error.response?.status === HTTP_STATUS.BAD_GATEWAY) {
       throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
     }
     if (error.message.includes('ECONNREFUSED')) {
@@ -276,7 +277,7 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
     if (error.message.includes('does not exist') || error.message.includes('already exists')) {
       throw error;
     }
-    if (error.status === 502 || error.response?.status === 502) {
+    if (error.status === HTTP_STATUS.BAD_GATEWAY || error.response?.status === HTTP_STATUS.BAD_GATEWAY) {
       throw new Error('WebDAV server is not responding. Check if server is running and accessible.');
     }
     if (error.message.includes('ECONNREFUSED')) {
@@ -308,12 +309,12 @@ async function listDirectory(path = '/') {
     });
   } catch (error) {
     const status = error.status || error.response?.status;
-    if (status === 401 || status === 403) {
+    if (status === HTTP_STATUS.UNAUTHORIZED || status === HTTP_STATUS.FORBIDDEN) {
       const err = new Error(`WebDAV authentication failed. Check credentials in .env file. Original: ${error.message}`);
       err.status = status;
       throw err;
     }
-    if (status === 404) {
+    if (status === HTTP_STATUS.NOT_FOUND) {
       const err = new Error(`Directory not found: ${path}`);
       err.status = 404;
       throw err;
@@ -344,13 +345,13 @@ async function putFileContents(path, buffer) {
     await client.putFileContents(requestPath, buffer);
     return { success: true };
   } catch (error) {
-    if (error.status === 404 || error.response?.status === 404) {
+    if (error.status === HTTP_STATUS.NOT_FOUND || error.response?.status === HTTP_STATUS.NOT_FOUND) {
       throw new Error(`Path not found: ${path}. Please ensure the parent directory exists.`);
-    } else if (error.status === 403 || error.response?.status === 403) {
+    } else if (error.status === HTTP_STATUS.FORBIDDEN || error.response?.status === HTTP_STATUS.FORBIDDEN) {
       throw new Error(`Permission denied: Cannot upload to ${path}`);
-    } else if (error.status === 409 || error.response?.status === 409) {
+    } else if (error.status === HTTP_STATUS.CONFLICT || error.response?.status === HTTP_STATUS.CONFLICT) {
       throw new Error(`Conflict: File may already exist or parent directory is missing: ${path}`);
-    } else if (error.status === 500 || error.response?.status === 500) {
+    } else if (error.status === HTTP_STATUS.INTERNAL_SERVER_ERROR || error.response?.status === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
       throw new Error(`WebDAV server error. Check server configuration and path format. Original: ${error.message}`);
     } else if (error.message.includes('ECONNREFUSED')) {
       throw new Error(`Connection refused. Check WebDAV server URL and network connection. Original: ${error.message}`);
@@ -403,11 +404,11 @@ async function deleteFile(path, options = {}) {
     await client.deleteFile(requestPath);
     return { success: true };
   } catch (error) {
-    if (error.status === 404 || error.response?.status === 404) {
+    if (error.status === HTTP_STATUS.NOT_FOUND || error.response?.status === HTTP_STATUS.NOT_FOUND) {
       throw new Error(`File or folder not found: ${path}`);
-    } else if (error.status === 403 || error.response?.status === 403) {
+    } else if (error.status === HTTP_STATUS.FORBIDDEN || error.response?.status === HTTP_STATUS.FORBIDDEN) {
       throw new Error(`Permission denied: Cannot delete ${path}`);
-    } else if (error.status === 409 || error.response?.status === 409) {
+    } else if (error.status === HTTP_STATUS.CONFLICT || error.response?.status === HTTP_STATUS.CONFLICT) {
       throw new Error(`Directory not empty or conflict: ${path}`);
     } else if (error.message.includes('ECONNREFUSED')) {
       throw new Error(`Connection refused. Check WebDAV server URL and network connection. Original: ${error.message}`);
@@ -458,10 +459,10 @@ async function moveFile(sourcePath, destinationPath, progressCallback, overwrite
       destBase,
     });
     const status = error?.status || error?.response?.status;
-    if (status === 409 && !overwrite) {
+    if (status === HTTP_STATUS.CONFLICT && !overwrite) {
       throw new Error(`Destination already exists: ${destinationPath}`);
     }
-    if (status === 404) {
+    if (status === HTTP_STATUS.NOT_FOUND) {
       throw new Error(`Source not found: ${sourcePath}`);
     }
     return await moveFileStreamed(sourcePath, destinationPath, progressCallback);
@@ -511,10 +512,10 @@ async function copyFile(sourcePath, destinationPath, progressCallback, overwrite
       destBase,
     });
     const status = error?.status || error?.response?.status;
-    if (status === 409 && !overwrite) {
+    if (status === HTTP_STATUS.CONFLICT && !overwrite) {
       throw new Error(`Destination already exists: ${destinationPath}`);
     }
-    if (status === 404) {
+    if (status === HTTP_STATUS.NOT_FOUND) {
       throw new Error(`Source not found: ${sourcePath}`);
     }
     return await copyFileStreamed(sourcePath, destinationPath, progressCallback);
@@ -566,11 +567,11 @@ async function testConnection() {
     const status = error.status || error.response?.status;
     let message = `WebDAV connection failed: ${error.message}`;
     
-    if (status === 401) {
+    if (status === HTTP_STATUS.UNAUTHORIZED) {
       message = `WebDAV authentication failed. Verify credentials in .env file.`;
-    } else if (status === 404) {
+    } else if (status === HTTP_STATUS.NOT_FOUND) {
       message = 'WebDAV path not found. Check WEBDAV_URL in .env file.';
-    } else if (status === 403) {
+    } else if (status === HTTP_STATUS.FORBIDDEN) {
       message = 'WebDAV access forbidden. Check permissions.';
     }
     

@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 
 const envPath = path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
@@ -65,7 +66,7 @@ app.get('/api/thumbnails/:hash.:ext', (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=31536000');
     res.send(foundThumbnail.buffer);
   } else {
-    res.status(404).json({ error: 'Thumbnail not found' });
+    res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Thumbnail not found' });
   }
 });
 
@@ -111,7 +112,7 @@ app.get('/api/webdav/test', async (req, res) => {
     const result = await testConnection();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ 
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
       success: false, 
       message: `WebDAV test failed: ${error.message}` 
     });
@@ -133,14 +134,14 @@ app.get('/api/webdav/info', (req, res) => {
     }
     res.json({ url: displayUrl });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get WebDAV info' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get WebDAV info' });
   }
 });
 
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'API endpoint not found' });
     }
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });

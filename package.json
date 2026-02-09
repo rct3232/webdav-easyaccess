@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "WebDAV file management service with Google Drive-like UI",
   "main": "server/index.js",
+  "workspaces": ["client", "server", "shared"],
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",

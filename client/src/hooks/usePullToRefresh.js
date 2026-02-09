@@ -15,7 +15,6 @@ export const usePullToRefresh = (onRefresh, options = {}) => {
     threshold = 80,
     maxPullDistance = 120,
     scrollContainerRef,
-    showRefreshSuccess = false,
     onRefreshComplete,
   } = options;
 

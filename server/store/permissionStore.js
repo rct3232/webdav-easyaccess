@@ -1,3 +1,4 @@
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const {
   META_ROOT,
   PERMISSIONS_DIR,
@@ -137,8 +138,7 @@ async function getUserPermissions(userId) {
 }
 
 function permissionRank(p) {
-  const order = ['read', 'write', 'admin'];
-  const idx = order.indexOf(p);
+  const idx = PERMISSIONS.ALL.indexOf(p);
   return idx < 0 ? -1 : idx;
 }
 

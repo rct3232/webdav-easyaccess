@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { PERMISSIONS, USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const User = require('../models/User');
 const { authenticateToken, deleteAllRefreshTokensForUser } = require('../utils/auth');
 const { asyncHandler, notFoundError, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
@@ -121,7 +122,7 @@ router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) 
   
   // Grant new permissions
   for (const perm of permissions) {
-    if (perm.folderPath && perm.permission && ['read', 'write', 'admin'].includes(perm.permission)) {
+    if (perm.folderPath && perm.permission && PERMISSIONS.isValid(perm.permission)) {
       await Permission.grant(userId, perm.folderPath, perm.permission);
     }
   }

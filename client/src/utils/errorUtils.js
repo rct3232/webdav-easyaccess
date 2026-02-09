@@ -3,6 +3,7 @@
  * Provides common functions for extracting error messages
  * Note: For displaying messages, use useMessage hook instead
  */
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 
 // 에러 타입 상수
 export const ERROR_TYPES = {
@@ -16,11 +17,11 @@ export const ERROR_TYPES = {
 
 // HTTP 상태 코드별 에러 타입 매핑
 const STATUS_CODE_TO_ERROR_TYPE = {
-  404: ERROR_TYPES.FILE_NOT_FOUND,
-  500: ERROR_TYPES.FILE_NOT_FOUND, // 500도 파일/경로 미존재로 처리
-  403: ERROR_TYPES.PERMISSION_DENIED,
-  401: ERROR_TYPES.PERMISSION_DENIED,
-  409: ERROR_TYPES.DUPLICATE_FILE,
+  [HTTP_STATUS.NOT_FOUND]: ERROR_TYPES.FILE_NOT_FOUND,
+  [HTTP_STATUS.INTERNAL_SERVER_ERROR]: ERROR_TYPES.FILE_NOT_FOUND, // 500도 파일/경로 미존재로 처리
+  [HTTP_STATUS.FORBIDDEN]: ERROR_TYPES.PERMISSION_DENIED,
+  [HTTP_STATUS.UNAUTHORIZED]: ERROR_TYPES.PERMISSION_DENIED,
+  [HTTP_STATUS.CONFLICT]: ERROR_TYPES.DUPLICATE_FILE,
 };
 
 // 에러 타입별 메시지 맵

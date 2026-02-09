@@ -31,7 +31,8 @@ import { uploadMultipleFiles } from '../services/fileService';
 import { useMessage } from '../hooks/useMessage';
 import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
-import { validateFileName } from '../utils/validation';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
+import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import {
   FileList,
@@ -237,15 +238,11 @@ const FileManager = () => {
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
 
   const {
-    recentFilePathsRef,
-    pathHistoryRef,
-    processingErrorRef,
     trackRecentFileClick,
     trackPathHistory,
     clearTracking,
     clearPathHistory,
     handleRecentFileError,
-    recentFileToPreview,
     setRecentFileToPreview,
   } = useRecentFile({
     setCurrentPath,
@@ -759,9 +756,9 @@ const FileManager = () => {
       console.error('Upload error:', error);
       
       let errorMessage = error.response?.data?.error || error.message || '업로드에 실패했습니다';
-      if (error.response?.status === 403) {
+      if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
         errorMessage = '업로드 권한이 없습니다';
-      } else if (error.response?.status === 500) {
+      } else if (error.response?.status === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
         errorMessage = `서버 오류: ${errorMessage}`;
       }
       
@@ -837,7 +834,7 @@ const FileManager = () => {
           // 권한 없음: 이전 경로로 롤백
           setCurrentPath(previousPath);
           const permissionError = new Error('Permission denied');
-          permissionError.response = { status: 403 };
+          permissionError.response = { status: HTTP_STATUS.FORBIDDEN };
           throw permissionError;
         }
       } catch (error) {
@@ -881,7 +878,7 @@ const FileManager = () => {
             // handlePathClick에서 권한 체크 실패 등으로 즉시 에러 발생한 경우
             clearTracking(filePath);
             // 404 에러일 때만 최근 파일 제거
-            if (error.response?.status === 404) {
+            if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
               handleRecentFileError(error, filePath);
             } else {
               showErrorFromError(error, showError);
@@ -967,7 +964,7 @@ const FileManager = () => {
             // 부모 폴더 접근 실패 시 에러 처리
             clearTracking(normalizedParentPath);
             // 404 에러일 때만 최근 파일 제거
-            if (error.response?.status === 404) {
+            if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
               handleRecentFileError(error, filePath);
             } else {
               showErrorFromError(error, showError);

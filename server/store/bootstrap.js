@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 
 const {
   META_ROOT,
@@ -39,7 +40,7 @@ async function ensureDefaultAdmin() {
 
   // Keep compatibility with prior behavior where admin had explicit root permission
   try {
-    await permissionStore.grant(admin.id, '/', 'admin');
+    await permissionStore.grant(admin.id, '/', PERMISSIONS.ADMIN);
   } catch {
     // best-effort
   }

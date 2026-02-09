@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 
 export const AuthContext = createContext();
 
@@ -50,7 +51,7 @@ export const AuthProvider = ({ children }) => {
       (response) => response,
       (error) => {
         const status = error?.response?.status;
-        if ((status === 401 || status === 403) && sessionStorage.getItem('token')) {
+        if ((status === HTTP_STATUS.UNAUTHORIZED || status === HTTP_STATUS.FORBIDDEN) && sessionStorage.getItem('token')) {
           logout();
         }
         return Promise.reject(error);

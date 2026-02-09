@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
+import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import { ShareDialog } from '../components/dialogs';
 import { useResponsive } from '../hooks/useResponsive';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../utils/localStorage';

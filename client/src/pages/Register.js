@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { EmailNotificationMessage } from '../components/feedback';
-import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
+import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import axios from 'axios';
 
 const Register = () => {

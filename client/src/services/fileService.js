@@ -1,3 +1,4 @@
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { get, post, put } from './apiClient';
 
 const API_BASE = '/files';
@@ -107,7 +108,7 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
         continue;
       }
 
-      const isDuplicate = error.response?.status === 409;
+      const isDuplicate = error.response?.status === HTTP_STATUS.CONFLICT;
       if (!isDuplicate) {
         console.error(`Failed to upload ${fileName}:`, error);
       }

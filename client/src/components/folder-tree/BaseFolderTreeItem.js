@@ -15,6 +15,7 @@ import {
   ChevronRight as ChevronRightIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { listFiles } from '../../services/fileService';
 import { useDropToUpload } from '../../hooks/useDropToUpload';
 import { getShowHiddenFiles } from '../../utils/localStorage';
@@ -75,7 +76,7 @@ const BaseFolderTreeItem = ({
     hasWritePermission = node.hasWritePermission === true;
   } else if (sharedFoldersMap) {
     const perm = sharedFoldersMap.get(path) || sharedFoldersMap.get(path + '/');
-    hasWritePermission = perm && perm.permission === 'write';
+    hasWritePermission = perm && perm.permission === PERMISSIONS.WRITE;
   }
 
   const nodeChildren = node?.children || initialChildren;

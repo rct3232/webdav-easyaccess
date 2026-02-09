@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const userStore = require('../store/userStore');
 
 const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
@@ -72,12 +73,12 @@ async function authenticateToken(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Access token required' });
   }
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Invalid or expired token' });
   }
 
   // Stateless: no userStore/cache; token_version checked at refresh time

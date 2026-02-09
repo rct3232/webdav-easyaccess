@@ -1,4 +1,5 @@
 const express = require('express');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ router.get('/:hash.:ext', (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=31536000');
     res.send(foundThumbnail.buffer);
   } else {
-    res.status(404).json({ error: 'Thumbnail not found' });
+    res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Thumbnail not found' });
   }
 });
 

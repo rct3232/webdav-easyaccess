@@ -1,4 +1,5 @@
 import React from 'react';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import {
   Menu,
   MenuItem,
@@ -63,7 +64,7 @@ const UserSelectionMenu = ({
         .map(([targetUserId, permission]) => {
           const userName = getUserName(targetUserId);
           const canEdit = !currentIsUserBaseFolder || targetUserId !== userId;
-          const isWrite = permission === 'write';
+          const isWrite = permission === PERMISSIONS.WRITE;
           
           return (
             <MenuItem

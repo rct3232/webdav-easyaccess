@@ -1,5 +1,5 @@
 const { selectiveDelete } = require('../selectiveDelete');
-const { normalizePath } = require('../../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 function makeFakeWebdav({ dirs = [], files = [], recursiveDirDelete = false } = {}) {
   const dirSet = new Set(dirs.map((d) => normalizePath(d)));

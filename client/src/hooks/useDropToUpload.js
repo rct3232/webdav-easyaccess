@@ -220,7 +220,6 @@ export const useDropToUpload = (options = {}) => {
       isFolderMode,
       isDisabled,
       hasWritePermission,
-      path,
       onExplorerDrop,
     ]
   );

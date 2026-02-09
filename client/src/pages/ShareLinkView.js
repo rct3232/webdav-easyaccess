@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import {
   Box,
   Typography,
@@ -29,7 +30,6 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 const ShareLinkView = () => {
   const { token } = useParams();
-  const navigate = useNavigate();
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -122,9 +122,9 @@ const ShareLinkView = () => {
       setLoading(false);
     } catch (err) {
       console.error('Share link load error:', err);
-      if (err.response?.status === 404) {
+      if (err.response?.status === HTTP_STATUS.NOT_FOUND) {
         setError('공유 링크를 찾을 수 없습니다.');
-      } else if (err.response?.status === 410) {
+      } else if (err.response?.status === HTTP_STATUS.GONE) {
         setError('공유 링크가 만료되었습니다.');
       } else {
         setError(err.message || '파일을 불러올 수 없습니다.');

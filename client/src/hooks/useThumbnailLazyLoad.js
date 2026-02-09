@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { requestThumbnailsBatch } from '../services/fileService';
-import { getFileType } from '../utils/fileTypeUtils';
+import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 
 const DEBOUNCE_MS = 200;
 const ROOT_MARGIN = '100px'; // 뷰포트 밖 100px까지 미리 로드

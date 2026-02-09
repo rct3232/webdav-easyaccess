@@ -1,4 +1,5 @@
 import React from 'react';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import {
   Box,
   Button,
@@ -49,7 +50,7 @@ export default function SharedFolderPermissionList({
               <Button
                 variant="text"
                 size="small"
-                onClick={() => onCancelPendingRequest('read')}
+                onClick={() => onCancelPendingRequest(PERMISSIONS.READ)}
                 disabled={loading || ownerExists === false || ownerExists === null}
                 sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
               >
@@ -80,7 +81,7 @@ export default function SharedFolderPermissionList({
               <Button
                 variant="text"
                 size="small"
-                onClick={() => onCancelPendingRequest('write')}
+                onClick={() => onCancelPendingRequest(PERMISSIONS.WRITE)}
                 disabled={loading || ownerExists === false || ownerExists === null}
                 sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
               >

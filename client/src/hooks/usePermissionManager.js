@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 
 /**
@@ -77,8 +78,8 @@ export const usePermissionManager = ({
         const userPermMap = newMap.get(path);
         if (userPermMap) {
           const newUserPermMap = new Map(userPermMap);
-          const currentPermission = newUserPermMap.get(targetUserId) || 'read';
-          const newPermission = forcePermission || (currentPermission === 'read' ? 'write' : 'read');
+          const currentPermission = newUserPermMap.get(targetUserId) || PERMISSIONS.READ;
+          const newPermission = forcePermission || (currentPermission === PERMISSIONS.READ ? PERMISSIONS.WRITE : PERMISSIONS.READ);
           newUserPermMap.set(targetUserId, newPermission);
           newMap.set(path, newUserPermMap);
           return newPermission;

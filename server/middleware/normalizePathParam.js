@@ -3,7 +3,7 @@
  * Automatically normalizes path parameters in query, body, and params
  */
 
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 /**
  * Middleware to normalize path parameters

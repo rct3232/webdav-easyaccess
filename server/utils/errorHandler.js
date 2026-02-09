@@ -2,6 +2,7 @@
  * Centralized error handling utilities for Express routes
  * Provides asyncHandler wrapper and error handler middleware
  */
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 
 /**
  * Wraps async route handlers to automatically catch errors
@@ -34,7 +35,7 @@ function asyncHandler(fn) {
 function formatErrorResponse(error, options = {}) {
   const {
     defaultMessage = 'An error occurred',
-    defaultStatus = 500,
+    defaultStatus = HTTP_STATUS.INTERNAL_SERVER_ERROR,
   } = options;
 
   const status = error.status || error.statusCode || defaultStatus;
@@ -96,11 +97,11 @@ function errorHandler(err, req, res, next) {
   // Format error response
   const response = formatErrorResponse(err, {
     defaultMessage: 'Internal server error',
-    defaultStatus: 500,
+    defaultStatus: HTTP_STATUS.INTERNAL_SERVER_ERROR,
   });
 
   // Determine status code
-  const status = err.status || err.statusCode || 500;
+  const status = err.status || err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
 
   // Send error response
   res.status(status).json(response);
@@ -114,7 +115,7 @@ function errorHandler(err, req, res, next) {
  * @example
  * throw createError('User not found', 404);
  */
-function createError(message, status = 500) {
+function createError(message, status = HTTP_STATUS.INTERNAL_SERVER_ERROR) {
   const error = new Error(message);
   error.status = status;
   return error;

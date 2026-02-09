@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
-const { normalizePath } = require('../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { canReadFolder, canWriteFolder, hasDirectFolderPermission, isOwnerPath, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
 const requireUser = require('../middleware/requireUser');
 const normalizePathParam = require('../middleware/normalizePathParam');
@@ -16,7 +17,7 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
     throw validationError('User ID, folder path, and permission are required');
   }
 
-  if (!['read', 'write', 'admin'].includes(permission)) {
+  if (!PERMISSIONS.isValid(permission)) {
     throw validationError('Invalid permission. Must be read, write, or admin');
   }
 

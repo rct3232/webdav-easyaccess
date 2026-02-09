@@ -1,4 +1,9 @@
-import { IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, TEXT_EXTENSIONS } from '../utils/fileTypeUtils';
+import {
+  IMAGE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  TEXT_EXTENSIONS,
+} from '@webdav-easyaccess/shared/constants';
 
 export const VIEW_MODES = {
   LIST: 'list',

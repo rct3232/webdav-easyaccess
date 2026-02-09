@@ -1,5 +1,5 @@
 const Permission = require('../../models/Permission');
-const { normalizePath } = require('../../utils/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { resetTestStore, teardownTestStore, createTestUser } = require('../../test-utils');
 
 function permsToMap(permsArray) {

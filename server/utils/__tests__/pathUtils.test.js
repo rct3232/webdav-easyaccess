@@ -9,7 +9,7 @@ const {
   getBasename,
   isPathUnder,
   getParentPaths
-} = require('../pathUtils');
+} = require('@webdav-easyaccess/shared/pathUtils');
 
 describe('pathUtils', () => {
   describe('normalizePath', () => {

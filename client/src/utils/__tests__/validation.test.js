@@ -1,11 +1,11 @@
-import { 
-  validateFileName, 
-  validateEmail, 
-  validatePassword, 
-  validateUsername, 
-  validateMatch, 
-  validateRequired, 
-} from '../validation';
+import {
+  validateFileName,
+  validateEmail,
+  validatePassword,
+  validateUsername,
+  validateMatch,
+  validateRequired,
+} from '@webdav-easyaccess/shared/validation';
 
 describe('validation utilities', () => {
   describe('validateFileName', () => {

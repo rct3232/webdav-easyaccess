@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
 import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
 import { getRecentFiles } from '../utils/recentFiles';
+import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 import axios from 'axios';
@@ -127,7 +128,7 @@ export const useFileManager = (user, options = {}) => {
           }
         } catch (error) {
           // 403 에러 등 권한 관련 에러 처리
-          if (error.response?.status === 403) {
+          if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
             console.error('Access denied:', error);
             if (requestId === requestIdRef.current) {
               setFiles([]);
@@ -148,7 +149,7 @@ export const useFileManager = (user, options = {}) => {
         }
       }
       // 403 에러가 아닌 경우에만 빈 배열로 설정
-      if (error.response?.status !== 403 && requestId === requestIdRef.current) {
+      if (error.response?.status !== HTTP_STATUS.FORBIDDEN && requestId === requestIdRef.current) {
         setFiles([]);
       }
     } finally {

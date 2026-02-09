@@ -11,7 +11,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import { validateRequired } from '../utils/validation';
+import { validateRequired } from '@webdav-easyaccess/shared/validation';
 import axios from 'axios';
 
 const Login = () => {

@@ -8,6 +8,7 @@
  * instead of calling User.findById(req.user.id) in each route handler.
  */
 
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const User = require('../models/User');
 const { notFoundError } = require('../utils/errorHandler');
 
@@ -27,7 +28,7 @@ const { notFoundError } = require('../utils/errorHandler');
 async function requireUser(req, res, next) {
   try {
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
     }
 
     // Skip userStore if authenticateToken already set req.user.full (e.g. from cache)

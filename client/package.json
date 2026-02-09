@@ -4,6 +4,7 @@
   "description": "React frontend for WebDAV EasyAccess",
   "private": true,
   "dependencies": {
+    "@webdav-easyaccess/shared": "1.0.0",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.14.19",
@@ -52,7 +53,7 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(msw|@mswjs|@bundled-es-modules|@open-draft|until-async|strict-event-emitter|axios)/)"
+      "node_modules/(?!(msw|@bundled-es-modules|@open-draft|until-async|strict-event-emitter|axios)/)"
     ]
   }
 }

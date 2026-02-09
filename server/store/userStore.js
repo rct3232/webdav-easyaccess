@@ -1,3 +1,4 @@
+const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
   META_ROOT,
   USERS_DIR,
@@ -169,7 +170,7 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
       email: emailNorm,
       email_hash: emailHash,
       password: passwordHash,
-      status: isAdmin ? 'approved' : 'pending',
+      status: isAdmin ? USER_STATUS.APPROVED : USER_STATUS.PENDING,
       is_admin: isAdmin ? 1 : 0,
       // Used for server-side token invalidation (logout-all / password change, etc.)
       token_version: 0,

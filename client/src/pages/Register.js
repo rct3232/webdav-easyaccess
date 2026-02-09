@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import EmailNotificationMessage from '../components/EmailNotificationMessage';
+import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '../utils/validation';
 import axios from 'axios';
 
 const Register = () => {
@@ -47,13 +48,29 @@ const Register = () => {
     setError('');
     setSuccess(false);
 
-    if (password !== confirmPassword) {
-      setError('비밀번호가 일치하지 않습니다.');
+    const requiredError = validateRequired(username, '사용자명') || validateRequired(email, '이메일');
+    if (requiredError) {
+      setError(requiredError);
       return;
     }
-
-    if (password.length < 6) {
-      setError('비밀번호는 최소 6자 이상이어야 합니다.');
+    const usernameError = validateUsername(username);
+    if (usernameError) {
+      setError(usernameError);
+      return;
+    }
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+    const matchError = validateMatch(password, confirmPassword, '비밀번호');
+    if (matchError) {
+      setError(matchError);
+      return;
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 

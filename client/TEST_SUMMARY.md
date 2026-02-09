@@ -26,12 +26,11 @@ This document summarizes the full test results for the WebDAV EasyAccess client 
 - **useFileManagerNavigation**: Tested optimistic path updates and rollback logic on permission failure.
 - **useSelection**: 100% coverage for multi-file selection logic.
 - **useDialog**: Generic state management for various UI dialogs.
-- **useFileUpload**: Handles multi-file uploads with progress tracking and conflict resolution.
 - **useInfiniteScroll**: Efficiently manages long file lists.
 - **useLongPress**: Supports touch-based multi-selection for mobile.
 
 ### 3. Utilities & Services
-- **pathUtils / permissionUtils / userUtils**: Comprehensive tests for path normalization, permission level checks, and user folder detection.
+- **pathUtils / userUtils**: Comprehensive tests for path normalization and user folder detection.
 - **validation**: Validates file/folder names, emails, and passwords.
 - **searchUtils / format**: Tested search filtering logic and data formatting (file size, dates).
 - **recentFiles**: Logic for tracking and retrieving recently accessed files.

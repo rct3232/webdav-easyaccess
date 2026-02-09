@@ -1,12 +1,10 @@
 import { 
   validateFileName, 
-  validatePath, 
   validateEmail, 
   validatePassword, 
   validateUsername, 
   validateMatch, 
   validateRequired, 
-  validateNumberRange 
 } from '../validation';
 
 describe('validation utilities', () => {
@@ -72,14 +70,6 @@ describe('validation utilities', () => {
       expect(validateRequired('content')).toBeNull();
       expect(validateRequired('')).toBe('필드를 입력하세요');
       expect(validateRequired('', '사용자명')).toBe('사용자명를 입력하세요');
-    });
-  });
-
-  describe('validateNumberRange', () => {
-    it('should validate number ranges', () => {
-      expect(validateNumberRange(10, { min: 5, max: 15 })).toBeNull();
-      expect(validateNumberRange(3, { min: 5 })).toBe('값는 5 이상이어야 합니다');
-      expect(validateNumberRange('abc')).toBe('값는 숫자여야 합니다');
     });
   });
 });

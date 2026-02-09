@@ -52,7 +52,7 @@ describe('CreateFolderDialog', () => {
     const createButton = screen.getByText('만들기');
     fireEvent.click(createButton);
 
-    expect(screen.getByText('폴더 이름을 입력하세요')).toBeInTheDocument();
+    expect(screen.getByText('이름을 입력하세요')).toBeInTheDocument();
     expect(createFolder).not.toHaveBeenCalled();
   });
 

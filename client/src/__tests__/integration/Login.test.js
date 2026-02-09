@@ -29,11 +29,14 @@ describe('Login Integration Tests', () => {
 
   it('renders login page correctly', async () => {
     renderWithProviders(<Login />);
-    
-    expect(screen.getByLabelText(/사용자명/i)).toBeInTheDocument();
+
+    // Wait for settings to load and form to be visible
+    await waitFor(() => {
+      expect(screen.getByLabelText(/사용자명/i)).toBeInTheDocument();
+    });
     expect(screen.getByLabelText(/비밀번호/i)).toBeInTheDocument();
-    
-    // Wait for settings to load and show registration link
+
+    // Registration link when enabled
     await waitFor(() => {
       expect(screen.getByText(/회원가입/i)).toBeInTheDocument();
     });
@@ -46,6 +49,9 @@ describe('Login Integration Tests', () => {
       authContextValue: { login: mockLogin }
     });
 
+    await waitFor(() => {
+      expect(screen.getByLabelText(/사용자명/i)).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByLabelText(/사용자명/i), { target: { value: 'testuser' } });
     fireEvent.change(screen.getByLabelText(/비밀번호/i), { target: { value: 'password123' } });
     fireEvent.click(screen.getByRole('button', { name: '로그인' }));
@@ -66,6 +72,9 @@ describe('Login Integration Tests', () => {
       authContextValue: { login: mockLogin }
     });
 
+    await waitFor(() => {
+      expect(screen.getByLabelText(/사용자명/i)).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByLabelText(/사용자명/i), { target: { value: 'wronguser' } });
     fireEvent.change(screen.getByLabelText(/비밀번호/i), { target: { value: 'wrongpass' } });
     fireEvent.click(screen.getByRole('button', { name: '로그인' }));
@@ -86,6 +95,9 @@ describe('Login Integration Tests', () => {
       authContextValue: { login: mockLogin }
     });
 
+    await waitFor(() => {
+      expect(screen.getByLabelText(/사용자명/i)).toBeInTheDocument();
+    });
     fireEvent.change(screen.getByLabelText(/사용자명/i), { target: { value: 'pendinguser' } });
     fireEvent.change(screen.getByLabelText(/비밀번호/i), { target: { value: 'pass123' } });
     fireEvent.click(screen.getByRole('button', { name: '로그인' }));

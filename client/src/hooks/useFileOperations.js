@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { downloadFile, downloadMultipleFiles, renameFile } from '../services/fileService';
 import { getErrorMessage } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';

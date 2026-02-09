@@ -6,17 +6,7 @@ import {
 import { createFolder } from '../services/fileService';
 import BaseDialog from './BaseDialog';
 import { useFormState } from '../hooks/useFormState';
-
-// Validator for folder name
-const validateFolderName = (value) => {
-  if (!value || !value.trim()) {
-    return '폴더 이름을 입력하세요';
-  }
-  if (value.includes('/') || value.includes('\\')) {
-    return '폴더 이름에 경로 구분자를 사용할 수 없습니다';
-  }
-  return null;
-};
+import { validateFileName } from '../utils/validation';
 
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
   const {
@@ -29,7 +19,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
     getFieldError,
   } = useFormState(
     { folderName: '' },
-    { folderName: validateFolderName },
+    { folderName: validateFileName },
     {
       onSubmit: async (formValues) => {
         const finalFolderName = formValues.folderName.trim();

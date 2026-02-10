@@ -6,7 +6,7 @@ const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { createDirectory, listDirectory, pathExists } = require('../utils/webdav');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canReadFolder, canWriteFolder, isOwnerPath } = require('../utils/permissionPolicy');
+const { canReadFolder, canWriteFolder, isOwnerPath, getHomeOwnerUserIdForPath } = require('../utils/permissionPolicy');
 const { isMetaPath } = require('../store/metaPaths');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
 const requireUser = require('../middleware/requireUser');
@@ -57,7 +57,17 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
     console.error('Failed to grant permission after folder creation:', permError);
     // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
   }
-  
+
+  // 홈 디렉토리 소유자에게 해당 폴더에 대한 ADMIN 부여
+  try {
+    const homeOwnerId = await getHomeOwnerUserIdForPath(folderPath);
+    if (homeOwnerId != null) {
+      await Permission.grant(homeOwnerId, folderPath, PERMISSIONS.ADMIN);
+    }
+  } catch (permError) {
+    console.error('Failed to grant home owner admin permission after folder creation:', permError);
+  }
+
   res.json({ message: 'Folder created successfully', path: folderPath });
 }));
 

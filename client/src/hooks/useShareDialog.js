@@ -187,6 +187,9 @@ export function useShareDialog({
             newFolderPermissions.get(userBaseFolder).set(userId, PERMISSIONS.WRITE);
           }
           setFolderPermissions(newFolderPermissions);
+          const deepCopied = new Map();
+          newFolderPermissions.forEach((userPermMap, fp) => deepCopied.set(fp, new Map(userPermMap)));
+          setInitialFolderPermissions(deepCopied);
           setLoadingPermissions(false);
         } else {
           setLoadingPermissions(false);

@@ -38,6 +38,7 @@ import {
   Add as AddIcon,
   CleaningServices as CleaningServicesIcon,
 } from '@mui/icons-material';
+import CategoryIcon from '@mui/icons-material/Category';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
@@ -61,6 +62,8 @@ const AdminDashboard = () => {
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => getShowHiddenFiles());
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
+  const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
+  const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoadingIds, setActionLoadingIds] = useState(new Set());
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -145,6 +148,32 @@ const AdminDashboard = () => {
       setMessage({ type: 'error', text: error.response?.data?.error || 'Orphaned 데이터 정리 실패' });
     } finally {
       setCleanupLoading(false);
+    }
+  };
+
+  const handlePermissionCleanup = async () => {
+    setPermissionCleanupConfirmOpen(false);
+    setPermissionCleanupLoading(true);
+    try {
+      const res = await axios.post('/api/admin/permissions/ensure-home-owner-admin', {});
+      const { updatedUsers, upgradedPaths, grantedPaths, errors } = res.data;
+      const total = (upgradedPaths || 0) + (grantedPaths || 0);
+      let messageText;
+      if (total === 0 && (!errors || errors.length === 0)) {
+        messageText = '보정할 권한이 없습니다.';
+      } else if (errors?.length) {
+        messageText = `권한 정리 완료. ${updatedUsers || 0}명 사용자, ${total}개 경로 보정. 일부 실패.`;
+      } else {
+        messageText = `권한 정리 완료. ${updatedUsers || 0}명 사용자, ${total}개 경로 보정.`;
+      }
+      setMessage({
+        type: errors?.length ? 'warning' : (total > 0 ? 'success' : 'info'),
+        text: messageText,
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error.response?.data?.error || '권한 정리에 실패했습니다.' });
+    } finally {
+      setPermissionCleanupLoading(false);
     }
   };
 
@@ -668,6 +697,24 @@ const AdminDashboard = () => {
                 {cleanupLoading ? <CircularProgress size={24} /> : <CleaningServicesIcon />}
               </IconButton>
             </Box>
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1">
+                  권한 정리
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  각 사용자 홈 경로에 admin 권한이 누락된 경우 부여합니다.
+                </Typography>
+              </Box>
+              <IconButton
+                onClick={() => setPermissionCleanupConfirmOpen(true)}
+                disabled={permissionCleanupLoading}
+                color="primary"
+                sx={{ ml: 2 }}
+              >
+                {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
+              </IconButton>
+            </Box>
           </Paper>
         )}
       </Box>
@@ -723,6 +770,31 @@ const AdminDashboard = () => {
           </Button>
           <Button onClick={handleCleanupOrphaned} color="error" variant="contained" autoFocus>
             정리
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 권한 정리 확인 다이얼로그 */}
+      <Dialog
+        open={permissionCleanupConfirmOpen}
+        onClose={() => setPermissionCleanupConfirmOpen(false)}
+        fullScreen={isMobile}
+      >
+        <DialogTitle>권한 정리 확인</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            각 사용자 홈 경로에 admin 권한이 누락된 경우 부여합니다.
+            <br />
+            <br />
+            권한 정리를 실행할까요?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPermissionCleanupConfirmOpen(false)} color="primary">
+            취소
+          </Button>
+          <Button onClick={handlePermissionCleanup} color="primary" variant="contained" autoFocus>
+            실행
           </Button>
         </DialogActions>
       </Dialog>

@@ -13,6 +13,7 @@ import {
   GroupAdd as GroupAddIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
 
 const ShareFolderTree = ({
@@ -165,12 +166,15 @@ const ShareFolderTree = ({
           }).length;
           
           const isChanged = hasPermissionChanged(node.path);
+          const isFolderWithAdminPermission = isAdminMode && (currentFolderUserPerms.get(userId) === PERMISSIONS.ADMIN);
           
           return (
             <Box
               component="button"
+              title={isFolderWithAdminPermission ? '사용자 소유의 경로입니다' : undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isFolderWithAdminPermission) return;
                 setFolderMenuAnchor(e.currentTarget);
                 setFolderMenuPath(node.path);
               }}
@@ -181,14 +185,15 @@ const ShareFolderTree = ({
                 borderRadius: '20px',
                 backgroundColor: 'grey.300',
                 color: 'text.primary',
-                cursor: 'pointer',
+                cursor: isFolderWithAdminPermission ? 'default' : 'pointer',
                 flexShrink: 0,
                 height: 28,
                 pl: 1,
                 pr: 0,
                 gap: 0.5,
                 overflow: 'visible',
-                '&:hover': {
+                ...(isFolderWithAdminPermission && { opacity: 0.55 }),
+                '&:hover': isFolderWithAdminPermission ? {} : {
                   backgroundColor: 'grey.400',
                 }
               }}
@@ -205,7 +210,7 @@ const ShareFolderTree = ({
                   width: 28,
                   height: 28,
                   borderRadius: '50%',
-                  backgroundColor: 'success.main',
+                  backgroundColor: isFolderWithAdminPermission ? 'grey.600' : 'success.main',
                   color: 'white',
                   display: 'flex',
                   alignItems: 'center',

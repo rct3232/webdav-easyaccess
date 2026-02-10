@@ -408,6 +408,21 @@ router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res
   }
 });
 
+// Ensure home-owner admin for all users (권한정리)
+router.post('/permissions/ensure-home-owner-admin', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { ensureHomeOwnerAdminForAllUsers } = require('../utils/ensureHomeOwnerAdmin');
+    const result = await ensureHomeOwnerAdminForAllUsers();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Ensure home-owner admin error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      error: '권한 정리 중 오류가 발생했습니다.',
+      message: error.message,
+    });
+  }
+});
+
 // Clean up orphaned data
 router.post('/cleanup/orphaned', authenticateToken, isAdmin, async (req, res) => {
   try {

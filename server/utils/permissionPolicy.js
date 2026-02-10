@@ -36,6 +36,21 @@ function isOwnerPath(user, targetPath) {
 }
 
 /**
+ * Get the user id of the home directory owner for a path.
+ * Paths under /{username}/ have that user as "home owner".
+ * @param {string} folderPath - Folder or file path (e.g. /alice/foo)
+ * @returns {Promise<number|null>} User id if the first path segment matches a username, else null
+ */
+async function getHomeOwnerUserIdForPath(folderPath) {
+  const normalized = normalizePath(folderPath);
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  const username = segments[0];
+  const user = await User.findByUsername(username);
+  return user ? user.id : null;
+}
+
+/**
  * Direct folder permission check (slash + no-slash compatibility).
  * Uses Permission.checkPermission only (no ancestor traversal).
  */
@@ -239,6 +254,7 @@ async function canViewPermissions(user, folderPath, userId) {
 module.exports = {
   isAdminUser,
   isOwnerPath,
+  getHomeOwnerUserIdForPath,
   hasDirectFolderPermission,
   canReadFolder,
   canReadFile,

@@ -27,6 +27,7 @@ const {
   canWriteFileByParent,
   hasDirectFolderPermission,
   isOwnerPath,
+  getHomeOwnerUserIdForPath,
   buildSyncWriteChecker,
   buildSyncReadChecker,
   buildSyncWriteFileByParentChecker,
@@ -436,6 +437,16 @@ async function runBulkJobWorker(jobId) {
                   console.error('Failed to rewrite permissions after move:', permError);
                 }
               }
+              try {
+                for (const dir of result.createdDirs || []) {
+                  const homeOwnerId = await getHomeOwnerUserIdForPath(dir);
+                  if (homeOwnerId != null) {
+                    await Permission.grant(homeOwnerId, dir, PERMISSIONS.ADMIN);
+                  }
+                }
+              } catch (permError) {
+                console.error('Failed to grant home owner admin permission after directory move:', permError);
+              }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
                 result.skippedPaths.forEach(p => pushResult({ path: p, status: 'skippedByConflict' }));
@@ -546,6 +557,16 @@ async function runBulkJobWorker(jobId) {
                 }
               } catch (permError) {
                 console.error('Failed to grant executor permissions after copy:', permError);
+              }
+              try {
+                for (const dir of result.createdDirs || []) {
+                  const homeOwnerId = await getHomeOwnerUserIdForPath(dir);
+                  if (homeOwnerId != null) {
+                    await Permission.grant(homeOwnerId, dir, PERMISSIONS.ADMIN);
+                  }
+                }
+              } catch (permError) {
+                console.error('Failed to grant home owner admin permissions after copy:', permError);
               }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -851,6 +872,16 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
                     // Continue with other owners even if one fails
                   }
                 }
+
+                // Grant home directory owner ADMIN on this folder
+                try {
+                  const homeOwnerId = await getHomeOwnerUserIdForPath(currentPath);
+                  if (homeOwnerId != null) {
+                    await Permission.grant(homeOwnerId, currentPath, PERMISSIONS.ADMIN);
+                  }
+                } catch (homeOwnerPermError) {
+                  console.error('Failed to grant home owner admin permission for intermediate directory:', homeOwnerPermError);
+                }
                 
               } catch (permError) {
                 console.error('Failed to grant permissions for intermediate directory:', permError);
@@ -933,11 +964,20 @@ router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkM
 
   await moveFile(oldPath, newPath, null, false, { isDirectory: isDir });
   if (isDir) {
+    const normalizedNew = normalizePath(newPath);
     try {
-      const normalizedNew = normalizePath(newPath);
       await Permission.rewritePermissionsForAllUsers([{ fromPrefix: normalizedOld, toPrefix: normalizedNew }]);
     } catch (permError) {
       console.error('Failed to rewrite permissions after directory rename:', permError);
+    }
+    // 새 경로에 홈 소유자 ADMIN 부여 (기존 경로에 권한 엔트리가 없었던 경우에도 일관되게 적용)
+    try {
+      const homeOwnerId = await getHomeOwnerUserIdForPath(normalizedNew);
+      if (homeOwnerId != null) {
+        await Permission.grant(homeOwnerId, normalizedNew, PERMISSIONS.ADMIN);
+      }
+    } catch (homeOwnerPermError) {
+      console.error('Failed to grant home owner admin permission after directory rename:', homeOwnerPermError);
     }
   }
   res.json({ message: 'File renamed successfully', path: newPath });

@@ -102,7 +102,7 @@ export const usePermissionManager = ({
   const hasPermissionChanged = useCallback((folderPath) => {
     const currentPerms = folderPermissions.get(folderPath) || new Map();
     const initialPerms = initialFolderPermissions.get(folderPath) || new Map();
-    
+
     if (currentPerms.size !== initialPerms.size) return true;
     
     for (const [uid, permission] of currentPerms.entries()) {

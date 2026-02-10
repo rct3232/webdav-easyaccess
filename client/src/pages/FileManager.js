@@ -1865,6 +1865,10 @@ const FileManager = () => {
           setContextMenu(null);
           openSharedFolderManageDialog(file);
         }}
+        onProperties={(file) => {
+          setContextMenu(null);
+          openPropertiesDialog(file);
+        }}
         onDelete={(file) => {
           setContextMenu(null);
           openBulkDeleteDialog([file.path]);

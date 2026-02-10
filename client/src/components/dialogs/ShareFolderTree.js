@@ -192,7 +192,7 @@ const ShareFolderTree = ({
                 pr: 0,
                 gap: 0.5,
                 overflow: 'visible',
-                ...(isFolderWithAdminPermission && { opacity: 0.55 }),
+                ...(isFolderWithAdminPermission ? { opacity: 0.55 } : {}),
                 '&:hover': isFolderWithAdminPermission ? {} : {
                   backgroundColor: 'grey.400',
                 }

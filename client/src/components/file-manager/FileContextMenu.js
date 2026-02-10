@@ -13,6 +13,7 @@ import {
   DriveFileMove as MoveIcon,
   Share as ShareIcon,
   Settings as SettingsIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 const FileContextMenu = ({
@@ -27,6 +28,7 @@ const FileContextMenu = ({
   onCopy,
   onShare,
   onManageShared,
+  onProperties,
   onDelete,
 }) => {
   // 공유 버튼 표시 조건:
@@ -136,6 +138,14 @@ const FileContextMenu = ({
                 <SettingsIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>공유 관리</ListItemText>
+            </MenuItem>
+          )}
+          {onProperties && (
+            <MenuItem onClick={() => handleAction(onProperties)}>
+              <ListItemIcon>
+                <InfoIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>속성</ListItemText>
             </MenuItem>
           )}
           {onDelete && (

@@ -89,10 +89,10 @@ describe('Permissions Middleware', () => {
       expect(hasPermission).toBe(false);
     });
 
-    it('should check parent paths recursively', async () => {
+    it('should not allow read via ancestor (direct-only: parent folder only)', async () => {
       await grantTestPermission(regularUser.id, '/parent', 'read');
       const hasPermission = await checkFilePermission(regularUser.id, '/parent/child/grandchild/file.txt', 'read');
-      expect(hasPermission).toBe(true);
+      expect(hasPermission).toBe(false);
     });
 
     it('should allow user to access files in their own folder', async () => {
@@ -134,10 +134,10 @@ describe('Permissions Middleware', () => {
       expect(hasPermission).toBe(true);
     });
 
-    it('should allow user with parent folder permission', async () => {
+    it('should not allow read via ancestor (direct-only: no parent traversal)', async () => {
       await grantTestPermission(regularUser.id, '/parent', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/parent/child', 'read');
-      expect(hasPermission).toBe(true);
+      expect(hasPermission).toBe(false);
     });
 
     it('should deny user without permission', async () => {
@@ -165,10 +165,10 @@ describe('Permissions Middleware', () => {
       expect(hasPermission).toBe(true);
     });
 
-    it('should check deeply nested paths', async () => {
+    it('should allow read only for direct permission (no root inheritance)', async () => {
       await grantTestPermission(regularUser.id, '/', 'read');
       const hasPermission = await checkFolderPermission(regularUser.id, '/a/b/c/d/e', 'read');
-      expect(hasPermission).toBe(true);
+      expect(hasPermission).toBe(false);
     });
   });
 
@@ -378,34 +378,32 @@ describe('Permissions Middleware', () => {
       await grantTestPermission(regularUser.id, '/project', 'write');
     });
 
-    it('should work with various path formats', async () => {
-      // Test basic path
+    it('should work with various path formats (direct-only: parent folder permission)', async () => {
+      // File's parent is /project -> has permission
       const hasPermission1 = await checkFilePermission(regularUser.id, '/project/file.txt', 'read');
       expect(hasPermission1).toBe(true);
 
-      // Test nested path
+      // File's parent is /project/subfolder -> no direct permission
       const hasPermission2 = await checkFilePermission(regularUser.id, '/project/subfolder/file.txt', 'read');
-      expect(hasPermission2).toBe(true);
+      expect(hasPermission2).toBe(false);
 
-      // Test another nested path
+      // File's parent is /project/a/b -> no direct permission
       const hasPermission3 = await checkFilePermission(regularUser.id, '/project/a/b/file.txt', 'write');
-      expect(hasPermission3).toBe(true);
+      expect(hasPermission3).toBe(false);
     });
 
-    it('should handle complex permission hierarchies', async () => {
-      // Grant specific permissions at different levels
+    it('should handle complex permission hierarchies (direct-only)', async () => {
       await grantTestPermission(regularUser.id, '/root', 'read');
       await grantTestPermission(regularUser.id, '/root/level1', 'write');
 
-      // Should have write permission (includes read)
+      // File's parent is /root/level1 -> has write
       const hasWrite = await checkFilePermission(regularUser.id, '/root/level1/file.txt', 'write');
       expect(hasWrite).toBe(true);
 
-      // Should have read permission at root level
+      // File's parent is /root/other -> no direct permission (read at /root does not apply)
       const hasRead = await checkFilePermission(regularUser.id, '/root/other/file.txt', 'read');
-      expect(hasRead).toBe(true);
+      expect(hasRead).toBe(false);
 
-      // Should not have write permission in root/other
       const hasWriteOther = await checkFilePermission(regularUser.id, '/root/other/file.txt', 'write');
       expect(hasWriteOther).toBe(false);
     });

@@ -96,17 +96,7 @@ export const handlers = [
   http.post('/api/folders/create', () => {
     return HttpResponse.json({ success: true });
   }),
-  
-  // 폴더 목록
-  http.get('/api/folders/list', () => {
-    return HttpResponse.json({
-      folders: [
-        { path: '/', name: '/', type: 'directory' },
-        { path: '/testuser', name: 'testuser', type: 'directory' }
-      ]
-    });
-  }),
-  
+
   // 권한 확인
   http.get('/api/permissions/check', () => {
     return HttpResponse.json({

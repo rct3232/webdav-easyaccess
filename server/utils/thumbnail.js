@@ -2,6 +2,10 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+const THUMBNAIL_TOKEN_SECRET = process.env.THUMBNAIL_TOKEN_SECRET || process.env.JWT_SECRET || 'thumbnail-secret';
+const THUMBNAIL_TOKEN_EXPIRY = process.env.THUMBNAIL_TOKEN_EXPIRY || '15m';
 const os = require('os');
 const { execFile } = require('child_process');
 const ffmpeg = require('fluent-ffmpeg');
@@ -119,6 +123,25 @@ async function initFfmpegOnce() {
 
 function getThumbnailHash(webdavPath) {
   return crypto.createHash('md5').update(webdavPath).digest('hex');
+}
+
+function signThumbnailToken(webdavPath) {
+  const hash = getThumbnailHash(webdavPath);
+  return jwt.sign(
+    { h: hash },
+    THUMBNAIL_TOKEN_SECRET,
+    { expiresIn: THUMBNAIL_TOKEN_EXPIRY }
+  );
+}
+
+function verifyThumbnailToken(token, hash) {
+  if (!token || typeof token !== 'string') return false;
+  try {
+    const decoded = jwt.verify(token, THUMBNAIL_TOKEN_SECRET);
+    return decoded && decoded.h === hash;
+  } catch {
+    return false;
+  }
 }
 
 function getCachedThumbnail(webdavPath) {
@@ -292,7 +315,8 @@ function getThumbnailUrl(webdavPath) {
   const cached = getCachedThumbnail(webdavPath);
   if (cached) {
     const hash = getThumbnailHash(webdavPath);
-    return `/api/thumbnails/${hash}.${cached.extension}`;
+    const token = signThumbnailToken(webdavPath);
+    return `/api/thumbnails/${hash}.${cached.extension}?token=${encodeURIComponent(token)}`;
   }
   return null;
 }
@@ -429,6 +453,8 @@ module.exports = {
   ensureThumbnail,
   ensureThumbnailsBatch,
   getThumbnailHash,
+  signThumbnailToken,
+  verifyThumbnailToken,
   initFfmpegOnce,
   getFfmpegStatus,
   thumbnailCache,

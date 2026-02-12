@@ -3,8 +3,8 @@
  *
  * Goals:
  * - Keep owner-folder exception: anything under /{username}/ is readable/writable for that user.
- * - Read checks use inherited/effective permissions (parent traversal).
- * - Write checks for shared paths use direct permissions (no ancestor fallback), unless admin/owner.
+ * - Read checks are direct-only (no inheritance). Write checks remain direct-only for shared paths.
+ * - Admin/owner bypass applies to both read and write.
  *
  * NOTE: Permission storage supports both "/path" and "/path/" keys for compatibility.
  */
@@ -66,16 +66,16 @@ async function hasDirectFolderPermission(userId, folderPath, requiredPermission 
 }
 
 /**
- * Effective/inherited read check for folders.
- * Delegates to existing middleware logic (includes admin + owner exceptions).
+ * Direct-only read check for folders (no ancestor traversal).
+ * Delegates to middleware (includes admin + owner exceptions).
  */
 async function canReadFolder(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
   return await checkFolderPermission(userId, folderPath, requiredPermission);
 }
 
 /**
- * Effective/inherited read check for files.
- * Delegates to existing middleware logic (includes admin + owner exceptions).
+ * Direct-only read check for files (parent folder only; no ancestor traversal).
+ * Delegates to middleware (includes admin + owner exceptions).
  */
 async function canReadFile(userId, filePath, requiredPermission = PERMISSIONS.READ) {
   return await checkFilePermission(userId, filePath, requiredPermission);
@@ -116,6 +116,10 @@ function buildSyncWriteChecker(user, doc) {
 
 /**
  * Build a synchronous read checker (path) => boolean using a preloaded permission doc.
+ * Direct-only read (no ancestor traversal). Use for batch/list only.
+ * @param {Object} user - User object (is_admin, username)
+ * @param {Object} doc - Permission doc from getPermissionDoc(userId)
+ * @returns {(folderPath: string) => boolean}
  */
 function buildSyncReadChecker(user, doc) {
   return (folderPath) => {

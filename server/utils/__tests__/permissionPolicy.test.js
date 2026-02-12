@@ -34,12 +34,14 @@ describe('permissionPolicy', () => {
     expect(await canReadFile(al.id, '/alx/sub/file.txt')).toBe(false);
   });
 
-  it('read checks are effective/inherited', async () => {
+  it('read checks are direct-only (no inheritance)', async () => {
     const bob = await createTestUser({ username: 'bob', email: 'bob@example.com' });
     await grantTestPermission(bob.id, '/shared', 'read');
 
-    expect(await canReadFolder(bob.id, '/shared/sub', 'read')).toBe(true);
-    expect(await canReadFile(bob.id, '/shared/sub/file.txt', 'read')).toBe(true);
+    expect(await canReadFolder(bob.id, '/shared', 'read')).toBe(true);
+    expect(await canReadFile(bob.id, '/shared/file.txt', 'read')).toBe(true);
+    expect(await canReadFolder(bob.id, '/shared/sub', 'read')).toBe(false);
+    expect(await canReadFile(bob.id, '/shared/sub/file.txt', 'read')).toBe(false);
   });
 
   it('write checks on shared folders are direct-only (no ancestor fallback)', async () => {

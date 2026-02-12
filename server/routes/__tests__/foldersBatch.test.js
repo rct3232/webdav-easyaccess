@@ -117,33 +117,6 @@ describe('Folders and Batch Operations Routes', () => {
     });
   });
 
-  describe('GET /api/folders/list (폴더 목록)', () => {
-    it('lists folder contents', async () => {
-      const mockItems = [
-        { basename: 'file1.txt', type: 'file', size: 100 },
-        { basename: 'subfolder', type: 'directory' },
-      ];
-      webdav.listDirectory.mockResolvedValue(mockItems);
-
-      const response = await request(app)
-        .get('/api/folders/list')
-        .set('Authorization', `Bearer ${userToken}`)
-        .query({ path: '/testuser' });
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveLength(2);
-    });
-
-    it('denies access to other user folders', async () => {
-      const response = await request(app)
-        .get('/api/folders/list')
-        .set('Authorization', `Bearer ${userToken}`)
-        .query({ path: '/otheruser' });
-
-      expect(response.status).toBe(403);
-    });
-  });
-
   async function waitForJob(app, jobId, token, maxWait = 3000) {
     const start = Date.now();
     while (Date.now() - start < maxWait) {

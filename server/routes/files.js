@@ -621,43 +621,23 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
 router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   let folderPath = normalizePath(req.query.path || '/');
   const user = req.user.full;
+
+  let hasPermission = await canReadFolder(req.user.id, folderPath, PERMISSIONS.READ);
+  if (!hasPermission) {
+    const userFolder = `/${user.username}`;
+    if (folderPath === '/' || folderPath === '') {
+      folderPath = userFolder;
+    } else if (!folderPath.startsWith(userFolder)) {
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        error: 'Access denied',
+        message: '이 폴더에 대한 접근 권한이 없습니다.'
+      });
+    }
+  }
+
   const doc = await Permission.getPermissionDoc(req.user.id);
 
-    // 권한 체크 (doc 1회 로드 후 동기 판별)
-    let hasPermission =
-      user.is_admin ||
-      isOwnerPath(user, folderPath) ||
-      Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.READ);
-    if (!hasPermission && folderPath !== '/') {
-      const pathParts = folderPath.split('/').filter(Boolean);
-      for (let i = pathParts.length; i > 0; i--) {
-        const parentPath = '/' + pathParts.slice(0, i).join('/');
-        if (Permission.checkPermissionSync(doc, parentPath, PERMISSIONS.READ)) {
-          hasPermission = true;
-          break;
-        }
-      }
-    }
-    if (!hasPermission && folderPath !== '/') {
-      hasPermission = Permission.checkPermissionSync(doc, '/', PERMISSIONS.READ);
-    }
-    if (!hasPermission) {
-      if (user.is_admin) {
-        // 권한 체크 건너뛰기
-      } else {
-        const userFolder = `/${user.username}`;
-        if (folderPath === '/' || folderPath === '') {
-          folderPath = userFolder;
-        } else if (!folderPath.startsWith(userFolder)) {
-          return res.status(HTTP_STATUS.FORBIDDEN).json({
-            error: 'Access denied',
-            message: '이 폴더에 대한 접근 권한이 없습니다.'
-          });
-        }
-      }
-    }
-
-    let items;
+  let items;
     try {
       items = await listDirectory(folderPath);
     } catch (error) {
@@ -1052,37 +1032,51 @@ router.post('/bulk-operation/:jobId/cancel', authenticateToken, requireUser, asy
   res.json({ message: 'Cancel requested', jobId });
 }));
 
-router.get('/thumbnail/:hash', asyncHandler(async (req, res) => {
+router.get('/thumbnail/:hash', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { hash } = req.params;
   const { thumbnailCache, getThumbnailHash } = require('../utils/thumbnail');
-  
+
+  let foundPath = null;
   let foundThumbnail = null;
   for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
     if (getThumbnailHash(webdavPath) === hash) {
+      foundPath = webdavPath;
       foundThumbnail = thumbnail;
       break;
     }
   }
-  
-  if (foundThumbnail) {
-    res.setHeader('Content-Type', foundThumbnail.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-    res.send(foundThumbnail.buffer);
-  } else {
+
+  if (!foundThumbnail) {
     throw notFoundError('Thumbnail not found');
   }
+
+  const canRead = await canReadFile(req.user.id, foundPath, PERMISSIONS.READ);
+  if (!canRead) {
+    throw forbiddenError('Access denied');
+  }
+
+  res.setHeader('Content-Type', foundThumbnail.mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
+  res.send(foundThumbnail.buffer);
 }));
 
 router.post('/thumbnails/batch', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { paths } = req.body;
-  
+
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
     throw validationError('Paths array is required');
   }
-  
+
+  const allowedPaths = [];
+  for (const p of paths) {
+    if (typeof p !== 'string') continue;
+    const canRead = await canReadFile(req.user.id, p, PERMISSIONS.READ);
+    if (canRead) allowedPaths.push(p);
+  }
+
   const { ensureThumbnailsBatch } = require('../utils/thumbnail');
-  const results = await ensureThumbnailsBatch(paths);
-  
+  const results = await ensureThumbnailsBatch(allowedPaths);
+
   res.json({ thumbnails: results });
 }));
 

@@ -49,27 +49,6 @@ const { getDataDir } = require('./utils/paths');
 const dataDir = getDataDir();
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-app.get('/api/thumbnails/:hash.:ext', (req, res) => {
-  const { hash, ext } = req.params;
-  const { thumbnailCache, getThumbnailHash } = require('./utils/thumbnail');
-  
-  let foundThumbnail = null;
-  for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
-    if (getThumbnailHash(webdavPath) === hash) {
-      foundThumbnail = thumbnail;
-      break;
-    }
-  }
-  
-  if (foundThumbnail && foundThumbnail.extension === ext) {
-    res.setHeader('Content-Type', foundThumbnail.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-    res.send(foundThumbnail.buffer);
-  } else {
-    res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Thumbnail not found' });
-  }
-});
-
 const clientBuildPath = path.join(__dirname, '../client/build');
 if (fs.existsSync(clientBuildPath)) {
   app.use(express.static(clientBuildPath));

@@ -5,7 +5,7 @@
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
-const { normalizePath, getParentPath, getParentPaths } = require('@webdav-easyaccess/shared/pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 
 const userCache = new Map(); // userId -> { user, expiresAt }
 const USER_CACHE_TTL_MS =
@@ -34,9 +34,8 @@ function isOwnerPathSafe(user, targetPath) {
 }
 
 /**
- * Check if user has permission to access a file
- * Checks the file's parent directory permissions
- * 
+ * Check if user has permission to access a file (direct-only: file's parent folder only).
+ *
  * @param {number} userId - User ID
  * @param {string} filePath - File path to check
  * @param {string} requiredPermission - Required permission level ('read' or 'write')
@@ -48,51 +47,30 @@ async function checkFilePermission(userId, filePath, requiredPermission = PERMIS
     return false;
   }
 
-  // Admin has all permissions
   if (user.is_admin) {
     return true;
   }
 
   const folderPath = getParentPath(filePath);
   const normalizedFolderPath = normalizePath(folderPath, { isDirectory: true });
-  
-  // Check exact path permission
+
   let hasPermission = await Permission.checkPermission(userId, normalizedFolderPath, requiredPermission);
-  
-  // Check without trailing slash for backward compatibility
   if (!hasPermission && folderPath !== '/') {
     hasPermission = await Permission.checkPermission(userId, folderPath, requiredPermission);
   }
-  
-  // Check parent paths
-  if (!hasPermission && normalizedFolderPath !== '/') {
-    const parentPaths = getParentPaths(normalizedFolderPath);
-    for (const parentPath of parentPaths) {
-      const parentDirPath = normalizePath(parentPath, { isDirectory: true });
-      hasPermission = await Permission.checkPermission(userId, parentDirPath, requiredPermission);
-      if (!hasPermission && parentPath !== '/') {
-        hasPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
-      }
-      if (hasPermission) {
-        break;
-      }
-    }
-  }
-  
-  // Check if it's user's own folder
+
   if (!hasPermission) {
     if (isOwnerPathSafe(user, normalizedFolderPath) || isOwnerPathSafe(user, folderPath)) {
       hasPermission = true;
     }
   }
-  
+
   return hasPermission;
 }
 
 /**
- * Check if user has permission to access a folder
- * Checks parent folders recursively
- * 
+ * Check if user has permission to access a folder (direct-only; no ancestor traversal).
+ *
  * @param {number} userId - User ID
  * @param {string} folderPath - Folder path to check
  * @param {string} requiredPermission - Required permission level ('read' or 'write')
@@ -104,43 +82,23 @@ async function checkFolderPermission(userId, folderPath, requiredPermission = PE
     return false;
   }
 
-  // Admin has all permissions
   if (user.is_admin) {
     return true;
   }
 
   const normalizedPath = normalizePath(folderPath, { isDirectory: true });
 
-  // Check exact path permission
   let hasPermission = await Permission.checkPermission(userId, normalizedPath, requiredPermission);
-
-  // Check without trailing slash for backward compatibility
   if (!hasPermission && folderPath !== '/') {
     hasPermission = await Permission.checkPermission(userId, normalizePath(folderPath), requiredPermission);
   }
-  
-  // Check parent paths
-  if (!hasPermission && normalizedPath !== '/') {
-    const parentPaths = getParentPaths(normalizedPath);
-    for (const parentPath of parentPaths) {
-      const parentDirPath = normalizePath(parentPath, { isDirectory: true });
-      hasPermission = await Permission.checkPermission(userId, parentDirPath, requiredPermission);
-      if (!hasPermission && parentPath !== '/') {
-        hasPermission = await Permission.checkPermission(userId, parentPath, requiredPermission);
-      }
-      if (hasPermission) {
-        break;
-      }
-    }
-  }
-  
-  // Check if it's user's own folder
+
   if (!hasPermission) {
     if (isOwnerPathSafe(user, normalizedPath)) {
       hasPermission = true;
     }
   }
-  
+
   return hasPermission;
 }
 

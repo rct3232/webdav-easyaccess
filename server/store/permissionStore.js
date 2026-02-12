@@ -365,11 +365,12 @@ function checkFilePermissionSync(doc, filePath, requiredPermission) {
   return checkPermissionSync(doc, parentPath, requiredPermission);
 }
 
-async function getFolderPermissions(folderPath) {
+async function getFolderPermissions(folderPath, filePath) {
   await ensureDirs();
   const folder = normalizeWebdavPath(folderPath);
   const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
   const results = [];
+  const normalizedFile = filePath ? normalizeFilePath(filePath) : null;
 
   for (const ent of entries) {
     if (!ent.basename || !ent.basename.endsWith('.json')) continue;
@@ -379,13 +380,18 @@ async function getFolderPermissions(folderPath) {
     if (!perm) continue;
     const user = await userStore.findById(userId);
     if (!user) continue;
-    results.push({
+    const item = {
       id: user.id,
       username: user.username,
       email: user.email,
       is_admin: user.is_admin,
       permission: perm,
-    });
+    };
+    if (normalizedFile != null) {
+      const fp = doc.file_permissions && typeof doc.file_permissions === 'object' ? doc.file_permissions : {};
+      item.file_permission = fp[normalizedFile] ?? null;
+    }
+    results.push(item);
   }
 
   return results;

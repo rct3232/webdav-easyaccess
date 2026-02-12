@@ -37,8 +37,8 @@ class Permission {
     return await permissionStore.checkPermissions(userId, paths, requiredPermission);
   }
 
-  static async getFolderPermissions(folderPath) {
-    return await permissionStore.getFolderPermissions(folderPath);
+  static async getFolderPermissions(folderPath, filePath) {
+    return await permissionStore.getFolderPermissions(folderPath, filePath);
   }
 
   static async hasPermissionsInPath(folderPath) {

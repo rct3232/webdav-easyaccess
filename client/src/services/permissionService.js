@@ -14,12 +14,13 @@ export const getUserPermissions = async (userId) => {
  * 폴더별 권한 목록 조회
  * @param {string} path - 폴더 경로
  * @param {boolean} includeSubfolders - 하위 폴더 포함 여부
+ * @param {string} [filePath] - 파일 경로 (지정 시 각 항목에 file_permission 포함)
  * @returns {Promise<Array>} 권한 배열
  */
-export const getFolderPermissions = async (path, includeSubfolders = false) => {
-  const response = await get('/permissions/folder', {
-    params: { path, includeSubfolders: includeSubfolders ? 'true' : 'false' },
-  });
+export const getFolderPermissions = async (path, includeSubfolders = false, filePath) => {
+  const params = { path, includeSubfolders: includeSubfolders ? 'true' : 'false' };
+  if (filePath != null && filePath !== '') params.filePath = filePath;
+  const response = await get('/permissions/folder', { params });
   return response.data;
 };
 

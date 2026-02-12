@@ -45,6 +45,30 @@ const PERMISSION_OPTIONS = [
   { value: 'revoke', label: '회수' },
 ];
 
+function permissionRank(p) {
+  const idx = PERMISSIONS.ALL.indexOf(p);
+  return idx < 0 ? -1 : idx;
+}
+
+/**
+ * 파일 공유 시: 경로와 동일 + 경로보다 높은 권한만 옵션으로 (회수 없음).
+ * 소유자(admin)는 선택 불가. 경로 권한이 소유자면 소유자 라벨만 표시.
+ */
+function getFilePermissionOptions(pathPermission) {
+  const path = pathPermission ?? PERMISSIONS.READ;
+  if (path === PERMISSIONS.ADMIN) {
+    return [{ value: PERMISSIONS.ADMIN, label: PERMISSION_LABELS[PERMISSIONS.ADMIN] }];
+  }
+  const rank = permissionRank(path);
+  const options = [{ value: path, label: '경로와 동일' }];
+  PERMISSIONS.ALL.forEach((perm) => {
+    if (perm !== PERMISSIONS.ADMIN && permissionRank(perm) > rank) {
+      options.push({ value: perm, label: PERMISSION_LABELS[perm] || perm });
+    }
+  });
+  return options;
+}
+
 /**
  * Recursively collect all subfolder paths under a folder.
  */
@@ -114,15 +138,30 @@ const ShareTargetDialog = ({
     setLoading(true);
     try {
       const pathToQuery = isDirectory ? targetPath : getParentPath(targetPath);
-      const data = await getFolderPermissions(pathToQuery, false);
+      const filePathParam = isDirectory ? undefined : targetPath;
+      const data = await getFolderPermissions(pathToQuery, false, filePathParam);
       const list = (data || [])
         .filter((p) => !p.is_admin)
-        .map((p) => ({
-          id: p.id,
-          username: p.username || '',
-          email: p.email || '',
-          permission: p.permission || PERMISSIONS.READ,
-        }));
+        .map((p) => {
+          if (isDirectory) {
+            return {
+              id: p.id,
+              username: p.username || '',
+              email: p.email || '',
+              permission: p.permission || PERMISSIONS.READ,
+            };
+          }
+          const pathPermission = p.permission || PERMISSIONS.READ;
+          const filePermission = p.file_permission ?? null;
+          return {
+            id: p.id,
+            username: p.username || '',
+            email: p.email || '',
+            pathPermission,
+            filePermission,
+            permission: filePermission ?? pathPermission,
+          };
+        });
       setAccessList(list);
       setInitialAccessList(list.map((u) => ({ ...u })));
     } catch (err) {
@@ -162,21 +201,31 @@ const ShareTargetDialog = ({
   const addUser = useCallback((u) => {
     setAccessList((prev) => {
       if (prev.some((x) => x.id === u.id)) return prev;
-      return [...prev, { id: u.id, username: u.username, email: u.email || '', permission: PERMISSIONS.READ }];
+      if (isDirectory) {
+        return [...prev, { id: u.id, username: u.username, email: u.email || '', permission: PERMISSIONS.READ }];
+      }
+      return [...prev, {
+        id: u.id,
+        username: u.username,
+        email: u.email || '',
+        pathPermission: undefined,
+        filePermission: null,
+        permission: PERMISSIONS.READ,
+      }];
     });
     setSearchQuery('');
     setSearchOpen(false);
-  }, []);
+  }, [isDirectory]);
 
   const setUserPermission = useCallback((userId, permission) => {
-    if (permission === 'revoke') {
+    if (isDirectory && permission === 'revoke') {
       setAccessList((prev) => prev.filter((x) => x.id !== userId));
       return;
     }
     setAccessList((prev) =>
       prev.map((x) => (x.id === userId ? { ...x, permission } : x))
     );
-  }, []);
+  }, [isDirectory]);
 
   const handleSave = useCallback(async () => {
     if (!targetPath) return;
@@ -207,23 +256,24 @@ const ShareTargetDialog = ({
           }
         }
       } else {
-        for (const uid of initialIds) {
-          if (!currentMap.has(uid)) {
+        for (const u of accessList) {
+          const initial = initialAccessList.find((x) => x.id === u.id);
+          if (u.permission === (u.pathPermission ?? PERMISSIONS.READ) && initial?.filePermission == null) {
+            continue;
+          }
+          if (u.permission === (u.pathPermission ?? PERMISSIONS.READ) && initial?.filePermission != null) {
             try {
-              await revokeFilePermission({ userId: uid, filePath: targetPath });
+              await revokeFilePermission({ userId: u.id, filePath: targetPath });
             } catch (e) {
               console.error('Revoke file failed:', e);
             }
+            continue;
           }
-        }
-        for (const u of accessList) {
-          const perm = u.permission;
-          const had = initialAccessList.find((x) => x.id === u.id);
           try {
-            if (had) {
-              await updateFilePermission({ userId: u.id, filePath: targetPath, permission: perm });
+            if (initial) {
+              await updateFilePermission({ userId: u.id, filePath: targetPath, permission: u.permission });
             } else {
-              await grantFilePermission({ userId: u.id, filePath: targetPath, permission: perm });
+              await grantFilePermission({ userId: u.id, filePath: targetPath, permission: u.permission });
             }
           } catch (e) {
             console.error('Grant/update file failed:', e);
@@ -362,15 +412,19 @@ const ShareTargetDialog = ({
                           value={u.permission === PERMISSIONS.ADMIN ? PERMISSIONS.ADMIN : u.permission}
                           onChange={(e) => setUserPermission(u.id, e.target.value)}
                           displayEmpty
-                          disabled={u.permission === PERMISSIONS.ADMIN}
-                          renderValue={(v) => (v === PERMISSIONS.ADMIN ? PERMISSION_LABELS[PERMISSIONS.ADMIN] : PERMISSION_LABELS[v] || v)}
+                          disabled={(isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)}
+                          renderValue={(v) => {
+                            if (v === PERMISSIONS.ADMIN) return PERMISSION_LABELS[PERMISSIONS.ADMIN];
+                            if (!isDirectory && v === (u.pathPermission ?? PERMISSIONS.READ)) return '경로와 동일';
+                            return PERMISSION_LABELS[v] || v;
+                          }}
                           variant="standard"
                           disableUnderline
                           IconComponent={() => null}
                           sx={{
                             color: 'text.secondary',
                             fontSize: '0.875rem',
-                            cursor: u.permission === PERMISSIONS.ADMIN ? 'default' : 'pointer',
+                            cursor: (isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN) ? 'default' : 'pointer',
                             padding: 0,
                             textAlign: 'right',
                             backgroundColor: 'transparent',
@@ -397,16 +451,23 @@ const ShareTargetDialog = ({
                             },
                           }}
                         >
-                          {u.permission === PERMISSIONS.ADMIN && (
+                          {((isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)) && (
                             <MenuItem value={PERMISSIONS.ADMIN} disabled>
                               {PERMISSION_LABELS[PERMISSIONS.ADMIN]}
                             </MenuItem>
                           )}
-                          {PERMISSION_OPTIONS.map((opt) => (
-                            <MenuItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </MenuItem>
-                          ))}
+                          {isDirectory
+                            ? PERMISSION_OPTIONS.map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </MenuItem>
+                              ))
+                            : u.pathPermission !== PERMISSIONS.ADMIN &&
+                              getFilePermissionOptions(u.pathPermission).map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </MenuItem>
+                              ))}
                         </Select>
                       </FormControl>
                     </ListItem>

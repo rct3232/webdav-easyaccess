@@ -167,9 +167,10 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
       folder_path: normalizePath(perm.folder_path)
     }));
   } else {
-    // 해당 폴더만
-    permissions = await Permission.getFolderPermissions(folderPath);
-    
+    // 해당 폴더만 (파일 공유 시 filePath로 해당 파일 독립권한 포함)
+    const filePath = req.query.filePath || undefined;
+    permissions = await Permission.getFolderPermissions(folderPath, filePath);
+
     // 반환된 권한의 경로도 정규화 (끝에 / 제거)
     permissions = permissions.map(perm => ({
       ...perm,

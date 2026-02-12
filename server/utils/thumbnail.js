@@ -180,6 +180,7 @@ async function generateImageThumbnail(filePath, webdavPath) {
     
     try {
       const sharpInstance = sharp(buffer)
+        .rotate()
         .resize(MAX_SIZE, MAX_SIZE, {
           fit: 'inside',
           withoutEnlargement: true,

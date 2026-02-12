@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import axios from 'axios';
+import { getUserPermissions } from '../services/permissionService';
 import { listFiles, checkPermission } from '../services/fileService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath, getParentPath } from '../utils/pathUtils';
@@ -47,8 +47,8 @@ export function useFolderPicker({
     setLoading(true);
     try {
       if (path === '/__shared__') {
-        const response = await axios.get(`/api/permissions/user/${user?.id}`);
-        const sharedFoldersData = filterOutUserOwnFolders(response.data, user);
+        const data = await getUserPermissions(user?.id);
+        const sharedFoldersData = filterOutUserOwnFolders(data || [], user);
         const permissionPaths = new Map();
         sharedFoldersData.forEach(perm => {
           permissionPaths.set(normalizePath(perm.folder_path), perm);
@@ -92,9 +92,9 @@ export function useFolderPicker({
   const loadSharedFolders = useCallback(async () => {
     if (!user?.id || user.is_admin) return;
     try {
-      const response = await axios.get(`/api/permissions/user/${user.id}`);
-      const data = Array.isArray(response.data) ? response.data : [];
-      const filtered = filterOutUserOwnFolders(data, user);
+      const data = await getUserPermissions(user.id);
+      const arr = Array.isArray(data) ? data : [];
+      const filtered = filterOutUserOwnFolders(arr, user);
       const permissionPaths = new Map();
       filtered.forEach(perm => permissionPaths.set(normalizePath(perm.folder_path), perm));
       setSharedPermissionPaths(new Set(permissionPaths.keys()));

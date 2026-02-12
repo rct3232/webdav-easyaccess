@@ -1,9 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import MobileBreadcrumb from '../mobile/MobileBreadcrumb';
-import axios from 'axios';
+import { getUserPermissions } from '../../services/permissionService';
 
-jest.mock('axios');
+jest.mock('../../services/permissionService', () => ({
+  getUserPermissions: jest.fn(),
+}));
 
 describe('MobileBreadcrumb', () => {
   const mockOnPathClick = jest.fn();
@@ -12,7 +14,7 @@ describe('MobileBreadcrumb', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    axios.get.mockResolvedValue({ data: [] });
+    getUserPermissions.mockResolvedValue([]);
   });
 
   it('renders home chip for home path', () => {

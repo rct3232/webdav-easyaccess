@@ -6,7 +6,7 @@ import { getRecentFiles } from '../utils/recentFiles';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
-import axios from 'axios';
+import { getUserPermissions } from '../services/permissionService';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError } = options;
@@ -72,8 +72,8 @@ export const useFileManager = (user, options = {}) => {
         }
       } else if (targetPath === '/__shared__') {
         // 공유된 폴더 목록을 가져옴
-        const response = await axios.get(`/api/permissions/user/${user?.id}`);
-        const sharedFolders = filterOutUserOwnFolders(response.data, user);
+        const data = await getUserPermissions(user?.id);
+        const sharedFolders = filterOutUserOwnFolders(data || [], user);
         
         // 권한이 직접 부여된 경로를 정규화된 경로로 저장
         const permissionPaths = new Map();
@@ -107,7 +107,8 @@ export const useFileManager = (user, options = {}) => {
             size: 0,
             lastmodified: null,
             hasReadPermission: true,
-            hasWritePermission: perm.permission === 'write' || perm.permission === 'admin'
+            hasWritePermission: perm.permission === 'write' || perm.permission === 'admin',
+            hasAdminPermission: perm.permission === 'admin'
           };
         });
         
@@ -119,9 +120,26 @@ export const useFileManager = (user, options = {}) => {
           const data = await listFiles(targetPath);
           // 숨김 파일 필터링 (옵션이 꺼져있으면 isHidden === true인 항목 제외)
           const showHiddenFiles = getShowHiddenFiles();
-          const filteredData = showHiddenFiles 
+          let filteredData = showHiddenFiles 
             ? data 
             : data.filter(item => !item.isHidden);
+          // 비관리자: 폴더별 hasAdminPermission 보강 (공유 버튼 표시용 - admin 권한이 있을 때만)
+          if (user && !user.is_admin && filteredData.some(item => item.type === 'directory')) {
+            try {
+              const perms = await getUserPermissions(user.id);
+              const adminPrefixes = (perms || [])
+                .filter(p => p.permission === 'admin')
+                .map(p => normalizePath(p.folder_path));
+              filteredData = filteredData.map(item => {
+                if (item.type !== 'directory' || !item.path) return item;
+                const np = normalizePath(item.path);
+                const hasAdmin = adminPrefixes.some(ap => np === ap || np.startsWith(ap + '/'));
+                return { ...item, hasAdminPermission: hasAdmin };
+              });
+            } catch (permErr) {
+              console.error('[useFileManager] Failed to load permissions for hasAdminPermission:', permErr);
+            }
+          }
           // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
           if (requestId === requestIdRef.current) {
             setFiles(filteredData);

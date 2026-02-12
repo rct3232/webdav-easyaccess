@@ -3,12 +3,14 @@ import { renderWithProviders, screen, waitFor, fireEvent } from '../../test-util
 import FolderTree from '../folder-tree/FolderTree';
 import { listFiles } from '../../services/fileService';
 import { getRecentFiles, onRecentFilesChange } from '../../utils/recentFiles';
-import axios from 'axios';
-
-jest.mock('axios');
+import { getUserPermissions } from '../../services/permissionService';
 
 jest.mock('../../services/fileService', () => ({
   listFiles: jest.fn(),
+}));
+
+jest.mock('../../services/permissionService', () => ({
+  getUserPermissions: jest.fn(),
 }));
 
 jest.mock('../../utils/recentFiles', () => ({
@@ -39,7 +41,7 @@ describe('FolderTree Component', () => {
     listFiles.mockResolvedValue([]);
     getRecentFiles.mockResolvedValue([]);
     onRecentFilesChange.mockReturnValue(() => {}); // Explicitly return a function
-    axios.get.mockResolvedValue({ data: [] });
+    getUserPermissions.mockResolvedValue([]);
   });
 
   it('renders home directory for regular user', async () => {
@@ -112,11 +114,9 @@ describe('FolderTree Component', () => {
   });
 
   it('loads shared folders for regular user', async () => {
-    axios.get.mockResolvedValue({
-      data: [
-        { folder_path: '/other/shared', permission: 'read' }
-      ]
-    });
+    getUserPermissions.mockResolvedValue([
+      { folder_path: '/other/shared', permission: 'read' }
+    ]);
 
     renderWithProviders(<FolderTree {...defaultProps} />);
 

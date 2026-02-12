@@ -12,7 +12,7 @@ import {
   Close as CloseIcon,
   Download as DownloadIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { getFileBlob } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
@@ -96,15 +96,7 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
     setError(null);
 
     try {
-      const response = await axios.get('/api/files/download', {
-        params: { 
-          path: file.path,
-          inline: 'true'
-        },
-        responseType: 'blob',
-      });
-
-      const blob = response.data;
+      const blob = await getFileBlob(file.path, { inline: true });
       const filename = file.name || file.basename;
       const fileType = getFileType(filename);
 

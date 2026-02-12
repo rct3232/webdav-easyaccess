@@ -10,6 +10,22 @@ export const listFiles = async (path = '/') => {
   return response.data;
 };
 
+/**
+ * 파일 blob 조회 (미리보기 등)
+ * @param {string} filePath - 파일 경로
+ * @param {Object} options - { inline: boolean }
+ * @returns {Promise<Blob>}
+ */
+export const getFileBlob = async (filePath, options = {}) => {
+  const params = { path: filePath };
+  if (options.inline) params.inline = 'true';
+  const response = await get(`${API_BASE}/download`, {
+    params,
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
 export const downloadFile = async (filePath) => {
   const response = await get(`${API_BASE}/download`, {
     params: { path: filePath },

@@ -12,7 +12,7 @@ import {
 import { getRecentFiles, onRecentFilesChange } from '../../utils/recentFiles';
 import { normalizePath } from '../../utils/pathUtils';
 import { getUserBaseFolder, filterOutUserOwnFolders } from '../../utils/userUtils';
-import axios from 'axios';
+import { getUserPermissions } from '../../services/permissionService';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 import SharedFoldersSection from './SharedFoldersSection';
 import RecentFilesSection from './RecentFilesSection';
@@ -62,9 +62,8 @@ const FolderTree = ({
     if (!user || !user.id || user.is_admin) return;
     
     try {
-      const response = await axios.get(`/api/permissions/user/${user.id}`);
-      
-      const filtered = filterOutUserOwnFolders(response.data, user);
+      const data = await getUserPermissions(user.id);
+      const filtered = filterOutUserOwnFolders(data || [], user);
       setSharedFolders(filtered);
     } catch (error) {
       console.error('Failed to load shared folders:', error);

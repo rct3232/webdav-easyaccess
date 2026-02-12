@@ -76,25 +76,6 @@ router.put('/:id/email', authenticateToken, asyncHandler(async (req, res) => {
   res.json({ message: 'Email updated successfully' });
 }));
 
-// Get user permissions (admin can view any user's permissions, users can view their own)
-router.get('/:id/permissions', authenticateToken, asyncHandler(async (req, res) => {
-  const userId = parseInt(req.params.id);
-  const requestingUser = await User.findById(req.user.id);
-  
-  if (!requestingUser) {
-    throw notFoundError('User not found');
-  }
-  
-  // 관리자는 모든 사용자의 권한을 볼 수 있고, 일반 사용자는 자신의 권한만 볼 수 있음
-  if (!requestingUser.is_admin && userId !== req.user.id) {
-    throw forbiddenError('Access denied');
-  }
-  
-  const Permission = require('../models/Permission');
-  const permissions = await Permission.getUserPermissions(userId);
-  res.json(permissions);
-}));
-
 // Update user permissions (bulk) - admin can update any user's permissions, users can update their own (with restrictions)
 router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) => {
   const userId = parseInt(req.params.id);

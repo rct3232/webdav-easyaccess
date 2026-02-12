@@ -1,10 +1,9 @@
 import React from 'react';
 import { renderWithProviders, screen, fireEvent, waitFor } from '../../test-utils';
 import Register from '../../pages/Register';
-import axios from 'axios';
+import * as settingsService from '../../services/settingsService';
 
-// Mock axios
-jest.mock('axios');
+jest.mock('../../services/settingsService');
 
 // Mock navigate
 const mockNavigate = jest.fn();
@@ -17,14 +16,7 @@ jest.mock('react-router-dom', () => ({
 describe('Registration Integration Tests (A3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Default mock for settings
-    axios.get.mockImplementation((url) => {
-      if (url === '/api/settings/public') {
-        return Promise.resolve({ data: { email_enabled: false } });
-      }
-      return Promise.reject(new Error('Not found'));
-    });
+    settingsService.getPublicSettings.mockResolvedValue({ email_enabled: false });
   });
 
   describe('회원가입 폼 렌더링', () => {

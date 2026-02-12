@@ -12,7 +12,7 @@ import {
 import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { get } from '../services/apiClient';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../hooks/useResponsive';
 import { getPublicShareLinkInfo, getPublicShareLinkPreviewUrl, getPublicShareLinkDownloadUrl } from '../services/shareLinkService';
@@ -97,11 +97,8 @@ const ShareLinkView = () => {
       setLinkInfo(info);
 
       // 미리보기 로드
-      const previewUrl = getPublicShareLinkPreviewUrl(token);
-      const response = await axios.get(previewUrl, {
-        responseType: 'blob',
-      });
-
+      const previewPath = `/share/${token}/preview`;
+      const response = await get(previewPath, { responseType: 'blob' });
       const blob = response.data;
       const fileType = info.fileType;
 

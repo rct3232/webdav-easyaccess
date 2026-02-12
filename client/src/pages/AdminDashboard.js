@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import * as adminService from '../services/adminService';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import { ShareDialog } from '../components/dialogs';
 import { useResponsive } from '../hooks/useResponsive';
@@ -72,8 +72,8 @@ const AdminDashboard = () => {
 
   const loadPendingUsers = async () => {
     try {
-      const response = await axios.get('/api/admin/users/pending');
-      setPendingUsers(response.data);
+      const data = await adminService.getPendingUsers();
+      setPendingUsers(data);
     } catch (error) {
       console.error('Failed to load pending users:', error);
     }
@@ -81,8 +81,8 @@ const AdminDashboard = () => {
 
   const loadAllUsers = async () => {
     try {
-      const response = await axios.get('/api/admin/users');
-      setUsers(response.data);
+      const data = await adminService.getUsers();
+      setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
     }
@@ -90,8 +90,8 @@ const AdminDashboard = () => {
 
   const loadSettings = async () => {
     try {
-      const response = await axios.get('/api/admin/settings');
-      setTempSettings(response.data);
+      const data = await adminService.getSettings();
+      setTempSettings(data);
       setHasSettingsChanges(false);
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -108,7 +108,7 @@ const AdminDashboard = () => {
   const handleSaveSettings = async () => {
     setSaveSettingsLoading(true);
     try {
-      await axios.put('/api/admin/settings', tempSettings);
+      await adminService.updateSettings(tempSettings);
       setMessage({ type: 'success', text: '설정이 저장되었습니다.' });
       await loadSettings();
     } catch (error) {
@@ -123,8 +123,8 @@ const AdminDashboard = () => {
     setCleanupConfirmOpen(false);
     setCleanupLoading(true);
     try {
-      const res = await axios.post('/api/admin/cleanup/orphaned', {});
-      const { results } = res.data;
+      const res = await adminService.cleanupOrphaned();
+      const { results } = res;
       
       const totalCleaned = results.deletedPermissionFiles + 
                           results.deletedUserFiles + 
@@ -155,8 +155,8 @@ const AdminDashboard = () => {
     setPermissionCleanupConfirmOpen(false);
     setPermissionCleanupLoading(true);
     try {
-      const res = await axios.post('/api/admin/permissions/ensure-home-owner-admin', {});
-      const { updatedUsers, upgradedPaths, grantedPaths, errors } = res.data;
+      const res = await adminService.ensureHomeOwnerAdmin();
+      const { updatedUsers, upgradedPaths, grantedPaths, errors } = res;
       const total = (upgradedPaths || 0) + (grantedPaths || 0);
       let messageText;
       if (total === 0 && (!errors || errors.length === 0)) {
@@ -192,7 +192,7 @@ const AdminDashboard = () => {
   const handleApprove = async (userId, username) => {
     setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
-      await axios.post(`/api/admin/users/${userId}/approve`);
+      await adminService.approveUser(userId);
       setMessage({ type: 'success', text: `${username} 계정이 승인되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
@@ -212,7 +212,7 @@ const AdminDashboard = () => {
   const handleReject = async (userId, username) => {
     setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
-      await axios.post(`/api/admin/users/${userId}/reject`);
+      await adminService.rejectUser(userId);
       setMessage({ type: 'success', text: `${username} 계정이 거절되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
@@ -237,7 +237,7 @@ const AdminDashboard = () => {
     const { userId, username } = deleteDialog;
     setDeleteLoading(true);
     try {
-      await axios.delete(`/api/admin/users/${userId}`);
+      await adminService.deleteUser(userId);
       setDeleteDialog({ open: false, userId: null, username: '' });
       setMessage({ type: 'success', text: `${username} 계정이 삭제되었습니다.` });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
@@ -295,7 +295,7 @@ const AdminDashboard = () => {
 
     setCreateUserLoading(true);
     try {
-      await axios.post('/api/admin/users', {
+      await adminService.createUser({
         username: newUser.username,
         email: newUser.email,
         password: newUser.password,

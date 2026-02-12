@@ -81,9 +81,14 @@ apiClient.interceptors.response.use(
       }
 
       // No refresh token or refresh failed: clear and redirect to login
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      // Exception: do NOT redirect when the failed request was login/register - let the page show the error
+      const isAuthAttempt = typeof originalRequest?.url === 'string' &&
+        (originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/register'));
+      if (!isAuthAttempt) {
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('refreshToken');
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     }
 

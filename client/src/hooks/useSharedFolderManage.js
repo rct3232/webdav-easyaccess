@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { revokePermission } from '../services/permissionService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { checkPermission } from '../services/fileService';
 import {
@@ -186,9 +186,7 @@ export function useSharedFolderManage({
     if (!user?.id || !folderPath) return;
     setLoading(true);
     try {
-      await axios.delete('/api/permissions/revoke', {
-        params: { userId: user.id, folderPath, includeSubfolders: 'true' },
-      });
+      await revokePermission({ userId: user.id, folderPath, includeSubfolders: true });
       if (onMessage) {
         onMessage({
           show: true,

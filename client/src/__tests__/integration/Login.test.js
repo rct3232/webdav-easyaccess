@@ -1,10 +1,9 @@
 import React from 'react';
 import { renderWithProviders, screen, fireEvent, waitFor } from '../../test-utils';
 import Login from '../../pages/Login';
-import axios from 'axios';
+import * as settingsService from '../../services/settingsService';
 
-// Mock axios
-jest.mock('axios');
+jest.mock('../../services/settingsService');
 
 // Create a mock navigate function
 const mockNavigate = jest.fn();
@@ -17,14 +16,7 @@ jest.mock('react-router-dom', () => ({
 describe('Login Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Default mock for settings
-    axios.get.mockImplementation((url) => {
-      if (url === '/api/settings/public') {
-        return Promise.resolve({ data: { registration_enabled: true } });
-      }
-      return Promise.reject(new Error('Not found'));
-    });
+    settingsService.getPublicSettings.mockResolvedValue({ registration_enabled: true });
   });
 
   it('renders login page correctly', async () => {
@@ -109,12 +101,7 @@ describe('Login Integration Tests', () => {
   });
 
   it('hides registration link if disabled in settings', async () => {
-    axios.get.mockImplementation((url) => {
-      if (url === '/api/settings/public') {
-        return Promise.resolve({ data: { registration_enabled: false } });
-      }
-      return Promise.reject(new Error('Not found'));
-    });
+    settingsService.getPublicSettings.mockResolvedValue({ registration_enabled: false });
 
     renderWithProviders(<Login />);
 

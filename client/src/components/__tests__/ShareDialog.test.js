@@ -1,32 +1,16 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ShareDialog from '../dialogs/ShareDialog';
-import axios from 'axios';
 import * as shareLinkService from '../../services/shareLinkService';
-
-// Mock axios.create and other methods
-jest.mock('axios', () => {
-  const mockAxios = {
-    get: jest.fn(),
-    post: jest.fn(),
-    put: jest.fn(),
-    delete: jest.fn(),
-    interceptors: {
-      request: { use: jest.fn(), eject: jest.fn() },
-      response: { use: jest.fn(), eject: jest.fn() },
-    },
-  };
-  return {
-    create: jest.fn(() => mockAxios),
-    get: mockAxios.get,
-    post: mockAxios.post,
-    put: mockAxios.put,
-    delete: mockAxios.delete,
-  };
-});
+import * as userService from '../../services/userService';
+import * as permissionService from '../../services/permissionService';
+import * as fileService from '../../services/fileService';
 
 jest.mock('../../services/shareLinkService');
 jest.mock('../../services/permissionRequestService');
+jest.mock('../../services/userService');
+jest.mock('../../services/permissionService');
+jest.mock('../../services/fileService');
 
 describe('ShareDialog', () => {
   const mockOnClose = jest.fn();
@@ -34,7 +18,9 @@ describe('ShareDialog', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    axios.get.mockResolvedValue({ data: [] });
+    userService.getApprovedUsers.mockResolvedValue([]);
+    permissionService.getFolderPermissions.mockResolvedValue([]);
+    fileService.listFiles.mockResolvedValue([]);
   });
 
   it('renders the dialog when open', async () => {
@@ -55,16 +41,12 @@ describe('ShareDialog', () => {
     const mockUsers = [{ id: 2, username: 'user2' }];
     const mockFiles = [{ path: '/test/sub', basename: 'sub', type: 'directory' }];
     
-    axios.get.mockImplementation((url, config) => {
-      if (url === '/api/users/approved') return Promise.resolve({ data: mockUsers });
-      if (url === '/api/files/list') {
-        const path = config?.params?.path;
-        if (path === '/test') return Promise.resolve({ data: mockFiles });
-        return Promise.resolve({ data: [] }); // Stop recursion for subfolders
-      }
-      if (url === '/api/permissions/folder') return Promise.resolve({ data: [] });
-      return Promise.resolve({ data: [] });
+    userService.getApprovedUsers.mockResolvedValue(mockUsers);
+    fileService.listFiles.mockImplementation((path) => {
+      if (path === '/test') return Promise.resolve(mockFiles);
+      return Promise.resolve([]);
     });
+    permissionService.getFolderPermissions.mockResolvedValue([]);
 
     render(
       <ShareDialog
@@ -77,8 +59,8 @@ describe('ShareDialog', () => {
     );
 
     await waitFor(() => {
-      expect(axios.get).toHaveBeenCalledWith('/api/users/approved');
-      expect(axios.get).toHaveBeenCalledWith('/api/files/list', expect.any(Object));
+      expect(userService.getApprovedUsers).toHaveBeenCalled();
+      expect(fileService.listFiles).toHaveBeenCalled();
     }, { timeout: 3000 });
   });
 

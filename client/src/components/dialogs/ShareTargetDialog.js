@@ -19,7 +19,8 @@ import {
   ListItemButton,
 } from '@mui/material';
 import { useResponsive } from '../../hooks/useResponsive';
-import axios from 'axios';
+import { getApprovedUsers } from '../../services/userService';
+import { getFolderPermissions, grantPermission, revokePermission } from '../../services/permissionService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../utils/pathUtils';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
@@ -101,8 +102,8 @@ const ShareTargetDialog = ({
 
   const loadUsers = useCallback(async () => {
     try {
-      const res = await axios.get('/api/users/approved');
-      setUsers(Array.isArray(res.data) ? res.data : []);
+      const data = await getApprovedUsers();
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load users:', err);
       if (onMessage) onMessage({ show: true, text: '사용자 목록을 불러오는데 실패했습니다.', type: 'error' });
@@ -114,10 +115,8 @@ const ShareTargetDialog = ({
     setLoading(true);
     try {
       const pathToQuery = isDirectory ? targetPath : getParentPath(targetPath);
-      const res = await axios.get('/api/permissions/folder', {
-        params: { path: pathToQuery, includeSubfolders: 'false' },
-      });
-      const list = (res.data || [])
+      const data = await getFolderPermissions(pathToQuery, false);
+      const list = (data || [])
         .filter((p) => !p.is_admin)
         .map((p) => ({
           id: p.id,
@@ -192,9 +191,7 @@ const ShareTargetDialog = ({
         for (const uid of initialIds) {
           if (!currentMap.has(uid)) {
             try {
-              await axios.delete('/api/permissions/revoke', {
-                params: { userId: uid, folderPath: targetPath, includeSubfolders: 'true' },
-              });
+              await revokePermission({ userId: uid, folderPath: targetPath, includeSubfolders: true });
             } catch (e) {
               console.error('Revoke failed:', e);
             }
@@ -204,11 +201,7 @@ const ShareTargetDialog = ({
           const perm = u.permission;
           for (const path of pathsToGrant) {
             try {
-              await axios.post('/api/permissions/grant', {
-                userId: u.id,
-                folderPath: path,
-                permission: perm,
-              });
+              await grantPermission({ userId: u.id, folderPath: path, permission: perm });
             } catch (e) {
               console.error('Grant failed:', path, e);
             }

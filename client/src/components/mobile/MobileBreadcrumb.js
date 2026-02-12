@@ -8,7 +8,7 @@ import {
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { getUserPermissions } from '../../services/permissionService';
 import { normalizePath } from '../../utils/pathUtils';
 import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils';
 
@@ -25,8 +25,8 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
     if (!user?.is_admin && currentPath && currentPath !== '/' && !isUserOwnFolder(currentPath, user)) {
       const loadSharedFolders = async () => {
         try {
-          const response = await axios.get(`/api/permissions/user/${user?.id}`);
-          const sharedFolders = filterOutUserOwnFolders(response.data, user);
+          const data = await getUserPermissions(user?.id);
+          const sharedFolders = filterOutUserOwnFolders(data || [], user);
 
           const permissionPaths = new Set();
           sharedFolders.forEach(perm => {

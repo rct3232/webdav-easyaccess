@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { getApprovedUsers, updateUserPermissions } from '../services/userService';
+import { getUserPermissions, getFolderPermissions, grantPermission, revokePermission } from '../services/permissionService';
+import { listFiles } from '../services/fileService';
 import { PERMISSIONS, HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
@@ -62,8 +64,8 @@ export function useShareDialog({
 
   const loadUsers = useCallback(async () => {
     try {
-      const response = await axios.get('/api/users/approved');
-      setUsers(response.data);
+      const data = await getApprovedUsers();
+      setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
       if (onMessage) {
@@ -86,8 +88,8 @@ export function useShareDialog({
 
     setLoadingPaths(prev => new Set(prev).add(path));
     try {
-      const response = await axios.get('/api/files/list', { params: { path } });
-      const folders = response.data
+      const data = await listFiles(path);
+      const folders = (data || [])
         .filter(item => item.type === 'directory')
         .map(folder => ({
           path: folder.path,
@@ -169,9 +171,9 @@ export function useShareDialog({
 
         if (userId) {
           setLoadingPermissions(true);
-          const permResponse = await axios.get(`/api/users/${userId}/permissions`);
+          const permData = await getUserPermissions(userId);
           const newFolderPermissions = new Map();
-          permResponse.data.forEach(perm => {
+          (permData || []).forEach(perm => {
             const normalizedPath = normalizePath(perm.folder_path);
             let shouldInclude = true;
             if (startFromUserHome) {
@@ -211,10 +213,8 @@ export function useShareDialog({
           const newUserInfoMap = new Map();
 
           try {
-            const permResponse = await axios.get('/api/permissions/folder', {
-              params: { path: rootPath, includeSubfolders: 'true' },
-            });
-            permResponse.data.forEach(perm => {
+            const permData = await getFolderPermissions(rootPath, true);
+            (permData || []).forEach(perm => {
               const normalizedPath = normalizePath(perm.folder_path);
               if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
               newFolderPermissions.get(normalizedPath).set(perm.id, perm.permission);
@@ -275,12 +275,10 @@ export function useShareDialog({
 
         setLoadingPermissions(true);
         try {
-          const permResponse = await axios.get('/api/permissions/folder', {
-            params: { path: rootPath, includeSubfolders: 'true' },
-          });
+          const permData = await getFolderPermissions(rootPath, true);
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
-          permResponse.data.forEach(perm => {
+          (permData || []).forEach(perm => {
             const normalizedPath = normalizePath(perm.folder_path);
             if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
             newFolderPermissions.get(normalizedPath).set(perm.id, perm.permission);
@@ -435,7 +433,7 @@ export function useShareDialog({
             }
           });
         });
-        await axios.put(`/api/users/${userId}/permissions`, { permissions });
+        await updateUserPermissions(userId, permissions);
         if (onSave) onSave();
         if (onMessage) onMessage({ text: '권한이 저장되었습니다.', type: 'success' });
         onClose();
@@ -461,9 +459,7 @@ export function useShareDialog({
         }
         for (const { userId: uid, folderPath: fp } of permissionsToRevoke) {
           try {
-            await axios.delete('/api/permissions/revoke', {
-              params: { userId: uid, folderPath: fp, includeSubfolders: 'true' },
-            });
+            await revokePermission({ userId: uid, folderPath: fp, includeSubfolders: true });
           } catch (e) {
             console.error(`Failed to revoke permission for ${fp}:`, e);
           }
@@ -471,11 +467,7 @@ export function useShareDialog({
         for (const [fp, userPermMap] of folderPermissions.entries()) {
           const normalizedPath = normalizePath(fp);
           for (const [targetUserId, permission] of userPermMap.entries()) {
-            await axios.post('/api/permissions/grant', {
-              userId: targetUserId,
-              folderPath: normalizedPath,
-              permission,
-            });
+            await grantPermission({ userId: targetUserId, folderPath: normalizedPath, permission });
           }
         }
         await approvePermissionRequest(permissionRequest.id);
@@ -507,9 +499,7 @@ export function useShareDialog({
         }
         for (const { userId: uid, folderPath: fp } of permissionsToRevoke) {
           try {
-            await axios.delete('/api/permissions/revoke', {
-              params: { userId: uid, folderPath: fp, includeSubfolders: 'true' },
-            });
+            await revokePermission({ userId: uid, folderPath: fp, includeSubfolders: true });
           } catch (e) {
             console.error(`Failed to revoke permission for ${fp}:`, e);
           }
@@ -517,11 +507,7 @@ export function useShareDialog({
         for (const [fp, userPermMap] of folderPermissions.entries()) {
           const normalizedPath = normalizePath(fp);
           for (const [targetUserId, permission] of userPermMap.entries()) {
-            await axios.post('/api/permissions/grant', {
-              userId: targetUserId,
-              folderPath: normalizedPath,
-              permission,
-            });
+            await grantPermission({ userId: targetUserId, folderPath: normalizedPath, permission });
           }
         }
         if (onMessage) onMessage({ text: '폴더 공유가 완료되었습니다.', type: 'success' });

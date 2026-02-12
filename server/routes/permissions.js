@@ -7,7 +7,8 @@ const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/path
 const { canReadFolder, canWriteFolder, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
 const requireUser = require('../middleware/requireUser');
 const normalizePathParam = require('../middleware/normalizePathParam');
-const { asyncHandler, validationError, forbiddenError } = require('../utils/errorHandler');
+const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../utils/errorHandler');
+const User = require('../models/User');
 
 // Grant permission
 router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
@@ -92,13 +93,17 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
 // Get user permissions
 router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const userId = req.params.userId;
-  
-  // Users can only view their own permissions unless they're checking for admin purposes
-  if (parseInt(userId) !== req.user.id) {
+  const requestingUser = await User.findById(req.user.id);
+
+  if (!requestingUser) {
+    throw notFoundError('User not found');
+  }
+  // 관리자는 모든 사용자의 권한 조회 가능, 일반 사용자는 본인만
+  if (!requestingUser.is_admin && parseInt(userId) !== req.user.id) {
     throw forbiddenError('Access denied');
   }
 
-    const permissions = await Permission.getUserPermissions(userId);
+  const permissions = await Permission.getUserPermissions(userId);
     
     // WebDAV에 실제로 존재하는 폴더만 필터링
     const { pathExists } = require('../utils/webdav');

@@ -369,18 +369,6 @@ router.get('/folders/list', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// Get user permissions
-router.get('/users/:id/permissions', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id);
-    const permissions = await Permission.getUserPermissions(userId);
-    res.json(permissions);
-  } catch (error) {
-    console.error('Get user permissions error:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 권한을 불러오는데 실패했습니다.' });
-  }
-});
-
 // Update user permissions (bulk)
 router.put('/users/:id/permissions', authenticateToken, isAdmin, async (req, res) => {
   try {

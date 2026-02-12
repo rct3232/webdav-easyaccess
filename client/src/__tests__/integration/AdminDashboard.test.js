@@ -2,8 +2,30 @@ import React from 'react';
 import { renderWithProviders, screen, fireEvent, waitFor } from '../../test-utils';
 import axios from 'axios';
 
-// Mock axios
-jest.mock('axios');
+// Mock axios - must provide create() for apiClient (used by AuthContext) to load
+jest.mock('axios', () => {
+  const mockInstance = {
+    get: jest.fn(),
+    post: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
+    defaults: { headers: { common: {} } },
+    interceptors: {
+      request: { use: jest.fn(() => 0), eject: jest.fn() },
+      response: { use: jest.fn(() => 0), eject: jest.fn() },
+    },
+  };
+  return {
+    __esModule: true,
+    default: {
+      create: () => mockInstance,
+      get: mockInstance.get,
+      post: mockInstance.post,
+      put: mockInstance.put,
+      delete: mockInstance.delete,
+    },
+  };
+});
 
 describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
   const mockAdminUser = { id: 1, username: 'admin', is_admin: true };

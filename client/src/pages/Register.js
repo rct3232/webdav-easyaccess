@@ -13,7 +13,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { EmailNotificationMessage } from '../components/feedback';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
-import axios from 'axios';
+import { getPublicSettings } from '../services/settingsService';
 
 const Register = () => {
   const [username, setUsername] = useState('');
@@ -32,8 +32,8 @@ const Register = () => {
     const loadSettings = async () => {
       setSettingsLoading(true);
       try {
-        const response = await axios.get('/api/settings/public');
-        setEmailEnabled(response.data.email_enabled || false);
+        const data = await getPublicSettings();
+        setEmailEnabled(data.email_enabled || false);
       } catch (error) {
         console.error('Failed to load settings:', error);
       } finally {

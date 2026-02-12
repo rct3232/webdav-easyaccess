@@ -26,7 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ShareDialog, AccountEditDialog } from '../components/dialogs';
 import { getShareLinks, deleteShareLink, getShareLinkUrl, updateShareLink } from '../services/shareLinkService';
-import axios from 'axios';
+import { updateEmail as updateEmailApi, updatePassword as updatePasswordApi } from '../services/userService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import {
@@ -252,13 +252,13 @@ const MyPage = () => {
     let emailUpdated = false;
     try {
       if (shouldUpdateEmail) {
-        await axios.put(`/api/users/${user.id}/email`, { email: trimmedEmail });
+        await updateEmailApi(user.id, trimmedEmail);
         emailUpdated = true;
         setOriginalEmail(trimmedEmail);
       }
 
       if (shouldUpdatePassword) {
-        await axios.put(`/api/users/${user.id}/password`, { password });
+        await updatePasswordApi(user.id, password);
         setMessage({
           type: 'success',
           text: '비밀번호가 성공적으로 변경되었습니다. 보안을 위해 다시 로그인해주세요.',

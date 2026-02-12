@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { validateRequired } from '@webdav-easyaccess/shared/validation';
-import axios from 'axios';
+import { getPublicSettings } from '../services/settingsService';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -29,8 +29,8 @@ const Login = () => {
     const loadSettings = async () => {
       setSettingsLoading(true);
       try {
-        const response = await axios.get('/api/settings/public');
-        setRegistrationEnabled(response.data.registration_enabled);
+        const data = await getPublicSettings();
+        setRegistrationEnabled(data.registration_enabled);
       } catch (error) {
         console.error('Failed to load settings:', error);
         setRegistrationEnabled(false);

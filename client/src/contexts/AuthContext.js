@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
+import * as authService from '../services/authService';
 
 export const AuthContext = createContext();
 
@@ -64,8 +65,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = useCallback(async () => {
     try {
-      const response = await axios.get('/api/auth/me');
-      const userData = response.data;
+      const userData = await authService.getMe();
       setUser({
         ...userData,
         is_admin: Boolean(userData.is_admin),
@@ -107,8 +107,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await axios.post('/api/auth/login', { username, password });
-      const { token: newToken, refreshToken: newRefreshToken, user: userData } = response.data;
+      const data = await authService.login(username, password);
+      const { token: newToken, refreshToken: newRefreshToken, user: userData } = data;
 
       sessionStorage.setItem('token', newToken);
       if (newRefreshToken) sessionStorage.setItem('refreshToken', newRefreshToken);
@@ -134,14 +134,14 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      const response = await axios.post('/api/auth/register', { username, email, password });
-      const { status: accountStatus } = response.data;
+      const data = await authService.register(username, email, password);
+      const { status: accountStatus } = data;
       
       if (accountStatus === 'pending') {
         return { success: true, status: 'pending' };
       }
 
-      const { token: newToken, refreshToken: newRefreshToken, user: userData } = response.data;
+      const { token: newToken, refreshToken: newRefreshToken, user: userData } = data;
       sessionStorage.setItem('token', newToken);
       if (newRefreshToken) sessionStorage.setItem('refreshToken', newRefreshToken);
       setToken(newToken);

@@ -213,6 +213,16 @@ const FileManager = () => {
     );
   }, [selectionMode, selectedFiles, sortedFiles]);
 
+  // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
+  const hasReadOnlyInSelection = useMemo(() => {
+    if (!selectionMode || selectedFiles.size === 0) return false;
+    const selectedPaths = Array.from(selectedFiles);
+    const selectedFileObjects = selectedPaths
+      .map(path => sortedFiles.find(f => f.path === path))
+      .filter(Boolean);
+    return selectedFileObjects.some(f => f.hasWritePermission === false);
+  }, [selectionMode, selectedFiles, sortedFiles]);
+
   // 모바일에서 Detail 모드로 전환 시도 시 List 모드로 자동 전환
   useEffect(() => {
     if (isMobile && viewMode === VIEW_MODES.DETAIL) {
@@ -1962,6 +1972,7 @@ const FileManager = () => {
           handleBulkDownload={handleBulkDownload}
           openBulkDeleteDialog={openBulkDeleteDialog}
           hasWritePermission={allSelectedHaveWrite}
+          hasReadOnlyInSelection={hasReadOnlyInSelection}
           disabled={bulkMoveCopyInProgress}
         />
       )}

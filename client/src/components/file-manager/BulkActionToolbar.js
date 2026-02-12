@@ -3,6 +3,7 @@ import {
   Paper,
   Typography,
   IconButton,
+  Box,
 } from '@mui/material';
 import {
   DriveFileMove as MoveIcon,
@@ -19,6 +20,7 @@ const BulkActionToolbar = ({
   handleBulkDownload,
   openBulkDeleteDialog,
   hasWritePermission,
+  hasReadOnlyInSelection = false,
   disabled: bulkActionsDisabled = false,
 }) => {
   const moveDeleteDisabled = bulkActionsDisabled || !hasWritePermission;
@@ -35,7 +37,8 @@ const BulkActionToolbar = ({
         transform: isMobile ? 'none' : 'translateX(-50%)',
         width: isMobile ? '100%' : 'auto',
         display: 'flex',
-        gap: isMobile ? 0.5 : 1,
+        flexDirection: 'column',
+        gap: 0.5,
         alignItems: 'center',
         justifyContent: 'center',
         p: isMobile ? 1 : 1.5,
@@ -46,6 +49,25 @@ const BulkActionToolbar = ({
         paddingBottom: isMobile ? 'calc(8px + env(safe-area-inset-bottom))' : 1.5,
       }}
     >
+      {hasReadOnlyInSelection && (
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+            fontSize: '0.75rem',
+          }}
+        >
+          읽기 전용 파일이 포함되어있습니다
+        </Typography>
+      )}
+      <Box
+        sx={{
+          display: 'flex',
+          gap: isMobile ? 0.5 : 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
       <Typography 
         variant="body2" 
         sx={{ 
@@ -122,6 +144,7 @@ const BulkActionToolbar = ({
       >
         <DeleteIcon fontSize={isMobile ? "medium" : "small"} />
       </IconButton>
+      </Box>
     </Paper>
   );
 };

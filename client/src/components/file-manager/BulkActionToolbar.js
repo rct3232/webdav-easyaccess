@@ -68,17 +68,6 @@ const BulkActionToolbar = ({
           justifyContent: 'center',
         }}
       >
-      <Typography 
-        variant="body2" 
-        sx={{ 
-          mr: isMobile ? 0.5 : 1, 
-          fontWeight: 500, 
-          minWidth: isMobile ? 'auto' : '60px',
-          fontSize: isMobile ? '0.875rem' : '0.875rem',
-        }}
-      >
-        {selectedFiles.size}개
-      </Typography>
       <IconButton
         color="primary"
         size={isMobile ? "medium" : "small"}

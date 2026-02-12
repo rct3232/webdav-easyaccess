@@ -123,15 +123,15 @@ export const useFileManager = (user, options = {}) => {
           let filteredData = showHiddenFiles 
             ? data 
             : data.filter(item => !item.isHidden);
-          // 비관리자: 폴더별 hasAdminPermission 보강 (공유 버튼 표시용 - admin 권한이 있을 때만)
-          if (user && !user.is_admin && filteredData.some(item => item.type === 'directory')) {
+          // 비관리자: 폴더/파일 공통 hasAdminPermission 보강 (공유 버튼 표시용 - admin 권한이 있을 때만)
+          if (user && !user.is_admin && filteredData.length > 0) {
             try {
               const perms = await getUserPermissions(user.id);
               const adminPrefixes = (perms || [])
                 .filter(p => p.permission === 'admin')
                 .map(p => normalizePath(p.folder_path));
               filteredData = filteredData.map(item => {
-                if (item.type !== 'directory' || !item.path) return item;
+                if (!item.path) return item;
                 const np = normalizePath(item.path);
                 const hasAdmin = adminPrefixes.some(ap => np === ap || np.startsWith(ap + '/'));
                 return { ...item, hasAdminPermission: hasAdmin };

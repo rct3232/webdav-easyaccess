@@ -51,7 +51,6 @@ const PERMISSION_OPTIONS = [
 async function collectSubfolderPaths(folderPath) {
   const paths = [];
   const normalized = normalizePath(folderPath);
-  const withSlash = normalized === '/' ? '/' : `${normalized.replace(/\/$/, '')}/`;
 
   async function traverse(path) {
     try {

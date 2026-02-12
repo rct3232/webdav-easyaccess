@@ -240,7 +240,7 @@ const FileManager = () => {
     createFolderDialogOpen, openCreateFolderDialog, closeCreateFolderDialog,
     previewDialogOpen, setPreviewDialogOpen, openPreviewDialog, closePreviewDialog,
     renameDialogOpen, openRenameDialog, closeRenameDialog,
-    shareDialogOpen, openShareDialog, closeShareDialog,
+    shareDialogOpen, closeShareDialog,
     shareDialogV2Open, shareDialogV2File, openShareDialogV2, closeShareDialogV2,
     sharedFolderManageDialogOpen, openSharedFolderManageDialog, closeSharedFolderManageDialog,
     propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,

@@ -1,4 +1,4 @@
-import { get, post, put, del } from './apiClient';
+import { get, post, del } from './apiClient';
 
 /**
  * 사용자별 폴더 권한 목록 조회 (WebDAV 존재 폴더만 반환)

@@ -15,7 +15,7 @@ import {
 import { get } from '../services/apiClient';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../hooks/useResponsive';
-import { getPublicShareLinkInfo, getPublicShareLinkPreviewUrl, getPublicShareLinkDownloadUrl } from '../services/shareLinkService';
+import { getPublicShareLinkInfo, getPublicShareLinkDownloadUrl } from '../services/shareLinkService';
 import {
   ShareLinkPreviewImage,
   ShareLinkPreviewVideo,

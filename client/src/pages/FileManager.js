@@ -200,6 +200,19 @@ const FileManager = () => {
     setSelectedFiles,
   } = useSelection(displayedFiles, sortedFiles);
 
+  // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
+  const allSelectedHaveWrite = useMemo(() => {
+    if (!selectionMode || selectedFiles.size === 0) return false;
+    const selectedPaths = Array.from(selectedFiles);
+    const selectedFileObjects = selectedPaths
+      .map(path => sortedFiles.find(f => f.path === path))
+      .filter(Boolean);
+    return (
+      selectedFileObjects.length === selectedPaths.length &&
+      selectedFileObjects.every(f => f.hasWritePermission === true)
+    );
+  }, [selectionMode, selectedFiles, sortedFiles]);
+
   // 모바일에서 Detail 모드로 전환 시도 시 List 모드로 자동 전환
   useEffect(() => {
     if (isMobile && viewMode === VIEW_MODES.DETAIL) {
@@ -1948,7 +1961,7 @@ const FileManager = () => {
           handleBulkCopy={handleBulkCopy}
           handleBulkDownload={handleBulkDownload}
           openBulkDeleteDialog={openBulkDeleteDialog}
-          hasWritePermission={hasWritePermission}
+          hasWritePermission={allSelectedHaveWrite}
           disabled={bulkMoveCopyInProgress}
         />
       )}

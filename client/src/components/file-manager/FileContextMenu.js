@@ -31,13 +31,8 @@ const FileContextMenu = ({
   onProperties,
   onDelete,
 }) => {
-  // 공유 버튼 표시 조건:
-  // 1. 디렉토리이고, 사용자 디렉토리 하위에 있는 경우 (폴더 공유)
-  // 2. 파일인 경우 (외부 공유 링크)
-  const canShare = (
-    (file?.type === 'directory' && user && !user.is_admin && file.path.startsWith(`/${user.username}/`)) ||
-    (file?.type !== 'directory')
-  );
+  // 공유 버튼 표시 조건: admin 권한이 있을 때만 표시
+  const canShare = Boolean(user?.is_admin);
 
   // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
   const isSharedFolder = file?.type === 'directory' && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);

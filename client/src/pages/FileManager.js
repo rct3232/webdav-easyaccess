@@ -51,6 +51,7 @@ import {
   FilePreviewDialog,
   FolderPickerDialog,
   ShareDialog,
+  ShareTargetDialog,
   SharedFolderManageDialog,
   FilePropertiesDialog,
   ConfirmDialog,
@@ -217,6 +218,7 @@ const FileManager = () => {
     previewDialogOpen, setPreviewDialogOpen, openPreviewDialog, closePreviewDialog,
     renameDialogOpen, openRenameDialog, closeRenameDialog,
     shareDialogOpen, openShareDialog, closeShareDialog,
+    shareDialogV2Open, shareDialogV2File, openShareDialogV2, closeShareDialogV2,
     sharedFolderManageDialogOpen, openSharedFolderManageDialog, closeSharedFolderManageDialog,
     propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,
     bulkDeleteDialogOpen, openBulkDeleteDialog, closeBulkDeleteDialog,
@@ -1859,7 +1861,7 @@ const FileManager = () => {
         }}
         onShare={(file) => {
           setContextMenu(null);
-          openShareDialog(file);
+          openShareDialogV2(file);
         }}
         onManageShared={(file) => {
           setContextMenu(null);
@@ -2025,12 +2027,12 @@ const FileManager = () => {
           }}
           onShare={() => {
             if (actionSheetFile) {
-              openShareDialog(actionSheetFile);
+              openShareDialogV2(actionSheetFile);
             }
           }}
           onShareLink={() => {
             if (actionSheetFile) {
-              openShareDialog(actionSheetFile);
+              openShareDialogV2(actionSheetFile);
             }
           }}
           onManageShared={() => {
@@ -2066,7 +2068,21 @@ const FileManager = () => {
         fullScreen={isMobile}
       />
 
-      {/* Share Dialog */}
+      {/* Share Target Dialog (new share modal from context menu / action sheet) */}
+      {shareDialogV2File && (
+        <ShareTargetDialog
+          open={shareDialogV2Open}
+          onClose={closeShareDialogV2}
+          file={shareDialogV2File}
+          user={user}
+          onMessage={setDropMessage}
+          onSave={() => {
+            handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
+          }}
+        />
+      )}
+
+      {/* Share Dialog (legacy, kept for other entry points) */}
       {(mobileShareFile || actionSheetFile) && (
         <ShareDialog
           open={shareDialogOpen}

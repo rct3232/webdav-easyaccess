@@ -37,7 +37,7 @@ async function safeEnsureDir(webdav, dirPath) {
  * Selectively move/copy a directory tree (recursive_strict).
  *
  * - Only enter a directory if canEnterDirectory(dirPath) is true.
- * - Only transfer a file if canTransferFile(parentDirPath) is true.
+ * - Only transfer a file if canTransferFile(filePath) is true (filePath = full source path of the file).
  * - Skipped items are left untouched and returned in skippedPaths.
  *
  * Returns:
@@ -126,7 +126,7 @@ async function selectiveTransfer({
           return { skipped: mode === 'move' };
         }
       } else {
-        let ok = canTransferFile(srcDir);
+        let ok = canTransferFile(srcChild);
         if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(srcChild);

@@ -18,7 +18,7 @@ function defaultWebdavAdapter() {
  * Collect downloadable files under a directory recursively (recursive_strict).
  *
  * - Only enter a directory if canEnterDirectory(dirPath) is true.
- * - Only include a file if canIncludeFile(parentDirPath) is true.
+ * - Only include a file if canIncludeFile(filePath) is true (filePath = full path of the file to include).
  *
  * Returns:
  * - files: [{ path, relativePath }]
@@ -68,7 +68,7 @@ async function selectiveCollectFiles({
         }
         await walkDir(childPath, childRel);
       } else {
-        let ok = canIncludeFile(dirPath);
+        let ok = canIncludeFile(childPath);
         if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);

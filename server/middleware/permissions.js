@@ -34,11 +34,12 @@ function isOwnerPathSafe(user, targetPath) {
 }
 
 /**
- * Check if user has permission to access a file (direct-only: file's parent folder only).
+ * Check if user has permission to access a file.
+ * If the file has independent (file-level) permission, that is used; otherwise parent folder direct permission.
  *
  * @param {number} userId - User ID
  * @param {string} filePath - File path to check
- * @param {string} requiredPermission - Required permission level ('read' or 'write')
+ * @param {string} requiredPermission - Required permission level ('read', 'write', or 'admin')
  * @returns {Promise<boolean>} True if user has permission
  */
 async function checkFilePermission(userId, filePath, requiredPermission = PERMISSIONS.READ) {
@@ -49,6 +50,19 @@ async function checkFilePermission(userId, filePath, requiredPermission = PERMIS
 
   if (user.is_admin) {
     return true;
+  }
+
+  if (isOwnerPathSafe(user, filePath)) {
+    return true;
+  }
+
+  const doc = await Permission.getPermissionDoc(userId);
+  const normalizedFile = normalizePath(filePath);
+  const fp = doc.file_permissions || {};
+  const filePerm = fp[normalizedFile];
+  if (filePerm != null) {
+    const rank = (p) => PERMISSIONS.ALL.indexOf(p);
+    return rank(filePerm) >= rank(requiredPermission);
   }
 
   const folderPath = getParentPath(filePath);

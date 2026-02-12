@@ -30,6 +30,7 @@ const {
   getHomeOwnerUserIdForPath,
   buildSyncWriteChecker,
   buildSyncReadChecker,
+  buildSyncReadFileChecker,
   buildSyncWriteFileByParentChecker,
 } = require('../utils/permissionPolicy');
 const { selectiveTransfer } = require('../services/selectiveTransfer');
@@ -247,6 +248,7 @@ async function runBulkJobWorker(jobId) {
   const canWriteDirSync = buildSyncWriteChecker(user, doc);
   const canWriteFileByParentSync = buildSyncWriteFileByParentChecker(user, doc);
   const canReadDirSync = buildSyncReadChecker(user, doc);
+  const canReadFileSync = buildSyncReadFileChecker(user, doc);
 
   const getJobRef = () => getJob(jobId);
   const pushResult = (entry) => {
@@ -309,7 +311,7 @@ async function runBulkJobWorker(jobId) {
                 return;
               }
               const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
-              const canDeleteFileByParent = (parentDir) => canWriteDirSync(parentDir);
+              const canDeleteFileByParent = (filePath) => canWriteFileByParentSync(filePath);
               const result = await selectiveDelete({
                 rootPath: normalizedTargetPath,
                 canEnterDirectory,
@@ -407,7 +409,7 @@ async function runBulkJobWorker(jobId) {
             }
             if (isSourceDir) {
               const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
-              const canTransferFile = (parentDir) => canWriteDirSync(parentDir);
+              const canTransferFile = (filePath) => canWriteFileByParentSync(filePath);
               const result = await selectiveTransfer({
                 sourceRoot: normalizedSourcePath,
                 destRoot: normalizedDestinationPath,
@@ -518,7 +520,7 @@ async function runBulkJobWorker(jobId) {
             const normalizedSource = normalizePath(sourcePath);
             const hasSourcePermission = isSourceDir
               ? canReadDirSync(normalizedSource)
-              : canReadDirSync(getParentPath(normalizedSource));
+              : canReadFileSync(normalizedSource);
             if (!hasSourcePermission) {
               pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
               return;
@@ -536,7 +538,7 @@ async function runBulkJobWorker(jobId) {
             }
             if (isSourceDir) {
               const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-              const canTransferFile = (parentDir) => canReadDirSync(parentDir);
+              const canTransferFile = (filePath) => canReadFileSync(filePath);
               const okRoot = canEnterDirectory(normalizedSource);
               if (!okRoot) {
                 pushResult({ sourcePath, destinationPath, status: 'skippedByPermission' });
@@ -684,6 +686,11 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
           hasWritePermission =
             isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
         }
+      } else {
+        hasReadPermission =
+          isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.READ);
+        hasWritePermission =
+          isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
       }
 
       let thumbnailUrl = null;
@@ -717,15 +724,8 @@ router.get('/download', authenticateToken, requireUser, normalizePathParam, chec
 
   const user = req.user.full;
 
-    // Download policy: direct-only read (admin/owner bypass)
-    let hasPermission = false;
-    if (user.is_admin || isOwnerPath(user, filePath)) {
-      hasPermission = true;
-    } else {
-      const normalized = normalizePath(filePath);
-      const parentDir = getParentPath(normalized);
-      hasPermission = await hasDirectFolderPermission(user.id, parentDir, PERMISSIONS.READ);
-    }
+    // Download policy: file effective read (file-level if present, else parent path; admin/owner bypass)
+    const hasPermission = await canReadFile(req.user.id, filePath, PERMISSIONS.READ);
     if (!hasPermission) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
@@ -1110,8 +1110,9 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
   const user = req.user.full;
   const doc = await Permission.getPermissionDoc(req.user.id);
   const canReadDirSync = buildSyncReadChecker(user, doc);
+  const canReadFileSync = buildSyncReadFileChecker(user, doc);
   const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-  const canIncludeFile = (parentDir) => canReadDirSync(parentDir);
+  const canIncludeFile = (filePath) => canReadFileSync(filePath);
 
     const skippedPaths = [];
 
@@ -1188,8 +1189,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
             } else {
               zipName = fileName.replace(/\.[^/.]+$/, '');
             }
-            const parentDirForPerm = getParentPath(normalizePath(filePath));
-            const ok = await canIncludeFile(parentDirForPerm);
+            const ok = canIncludeFile(filePath);
             if (!ok) {
               skippedPaths.push(filePath);
             } else {
@@ -1198,16 +1198,14 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
           } else {
             if (commonParentDir && commonParentDir !== '/') {
               const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
-              const parentDirForPerm = getParentPath(normalizePath(filePath));
-              const ok = await canIncludeFile(parentDirForPerm);
+              const ok = canIncludeFile(filePath);
               if (!ok) {
                 skippedPaths.push(filePath);
               } else {
                 allFiles.push({ path: filePath, relativePath });
               }
             } else {
-              const parentDirForPerm = getParentPath(normalizePath(filePath));
-              const ok = await canIncludeFile(parentDirForPerm);
+              const ok = canIncludeFile(filePath);
               if (!ok) {
                 skippedPaths.push(filePath);
               } else {
@@ -1218,9 +1216,8 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
         }
       } catch (error) {
         const fileName = path.basename(filePath);
-        // If we can't determine type, treat as file and apply direct-only read check
-        const parentDirForPerm = getParentPath(normalizePath(filePath));
-        const ok = await canIncludeFile(parentDirForPerm);
+        // If we can't determine type, treat as file and apply file-path read check
+        const ok = canIncludeFile(filePath);
         if (!ok) {
           skippedPaths.push(filePath);
         } else {

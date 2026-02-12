@@ -1,5 +1,5 @@
 const { selectiveCollectFiles } = require('../selectiveDownload');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 
 function makeFakeWebdav({ dirs = [], files = [] } = {}) {
   const dirSet = new Set(dirs.map((d) => normalizePath(d)));
@@ -49,7 +49,7 @@ describe('selectiveCollectFiles (recursive_strict)', () => {
       if (n === '/a/c') return true;
       return false;
     };
-    const canIncludeFile = async (parentDir) => canEnterDirectory(parentDir);
+    const canIncludeFile = async (filePath) => canEnterDirectory(getParentPath(filePath));
 
     const res = await selectiveCollectFiles({
       rootPath: '/a',

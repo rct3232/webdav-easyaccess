@@ -19,7 +19,7 @@ function defaultWebdavAdapter() {
  * Selectively delete a directory tree (recursive_strict).
  *
  * - Only enter/delete a directory if canEnterDirectory(dirPath) is true.
- * - Only delete a file if canDeleteFileByParent(parentDirPath) is true.
+ * - Only delete a file if canDeleteFileByParent(filePath) is true (filePath = full path of the file to delete).
  * - Skipped items are left intact and returned in skippedPaths.
  *
  * Returns:
@@ -65,7 +65,7 @@ async function selectiveDelete({
       if (isMetaPath(childPath) && !allowMetaPath) return { skipped: false };
 
       if (item.type !== 'directory') {
-        let ok = canDeleteFileByParent(dirPath);
+        let ok = canDeleteFileByParent(childPath);
         if (typeof ok?.then === 'function') ok = await ok;
         if (!ok) {
           skippedPaths.push(childPath);

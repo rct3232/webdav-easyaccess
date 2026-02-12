@@ -1,5 +1,5 @@
 const { selectiveTransfer } = require('../selectiveTransfer');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 
 function makeFakeWebdav({ dirs = [], files = [] } = {}) {
   const dirSet = new Set(dirs.map((d) => normalizePath(d)));
@@ -105,7 +105,7 @@ describe('selectiveTransfer (recursive_strict)', () => {
       if (n === '/a/c') return true;
       return false;
     };
-    const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+    const canTransferFile = async (filePath) => canEnterDirectory(getParentPath(filePath));
 
     const res = await selectiveTransfer({
       sourceRoot: '/a',
@@ -141,7 +141,7 @@ describe('selectiveTransfer (recursive_strict)', () => {
       if (n === '/a/c') return true;
       return false;
     };
-    const canTransferFile = async (parentDir) => canEnterDirectory(parentDir);
+    const canTransferFile = async (filePath) => canEnterDirectory(getParentPath(filePath));
 
     const res = await selectiveTransfer({
       sourceRoot: '/a',

@@ -103,6 +103,20 @@ describe('Files Routes', () => {
 
       expect(response.status).toBe(202);
       expect(response.body.jobId).toBeDefined();
+
+      const jobId = response.body.jobId;
+      const maxWaitMs = 5000;
+      const pollIntervalMs = 20;
+      const deadline = Date.now() + maxWaitMs;
+      while (Date.now() < deadline) {
+        const statusRes = await request(app)
+          .get(`/api/files/bulk-operation/${encodeURIComponent(jobId)}`)
+          .set('Authorization', `Bearer ${token}`);
+        if (statusRes.status !== 200) break;
+        const { status } = statusRes.body;
+        if (status === 'completed' || status === 'failed' || status === 'cancelled') break;
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+      }
     });
   });
 });

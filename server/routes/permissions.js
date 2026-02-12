@@ -3,8 +3,8 @@ const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canReadFolder, canWriteFolder, hasDirectFolderPermission, isOwnerPath, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
+const { canReadFolder, canWriteFolder, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
 const requireUser = require('../middleware/requireUser');
 const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError } = require('../utils/errorHandler');
@@ -191,6 +191,114 @@ router.get('/check', authenticateToken, requireUser, normalizePathParam, asyncHa
     hasRead,
     hasWrite
   });
+}));
+
+// --- File-level permission routes ---
+
+// Grant file permission (permission must be strictly higher than parent path permission)
+router.post('/file/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
+  const { userId, filePath, permission } = req.body;
+  if (!userId || !filePath || !permission) {
+    throw validationError('User ID, file path, and permission are required');
+  }
+  if (!PERMISSIONS.isValid(permission)) {
+    throw validationError('Invalid permission. Must be read, write, or admin');
+  }
+  const user = req.user.full;
+  const parentPath = getParentPath(normalizePath(filePath));
+  const canGrant = await canGrantPermission(user, parentPath, req.user.id);
+  if (!canGrant) {
+    throw forbiddenError('Access denied. You do not have permission to grant file permission for this path');
+  }
+  try {
+    await Permission.grantFile(userId, filePath, permission);
+    res.json({ message: 'File permission granted successfully' });
+  } catch (err) {
+    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
+      throw validationError(err.message || 'File permission must be higher than parent path permission');
+    }
+    throw err;
+  }
+}));
+
+// Revoke file permission
+router.delete('/file/revoke', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
+  const { userId, filePath } = req.query;
+  if (!userId || !filePath) {
+    throw validationError('User ID and file path are required');
+  }
+  const requestingUser = req.user.full;
+  const targetUserId = parseInt(userId, 10);
+  const parentPath = getParentPath(normalizePath(filePath));
+  const canRevoke = await canRevokePermission(requestingUser, parentPath, req.user.id, targetUserId);
+  if (!canRevoke) {
+    throw forbiddenError('Access denied. You do not have permission to revoke file permission for this path');
+  }
+  await Permission.revokeFile(userId, filePath);
+  res.json({ message: 'File permission revoked successfully' });
+}));
+
+// Update file permission (same validation as grant)
+router.patch('/file', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
+  const { userId, filePath, permission } = req.body;
+  if (!userId || !filePath || !permission) {
+    throw validationError('User ID, file path, and permission are required');
+  }
+  if (!PERMISSIONS.isValid(permission)) {
+    throw validationError('Invalid permission. Must be read, write, or admin');
+  }
+  const user = req.user.full;
+  const parentPath = getParentPath(normalizePath(filePath));
+  const canGrant = await canGrantPermission(user, parentPath, req.user.id);
+  if (!canGrant) {
+    throw forbiddenError('Access denied. You do not have permission to update file permission for this path');
+  }
+  try {
+    await Permission.grantFile(userId, filePath, permission);
+    res.json({ message: 'File permission updated successfully' });
+  } catch (err) {
+    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
+      throw validationError(err.message || 'File permission must be higher than parent path permission');
+    }
+    throw err;
+  }
+}));
+
+// Check current user's effective permission for a file path (file-level overrides path)
+router.get('/file/check', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
+  const pathParam = req.query.path;
+  if (!pathParam) {
+    throw validationError('Path is required');
+  }
+  const filePath = normalizePath(pathParam);
+  const doc = await Permission.getPermissionDoc(req.user.id);
+  const fp = doc.file_permissions || {};
+  const filePerm = fp[filePath];
+  const source = filePerm != null ? 'file' : 'path';
+  const { checkFilePermission } = require('../middleware/permissions');
+  const hasRead = await checkFilePermission(req.user.id, filePath, PERMISSIONS.READ);
+  const hasWrite = await checkFilePermission(req.user.id, filePath, PERMISSIONS.WRITE);
+  res.json({
+    path: filePath,
+    hasRead,
+    hasWrite,
+    source
+  });
+}));
+
+// List current user's file-level permissions (optionally under a folder)
+router.get('/file/list', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const folderPath = req.query.folderPath ? normalizePath(req.query.folderPath) : null;
+  let list = await Permission.getUserFilePermissions(userId);
+  if (folderPath != null && folderPath !== '') {
+    const prefix = folderPath === '/' ? '/' : `${folderPath.replace(/\/$/, '')}/`;
+    list = list.filter(({ filePath }) => {
+      const p = normalizePath(filePath);
+      return p === folderPath || p.startsWith(prefix);
+    });
+  }
+  res.json(list);
 }));
 
 module.exports = router;

@@ -1,5 +1,5 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import { get, post, put } from './apiClient';
+import apiClient, { get, post, put, del } from './apiClient';
 
 const API_BASE = '/files';
 
@@ -330,6 +330,41 @@ export const checkPermission = async (folderPath) => {
   const response = await get('/permissions/check', {
     params: { path: folderPath },
   });
+  return response.data;
+};
+
+/** Check effective permission for a file path (file-level overrides path). Returns { path, hasRead, hasWrite, source: 'file'|'path' }. */
+export const checkFilePermission = async (filePath) => {
+  const response = await get('/permissions/file/check', {
+    params: { path: filePath },
+  });
+  return response.data;
+};
+
+/** Grant file-level permission (permission must be higher than parent path). */
+export const grantFilePermission = async ({ userId, filePath, permission }) => {
+  const response = await post('/permissions/file/grant', { userId, filePath, permission });
+  return response.data;
+};
+
+/** Revoke file-level permission. */
+export const revokeFilePermission = async ({ userId, filePath }) => {
+  const response = await del('/permissions/file/revoke', {
+    params: { userId, filePath },
+  });
+  return response.data;
+};
+
+/** Update file-level permission (same validation as grant). */
+export const updateFilePermission = async ({ userId, filePath, permission }) => {
+  const response = await apiClient.patch('/permissions/file', { userId, filePath, permission });
+  return response.data;
+};
+
+/** List current user's file-level permissions. Optionally filter by folderPath (prefix). */
+export const listFilePermissions = async (folderPath = null) => {
+  const params = folderPath != null ? { folderPath } : {};
+  const response = await get('/permissions/file/list', { params });
   return response.data;
 };
 

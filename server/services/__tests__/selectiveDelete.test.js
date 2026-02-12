@@ -1,5 +1,5 @@
 const { selectiveDelete } = require('../selectiveDelete');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 
 function makeFakeWebdav({ dirs = [], files = [], recursiveDirDelete = false } = {}) {
   const dirSet = new Set(dirs.map((d) => normalizePath(d)));
@@ -99,7 +99,7 @@ describe('selectiveDelete (recursive_strict)', () => {
       if (n === '/a/c') return true;
       return false;
     };
-    const canDeleteFileByParent = async (parentDir) => canEnterDirectory(parentDir);
+    const canDeleteFileByParent = async (filePath) => canEnterDirectory(getParentPath(filePath));
 
     const res = await selectiveDelete({
       rootPath: '/a',

@@ -52,6 +52,30 @@ class Permission {
   static async revokePermissionsPrefixForAllUsers(prefixes) {
     return await permissionStore.revokePermissionsPrefixForAllUsers(prefixes);
   }
+
+  static async getFilePermission(userId, filePath) {
+    return await permissionStore.getFilePermission(userId, filePath);
+  }
+
+  static async grantFile(userId, filePath, permission) {
+    return await permissionStore.grantFilePermission(userId, filePath, permission);
+  }
+
+  static async revokeFile(userId, filePath) {
+    return await permissionStore.revokeFilePermission(userId, filePath);
+  }
+
+  static async getUserFilePermissions(userId) {
+    return await permissionStore.getUserFilePermissions(userId);
+  }
+
+  static checkFilePermissionSync(doc, filePath, requiredPermission) {
+    return permissionStore.checkFilePermissionSync(doc, filePath, requiredPermission);
+  }
+
+  static async getPathEffectivePermission(userId, folderPath) {
+    return await permissionStore.getPathEffectivePermission(userId, folderPath);
+  }
 }
 
 module.exports = Permission;

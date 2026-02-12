@@ -11,7 +11,7 @@
 const path = require('path');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../models/Permission');
-const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { checkFilePermission, checkFolderPermission } = require('../middleware/permissions');
 const User = require('../models/User');
 
@@ -91,15 +91,13 @@ async function canWriteFolder(user, folderPath) {
 }
 
 /**
- * Direct-only write check for operations that require parent folder write (files),
- * with admin/owner bypass.
+ * Write check for file operations. Uses file effective permission (file-level if present, else parent path).
+ * Admin/owner bypass.
  */
 async function canWriteFileByParent(user, filePath) {
   if (!user) return false;
   if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
-  const normalized = normalizePath(filePath);
-  const parent = getParentPath(normalized);
-  return await hasDirectFolderPermission(user.id, parent, PERMISSIONS.WRITE);
+  return await checkFilePermission(user.id, filePath, PERMISSIONS.WRITE);
 }
 
 /**
@@ -130,16 +128,29 @@ function buildSyncReadChecker(user, doc) {
 }
 
 /**
- * Build a synchronous "write by parent folder" checker (filePath) => boolean using a preloaded doc.
+ * Build a synchronous read checker for files (filePath) => boolean using a preloaded doc.
+ * Uses file effective permission (file-level if present, else parent path). Use for batch copy/download.
+ * @param {Object} user - User object (is_admin, username)
+ * @param {Object} doc - Permission doc from getPermissionDoc(userId)
+ * @returns {(filePath: string) => boolean}
  */
-function buildSyncWriteFileByParentChecker(user, doc) {
-  const canWriteDir = buildSyncWriteChecker(user, doc);
+function buildSyncReadFileChecker(user, doc) {
   return (filePath) => {
     if (!user) return false;
     if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
-    const normalized = normalizePath(filePath);
-    const parent = getParentPath(normalized);
-    return canWriteDir(parent);
+    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.READ);
+  };
+}
+
+/**
+ * Build a synchronous file write checker (filePath) => boolean using a preloaded doc.
+ * Uses file effective permission (file-level if present, else parent path).
+ */
+function buildSyncWriteFileByParentChecker(user, doc) {
+  return (filePath) => {
+    if (!user) return false;
+    if (isAdminUser(user) || isOwnerPath(user, filePath)) return true;
+    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.WRITE);
   };
 }
 
@@ -266,6 +277,7 @@ module.exports = {
   canWriteFileByParent,
   buildSyncWriteChecker,
   buildSyncReadChecker,
+  buildSyncReadFileChecker,
   buildSyncWriteFileByParentChecker,
   getUserOrNull,
   canGrantPermission,

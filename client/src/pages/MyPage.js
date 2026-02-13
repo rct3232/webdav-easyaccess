@@ -36,7 +36,7 @@ import {
   rejectPermissionRequest,
   approvePermissionRequest,
 } from '../services/permissionRequestService';
-import { grantFilePermission } from '../services/fileService';
+import { grantPermission } from '../services/permissionService';
 
 const MyPage = () => {
   const { user, logout } = useAuth();
@@ -602,10 +602,11 @@ const MyPage = () => {
                                       disabled={!isPending || isActionLoading}
                                       onClick={() =>
                                         withRequestActionLoading(r.id, async () => {
-                                          await grantFilePermission({
+                                          await grantPermission({
                                             userId: r.requester_id,
-                                            filePath: r.file_path,
+                                            folderPath: r.file_path,
                                             permission: r.requested_permission || PERMISSIONS.READ,
+                                            target: 'file',
                                           });
                                           await approvePermissionRequest(r.id);
                                           setMessage({ type: 'success', text: '파일 권한 요청을 승인했습니다.' });

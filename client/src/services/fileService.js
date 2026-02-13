@@ -1,5 +1,10 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import apiClient, { get, post, put, del } from './apiClient';
+import {
+  checkPermission as checkPermissionApi,
+  grantPermission as grantPermissionApi,
+  revokePermission as revokePermissionApi,
+} from './permissionService';
 
 const API_BASE = '/files';
 
@@ -342,39 +347,29 @@ export const getDownloadProgress = async (downloadId) => {
   return response.data;
 };
 
-export const checkPermission = async (folderPath) => {
-  const response = await get('/permissions/check', {
-    params: { path: folderPath },
-  });
-  return response.data;
+/** Check effective permission for a path (folder or file). Delegates to unified permissionService. */
+export const checkPermission = async (path) => {
+  return checkPermissionApi(path);
 };
 
-/** Check effective permission for a file path (file-level overrides path). Returns { path, hasRead, hasWrite, source: 'file'|'path' }. */
+/** Check effective permission for a file path. Delegates to unified permissionService. */
 export const checkFilePermission = async (filePath) => {
-  const response = await get('/permissions/file/check', {
-    params: { path: filePath },
-  });
-  return response.data;
+  return checkPermissionApi(filePath);
 };
 
-/** Grant file-level permission (permission must be higher than parent path). */
+/** Grant file-level permission. Delegates to unified permissionService (target: 'file'). */
 export const grantFilePermission = async ({ userId, filePath, permission }) => {
-  const response = await post('/permissions/file/grant', { userId, filePath, permission });
-  return response.data;
+  await grantPermissionApi({ userId, folderPath: filePath, permission, target: 'file' });
 };
 
-/** Revoke file-level permission. */
+/** Revoke file-level permission. Delegates to unified permissionService (scope: 'pathOnly'). */
 export const revokeFilePermission = async ({ userId, filePath }) => {
-  const response = await del('/permissions/file/revoke', {
-    params: { userId, filePath },
-  });
-  return response.data;
+  await revokePermissionApi({ userId, folderPath: filePath, scope: 'pathOnly' });
 };
 
-/** Update file-level permission (same validation as grant). */
+/** Update file-level permission. Delegates to unified permissionService (target: 'file'). */
 export const updateFilePermission = async ({ userId, filePath, permission }) => {
-  const response = await apiClient.patch('/permissions/file', { userId, filePath, permission });
-  return response.data;
+  await grantPermissionApi({ userId, folderPath: filePath, permission, target: 'file' });
 };
 
 /** List current user's file-level permissions. Optionally filter by folderPath (prefix). */

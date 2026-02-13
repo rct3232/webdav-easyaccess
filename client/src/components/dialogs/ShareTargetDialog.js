@@ -25,11 +25,6 @@ import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../utils/pathUtils';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
 import { listFiles } from '../../services/fileService';
-import {
-  grantFilePermission,
-  revokeFilePermission,
-  updateFilePermission,
-} from '../../services/fileService';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
@@ -55,9 +50,17 @@ function permissionRank(p) {
 /**
  * 파일 공유 시: 경로와 동일 + 경로보다 높은 권한만 옵션으로 (회수 없음).
  * 소유자(admin)는 선택 불가. 경로 권한이 소유자면 소유자 라벨만 표시.
+ * 경로 권한이 없을 때(pathPermission == null): 열람자, 편집자, 삭제.
  */
 function getFilePermissionOptions(pathPermission) {
-  const path = pathPermission ?? PERMISSIONS.READ;
+  if (pathPermission == null) {
+    return [
+      { value: PERMISSIONS.READ, label: '열람자' },
+      { value: PERMISSIONS.WRITE, label: '편집자' },
+      { value: 'revoke', label: '삭제' },
+    ];
+  }
+  const path = pathPermission;
   if (path === PERMISSIONS.ADMIN) {
     return [{ value: PERMISSIONS.ADMIN, label: PERMISSION_LABELS[PERMISSIONS.ADMIN] }];
   }
@@ -212,7 +215,7 @@ const ShareTargetDialog = ({
               permission: p.permission || PERMISSIONS.READ,
             };
           }
-          const pathPermission = p.permission || PERMISSIONS.READ;
+          const pathPermission = p.permission ?? null;
           const filePermission = p.file_permission ?? null;
           return {
             id: p.id,
@@ -220,7 +223,7 @@ const ShareTargetDialog = ({
             email: p.email || '',
             pathPermission,
             filePermission,
-            permission: filePermission ?? pathPermission,
+            permission: filePermission ?? pathPermission ?? PERMISSIONS.READ,
           };
         });
       setAccessList(list);
@@ -280,8 +283,8 @@ const ShareTargetDialog = ({
     setSearchOpen(false);
   }, [isDirectory]);
 
-  const setUserPermission = useCallback((userId, permission) => {
-    if (isDirectory && permission === 'revoke') {
+  const setUserPermission = useCallback((userId, permission, pathPermissionOfUser) => {
+    if (permission === 'revoke' && (isDirectory || pathPermissionOfUser == null)) {
       setAccessList((prev) => prev.filter((x) => x.id !== userId));
       return;
     }
@@ -319,25 +322,40 @@ const ShareTargetDialog = ({
           }
         }
       } else {
+        const currentIds = new Set(accessList.map((u) => u.id));
+        for (const initial of initialAccessList) {
+          if (!currentIds.has(initial.id)) {
+            try {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'ShareTargetDialog.js:handleSave', message: 'revokePermission scope pathOnly user_removed', data: { userId: initial.id, filePath: targetPath }, timestamp: Date.now() }) }).catch(() => {});
+              // #endregion
+              await revokePermission({ userId: initial.id, folderPath: targetPath, scope: 'pathOnly' });
+            } catch (e) {
+              console.error('Revoke file failed:', e);
+            }
+          }
+        }
         for (const u of accessList) {
           const initial = initialAccessList.find((x) => x.id === u.id);
-          if (u.permission === (u.pathPermission ?? PERMISSIONS.READ) && initial?.filePermission == null) {
+          const pathDefault = u.pathPermission ?? PERMISSIONS.READ;
+          const skipCond1 = u.permission === pathDefault && initial?.filePermission == null;
+          const skipCond2 = u.permission === pathDefault && initial?.filePermission != null;
+          if (u.pathPermission != null && skipCond1) {
             continue;
           }
-          if (u.permission === (u.pathPermission ?? PERMISSIONS.READ) && initial?.filePermission != null) {
+          if (skipCond2) {
             try {
-              await revokeFilePermission({ userId: u.id, filePath: targetPath });
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'ShareTargetDialog.js:handleSave', message: 'revokePermission scope pathOnly skipCond2', data: { userId: u.id, filePath: targetPath, pathPermission: u.pathPermission, permission: u.permission }, timestamp: Date.now() }) }).catch(() => {});
+              // #endregion
+              await revokePermission({ userId: u.id, folderPath: targetPath, scope: 'pathOnly' });
             } catch (e) {
               console.error('Revoke file failed:', e);
             }
             continue;
           }
           try {
-            if (initial) {
-              await updateFilePermission({ userId: u.id, filePath: targetPath, permission: u.permission });
-            } else {
-              await grantFilePermission({ userId: u.id, filePath: targetPath, permission: u.permission });
-            }
+            await grantPermission({ userId: u.id, folderPath: targetPath, permission: u.permission, target: 'file' });
           } catch (e) {
             console.error('Grant/update file failed:', e);
           }
@@ -475,12 +493,12 @@ const ShareTargetDialog = ({
                       <FormControl size="small" sx={{ minWidth: 0 }}>
                         <Select
                           value={u.permission === PERMISSIONS.ADMIN ? PERMISSIONS.ADMIN : u.permission}
-                          onChange={(e) => setUserPermission(u.id, e.target.value)}
+                          onChange={(e) => setUserPermission(u.id, e.target.value, u.pathPermission)}
                           displayEmpty
                           disabled={(isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)}
                           renderValue={(v) => {
                             if (v === PERMISSIONS.ADMIN) return PERMISSION_LABELS[PERMISSIONS.ADMIN];
-                            if (!isDirectory && v === (u.pathPermission ?? PERMISSIONS.READ)) return '경로와 동일';
+                            if (!isDirectory && u.pathPermission != null && v === u.pathPermission) return '경로와 동일';
                             return PERMISSION_LABELS[v] || v;
                           }}
                           variant="standard"

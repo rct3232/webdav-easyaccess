@@ -25,19 +25,29 @@ export const getFolderPermissions = async (path, includeSubfolders = false, file
 };
 
 /**
- * 폴더 권한 부여
- * @param {Object} params - { userId, folderPath, permission }
+ * 권한 부여 (폴더 또는 파일). 파일일 때는 target: 'file' 전달.
+ * @param {Object} params - { userId, folderPath, permission, target? } target 'file'이면 파일 권한
  */
-export const grantPermission = async ({ userId, folderPath, permission }) => {
-  await post('/permissions/grant', { userId, folderPath, permission });
+export const grantPermission = async ({ userId, folderPath, permission, target }) => {
+  const body = { userId, folderPath, permission };
+  if (target != null) body.target = target;
+  await post('/permissions/grant', body);
 };
 
 /**
- * 폴더 권한 철회
- * @param {Object} params - { userId, folderPath, includeSubfolders }
+ * 권한 철회 (폴더 또는 파일). 파일만 회수할 때는 scope: 'pathOnly' 전달.
+ * @param {Object} params - { userId, folderPath, includeSubfolders?, scope? }
  */
-export const revokePermission = async ({ userId, folderPath, includeSubfolders = false }) => {
-  await del('/permissions/revoke', {
-    params: { userId, folderPath, includeSubfolders: includeSubfolders ? 'true' : 'false' },
-  });
+export const revokePermission = async ({ userId, folderPath, includeSubfolders = false, scope }) => {
+  const params = { userId, folderPath, includeSubfolders: includeSubfolders ? 'true' : 'false' };
+  if (scope != null) params.scope = scope;
+  await del('/permissions/revoke', { params });
+};
+
+/**
+ * 현재 사용자의 유효 권한 조회 (경로/파일 공통). 반환: { path, hasRead, hasWrite, source: 'file'|'path' }.
+ */
+export const checkPermission = async (path) => {
+  const response = await get('/permissions/check', { params: { path } });
+  return response.data;
 };

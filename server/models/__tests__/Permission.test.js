@@ -317,6 +317,50 @@ describe('Permission Model', () => {
     });
   });
 
+  describe('Path escalation file permission sync', () => {
+    it('should escalate file permission when path is upgraded from read to admin', async () => {
+      await Permission.grant(testUser1.id, '/project', 'read');
+      await Permission.grantFile(testUser1.id, '/project/file.txt', 'write');
+      expect(await Permission.getFilePermission(testUser1.id, '/project/file.txt')).toBe('write');
+
+      await Permission.grant(testUser1.id, '/project', 'admin');
+
+      expect(await Permission.getFilePermission(testUser1.id, '/project/file.txt')).toBe('admin');
+    });
+
+    it('should escalate file permission when path is upgraded from read to write', async () => {
+      await Permission.grant(testUser1.id, '/project', 'read');
+      await Permission.grantFile(testUser1.id, '/project/doc.pdf', 'write');
+      expect(await Permission.getFilePermission(testUser1.id, '/project/doc.pdf')).toBe('write');
+
+      await Permission.grant(testUser1.id, '/project', 'write');
+
+      expect(await Permission.getFilePermission(testUser1.id, '/project/doc.pdf')).toBe('write');
+    });
+
+    it('should not change file permission when already equal or higher than new path permission', async () => {
+      await Permission.grant(testUser1.id, '/project', 'write');
+      await Permission.grantFile(testUser1.id, '/project/secret.txt', 'admin');
+      expect(await Permission.getFilePermission(testUser1.id, '/project/secret.txt')).toBe('admin');
+
+      await Permission.grant(testUser1.id, '/project', 'admin');
+
+      expect(await Permission.getFilePermission(testUser1.id, '/project/secret.txt')).toBe('admin');
+    });
+
+    it('should not change file permissions outside the escalated path', async () => {
+      await Permission.grant(testUser1.id, '/folder', 'read');
+      await Permission.grant(testUser1.id, '/other', 'read');
+      await Permission.grantFile(testUser1.id, '/folder/a.txt', 'write');
+      await Permission.grantFile(testUser1.id, '/other/b.txt', 'write');
+
+      await Permission.grant(testUser1.id, '/folder', 'admin');
+
+      expect(await Permission.getFilePermission(testUser1.id, '/folder/a.txt')).toBe('admin');
+      expect(await Permission.getFilePermission(testUser1.id, '/other/b.txt')).toBe('write');
+    });
+  });
+
   describe('Integration Tests', () => {
     it('should handle complete permission lifecycle', async () => {
       // Grant permission

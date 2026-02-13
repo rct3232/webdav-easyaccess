@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { revokePermission } from '../services/permissionService';
-import { checkPermission, checkFilePermission, revokeFilePermission } from '../services/fileService';
+import { revokePermission, checkPermission } from '../services/permissionService';
 import {
   cancelPermissionRequest,
   createPermissionRequest,
@@ -62,15 +61,13 @@ export function useSharedManage({
           const permission = await checkPermission(targetPath);
           setPermissionInfo({ hasRead: Boolean(permission.hasRead), hasWrite: Boolean(permission.hasWrite) });
         } else {
-          const [fileResult, parentPath] = await Promise.all([
-            checkFilePermission(targetPath),
-            Promise.resolve(getParentPath(targetPath)),
-          ]);
+          const fileResult = await checkPermission(targetPath);
           const hasRead = Boolean(fileResult?.hasRead);
           const hasWrite = Boolean(fileResult?.hasWrite);
           const source = fileResult?.source === 'file' ? 'file' : 'path';
           setPermissionInfo({ hasRead, hasWrite, source });
 
+          const parentPath = getParentPath(targetPath);
           let pathPerm = 'none';
           if (parentPath) {
             try {
@@ -252,7 +249,7 @@ export function useSharedManage({
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
         }
       } else {
-        await revokeFilePermission({ userId: user.id, filePath: targetPath });
+        await revokePermission({ userId: user.id, folderPath: targetPath, scope: 'pathOnly' });
         if (onMessage) {
           onMessage({
             show: true,

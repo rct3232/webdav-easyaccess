@@ -1,12 +1,12 @@
 const permissionStore = require('../store/permissionStore');
 
 class Permission {
-  static async grant(userId, folderPath, permission) {
-    return await permissionStore.grant(userId, folderPath, permission);
+  static async grant(userId, folderPath, permission, options) {
+    return await permissionStore.grant(userId, folderPath, permission, options);
   }
 
-  static async revoke(userId, folderPath) {
-    return await permissionStore.revoke(userId, folderPath);
+  static async revoke(userId, folderPath, options) {
+    return await permissionStore.revoke(userId, folderPath, options);
   }
 
   static async revokeAllUserPermissions(userId) {
@@ -57,12 +57,16 @@ class Permission {
     return await permissionStore.getFilePermission(userId, filePath);
   }
 
+  static async getEffectivePermission(userId, path) {
+    return await permissionStore.getEffectivePermission(userId, path);
+  }
+
   static async grantFile(userId, filePath, permission) {
-    return await permissionStore.grantFilePermission(userId, filePath, permission);
+    return await permissionStore.grant(userId, filePath, permission, { target: 'file' });
   }
 
   static async revokeFile(userId, filePath) {
-    return await permissionStore.revokeFilePermission(userId, filePath);
+    return await permissionStore.revoke(userId, filePath, { scope: 'pathOnly' });
   }
 
   static async getUserFilePermissions(userId) {

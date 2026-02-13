@@ -10,10 +10,10 @@ const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../utils/errorHandler');
 const User = require('../models/User');
 
-// Grant permission
+// Grant permission (folder or file; use target: 'file' for file-level)
 router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  const { userId, folderPath, permission } = req.body;
-  
+  const { userId, folderPath, permission, target } = req.body;
+
   if (!userId || !folderPath || !permission) {
     throw validationError('User ID, folder path, and permission are required');
   }
@@ -23,52 +23,60 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
   }
 
   const user = req.user.full;
+  const isFile = target === 'file';
+  const pathForCheck = isFile ? getParentPath(normalizePath(folderPath)) : folderPath;
 
-  // Check if user has permission to grant access to this folder
-  const canGrant = await canGrantPermission(user, folderPath, req.user.id);
-
+  const canGrant = await canGrantPermission(user, pathForCheck, req.user.id);
   if (!canGrant) {
-    throw forbiddenError('Access denied. You do not have permission to share this folder');
+    throw forbiddenError(isFile ? 'Access denied. You do not have permission to grant file permission for this path' : 'Access denied. You do not have permission to share this folder');
   }
 
-  await Permission.grant(userId, folderPath, permission);
+  const options = isFile ? { target: 'file' } : {};
+  try {
+    await Permission.grant(userId, folderPath, permission, options);
+  } catch (err) {
+    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
+      throw validationError(err.message || 'File permission must be higher than parent path permission');
+    }
+    throw err;
+  }
   res.json({ message: 'Permission granted successfully' });
 }));
 
-// Revoke permission
+// Revoke permission (folder or file; use scope: 'pathOnly' for file-level only)
 router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  const { userId, folderPath, includeSubfolders } = req.query;
-  
+  const { userId, folderPath, includeSubfolders, scope } = req.query;
+
   if (!userId || !folderPath) {
     throw validationError('User ID and folder path are required');
   }
 
-  // Check if user has permission to revoke access to this folder
   const requestingUser = req.user.full;
-  const targetUserId = parseInt(userId);
-  
-  const canRevoke = await canRevokePermission(requestingUser, folderPath, req.user.id, targetUserId);
-  
+  const targetUserId = parseInt(userId, 10);
+  const isPathOnly = scope === 'pathOnly';
+  const pathForCheck = isPathOnly ? getParentPath(normalizePath(folderPath)) : folderPath;
+
+  const canRevoke = await canRevokePermission(requestingUser, pathForCheck, req.user.id, targetUserId);
   if (!canRevoke) {
-    throw forbiddenError('Access denied. You do not have permission to revoke access to this folder');
+    throw forbiddenError(isPathOnly ? 'Access denied. You do not have permission to revoke file permission for this path' : 'Access denied. You do not have permission to revoke access to this folder');
+  }
+
+  if (isPathOnly) {
+    await Permission.revoke(userId, folderPath, { scope: 'pathOnly' });
+    return res.json({ message: 'Permission revoked successfully' });
   }
 
   const normalizedFolderPath = normalizePath(folderPath);
   const normalizedFolderPathWithSlash = normalizePath(folderPath, { isDirectory: true });
 
   if (includeSubfolders === 'true') {
-    // 하위 폴더 포함하여 모든 권한 삭제
     const allPermissions = await Permission.getUserPermissions(userId);
-    
-    // 해당 폴더와 하위 폴더의 권한만 필터링
     const permissionsToRevoke = allPermissions.filter(perm => {
       const normalizedPermPath = normalizePath(perm.folder_path);
-      return normalizedPermPath === normalizedFolderPath || 
-             (normalizedPermPath.startsWith(normalizedFolderPathWithSlash) && 
+      return normalizedPermPath === normalizedFolderPath ||
+             (normalizedPermPath.startsWith(normalizedFolderPathWithSlash) &&
               normalizedPermPath.length > normalizedFolderPathWithSlash.length);
     });
-    
-    // 각 권한을 삭제
     let deletedCount = 0;
     for (const perm of permissionsToRevoke) {
       try {
@@ -78,16 +86,14 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
         console.error(`Failed to revoke permission for ${perm.folder_path}:`, error);
       }
     }
-    
-    res.json({ 
+    return res.json({
       message: 'Permission revoked successfully',
-      deletedCount 
+      deletedCount,
     });
-  } else {
-    // 해당 폴더만 삭제
-    await Permission.revoke(userId, folderPath);
-    res.json({ message: 'Permission revoked successfully' });
   }
+
+  await Permission.revoke(userId, folderPath);
+  res.json({ message: 'Permission revoked successfully' });
 }));
 
 // Get user permissions
@@ -181,21 +187,23 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
   res.json(permissions);
 }));
 
-// Check current user's permission for a specific path
+// Check current user's effective permission for a path (folder or file; file-level overrides path)
 router.get('/check', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  let folderPath = req.query.path || '/';
-  const user = req.user.full;
-  
-  // 경로 정규화
-  folderPath = normalizePath(folderPath);
+  let path = req.query.path || '/';
+  path = normalizePath(path);
 
-  const hasRead = await canReadFolder(req.user.id, folderPath, 'read');
-  const hasWrite = await canWriteFolder(user, folderPath);
+  const effective = await Permission.getEffectivePermission(req.user.id, path);
+  const filePerm = await Permission.getFilePermission(req.user.id, path);
+  const rank = effective ? PERMISSIONS.ALL.indexOf(effective) : -1;
+  const hasRead = rank >= 0;
+  const hasWrite = rank >= 1;
+  const source = filePerm != null ? 'file' : 'path';
 
   res.json({
-    path: folderPath,
+    path,
     hasRead,
-    hasWrite
+    hasWrite,
+    source,
   });
 }));
 

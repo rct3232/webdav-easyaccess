@@ -84,27 +84,127 @@ async function writeUserPermissionsDoc(userId, doc) {
   }
 }
 
-async function grant(userId, folderPath, permission) {
+async function grant(userId, folderPath, permission, options = {}) {
+  const target = options.target || 'folder';
+  if (target === 'file') {
+    return await grantFilePermission(userId, folderPath, permission);
+  }
   const uid = String(userId);
   const folder = normalizeWebdavPath(folderPath);
   return await withLock(`perm:${uid}`, async () => {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
+    // #region agent log
+    const prefixWithSlashForLog = folder === '/' ? '/' : (folder.endsWith('/') ? folder : folder + '/');
+    const folderLower = folder.toLowerCase();
+    const prefixLower = prefixWithSlashForLog.toLowerCase();
+    const fileKeysUnderPathBefore = Object.keys(doc.file_permissions || {}).filter((k) => {
+      const n = normalizeWebdavPath(k).toLowerCase();
+      return n === folderLower || n.startsWith(prefixLower);
+    });
+    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,E', location: 'permissionStore.js:grant', message: 'grant path before escalate', data: { userId: uid, folderPath: folder, permission, fileKeysUnderPath: fileKeysUnderPathBefore, filePermsBefore: fileKeysUnderPathBefore.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     doc.permissions[folder] = permission;
+    escalateFilePermissionsUnderPath(doc, folder, permission);
+    // #region agent log
+    const fileKeysUnderPathAfter = Object.keys(doc.file_permissions || {}).filter((k) => {
+      const n = normalizeWebdavPath(k).toLowerCase();
+      return n === folderLower || n.startsWith(prefixLower);
+    });
+    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,E', location: 'permissionStore.js:grant', message: 'grant path after escalate', data: { userId: uid, folderPath: folder, permission, fileKeysUnderPath: fileKeysUnderPathAfter, filePermsAfter: fileKeysUnderPathAfter.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     await writeUserPermissionsDoc(uid, doc);
     return { id: undefined, userId: Number(uid), folderPath: folderPath, permission };
   });
 }
 
-async function revoke(userId, folderPath) {
+async function revoke(userId, folderPath, options = {}) {
+  const scope = options.scope || 'includeDescendants';
+  if (scope === 'pathOnly') {
+    return await revokePathOnly(userId, folderPath);
+  }
   const uid = String(userId);
   const folder = normalizeWebdavPath(folderPath);
   return await withLock(`perm:${uid}`, async () => {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
+    // #region agent log
+    const prefixWithSlashForLog = folder === '/' ? '/' : (folder.endsWith('/') ? folder : folder + '/');
+    const folderLowerRevoke = folder.toLowerCase();
+    const prefixLowerRevoke = prefixWithSlashForLog.toLowerCase();
+    const fileKeysUnderPath = Object.keys(doc.file_permissions || {}).filter((k) => {
+      const n = normalizeWebdavPath(k).toLowerCase();
+      return n === folderLowerRevoke || n.startsWith(prefixLowerRevoke);
+    });
+    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'A', location: 'permissionStore.js:revoke', message: 'revoke path will remove file_permissions', data: { userId: uid, folderPath: folder, scope, fileKeysRemoved: fileKeysUnderPath, filePerms: fileKeysUnderPath.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     delete doc.permissions[folder];
     removeFilePermissionsUnderPrefix(doc, folder);
     await writeUserPermissionsDoc(uid, doc);
     return { success: true };
   });
+}
+
+async function revokePathOnly(userId, path) {
+  const uid = String(userId);
+  const normalized = normalizeWebdavPath(path);
+  return await withLock(`perm:${uid}`, async () => {
+    const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
+    let changed = false;
+    if (doc.file_permissions && doc.file_permissions[normalized] !== undefined) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'permissionStore.js:revokePathOnly', message: 'revoke file_permission (file permission)', data: { userId: uid, path: normalized, previousPerm: doc.file_permissions[normalized] }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
+      delete doc.file_permissions[normalized];
+      changed = true;
+    }
+    const withSlash = normalizeWithSlash(path);
+    const noSlash = normalizeNoSlash(path);
+    if (doc.permissions && (doc.permissions[normalized] !== undefined || doc.permissions[withSlash] !== undefined || doc.permissions[noSlash] !== undefined)) {
+      delete doc.permissions[normalized];
+      delete doc.permissions[withSlash];
+      delete doc.permissions[noSlash];
+      changed = true;
+    }
+    if (changed) {
+      await writeUserPermissionsDoc(uid, doc);
+    }
+    return { success: true };
+  });
+}
+
+/**
+ * Escalate file_permissions under the given folder path when file permission is lower than newPermission.
+ * Used when path permission is upgraded; files with independent permissions lower than the new path get upgraded.
+ */
+function escalateFilePermissionsUnderPath(doc, folderPath, newPermission) {
+  if (!doc.file_permissions || typeof doc.file_permissions !== 'object') return;
+  const newRank = permissionRank(newPermission);
+  if (newRank < 0) return;
+  const prefixNoSlash = normalizeNoSlash(folderPath);
+  const prefixWithSlash = normalizeWithSlash(folderPath);
+  const prefixNoSlashLower = prefixNoSlash.toLowerCase();
+  const prefixWithSlashLower = prefixWithSlash.toLowerCase();
+  const updates = [];
+  for (const key of Object.keys(doc.file_permissions)) {
+    const keyNorm = normalizeWebdavPath(key);
+    const keyNormLower = keyNorm.toLowerCase();
+    const underPath =
+      prefixNoSlash === '/'
+        ? true
+        : keyNormLower === prefixNoSlashLower || keyNormLower.startsWith(prefixWithSlashLower);
+    if (!underPath) continue;
+    const filePerm = doc.file_permissions[key];
+    const fileRank = permissionRank(filePerm);
+    const willUpdate = fileRank < newRank;
+    if (willUpdate) {
+      doc.file_permissions[key] = newPermission;
+      updates.push({ key, filePerm, newPermission, fileRank, newRank });
+    }
+  }
+  // #region agent log
+  if (updates.length > 0) {
+    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,C', location: 'permissionStore.js:escalateFilePermissionsUnderPath', message: 'escalate updated file_permissions', data: { folderPath, newPermission, newRank, prefixNoSlash, prefixWithSlash, updates }, timestamp: Date.now() }) }).catch(() => {});
+  }
+  // #endregion
 }
 
 /**
@@ -114,13 +214,16 @@ function removeFilePermissionsUnderPrefix(doc, folderPath) {
   if (!doc.file_permissions || typeof doc.file_permissions !== 'object') return;
   const prefixNoSlash = normalizeNoSlash(folderPath);
   const prefixWithSlash = normalizeWithSlash(folderPath);
+  const prefixNoSlashLower = prefixNoSlash.toLowerCase();
+  const prefixWithSlashLower = prefixWithSlash.toLowerCase();
   for (const key of Object.keys(doc.file_permissions)) {
     const keyNorm = normalizeWebdavPath(key);
-    if (keyNorm === prefixNoSlash || keyNorm === prefixWithSlash) continue;
+    const keyNormLower = keyNorm.toLowerCase();
+    if (keyNormLower === prefixNoSlashLower || keyNormLower === prefixWithSlashLower) continue;
     if (prefixNoSlash === '/') {
       // revoking root: remove all
       delete doc.file_permissions[key];
-    } else if (keyNorm.startsWith(prefixWithSlash) || keyNorm === prefixNoSlash) {
+    } else if (keyNormLower.startsWith(prefixWithSlashLower) || keyNormLower === prefixNoSlashLower) {
       delete doc.file_permissions[key];
     }
   }
@@ -189,6 +292,20 @@ async function getPathEffectivePermission(userId, folderPath) {
  */
 function normalizeFilePath(filePath) {
   return normalizeWebdavPath(filePath);
+}
+
+/**
+ * Get the key in file_permissions that matches the given path (exact or case-insensitive).
+ * WebDAV paths can differ in case (e.g. 1.JPG vs 1.jpg); lookup must match stored key.
+ */
+function getFilePermissionKey(fp, normalizedPath) {
+  if (!fp || typeof fp !== 'object') return undefined;
+  if (fp[normalizedPath] !== undefined) return normalizedPath;
+  const lower = normalizedPath.toLowerCase();
+  for (const key of Object.keys(fp)) {
+    if (key.toLowerCase() === lower) return key;
+  }
+  return undefined;
 }
 
 function strongerPermission(a, b) {
@@ -282,13 +399,35 @@ async function getFilePermission(userId, filePath) {
   const normalized = normalizeFilePath(filePath);
   const doc = await readUserPermissionsDoc(uid);
   const fp = doc.file_permissions || {};
-  const perm = fp[normalized];
-  if (!perm) return null;
-  return perm;
+  const key = getFilePermissionKey(fp, normalized);
+  if (key === undefined) return null;
+  return fp[key];
 }
 
 /**
- * Grant file-level permission. Throws if permission is not strictly higher than parent path effective permission.
+ * Get effective permission for a path (file or folder).
+ * File permission takes precedence; otherwise falls back to path permission (direct or parent).
+ * @param {number|string} userId
+ * @param {string} path - File or folder path
+ * @returns {Promise<string|null>} 'read'|'write'|'admin' or null
+ */
+async function getEffectivePermission(userId, path) {
+  const doc = await readUserPermissionsDoc(userId);
+  const normalized = normalizeFilePath(path);
+  const fp = doc.file_permissions || {};
+  const key = getFilePermissionKey(fp, normalized);
+  const filePerm = key !== undefined ? fp[key] : null;
+  if (filePerm != null) return filePerm;
+  const pathPerm = getPathEffectivePermissionFromDoc(doc, normalized);
+  if (pathPerm != null) return pathPerm;
+  const parentPath = getParentPath(normalized);
+  return getPathEffectivePermissionFromDoc(doc, parentPath);
+}
+
+/**
+ * Grant file-level permission.
+ * When parent path has no permission: allows file-only permission.
+ * When parent path has permission: file permission must be strictly higher than path (and path must not be admin).
  * @throws {Error} code 'PATH_IS_ADMIN' or 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' for validation (400)
  */
 async function grantFilePermission(userId, filePath, permission) {
@@ -309,12 +448,7 @@ async function grantFilePermission(userId, filePath, permission) {
       err.code = 'PATH_IS_ADMIN';
       throw err;
     }
-    if (!pathEffective) {
-      const err = new Error('Cannot grant file permission: no permission on parent path');
-      err.code = 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH';
-      throw err;
-    }
-    if (permissionRank(permission) <= permissionRank(pathEffective)) {
+    if (pathEffective != null && permissionRank(permission) <= permissionRank(pathEffective)) {
       const err = new Error('File permission must be higher than parent path permission');
       err.code = 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH';
       throw err;
@@ -357,7 +491,8 @@ function checkFilePermissionSync(doc, filePath, requiredPermission) {
   if (!doc) return false;
   const normalized = normalizeFilePath(filePath);
   const fp = doc.file_permissions || {};
-  const filePerm = fp[normalized];
+  const key = getFilePermissionKey(fp, normalized);
+  const filePerm = key !== undefined ? fp[key] : null;
   if (filePerm !== undefined && filePerm !== null) {
     return permissionRank(filePerm) >= permissionRank(requiredPermission);
   }
@@ -376,8 +511,12 @@ async function getFolderPermissions(folderPath, filePath) {
     if (!ent.basename || !ent.basename.endsWith('.json')) continue;
     const userId = ent.basename.replace(/\.json$/, '');
     const doc = await readUserPermissionsDoc(userId);
-    const perm = doc.permissions?.[folder];
-    if (!perm) continue;
+    const perm = doc.permissions?.[folder] ?? null;
+    const fp = doc.file_permissions && typeof doc.file_permissions === 'object' ? doc.file_permissions : {};
+    const fpKey = normalizedFile != null ? getFilePermissionKey(fp, normalizedFile) : undefined;
+    const hasPathPerm = perm != null;
+    const hasFilePerm = fpKey !== undefined;
+    if (!hasPathPerm && !hasFilePerm) continue;
     const user = await userStore.findById(userId);
     if (!user) continue;
     const item = {
@@ -388,8 +527,11 @@ async function getFolderPermissions(folderPath, filePath) {
       permission: perm,
     };
     if (normalizedFile != null) {
-      const fp = doc.file_permissions && typeof doc.file_permissions === 'object' ? doc.file_permissions : {};
-      item.file_permission = fp[normalizedFile] ?? null;
+      item.file_permission = fpKey !== undefined ? fp[fpKey] : null;
+      // #region agent log
+      const fpKeysForFile = Object.keys(fp).filter((k) => normalizeWebdavPath(k) === normalizedFile || k === normalizedFile);
+      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'C', location: 'permissionStore.js:getFolderPermissions', message: 'getFolderPermissions file_permission lookup', data: { folderPath: folder, requestedFilePath: filePath, normalizedFile, resolved: item.file_permission, fpKeysMatching: fpKeysForFile }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
     }
     results.push(item);
   }
@@ -696,6 +838,7 @@ module.exports = {
   rewritePermissionsForAllUsers,
   revokePermissionsPrefixForAllUsers,
   getFilePermission,
+  getEffectivePermission,
   grantFilePermission,
   revokeFilePermission,
   getUserFilePermissions,

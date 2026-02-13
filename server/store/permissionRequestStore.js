@@ -81,16 +81,21 @@ async function writeDoc(doc) {
   });
 }
 
+const TARGET_TYPE = { FOLDER: 'folder', FILE: 'file' };
+
 function sanitizeRequest(r) {
   if (!r || typeof r !== 'object') return null;
   const id = Number.isInteger(r.id) ? r.id : null;
   const requester_id = Number.isInteger(r.requester_id) ? r.requester_id : null;
   const owner_id = Number.isInteger(r.owner_id) ? r.owner_id : null;
   const folder_path = typeof r.folder_path === 'string' ? normalizePath(r.folder_path) : null;
+  const file_path = typeof r.file_path === 'string' ? normalizePath(r.file_path) : null;
+  const target_type = r.target_type === TARGET_TYPE.FILE ? TARGET_TYPE.FILE : TARGET_TYPE.FOLDER;
   const requested_permission = normalizePermission(r.requested_permission);
   const status = normalizeStatus(r.status);
 
-  if (!id || !requester_id || !owner_id || !folder_path || !requested_permission || !status) return null;
+  if (!id || !requester_id || !owner_id || !requested_permission || !status) return null;
+  if (!folder_path && !file_path) return null;
 
   return {
     id,
@@ -98,7 +103,9 @@ function sanitizeRequest(r) {
     requester_username: typeof r.requester_username === 'string' ? r.requester_username : '',
     owner_id,
     owner_username: typeof r.owner_username === 'string' ? r.owner_username : '',
-    folder_path,
+    folder_path: folder_path || null,
+    file_path: file_path || null,
+    target_type,
     requested_permission,
     status,
     message: typeof r.message === 'string' ? r.message : '',
@@ -114,14 +121,25 @@ async function createRequest({
   ownerId,
   ownerUsername,
   folderPath,
+  filePath,
   requestedPermission,
   message = '',
 }) {
-  const folder_path = normalizePath(folderPath);
   const perm = normalizePermission(requestedPermission);
   if (!perm) {
     const e = new Error('Invalid requested permission');
     e.code = 'INVALID_PERMISSION';
+    throw e;
+  }
+
+  const isFileRequest = typeof filePath === 'string' && filePath.trim() !== '';
+  const folder_path = isFileRequest ? null : (folderPath ? normalizePath(folderPath) : null);
+  const file_path = isFileRequest ? normalizePath(filePath) : null;
+  const target_type = isFileRequest ? TARGET_TYPE.FILE : TARGET_TYPE.FOLDER;
+
+  if (!isFileRequest && !folder_path) {
+    const e = new Error('folderPath or filePath is required');
+    e.code = 'INVALID_PATH';
     throw e;
   }
 
@@ -138,8 +156,10 @@ async function createRequest({
           r.status === PERMISSION_REQUEST_STATUS.PENDING &&
           r.requester_id === requesterId &&
           r.owner_id === ownerId &&
-          r.folder_path === folder_path &&
-          r.requested_permission === perm
+          r.requested_permission === perm &&
+          (isFileRequest
+            ? r.file_path === file_path
+            : r.folder_path === folder_path)
       );
 
     if (existing) {
@@ -156,6 +176,8 @@ async function createRequest({
       owner_id: ownerId,
       owner_username: ownerUsername || '',
       folder_path,
+      file_path: file_path || null,
+      target_type,
       requested_permission: perm,
       status: PERMISSION_REQUEST_STATUS.PENDING,
       message: typeof message === 'string' ? message : '',

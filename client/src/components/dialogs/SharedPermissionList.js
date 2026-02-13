@@ -11,9 +11,42 @@ import {
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
-export default function SharedFolderPermissionList({
+/**
+ * Normalize folder or file permission inputs into 4 levels (0|1).
+ * @param {boolean} isDirectory
+ * @param {{ hasReadPermission?: boolean, hasWritePermission?: boolean }} folderProps - when isDirectory
+ * @param {{ pathPermission?: string, filePermissionLevel?: string|null }} fileProps - when !isDirectory
+ */
+function getPermissionLevels(isDirectory, folderProps, fileProps) {
+  if (isDirectory) {
+    return {
+      pathReadLevel: folderProps.hasReadPermission ? 1 : 0,
+      pathWriteLevel: folderProps.hasWritePermission ? 1 : 0,
+      fileReadLevel: 0,
+      fileWriteLevel: 0,
+    };
+  }
+  const p = fileProps.pathPermission ?? 'none';
+  const f = fileProps.filePermissionLevel;
+  return {
+    pathReadLevel: (p === 'read' || p === 'write') ? 1 : 0,
+    pathWriteLevel: p === 'write' ? 1 : 0,
+    fileReadLevel: (f === 'read' || f === 'write') ? 1 : 0,
+    fileWriteLevel: f === 'write' ? 1 : 0,
+  };
+}
+
+/**
+ * 통합 공유 권한 목록 (폴더/파일).
+ * - 폴더: hasReadPermission, hasWritePermission 기반.
+ * - 파일: pathPermission, filePermissionLevel 기반. 4개 레벨 + 5개 수식으로 버튼 노출.
+ */
+export default function SharedPermissionList({
+  isDirectory,
   hasReadPermission,
   hasWritePermission,
+  pathPermission,
+  filePermissionLevel,
   pendingRequest,
   loading,
   ownerExists,
@@ -21,16 +54,27 @@ export default function SharedFolderPermissionList({
   onCancelPendingRequest,
   onRevokeClick,
 }) {
+  const { pathReadLevel, pathWriteLevel, fileReadLevel, fileWriteLevel } = getPermissionLevels(
+    isDirectory,
+    { hasReadPermission, hasWritePermission },
+    { pathPermission, filePermissionLevel }
+  );
+
+  const showRequestRead = !pathReadLevel && !fileReadLevel;
+  const showRequestWrite = !pathWriteLevel && !fileWriteLevel;
+  const showRevokeSingle = isDirectory && (pathReadLevel || pathWriteLevel);
+  const showRevokeRead = !isDirectory && fileReadLevel && !pathReadLevel;
+  const showRevokeWrite = !isDirectory && fileWriteLevel && !pathWriteLevel;
+
   const requestDisabled =
     loading || ownerExists === false || ownerExists === null || pendingRequest.read.pending || pendingRequest.write.pending;
   const writeRequestDisabled =
     loading || ownerExists === false || ownerExists === null || pendingRequest.write.pending;
-  const revokeDisabled =
-    loading || ownerExists === false || ownerExists === null;
+  const revokeDisabled = loading || ownerExists === false || ownerExists === null;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {!hasReadPermission && (
+      {showRequestRead && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Button
             variant="outlined"
@@ -61,7 +105,7 @@ export default function SharedFolderPermissionList({
         </Box>
       )}
 
-      {!hasWritePermission && (
+      {showRequestWrite && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Button
             variant="outlined"
@@ -92,7 +136,7 @@ export default function SharedFolderPermissionList({
         </Box>
       )}
 
-      {hasReadPermission && (
+      {showRevokeSingle && (
         <Button
           variant="outlined"
           color="error"
@@ -103,6 +147,34 @@ export default function SharedFolderPermissionList({
           sx={{ py: 1.5 }}
         >
           권한 반납
+        </Button>
+      )}
+
+      {Boolean(showRevokeRead) && (
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<ExitToAppIcon />}
+          onClick={onRevokeClick}
+          fullWidth
+          disabled={revokeDisabled}
+          sx={{ py: 1.5 }}
+        >
+          읽기권한 반납
+        </Button>
+      )}
+
+      {Boolean(showRevokeWrite) && (
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<ExitToAppIcon />}
+          onClick={onRevokeClick}
+          fullWidth
+          disabled={revokeDisabled}
+          sx={{ py: 1.5 }}
+        >
+          쓰기권한 반납
         </Button>
       )}
     </Box>

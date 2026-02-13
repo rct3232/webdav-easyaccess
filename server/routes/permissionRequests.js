@@ -13,8 +13,8 @@ const { isMetaPath } = require('../store/metaPaths');
 const User = require('../models/User');
 const PermissionRequest = require('../models/PermissionRequest');
 
-function extractOwnerUsername(folderPath) {
-  const normalized = normalizePath(folderPath);
+function extractOwnerUsername(path) {
+  const normalized = normalizePath(path);
   if (!normalized || normalized === '/') return null;
   const parts = normalized.split('/').filter(Boolean);
   return parts[0] || null;
@@ -30,12 +30,15 @@ function normalizeStatus(s) {
 
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { folderPath, permission, message } = req.body || {};
+    const { folderPath, filePath, permission, message } = req.body || {};
 
-    if (!folderPath || !permission) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'folderPath and permission are required' });
+    const hasFolder = typeof folderPath === 'string' && folderPath.trim() !== '';
+    const hasFile = typeof filePath === 'string' && filePath.trim() !== '';
+    if ((!hasFolder && !hasFile) || !permission) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'One of folderPath or filePath, and permission are required' });
     }
-    if (isMetaPath(folderPath)) {
+    const targetPath = hasFile ? filePath : folderPath;
+    if (isMetaPath(targetPath)) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
 
@@ -49,10 +52,10 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'User not found' });
     }
 
-    const normalizedFolderPath = normalizePath(folderPath);
-    const ownerUsername = extractOwnerUsername(normalizedFolderPath);
+    const normalizedPath = normalizePath(targetPath);
+    const ownerUsername = extractOwnerUsername(normalizedPath);
     if (!ownerUsername) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid folder path for owner-only requests' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Invalid path for owner-only requests' });
     }
 
     const owner = await User.findByUsername(ownerUsername);
@@ -64,15 +67,21 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Cannot request permissions for your own path' });
     }
 
-    const created = await PermissionRequest.create({
+    const createPayload = {
       requesterId: requester.id,
       requesterUsername: requester.username,
       ownerId: owner.id,
       ownerUsername: owner.username,
-      folderPath: normalizedFolderPath,
       requestedPermission: perm,
       message: typeof message === 'string' ? message : '',
-    });
+    };
+    if (hasFile) {
+      createPayload.filePath = normalizedPath;
+    } else {
+      createPayload.folderPath = normalizedPath;
+    }
+
+    const created = await PermissionRequest.create(createPayload);
 
     res.json(created);
   } catch (error) {
@@ -105,25 +114,25 @@ router.get('/outbox', authenticateToken, async (req, res) => {
 
 router.get('/check-owner', authenticateToken, async (req, res) => {
   try {
-    const { folderPath } = req.query;
+    const { folderPath, filePath } = req.query;
+    const pathToCheck = filePath || folderPath;
 
-    if (!folderPath) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'folderPath is required' });
+    if (!pathToCheck) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'folderPath or filePath is required' });
     }
 
-    if (isMetaPath(folderPath)) {
+    if (isMetaPath(pathToCheck)) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
 
-    const normalizedFolderPath = normalizePath(folderPath);
-    const ownerUsername = extractOwnerUsername(normalizedFolderPath);
+    const normalizedPath = normalizePath(pathToCheck);
+    const ownerUsername = extractOwnerUsername(normalizedPath);
 
     if (!ownerUsername) {
       return res.json({ ownerExists: false, ownerUsername: null });
     }
 
     const owner = await User.findByUsername(ownerUsername);
-    // owner가 null, undefined, 또는 falsy 값이면 false
     const ownerExists = Boolean(owner);
 
     res.json({ ownerExists, ownerUsername: ownerExists ? ownerUsername : null });

@@ -6,7 +6,7 @@ export { default as UploadDialog } from './UploadDialog';
 export { default as AccountEditDialog } from './AccountEditDialog';
 export { default as ShareDialog } from './ShareDialog';
 export { default as ShareTargetDialog } from './ShareTargetDialog';
-export { default as SharedFolderManageDialog } from './SharedFolderManageDialog';
+export { default as SharedManageDialog } from './SharedManageDialog';
 export { default as FilePropertiesDialog } from './FilePropertiesDialog';
 export { default as FolderPickerDialog } from './FolderPickerDialog';
 export { default as RenameDialog } from './RenameDialog';

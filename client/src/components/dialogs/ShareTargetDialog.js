@@ -32,6 +32,8 @@ import {
 } from '../../services/fileService';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
+import { useSharedManage } from '../../hooks/useSharedManage';
+import SharedManageBody from './SharedManageBody';
 
 const PERMISSION_LABELS = {
   [PERMISSIONS.ADMIN]: '소유자',
@@ -94,6 +96,64 @@ async function collectSubfolderPaths(folderPath) {
   return paths;
 }
 
+/**
+ * 공유 관리 영역 — hasAdmin false 일 때 (폴더/파일 통합)
+ */
+function ShareManageContent({ open, file, user, onMessage, onActionComplete, onClose }) {
+  const targetPath = file?.path ? normalizePath(file.path) : null;
+  const displayName = file?.basename || file?.name || '';
+  const isDirectory = file?.type === 'directory';
+  const directHasReadPermission =
+    typeof file?.hasReadPermission === 'boolean' ? file.hasReadPermission : undefined;
+
+  const {
+    loading,
+    initialLoading,
+    confirmDialogOpen,
+    setConfirmDialogOpen,
+    hasReadPermission,
+    hasWritePermission,
+    pathPermission,
+    filePermissionLevel,
+    pendingRequest,
+    ownerExists,
+    handleCancelPendingRequest,
+    handlePermissionRequest,
+    handleRevokePermission,
+  } = useSharedManage({
+    open,
+    targetPath,
+    displayName,
+    isDirectory,
+    user,
+    directHasReadPermission,
+    onMessage,
+    onActionComplete,
+    onClose,
+  });
+
+  return (
+    <SharedManageBody
+      displayName={displayName}
+      isDirectory={isDirectory}
+      loading={loading}
+      initialLoading={initialLoading}
+      confirmDialogOpen={confirmDialogOpen}
+      setConfirmDialogOpen={setConfirmDialogOpen}
+      hasReadPermission={hasReadPermission}
+      hasWritePermission={hasWritePermission}
+      pathPermission={pathPermission}
+      filePermissionLevel={filePermissionLevel}
+      pendingRequest={pendingRequest}
+      ownerExists={ownerExists}
+      onRequestPermission={handlePermissionRequest}
+      onCancelPendingRequest={handleCancelPendingRequest}
+      onRevokePermission={handleRevokePermission}
+      loadingVariant="skeleton"
+    />
+  );
+}
+
 const ShareTargetDialog = ({
   open,
   onClose,
@@ -122,6 +182,7 @@ const ShareTargetDialog = ({
   const targetPath = file?.path ? normalizePath(file.path) : null;
   const isDirectory = file?.type === 'directory';
   const displayName = file?.basename || file?.name || '';
+  const hasAdmin = Boolean(user?.is_admin || file?.hasAdminPermission);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -176,8 +237,10 @@ const ShareTargetDialog = ({
 
   useEffect(() => {
     if (open) {
-      loadUsers();
-      if (targetPath) loadPermissions();
+      if (hasAdmin) {
+        loadUsers();
+        if (targetPath) loadPermissions();
+      }
       setSearchQuery('');
       setSearchOpen(false);
       setExternalShareLink(null);
@@ -187,7 +250,7 @@ const ShareTargetDialog = ({
     } else {
       setSearchAnchorEl(null);
     }
-  }, [open, targetPath, loadUsers, loadPermissions]);
+  }, [open, targetPath, hasAdmin, loadUsers, loadPermissions]);
 
   const filteredUsers = users.filter((u) => {
     if (!searchQuery.trim()) return true;
@@ -323,6 +386,8 @@ const ShareTargetDialog = ({
       >
         <DialogTitle>{displayName ? `${displayName} 공유` : '공유'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
+          {hasAdmin ? (
+          <>
           <Box ref={(el) => setSearchAnchorEl(el || null)}>
             <TextField
               fullWidth
@@ -496,14 +561,33 @@ const ShareTargetDialog = ({
               onMessage={onMessage}
             />
           )}
+          </>
+          ) : (
+          <ShareManageContent
+            open={open}
+            file={file}
+            user={user}
+            onMessage={onMessage}
+            onActionComplete={onSave}
+            onClose={onClose}
+          />
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={onClose} disabled={saving}>
-            취소
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSave} disabled={saving || loading}>
-            {saving ? '저장 중...' : '저장'}
-          </Button>
+          {hasAdmin ? (
+            <>
+              <Button onClick={onClose} disabled={saving}>
+                취소
+              </Button>
+              <Button variant="contained" color="primary" onClick={handleSave} disabled={saving || loading}>
+                {saving ? '저장 중...' : '저장'}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={onClose}>
+              닫기
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </>

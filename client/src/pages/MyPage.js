@@ -34,7 +34,9 @@ import {
   listInboxPermissionRequests,
   listOutboxPermissionRequests,
   rejectPermissionRequest,
+  approvePermissionRequest,
 } from '../services/permissionRequestService';
+import { grantFilePermission } from '../services/fileService';
 
 const MyPage = () => {
   const { user, logout } = useAuth();
@@ -571,7 +573,7 @@ const MyPage = () => {
                             </Stack>
 
                             <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                              폴더: {r.folder_path}
+                              {r.target_type === 'file' ? '파일' : '폴더'}: {r.file_path ?? r.folder_path}
                             </Typography>
 
                             {requestTab === 0 ? (
@@ -593,17 +595,39 @@ const MyPage = () => {
                             <Stack direction="row" spacing={1} justifyContent="flex-end">
                               {requestTab === 0 ? (
                                 <>
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    disabled={!isPending || isActionLoading}
-                                    onClick={() => {
-                                      setReviewPermissionRequest(r);
-                                      setReviewDialogOpen(true);
-                                    }}
-                                  >
-                                    검토
-                                  </Button>
+                                  {r.target_type === 'file' && r.file_path ? (
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      disabled={!isPending || isActionLoading}
+                                      onClick={() =>
+                                        withRequestActionLoading(r.id, async () => {
+                                          await grantFilePermission({
+                                            userId: r.requester_id,
+                                            filePath: r.file_path,
+                                            permission: r.requested_permission || PERMISSIONS.READ,
+                                          });
+                                          await approvePermissionRequest(r.id);
+                                          setMessage({ type: 'success', text: '파일 권한 요청을 승인했습니다.' });
+                                          await loadPermissionRequests();
+                                        })
+                                      }
+                                    >
+                                      승인
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      disabled={!isPending || isActionLoading}
+                                      onClick={() => {
+                                        setReviewPermissionRequest(r);
+                                        setReviewDialogOpen(true);
+                                      }}
+                                    >
+                                      검토
+                                    </Button>
+                                  )}
                                   <Button
                                     size="small"
                                     variant="outlined"

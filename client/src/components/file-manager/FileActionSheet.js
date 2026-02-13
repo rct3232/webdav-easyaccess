@@ -18,7 +18,6 @@ import {
   Delete as DeleteIcon,
   Share as ShareIcon,
   Visibility as VisibilityIcon,
-  Settings as SettingsIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { getFileIcon } from '../../utils/fileIconUtils';
@@ -27,10 +26,10 @@ import { getFileIcon } from '../../utils/fileIconUtils';
  * Bottom sheet for file actions on mobile
  * Replaces context menu for touch-friendly interface
  */
-const FileActionSheet = ({ 
-  open, 
-  onClose, 
-  file, 
+const FileActionSheet = ({
+  open,
+  onClose,
+  file,
   onDownload,
   onRename,
   onMove,
@@ -38,7 +37,6 @@ const FileActionSheet = ({
   onDelete,
   onShare,
   onPreview,
-  onManageShared,
   onProperties,
   hasWritePermission = true,
   user,
@@ -52,15 +50,6 @@ const FileActionSheet = ({
 
   const isDirectory = file.type === 'directory';
   const canPreview = file.canPreview;
-  
-  // 공유 버튼 표시 조건: admin 계정이거나 해당 폴더에 admin 권한이 있을 때 표시
-  const canShare = Boolean(user?.is_admin || file?.hasAdminPermission);
-  
-  // 공유받은 폴더인지 확인: 디렉토리이고, 사용자 디렉토리 하위가 아닌 경우
-  const isSharedFolder = isDirectory && user && !user.is_admin && !file.path.startsWith(`/${user.username}/`);
-
-  // Direct read permission missing on directory (disabled in list UI)
-  const isPermissionDisabled = isDirectory && file?.hasReadPermission === false;
 
   // 파일 객체에 hasWritePermission이 있으면 사용, 없으면 prop의 hasWritePermission 사용
   const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
@@ -112,25 +101,9 @@ const FileActionSheet = ({
 
         {/* Actions */}
         <List sx={{ py: 0 }}>
-          {isPermissionDisabled ? (
-            // Permission-less folders: allow only "공유 관리" to request access
-            isSharedFolder && onManageShared && (
-              <ListItem 
-                button 
-                onClick={() => handleAction(onManageShared)}
-                sx={{ minHeight: 56, borderRadius: 1 }}
-              >
-                <ListItemIcon>
-                  <SettingsIcon />
-                </ListItemIcon>
-                <ListItemText primary="공유 관리" />
-              </ListItem>
-            )
-          ) : (
-            <>
           {canPreview && onPreview && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onPreview)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -142,8 +115,8 @@ const FileActionSheet = ({
           )}
 
           {onProperties && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onProperties)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -155,8 +128,8 @@ const FileActionSheet = ({
           )}
 
           {onDownload && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onDownload)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -168,8 +141,8 @@ const FileActionSheet = ({
           )}
 
           {fileWritePermission && onRename && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onRename)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -181,8 +154,8 @@ const FileActionSheet = ({
           )}
 
           {fileWritePermission && onMove && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onMove)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -194,8 +167,8 @@ const FileActionSheet = ({
           )}
 
           {onCopy && (
-            <ListItem 
-              button 
+            <ListItem
+              button
               onClick={() => handleAction(onCopy)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -206,9 +179,9 @@ const FileActionSheet = ({
             </ListItem>
           )}
 
-          {canShare && onShare && (
-            <ListItem 
-              button 
+          {onShare && (
+            <ListItem
+              button
               onClick={() => handleAction(onShare)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -219,27 +192,14 @@ const FileActionSheet = ({
             </ListItem>
           )}
 
-          {isSharedFolder && onManageShared && (
-            <ListItem 
-              button 
-              onClick={() => handleAction(onManageShared)}
-              sx={{ minHeight: 56, borderRadius: 1 }}
-            >
-              <ListItemIcon>
-                <SettingsIcon />
-              </ListItemIcon>
-              <ListItemText primary="공유 관리" />
-            </ListItem>
-          )}
-
           {fileWritePermission && onDelete && (
             <>
               <Divider sx={{ my: 1 }} />
-              <ListItem 
-                button 
+              <ListItem
+                button
                 onClick={() => handleAction(onDelete)}
-                sx={{ 
-                  minHeight: 56, 
+                sx={{
+                  minHeight: 56,
                   borderRadius: 1,
                   color: 'error.main',
                 }}
@@ -249,8 +209,6 @@ const FileActionSheet = ({
                 </ListItemIcon>
                 <ListItemText primary="삭제" />
               </ListItem>
-            </>
-          )}
             </>
           )}
         </List>

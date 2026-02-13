@@ -15,7 +15,6 @@ export const useFileManagerDialogs = () => {
   // Dialogs with file data
   const shareDialog = useDialog();
   const shareDialogV2 = useDialog();
-  const sharedFolderManageDialog = useDialog();
   const propertiesDialog = useDialog();
   const bulkDeleteDialog = useDialog();
   const actionSheet = useDialog();
@@ -60,7 +59,6 @@ export const useFileManagerDialogs = () => {
     renameDialogOpen: renameDialog.isOpen,
     shareDialogOpen: shareDialog.isOpen,
     shareDialogV2Open: shareDialogV2.isOpen,
-    sharedFolderManageDialogOpen: sharedFolderManageDialog.isOpen,
     propertiesDialogOpen: propertiesDialog.isOpen,
     bulkDeleteDialogOpen: bulkDeleteDialog.isOpen,
     actionSheetOpen: actionSheet.isOpen,
@@ -73,7 +71,6 @@ export const useFileManagerDialogs = () => {
     mobileRenameFile: renameDialog.data,
     mobileShareFile: shareDialog.data,
     shareDialogV2File: shareDialogV2.data,
-    mobileSharedManageFile: sharedFolderManageDialog.data,
     mobilePropertiesFile: propertiesDialog.data,
     bulkDeleteFilePaths: bulkDeleteDialog.data || [],
     mobilePickerFile,
@@ -86,7 +83,6 @@ export const useFileManagerDialogs = () => {
     setRenameDialogOpen: (open) => open ? renameDialog.open() : closeRenameDialog(),
     setShareDialogOpen: (open) => open ? shareDialog.open() : shareDialog.close(),
     setShareDialogV2Open: (open) => open ? shareDialogV2.open() : shareDialogV2.close(),
-    setSharedFolderManageDialogOpen: (open) => open ? sharedFolderManageDialog.open() : sharedFolderManageDialog.close(),
     setPropertiesDialogOpen: (open) => open ? propertiesDialog.open() : propertiesDialog.close(),
     setBulkDeleteDialogOpen: (open) => open ? bulkDeleteDialog.open() : bulkDeleteDialog.close(),
     setActionSheetOpen: (open) => open ? actionSheet.open() : actionSheet.close(),
@@ -98,7 +94,6 @@ export const useFileManagerDialogs = () => {
     setMobileRenameFile: (file) => file ? renameDialog.open(file) : renameDialog.close(),
     setMobileShareFile: (file) => file ? shareDialog.open(file) : shareDialog.close(),
     setShareDialogV2File: (file) => file ? shareDialogV2.open(file) : shareDialogV2.close(),
-    setMobileSharedManageFile: (file) => file ? sharedFolderManageDialog.open(file) : sharedFolderManageDialog.close(),
     setMobilePropertiesFile: (file) => file ? propertiesDialog.open(file) : propertiesDialog.close(),
     setBulkDeleteFilePaths: (paths) => paths?.length > 0 ? bulkDeleteDialog.open(paths) : bulkDeleteDialog.close(),
     setMobilePickerFile,
@@ -117,8 +112,6 @@ export const useFileManagerDialogs = () => {
     closeShareDialog: shareDialog.close,
     openShareDialogV2: shareDialogV2.open,
     closeShareDialogV2: shareDialogV2.close,
-    openSharedFolderManageDialog: sharedFolderManageDialog.open,
-    closeSharedFolderManageDialog: sharedFolderManageDialog.close,
     openPropertiesDialog: propertiesDialog.open,
     closePropertiesDialog: propertiesDialog.close,
     openBulkDeleteDialog: bulkDeleteDialog.open,

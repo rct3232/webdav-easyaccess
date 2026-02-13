@@ -2,8 +2,14 @@ import { get, post } from './apiClient';
 
 const API_BASE = '/permission-requests';
 
-export const createPermissionRequest = async ({ folderPath, permission, message } = {}) => {
-  const response = await post(API_BASE, { folderPath, permission, message });
+export const createPermissionRequest = async ({ folderPath, filePath, permission, message } = {}) => {
+  const body = { permission, message };
+  if (filePath != null && filePath !== '') {
+    body.filePath = filePath;
+  } else if (folderPath != null && folderPath !== '') {
+    body.folderPath = folderPath;
+  }
+  const response = await post(API_BASE, body);
   return response.data;
 };
 
@@ -36,9 +42,8 @@ export const cancelPermissionRequest = async (id) => {
   return response.data;
 };
 
-export const checkOwnerExists = async (folderPath) => {
-  const response = await get(`${API_BASE}/check-owner`, {
-    params: { folderPath }
-  });
+export const checkOwnerExists = async (folderPathOrFilePath, { forFile = false } = {}) => {
+  const params = forFile ? { filePath: folderPathOrFilePath } : { folderPath: folderPathOrFilePath };
+  const response = await get(`${API_BASE}/check-owner`, { params });
   return response.data;
 };

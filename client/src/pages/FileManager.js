@@ -52,7 +52,6 @@ import {
   FolderPickerDialog,
   ShareDialog,
   ShareTargetDialog,
-  SharedFolderManageDialog,
   FilePropertiesDialog,
   ConfirmDialog,
   ConflictResolveDialog,
@@ -242,7 +241,6 @@ const FileManager = () => {
     renameDialogOpen, openRenameDialog, closeRenameDialog,
     shareDialogOpen, closeShareDialog,
     shareDialogV2Open, shareDialogV2File, openShareDialogV2, closeShareDialogV2,
-    sharedFolderManageDialogOpen, openSharedFolderManageDialog, closeSharedFolderManageDialog,
     propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,
     bulkDeleteDialogOpen, openBulkDeleteDialog, closeBulkDeleteDialog,
     actionSheetOpen, setActionSheetOpen, closeActionSheet,
@@ -253,7 +251,6 @@ const FileManager = () => {
     renameError, setRenameError,
     mobileRenameFile,
     mobileShareFile,
-    mobileSharedManageFile,
     mobilePropertiesFile,
     bulkDeleteFilePaths,
     mobilePickerFile, setMobilePickerFile,
@@ -1886,10 +1883,6 @@ const FileManager = () => {
           setContextMenu(null);
           openShareDialogV2(file);
         }}
-        onManageShared={(file) => {
-          setContextMenu(null);
-          openSharedFolderManageDialog(file);
-        }}
         onProperties={(file) => {
           setContextMenu(null);
           openPropertiesDialog(file);
@@ -2054,16 +2047,6 @@ const FileManager = () => {
               openShareDialogV2(actionSheetFile);
             }
           }}
-          onShareLink={() => {
-            if (actionSheetFile) {
-              openShareDialogV2(actionSheetFile);
-            }
-          }}
-          onManageShared={() => {
-            if (actionSheetFile) {
-              openSharedFolderManageDialog(actionSheetFile);
-            }
-          }}
           onPreview={() => {
             if (actionSheetFile) {
               const filename = actionSheetFile.basename || actionSheetFile.name;
@@ -2118,26 +2101,6 @@ const FileManager = () => {
           enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
           filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
           fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
-        />
-      )}
-
-      {/* Shared Folder Manage Dialog */}
-      {(mobileSharedManageFile || actionSheetFile) && (
-        <SharedFolderManageDialog
-          open={sharedFolderManageDialogOpen}
-          onClose={closeSharedFolderManageDialog}
-          folderPath={(mobileSharedManageFile || actionSheetFile)?.path}
-          folderName={(mobileSharedManageFile || actionSheetFile)?.basename || (mobileSharedManageFile || actionSheetFile)?.name}
-          directHasReadPermission={
-            typeof (mobileSharedManageFile || actionSheetFile)?.hasReadPermission === 'boolean'
-              ? (mobileSharedManageFile || actionSheetFile).hasReadPermission
-              : undefined
-          }
-          user={user}
-          onMessage={setDropMessage}
-          onActionComplete={() => {
-            handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
-          }}
         />
       )}
 

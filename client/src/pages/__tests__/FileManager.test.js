@@ -25,7 +25,7 @@ jest.mock('../../components/dialogs/FilePreviewDialog', () => () => <div data-te
 jest.mock('../../components/dialogs/UploadDialog', () => () => <div data-testid="upload-dialog">UploadDialog</div>);
 jest.mock('../../components/dialogs/CreateFolderDialog', () => () => <div data-testid="create-folder-dialog">CreateFolderDialog</div>);
 jest.mock('../../components/dialogs/ShareDialog', () => () => <div data-testid="share-dialog">ShareDialog</div>);
-jest.mock('../../components/dialogs/SharedFolderManageDialog', () => () => <div data-testid="shared-folder-manage-dialog">SharedFolderManageDialog</div>);
+jest.mock('../../components/dialogs/SharedManageDialog', () => () => <div data-testid="shared-manage-dialog">SharedManageDialog</div>);
 jest.mock('../../components/dialogs/FilePropertiesDialog', () => () => <div data-testid="file-properties-dialog">FilePropertiesDialog</div>);
 jest.mock('../../components/dialogs/ConfirmDialog', () => () => <div data-testid="confirm-dialog">ConfirmDialog</div>);
 jest.mock('../../components/dialogs/ConflictResolveDialog', () => () => <div data-testid="conflict-resolve-dialog">ConflictResolveDialog</div>);

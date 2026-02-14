@@ -22,19 +22,14 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { getApprovedUsers } from '../../services/userService';
 import { getFolderPermissions, grantPermission, revokePermission } from '../../services/permissionService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
+import { PERMISSION_LABELS } from '../../constants/permissions';
 import { normalizePath } from '../../utils/pathUtils';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
-import { listFiles } from '../../services/fileService';
+import { collectSubfolderPaths } from '../../utils/folderUtils';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
 import SharedManageBody from './SharedManageBody';
-
-const PERMISSION_LABELS = {
-  [PERMISSIONS.ADMIN]: '소유자',
-  [PERMISSIONS.WRITE]: '편집자',
-  [PERMISSIONS.READ]: '열람자',
-};
 
 const PERMISSION_OPTIONS = [
   { value: PERMISSIONS.WRITE, label: '편집자' },
@@ -77,31 +72,6 @@ function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission) {
     options.push({ value: 'revoke', label: '경로와 동일' });
   }
   return options;
-}
-
-/**
- * Recursively collect all subfolder paths under a folder.
- */
-async function collectSubfolderPaths(folderPath) {
-  const paths = [];
-  const normalized = normalizePath(folderPath);
-
-  async function traverse(path) {
-    try {
-      const items = await listFiles(path);
-      const dirs = (items || []).filter((item) => item.type === 'directory');
-      for (const d of dirs) {
-        const p = normalizePath(d.path);
-        paths.push(p);
-        await traverse(p);
-      }
-    } catch (err) {
-      console.error('Failed to list path:', path, err);
-    }
-  }
-
-  await traverse(normalized);
-  return paths;
 }
 
 /**
@@ -306,7 +276,7 @@ const ShareTargetDialog = ({
       const currentMap = new Map(accessList.map((u) => [u.id, u]));
 
       if (isDirectory) {
-        const pathsToGrant = [targetPath, ...(await collectSubfolderPaths(targetPath))];
+        const pathsToGrant = await collectSubfolderPaths(targetPath);
         for (const uid of initialIds) {
           if (!currentMap.has(uid)) {
             try {
@@ -331,9 +301,6 @@ const ShareTargetDialog = ({
         for (const initial of initialAccessList) {
           if (!currentIds.has(initial.id)) {
             try {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'ShareTargetDialog.js:handleSave', message: 'revokePermission scope pathOnly user_removed', data: { userId: initial.id, filePath: targetPath }, timestamp: Date.now() }) }).catch(() => {});
-              // #endregion
               await revokePermission({ userId: initial.id, folderPath: targetPath, scope: 'pathOnly' });
             } catch (e) {
               console.error('Revoke file failed:', e);
@@ -358,9 +325,6 @@ const ShareTargetDialog = ({
           }
           if (skipCond2) {
             try {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'ShareTargetDialog.js:handleSave', message: 'revokePermission scope pathOnly skipCond2', data: { userId: u.id, filePath: targetPath, pathPermission: u.pathPermission, permission: u.permission }, timestamp: Date.now() }) }).catch(() => {});
-              // #endregion
               await revokePermission({ userId: u.id, folderPath: targetPath, scope: 'pathOnly' });
             } catch (e) {
               console.error('Revoke file failed:', e);

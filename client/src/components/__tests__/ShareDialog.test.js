@@ -34,7 +34,7 @@ describe('ShareDialog', () => {
       />
     );
 
-    expect(screen.getByText(/폴더 공유 - test/)).toBeInTheDocument();
+    expect(await screen.findByText(/폴더 공유 - test/)).toBeInTheDocument();
   });
 
   it('loads users and folder list on mount', async () => {
@@ -64,7 +64,7 @@ describe('ShareDialog', () => {
     }, { timeout: 3000 });
   });
 
-  it('calls onClose when cancel button is clicked', () => {
+  it('calls onClose when cancel button is clicked', async () => {
     render(
       <ShareDialog
         open={true}
@@ -75,6 +75,7 @@ describe('ShareDialog', () => {
       />
     );
 
+    await screen.findByText(/폴더 공유 - test/);
     fireEvent.click(screen.getByText('취소'));
     expect(mockOnClose).toHaveBeenCalled();
   });

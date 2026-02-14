@@ -51,3 +51,14 @@ export const checkPermission = async (path) => {
   const response = await get('/permissions/check', { params: { path } });
   return response.data;
 };
+
+/**
+ * 현재 사용자의 파일 단위 권한 목록 조회. folderPath 지정 시 해당 경로 접두사로 필터.
+ * @param {string|null} [folderPath] - 폴더 경로 (접두사 필터, null이면 전체)
+ * @returns {Promise<Array>} 권한 배열
+ */
+export const listFilePermissions = async (folderPath = null) => {
+  const params = folderPath != null ? { folderPath } : {};
+  const response = await get('/permissions/file/list', { params });
+  return response.data;
+};

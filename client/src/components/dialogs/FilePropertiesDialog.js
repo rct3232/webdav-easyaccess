@@ -16,15 +16,7 @@ import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getFolderPermissions } from '../../services/permissionService';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
-import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-
-const PERMISSION_LABELS = {
-  [PERMISSIONS.ADMIN]: '소유자',
-  [PERMISSIONS.WRITE]: '편집자',
-  [PERMISSIONS.READ]: '열람자',
-};
-
-const PERMISSION_ORDER = [PERMISSIONS.ADMIN, PERMISSIONS.WRITE, PERMISSIONS.READ];
+import { PERMISSION_LABELS, PERMISSION_ORDER } from '../../constants/permissions';
 
 const FilePropertiesDialog = ({ open, onClose, file }) => {
   const { isMobile } = useResponsive();

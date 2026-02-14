@@ -489,9 +489,6 @@ export const useBulkOperations = (
         (p) => !conflictSourcePaths.has(p)
       );
       effectiveRetryData = { ...retryData, filePaths: filteredPaths };
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useBulkOperations.js:resolveBulkConflict',message:'post-fix filtered',data:{originalCount:retryData.filePaths?.length,filteredCount:filteredPaths.length},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
-      // #endregion
     }
 
     await executeBulkOperation(destinationPath, effectiveRetryData, resolution);

@@ -1,5 +1,5 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import apiClient, { get, post, put, del } from './apiClient';
+import { get, post, put } from './apiClient';
 import {
   checkPermission as checkPermissionApi,
   grantPermission as grantPermissionApi,
@@ -385,12 +385,8 @@ export const updateFilePermission = async ({ userId, filePath, permission }) => 
   await grantPermissionApi({ userId, folderPath: filePath, permission, target: 'file' });
 };
 
-/** List current user's file-level permissions. Optionally filter by folderPath (prefix). */
-export const listFilePermissions = async (folderPath = null) => {
-  const params = folderPath != null ? { folderPath } : {};
-  const response = await get('/permissions/file/list', { params });
-  return response.data;
-};
+/** List current user's file-level permissions. Re-exported from permissionService. */
+export { listFilePermissions } from './permissionService';
 
 export const requestThumbnailsBatch = async (paths) => {
   const response = await post(`${API_BASE}/thumbnails/batch`, {

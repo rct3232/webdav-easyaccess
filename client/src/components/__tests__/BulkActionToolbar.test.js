@@ -20,7 +20,7 @@ describe('BulkActionToolbar (F11-F14)', () => {
   describe('렌더링', () => {
     it('displays selected count', () => {
       render(<BulkActionToolbar {...defaultProps} />);
-      expect(screen.getByText(/3개/i)).toBeInTheDocument();
+      expect(screen.getByText(/3개 선택/i)).toBeInTheDocument();
     });
 
     it('renders all action buttons', () => {
@@ -124,7 +124,7 @@ describe('BulkActionToolbar (F11-F14)', () => {
           selectedFiles={new Set(['/file1.txt'])} 
         />
       );
-      expect(screen.getByText(/1개/i)).toBeInTheDocument();
+      expect(screen.getByText(/1개 선택/i)).toBeInTheDocument();
     });
 
     it('displays correct count for multiple selections', () => {
@@ -135,7 +135,7 @@ describe('BulkActionToolbar (F11-F14)', () => {
           selectedFiles={manyFiles} 
         />
       );
-      expect(screen.getByText(/10개/i)).toBeInTheDocument();
+      expect(screen.getByText(/10개 선택/i)).toBeInTheDocument();
     });
   });
 });

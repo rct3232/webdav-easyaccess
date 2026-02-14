@@ -2,11 +2,18 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useFileManager } from '../useFileManager';
 import { listFiles, getWebDAVInfo, checkPermission } from '../../services/fileService';
+import { getUserPermissions } from '../../services/permissionService';
 
 jest.mock('../../services/fileService', () => ({
   listFiles: jest.fn(),
   getWebDAVInfo: jest.fn(),
   checkPermission: jest.fn(),
+  listFilePermissions: jest.fn(),
+  getFilesMetadata: jest.fn(),
+}));
+
+jest.mock('../../services/permissionService', () => ({
+  getUserPermissions: jest.fn(),
 }));
 
 function deferred() {
@@ -36,14 +43,15 @@ describe('useFileManager', () => {
     jest.clearAllMocks();
     getWebDAVInfo.mockResolvedValue({ url: 'http://example.test/webdav' });
     checkPermission.mockResolvedValue({ hasWrite: true });
+    getUserPermissions.mockResolvedValue([]);
   });
 
   it('clears files immediately when currentPath changes', async () => {
     const initialFiles = [
-      { path: '/alice/a.txt', basename: 'a.txt', type: 'file', size: 1, lastmod: null },
-      { path: '/alice/folder', basename: 'folder', type: 'directory', size: 0, lastmod: null },
+      { path: '/alice/a.txt', basename: 'a.txt', type: 'file', size: 1, lastmod: null, hasAdminPermission: false },
+      { path: '/alice/folder', basename: 'folder', type: 'directory', size: 0, lastmod: null, hasAdminPermission: false },
     ];
-    const nextFiles = [{ path: '/other/b.txt', basename: 'b.txt', type: 'file', size: 2, lastmod: null }];
+    const nextFiles = [{ path: '/other/b.txt', basename: 'b.txt', type: 'file', size: 2, lastmod: null, hasAdminPermission: false }];
 
     const next = deferred();
     listFiles.mockResolvedValueOnce(initialFiles).mockReturnValueOnce(next.promise);
@@ -74,8 +82,8 @@ describe('useFileManager', () => {
   });
 
   it('keeps existing files when refreshing the same path (loadFiles)', async () => {
-    const initialFiles = [{ path: '/alice/a.txt', basename: 'a.txt', type: 'file', size: 1, lastmod: null }];
-    const refreshedFiles = [{ path: '/alice/c.txt', basename: 'c.txt', type: 'file', size: 3, lastmod: null }];
+    const initialFiles = [{ path: '/alice/a.txt', basename: 'a.txt', type: 'file', size: 1, lastmod: null, hasAdminPermission: false }];
+    const refreshedFiles = [{ path: '/alice/c.txt', basename: 'c.txt', type: 'file', size: 3, lastmod: null, hasAdminPermission: false }];
 
     const refresh = deferred();
     listFiles.mockResolvedValueOnce(initialFiles).mockReturnValueOnce(refresh.promise);

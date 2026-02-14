@@ -7,7 +7,7 @@ import {
   listOutboxPermissionRequests,
   checkOwnerExists,
 } from '../services/permissionRequestService';
-import { getParentPath } from '../utils/pathUtils';
+import { getParentPath, normalizePath } from '../utils/pathUtils';
 
 export function useSharedManage({
   open,
@@ -32,14 +32,6 @@ export function useSharedManage({
     write: { pending: false, id: null },
   });
   const [ownerExists, setOwnerExists] = useState(null);
-
-  const normalizeLocalPath = useCallback((p) => {
-    if (!p) return '/';
-    let n = String(p).trim().replace(/\\/g, '/').replace(/\/+/g, '/');
-    if (!n.startsWith('/')) n = '/' + n;
-    if (n !== '/' && n.endsWith('/')) n = n.slice(0, -1);
-    return n;
-  }, []);
 
   useEffect(() => {
     if (!open || !targetPath || !user) {
@@ -129,16 +121,16 @@ export function useSharedManage({
     const loadPendingRequests = async () => {
       try {
         const outbox = await listOutboxPermissionRequests({ status: 'pending' });
-        const normalizedTarget = normalizeLocalPath(targetPath);
+        const normalizedTarget = normalizePath(targetPath);
         const list = Array.isArray(outbox) ? outbox : [];
         const findPending = (perm) =>
           isDirectory
             ? list.find(
-                (r) => normalizeLocalPath(r.folder_path) === normalizedTarget && r.requested_permission === perm
+                (r) => normalizePath(r.folder_path) === normalizedTarget && r.requested_permission === perm
               )
             : list.find(
                 (r) =>
-                  normalizeLocalPath(r.file_path || '') === normalizedTarget && r.requested_permission === perm
+                  normalizePath(r.file_path || '') === normalizedTarget && r.requested_permission === perm
               );
         const pendingRead = findPending(PERMISSIONS.READ);
         const pendingWrite = findPending(PERMISSIONS.WRITE);
@@ -151,7 +143,7 @@ export function useSharedManage({
       }
     };
     loadPendingRequests();
-  }, [open, targetPath, user, isDirectory, normalizeLocalPath]);
+  }, [open, targetPath, user, isDirectory]);
 
   const hasReadPermission =
     typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionInfo.hasRead;

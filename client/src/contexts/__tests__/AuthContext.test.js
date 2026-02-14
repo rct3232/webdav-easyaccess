@@ -2,9 +2,32 @@ import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { AuthProvider, useAuth } from '../AuthContext';
 import axios from 'axios';
+import apiClient, { get as apiGet, post as apiPost } from '../../services/apiClient';
 
-// Mock axios
-jest.mock('axios');
+// Mock apiClient (authService uses apiClient; prevents interceptors error on load)
+jest.mock('../../services/apiClient', () => ({
+  __esModule: true,
+  default: {
+    interceptors: {
+      request: { use: jest.fn(), eject: jest.fn() },
+      response: { use: jest.fn(), eject: jest.fn() },
+    },
+  },
+  get: jest.fn(),
+  post: jest.fn(),
+}));
+
+// Mock axios (AuthContext uses axios.interceptors and axios.defaults)
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    interceptors: {
+      request: { use: jest.fn(), eject: jest.fn() },
+      response: { use: jest.fn(), eject: jest.fn() },
+    },
+    defaults: { headers: { common: {} } },
+  },
+}));
 
 // Test component to consume the auth context
 const TestComponent = () => {
@@ -31,27 +54,23 @@ describe('AuthContext', () => {
     sessionStorage.clear();
     localStorage.clear();
     jest.clearAllMocks();
-    
-    // Setup default axios mock behavior
-    axios.interceptors = {
-      response: { use: jest.fn(), eject: jest.fn() },
-    };
-    axios.defaults = {
-      headers: { common: {} },
-    };
-    axios.get.mockImplementation(() => Promise.resolve({ data: mockUser }));
-    axios.post.mockImplementation(() => Promise.resolve({ data: { token: mockToken, user: mockUser } }));
+
+    // authService uses apiClient get/post
+    apiGet.mockResolvedValue({ data: mockUser });
+    apiPost.mockResolvedValue({ data: { token: mockToken, user: mockUser } });
+
+    // AuthContext uses axios.defaults
+    axios.defaults.headers.common = {};
   });
 
   it('provides loading state initially and then shows user if token exists', async () => {
     sessionStorage.setItem('token', 'valid-token');
-    
-    // Make axios.get hang for a bit to see loading state
+
     let resolveGet;
     const getPromise = new Promise((resolve) => {
       resolveGet = () => resolve({ data: mockUser });
     });
-    axios.get.mockReturnValue(getPromise);
+    apiGet.mockReturnValue(getPromise);
 
     render(
       <AuthProvider>
@@ -72,7 +91,7 @@ describe('AuthContext', () => {
   });
 
   it('handles login success', async () => {
-    axios.get.mockRejectedValue(new Error('No token')); // initial check
+    apiGet.mockRejectedValue(new Error('No token')); // initial check
 
     render(
       <AuthProvider>
@@ -95,7 +114,7 @@ describe('AuthContext', () => {
   });
 
   it('should return user data on successful login (INIT1)', async () => {
-    axios.get.mockRejectedValue(new Error('No token')); // initial check
+    apiGet.mockRejectedValue(new Error('No token')); // initial check
 
     let loginResult;
     const TestLoginComponent = () => {
@@ -149,7 +168,7 @@ describe('AuthContext', () => {
   });
 
   it('handles registration success (immediate login)', async () => {
-    axios.get.mockRejectedValue(new Error('No token'));
+    apiGet.mockRejectedValue(new Error('No token'));
 
     render(
       <AuthProvider>
@@ -171,8 +190,8 @@ describe('AuthContext', () => {
   });
 
   it('handles registration success (pending approval)', async () => {
-    axios.get.mockRejectedValue(new Error('No token'));
-    axios.post.mockResolvedValue({ data: { status: 'pending' } });
+    apiGet.mockRejectedValue(new Error('No token'));
+    apiPost.mockResolvedValue({ data: { status: 'pending' } });
 
     let result;
     const TestRegisterComponent = () => {
@@ -198,8 +217,8 @@ describe('AuthContext', () => {
 
   it('logs out automatically on 401 response via interceptor', async () => {
     sessionStorage.setItem('token', 'some-token');
-    
-    // Capture the interceptor
+
+    // AuthContext uses axios.interceptors - capture error callback
     let responseInterceptor;
     axios.interceptors.response.use.mockImplementation((onSuccess, onError) => {
       responseInterceptor = onError;

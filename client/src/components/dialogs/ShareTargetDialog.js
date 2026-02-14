@@ -51,8 +51,9 @@ function permissionRank(p) {
  * 파일 공유 시: 경로와 동일 + 경로보다 높은 권한만 옵션으로 (회수 없음).
  * 소유자(admin)는 선택 불가. 경로 권한이 소유자면 소유자 라벨만 표시.
  * 경로 권한이 없을 때(pathPermission == null): 열람자, 편집자, 삭제.
+ * hasSameLevelFilePermission true면 경로 옵션은 편집자/열람자 라벨로 하고, '경로와 동일'(revoke) 옵션 추가.
  */
-function getFilePermissionOptions(pathPermission) {
+function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission) {
   if (pathPermission == null) {
     return [
       { value: PERMISSIONS.READ, label: '열람자' },
@@ -65,12 +66,16 @@ function getFilePermissionOptions(pathPermission) {
     return [{ value: PERMISSIONS.ADMIN, label: PERMISSION_LABELS[PERMISSIONS.ADMIN] }];
   }
   const rank = permissionRank(path);
-  const options = [{ value: path, label: '경로와 동일' }];
+  const pathOptionLabel = hasSameLevelFilePermission ? PERMISSION_LABELS[path] || path : '경로와 동일';
+  const options = [{ value: path, label: pathOptionLabel }];
   PERMISSIONS.ALL.forEach((perm) => {
     if (perm !== PERMISSIONS.ADMIN && permissionRank(perm) > rank) {
       options.push({ value: perm, label: PERMISSION_LABELS[perm] || perm });
     }
   });
+  if (hasSameLevelFilePermission) {
+    options.push({ value: 'revoke', label: '경로와 동일' });
+  }
   return options;
 }
 
@@ -336,6 +341,14 @@ const ShareTargetDialog = ({
           }
         }
         for (const u of accessList) {
+          if (u.permission === 'revoke') {
+            try {
+              await revokePermission({ userId: u.id, folderPath: targetPath, scope: 'pathOnly' });
+            } catch (e) {
+              console.error('Revoke file failed:', e);
+            }
+            continue;
+          }
           const initial = initialAccessList.find((x) => x.id === u.id);
           const pathDefault = u.pathPermission ?? PERMISSIONS.READ;
           const skipCond1 = u.permission === pathDefault && initial?.filePermission == null;
@@ -498,7 +511,11 @@ const ShareTargetDialog = ({
                           disabled={(isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)}
                           renderValue={(v) => {
                             if (v === PERMISSIONS.ADMIN) return PERMISSION_LABELS[PERMISSIONS.ADMIN];
-                            if (!isDirectory && u.pathPermission != null && v === u.pathPermission) return '경로와 동일';
+                            if (v === 'revoke') return '경로와 동일';
+                            if (!isDirectory && u.pathPermission != null && v === u.pathPermission) {
+                              if (u.filePermission != null && u.filePermission === u.pathPermission) return PERMISSION_LABELS[v] || v;
+                              return '경로와 동일';
+                            }
                             return PERMISSION_LABELS[v] || v;
                           }}
                           variant="standard"
@@ -546,7 +563,7 @@ const ShareTargetDialog = ({
                                 </MenuItem>
                               ))
                             : u.pathPermission !== PERMISSIONS.ADMIN &&
-                              getFilePermissionOptions(u.pathPermission).map((opt) => (
+                              getFilePermissionOptions(u.pathPermission, u.filePermission != null && u.filePermission === u.pathPermission).map((opt) => (
                                 <MenuItem key={opt.value} value={opt.value}>
                                   {opt.label}
                                 </MenuItem>

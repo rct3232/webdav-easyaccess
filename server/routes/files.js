@@ -15,6 +15,7 @@ const {
   isImageFile,
   isVideoFile,
   pathExists,
+  getFileMetadata,
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
@@ -618,6 +619,41 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
 
   const conflicts = await getConflicts(operations, { limit });
   res.json({ conflicts });
+}));
+
+const METADATA_PATHS_LIMIT = 100;
+
+router.post('/metadata', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const paths = req.body.paths;
+  if (!Array.isArray(paths)) {
+    throw validationError('paths must be an array');
+  }
+  if (paths.length > METADATA_PATHS_LIMIT) {
+    throw validationError(`paths length must not exceed ${METADATA_PATHS_LIMIT}`);
+  }
+  const userId = req.user.id;
+  const results = [];
+  for (const p of paths) {
+    const pathVal = typeof p === 'string' ? p.trim() : '';
+    if (!pathVal) continue;
+    const normalized = normalizePath(pathVal);
+    const hasRead = await canReadFile(userId, normalized, PERMISSIONS.READ);
+    if (!hasRead) continue;
+    try {
+      const meta = await getFileMetadata(normalized);
+      results.push({
+        path: normalized,
+        size: meta.size,
+        lastmod: meta.lastmod,
+        mime: meta.mime,
+      });
+    } catch (err) {
+      if (err.status !== HTTP_STATUS.NOT_FOUND) {
+        console.error(`[files/metadata] getFileMetadata failed for ${normalized}:`, err.message);
+      }
+    }
+  }
+  res.json(results);
 }));
 
 router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {

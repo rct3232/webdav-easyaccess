@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { listFiles, getWebDAVInfo, checkPermission, listFilePermissions } from '../services/fileService';
+import { listFiles, getWebDAVInfo, checkPermission, listFilePermissions, getFilesMetadata } from '../services/fileService';
 import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
 import { getRecentFiles } from '../utils/recentFiles';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
@@ -60,13 +60,31 @@ export const useFileManager = (user, options = {}) => {
             name: fileName,
             type: recentFile.type || 'file',
             size: 0,
+            lastmod: null,
             lastmodified: recentFile.lastAccessed,
             hasReadPermission: true,
             hasWritePermission: false, // 최근 파일은 읽기 전용으로 표시
             isRecentFile: true, // 최근 파일임을 표시
           };
         });
-        
+        const recentFilePaths = recentFilesAsList.filter((e) => e.type === 'file').map((e) => e.path);
+        if (recentFilePaths.length > 0) {
+          try {
+            const metaList = await getFilesMetadata(recentFilePaths);
+            const metaByPath = new Map(metaList.map((m) => [m.path, m]));
+            recentFilesAsList.forEach((entry) => {
+              if (entry.type !== 'file') return;
+              const meta = metaByPath.get(entry.path);
+              if (meta) {
+                entry.size = meta.size != null ? meta.size : 0;
+                entry.lastmod = meta.lastmod ?? null;
+                entry.mime = meta.mime ?? null;
+              }
+            });
+          } catch (metaErr) {
+            console.error('[useFileManager] Failed to load metadata for __recent__ entries:', metaErr);
+          }
+        }
         if (requestId === requestIdRef.current) {
           setFiles(recentFilesAsList);
         }
@@ -141,6 +159,24 @@ export const useFileManager = (user, options = {}) => {
           }
         } catch (err) {
           console.error('[useFileManager] Failed to load file-only permissions for __shared__:', err);
+        }
+
+        const filePaths = fileOnlyEntries.map((e) => e.path);
+        if (filePaths.length > 0) {
+          try {
+            const metaList = await getFilesMetadata(filePaths);
+            const metaByPath = new Map(metaList.map((m) => [m.path, m]));
+            fileOnlyEntries.forEach((entry) => {
+              const meta = metaByPath.get(entry.path);
+              if (meta) {
+                entry.size = meta.size != null ? meta.size : 0;
+                entry.lastmod = meta.lastmod ?? null;
+                entry.mime = meta.mime ?? null;
+              }
+            });
+          } catch (metaErr) {
+            console.error('[useFileManager] Failed to load metadata for __shared__ file-only entries:', metaErr);
+          }
         }
 
         const sharedFiles = [...folderEntries, ...fileOnlyEntries];

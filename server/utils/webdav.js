@@ -606,6 +606,30 @@ async function pathExists(path) {
   }
 }
 
+/**
+ * Get metadata (size, lastmod, mime) for a single file via parent directory listing.
+ * @param {string} filePath - Normalized file path
+ * @returns {Promise<{ size: number, lastmod: string|null, mime: string|null }>}
+ * @throws when file not found or listing fails
+ */
+async function getFileMetadata(filePath) {
+  const normalizedPath = normalizePath(filePath);
+  const parentPath = getParentPath(normalizedPath);
+  const basename = getBasename(normalizedPath);
+  const items = await listDirectory(parentPath);
+  const item = items.find((i) => i.basename === basename);
+  if (!item) {
+    const err = new Error(`File not found: ${filePath}`);
+    err.status = HTTP_STATUS.NOT_FOUND;
+    throw err;
+  }
+  return {
+    size: item.size != null ? item.size : 0,
+    lastmod: item.lastmod ?? null,
+    mime: item.mime ?? null,
+  };
+}
+
 module.exports = {
   getWebDAVClient,
   getRequestPath,
@@ -621,6 +645,7 @@ module.exports = {
   copyFile,
   createDirectory,
   pathExists,
+  getFileMetadata,
   isImageFile,
   isVideoFile,
   testConnection,

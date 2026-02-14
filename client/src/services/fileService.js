@@ -16,6 +16,19 @@ export const listFiles = async (path = '/') => {
 };
 
 /**
+ * 여러 파일 경로에 대한 메타데이터(size, lastmod, mime) 조회. 빈 배열이면 [] 반환.
+ * @param {string[]} paths - 파일 경로 배열
+ * @returns {Promise<Array<{ path: string, size: number, lastmod: string|null, mime: string|null }>>}
+ */
+export const getFilesMetadata = async (paths = []) => {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    return [];
+  }
+  const response = await post(`${API_BASE}/metadata`, { paths });
+  return Array.isArray(response.data) ? response.data : [];
+};
+
+/**
  * 파일 blob 조회 (미리보기 등)
  * @param {string} filePath - 파일 경로
  * @param {Object} options - { inline: boolean }

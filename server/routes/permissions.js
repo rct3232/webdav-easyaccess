@@ -4,7 +4,7 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canReadFolder, canWriteFolder, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
+const { canReadFolder, canReadFile, canWriteFolder, canGrantPermission, canRevokePermission, canViewPermissions } = require('../utils/permissionPolicy');
 const requireUser = require('../middleware/requireUser');
 const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../utils/errorHandler');
@@ -154,9 +154,14 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
   
   const user = req.user.full;
   
-  // Check if user has permission to view permissions for this folder
-  const canView = await canViewPermissions(user, folderPath, req.user.id);
-
+  let canView = await canViewPermissions(user, folderPath, req.user.id);
+  if (!canView) {
+    const filePath = req.query.filePath || undefined;
+    if (filePath) {
+      const normalizedFile = normalizePath(filePath);
+      canView = await canReadFile(req.user.id, normalizedFile, PERMISSIONS.READ);
+    }
+  }
   if (!canView) {
     throw forbiddenError('Access denied. You do not have permission to view permissions for this folder');
   }

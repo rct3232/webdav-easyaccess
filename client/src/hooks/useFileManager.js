@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { listFiles, getWebDAVInfo, checkPermission } from '../services/fileService';
+import { listFiles, getWebDAVInfo, checkPermission, listFilePermissions } from '../services/fileService';
 import { getShowHiddenFiles, getSortMode } from '../utils/localStorage';
 import { getRecentFiles } from '../utils/recentFiles';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath } from '../utils/pathUtils';
+import { normalizePath, getParentPath, getBasename } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 import { getUserPermissions } from '../services/permissionService';
 
@@ -96,7 +96,7 @@ export const useFileManager = (user, options = {}) => {
         });
         
         // 최상위 폴더들만 표시 (각 폴더의 실제 내용은 클릭했을 때 표시)
-        const sharedFiles = topLevelFolders.map(([normalizedPath, perm]) => {
+        const folderEntries = topLevelFolders.map(([normalizedPath, perm]) => {
           const pathParts = normalizedPath.split('/').filter(Boolean);
           const name = pathParts[pathParts.length - 1] || normalizedPath;
           return {
@@ -111,7 +111,40 @@ export const useFileManager = (user, options = {}) => {
             hasAdminPermission: perm.permission === 'admin'
           };
         });
-        
+
+        // 경로에는 권한이 없고(noauth) 해당 파일에만 독립 권한이 있는 파일을 공유됨에 노출
+        let fileOnlyEntries = [];
+        try {
+          const filePermList = await listFilePermissions();
+          if (Array.isArray(filePermList) && filePermList.length > 0) {
+            fileOnlyEntries = filePermList
+              .filter(({ filePath }) => {
+                const normalized = normalizePath(filePath);
+                const parentPath = getParentPath(normalized);
+                return parentPath !== undefined && parentPath !== null && !permissionPaths.has(parentPath);
+              })
+              .map(({ filePath, permission }) => {
+                const normalized = normalizePath(filePath);
+                const name = getBasename(normalized) || normalized;
+                return {
+                  path: normalized,
+                  basename: name,
+                  name: name,
+                  type: 'file',
+                  size: 0,
+                  lastmodified: null,
+                  hasReadPermission: true,
+                  hasWritePermission: permission === 'write' || permission === 'admin',
+                  hasAdminPermission: permission === 'admin'
+                };
+              });
+          }
+        } catch (err) {
+          console.error('[useFileManager] Failed to load file-only permissions for __shared__:', err);
+        }
+
+        const sharedFiles = [...folderEntries, ...fileOnlyEntries];
+
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }

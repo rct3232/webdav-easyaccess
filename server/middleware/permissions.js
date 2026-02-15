@@ -33,16 +33,32 @@ function isOwnerPathSafe(user, targetPath) {
   return normalized === root || normalized.startsWith(`${root}/`);
 }
 
+function isSharePrincipal(principalId) {
+  return typeof principalId === 'string' && principalId.startsWith('share:');
+}
+
+function extractShareToken(principalId) {
+  if (!isSharePrincipal(principalId)) return null;
+  return principalId.slice(6); // 'share:'.length
+}
+
 /**
- * Check if user has permission to access a file.
- * If the file has independent (file-level) permission, that is used; otherwise parent folder direct permission.
+ * Check if principal has permission to access a file.
+ * principalId: number (userId) or string ("share:token").
+ * For Share principal: read-only, path must be within share rootPath.
  *
- * @param {number} userId - User ID
+ * @param {number|string} principalId - User ID or "share:token"
  * @param {string} filePath - File path to check
  * @param {string} requiredPermission - Required permission level ('read', 'write', or 'admin')
- * @returns {Promise<boolean>} True if user has permission
+ * @returns {Promise<boolean>} True if principal has permission
  */
-async function checkFilePermission(userId, filePath, requiredPermission = PERMISSIONS.READ) {
+async function checkFilePermission(principalId, filePath, requiredPermission = PERMISSIONS.READ) {
+  if (isSharePrincipal(principalId)) {
+    const token = extractShareToken(principalId);
+    return token ? Permission.checkSharePermission(token, filePath, requiredPermission) : false;
+  }
+
+  const userId = principalId;
   const user = await getCachedUser(userId);
   if (!user) {
     return false;
@@ -83,14 +99,21 @@ async function checkFilePermission(userId, filePath, requiredPermission = PERMIS
 }
 
 /**
- * Check if user has permission to access a folder (direct-only; no ancestor traversal).
+ * Check if principal has permission to access a folder (direct-only; no ancestor traversal).
+ * principalId: number (userId) or string ("share:token").
  *
- * @param {number} userId - User ID
+ * @param {number|string} principalId - User ID or "share:token"
  * @param {string} folderPath - Folder path to check
  * @param {string} requiredPermission - Required permission level ('read' or 'write')
- * @returns {Promise<boolean>} True if user has permission
+ * @returns {Promise<boolean>} True if principal has permission
  */
-async function checkFolderPermission(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
+async function checkFolderPermission(principalId, folderPath, requiredPermission = PERMISSIONS.READ) {
+  if (isSharePrincipal(principalId)) {
+    const token = extractShareToken(principalId);
+    return token ? Permission.checkSharePermission(token, folderPath, requiredPermission) : false;
+  }
+
+  const userId = principalId;
   const user = await getCachedUser(userId);
   if (!user) {
     return false;
@@ -160,7 +183,12 @@ function requirePermission(permissionType = PERMISSIONS.READ, pathExtractor = (r
         return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
       }
 
-      const hasPermission = await checkFilePermission(req.user.id, path, permissionType);
+      const principalId = req.principalId ?? req.user?.id;
+      if (principalId == null) {
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+      }
+
+      const hasPermission = await checkFilePermission(principalId, path, permissionType);
       
       if (!hasPermission) {
         return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
@@ -189,7 +217,12 @@ function requireFolderPermission(permissionType = PERMISSIONS.READ, pathExtracto
         return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
       }
 
-      const hasPermission = await checkFolderPermission(req.user.id, path, permissionType);
+      const principalId = req.principalId ?? req.user?.id;
+      if (principalId == null) {
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+      }
+
+      const hasPermission = await checkFolderPermission(principalId, path, permissionType);
       
       if (!hasPermission) {
         return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
@@ -209,5 +242,7 @@ module.exports = {
   canAccessPath,
   requirePermission,
   requireFolderPermission,
+  isSharePrincipal,
+  extractShareToken,
 };
 

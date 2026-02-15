@@ -56,6 +56,7 @@ const BaseFolderTreeItem = ({
   user,
   sharedFoldersMap,
   useHiddenFilesFilter = true,
+  listFilesOptions,
 }) => {
   // path/name 또는 node에서 값 추출
   const path = pathProp || node?.path;
@@ -109,7 +110,7 @@ const BaseFolderTreeItem = ({
     if (loading && !force) return;
     setLoading(true);
     try {
-      const data = await listFiles(path);
+      const data = await listFiles(path, listFilesOptions || {});
       const showHiddenFiles = useHiddenFilesFilter ? getShowHiddenFiles() : true;
       const folders = data
         .filter(item => item.type === 'directory')
@@ -131,7 +132,7 @@ const BaseFolderTreeItem = ({
     } finally {
       setLoading(false);
     }
-  }, [path, loading, useHiddenFilesFilter]);
+  }, [path, loading, useHiddenFilesFilter, listFilesOptions]);
 
   useEffect(() => {
     if (isExpanded && !hasLoaded && !loading) {
@@ -213,6 +214,7 @@ const BaseFolderTreeItem = ({
         user={user}
         sharedFoldersMap={sharedFoldersMap}
         useHiddenFilesFilter={useHiddenFilesFilter}
+        listFilesOptions={listFilesOptions}
       />
     );
   };

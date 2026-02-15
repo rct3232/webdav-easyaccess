@@ -9,24 +9,47 @@ import { filterOutUserOwnFolders } from '../utils/userUtils';
 import { getUserPermissions } from '../services/permissionService';
 
 export const useFileManager = (user, options = {}) => {
-  const { onLoadComplete, onLoadError } = options;
+  const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
   const { '*' : urlPath } = useParams();
   const navigate = useNavigate();
   
   const onLoadCompleteRef = useRef(onLoadComplete);
   const onLoadErrorRef = useRef(onLoadError);
 
-  const currentPath = useMemo(() => {
+  const shareRootPath = useMemo(
+    () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
+    [linkInfo]
+  );
+
+  const currentPathFromUrl = useMemo(() => {
     const path = urlPath ? `/${urlPath}` : '/';
     return normalizePath(path);
   }, [urlPath]);
 
-  const setCurrentPath = useCallback((path) => {
-    const normalizedPath = normalizePath(path);
-    // If the path starts with /, remove it for the URL parameter
-    const navigatePath = normalizedPath === '/' ? '' : normalizedPath.substring(1);
-    navigate(`/files/${navigatePath}`);
-  }, [navigate]);
+  const [shareCurrentPath, setShareCurrentPath] = useState(() =>
+    shareToken && linkInfo ? normalizePath(linkInfo.filePath || '/') : ''
+  );
+
+  useEffect(() => {
+    if (shareToken && linkInfo && shareRootPath) {
+      setShareCurrentPath(shareRootPath);
+    }
+  }, [shareToken, linkInfo, shareRootPath]);
+
+  const currentPath = shareToken && linkInfo ? shareCurrentPath : currentPathFromUrl;
+
+  const setCurrentPath = useCallback(
+    (path) => {
+      const normalizedPath = normalizePath(path);
+      if (shareToken && linkInfo) {
+        setShareCurrentPath(normalizedPath);
+      } else {
+        const navigatePath = normalizedPath === '/' ? '' : normalizedPath.substring(1);
+        navigate(`/files/${navigatePath}`);
+      }
+    },
+    [shareToken, linkInfo, navigate]
+  );
 
   const [files, setFiles] = useState([]);
   // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
@@ -48,6 +71,15 @@ export const useFileManager = (user, options = {}) => {
     setLoading(true);
     const targetPath = currentPath;
     try {
+      // 공유 링크 모드: listFiles with shareToken only
+      if (shareToken && linkInfo) {
+        const data = await listFiles(targetPath, { shareToken });
+        if (requestId === requestIdRef.current) {
+          setFiles(data);
+        }
+        return;
+      }
+
       // 최근 파일 뷰인 경우 특별 처리
       if (targetPath === '/__recent__') {
         const recentFilesList = await getRecentFiles();
@@ -247,9 +279,10 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [currentPath, user]);
+  }, [currentPath, user, shareToken, linkInfo]);
 
   useEffect(() => {
+    if (shareToken && linkInfo) return;
     if (user && !user.is_admin) {
       const userFolder = `/${user.username}`;
       // 특수 경로는 리다이렉트하지 않음
@@ -263,7 +296,7 @@ export const useFileManager = (user, options = {}) => {
       }
       // 다른 경로는 서버에서 권한 체크를 하므로 허용
     }
-  }, [user, currentPath, setCurrentPath]);
+  }, [shareToken, linkInfo, user, currentPath, setCurrentPath]);
 
   useEffect(() => {
     if (currentPath) {
@@ -310,6 +343,7 @@ export const useFileManager = (user, options = {}) => {
   }, [currentPath, loadFiles, user]);
 
   useEffect(() => {
+    if (shareToken && linkInfo) return;
     const loadWebDAVUrl = async () => {
       try {
         const info = await getWebDAVInfo();
@@ -319,7 +353,7 @@ export const useFileManager = (user, options = {}) => {
       }
     };
     loadWebDAVUrl();
-  }, []);
+  }, [shareToken, linkInfo]);
 
   return {
     currentPath,

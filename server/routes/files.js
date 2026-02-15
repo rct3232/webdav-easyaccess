@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const archiver = require('archiver');
-const { authenticateToken } = require('../utils/auth');
+const { authenticateToken, authenticateTokenOrShare } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const {
@@ -38,10 +38,12 @@ const { selectiveTransfer } = require('../services/selectiveTransfer');
 const { selectiveCollectFiles } = require('../services/selectiveDownload');
 const { selectiveDelete } = require('../services/selectiveDelete');
 const { isMetaPath } = require('../store/metaPaths');
+const { isSharePrincipal } = require('../middleware/permissions');
 const { createJob, getJob, setJobCancelled, updateJob } = require('../store/bulkJobStore');
 const { asyncLimitSettled, asyncLimitSettledWithCancel } = require('../utils/asyncUtils');
 const path = require('path');
 const requireUser = require('../middleware/requireUser');
+const { requireAuth } = require('../middleware/requireUser');
 const { checkMetaPathAccess } = require('../middleware/metaPathGuard');
 const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../utils/errorHandler');
@@ -623,7 +625,7 @@ router.post('/check-conflicts', authenticateToken, requireUser, normalizePathPar
 
 const METADATA_PATHS_LIMIT = 100;
 
-router.post('/metadata', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+router.post('/metadata', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const paths = req.body.paths;
   if (!Array.isArray(paths)) {
     throw validationError('paths must be an array');
@@ -631,13 +633,13 @@ router.post('/metadata', authenticateToken, requireUser, asyncHandler(async (req
   if (paths.length > METADATA_PATHS_LIMIT) {
     throw validationError(`paths length must not exceed ${METADATA_PATHS_LIMIT}`);
   }
-  const userId = req.user.id;
+  const principalId = req.principalId;
   const results = [];
   for (const p of paths) {
     const pathVal = typeof p === 'string' ? p.trim() : '';
     if (!pathVal) continue;
     const normalized = normalizePath(pathVal);
-    const hasRead = await canReadFile(userId, normalized, PERMISSIONS.READ);
+    const hasRead = await canReadFile(principalId, normalized, PERMISSIONS.READ);
     if (!hasRead) continue;
     try {
       const meta = await getFileMetadata(normalized);
@@ -656,12 +658,27 @@ router.post('/metadata', authenticateToken, requireUser, asyncHandler(async (req
   res.json(results);
 }));
 
-router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const principalId = req.principalId;
+  const isShare = isSharePrincipal(principalId);
   let folderPath = normalizePath(req.query.path || '/');
-  const user = req.user.full;
 
-  let hasPermission = await canReadFolder(req.user.id, folderPath, PERMISSIONS.READ);
+  if (isShare) {
+    const rootPath = req.shareContext.rootPath;
+    if (folderPath === '/' || folderPath === '') {
+      folderPath = rootPath;
+    }
+  }
+
+  let hasPermission = await canReadFolder(principalId, folderPath, PERMISSIONS.READ);
   if (!hasPermission) {
+    if (isShare) {
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        error: 'Access denied',
+        message: '이 폴더에 대한 접근 권한이 없습니다.'
+      });
+    }
+    const user = req.user.full;
     const userFolder = `/${user.username}`;
     if (folderPath === '/' || folderPath === '') {
       folderPath = userFolder;
@@ -673,7 +690,8 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
     }
   }
 
-  const doc = await Permission.getPermissionDoc(req.user.id);
+  const user = req.user?.full;
+  const doc = isShare ? null : await Permission.getPermissionDoc(req.user.id);
 
   let items;
     try {
@@ -687,19 +705,18 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
       throw error;
     }
     // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
-    // 일반 사용자는 여전히 필터링 (보안)
-    const filteredItems = user.is_admin 
-      ? items 
+    // Share 모드와 일반 사용자는 .wea 필터링
+    const filteredItems = (user && user.is_admin)
+      ? items
       : items.filter(item => item.basename !== '.wea');
     const { getThumbnailUrl } = require('../utils/thumbnail');
     
-    // Current directory write permission (sync from doc)
-    const currentDirWritePermission =
-      user.is_admin ||
-      isOwnerPath(user, folderPath) ||
-      Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE);
+    // Current directory write permission (sync from doc). Share: always false.
+    const currentDirWritePermission = isShare
+      ? false
+      : (user.is_admin || isOwnerPath(user, folderPath) || Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE));
 
-    // 항목별 권한 체크 (동기, doc 기반)
+    // 항목별 권한 체크 (동기, doc 기반). Share: hasReadPermission=true, hasWritePermission=false
     const itemsWithThumbnails = filteredItems.map((item) => {
       if (!item.basename || item.basename.includes('/') || item.basename.includes('\\')) {
         return null;
@@ -709,10 +726,13 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
         cleanFolderPath === '/' ? '/' + item.basename : cleanFolderPath + '/' + item.basename;
       const normalizedPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
 
-      let hasReadPermission = true;
-      let hasWritePermission = item.type === 'directory' ? true : currentDirWritePermission;
+      let hasReadPermission;
+      let hasWritePermission;
 
-      if (item.type === 'directory') {
+      if (isShare) {
+        hasReadPermission = true;
+        hasWritePermission = false;
+      } else if (item.type === 'directory') {
         if (user.is_admin) {
           hasReadPermission = true;
           hasWritePermission = true;
@@ -750,7 +770,7 @@ router.get('/list', authenticateToken, requireUser, normalizePathParam, checkMet
   res.json(itemsWithThumbnails.filter(item => item !== null));
 }));
 
-router.get('/download', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const filePath = req.query.path;
   const inline = req.query.inline === 'true';
   
@@ -758,10 +778,8 @@ router.get('/download', authenticateToken, requireUser, normalizePathParam, chec
     throw validationError('File path is required');
   }
 
-  const user = req.user.full;
-
-    // Download policy: file effective read (file-level if present, else parent path; admin/owner bypass)
-    const hasPermission = await canReadFile(req.user.id, filePath, PERMISSIONS.READ);
+  const principalId = req.principalId;
+  const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
     if (!hasPermission) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
     }
@@ -1096,17 +1114,18 @@ router.get('/thumbnail/:hash', authenticateToken, requireUser, asyncHandler(asyn
   res.send(foundThumbnail.buffer);
 }));
 
-router.post('/thumbnails/batch', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+router.post('/thumbnails/batch', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { paths } = req.body;
 
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
     throw validationError('Paths array is required');
   }
 
+  const principalId = req.principalId;
   const allowedPaths = [];
   for (const p of paths) {
     if (typeof p !== 'string') continue;
-    const canRead = await canReadFile(req.user.id, p, PERMISSIONS.READ);
+    const canRead = await canReadFile(principalId, p, PERMISSIONS.READ);
     if (canRead) allowedPaths.push(p);
   }
 
@@ -1135,7 +1154,7 @@ async function collectFilesFromDirectory(dirPath, basePath = '', files = []) {
   return files;
 }
 
-router.post('/download-multiple', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { paths, downloadId: clientDownloadId } = req.body;
   const downloadId = clientDownloadId || `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -1143,12 +1162,28 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
     throw validationError('Paths array is required');
   }
 
-  const user = req.user.full;
-  const doc = await Permission.getPermissionDoc(req.user.id);
-  const canReadDirSync = buildSyncReadChecker(user, doc);
-  const canReadFileSync = buildSyncReadFileChecker(user, doc);
-  const canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-  const canIncludeFile = (filePath) => canReadFileSync(filePath);
+  const principalId = req.principalId;
+  const isShare = isSharePrincipal(principalId);
+  let canEnterDirectory;
+  let canIncludeFile;
+
+  const checkInclude = async (fp) => {
+    const r = canIncludeFile(fp);
+    return typeof r?.then === 'function' ? await r : Boolean(r);
+  };
+
+  if (isShare) {
+    const token = req.shareContext.token;
+    canEnterDirectory = (dirPath) => Permission.checkSharePermission(token, dirPath, PERMISSIONS.READ);
+    canIncludeFile = (filePath) => Permission.checkSharePermission(token, filePath, PERMISSIONS.READ);
+  } else {
+    const user = req.user.full;
+    const doc = await Permission.getPermissionDoc(req.user.id);
+    const canReadDirSync = buildSyncReadChecker(user, doc);
+    const canReadFileSync = buildSyncReadFileChecker(user, doc);
+    canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
+    canIncludeFile = (filePath) => canReadFileSync(filePath);
+  }
 
     const skippedPaths = [];
 
@@ -1225,7 +1260,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
             } else {
               zipName = fileName.replace(/\.[^/.]+$/, '');
             }
-            const ok = canIncludeFile(filePath);
+            const ok = await checkInclude(filePath);
             if (!ok) {
               skippedPaths.push(filePath);
             } else {
@@ -1234,14 +1269,14 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
           } else {
             if (commonParentDir && commonParentDir !== '/') {
               const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
-              const ok = canIncludeFile(filePath);
+              const ok = await checkInclude(filePath);
               if (!ok) {
                 skippedPaths.push(filePath);
               } else {
                 allFiles.push({ path: filePath, relativePath });
               }
             } else {
-              const ok = canIncludeFile(filePath);
+              const ok = await checkInclude(filePath);
               if (!ok) {
                 skippedPaths.push(filePath);
               } else {
@@ -1253,7 +1288,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
       } catch (error) {
         const fileName = path.basename(filePath);
         // If we can't determine type, treat as file and apply file-path read check
-        const ok = canIncludeFile(filePath);
+        const ok = await checkInclude(filePath);
         if (!ok) {
           skippedPaths.push(filePath);
         } else {
@@ -1378,7 +1413,7 @@ router.post('/download-multiple', authenticateToken, requireUser, normalizePathP
   }, 5 * 60 * 1000);
 }));
 
-router.get('/download-progress/:id', authenticateToken, asyncHandler(async (req, res) => {
+router.get('/download-progress/:id', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const progress = downloadProgress.get(id);
   

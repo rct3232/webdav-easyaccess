@@ -22,6 +22,7 @@ const BulkActionToolbar = ({
   hasWritePermission,
   hasReadOnlyInSelection = false,
   disabled: bulkActionsDisabled = false,
+  downloadOnly = false,
 }) => {
   const moveDeleteDisabled = bulkActionsDisabled || !hasWritePermission;
   const copyDisabled = bulkActionsDisabled; // destination permission checked separately
@@ -74,6 +75,7 @@ const BulkActionToolbar = ({
       >
         {selectedFiles.size}개 선택
       </Typography>
+      {!downloadOnly && (
       <IconButton
         color="primary"
         size={isMobile ? "medium" : "small"}
@@ -89,6 +91,8 @@ const BulkActionToolbar = ({
       >
         <MoveIcon fontSize={isMobile ? "medium" : "small"} />
       </IconButton>
+      )}
+      {!downloadOnly && (
       <IconButton
         color="primary"
         size={isMobile ? "medium" : "small"}
@@ -104,6 +108,7 @@ const BulkActionToolbar = ({
       >
         <CopyIcon fontSize={isMobile ? "medium" : "small"} />
       </IconButton>
+      )}
       <IconButton
         color="primary"
         size={isMobile ? "medium" : "small"}
@@ -119,6 +124,7 @@ const BulkActionToolbar = ({
       >
         <DownloadIcon fontSize={isMobile ? "medium" : "small"} />
       </IconButton>
+      {!downloadOnly && (
       <IconButton
         color="error"
         size={isMobile ? "medium" : "small"}
@@ -139,6 +145,7 @@ const BulkActionToolbar = ({
       >
         <DeleteIcon fontSize={isMobile ? "medium" : "small"} />
       </IconButton>
+      )}
       </Box>
     </Paper>
   );

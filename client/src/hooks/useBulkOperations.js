@@ -32,7 +32,7 @@ export const useBulkOperations = (
   const [bulkConflictData, setBulkConflictData] = useState(null);
   const { progressItems, updateProgress } = useFileOperationProgress();
 
-  const { markProcessing: markProcessingImpl, clearProcessing: clearProcessingImpl } = options;
+  const { markProcessing: markProcessingImpl, clearProcessing: clearProcessingImpl, shareToken } = options;
 
   const markProcessing = useCallback((filePaths, opType) => {
     if (typeof markProcessingImpl === 'function') {
@@ -223,9 +223,13 @@ export const useBulkOperations = (
     });
 
     try {
-      const result = await downloadMultipleFiles(filePaths, (progress) => {
-        updateProgress({ ...progress, id: progressId });
-      });
+      const result = await downloadMultipleFiles(
+        filePaths,
+        (progress) => {
+          updateProgress({ ...progress, id: progressId });
+        },
+        shareToken ? { shareToken } : undefined
+      );
 
       const skippedCount = result?.skippedCount || 0;
       const skippedPaths = result?.skippedInfo?.paths || [];

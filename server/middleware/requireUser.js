@@ -13,6 +13,35 @@ const User = require('../models/User');
 const { notFoundError } = require('../utils/errorHandler');
 
 /**
+ * Require authentication (JWT or Share). Passes when req.principalId is set.
+ * For JWT users: loads req.user.full if not already set.
+ * Use after authenticateTokenOrShare.
+ */
+async function requireAuth(req, res, next) {
+  try {
+    if (req.principalId) {
+      if (req.user && !req.user.full) {
+        const user = await User.findById(req.user.id);
+        if (user) req.user.full = user;
+      }
+      return next();
+    }
+    if (req.user && req.user.id) {
+      if (!req.user.full) {
+        const user = await User.findById(req.user.id);
+        if (!user) throw notFoundError('User not found');
+        req.user.full = user;
+      }
+      req.principalId = req.user.id;
+      return next();
+    }
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * Middleware to load full user object
  * Requires authenticateToken to be called first
  * 
@@ -49,3 +78,4 @@ async function requireUser(req, res, next) {
 }
 
 module.exports = requireUser;
+module.exports.requireAuth = requireAuth;

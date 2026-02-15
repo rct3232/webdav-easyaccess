@@ -38,7 +38,7 @@ app.use(
       return callback(null, corsOrigins.includes(origin));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Share-Token'],
     exposedHeaders: ['Content-Disposition', 'X-WEA-Skipped-Count', 'X-WEA-Skipped', 'X-New-Token'],
   })
 );

@@ -82,9 +82,11 @@ apiClient.interceptors.response.use(
 
       // No refresh token or refresh failed: clear and redirect to login
       // Exception: do NOT redirect when the failed request was login/register - let the page show the error
+      // Exception: do NOT redirect when request used X-Share-Token (Share link view) - let the page show expired/invalid
       const isAuthAttempt = typeof originalRequest?.url === 'string' &&
         (originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/register'));
-      if (!isAuthAttempt) {
+      const isShareRequest = originalRequest?.headers?.['X-Share-Token'];
+      if (!isAuthAttempt && !isShareRequest) {
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('refreshToken');
         window.location.href = '/login';

@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Box,
   Typography,
-  Button,
   Snackbar,
   Alert,
   Collapse,
   CircularProgress,
+  AppBar,
+  Toolbar,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -41,6 +42,7 @@ import {
   FileContextMenu,
   FileOperationProgress,
   FileActionSheet,
+  DesktopPathBar,
   FileManagerHeader,
   FileManagerControls,
   BulkActionToolbar,
@@ -57,23 +59,33 @@ import {
   ConflictResolveDialog,
   RenameDialog,
 } from '../components/dialogs';
-import { FolderTree } from '../components/folder-tree';
+import { FolderTree, ShareLinkFolderTree } from '../components/folder-tree';
 import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
-import { normalizePath } from '../utils/pathUtils';
+import { normalizePath, getBasename } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
 
-const FileManager = () => {
+const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const fileContentRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const isShareLinkMode = Boolean(shareToken && linkInfo);
+  const shareRootPath = useMemo(
+    () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
+    [linkInfo]
+  );
+  const shareRootName = useMemo(
+    () => linkInfo?.fileName || getBasename(shareRootPath) || '공유 폴더',
+    [linkInfo, shareRootPath]
+  );
   
   // 디바운스 타이머 ref 및 최신 핸들러 ref
   const fileClickDebounceTimer = useRef(null);
@@ -105,6 +117,8 @@ const FileManager = () => {
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
     onLoadError: null, // 나중에 설정
+    shareToken,
+    linkInfo,
   });
   
   // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
@@ -566,7 +580,7 @@ const FileManager = () => {
     setSelectedFiles,
     setSelectionMode,
     () => currentPathRef.current,
-    { markProcessing, clearProcessing }
+    { markProcessing, clearProcessing, shareToken: isShareLinkMode ? shareToken : undefined }
   );
 
   const bulkMoveCopyInProgress = useMemo(() => {
@@ -829,6 +843,12 @@ const FileManager = () => {
   };
 
   const handlePathClick = async (path) => {
+    if (isShareLinkMode) {
+      setCurrentPath(normalizePath(path));
+      if (isMobile) setDrawerOpen(false);
+      return;
+    }
+
     // 특수 경로는 바로 설정 (권한 체크 불필요)
     if (path === '/__shared__' || path === '/__recent__') {
       setCurrentPath(path);
@@ -870,6 +890,21 @@ const FileManager = () => {
 
   // 실제 파일 클릭 처리 함수
   const handleFileClickInternal = async (file) => {
+    if (isShareLinkMode) {
+      if (selectionMode) {
+        toggleFileSelection(file);
+      } else if (file.type === 'directory') {
+        setCurrentPath(file.path);
+        if (isMobile) setDrawerOpen(false);
+      } else {
+        const filename = file.basename || file.name;
+        const canPreviewFile = canPreview(filename);
+        setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
+        openPreviewDialog();
+      }
+      return;
+    }
+
     if (selectionMode) {
       toggleFileSelection(file);
     } else {
@@ -1328,6 +1363,88 @@ const FileManager = () => {
     }
   };
 
+  // Desktop path/back bar state (share-link and normal modes)
+  const desktopPathBarState = useMemo(() => {
+    if (isShareLinkMode) {
+      if (currentPath === shareRootPath) {
+        return { label: shareRootName, startIcon: <ShareIcon />, disabled: true, onClick: undefined };
+      }
+      const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+      const parentName = parentPath === shareRootPath ? shareRootName : getBasename(parentPath) || parentPath;
+      return {
+        label: parentName,
+        startIcon: <ChevronLeftIcon />,
+        disabled: false,
+        onClick: () => setCurrentPath(parentPath),
+      };
+    }
+    const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+    if (!user?.is_admin && currentPath === homePath) {
+      return { label: '홈', startIcon: <HomeIcon />, disabled: true, onClick: undefined };
+    }
+    if (user?.is_admin && currentPath === '/') {
+      return { label: '홈', startIcon: <HomeIcon />, disabled: true, onClick: undefined };
+    }
+    if (!user?.is_admin && currentPath === '/__shared__') {
+      return { label: '공유됨', startIcon: <ShareIcon />, disabled: true, onClick: undefined };
+    }
+    if (currentPath === '/__recent__') {
+      return { label: '최근항목', startIcon: <AccessTimeIcon />, disabled: true, onClick: undefined };
+    }
+    const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+    if (!parentPath || parentPath === currentPath) return null;
+    if (!user?.is_admin && parentPath !== '/' && !parentPath.startsWith(homePath)) {
+      return {
+        label: '공유됨',
+        startIcon: <ChevronLeftIcon />,
+        disabled: false,
+        onClick: () => setCurrentPath('/__shared__'),
+      };
+    }
+    const parentName = parentPath === '/'
+      ? (user?.is_admin ? '루트' : '홈')
+      : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? '루트' : '홈');
+    return {
+      label: parentName,
+      startIcon: <ChevronLeftIcon />,
+      disabled: false,
+      onClick: async () => {
+        const previousPath = currentPathRef.current;
+        setCurrentPath(parentPath);
+        if (!user?.is_admin) {
+          try {
+            const permission = await checkPermission(parentPath);
+            if (!permission.hasRead) {
+              const userBaseFolder = getUserBaseFolder(user);
+              if (!parentPath.startsWith(userBaseFolder)) {
+                setCurrentPath('/__shared__');
+                return;
+              }
+              setCurrentPath(previousPath);
+              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+              return;
+            }
+          } catch (error) {
+            setCurrentPath(previousPath);
+            const errorType = determineErrorType(error);
+            if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
+              const userBaseFolder = getUserBaseFolder(user);
+              if (!parentPath.startsWith(userBaseFolder)) {
+                setCurrentPath('/__shared__');
+                return;
+              }
+              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+            } else {
+              console.error('Failed to check permission:', error);
+              showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
+            }
+            return;
+          }
+        }
+      },
+    };
+  }, [isShareLinkMode, currentPath, shareRootPath, shareRootName, setCurrentPath, user, showError]);
+
   return (
     <Box
       sx={{
@@ -1338,20 +1455,57 @@ const FileManager = () => {
         minHeight: 0,
       }}
     >
-      <FileManagerHeader
-        isMobile={isMobile}
-        isSearchMode={isSearchMode}
-        setIsSearchMode={setIsSearchMode}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        user={user}
-        navigate={navigate}
-        handleLogout={handleLogout}
-      />
-
+      {!isShareLinkMode && (
+        <FileManagerHeader
+          isMobile={isMobile}
+          isSearchMode={isSearchMode}
+          setIsSearchMode={setIsSearchMode}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          user={user}
+          navigate={navigate}
+          handleLogout={handleLogout}
+        />
+      )}
+      {isShareLinkMode && (
+        <AppBar
+          position="sticky"
+          sx={{
+            top: 0,
+            zIndex: (theme) => theme.zIndex.appBar,
+            backgroundColor: 'transparent',
+            backgroundImage: 'none',
+          }}
+          elevation={0}
+        >
+          <Toolbar>
+            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box
+                component="img"
+                src="/logo_white.png"
+                alt="WebDAV EasyAccess"
+                sx={{
+                  height: isMobile ? '27px' : '33.75px',
+                  maxWidth: '100%',
+                  objectFit: 'contain',
+                }}
+              />
+            </Box>
+          </Toolbar>
+        </AppBar>
+      )}
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-        {!isMobile && (
+        {!isMobile && (isShareLinkMode ? (
+          <ShareLinkFolderTree
+            shareRootPath={shareRootPath}
+            shareRootName={shareRootName}
+            shareToken={shareToken}
+            currentPath={currentPath}
+            onPathClick={handlePathClick}
+            isMobile={false}
+          />
+        ) : (
           <FolderTree
             currentPath={currentPath}
             onPathClick={handlePathClick}
@@ -1365,7 +1519,7 @@ const FileManager = () => {
             onExplorerDrop={handleExplorerDrop}
             isMobile={isMobile}
           />
-        )}
+        ))}
 
         <Box 
           ref={fileContentRef}
@@ -1381,7 +1535,7 @@ const FileManager = () => {
           onDragLeave={handleContentAreaDragLeave}
           onDrop={handleContentAreaDrop}
         >
-          {isFileAreaDraggingOver && hasWritePermission && (
+          {isFileAreaDraggingOver && hasWritePermission && !isShareLinkMode && (
             <Box
               sx={{
                 position: 'absolute',
@@ -1418,7 +1572,7 @@ const FileManager = () => {
               <MobileBreadcrumb
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
-                user={user}
+                {...(isShareLinkMode ? { shareRootPath, shareRootName, showFolderTreeToggle: true } : { user })}
                 onToggleFolderTree={() => setDrawerOpen(!drawerOpen)}
                 isFolderTreeOpen={drawerOpen}
               />
@@ -1432,31 +1586,45 @@ const FileManager = () => {
                     backgroundColor: 'background.paper',
                   }}
                 >
-                  <FolderTree
-                    currentPath={currentPath}
-                    onPathClick={(path) => {
-                      handlePathClick(path);
-                      setDrawerOpen(false);
-                    }}
-                    onFileClick={(file) => {
-                      handleFileClick(file);
-                      setDrawerOpen(false);
-                    }}
-                    user={user}
-                    treeUpdateTrigger={treeUpdateTrigger}
-                    onCreateFolder={() => {
-                      openCreateFolderDialog();
-                      setDrawerOpen(false);
-                    }}
-                    onUploadFile={() => {
-                      openUploadDialog();
-                      setDrawerOpen(false);
-                    }}
-                    selectionMode={selectionMode}
-                    hasWritePermission={hasWritePermission}
-                    onExplorerDrop={handleExplorerDrop}
-                    isMobile={isMobile}
-                  />
+                  {isShareLinkMode ? (
+                    <ShareLinkFolderTree
+                      shareRootPath={shareRootPath}
+                      shareRootName={shareRootName}
+                      shareToken={shareToken}
+                      currentPath={currentPath}
+                      onPathClick={(path) => {
+                        handlePathClick(path);
+                        setDrawerOpen(false);
+                      }}
+                      isMobile
+                    />
+                  ) : (
+                    <FolderTree
+                      currentPath={currentPath}
+                      onPathClick={(path) => {
+                        handlePathClick(path);
+                        setDrawerOpen(false);
+                      }}
+                      onFileClick={(file) => {
+                        handleFileClick(file);
+                        setDrawerOpen(false);
+                      }}
+                      user={user}
+                      treeUpdateTrigger={treeUpdateTrigger}
+                      onCreateFolder={() => {
+                        openCreateFolderDialog();
+                        setDrawerOpen(false);
+                      }}
+                      onUploadFile={() => {
+                        openUploadDialog();
+                        setDrawerOpen(false);
+                      }}
+                      selectionMode={selectionMode}
+                      hasWritePermission={hasWritePermission}
+                      onExplorerDrop={handleExplorerDrop}
+                      isMobile={isMobile}
+                    />
+                  )}
                 </Box>
               </Collapse>
             </>
@@ -1482,195 +1650,15 @@ const FileManager = () => {
             selectionActionsDisabled={bulkMoveCopyInProgress}
           />
 
-          {/* 뒤로가기 버튼 (데스크톱 전용) */}
-          {!isMobile && (() => {
-            const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-            
-            // 1. 일반 사용자: 홈 디렉토리에서는 클릭 불가 (홈 아이콘 + "홈" 텍스트)
-            if (!user?.is_admin && currentPath === homePath) {
-              return (
-                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                  <Button
-                    startIcon={<HomeIcon />}
-                    disabled
-                    sx={{
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                      '&.Mui-disabled': {
-                        color: 'text.primary',
-                      },
-                    }}
-                  >
-                    홈
-                  </Button>
-                </Box>
-              );
-            }
-            
-            // 2. 어드민: 루트 디렉토리에서는 클릭 불가 (홈 아이콘 + "홈" 텍스트)
-            if (user?.is_admin && currentPath === '/') {
-              return (
-                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                  <Button
-                    startIcon={<HomeIcon />}
-                    disabled
-                    sx={{
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                      '&.Mui-disabled': {
-                        color: 'text.primary',
-                      },
-                    }}
-                  >
-                    홈
-                  </Button>
-                </Box>
-              );
-            }
-            
-            // 3. 일반 사용자: 공유됨 디렉토리에서는 클릭 불가 (공유됨 아이콘 + "공유됨" 텍스트)
-            if (!user?.is_admin && currentPath === '/__shared__') {
-              return (
-                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                  <Button
-                    startIcon={<ShareIcon />}
-                    disabled
-                    sx={{
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                      '&.Mui-disabled': {
-                        color: 'text.primary',
-                      },
-                    }}
-                  >
-                    공유됨
-                  </Button>
-                </Box>
-              );
-            }
-            
-            // 4. 최근항목 디렉토리에서는 클릭 불가 (최근항목 아이콘 + "최근항목" 텍스트)
-            if (currentPath === '/__recent__') {
-              return (
-                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                  <Button
-                    startIcon={<AccessTimeIcon />}
-                    disabled
-                    sx={{
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                      '&.Mui-disabled': {
-                        color: 'text.primary',
-                      },
-                    }}
-                  >
-                    최근항목
-                  </Button>
-                </Box>
-              );
-            }
-            
-            // 5. 일반 경로에서 부모 경로 계산
-            const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
-            
-            if (!parentPath || parentPath === currentPath) return null;
-            
-            // 6. 일반 사용자: 공유된 폴더에서 상위폴더가 권한 없는 경우
-            if (!user?.is_admin && parentPath !== '/' && !parentPath.startsWith(homePath)) {
-              return (
-                <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                  <Button
-                    startIcon={<ChevronLeftIcon />}
-                    onClick={() => {
-                      setCurrentPath('/__shared__');
-                    }}
-                    sx={{
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      },
-                    }}
-                  >
-                    공유됨
-                  </Button>
-                </Box>
-              );
-            }
-            
-            // 7. 일반적인 뒤로가기 버튼
-            const parentName = parentPath === '/'
-              ? (user?.is_admin ? '루트' : '홈')
-              : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? '루트' : '홈');
-            
-            return (
-              <Box sx={{ px: 2, py: 0, display: 'flex', alignItems: 'center' }}>
-                <Button
-                  startIcon={<ChevronLeftIcon />}
-                  onClick={async () => {
-                    // 일반 경로에서 부모 폴더로 이동
-                    const previousPath = currentPathRef.current;
-                    setCurrentPath(parentPath);
-                    
-                    // 권한 체크 (일반 사용자만)
-                    if (!user?.is_admin) {
-                      try {
-                        const permission = await checkPermission(parentPath);
-                        if (!permission.hasRead) {
-                          // 공유 폴더에서 상위 폴더 권한이 없으면 /__shared__로 이동
-                          const userBaseFolder = getUserBaseFolder(user);
-                          if (!parentPath.startsWith(userBaseFolder)) {
-                            setCurrentPath('/__shared__');
-                            return;
-                          }
-                          // 자신의 폴더인데 권한이 없으면 이전 경로로 롤백
-                          setCurrentPath(previousPath);
-                          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
-                          return;
-                        }
-                      } catch (error) {
-                        setCurrentPath(previousPath);
-                        const errorType = determineErrorType(error);
-                        if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
-                          const userBaseFolder = getUserBaseFolder(user);
-                          if (!parentPath.startsWith(userBaseFolder)) {
-                            setCurrentPath('/__shared__');
-                            return;
-                          }
-                          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
-                        } else {
-                          console.error('Failed to check permission:', error);
-                          showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
-                        }
-                        return;
-                      }
-                    }
-                  }}
-                  sx={{
-                    textTransform: 'none',
-                    color: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'action.hover',
-                    },
-                  }}
-                >
-                  {parentName}
-                </Button>
-              </Box>
-            );
-          })()}
+          {/* 뒤로가기 버튼 (데스크톱 전용) - 공유 링크 모드도 일반과 동일하게 루트일 때 비활성 버튼, 하위일 때 상위로 가기 */}
+          {!isMobile && desktopPathBarState && (
+            <DesktopPathBar
+              label={desktopPathBarState.label}
+              startIcon={desktopPathBarState.startIcon}
+              disabled={desktopPathBarState.disabled}
+              onClick={desktopPathBarState.onClick}
+            />
+          )}
 
           <Box
             ref={scrollContainerRef}
@@ -1746,7 +1734,7 @@ const FileManager = () => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={(e, file) => {
+                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
                   if (e.cancelable) {
                     e.preventDefault();
                   }
@@ -1768,13 +1756,14 @@ const FileManager = () => {
                 onThumbnailsLoaded={handleThumbnailsLoaded}
                 loadMoreRef={loadMoreRef}
                 hasMore={hasMore}
+                shareToken={isShareLinkMode ? shareToken : undefined}
               />
             ) : viewMode === VIEW_MODES.GRID ? (
               <FileGrid
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={(e, file) => {
+                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
                   if (e.cancelable) {
                     e.preventDefault();
                   }
@@ -1796,13 +1785,14 @@ const FileManager = () => {
                 onThumbnailsLoaded={handleThumbnailsLoaded}
                 loadMoreRef={loadMoreRef}
                 hasMore={hasMore}
+                shareToken={isShareLinkMode ? shareToken : undefined}
               />
             ) : (
               <FileDetail
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={(e, file) => {
+                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
                   if (e.cancelable) {
                     e.preventDefault();
                   }
@@ -1821,26 +1811,30 @@ const FileManager = () => {
                 currentPath={currentPath}
                 onPathClick={handlePathClick}
                 loading={loading}
+                shareToken={isShareLinkMode ? shareToken : undefined}
               />
             )}
           </Box>
         </Box>
       </Box>
 
-      <UploadDialog
-        open={uploadDialogOpen}
-        onClose={closeUploadDialog}
-        currentPath={currentPath}
-        onUploadStart={handleUploadStart}
-      />
-
-      <CreateFolderDialog
-        open={createFolderDialogOpen}
-        onClose={closeCreateFolderDialog}
-        onComplete={handleCreateFolderComplete}
-        currentPath={currentPath}
-        onProgress={updateProgress}
-      />
+      {!isShareLinkMode && (
+        <>
+          <UploadDialog
+            open={uploadDialogOpen}
+            onClose={closeUploadDialog}
+            currentPath={currentPath}
+            onUploadStart={handleUploadStart}
+          />
+          <CreateFolderDialog
+            open={createFolderDialogOpen}
+            onClose={closeCreateFolderDialog}
+            onComplete={handleCreateFolderComplete}
+            currentPath={currentPath}
+            onProgress={updateProgress}
+          />
+        </>
+      )}
 
       <FilePreviewDialog
         open={previewDialogOpen}
@@ -1849,49 +1843,52 @@ const FileManager = () => {
           setSelectedFile(null);
         }}
         file={selectedFile}
+        shareToken={isShareLinkMode ? shareToken : undefined}
       />
 
-      <FileContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        file={selectedFile}
-        user={user}
-        hasWritePermission={hasWritePermission}
-        onDownload={(file) => {
-          setContextMenu(null);
-          handleFileDownloadOp(file);
-        }}
-        onRename={(file) => {
-          setContextMenu(null);
-          openRenameDialog(file);
-        }}
-        onMove={(file) => {
-          setContextMenu(null);
-          setMobilePickerFile(file);
-          setMobilePickerAction('move');
-          setFolderPickerAction('move');
-          setFolderPickerOpen(true);
-        }}
-        onCopy={(file) => {
-          setContextMenu(null);
-          setMobilePickerFile(file);
-          setMobilePickerAction('copy');
-          setFolderPickerAction('copy');
-          setFolderPickerOpen(true);
-        }}
-        onShare={(file) => {
-          setContextMenu(null);
-          openShareDialogV2(file);
-        }}
-        onProperties={(file) => {
-          setContextMenu(null);
-          openPropertiesDialog(file);
-        }}
-        onDelete={(file) => {
-          setContextMenu(null);
-          openBulkDeleteDialog([file.path]);
-        }}
-      />
+      {!isShareLinkMode && (
+        <FileContextMenu
+          contextMenu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          file={selectedFile}
+          user={user}
+          hasWritePermission={hasWritePermission}
+          onDownload={(file) => {
+            setContextMenu(null);
+            handleFileDownloadOp(file);
+          }}
+          onRename={(file) => {
+            setContextMenu(null);
+            openRenameDialog(file);
+          }}
+          onMove={(file) => {
+            setContextMenu(null);
+            setMobilePickerFile(file);
+            setMobilePickerAction('move');
+            setFolderPickerAction('move');
+            setFolderPickerOpen(true);
+          }}
+          onCopy={(file) => {
+            setContextMenu(null);
+            setMobilePickerFile(file);
+            setMobilePickerAction('copy');
+            setFolderPickerAction('copy');
+            setFolderPickerOpen(true);
+          }}
+          onShare={(file) => {
+            setContextMenu(null);
+            openShareDialogV2(file);
+          }}
+          onProperties={(file) => {
+            setContextMenu(null);
+            openPropertiesDialog(file);
+          }}
+          onDelete={(file) => {
+            setContextMenu(null);
+            openBulkDeleteDialog([file.path]);
+          }}
+        />
+      )}
 
       <FolderPickerDialog
         open={folderPickerOpen}
@@ -1964,9 +1961,10 @@ const FileManager = () => {
           handleBulkCopy={handleBulkCopy}
           handleBulkDownload={handleBulkDownload}
           openBulkDeleteDialog={openBulkDeleteDialog}
-          hasWritePermission={allSelectedHaveWrite}
+          hasWritePermission={isShareLinkMode ? false : allSelectedHaveWrite}
           hasReadOnlyInSelection={hasReadOnlyInSelection}
           disabled={bulkMoveCopyInProgress}
+          downloadOnly={isShareLinkMode}
         />
       )}
 
@@ -1980,24 +1978,8 @@ const FileManager = () => {
         onCancelAll={handleCancelAllWrapper}
       />
 
-      <ConflictResolveDialog
-        open={!!bulkConflictData}
-        onClose={() => setBulkConflictData(null)}
-        onResolve={resolveBulkConflict}
-        conflicts={bulkConflictData?.conflicts || []}
-        operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
-      />
-
-      <ConflictResolveDialog
-        open={!!uploadConflictData}
-        onClose={() => setUploadConflictData(null)}
-        onResolve={resolveUploadConflict}
-        conflicts={uploadConflictData?.conflicts || []}
-        operationType="업로드"
-      />
-
       {/* Mobile FAB */}
-      {isMobile && !selectionMode && (
+      {isMobile && !selectionMode && !isShareLinkMode && (
         <MobileFAB
           onUpload={openUploadDialog}
           onCreateFolder={openCreateFolderDialog}
@@ -2006,7 +1988,7 @@ const FileManager = () => {
       )}
 
       {/* Mobile Action Sheet */}
-      {isMobile && (
+      {isMobile && !isShareLinkMode && (
         <FileActionSheet
           open={actionSheetOpen}
           onClose={closeActionSheet}
@@ -2063,82 +2045,77 @@ const FileManager = () => {
         />
       )}
 
-      <RenameDialog
-        open={renameDialogOpen}
-        onClose={closeRenameDialog}
-        value={renameNewName}
-        onChange={setRenameNewName}
-        error={renameError}
-        onClearError={() => setRenameError('')}
-        loading={renameLoading}
-        onConfirm={handleRename}
-        fullScreen={isMobile}
-      />
-
-      {/* Share Target Dialog (new share modal from context menu / action sheet) */}
-      {shareDialogV2File && (
-        <ShareTargetDialog
-          open={shareDialogV2Open}
-          onClose={closeShareDialogV2}
-          file={shareDialogV2File}
-          user={user}
-          onMessage={setDropMessage}
-          onSave={() => {
-            handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
-          }}
-        />
+      {!isShareLinkMode && (
+        <>
+          <RenameDialog
+            open={renameDialogOpen}
+            onClose={closeRenameDialog}
+            value={renameNewName}
+            onChange={setRenameNewName}
+            error={renameError}
+            onClearError={() => setRenameError('')}
+            loading={renameLoading}
+            onConfirm={handleRename}
+            fullScreen={isMobile}
+          />
+          {shareDialogV2File && (
+            <ShareTargetDialog
+              open={shareDialogV2Open}
+              onClose={closeShareDialogV2}
+              file={shareDialogV2File}
+              user={user}
+              onMessage={setDropMessage}
+              onSave={() => {
+                handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
+              }}
+            />
+          )}
+          {(mobileShareFile || actionSheetFile) && (
+            <ShareDialog
+              open={shareDialogOpen}
+              onClose={closeShareDialog}
+              folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+              folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
+              user={user}
+              onMessage={setDropMessage}
+              enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
+              filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+              fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
+            />
+          )}
+          {(mobilePropertiesFile || actionSheetFile) && (
+            <FilePropertiesDialog
+              open={propertiesDialogOpen}
+              onClose={closePropertiesDialog}
+              file={mobilePropertiesFile || actionSheetFile}
+            />
+          )}
+          <ConfirmDialog
+            open={bulkDeleteDialogOpen}
+            onClose={closeBulkDeleteDialog}
+            onConfirm={handleBulkDeleteConfirm}
+            title="삭제 확인"
+            message={`선택한 ${bulkDeleteFilePaths.length}개의 파일/폴더를 삭제하시겠습니까?`}
+            confirmText="삭제"
+            cancelText="취소"
+            confirmColor="error"
+          />
+          <ConflictResolveDialog
+            open={!!bulkConflictData}
+            onClose={() => setBulkConflictData(null)}
+            onResolve={resolveBulkConflict}
+            conflicts={bulkConflictData?.conflicts || []}
+            operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
+          />
+          <ConflictResolveDialog
+            open={!!uploadConflictData}
+            onClose={() => setUploadConflictData(null)}
+            onResolve={resolveUploadConflict}
+            conflicts={uploadConflictData?.conflicts || []}
+            operationType="업로드"
+          />
+        </>
       )}
-
-      {/* Share Dialog (legacy, kept for other entry points) */}
-      {(mobileShareFile || actionSheetFile) && (
-        <ShareDialog
-          open={shareDialogOpen}
-          onClose={closeShareDialog}
-          folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
-          folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
-          user={user}
-          onMessage={setDropMessage}
-          enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
-          filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
-          fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
-        />
-      )}
-
-      {/* File Properties Dialog */}
-      {(mobilePropertiesFile || actionSheetFile) && (
-        <FilePropertiesDialog
-          open={propertiesDialogOpen}
-          onClose={closePropertiesDialog}
-          file={mobilePropertiesFile || actionSheetFile}
-        />
-      )}
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <ConfirmDialog
-        open={bulkDeleteDialogOpen}
-        onClose={closeBulkDeleteDialog}
-        onConfirm={handleBulkDeleteConfirm}
-        title="삭제 확인"
-        message={`선택한 ${bulkDeleteFilePaths.length}개의 파일/폴더를 삭제하시겠습니까?`}
-        confirmText="삭제"
-        cancelText="취소"
-        confirmColor="error"
-      />
-
-      <ConflictResolveDialog
-        open={!!bulkConflictData}
-        onClose={() => setBulkConflictData(null)}
-        onResolve={resolveBulkConflict}
-        conflicts={bulkConflictData?.conflicts || []}
-        operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
-      />
-      <ConflictResolveDialog
-        open={!!uploadConflictData}
-        onClose={() => setUploadConflictData(null)}
-        onResolve={resolveUploadConflict}
-        conflicts={uploadConflictData?.conflicts || []}
-        operationType="업로드"
-      />
     </Box>
   );
 };

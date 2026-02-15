@@ -26,9 +26,10 @@ const isImageOrVideoFile = (file) => {
  * 
  * @param {Array} files - 파일 목록
  * @param {Function} onThumbnailsLoaded - 썸네일 로드 완료 콜백
+ * @param {Object} options - { shareToken } 공유 링크 뷰일 때 전달
  * @returns {Object} { containerRef } - 컨테이너 참조 (필요시 사용)
  */
-export const useThumbnailLazyLoad = (files, onThumbnailsLoaded) => {
+export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) => {
   const observerRef = useRef(null);
   const requestedPathsRef = useRef(new Set());
   const pendingRequestRef = useRef(null);
@@ -64,7 +65,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded) => {
 
       pendingRequestRef.current = (async () => {
         try {
-          const response = await requestThumbnailsBatch(pathsToRequest);
+          const response = await requestThumbnailsBatch(pathsToRequest, options);
           if (response.thumbnails && onThumbnailsLoaded) {
             // 썸네일 URL을 Map으로 변환
             const thumbnailMap = new Map();
@@ -84,7 +85,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded) => {
         }
       })();
     }, DEBOUNCE_MS);
-  }, [onThumbnailsLoaded]);
+  }, [onThumbnailsLoaded, options?.shareToken]);
 
   /**
    * Intersection Observer 콜백

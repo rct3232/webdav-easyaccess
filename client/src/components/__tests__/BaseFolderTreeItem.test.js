@@ -56,7 +56,7 @@ describe('BaseFolderTreeItem', () => {
     );
 
     await waitFor(() => {
-      expect(listFiles).toHaveBeenCalledWith('/test');
+      expect(listFiles).toHaveBeenCalledWith('/test', {});
       expect(screen.getByText('sub1')).toBeInTheDocument();
     });
   });

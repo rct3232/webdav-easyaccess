@@ -33,11 +33,23 @@ router.get('/:token/info', asyncHandler(async (req, res) => {
   const fileName = link.filePath.split('/').pop();
   const fileType = getFileType(fileName);
 
+  let isDirectory = false;
+  try {
+    const Permission = require('../models/Permission');
+    const shareDoc = await Permission.getSharePermissionDoc(token);
+    if (shareDoc) {
+      isDirectory = Boolean(shareDoc.isDirectory);
+    }
+  } catch (_) {
+    // Default to file for legacy links without permission doc
+  }
+
   res.json({
     token: link.token,
     filePath: link.filePath,
     fileName: fileName,
     fileType: fileType,
+    isDirectory,
     createdAt: link.createdAt,
     expiresAt: link.expiresAt,
     downloadCount: link.downloadCount,

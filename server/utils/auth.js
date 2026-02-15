@@ -91,10 +91,64 @@ async function authenticateToken(req, res, next) {
   return next();
 }
 
+/**
+ * Authenticate via JWT or Share Token.
+ * 1. JWT (Authorization: Bearer <token>) -> req.user, req.principalId = userId
+ * 2. X-Share-Token header or ?shareToken= query -> req.shareContext, req.principalId = "share:" + token
+ * Neither present -> 401
+ */
+async function authenticateTokenOrShare(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const jwtToken = authHeader && authHeader.split(' ')[1];
+
+  if (jwtToken) {
+    const decoded = verifyToken(jwtToken);
+    if (decoded) {
+      req.user = decoded;
+      req.user.full = {
+        id: decoded.id,
+        username: decoded.username,
+        is_admin: decoded.is_admin ? 1 : 0,
+      };
+      req.principalId = decoded.id;
+      return next();
+    }
+  }
+
+  const shareToken =
+    req.headers['x-share-token'] || req.query.shareToken || req.body?.shareToken;
+  if (shareToken) {
+    const ShareLink = require('../models/ShareLink');
+    const link = await ShareLink.findByToken(shareToken);
+    if (!link) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    }
+    if (ShareLink.isExpired(link)) {
+      return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    }
+    const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+    const rootPath = normalizePath(link.filePath);
+    const Permission = require('../models/Permission');
+    const shareDoc = await Permission.getSharePermissionDoc(shareToken);
+    const isDirectory = shareDoc ? Boolean(shareDoc.isDirectory) : false;
+    req.shareContext = {
+      link,
+      token: shareToken,
+      rootPath,
+      isDirectory,
+    };
+    req.principalId = 'share:' + shareToken;
+    return next();
+  }
+
+  return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Access token or share token required' });
+}
+
 module.exports = {
   generateToken,
   verifyToken,
   authenticateToken,
+  authenticateTokenOrShare,
   generateRefreshTokenId,
   addRefreshToken,
   validateRefreshToken,

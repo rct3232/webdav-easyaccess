@@ -80,6 +80,22 @@ class Permission {
   static async getPathEffectivePermission(userId, folderPath) {
     return await permissionStore.getPathEffectivePermission(userId, folderPath);
   }
+
+  static async grantSharePermission(token, rootPath, isDirectory) {
+    return await permissionStore.grantSharePermission(token, rootPath, isDirectory);
+  }
+
+  static async revokeSharePermission(token) {
+    return await permissionStore.revokeSharePermission(token);
+  }
+
+  static async getSharePermissionDoc(token) {
+    return await permissionStore.getSharePermissionDoc(token);
+  }
+
+  static async checkSharePermission(token, path, requiredPermission) {
+    return await permissionStore.checkSharePermission(token, path, requiredPermission);
+  }
 }
 
 module.exports = Permission;

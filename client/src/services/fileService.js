@@ -8,9 +8,16 @@ import {
 
 const API_BASE = '/files';
 
-export const listFiles = async (path = '/') => {
+function shareTokenHeaders(shareToken) {
+  if (!shareToken) return {};
+  return { 'X-Share-Token': shareToken };
+}
+
+export const listFiles = async (path = '/', options = {}) => {
+  const { shareToken } = options;
   const response = await get(`${API_BASE}/list`, {
-    params: { path },
+    params: { path, ...(shareToken && { shareToken }) },
+    headers: shareTokenHeaders(shareToken),
   });
   return response.data;
 };
@@ -20,11 +27,14 @@ export const listFiles = async (path = '/') => {
  * @param {string[]} paths - 파일 경로 배열
  * @returns {Promise<Array<{ path: string, size: number, lastmod: string|null, mime: string|null }>>}
  */
-export const getFilesMetadata = async (paths = []) => {
+export const getFilesMetadata = async (paths = [], options = {}) => {
   if (!Array.isArray(paths) || paths.length === 0) {
     return [];
   }
-  const response = await post(`${API_BASE}/metadata`, { paths });
+  const { shareToken } = options;
+  const response = await post(`${API_BASE}/metadata`, { paths, ...(shareToken && { shareToken }) }, {
+    headers: shareTokenHeaders(shareToken),
+  });
   return Array.isArray(response.data) ? response.data : [];
 };
 
@@ -35,11 +45,14 @@ export const getFilesMetadata = async (paths = []) => {
  * @returns {Promise<Blob>}
  */
 export const getFileBlob = async (filePath, options = {}) => {
+  const { shareToken, inline } = options;
   const params = { path: filePath };
-  if (options.inline) params.inline = 'true';
+  if (inline) params.inline = 'true';
+  if (shareToken) params.shareToken = shareToken;
   const response = await get(`${API_BASE}/download`, {
     params,
     responseType: 'blob',
+    headers: shareTokenHeaders(shareToken),
   });
   return response.data;
 };
@@ -208,11 +221,14 @@ function serverProgressToPercent(server) {
   return 0;
 }
 
-export const downloadMultipleFiles = async (paths, onProgress) => {
+export const downloadMultipleFiles = async (paths, onProgress, options = {}) => {
+  const { shareToken } = options;
   const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   let lastProgressEvent = null;
   let lastServerProgress = null;
   let pollTimer = null;
+
+  const listOpts = shareToken ? { shareToken } : {};
 
   try {
     let totalSize = 0;
@@ -220,7 +236,7 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
       for (const filePath of paths) {
         const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
         const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
-        const files = await listFiles(parentPath);
+        const files = await listFiles(parentPath, listOpts);
         const fileItem = files.find(item => item.basename === fileName);
         if (fileItem) {
           if (fileItem.type === 'directory') {
@@ -258,7 +274,7 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
 
     pollTimer = setInterval(async () => {
       try {
-        const data = await getDownloadProgress(downloadId);
+        const data = await getDownloadProgress(downloadId, listOpts);
         lastServerProgress = data;
         pushProgress(data, lastProgressEvent?.loaded ?? 0, lastProgressEvent?.total || totalSize);
       } catch (e) {
@@ -268,9 +284,10 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
 
     const response = await post(
       '/files/download-multiple',
-      { paths, downloadId },
+      { paths, downloadId, ...(shareToken && { shareToken }) },
       {
         responseType: 'blob',
+        headers: shareTokenHeaders(shareToken),
         onDownloadProgress: (progressEvent) => {
           lastProgressEvent = progressEvent;
           const loaded = progressEvent.loaded || 0;
@@ -355,8 +372,12 @@ export const downloadMultipleFiles = async (paths, onProgress) => {
   }
 };
 
-export const getDownloadProgress = async (downloadId) => {
-  const response = await get(`/files/download-progress/${downloadId}`);
+export const getDownloadProgress = async (downloadId, options = {}) => {
+  const { shareToken } = options;
+  const response = await get(`/files/download-progress/${downloadId}`, {
+    params: shareToken ? { shareToken } : {},
+    headers: shareTokenHeaders(shareToken),
+  });
   return response.data;
 };
 
@@ -388,9 +409,13 @@ export const updateFilePermission = async ({ userId, filePath, permission }) => 
 /** List current user's file-level permissions. Re-exported from permissionService. */
 export { listFilePermissions } from './permissionService';
 
-export const requestThumbnailsBatch = async (paths) => {
+export const requestThumbnailsBatch = async (paths, options = {}) => {
+  const { shareToken } = options;
   const response = await post(`${API_BASE}/thumbnails/batch`, {
     paths,
+    ...(shareToken && { shareToken }),
+  }, {
+    headers: shareTokenHeaders(shareToken),
   });
   return response.data;
 };

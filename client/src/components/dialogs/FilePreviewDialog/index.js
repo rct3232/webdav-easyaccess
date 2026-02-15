@@ -28,7 +28,7 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
 }
 
-const FilePreviewDialog = ({ open, onClose, file }) => {
+const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -96,7 +96,7 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
     setError(null);
 
     try {
-      const blob = await getFileBlob(file.path, { inline: true });
+      const blob = await getFileBlob(file.path, { inline: true, shareToken });
       const filename = file.name || file.basename;
       const fileType = getFileType(filename);
 
@@ -119,7 +119,7 @@ const FilePreviewDialog = ({ open, onClose, file }) => {
       setError('파일을 불러올 수 없습니다.');
       setLoading(false);
     }
-  }, [file]);
+  }, [file, shareToken]);
 
   useEffect(() => {
     if (open && file) {

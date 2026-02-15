@@ -303,15 +303,15 @@ describe('Permissions Middleware', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      mockReq.user.id = null; // This will cause checkFilePermission to return false
+      mockReq.user.id = null; // No principalId (principalId = req.principalId ?? req.user?.id)
       mockReq.query.path = '/file.txt';
       const middleware = requirePermission('read');
       
       await middleware(mockReq, mockRes, mockNext);
       
-      // null user id results in access denied (403), not server error
-      expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access denied' });
+      // null principalId results in 401 Authentication required
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication required' });
     });
   });
 

@@ -10,38 +10,64 @@ const { forbiddenError } = require('../utils/errorHandler');
 
 /**
  * Middleware to check if path is a meta path and block non-admin access
- * Requires requireUser to be called first (to have req.user.full)
- * 
+ * For Share context: block all meta path access; block paths outside share root
+ * Requires authenticateTokenOrShare + requireAuth before this (req.principalId, req.shareContext)
+ *
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
 function checkMetaPathAccess(req, res, next) {
-  // Extract path from query, body, or params
+  const user = req.user?.full || req.user;
+
+  if (req.shareContext) {
+    const { rootPath, isDirectory } = req.shareContext;
+    const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+    const { isPathUnder } = require('@webdav-easyaccess/shared/pathUtils');
+
+    const pathsToCheck = [
+      req.query.path,
+      req.body.path,
+      req.params.path,
+      req.body.sourcePath,
+      req.body.destinationPath,
+      ...(Array.isArray(req.body.paths) ? req.body.paths : []),
+    ].filter(Boolean);
+
+    for (const p of pathsToCheck) {
+      const pathVal = typeof p === 'string' ? p.trim() : '';
+      if (!pathVal) continue;
+      const normalized = normalizePath(pathVal);
+      if (isMetaPath(normalized)) {
+        throw forbiddenError('Access denied');
+      }
+      if (!isPathUnder(normalized, rootPath)) {
+        throw forbiddenError('Access denied');
+      }
+    }
+    return next();
+  }
+
   const path = req.query.path || req.body.path || req.params.path || req.body.sourcePath || req.body.destinationPath;
-  
+
   if (path && isMetaPath(path)) {
-    const user = req.user?.full || req.user;
     if (!user || !user.is_admin) {
       throw forbiddenError('Access denied');
     }
   }
-  
-  // Check multiple paths in body (for operations like move/copy)
+
   if (req.body.sourcePath && isMetaPath(req.body.sourcePath)) {
-    const user = req.user?.full || req.user;
     if (!user || !user.is_admin) {
       throw forbiddenError('Access denied');
     }
   }
-  
+
   if (req.body.destinationPath && isMetaPath(req.body.destinationPath)) {
-    const user = req.user?.full || req.user;
     if (!user || !user.is_admin) {
       throw forbiddenError('Access denied');
     }
   }
-  
+
   next();
 }
 

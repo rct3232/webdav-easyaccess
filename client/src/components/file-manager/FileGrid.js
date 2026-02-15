@@ -11,7 +11,7 @@ import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileGridItem from './FileGridItem';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore }) => {
+const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
@@ -19,7 +19,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   const touchMovedRef = useRef(new Map());
   
   // 썸네일 레이지 로딩
-  useThumbnailLazyLoad(files, onThumbnailsLoaded);
+  useThumbnailLazyLoad(files, onThumbnailsLoaded, shareToken != null ? { shareToken } : {});
   
   const {
     draggedFile,

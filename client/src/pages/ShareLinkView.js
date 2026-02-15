@@ -16,6 +16,7 @@ import { get } from '../services/apiClient';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../hooks/useResponsive';
 import { getPublicShareLinkInfo, getPublicShareLinkDownloadUrl } from '../services/shareLinkService';
+import FileManager from './FileManager';
 import {
   ShareLinkPreviewImage,
   ShareLinkPreviewVideo,
@@ -84,7 +85,7 @@ const ShareLinkView = () => {
     return Array.from(new Array(numPages), (_, index) => index + 1);
   }, [numPages]);
 
-  // 링크 정보 및 미리보기 로드
+  // 링크 정보 및 미리보기 로드 (폴더 공유 시 미리보기 스킵)
   const loadShareLink = useCallback(async () => {
     if (!token) return;
 
@@ -92,11 +93,14 @@ const ShareLinkView = () => {
     setError(null);
 
     try {
-      // 링크 정보 조회
       const info = await getPublicShareLinkInfo(token);
       setLinkInfo(info);
 
-      // 미리보기 로드
+      if (info.isDirectory) {
+        setLoading(false);
+        return;
+      }
+
       const previewPath = `/share/${token}/preview`;
       const response = await get(previewPath, { responseType: 'blob' });
       const blob = response.data;
@@ -109,11 +113,11 @@ const ShareLinkView = () => {
         setPreviewBlob(blob);
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
-        previewUrlRef.current = url; // ref 동기 업데이트
+        previewUrlRef.current = url;
       } else {
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
-        previewUrlRef.current = url; // ref 동기 업데이트
+        previewUrlRef.current = url;
       }
 
       setLoading(false);
@@ -242,6 +246,10 @@ const ShareLinkView = () => {
         return <ShareLinkPreviewUnsupported />;
     }
   };
+
+  if (linkInfo?.isDirectory) {
+    return <FileManager shareToken={token} linkInfo={linkInfo} />;
+  }
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

@@ -541,7 +541,7 @@ const ShareTargetDialog = ({
             </Box>
           )}
 
-          {!isDirectory && file && (
+          {file && (
             <ExternalShareSection
               externalShareLink={externalShareLink}
               setExternalShareLink={setExternalShareLink}

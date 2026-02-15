@@ -4,7 +4,8 @@ const { authenticateToken } = require('../utils/auth');
 const requireUser = require('../middleware/requireUser');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../utils/errorHandler');
 const ShareLink = require('../models/ShareLink');
-const { pathExists } = require('../utils/webdav');
+const Permission = require('../models/Permission');
+const { pathExists, listDirectory } = require('../utils/webdav');
 const { getFileContents } = require('../utils/webdav');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
@@ -34,6 +35,21 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
     throw notFoundError('File or folder not found');
   }
 
+  // 디렉터리 여부 판별 (listDirectory 성공 시 디렉터리)
+  let isDirectory = false;
+  try {
+    await listDirectory(normalizedPath);
+    isDirectory = true;
+  } catch (_) {
+    try {
+      const alt = normalizedPath.endsWith('/') ? normalizedPath.slice(0, -1) : normalizedPath + '/';
+      await listDirectory(alt);
+      isDirectory = true;
+    } catch (_2) {
+      isDirectory = false;
+    }
+  }
+
   // 유효기간 검증
   let expiresInDaysValue = expiresInDays;
   if (expiresInDaysValue !== null && expiresInDaysValue !== undefined) {
@@ -45,6 +61,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
   }
 
   const link = await ShareLink.create(normalizedPath, user.id, expiresInDaysValue);
+  await Permission.grantSharePermission(link.token, normalizedPath, isDirectory);
 
   res.json({
     token: link.token,
@@ -166,6 +183,7 @@ router.delete('/:token', authenticateToken, requireUser, asyncHandler(async (req
   }
 
   await ShareLink.delete(token);
+  await Permission.revokeSharePermission(token);
 
   res.json({ message: 'Share link deleted successfully' });
 }));

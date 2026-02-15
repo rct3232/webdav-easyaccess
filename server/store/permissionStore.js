@@ -3,7 +3,9 @@ const {
   META_ROOT,
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
+  PERMISSIONS_SHARES_DIR,
   userPermissionsPathByUserId,
+  sharePermissionsPathByToken,
   normalizeWebdavPath,
 } = require('./metaPaths');
 const { getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
@@ -24,6 +26,7 @@ function safeJsonParse(text) {
 }
 
 const cache = new Map(); // userId -> { expiresAt:number, data: object }
+const shareCache = new Map(); // token -> { expiresAt:number, data: object }
 const CACHE_TTL_MS =
   process.env.NODE_ENV === 'test'
     ? 0
@@ -33,6 +36,106 @@ async function ensureDirs() {
   await ensureDir(META_ROOT);
   await ensureDir(PERMISSIONS_DIR);
   await ensureDir(PERMISSIONS_USERS_DIR);
+}
+
+async function ensureShareDirs() {
+  await ensureDir(META_ROOT);
+  await ensureDir(PERMISSIONS_DIR);
+  await ensureDir(PERMISSIONS_SHARES_DIR);
+}
+
+function containsPathTraversal(p) {
+  const n = String(p || '');
+  return n.includes('/../') || n.includes('\\..\\') || n.startsWith('../') || n.endsWith('/..') || n === '..';
+}
+
+async function grantSharePermission(token, rootPath, isDirectory) {
+  const root = normalizeWebdavPath(rootPath);
+  if (containsPathTraversal(root)) {
+    const err = new Error('Invalid path');
+    err.code = 'INVALID_PATH';
+    throw err;
+  }
+  await ensureShareDirs();
+  const doc = {
+    rootPath: root,
+    isDirectory: Boolean(isDirectory),
+    permission: 'read',
+    updated_at: nowIso(),
+  };
+  const p = sharePermissionsPathByToken(token);
+  await writeFile(p, JSON.stringify(doc, null, 2), {
+    overwrite: true,
+    contentType: 'application/json; charset=utf-8',
+  });
+  shareCache.delete(token);
+  return { token, rootPath: root, isDirectory: doc.isDirectory };
+}
+
+async function revokeSharePermission(token) {
+  const p = sharePermissionsPathByToken(token);
+  const { deletePath } = require('./storage');
+  try {
+    if (await exists(p)) {
+      await deletePath(p);
+    }
+    shareCache.delete(token);
+  } catch (error) {
+    console.error(`Failed to revoke share permission for token:`, error);
+  }
+  return { success: true };
+}
+
+async function getSharePermissionDoc(token, { bypassCache = false } = {}) {
+  if (CACHE_TTL_MS > 0) {
+    const cached = shareCache.get(token);
+    if (!bypassCache && cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+  }
+  const p = sharePermissionsPathByToken(token);
+  try {
+    const buf = await readFile(p);
+    const text = Buffer.from(buf).toString('utf8');
+    const doc = safeJsonParse(text);
+    if (!doc || typeof doc !== 'object' || !doc.rootPath) return null;
+    const normalized = {
+      rootPath: normalizeWebdavPath(doc.rootPath),
+      isDirectory: Boolean(doc.isDirectory),
+      permission: doc.permission === 'read' ? 'read' : 'read',
+      updated_at: doc.updated_at || nowIso(),
+    };
+    if (CACHE_TTL_MS > 0) {
+      shareCache.set(token, { expiresAt: Date.now() + CACHE_TTL_MS, data: normalized });
+    } else {
+      shareCache.delete(token);
+    }
+    return normalized;
+  } catch (error) {
+    if (error.code === 'ENOENT' || (error.message && error.message.includes('not found'))) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function checkSharePermission(token, path, requiredPermission) {
+  if (requiredPermission !== 'read') return false;
+  if (containsPathTraversal(path)) return false;
+  const doc = await getSharePermissionDoc(token);
+  if (!doc) return false;
+  const normalizedPath = normalizeWebdavPath(path);
+  const root = normalizeNoSlash(doc.rootPath);
+  const rootWithSlash = normalizeWithSlash(doc.rootPath);
+  if (doc.isDirectory) {
+    return (
+      normalizedPath === root ||
+      normalizedPath === rootWithSlash ||
+      normalizedPath.startsWith(rootWithSlash) ||
+      (root !== '/' && normalizedPath.startsWith(root + '/'))
+    );
+  }
+  return normalizedPath === root || normalizedPath === rootWithSlash;
 }
 
 async function ensureUserPermissionsFile(userId) {
@@ -824,6 +927,10 @@ async function revokePermissionsPrefixForAllUsers(prefixes = []) {
 }
 
 module.exports = {
+  grantSharePermission,
+  revokeSharePermission,
+  getSharePermissionDoc,
+  checkSharePermission,
   grant,
   revoke,
   revokeAllUserPermissions,

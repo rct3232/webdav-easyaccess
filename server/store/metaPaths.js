@@ -21,7 +21,9 @@ const lockPathByKey = (lockKey) => `${LOCKS_DIR}/${lockKey}.lock`;
 
 const PERMISSIONS_DIR = `${META_ROOT}/permissions`;
 const PERMISSIONS_USERS_DIR = `${PERMISSIONS_DIR}/users`;
+const PERMISSIONS_SHARES_DIR = `${PERMISSIONS_DIR}/shares`;
 const userPermissionsPathByUserId = (userId) => `${PERMISSIONS_USERS_DIR}/${userId}.json`;
+const sharePermissionsPathByToken = (token) => `${PERMISSIONS_SHARES_DIR}/${token}.json`;
 
 function sha256HexLower(input) {
   return crypto.createHash('sha256').update(String(input), 'utf8').digest('hex');
@@ -55,7 +57,9 @@ module.exports = {
   lockPathByKey,
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
+  PERMISSIONS_SHARES_DIR,
   userPermissionsPathByUserId,
+  sharePermissionsPathByToken,
   sha256HexLower,
   normalizeWebdavPath,
   isMetaPath,

@@ -10,14 +10,14 @@ import { FileListSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileListItem from './FileListItem';
 
-const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore }) => {
+const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { isMobile } = useResponsive();
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
   const touchMovedRef = useRef(new Map());
   
   // 썸네일 레이지 로딩
-  useThumbnailLazyLoad(files, onThumbnailsLoaded);
+  useThumbnailLazyLoad(files, onThumbnailsLoaded, shareToken != null ? { shareToken } : {});
   
   const {
     draggedFile,

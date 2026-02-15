@@ -15,39 +15,59 @@ import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils'
 /**
  * Mobile-friendly breadcrumb navigation component
  * Displays current path as clickable chips for easy navigation
+ * When shareRootPath is set, uses share mode: root = share folder, segments = path within share
  */
-const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen }) => {
+const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
   const scrollContainerRef = useRef(null);
   const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
 
-  // 공유된 폴더 권한 정보 로드
+  // 공유된 폴더 권한 정보 로드 (로그인한 사용자만; 공유 링크 뷰에서는 user 없음 → 호출 안 함)
   useEffect(() => {
-    if (!user?.is_admin && currentPath && currentPath !== '/' && !isUserOwnFolder(currentPath, user)) {
-      const loadSharedFolders = async () => {
-        try {
-          const data = await getUserPermissions(user?.id);
-          const sharedFolders = filterOutUserOwnFolders(data || [], user);
-
-          const permissionPaths = new Set();
-          sharedFolders.forEach(perm => {
-            permissionPaths.add(normalizePath(perm.folder_path));
-          });
-
-          setSharedPermissionPaths(permissionPaths);
-        } catch (error) {
-          console.error('Failed to load shared folders:', error);
-          setSharedPermissionPaths(new Set());
-        }
-      };
-
-      loadSharedFolders();
-    } else {
+    if (!user?.id || user?.is_admin || !currentPath || currentPath === '/' || isUserOwnFolder(currentPath, user)) {
       setSharedPermissionPaths(new Set());
+      return;
     }
+    const loadSharedFolders = async () => {
+      try {
+        const data = await getUserPermissions(user.id);
+        const sharedFolders = filterOutUserOwnFolders(data || [], user);
+
+        const permissionPaths = new Set();
+        sharedFolders.forEach(perm => {
+          permissionPaths.add(normalizePath(perm.folder_path));
+        });
+
+        setSharedPermissionPaths(permissionPaths);
+      } catch (error) {
+        console.error('Failed to load shared folders:', error);
+        setSharedPermissionPaths(new Set());
+      }
+    };
+
+    loadSharedFolders();
   }, [user, currentPath]);
 
   // Parse path segments - FileTree처럼 표시 (유저 폴더 제외, 공유 폴더는 직접 권한이 있는 경로만)
   const getPathSegments = () => {
+    // Share link mode: path from shareRootPath
+    if (shareRootPath) {
+      const normRoot = normalizePath(shareRootPath);
+      const normCurrent = normalizePath(currentPath);
+      if (normCurrent === normRoot || !normCurrent.startsWith(normRoot)) {
+        return [];
+      }
+      const suffix = normCurrent.slice(normRoot.endsWith('/') ? normRoot.length : normRoot.length + 1);
+      if (!suffix) return [];
+      const parts = suffix.split('/').filter(Boolean);
+      const segments = [];
+      let builtPath = normRoot.endsWith('/') ? normRoot.slice(0, -1) : normRoot;
+      parts.forEach((part) => {
+        builtPath = builtPath === '/' ? `/${part}` : `${builtPath}/${part}`;
+        segments.push({ name: part, path: builtPath });
+      });
+      return segments;
+    }
+
     if (currentPath === '/__shared__' || currentPath === '/__recent__') {
       return [];
     }
@@ -145,14 +165,18 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
   };
 
   const segments = getPathSegments();
-  const isRecentView = currentPath === '/__recent__';
-  const isSharedView = currentPath === '/__shared__' || currentPath.startsWith('/__shared__') || (!user?.is_admin && currentPath && currentPath !== '/' && !currentPath.startsWith(`/${user?.username || ''}`) && !isRecentView);
+  const isRecentView = !shareRootPath && currentPath === '/__recent__';
+  const isSharedView = !shareRootPath && (currentPath === '/__shared__' || currentPath.startsWith('/__shared__') || (!user?.is_admin && currentPath && currentPath !== '/' && !currentPath.startsWith(`/${user?.username || ''}`) && !isRecentView));
   
   let homeIcon, homeLabel, homePath;
   if (isRecentView) {
     homeIcon = <AccessTimeIcon />;
     homeLabel = '최근항목';
     homePath = '/__recent__';
+  } else if (shareRootPath) {
+    homeIcon = <ShareIcon />;
+    homeLabel = shareRootName || normalizePath(shareRootPath).split('/').filter(Boolean).pop() || '공유 폴더';
+    homePath = normalizePath(shareRootPath);
   } else if (isSharedView) {
     homeIcon = <ShareIcon />;
     homeLabel = '공유됨';
@@ -231,6 +255,7 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
         ))}
       </Box>
       
+      {(!shareRootPath || showFolderTreeToggle) && onToggleFolderTree && (
       <IconButton
         onClick={onToggleFolderTree}
         sx={{
@@ -245,6 +270,7 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
       >
         {isFolderTreeOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
       </IconButton>
+      )}
     </Box>
   );
 };

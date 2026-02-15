@@ -12,7 +12,7 @@ const path = require('path');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../models/Permission');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
-const { checkFilePermission, checkFolderPermission } = require('../middleware/permissions');
+const { checkFilePermission, checkFolderPermission, isSharePrincipal } = require('../middleware/permissions');
 const User = require('../models/User');
 
 function isAdminUser(user) {
@@ -67,18 +67,18 @@ async function hasDirectFolderPermission(userId, folderPath, requiredPermission 
 
 /**
  * Direct-only read check for folders (no ancestor traversal).
- * Delegates to middleware (includes admin + owner exceptions).
+ * principalId: number (userId) or string ("share:token"). Delegates to checkFolderPermission.
  */
-async function canReadFolder(userId, folderPath, requiredPermission = PERMISSIONS.READ) {
-  return await checkFolderPermission(userId, folderPath, requiredPermission);
+async function canReadFolder(principalId, folderPath, requiredPermission = PERMISSIONS.READ) {
+  return await checkFolderPermission(principalId, folderPath, requiredPermission);
 }
 
 /**
  * Direct-only read check for files (parent folder only; no ancestor traversal).
- * Delegates to middleware (includes admin + owner exceptions).
+ * principalId: number (userId) or string ("share:token"). Delegates to checkFilePermission.
  */
-async function canReadFile(userId, filePath, requiredPermission = PERMISSIONS.READ) {
-  return await checkFilePermission(userId, filePath, requiredPermission);
+async function canReadFile(principalId, filePath, requiredPermission = PERMISSIONS.READ) {
+  return await checkFilePermission(principalId, filePath, requiredPermission);
 }
 
 /**

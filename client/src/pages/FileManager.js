@@ -389,7 +389,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         if (myRequestId !== addToSharedRequestIdRef.current) return;
         setAddToSharedModalOpen(false);
       });
-  }, [isShareLinkMode, user, shareToken]);
+  }, [isShareLinkMode, user, shareToken, linkInfo?.filePath, linkInfo?.isDirectory, navigate]);
 
   const handleAddToSharedConfirm = useCallback(async () => {
     if (!shareToken) return;

@@ -85,7 +85,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
         }
       })();
     }, DEBOUNCE_MS);
-  }, [onThumbnailsLoaded, options?.shareToken]);
+  }, [onThumbnailsLoaded, options]);
 
   /**
    * Intersection Observer 콜백

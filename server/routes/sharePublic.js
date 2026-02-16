@@ -1,11 +1,151 @@
 const express = require('express');
 const router = express.Router();
-const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { asyncHandler } = require('../utils/errorHandler');
+const { HTTP_STATUS, PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const { asyncHandler, forbiddenError } = require('../utils/errorHandler');
 const ShareLink = require('../models/ShareLink');
-const { pathExists } = require('../utils/webdav');
-const { getFileContents } = require('../utils/webdav');
+const Permission = require('../models/Permission');
+const User = require('../models/User');
+const { pathExists, listDirectory, getFileContents } = require('../utils/webdav');
 const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileTypes');
+const { authenticateToken } = require('../utils/auth');
+const requireUser = require('../middleware/requireUser');
+const { canGrantPermission } = require('../utils/permissionPolicy');
+
+/**
+ * Collect the share path and all paths under it (recursive). Used for permission check.
+ * If rootPath is a file or list fails, returns [rootPath] only.
+ * @param {string} rootPath - Normalized path (share link target)
+ * @returns {Promise<string[]>}
+ */
+async function collectPathsUnderSharePath(rootPath) {
+  let items;
+  try {
+    items = await listDirectory(rootPath);
+  } catch (_) {
+    return [rootPath];
+  }
+  const paths = [rootPath];
+  const prefix = rootPath === '/' ? '' : rootPath;
+  for (const item of items) {
+    if (!item.basename || item.basename.trim() === '') continue;
+    const childPath = prefix ? `${prefix}/${item.basename}` : `/${item.basename}`;
+    paths.push(childPath);
+    const sub = await collectPathsUnderSharePath(childPath);
+    for (let i = 1; i < sub.length; i++) paths.push(sub[i]);
+  }
+  return paths;
+}
+
+/**
+ * Collect only directory paths under the share path (recursive).
+ * Used for grant so that file paths are not added to doc.permissions (they would show as tree nodes).
+ * If rootPath is a file or list fails, returns [].
+ * @param {string} rootPath - Normalized path (share link target)
+ * @returns {Promise<string[]>}
+ */
+async function collectDirectoryPathsUnderSharePath(rootPath) {
+  let items;
+  try {
+    items = await listDirectory(rootPath);
+  } catch (_) {
+    return [];
+  }
+  const paths = [rootPath];
+  const prefix = rootPath === '/' ? '' : rootPath;
+  for (const item of items) {
+    if (!item.basename || item.basename.trim() === '') continue;
+    const childPath = prefix ? `${prefix}/${item.basename}` : `/${item.basename}`;
+    const sub = await collectDirectoryPathsUnderSharePath(childPath);
+    if (sub.length > 0) {
+      paths.push(childPath);
+      for (let i = 1; i < sub.length; i++) paths.push(sub[i]);
+    }
+  }
+  return paths;
+}
+
+/**
+ * Check if current user has at least read permission on the share link path and all paths under it (authenticated).
+ * GET /api/share/:token/check-my-permission
+ */
+router.get('/:token/check-my-permission', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const link = await ShareLink.findByToken(token);
+  if (!link) {
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+  }
+  if (ShareLink.isExpired(link)) {
+    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+  }
+
+  const folderPath = normalizePath(link.filePath);
+  const pathsToCheck = await collectPathsUnderSharePath(folderPath);
+
+  const readRank = PERMISSIONS.ALL.indexOf(PERMISSIONS.READ);
+  let hasSufficientPermission = true;
+  let firstMissingPath = null;
+
+  for (const p of pathsToCheck) {
+    const effective = await Permission.getEffectivePermission(req.user.id, p);
+    const rank = effective ? PERMISSIONS.ALL.indexOf(effective) : -1;
+    if (rank < readRank) {
+      hasSufficientPermission = false;
+      firstMissingPath = p;
+      break;
+    }
+  }
+
+  res.json({
+    hasSufficientPermission,
+    ...(hasSufficientPermission ? {} : { path: firstMissingPath ?? folderPath }),
+  });
+}));
+
+/**
+ * Add the share link path to current user's permissions (authenticated).
+ * POST /api/share/:token/add-to-my-permissions
+ */
+router.post('/:token/add-to-my-permissions', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const link = await ShareLink.findByToken(token);
+  if (!link) {
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+  }
+  if (ShareLink.isExpired(link)) {
+    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+  }
+
+  const folderPath = normalizePath(link.filePath);
+  const createdBy = link.createdBy;
+  if (!createdBy) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Cannot add this share to your permissions' });
+  }
+
+  const creatorUser = await User.findById(createdBy);
+  if (!creatorUser) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Cannot add this share to your permissions' });
+  }
+
+  const canGrant = await canGrantPermission(creatorUser, folderPath, createdBy);
+  if (!canGrant) {
+    throw forbiddenError('You do not have permission to add this path to your shared items');
+  }
+
+  const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);
+  const pathsToGrant = dirPaths.length > 0 ? dirPaths : [folderPath];
+  const readRank = PERMISSIONS.ALL.indexOf(PERMISSIONS.READ);
+
+  for (const p of pathsToGrant) {
+    const effective = await Permission.getEffectivePermission(req.user.id, p);
+    const rank = effective ? PERMISSIONS.ALL.indexOf(effective) : -1;
+    if (rank >= readRank) continue;
+    await Permission.grant(req.user.id, p, PERMISSIONS.READ);
+  }
+  res.json({ message: 'Added to your shared items' });
+}));
 
 /**
  * 공유 링크 정보 조회 (인증 불필요)

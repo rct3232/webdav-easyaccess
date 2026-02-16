@@ -33,7 +33,7 @@ if (typeof window !== 'undefined') {
 
 const HIDE_UI_DELAY_MS = 5000;
 
-const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded }) => {
+const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded, hideCloseButton = false }) => {
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -707,29 +707,16 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               <Typography variant="h6" component="div" noWrap sx={{ color: 'inherit', flexShrink: 0 }}>
                 {(displayFile || file)?.name || (displayFile || file)?.basename}
               </Typography>
-              {!isMobile && (
-                <Typography
-                  variant="caption"
-                  sx={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    fontSize: '0.75rem',
-                    lineHeight: 1.4,
-                    color: 'rgba(255, 255, 255, 0.7)',
-                  }}
-                >
-                  {(displayFile || file)?.path}
-                </Typography>
-              )}
             </Box>
             <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
               <IconButton onClick={handleDownload} size="small" title="다운로드" sx={{ color: 'inherit' }}>
                 <DownloadIcon />
               </IconButton>
-              <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
-                <CloseIcon />
-              </IconButton>
+              {!hideCloseButton && (
+                <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
+                  <CloseIcon />
+                </IconButton>
+              )}
             </Box>
           </Box>
         </DialogTitle>

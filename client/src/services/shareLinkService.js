@@ -80,19 +80,23 @@ export const getPublicShareLinkInfo = async (token) => {
 };
 
 /**
- * 공개 공유 링크 미리보기 URL 생성
- * @param {string} token - Access token
- * @returns {string} 미리보기 URL
+ * Check if current user has sufficient (read or higher) permission on the share link path.
+ * Requires authentication.
+ * @param {string} token - Share link token
+ * @returns {Promise<{ hasSufficientPermission: boolean, path?: string }>}
  */
-export const getPublicShareLinkPreviewUrl = (token) => {
-  return `/api/share/${token}/preview`;
+export const checkMyPermissionForShare = async (token) => {
+  const response = await get(`/share/${token}/check-my-permission`);
+  return response.data;
 };
 
 /**
- * 공개 공유 링크 다운로드 URL 생성
- * @param {string} token - Access token
- * @returns {string} 다운로드 URL
+ * Add the share link path to current user's permissions (read).
+ * Requires authentication.
+ * @param {string} token - Share link token
+ * @returns {Promise<{ message: string }>}
  */
-export const getPublicShareLinkDownloadUrl = (token) => {
-  return `/api/share/${token}`;
+export const addShareLinkToMyPermissions = async (token) => {
+  const response = await post(`/share/${token}/add-to-my-permissions`);
+  return response.data;
 };

@@ -65,3 +65,14 @@ export const joinPath = (...parts) => {
     .join('/');
   return '/' + joined;
 };
+
+/**
+ * linkInfo.filePath를 /files/... 경로로 변환
+ * @param {string} filePath - 정규화된 파일/폴더 경로
+ * @returns {string} /files/... 형태의 라우트 경로
+ */
+export const toFilesPath = (filePath) => {
+  if (!filePath || typeof filePath !== 'string') return '/files';
+  const normalized = sharedNormalizePath(filePath).replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+  return normalized ? `/files/${normalized}` : '/files';
+};

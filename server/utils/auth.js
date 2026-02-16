@@ -93,28 +93,12 @@ async function authenticateToken(req, res, next) {
 
 /**
  * Authenticate via JWT or Share Token.
- * 1. JWT (Authorization: Bearer <token>) -> req.user, req.principalId = userId
- * 2. X-Share-Token header or ?shareToken= query -> req.shareContext, req.principalId = "share:" + token
+ * When both are present, share token wins so that logged-in users can view share links.
+ * 1. X-Share-Token header or ?shareToken= query -> req.shareContext, req.principalId = "share:" + token
+ * 2. JWT (Authorization: Bearer <token>) -> req.user, req.principalId = userId
  * Neither present -> 401
  */
 async function authenticateTokenOrShare(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const jwtToken = authHeader && authHeader.split(' ')[1];
-
-  if (jwtToken) {
-    const decoded = verifyToken(jwtToken);
-    if (decoded) {
-      req.user = decoded;
-      req.user.full = {
-        id: decoded.id,
-        username: decoded.username,
-        is_admin: decoded.is_admin ? 1 : 0,
-      };
-      req.principalId = decoded.id;
-      return next();
-    }
-  }
-
   const shareToken =
     req.headers['x-share-token'] || req.query.shareToken || req.body?.shareToken;
   if (shareToken) {
@@ -139,6 +123,22 @@ async function authenticateTokenOrShare(req, res, next) {
     };
     req.principalId = 'share:' + shareToken;
     return next();
+  }
+
+  const authHeader = req.headers['authorization'];
+  const jwtToken = authHeader && authHeader.split(' ')[1];
+  if (jwtToken) {
+    const decoded = verifyToken(jwtToken);
+    if (decoded) {
+      req.user = decoded;
+      req.user.full = {
+        id: decoded.id,
+        username: decoded.username,
+        is_admin: decoded.is_admin ? 1 : 0,
+      };
+      req.principalId = decoded.id;
+      return next();
+    }
   }
 
   return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Access token or share token required' });

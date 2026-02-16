@@ -11,3 +11,4 @@ export { default as FilePropertiesDialog } from './FilePropertiesDialog';
 export { default as FolderPickerDialog } from './FolderPickerDialog';
 export { default as RenameDialog } from './RenameDialog';
 export { default as FilePreviewDialog } from './FilePreviewDialog';
+export { default as LoginDialog } from './LoginDialog';

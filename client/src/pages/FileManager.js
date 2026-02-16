@@ -58,17 +58,19 @@ import {
   ConfirmDialog,
   ConflictResolveDialog,
   RenameDialog,
+  LoginDialog,
 } from '../components/dialogs';
-import { FolderTree, ShareLinkFolderTree } from '../components/folder-tree';
+import { FolderTree } from '../components/folder-tree';
 import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
-import { normalizePath, getBasename, getParentPath } from '../utils/pathUtils';
+import { normalizePath, getBasename, getParentPath, toFilesPath } from '../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
+import { checkMyPermissionForShare, addShareLinkToMyPermissions } from '../services/shareLinkService';
 
 const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { user, logout } = useAuth();
@@ -77,6 +79,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const scrollContainerRef = useRef(null);
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [addToSharedModalOpen, setAddToSharedModalOpen] = useState(false);
+  const [addToSharedStatus, setAddToSharedStatus] = useState('loading');
+  const [addToSharedConfirmLoading, setAddToSharedConfirmLoading] = useState(false);
+  const addToSharedCheckDoneRef = useRef(null);
+  const addToSharedRequestIdRef = useRef(0);
+  const [leaveShareConfirmOpen, setLeaveShareConfirmOpen] = useState(false);
+  const [leaveShareConfirmTargetPath, setLeaveShareConfirmTargetPath] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -346,7 +356,102 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       };
     }
   }, [currentPath, loadFiles]);
-  
+
+  // Share link: when logged in, open add-to-shared modal with spinner, then check permission.
+  // Use requestId so that when effect re-runs (e.g. user ref change), we still apply the first response.
+  useEffect(() => {
+    if (!isShareLinkMode || !user || !shareToken) return;
+    if (addToSharedCheckDoneRef.current === shareToken) return;
+    addToSharedCheckDoneRef.current = shareToken;
+    addToSharedRequestIdRef.current += 1;
+    const myRequestId = addToSharedRequestIdRef.current;
+    setAddToSharedModalOpen(true);
+    setAddToSharedStatus('loading');
+    const timeoutMs = 10000;
+    const permissionPromise = checkMyPermissionForShare(shareToken);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    });
+    Promise.race([permissionPromise, timeoutPromise])
+      .then((data) => {
+        const requestIdMatch = myRequestId === addToSharedRequestIdRef.current;
+        if (!requestIdMatch) return;
+        if (data.hasSufficientPermission) {
+          setAddToSharedModalOpen(false);
+          if (linkInfo?.isDirectory) {
+            navigate(toFilesPath(linkInfo.filePath));
+          }
+        } else {
+          setAddToSharedStatus('confirm');
+        }
+      })
+      .catch(() => {
+        if (myRequestId !== addToSharedRequestIdRef.current) return;
+        setAddToSharedModalOpen(false);
+      });
+  }, [isShareLinkMode, user, shareToken]);
+
+  const handleAddToSharedConfirm = useCallback(async () => {
+    if (!shareToken) return;
+    setAddToSharedConfirmLoading(true);
+    try {
+      await addShareLinkToMyPermissions(shareToken);
+      setAddToSharedModalOpen(false);
+      if (linkInfo?.isDirectory) {
+        navigate(toFilesPath(linkInfo.filePath));
+      }
+    } catch (err) {
+      showError(err.response?.data?.error || err.message || '공유됨 항목에 추가하지 못했습니다.');
+    } finally {
+      setAddToSharedConfirmLoading(false);
+    }
+  }, [shareToken, linkInfo, navigate, showError]);
+
+  /** 공유됨 추가 버튼 클릭 시: 모달을 열고 로딩 → 권한 확인 후 확인 문구 또는 닫기 */
+  const openAddToSharedModal = useCallback(() => {
+    if (!shareToken) return;
+    setAddToSharedModalOpen(true);
+    setAddToSharedStatus('loading');
+    addToSharedRequestIdRef.current += 1;
+    const myRequestId = addToSharedRequestIdRef.current;
+    const timeoutMs = 10000;
+    const permissionPromise = checkMyPermissionForShare(shareToken);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    });
+    Promise.race([permissionPromise, timeoutPromise])
+      .then((data) => {
+        if (myRequestId !== addToSharedRequestIdRef.current) return;
+        if (data.hasSufficientPermission && linkInfo?.isDirectory) {
+          setAddToSharedModalOpen(false);
+          navigate(toFilesPath(linkInfo.filePath));
+        } else if (data.hasSufficientPermission) {
+          setAddToSharedModalOpen(false);
+        } else {
+          setAddToSharedStatus('confirm');
+        }
+      })
+      .catch(() => {
+        if (myRequestId !== addToSharedRequestIdRef.current) return;
+        setAddToSharedModalOpen(false);
+      });
+  }, [shareToken, linkInfo, navigate]);
+
+  /** 공유 링크 모드에서 일반 파일트리 경로 클릭 시: 확인 모달 후 /files로 이동 */
+  const handleLeaveSharePathClick = useCallback((path) => {
+    setLeaveShareConfirmTargetPath(path);
+    setLeaveShareConfirmOpen(true);
+  }, []);
+
+  const handleLeaveShareConfirm = useCallback(() => {
+    if (leaveShareConfirmTargetPath) {
+      navigate(toFilesPath(leaveShareConfirmTargetPath));
+      setLeaveShareConfirmOpen(false);
+      setLeaveShareConfirmTargetPath(null);
+      setDrawerOpen(false);
+    }
+  }, [leaveShareConfirmTargetPath, navigate]);
+
   // Operation completion handler (stable; uses refs to avoid stale-closure refresh)
   const handleOperationComplete = useCallback((info = {}) => {
     // Backward compatibility: allow legacy signature (deletedFolderPath string)
@@ -1474,7 +1579,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         minHeight: 0,
       }}
     >
-      {!isShareLinkMode && (
+      {(!isShareLinkMode || (isShareLinkMode && user)) ? (
         <FileManagerHeader
           isMobile={isMobile}
           isSearchMode={isSearchMode}
@@ -1485,8 +1590,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           navigate={navigate}
           handleLogout={handleLogout}
         />
-      )}
-      {isShareLinkMode && (
+      ) : (
         <AppBar
           position="sticky"
           sx={{
@@ -1515,30 +1619,34 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       )}
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-        {!isMobile && (isShareLinkMode ? (
-          <ShareLinkFolderTree
-            shareRootPath={shareRootPath}
-            shareRootName={shareRootName}
-            shareToken={shareToken}
-            currentPath={currentPath}
-            onPathClick={handlePathClick}
-            isMobile={false}
-          />
-        ) : (
+        {!isMobile && (
           <FolderTree
             currentPath={currentPath}
-            onPathClick={handlePathClick}
+            onPathClick={isShareLinkMode ? handleLeaveSharePathClick : handlePathClick}
             onFileClick={handleFileClick}
             user={user}
             treeUpdateTrigger={treeUpdateTrigger}
             onCreateFolder={openCreateFolderDialog}
             onUploadFile={openUploadDialog}
-            selectionMode={selectionMode}
             hasWritePermission={hasWritePermission}
             onExplorerDrop={handleExplorerDrop}
-            isMobile={isMobile}
+            isMobile={false}
+            shareLinkSection={isShareLinkMode ? {
+              shareRootPath,
+              shareRootName,
+              shareToken,
+              onShareLinkPathClick: handlePathClick,
+            } : undefined}
+            shareLinkActions={isShareLinkMode ? {
+              user,
+              onLoginClick: () => setLoginModalOpen(true),
+              onAddToSharedClick: () => {
+                setAddToSharedModalOpen(true);
+                setAddToSharedStatus('confirm');
+              },
+            } : undefined}
           />
-        ))}
+        )}
 
         <Box 
           ref={fileContentRef}
@@ -1605,45 +1713,51 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                     backgroundColor: 'background.paper',
                   }}
                 >
-                  {isShareLinkMode ? (
-                    <ShareLinkFolderTree
-                      shareRootPath={shareRootPath}
-                      shareRootName={shareRootName}
-                      shareToken={shareToken}
-                      currentPath={currentPath}
-                      onPathClick={(path) => {
+                  <FolderTree
+                    currentPath={currentPath}
+                    onPathClick={(path) => {
+                      if (isShareLinkMode) {
+                        handleLeaveSharePathClick(path);
+                      } else {
+                        handlePathClick(path);
+                      }
+                      setDrawerOpen(false);
+                    }}
+                    onFileClick={(file) => {
+                      handleFileClick(file);
+                      setDrawerOpen(false);
+                    }}
+                    user={user}
+                    treeUpdateTrigger={treeUpdateTrigger}
+                    onCreateFolder={() => {
+                      openCreateFolderDialog();
+                      setDrawerOpen(false);
+                    }}
+                    onUploadFile={() => {
+                      openUploadDialog();
+                      setDrawerOpen(false);
+                    }}
+                    hasWritePermission={hasWritePermission}
+                    onExplorerDrop={handleExplorerDrop}
+                    isMobile
+                    shareLinkSection={isShareLinkMode ? {
+                      shareRootPath,
+                      shareRootName,
+                      shareToken,
+                      onShareLinkPathClick: (path) => {
                         handlePathClick(path);
                         setDrawerOpen(false);
-                      }}
-                      isMobile
-                    />
-                  ) : (
-                    <FolderTree
-                      currentPath={currentPath}
-                      onPathClick={(path) => {
-                        handlePathClick(path);
-                        setDrawerOpen(false);
-                      }}
-                      onFileClick={(file) => {
-                        handleFileClick(file);
-                        setDrawerOpen(false);
-                      }}
-                      user={user}
-                      treeUpdateTrigger={treeUpdateTrigger}
-                      onCreateFolder={() => {
-                        openCreateFolderDialog();
-                        setDrawerOpen(false);
-                      }}
-                      onUploadFile={() => {
-                        openUploadDialog();
-                        setDrawerOpen(false);
-                      }}
-                      selectionMode={selectionMode}
-                      hasWritePermission={hasWritePermission}
-                      onExplorerDrop={handleExplorerDrop}
-                      isMobile={isMobile}
-                    />
-                  )}
+                      },
+                    } : undefined}
+                    shareLinkActions={isShareLinkMode ? {
+                      user,
+                      onLoginClick: () => setLoginModalOpen(true),
+                      onAddToSharedClick: () => {
+                        setAddToSharedModalOpen(true);
+                        setAddToSharedStatus('confirm');
+                      },
+                    } : undefined}
+                  />
                 </Box>
               </Collapse>
             </>
@@ -1753,8 +1867,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
-                  if (e.cancelable) {
+                onContextMenu={(e, file) => {
+                  if (e?.cancelable) {
                     e.preventDefault();
                   }
                   if (isMobile) {
@@ -1782,8 +1896,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
-                  if (e.cancelable) {
+                onContextMenu={(e, file) => {
+                  if (e?.cancelable) {
                     e.preventDefault();
                   }
                   if (isMobile) {
@@ -1811,8 +1925,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
-                onContextMenu={isShareLinkMode ? (e) => { e?.preventDefault?.(); } : (e, file) => {
-                  if (e.cancelable) {
+                onContextMenu={(e, file) => {
+                  if (e?.cancelable) {
                     e.preventDefault();
                   }
                   if (isMobile) {
@@ -1867,49 +1981,77 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         onThumbnailsLoaded={handleThumbnailsLoaded}
       />
 
-      {!isShareLinkMode && (
-        <FileContextMenu
-          contextMenu={contextMenu}
-          onClose={() => setContextMenu(null)}
-          file={selectedFile}
-          user={user}
-          hasWritePermission={hasWritePermission}
-          onDownload={(file) => {
-            setContextMenu(null);
-            handleFileDownloadOp(file);
-          }}
-          onRename={(file) => {
-            setContextMenu(null);
-            openRenameDialog(file);
-          }}
-          onMove={(file) => {
-            setContextMenu(null);
-            setMobilePickerFile(file);
-            setMobilePickerAction('move');
-            setFolderPickerAction('move');
-            setFolderPickerOpen(true);
-          }}
-          onCopy={(file) => {
-            setContextMenu(null);
-            setMobilePickerFile(file);
-            setMobilePickerAction('copy');
-            setFolderPickerAction('copy');
-            setFolderPickerOpen(true);
-          }}
-          onShare={(file) => {
-            setContextMenu(null);
-            openShareDialogV2(file);
-          }}
-          onProperties={(file) => {
-            setContextMenu(null);
-            openPropertiesDialog(file);
-          }}
-          onDelete={(file) => {
-            setContextMenu(null);
-            openBulkDeleteDialog([file.path]);
-          }}
+      {isShareLinkMode && (
+        <LoginDialog open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      )}
+      {isShareLinkMode && user && (
+        <ConfirmDialog
+          open={addToSharedModalOpen}
+          onClose={() => setAddToSharedModalOpen(false)}
+          variant={addToSharedStatus === 'loading' ? 'loading' : undefined}
+          title="공유 링크"
+          message="공유됨 항목에 추가하시겠습니까?"
+          confirmText={addToSharedConfirmLoading ? '추가 중...' : '확인'}
+          cancelText="취소"
+          loading={addToSharedConfirmLoading}
+          onConfirm={handleAddToSharedConfirm}
         />
       )}
+
+      <ConfirmDialog
+        open={leaveShareConfirmOpen}
+        onClose={() => {
+          setLeaveShareConfirmOpen(false);
+          setLeaveShareConfirmTargetPath(null);
+        }}
+        onConfirm={handleLeaveShareConfirm}
+        title="확인"
+        message="이 위치를 벗어나시겠습니까?"
+        confirmText="이동"
+        cancelText="취소"
+      />
+
+      <FileContextMenu
+        contextMenu={contextMenu}
+        onClose={() => setContextMenu(null)}
+        file={selectedFile}
+        user={user}
+        hasWritePermission={isShareLinkMode ? false : hasWritePermission}
+        onDownload={(file) => {
+          setContextMenu(null);
+          handleFileDownloadOp(file);
+        }}
+        onRename={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          openRenameDialog(file);
+        }}
+        onMove={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          setMobilePickerFile(file);
+          setMobilePickerAction('move');
+          setFolderPickerAction('move');
+          setFolderPickerOpen(true);
+        }}
+        onCopy={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          setMobilePickerFile(file);
+          setMobilePickerAction('copy');
+          setFolderPickerAction('copy');
+          setFolderPickerOpen(true);
+        }}
+        onShare={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          openShareDialogV2(file);
+        }}
+        onProperties={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          openPropertiesDialog(file);
+        }}
+        onDelete={isShareLinkMode ? undefined : (file) => {
+          setContextMenu(null);
+          openBulkDeleteDialog([file.path]);
+        }}
+      />
 
       <FolderPickerDialog
         open={folderPickerOpen}
@@ -2000,57 +2142,65 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       />
 
       {/* Mobile FAB */}
-      {isMobile && !selectionMode && !isShareLinkMode && (
-        <MobileFAB
-          onUpload={openUploadDialog}
-          onCreateFolder={openCreateFolderDialog}
-          hasWritePermission={hasWritePermission}
-        />
+      {isMobile && !selectionMode && (
+        isShareLinkMode ? (
+          <MobileFAB
+            shareLinkMode={{
+              user,
+              onLoginClick: () => setLoginModalOpen(true),
+              onAddToSharedClick: openAddToSharedModal,
+            }}
+          />
+        ) : (
+          <MobileFAB
+            onUpload={openUploadDialog}
+            onCreateFolder={openCreateFolderDialog}
+            hasWritePermission={hasWritePermission}
+          />
+        )
       )}
 
       {/* Mobile Action Sheet */}
-      {isMobile && !isShareLinkMode && (
+      {isMobile && (
         <FileActionSheet
           open={actionSheetOpen}
           onClose={closeActionSheet}
           file={actionSheetFile}
-          hasWritePermission={hasWritePermission}
+          hasWritePermission={isShareLinkMode ? false : hasWritePermission}
           user={user}
           onDownload={handleActionSheetDownload}
-          onRename={() => {
+          onRename={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
               openRenameDialog(actionSheetFile);
             }
           }}
-          onMove={() => {
+          onMove={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (FolderPickerDialog가 닫혀도 유지)
               setMobilePickerFile(actionSheetFile);
               setMobilePickerAction('move');
               setFolderPickerAction('move');
               setFolderPickerOpen(true);
             }
           }}
-          onCopy={() => {
+          onCopy={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
-              // actionSheetFile 정보를 별도 상태에 저장 (FolderPickerDialog가 닫혀도 유지)
               setMobilePickerFile(actionSheetFile);
               setMobilePickerAction('copy');
               setFolderPickerAction('copy');
               setFolderPickerOpen(true);
             }
           }}
-          onDelete={() => {
+          onDelete={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
               openBulkDeleteDialog([actionSheetFile.path]);
             }
           }}
-          onShare={() => {
+          onShare={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
               openShareDialogV2(actionSheetFile);
             }
           }}
-          onPreview={() => {
+          onPreview={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
               const filename = actionSheetFile.basename || actionSheetFile.name;
               const canPreviewFile = canPreview(filename);
@@ -2058,7 +2208,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
               openPreviewDialog();
             }
           }}
-          onProperties={() => {
+          onProperties={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
               openPropertiesDialog(actionSheetFile);
             }
@@ -2104,13 +2254,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
               fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
             />
           )}
-          {(mobilePropertiesFile || actionSheetFile) && (
-            <FilePropertiesDialog
-              open={propertiesDialogOpen}
-              onClose={closePropertiesDialog}
-              file={mobilePropertiesFile || actionSheetFile}
-            />
-          )}
           <ConfirmDialog
             open={bulkDeleteDialogOpen}
             onClose={closeBulkDeleteDialog}
@@ -2136,6 +2279,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             operationType="업로드"
           />
         </>
+      )}
+
+      {/* FilePropertiesDialog: 공유 링크에서도 속성 노출 */}
+      {(mobilePropertiesFile || actionSheetFile) && (
+        <FilePropertiesDialog
+          open={propertiesDialogOpen}
+          onClose={closePropertiesDialog}
+          file={mobilePropertiesFile || actionSheetFile}
+        />
       )}
     </Box>
   );

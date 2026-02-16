@@ -3,11 +3,14 @@ import {
   Box,
   List,
   IconButton,
+  Button,
 } from '@mui/material';
 import {
   Home as HomeIcon,
   CreateNewFolder as CreateNewFolderIcon,
   Upload as UploadIcon,
+  Login as LoginIcon,
+  AddLink as AddLinkIcon,
 } from '@mui/icons-material';
 import { getRecentFiles, onRecentFilesChange } from '../../utils/recentFiles';
 import { normalizePath } from '../../utils/pathUtils';
@@ -16,6 +19,7 @@ import { getUserPermissions } from '../../services/permissionService';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 import SharedFoldersSection from './SharedFoldersSection';
 import RecentFilesSection from './RecentFilesSection';
+import ShareLinkSection from './ShareLinkSection';
 
 const FolderTree = ({ 
   currentPath, 
@@ -28,6 +32,8 @@ const FolderTree = ({
   hasWritePermission,
   onExplorerDrop,
   isMobile = false,
+  shareLinkSection,
+  shareLinkActions,
 }) => {
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
@@ -38,6 +44,10 @@ const FolderTree = ({
   const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
 
   useEffect(() => {
+    if (!user) {
+      setRecentFilesList([]);
+      return;
+    }
     const loadRecentFiles = async () => {
       try {
         const files = await getRecentFiles();
@@ -47,16 +57,16 @@ const FolderTree = ({
         setRecentFilesList([]);
       }
     };
-    
+
     loadRecentFiles();
     const unsubscribe = onRecentFilesChange(() => {
       loadRecentFiles();
     });
-    
+
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [user]);
 
   const loadSharedFolders = useCallback(async () => {
     if (!user || !user.id || user.is_admin) return;
@@ -198,6 +208,8 @@ const FolderTree = ({
     onPathClick(folderPath);
   };
 
+  const showShareLinkActions = shareLinkActions && (shareLinkActions.onLoginClick || shareLinkActions.onAddToSharedClick);
+
   return (
     <Box
       sx={{
@@ -210,84 +222,136 @@ const FolderTree = ({
         height: '100%',
       }}
     >
-      {!isMobile && (
+      {(!isMobile || !showShareLinkActions) && (
         <Box sx={{ p: 3, display: 'flex', gap: 0 }}>
-          <IconButton
-            onClick={onCreateFolder}
-            disabled={!hasWritePermission}
-            title="폴더 생성"
-            sx={{
-              flex: 1,
-              borderRadius: '20px 0 0 20px',
-              backgroundColor: 'white',
-              color: 'text.secondary',
-              boxShadow: 2,
-              '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-            }}
-          >
-            <CreateNewFolderIcon />
-          </IconButton>
-          <IconButton
-            onClick={onUploadFile}
-            disabled={!hasWritePermission}
-            title="파일 업로드"
-            sx={{
-              flex: 1,
-              borderRadius: '0 20px 20px 0',
-              backgroundColor: 'white',
-              color: 'text.secondary',
-              boxShadow: 2,
-              '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-            }}
-          >
-            <UploadIcon />
-          </IconButton>
+          {showShareLinkActions ? (
+            shareLinkActions.user ? (
+              <Button
+                onClick={shareLinkActions.onAddToSharedClick}
+                startIcon={<AddLinkIcon />}
+                sx={{
+                  flex: 1,
+                  borderRadius: '20px',
+                  backgroundColor: 'white',
+                  color: 'text.secondary',
+                  boxShadow: 2,
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
+                }}
+              >
+                공유됨 추가
+              </Button>
+            ) : (
+              <Button
+                onClick={shareLinkActions.onLoginClick}
+                startIcon={<LoginIcon />}
+                sx={{
+                  flex: 1,
+                  borderRadius: '20px',
+                  backgroundColor: 'white',
+                  color: 'text.secondary',
+                  boxShadow: 2,
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
+                }}
+              >
+                로그인
+              </Button>
+            )
+          ) : (
+            <>
+              <IconButton
+                onClick={onCreateFolder}
+                disabled={!hasWritePermission}
+                title="폴더 생성"
+                sx={{
+                  flex: 1,
+                  borderRadius: '20px 0 0 20px',
+                  backgroundColor: 'white',
+                  color: 'text.secondary',
+                  boxShadow: 2,
+                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
+                }}
+              >
+                <CreateNewFolderIcon />
+              </IconButton>
+              <IconButton
+                onClick={onUploadFile}
+                disabled={!hasWritePermission}
+                title="파일 업로드"
+                sx={{
+                  flex: 1,
+                  borderRadius: '0 20px 20px 0',
+                  backgroundColor: 'white',
+                  color: 'text.secondary',
+                  boxShadow: 2,
+                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
+                }}
+              >
+                <UploadIcon />
+              </IconButton>
+            </>
+          )}
         </Box>
       )}
-      <Box sx={{ flex: 1, overflow: 'auto', px: '5px', pt: isMobile ? 2 : 0 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', px: '5px', pt: isMobile && !showShareLinkActions ? 2 : 0 }}>
         <List dense sx={{ py: 1 }}>
-          <BaseFolderTreeItem
-            path={homePath}
-            name={user?.is_admin ? '홈' : user?.username || '홈'}
-            level={0}
-            currentPath={currentPath}
-            onPathClick={onPathClick}
-            expandedPaths={expandedPaths}
-            onToggleExpand={handleToggleExpand}
-            user={user}
-            isHome={true}
-            treeUpdateTrigger={treeUpdateTrigger}
-            hasWritePermission={true}
-            onExplorerDrop={onExplorerDrop}
-            isMobile={isMobile}
-            icon={<HomeIcon fontSize="small" />}
-          />
-          
-          <SharedFoldersSection
-            sharedFolders={sharedFolders}
-            sharedExpanded={sharedExpanded}
-            handleSharedToggle={handleSharedToggle}
-            handleSharedClick={handleSharedClick}
-            currentPath={currentPath}
-            buildSharedFolderTree={buildSharedFolderTree}
-            handleSharedFolderClick={handleSharedFolderClick}
-            expandedPaths={expandedPaths}
-            handleToggleExpand={handleToggleExpand}
-            user={user}
-            treeUpdateTrigger={treeUpdateTrigger}
-            onExplorerDrop={onExplorerDrop}
-            isMobile={isMobile}
-          />
-          
-          <RecentFilesSection
-            recentExpanded={recentExpanded}
-            handleRecentToggle={handleRecentToggle}
-            handleRecentClick={handleRecentClick}
-            currentPath={currentPath}
-            recentFilesList={recentFilesList}
-            onPathClick={onPathClick}
-            onFileClick={onFileClick}
-          />
+          {shareLinkSection && (
+            <ShareLinkSection
+              shareRootPath={shareLinkSection.shareRootPath}
+              shareRootName={shareLinkSection.shareRootName}
+              shareToken={shareLinkSection.shareToken}
+              currentPath={currentPath}
+              onShareLinkPathClick={shareLinkSection.onShareLinkPathClick}
+              isMobile={isMobile}
+            />
+          )}
+          {(!shareLinkSection || shareLinkActions?.user) && (
+            <>
+              <BaseFolderTreeItem
+                path={homePath}
+                name={user?.is_admin ? '홈' : user?.username || '홈'}
+                level={0}
+                currentPath={currentPath}
+                onPathClick={onPathClick}
+                expandedPaths={expandedPaths}
+                onToggleExpand={handleToggleExpand}
+                user={user}
+                isHome={true}
+                treeUpdateTrigger={treeUpdateTrigger}
+                hasWritePermission={true}
+                onExplorerDrop={onExplorerDrop}
+                isMobile={isMobile}
+                icon={<HomeIcon fontSize="small" />}
+              />
+
+              <SharedFoldersSection
+                sharedFolders={sharedFolders}
+                sharedExpanded={sharedExpanded}
+                handleSharedToggle={handleSharedToggle}
+                handleSharedClick={handleSharedClick}
+                currentPath={currentPath}
+                buildSharedFolderTree={buildSharedFolderTree}
+                handleSharedFolderClick={handleSharedFolderClick}
+                expandedPaths={expandedPaths}
+                handleToggleExpand={handleToggleExpand}
+                user={user}
+                treeUpdateTrigger={treeUpdateTrigger}
+                onExplorerDrop={onExplorerDrop}
+                isMobile={isMobile}
+              />
+
+              <RecentFilesSection
+                recentExpanded={recentExpanded}
+                handleRecentToggle={handleRecentToggle}
+                handleRecentClick={handleRecentClick}
+                currentPath={currentPath}
+                recentFilesList={recentFilesList}
+                onPathClick={onPathClick}
+                onFileClick={onFileClick}
+              />
+            </>
+          )}
         </List>
       </Box>
     </Box>

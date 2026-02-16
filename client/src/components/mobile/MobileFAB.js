@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Fab,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
@@ -7,19 +8,64 @@ import {
 import {
   Upload as UploadIcon,
   CreateNewFolder as CreateNewFolderIcon,
+  Login as LoginIcon,
+  AddLink as AddLinkIcon,
 } from '@mui/icons-material';
+
+const fabGradientSx = {
+  width: 56,
+  height: 56,
+  background: `
+    radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
+    radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
+    radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, transparent 40%),
+    linear-gradient(135deg, #4167ba, #52c597 85%, rgba(251, 229, 89, 0.5) 98%)
+  `.trim(),
+  '&:hover': {
+    background: `
+      radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
+      radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
+      radial-gradient(ellipse 180px 100px at 100% 30%, #fbe559 0%, transparent 50%),
+      linear-gradient(135deg, #4167ba, #52c597 80%, #fbe559 95%)
+    `.trim(),
+  },
+};
 
 /**
  * Floating Action Button with speed dial for mobile
- * Provides quick access to common actions
+ * Provides quick access to common actions.
+ * shareLinkMode: { user, onLoginClick, onAddToSharedClick } — 공유 링크 모드일 때 단일 Fab (로그인/공유됨 추가)
  */
-const MobileFAB = ({ 
-  onUpload, 
-  onCreateFolder, 
+const MobileFAB = ({
+  onUpload,
+  onCreateFolder,
   hasWritePermission = true,
   disabled = false,
+  shareLinkMode,
 }) => {
   const [open, setOpen] = useState(false);
+
+  if (shareLinkMode) {
+    const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
+    const isLoggedIn = !!user;
+    return (
+      <Fab
+        color="primary"
+        aria-label={isLoggedIn ? '공유됨 추가' : '로그인'}
+        onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}
+        sx={{
+          position: 'fixed',
+          bottom: 16,
+          right: 16,
+          zIndex: 1050,
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          ...fabGradientSx,
+        }}
+      >
+        {isLoggedIn ? <AddLinkIcon /> : <LoginIcon />}
+      </Fab>
+    );
+  }
 
   const actions = [
     { 
@@ -54,22 +100,7 @@ const MobileFAB = ({
         bottom: 16,
         right: 16,
         '& .MuiFab-primary': {
-          width: 56,
-          height: 56,
-          background: `
-            radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
-            radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
-            radial-gradient(ellipse 300px 200px at 100% 15%, rgba(251, 229, 89, 0.6) 0%, transparent 40%),
-            linear-gradient(135deg, #4167ba, #52c597 85%, rgba(251, 229, 89, 0.5) 98%)
-          `.trim(),
-          '&:hover': {
-            background: `
-              radial-gradient(ellipse 250px 150px at 0% 0%, #4167ba 0%, transparent 60%),
-              radial-gradient(ellipse 250px 150px at 50% 100%, #52c597 0%, transparent 60%),
-              radial-gradient(ellipse 180px 100px at 100% 30%, #fbe559 0%, transparent 50%),
-              linear-gradient(135deg, #4167ba, #52c597 80%, #fbe559 95%)
-            `.trim(),
-          },
+          ...fabGradientSx,
         },
         // Account for iOS safe area
         paddingBottom: 'env(safe-area-inset-bottom)',

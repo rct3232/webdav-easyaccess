@@ -11,11 +11,14 @@ import {
 import {
   Close as CloseIcon,
   Download as DownloadIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { getFileBlob } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import PreviewThumbnailBar from './PreviewThumbnailBar';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -28,7 +31,9 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
 }
 
-const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
+const HIDE_UI_DELAY_MS = 5000;
+
+const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded }) => {
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,8 +44,78 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
   const [containerWidth, setContainerWidth] = useState(null);
   const [containerHeight, setContainerHeight] = useState(null);
   const [pageInfo, setPageInfo] = useState(null);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const touchStartX = useRef(null);
+  const hideTimerRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const stableWidthRef = useRef(null);
+
+  const fileType = file ? getFileType(file.name || file.basename) : null;
+  const isGalleryMode =
+    file &&
+    (fileType === 'image' || fileType === 'video') &&
+    mediaFiles?.length > 1;
+  const displayFile = isGalleryMode && mediaFiles[currentMediaIndex]
+    ? mediaFiles[currentMediaIndex]
+    : file;
+
+  useEffect(() => {
+    if (file && mediaFiles?.length > 0) {
+      const idx = mediaFiles.findIndex((f) => f.path === file.path);
+      setCurrentMediaIndex(idx >= 0 ? idx : 0);
+    }
+    // file.path 변경 시에만 동기화 (썸네일 로드 시 mediaFiles 참조 변경에 따른 리셋 방지)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file?.path]);
+
+  useEffect(() => {
+    if (open) {
+      setHeaderVisible(true);
+      setControlsVisible(true);
+    }
+  }, [open]);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const startHideTimer = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      if (isMobile) {
+        setHeaderVisible(false);
+      } else {
+        setControlsVisible(false);
+      }
+    }, HIDE_UI_DELAY_MS);
+  }, [isMobile, clearHideTimer]);
+
+  const resetHideTimer = useCallback(() => {
+    if (isMobile) {
+      setHeaderVisible(true);
+    } else {
+      setControlsVisible(true);
+    }
+    startHideTimer();
+  }, [isMobile, startHideTimer]);
+
+  useEffect(() => {
+    if (!open) clearHideTimer();
+    return () => clearHideTimer();
+  }, [open, clearHideTimer]);
+
+  useEffect(() => {
+    if (open && isGalleryMode && !loading) {
+      startHideTimer();
+    }
+    return () => clearHideTimer();
+  }, [open, isGalleryMode, loading, startHideTimer, clearHideTimer]);
 
   // Ensure worker is configured when component mounts
   useEffect(() => {
@@ -90,14 +165,15 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
   }, [numPages]);
 
   const loadPreview = useCallback(async () => {
-    if (!file) return;
+    const targetFile = displayFile || file;
+    if (!targetFile) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const blob = await getFileBlob(file.path, { inline: true, shareToken });
-      const filename = file.name || file.basename;
+      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken });
+      const filename = targetFile.name || targetFile.basename;
       const fileType = getFileType(filename);
 
       if (fileType === 'text') {
@@ -119,11 +195,12 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
       setError('파일을 불러올 수 없습니다.');
       setLoading(false);
     }
-  }, [file, shareToken]);
+  }, [displayFile, file, shareToken]);
 
   useEffect(() => {
-    if (open && file) {
-      if (file.canPreview !== false) {
+    const targetFile = displayFile || file;
+    if (open && targetFile) {
+      if (targetFile.canPreview !== false) {
         loadPreview();
       } else {
         setLoading(false);
@@ -145,7 +222,7 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
       setPageInfo(null);
       stableWidthRef.current = null;
     }
-  }, [open, file, loadPreview]);
+  }, [open, displayFile, file, loadPreview]);
 
   // 컨테이너 크기 측정
   useEffect(() => {
@@ -176,11 +253,43 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
   }, [open, previewUrl]);
 
 
+  const goPrev = useCallback(() => {
+    if (isGalleryMode && currentMediaIndex > 0) {
+      setCurrentMediaIndex((i) => i - 1);
+    }
+  }, [isGalleryMode, currentMediaIndex]);
+
+  const goNext = useCallback(() => {
+    if (isGalleryMode && currentMediaIndex < mediaFiles.length - 1) {
+      setCurrentMediaIndex((i) => i + 1);
+    }
+  }, [isGalleryMode, currentMediaIndex, mediaFiles.length]);
+
+  const handleTouchStart = useCallback(
+    (e) => {
+      if (isGalleryMode) touchStartX.current = e.touches[0].clientX;
+    },
+    [isGalleryMode]
+  );
+
+  const handleTouchEnd = useCallback(
+    (e) => {
+      if (!isGalleryMode || !touchStartX.current) return;
+      const endX = e.changedTouches[0].clientX;
+      const diff = touchStartX.current - endX;
+      if (diff > 50) goNext();
+      else if (diff < -50) goPrev();
+      touchStartX.current = null;
+    },
+    [isGalleryMode, goPrev, goNext]
+  );
+
   const handleDownload = () => {
-    if (previewUrl) {
+    const targetFile = displayFile || file;
+    if (previewUrl && targetFile) {
       const link = document.createElement('a');
       link.href = previewUrl;
-      link.download = file.name || file.basename;
+      link.download = targetFile.name || targetFile.basename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -188,35 +297,37 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
   };
 
   const renderPreview = () => {
+    const targetFile = displayFile || file;
+
     // Check if file can be previewed
-    if (file && file.canPreview === false) {
+    if (targetFile && targetFile.canPreview === false) {
       return (
-        <Box 
-          display="flex" 
-          flexDirection="column" 
-          justifyContent="center" 
-          alignItems="center" 
+        <Box
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
           minHeight={200}
           gap={2}
           py={4}
         >
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
             미리보기를 지원하지 않는 파일입니다
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            파일 형식: {file.name?.split('.').pop()?.toUpperCase() || 'Unknown'}
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+            파일 형식: {targetFile.name?.split('.').pop()?.toUpperCase() || 'Unknown'}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
             우측 상단의 다운로드 버튼을 클릭하세요
           </Typography>
         </Box>
       );
     }
-    
+
     if (loading) {
       return (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-          <CircularProgress />
+          <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
         </Box>
       );
     }
@@ -224,53 +335,145 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
     if (error) {
       return (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-          <Typography color="error">{error}</Typography>
+          <Typography sx={{ color: '#f44336' }}>{error}</Typography>
         </Box>
       );
     }
 
-    const filename = file.name || file.basename;
-    const fileType = getFileType(filename);
+    const filename = targetFile.name || targetFile.basename;
+    const previewFileType = getFileType(filename);
 
-    switch (fileType) {
+    const mediaWrapperSx = {
+      position: 'relative',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 1,
+      minHeight: 0,
+      width: '100%',
+    };
+
+    switch (previewFileType) {
       case 'image':
         return (
           <Box
-            component="img"
-            src={previewUrl}
-            alt={file.name}
-            sx={{
-              maxWidth: '100%',
-              maxHeight: isMobile ? '100%' : '70vh',
-              height: isMobile ? '100%' : 'auto',
-              objectFit: 'contain',
-              margin: 'auto',
-              display: 'block',
-            }}
-          />
+            sx={mediaWrapperSx}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+              <IconButton
+                onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                disabled={currentMediaIndex <= 0}
+                sx={{
+                  position: 'absolute',
+                  left: 8,
+                  zIndex: 5,
+                  color: 'white',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.7)' },
+                  '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+            )}
+            <Box
+              component="img"
+              src={previewUrl}
+              alt={targetFile.name}
+              sx={{
+                maxWidth: '100%',
+                maxHeight: isMobile ? '100%' : '70vh',
+                height: isMobile ? '100%' : 'auto',
+                objectFit: 'contain',
+                margin: 'auto',
+                display: 'block',
+              }}
+            />
+            {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+              <IconButton
+                onClick={(e) => { e.stopPropagation(); goNext(); }}
+                disabled={currentMediaIndex >= mediaFiles.length - 1}
+                sx={{
+                  position: 'absolute',
+                  right: 8,
+                  zIndex: 5,
+                  color: 'white',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.7)' },
+                  '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <ChevronRightIcon />
+              </IconButton>
+            )}
+          </Box>
         );
 
       case 'video':
         return (
           <Box
-            component="video"
-            controls
-            src={previewUrl}
-            sx={{
-              maxWidth: '100%',
-              maxHeight: isMobile ? '100%' : '70vh',
-              height: isMobile ? '100%' : 'auto',
-              width: isMobile ? '100%' : 'auto',
-              margin: 'auto',
-              display: 'block',
-            }}
-          />
+            sx={mediaWrapperSx}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+              <IconButton
+                onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                disabled={currentMediaIndex <= 0}
+                sx={{
+                  position: 'absolute',
+                  left: 8,
+                  zIndex: 5,
+                  color: 'white',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.7)' },
+                  '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+            )}
+            <Box
+              component="video"
+              controls
+              src={previewUrl}
+              sx={{
+                maxWidth: '100%',
+                maxHeight: isMobile ? '100%' : '70vh',
+                height: isMobile ? '100%' : 'auto',
+                width: isMobile ? '100%' : 'auto',
+                margin: 'auto',
+                display: 'block',
+              }}
+            />
+            {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+              <IconButton
+                onClick={(e) => { e.stopPropagation(); goNext(); }}
+                disabled={currentMediaIndex >= mediaFiles.length - 1}
+                sx={{
+                  position: 'absolute',
+                  right: 8,
+                  zIndex: 5,
+                  color: 'white',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.7)' },
+                  '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <ChevronRightIcon />
+              </IconButton>
+            )}
+          </Box>
         );
 
       case 'audio':
         return (
           <Box display="flex" flexDirection="column" alignItems="center" gap={2} py={4}>
-            <Typography variant="h6">{file.name || file.basename}</Typography>
+            <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+              {targetFile.name || targetFile.basename}
+            </Typography>
             <Box
               component="audio"
               controls
@@ -284,7 +487,7 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
         if (!previewBlob && !previewUrl) {
           return (
             <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-              <CircularProgress />
+              <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
             </Box>
           );
         }
@@ -373,12 +576,12 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
                 }}
                 loading={
                   <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-                    <CircularProgress />
+                    <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
                   </Box>
                 }
                 error={
                   <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-                    <Typography color="error">PDF 파일을 불러올 수 없습니다.</Typography>
+                    <Typography sx={{ color: '#f44336' }}>PDF 파일을 불러올 수 없습니다.</Typography>
                   </Box>
                 }
               >
@@ -411,10 +614,11 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
           <Box
             component="pre"
             sx={{
-              maxHeight: isMobile ? '100%' : '70vh',
+              maxHeight: isMobile ? '100%' : '100%',
               height: isMobile ? '100%' : 'auto',
               overflow: 'auto',
-              backgroundColor: 'grey.100',
+              backgroundColor: 'rgba(30, 30, 30, 0.8)',
+              color: 'rgba(255, 255, 255, 0.9)',
               p: 2,
               borderRadius: isMobile ? 0 : 1,
               fontFamily: 'monospace',
@@ -430,7 +634,9 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
       default:
         return (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-            <Typography>이 파일 형식은 미리보기를 지원하지 않습니다.</Typography>
+            <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+              이 파일 형식은 미리보기를 지원하지 않습니다.
+            </Typography>
           </Box>
         );
     }
@@ -442,72 +648,126 @@ const FilePreviewDialog = ({ open, onClose, file, shareToken }) => {
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth={file?.canPreview === false ? 'sm' : 'lg'}
-      fullWidth
-      fullScreen={isMobile}
+      fullScreen
+      slotProps={{
+        backdrop: {
+          sx: {
+            backgroundColor: isMobile && !headerVisible ? 'rgba(0, 0, 0, 0.95)' : 'rgba(0, 0, 0, 0.6)',
+            transition: 'background-color 0.2s ease',
+          },
+        },
+      }}
       PaperProps={{
         sx: {
-          minHeight: file?.canPreview === false ? 'auto' : '80vh',
+          backgroundColor: isMobile && !headerVisible ? '#121212' : 'rgba(18, 18, 18, 0.82)',
+          transition: 'background-color 0.2s ease',
+          width: '100%',
+          height: '100%',
+          maxHeight: 'none',
+          margin: 0,
+          borderRadius: 0,
           ...(isMobile && {
             height: 'var(--app-height)',
             maxHeight: 'var(--app-height)',
-            margin: 0,
-            borderRadius: 0,
           }),
         },
       }}
     >
-      <DialogTitle sx={isMobile ? { flexShrink: 0 } : { pb: 1.5 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-          <Typography variant="h6" component="div" noWrap sx={{ flex: 1, mr: 2 }}>
-            {file.name || file.basename}
-          </Typography>
-          <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
-            <IconButton onClick={handleDownload} size="small" title="다운로드">
-              <DownloadIcon />
-            </IconButton>
-            <IconButton onClick={onClose} size="small">
-              <CloseIcon />
-            </IconButton>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          minHeight: 0,
+        }}
+        onMouseMove={() => !isMobile && isGalleryMode && resetHideTimer()}
+      >
+        <DialogTitle
+          sx={{
+            flexShrink: 0,
+            position: isMobile ? 'absolute' : 'sticky',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            backgroundColor: '#1a1a1a',
+            color: '#fff',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+            py: isMobile ? 1.5 : 2,
+            ...(isMobile && {
+              opacity: headerVisible ? 1 : 0,
+              visibility: headerVisible ? 'visible' : 'hidden',
+              transition: 'opacity 0.2s ease, visibility 0.2s ease',
+              pointerEvents: headerVisible ? 'auto' : 'none',
+            }),
+          }}
+        >
+          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2}>
+            <Box display="flex" alignItems="center" flex={1} minWidth={0} gap={2}>
+              <Typography variant="h6" component="div" noWrap sx={{ color: 'inherit', flexShrink: 0 }}>
+                {(displayFile || file)?.name || (displayFile || file)?.basename}
+              </Typography>
+              {!isMobile && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.75rem',
+                    lineHeight: 1.4,
+                    color: 'rgba(255, 255, 255, 0.7)',
+                  }}
+                >
+                  {(displayFile || file)?.path}
+                </Typography>
+              )}
+            </Box>
+            <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
+              <IconButton onClick={handleDownload} size="small" title="다운로드" sx={{ color: 'inherit' }}>
+                <DownloadIcon />
+              </IconButton>
+              <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
           </Box>
-        </Box>
-        {!isMobile && (
-          <Typography 
-            variant="caption" 
-            color="text.secondary" 
-            sx={{ 
-              display: 'block',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              fontSize: '0.75rem',
-              lineHeight: 1.4,
-              mt: 0.5,
-            }}
-          >
-            {file.path}
-          </Typography>
-        )}
-      </DialogTitle>
-      <DialogContent 
-        dividers={!isMobile}
-        sx={{ 
-          p: 0,
-          touchAction: 'pan-y pan-x',
-          ...(isMobile && {
+        </DialogTitle>
+        <DialogContent
+          dividers={false}
+          sx={{
+            p: 0,
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             minHeight: 0,
-            borderTop: '1px solid',
-            borderColor: 'divider',
             touchAction: 'pan-y pan-x',
-          }),
-        }}
-      >
-        {renderPreview()}
-      </DialogContent>
+            position: 'relative',
+            ...(isMobile && { pt: headerVisible ? '52px' : 0 }),
+          }}
+          onClick={() => {
+            if (isMobile) {
+              setHeaderVisible((prev) => {
+                const next = !prev;
+                if (next && isGalleryMode) resetHideTimer();
+                return next;
+              });
+            }
+          }}
+        >
+          {renderPreview()}
+          {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+            <PreviewThumbnailBar
+              files={mediaFiles}
+              currentIndex={currentMediaIndex}
+              onSelect={setCurrentMediaIndex}
+              onThumbnailsLoaded={onThumbnailsLoaded}
+              shareToken={shareToken}
+            />
+          )}
+        </DialogContent>
+      </Box>
     </Dialog>
   );
 };

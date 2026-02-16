@@ -64,7 +64,8 @@ import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
-import { normalizePath, getBasename } from '../utils/pathUtils';
+import { normalizePath, getBasename, getParentPath } from '../utils/pathUtils';
+import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
@@ -270,6 +271,24 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     mobilePickerFile, setMobilePickerFile,
     mobilePickerAction, setMobilePickerAction,
   } = useFileManagerDialogs();
+
+  // 미리보기 갤러리용 미디어 파일 목록 (같은 경로의 이미지/비디오)
+  const mediaFiles = useMemo(() => {
+    if (!selectedFile) return [];
+    if (currentPath === '/__shared__') {
+      return sortedFiles.filter(
+        (f) =>
+          f.type === 'file' &&
+          (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
+      );
+    }
+    const parentPath = getParentPath(selectedFile.path);
+    return sortedFiles.filter(
+      (f) =>
+        getParentPath(f.path) === parentPath &&
+        (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
+    );
+  }, [sortedFiles, selectedFile, currentPath]);
 
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
 
@@ -1843,7 +1862,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           setSelectedFile(null);
         }}
         file={selectedFile}
+        mediaFiles={mediaFiles}
         shareToken={isShareLinkMode ? shareToken : undefined}
+        onThumbnailsLoaded={handleThumbnailsLoaded}
       />
 
       {!isShareLinkMode && (

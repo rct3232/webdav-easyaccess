@@ -33,7 +33,7 @@ cp .env.example .env
 | **PORT** | No | Server port | `5001` |
 | **CORS_ORIGINS** | No | Allowed browser origins (comma-separated) | `*` (with warning) |
 | **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`webdav` or `fs`) | `webdav` |
-| **WEA_FS_DIR** | No | Local storage path when using `fs` backend | OS temp folder |
+| **WEA_FS_DIR** | No | Local storage path when using `fs` backend | OS temp dir under `webdav-easyaccess-meta` |
 | **MAX_THUMBNAIL_SIZE** | No | Max thumbnail resolution (pixels) | `300` |
 | **FFMPEG_PATH** | No | Absolute path to FFmpeg executable (when auto-detect fails) | `ffmpeg` (PATH) |
 | **WEBDAV_AUTH_TYPE** | No | WebDAV auth method (`auto`, `basic`, `digest`) | `auto` |

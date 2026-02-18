@@ -7,12 +7,17 @@
 ```
 ✓ client/src/__tests__/**/*.test.js
 ✓ client/src/components/__tests__/**/*.test.js
+✓ client/src/contexts/__tests__/**/*.test.js
 ✓ client/src/hooks/__tests__/**/*.test.js
+✓ client/src/pages/__tests__/**/*.test.js
+✓ client/src/services/__tests__/**/*.test.js
 ✓ client/src/utils/__tests__/**/*.test.js
 ✓ server/models/__tests__/**/*.test.js
 ✓ server/middleware/__tests__/**/*.test.js
-✓ server/utils/__tests__/**/*.test.js
 ✓ server/routes/__tests__/**/*.test.js
+✓ server/services/__tests__/**/*.test.js
+✓ server/store/__tests__/**/*.test.js
+✓ server/utils/__tests__/**/*.test.js
 ```
 
 **Reason**: Tests are part of the codebase; other developers need to run and modify them.
@@ -20,9 +25,10 @@
 ### 2. Test Configuration
 
 ```
-✓ jest.config.js (client/server)
+✓ jest.config.js (server only; client uses Jest config in package.json)
 ✓ test-setup.js (server)
-✓ test-utils.js (client/server)
+✓ server/test-utils.js
+✓ client/src/test-utils/ (or test-utils/index.js)
 ✓ setupTests.js (client)
 ```
 
@@ -103,15 +109,18 @@ git checkout -b feature/new-feature
 # - Create and write test files
 
 # 3. Run tests (expect failure)
-npm test
+cd client && npm test
+cd server && npm test
 
 # 4. Implement code
 
 # 5. Run tests (expect success)
-npm test
+cd client && npm test
+cd server && npm test
 
 # 6. Check coverage
-npm run test:coverage
+cd client && npm run test:coverage
+cd server && npm run test:coverage
 
 # 7. Commit (tests and code together)
 git add .
@@ -133,12 +142,12 @@ git commit -m "fix: fix bug + regression test"
 
 ```bash
 # 1. Ensure all existing tests pass
-npm test
+cd client && npm test && cd ../server && npm test
 
 # 2. Refactor
 
 # 3. Run tests again (still passing)
-npm test
+cd client && npm test && cd ../server && npm test
 
 # 4. Commit
 git commit -m "refactor: refactoring (tests pass)"
@@ -151,13 +160,15 @@ git commit -m "refactor: refactoring (tests pass)"
 - [ ] Do all tests pass?
 
   ```bash
-  npm test
+  cd client && npm test
+  cd server && npm test
   ```
 
 - [ ] Are there tests for new code?
 
   ```bash
-  npm run test:coverage
+  cd client && npm run test:coverage
+  cd server && npm run test:coverage
   ```
 
 - [ ] Are test files added to Git?

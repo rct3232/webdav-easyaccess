@@ -41,6 +41,17 @@ flowchart LR
 - **Thumbnails**: Sharp (FFmpeg required for video)
 - **Metadata store**: JSON under WebDAV `/.wea/` (optional local filesystem storage)
 
+## Documentation
+
+- [docs/SETUP.md](docs/SETUP.md) — Installation and environment setup
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Server architecture, middleware, metadata store, API overview
+- [docs/CODING_STYLE.md](docs/CODING_STYLE.md) — Coding style and patterns (naming, React/Express conventions)
+- [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) — What to test, unit vs integration, mocking, checklist for new code
+- [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md) — Running tests, Git workflow, CI, coverage
+- [docs/api.md](docs/api.md) — REST API reference (endpoints, auth, request/response)
+- [docs/shared-contracts.md](docs/shared-contracts.md) — Shared contracts (errors, validation, constants, paths)
+- **Feature docs:** [permissions](docs/features/permissions.md) · [auth, users & settings](docs/features/auth-users-settings.md) · [files & sharing](docs/features/files-sharing.md) · [admin & infrastructure](docs/features/admin-infrastructure.md) · [client UI](docs/features/client-ui.md)
+
 ## Installation & Running
 
 For detailed installation and setup, see [`docs/SETUP.md`](docs/SETUP.md).
@@ -112,8 +123,7 @@ npm start
 
 - **Permission levels**: `read` / `write` / `admin`
 - **Owner exception**: User root folder `/{username}` and its children always grant read/write to that user.
-- **Read**: Uses **inherited read** policy—parent path permissions apply to children.
-  - Example: Read on `/share` grants inherited read for browsing subfolders.
+- **Read**: **Direct-only** (no inheritance). Read is required on each folder to list it, and on a file's parent folder to read the file. Read on `/share` does not grant read on `/share/sub` unless explicitly granted.
 - **Write**: Shared paths use **direct-only write** (no inheritance).
   - Example: Write on `/share` does not imply write on `/share/sub` unless explicitly granted.
 - **Reserved path**: `/.wea` is reserved for metadata; hidden/blocked in UI and server.
@@ -170,17 +180,10 @@ npm start
 
 ## Testing
 
-- **Client**
-  - `cd client && npm run test:unit`
-  - `cd client && npm run test:integration`
-  - `cd client && npm run test:ci`
-  - Summary: `client/TEST_SUMMARY.md`
-- **Server**
-  - `cd server && npm run test:unit`
-  - `cd server && npm run test:integration`
-  - `cd server && npm run test:ci`
-  - Summary: `server/TEST_SUMMARY.md`
-- Test code Git guide: [`docs/TEST_GIT_GUIDE.md`](docs/TEST_GIT_GUIDE.md)
+- **What to test and how:** [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) (unit vs integration, mocking, checklist for new code).
+- **Running tests, Git, and CI:** [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md).
+- **Client:** `cd client && npm run test:unit` | `npm run test:integration` | `npm run test:ci` — Summary: [client/TEST_SUMMARY.md](client/TEST_SUMMARY.md).
+- **Server:** `cd server && npm run test:unit` | `npm run test:integration` | `npm run test:ci` — Summary: [server/TEST_SUMMARY.md](server/TEST_SUMMARY.md).
 
 ## Troubleshooting
 

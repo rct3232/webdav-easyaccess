@@ -10,18 +10,18 @@ WebDAV EasyAccess is a **self-hosted, multi-user file management platform** buil
 
 ### 1.1 Middleware Pipeline
 
-All API requests pass through a standardized middleware chain for security and data normalization:
+For routes that require it, a standardized middleware chain runs for security and data normalization. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth, User Loader, Path Normalizer, or Meta Path Guard.
 
 ```
-Request → CORS → Body Parser → Request Logger → Auth (JWT) → User Loader → Path Normalizer → Meta Path Guard → Route Handler → Error Handler
+Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader → Path Normalizer → Meta Path Guard] (per route) → Route Handler → Error Handler
 ```
 
 #### Core Middleware
 1.  **authenticateToken** (`server/utils/auth.js`): Validates `Authorization: Bearer <JWT>` header and sets `req.user.id`.
 2.  **requireUser** (`server/middleware/requireUser.js`): Loads user details from Metadata Store into `req.user.full`.
-3.  **normalizePathParam** (`server/middleware/normalizePathParam.js`): Normalizes request `path` to POSIX style and removes duplicate slashes.
+3.  **normalizePathParam** (`server/middleware/normalizePathParam.js`): Normalizes path-related query and body fields (`path`, `sourcePath`, `destinationPath`, `oldPath`, `folderPath`) to POSIX style and removes duplicate slashes.
 4.  **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`): Blocks non-admin access to reserved path `/.wea`.
-5.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, error, message).
+5.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
 ### 1.2 Permission Policy (ACL)
 
@@ -34,7 +34,7 @@ flowchart TD
     B -->|"No"| D{"Owner Path? (/{username}/...)"}
     D -->|"Yes"| C
     D -->|"No"| E{"Action Type?"}
-    E -->|"Read"| F["Check Inherited Permissions"]
+    E -->|"Read"| F["Check direct permission on path or file's parent"]
     E -->|"Write"| G["Check Direct Permissions"]
     F --> H{"Has 'read' or higher?"}
     G --> I{"Has 'write' or higher?"}
@@ -44,7 +44,7 @@ flowchart TD
     I -->|"No"| J
 ```
 
-*   **Inherited Read**: If a user has permission on a parent folder, they can access all children.
+*   **Direct Read**: Read is checked on that folder or the file's direct parent only. No inheritance from ancestor paths.
 *   **Direct Write**: Write permission applies only when explicitly granted on that folder (no inheritance).
 *   **Owner exception**: `/{username}` is treated as the user's home directory and always grants full access.
 
@@ -65,15 +65,20 @@ Instead of a dedicated database (MySQL, MongoDB, etc.), the system uses **JSON-b
 /.wea/
 ├── users/
 │   ├── _index.json      # User ID–username mapping and auto-increment ID
-│   └── user1.json       # User profile, password hash, status, etc.
+│   └── <username>.json  # User profile, password hash, status, etc. (e.g. admin.json)
 ├── permissions/
-│   └── users/
-│       └── 1.json       # Per-folder permissions for user ID 1 (ACL)
+│   ├── users/
+│   │   └── <userId>.json   # Per-folder permissions for user (ACL)
+│   └── shares/
+│       └── <token>.json    # Share-link permission scope
 ├── index/
 │   └── email/
 │       └── <hash>.txt   # Reverse index for email deduplication and lookup
 ├── locks/
 │   └── <hash>.lock      # Distributed lock files (concurrency control)
+├── share-links/         # Share link metadata (if stored as files)
+├── recent-files/        # Per-user recent file lists (if stored as files)
+├── permission_requests.json   # Permission request queue
 └── settings.json        # Global settings (e.g. signup enabled)
 ```
 
@@ -100,7 +105,7 @@ sequenceDiagram
     participant Cache as Memory Cache
     participant W as WebDAV
     
-    C->>S: GET /api/thumbnails/<hash>
+    C->>S: GET /api/thumbnails/:hash.:ext (optional token)
     S->>Cache: Check Cache
     alt In Cache
         Cache-->>S: Return Buffer
@@ -118,6 +123,7 @@ sequenceDiagram
     end
 ```
 
+*   **Endpoints**: `GET /api/thumbnails/:hash.:ext` (with optional token) and `GET /api/files/thumbnail/:hash` for single thumbnail; `POST /api/files/thumbnails/batch` for batch.
 *   **Performance**:
     *   Thumbnails are cached in server memory (max 1000).
     *   Clients request multiple thumbnails in viewport via batch API.
@@ -152,7 +158,9 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 *   `POST /api/files/batch-copy`: Copy multiple items.
 *   `POST /api/files/batch-delete`: Delete multiple items.
 *   `POST /api/files/download-multiple`: ZIP download for multiple files/folders.
+*   `GET /api/files/download-progress/:id`: ZIP download progress.
 *   `GET /api/files/operation-progress/:id`: Bulk operation progress.
+*   `GET /api/files/bulk-operation/:jobId`: Bulk job status.
 *   `POST /api/files/bulk-operation/:jobId/cancel`: Cancel bulk operation.
 *   `GET /api/files/thumbnail/:hash`, `POST /api/files/thumbnails/batch`: Thumbnail requests.
 *   `POST /api/files/check-conflicts`: Check for name conflicts before paste.
@@ -172,7 +180,7 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 *   `POST /api/permission-requests`: Create permission request (user requests access from owner).
 *   `GET /api/permission-requests/inbox`: List incoming requests (for owners).
 *   `GET /api/permission-requests/outbox`: List outgoing requests (for requesters).
-*   `GET /api/permission-requests/check-owner?path=...`: Check if path has an owner for requests.
+*   `GET /api/permission-requests/check-owner?folderPath=...` or `?filePath=...`: Check if path has an owner for requests.
 *   `POST /api/permission-requests/:id/approve`: Approve request (owner).
 *   `POST /api/permission-requests/:id/reject`: Reject request (owner).
 *   `POST /api/permission-requests/:id/cancel`: Cancel own request (requester).
@@ -192,14 +200,15 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 ### 4.6 Recent Files
 *   `GET /api/recent-files`: List recent files for current user.
 *   `POST /api/recent-files`: Add file to recent list.
-*   `DELETE /api/recent-files/:filePath`: Remove from recent list.
+*   `DELETE /api/recent-files/:filePath(*)`: Remove one path from recent list (path segment may contain slashes).
 *   `DELETE /api/recent-files`: Clear all recent files.
 *   `POST /api/recent-files/apply-moves`: Update paths after bulk move.
 *   `POST /api/recent-files/remove-paths`: Remove paths after delete.
 
 ### 4.7 Health and Diagnostics
-*   `GET /api/health`: Health check (returns `{ status: "ok" }`).
+*   `GET /api/health`: Health check (returns `{ status: "ok", messageCode }`).
 *   `GET /api/webdav/test`: Test WebDAV connection.
+*   `GET /api/webdav/info`: WebDAV URL info (e.g. for UI).
 
 ### 4.8 Admin
 *   `GET /api/admin/settings`, `PUT /api/admin/settings`: System settings.
@@ -226,5 +235,5 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
     *   Password change increments `token_version`, invalidating all existing tokens.
     *   Path normalization prevents Directory Traversal attacks.
 *   **Performance**:
-    *   `asyncLimitSettled` limits concurrent WebDAV requests (default 5–10).
-    *   Frequent permission checks are cached in-memory with short TTL (1s).
+    *   `asyncLimitSettled` limits concurrent WebDAV requests (e.g. 5–10 per operation).
+    *   Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).

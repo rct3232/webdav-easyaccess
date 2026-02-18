@@ -1,0 +1,115 @@
+# Client UI
+
+This document describes the React client’s routing, protected routes, file manager (view modes, sort, search, selection, toolbar, drag-and-drop, context menu, dialogs), share link screen, responsive behavior, and i18n. Reference: [client/src/App.js](../../client/src/App.js), [client/src/pages/FileManager.js](../../client/src/pages/FileManager.js), and related components.
+
+---
+
+## Overview
+
+The app is a single-page React application using React Router. Public routes include login and register; authenticated routes (files, mypage, admin) are wrapped in `PrivateRoute`, which redirects to `/login` when the user is not authenticated. The main file management UI supports list/grid/detail views, sort by name/date, search, multi-selection, and toolbar actions (move, copy, download, delete) with progress and cancellation. Dialogs handle rename, create folder, upload, share, folder picker, conflict resolution, and preview. Share link access is handled by `/share/:token`, which loads link info then renders either the file manager (folder) or a single-file preview. On small screens, a FAB and action sheet provide touch-friendly actions. UI text is localized (i18n) with English and Korean.
+
+---
+
+## Specification
+
+### Routing
+
+- **Public:** `/login`, `/register`. No auth required.
+- **Default:** `/` redirects to `/files`.
+- **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage), `/admin` (AdminDashboard). Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
+- **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.
+
+### PrivateRoute
+
+- Uses `useAuth()` for `isAuthenticated` and `loading`.
+- If `loading`, render a full-height loading spinner (e.g. `CircularProgress`).
+- If not authenticated, render `<Navigate to="/login" replace />`.
+- Otherwise render `children`.
+
+### File manager (FileManager.js and components)
+
+- **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted in localStorage (e.g. `getViewMode`, `setViewMode`).
+- **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted (e.g. `setSortMode`, `saveSortMode`). Applied via `sortFiles()` before render.
+- **Search:** Search query and “search mode” state; filter or highlight items by name (implementation may filter list or call list API with query).
+- **Selection:** Multi-select (checkboxes or shift-click). Selected items drive toolbar visibility and batch actions. `useSelection` (or equivalent) holds selected set; clear selection after successful operation or on path change.
+- **Toolbar (bulk actions):** When one or more items selected, show toolbar with Move, Copy, Download (ZIP), Delete. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API.
+- **Rename dialog:** Single item rename; `PUT /api/files/rename` with `oldPath`, `newName`. On success, refresh list and recent files if needed.
+- **Drag and drop:** Drop on folder tree or list to upload (to current or dropped folder) or to move/copy; `useDropToUpload` and paste/move/copy handlers. Conflict check before paste via `checkConflicts`; conflict resolve dialog when needed.
+- **Context menu (desktop):** Right-click on file/folder: Download, Rename, Move, Copy, Delete, Share, etc. Actions open the same dialogs as toolbar.
+- **Action sheet (mobile):** Long-press or selection triggers bottom action sheet (`FileActionSheet`) with same actions as context menu.
+- **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties, Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
+- **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
+
+### Share link screen (`/share/:token`)
+
+- **ShareLinkLoader:** Reads `token` from route params; calls `getPublicShareLinkInfo(token)`. While loading, shows spinner and “Loading” text. On error (e.g. 404, 410), shows error message. On success:
+  - If `linkInfo` indicates directory: render `FileManager` with `shareToken` and `linkInfo` (browse shared folder).
+  - If single file: render `ShareLinkSingleFileView` (full-screen preview/download).
+- **ShareLinkSingleFileView:** Preview or download for the shared file; optional “Login” or “Add to my permissions” when user is logged in.
+
+### Responsive and mobile
+
+- **Breakpoints:** MUI theme breakpoints (xs/sm/md/lg/xl). `useResponsive` (or similar) exposes `isMobile` for conditional layout.
+- **Mobile FAB:** On small screens, floating action button (FAB) with speed dial: Upload, Create folder (and in share link mode: Login or Add to my permissions). Disabled when no write permission or in read-only share.
+- **Mobile breadcrumb:** Compact breadcrumb or path bar for current folder on mobile.
+- **Action sheet:** On mobile, long-press or selection opens bottom sheet instead of context menu.
+- **Pull-to-refresh:** Optional pull-to-refresh on mobile to reload current folder.
+
+### i18n
+
+- **Library:** react-i18next; resources from `client/src/locales/en.json`, `ko.json`.
+- **Initial language:** From `navigator.language` (e.g. `ko` → Korean, else English); fallback `en`.
+- **Usage:** `useTranslation()` → `t(key, params)` for all user-facing strings. Server errors displayed via `t(errorCode, params)` (see [shared-contracts.md](../shared-contracts.md)). Language can be switched in UI (e.g. settings or header); preference may be stored in localStorage.
+
+---
+
+## Flows
+
+### App entry and login
+
+```mermaid
+flowchart LR
+    A["/ or /files"] --> B{Authenticated?}
+    B -->|No| C["Redirect /login"]
+    B -->|Yes| D[FileManager]
+    C --> E[Login form]
+    E --> F[POST /api/auth/login]
+    F --> G{Success?}
+    G -->|Yes| H[Store token, redirect /files]
+    G -->|No| E
+```
+
+- On load, `AuthProvider` checks sessionStorage for token; if present, sets axios header and calls `GET /api/auth/me`. 401/403 from any API trigger global logout (clear token, redirect to login).
+
+### File manager: multi-select and batch
+
+1. User selects one or more items (checkbox or shift-click). Toolbar appears with Move, Copy, Download, Delete.
+2. User clicks Move → Folder picker opens → user chooses destination → `POST /api/files/batch-move` (or bulk job). Progress dialog shows; user can cancel via `POST /api/files/bulk-operation/:jobId/cancel`.
+3. On success, list and folder tree refresh; `POST /api/recent-files/apply-moves` if applicable. Selection cleared.
+4. Delete flow: Confirm dialog → `POST /api/files/batch-delete` → progress → `POST /api/recent-files/remove-paths` → refresh.
+
+### Share link screen
+
+1. User opens `/share/:token`. ShareLinkLoader fetches `GET /api/share/:token/info`.
+2. If error (404/410): show error message (e.g. “Link expired”).
+3. If directory: render FileManager with share context; user browses; may see “Login” or “Add to my permissions” (FAB or header).
+4. If file: render ShareLinkSingleFileView; user can preview/download and optionally add to permissions if logged in.
+
+### Language switch
+
+- User changes language in UI (if provided). App calls `i18n.changeLanguage(lang)`; all `t()` strings update. Optionally persist language in localStorage and set as `i18n.language` on next load.
+
+---
+
+## Testing
+
+When implementing or reviewing client tests, cover at least:
+
+- **Routing and PrivateRoute:** Unauthenticated access to `/files`, `/mypage`, `/admin` redirects to `/login`. Authenticated access renders the correct page. Loading state shows spinner.
+- **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.
+- **Drag-drop and dialogs:** Drop triggers upload or move/copy; conflict dialog appears when name conflicts; rename dialog calls rename API and refreshes list. Assert on API calls and list state.
+- **Share link:** `/share/:token` loads; with MSW returning directory vs file, correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message.
+- **Mobile:** On small viewport, FAB and action sheet are used; assertions can be based on visibility or role/label.
+- **Errors:** API error responses surface as snackbar or inline message using `t(errorCode, params)` (see [errorUtils](../../client/src/utils/errorUtils.js) and shared-contracts).
+
+Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.

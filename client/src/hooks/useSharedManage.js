@@ -9,6 +9,7 @@ import {
   checkOwnerExists,
 } from '../services/permissionRequestService';
 import { getParentPath, normalizePath } from '../utils/pathUtils';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 
 export function useSharedManage({
   open,
@@ -172,7 +173,7 @@ export function useSharedManage({
         }
       } catch (error) {
         console.error('Failed to cancel permission request:', error);
-        const errorMsg = error.response?.data?.error || t('sharedManage.cancelRequestFail');
+        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.cancelRequestFail');
         if (onMessage) {
           onMessage({ show: true, text: errorMsg, type: 'error' });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
@@ -218,7 +219,7 @@ export function useSharedManage({
         }
       } catch (error) {
         console.error('Failed to create permission request:', error);
-        const errorMsg = error.response?.data?.error || t('sharedManage.requestSentFail');
+        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.requestSentFail');
         if (onMessage) {
           onMessage({ show: true, text: errorMsg, type: 'error' });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
@@ -259,7 +260,7 @@ export function useSharedManage({
       onClose();
     } catch (error) {
       console.error('Failed to revoke permission:', error);
-      const errorMsg = error.response?.data?.error || t('sharedManage.revokeFail');
+      const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.revokeFail');
       if (onMessage) {
         onMessage({ show: true, text: errorMsg, type: 'error' });
         setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);

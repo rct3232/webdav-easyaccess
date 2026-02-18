@@ -442,7 +442,7 @@ export const useBulkOperations = (
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: t('fileManager.conflictChecking'),
+      current: t('fileManager.statusConflictCheck'),
       name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
     }, retryDataForModal);
 

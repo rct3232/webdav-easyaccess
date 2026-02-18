@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const userStore = require('../store/userStore');
 
 const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
@@ -73,12 +74,12 @@ async function authenticateToken(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Access token required' });
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.accessTokenRequired });
   }
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Invalid or expired token' });
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
   }
 
   // Stateless: no userStore/cache; token_version checked at refresh time
@@ -105,10 +106,10 @@ async function authenticateTokenOrShare(req, res, next) {
     const ShareLink = require('../models/ShareLink');
     const link = await ShareLink.findByToken(shareToken);
     if (!link) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkNotFound });
     }
     if (ShareLink.isExpired(link)) {
-      return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+      return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkExpired });
     }
     const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
     const rootPath = normalizePath(link.filePath);
@@ -141,7 +142,7 @@ async function authenticateTokenOrShare(req, res, next) {
     }
   }
 
-  return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Access token or share token required' });
+  return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.tokenRequired });
 }
 
 module.exports = {

@@ -68,6 +68,6 @@ export const createRecentFilesHandlers = (getStore, updateStore, clearStore) => 
   }),
   http.delete('/api/recent-files', () => {
     clearStore();
-    return HttpResponse.json({ message: 'Recent files cleared successfully' });
+    return HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' });
   }),
 ];

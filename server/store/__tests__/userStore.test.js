@@ -1,3 +1,4 @@
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const userStore = require('../userStore');
 const { resetTestStore, teardownTestStore } = require('../../test-utils');
 
@@ -47,13 +48,13 @@ describe('userStore', () => {
     await expect(userStore.createUser({
       ...userData,
       email: 'other@example.com'
-    })).rejects.toThrow('Username already exists');
+    })).rejects.toThrow(SERVER_ERROR_CODES.admin.usernameTaken);
 
     // Duplicate email
     await expect(userStore.createUser({
       ...userData,
       username: 'otheruser'
-    })).rejects.toThrow('Email already exists');
+    })).rejects.toThrow(SERVER_ERROR_CODES.auth.emailTaken);
   });
 
   it('updates user status, email, and password', async () => {

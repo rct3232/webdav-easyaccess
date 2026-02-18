@@ -314,13 +314,13 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
           py={4}
         >
           <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-            미리보기를 지원하지 않는 파일입니다
+            {t('preview.notSupported')}
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-            파일 형식: {targetFile.name?.split('.').pop()?.toUpperCase() || 'Unknown'}
+            {t('preview.fileTypeLabel')} {targetFile.name?.split('.').pop()?.toUpperCase() || t('common.unknown')}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-            우측 상단의 다운로드 버튼을 클릭하세요
+            {t('preview.downloadHint')}
           </Typography>
         </Box>
       );
@@ -583,7 +583,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 }
                 error={
                   <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-                    <Typography sx={{ color: '#f44336' }}>PDF 파일을 불러올 수 없습니다.</Typography>
+                    <Typography sx={{ color: '#f44336' }}>{t('preview.pdfLoadFail')}</Typography>
                   </Box>
                 }
               >

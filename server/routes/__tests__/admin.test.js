@@ -59,7 +59,7 @@ describe('Admin Routes', () => {
         .set('Authorization', `Bearer ${userToken}`);
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toContain('관리자 권한');
+      expect(response.body.errorCode).toBe('serverErrors.admin.adminRequired');
     });
 
     it('should reject unauthenticated requests', async () => {
@@ -123,7 +123,7 @@ describe('Admin Routes', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('승인');
+      expect(response.body.messageCode).toBe('serverMessages.admin.userApproved');
     });
 
     it('returns 404 for non-existent user', async () => {
@@ -148,7 +148,7 @@ describe('Admin Routes', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('거절');
+      expect(response.body.messageCode).toBe('serverMessages.admin.userRejected');
 
       // Note: User status verification may require direct store access
       // The API response confirms the action was successful
@@ -175,7 +175,7 @@ describe('Admin Routes', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('사용 중인 사용자명');
+      expect(response.body.errorCode).toBe('serverErrors.admin.usernameTaken');
     });
 
     it('fails with missing fields', async () => {
@@ -200,7 +200,7 @@ describe('Admin Routes', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('6자');
+      expect(response.body.errorCode).toBe('serverErrors.admin.passwordMinLength');
     });
   });
 
@@ -253,7 +253,7 @@ describe('Admin Routes', () => {
         });
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('저장');
+      expect(response.body.messageCode).toBe('serverMessages.admin.settingsSaved');
 
       // Verify setting was updated
       const enabled = await Settings.isRegistrationEnabled();

@@ -6,6 +6,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const userStore = require('../../store/userStore');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key';
 
@@ -201,7 +202,7 @@ describe('auth utilities', () => {
     it('should reject request without token', () => {
       return authenticateToken(mockReq, mockRes, mockNext).then(() => {
         expect(mockRes.status).toHaveBeenCalledWith(401);
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
+        expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.utilsAuth.accessTokenRequired });
         expect(mockNext).not.toHaveBeenCalled();
       });
       
@@ -212,7 +213,7 @@ describe('auth utilities', () => {
       
       return authenticateToken(mockReq, mockRes, mockNext).then(() => {
         expect(mockRes.status).toHaveBeenCalledWith(403);
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
+        expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
         expect(mockNext).not.toHaveBeenCalled();
       });
       
@@ -223,7 +224,7 @@ describe('auth utilities', () => {
       
       return authenticateToken(mockReq, mockRes, mockNext).then(() => {
         expect(mockRes.status).toHaveBeenCalledWith(401);
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access token required' });
+        expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.utilsAuth.accessTokenRequired });
         expect(mockNext).not.toHaveBeenCalled();
       });
       
@@ -241,7 +242,7 @@ describe('auth utilities', () => {
           mockReq.headers['authorization'] = `Bearer ${expiredToken}`;
           authenticateToken(mockReq, mockRes, mockNext).then(() => {
             expect(mockRes.status).toHaveBeenCalledWith(403);
-            expect(mockRes.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
+            expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
             expect(mockNext).not.toHaveBeenCalled();
             resolve();
           });

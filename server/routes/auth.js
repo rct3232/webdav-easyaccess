@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { HTTP_STATUS, USER_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 const {
@@ -68,23 +69,23 @@ router.post('/register', async (req, res) => {
   try {
     const registrationEnabled = await Settings.isRegistrationEnabled();
     if (!registrationEnabled) {
-      return res.status(403).json({ error: '현재 회원가입이 비활성화되어 있습니다. 관리자에게 문의해주세요.' });
+      return res.status(403).json({ errorCode: SERVER_ERROR_CODES.auth.registrationDisabled });
     }
 
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '사용자명, 이메일, 비밀번호를 모두 입력해주세요.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.requiredFields });
     }
 
     const existingUser = await User.findByUsername(username);
     if (existingUser) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '이미 사용 중인 사용자명입니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.usernameTaken });
     }
 
     const existingEmail = await User.findByEmail(email);
     if (existingEmail) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '이미 사용 중인 이메일입니다.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.emailTaken });
     }
 
     // Note: WebDAV folder existence check removed - will be handled during approval
@@ -97,13 +98,13 @@ router.post('/register', async (req, res) => {
       if (createdUser && createdUser.id) {
         await User.delete(createdUser.id);
       }
-      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-        error: '이메일 발송에 실패했습니다. 관리자에게 문의해주세요.' 
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        errorCode: SERVER_ERROR_CODES.auth.emailSendFail,
       });
     }
 
     res.status(HTTP_STATUS.CREATED).json({
-      message: '회원가입이 완료되었습니다. 관리자 승인을 기다려주세요.',
+      messageCode: SERVER_MESSAGE_CODES.auth.registerSuccess,
       status: USER_STATUS.PENDING,
       user: { id: createdUser.id, username: createdUser.username, email: createdUser.email, status: createdUser.status },
     });
@@ -115,7 +116,7 @@ router.post('/register', async (req, res) => {
         // Ignore delete error
       }
     }
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '회원가입 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.registerFail });
   }
 });
 
@@ -124,7 +125,7 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: '사용자명과 비밀번호를 입력해주세요.' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.loginRequiredFields });
     }
 
     const limit = checkLoginRateLimit(req, username);
@@ -132,7 +133,7 @@ router.post('/login', async (req, res) => {
       const retryAfterSeconds = Math.max(1, Math.ceil((limit.retryAfterMs || 0) / 1000));
       res.setHeader('Retry-After', String(retryAfterSeconds));
       return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
-        error: '로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.',
+        errorCode: SERVER_ERROR_CODES.auth.loginRateLimit,
       });
     }
 
@@ -155,30 +156,28 @@ router.post('/login', async (req, res) => {
     const user = await User.findByUsername(username);
     if (!user) {
       recordLoginFailure(limit.key);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: '사용자명 또는 비밀번호가 올바르지 않습니다.' });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.invalidCredentials });
     }
 
     const isValid = await User.verifyPassword(user, password);
     if (!isValid) {
       recordLoginFailure(limit.key);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: '사용자명 또는 비밀번호가 올바르지 않습니다.' });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.invalidCredentials });
     }
 
     if (user.status === USER_STATUS.PENDING) {
       recordLoginFailure(limit.key);
-      return res.status(403).json({ 
-        error: '계정 승인 대기 중',
+      return res.status(403).json({
+        errorCode: SERVER_ERROR_CODES.auth.pendingApproval,
         status: USER_STATUS.PENDING,
-        message: '계정이 관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.'
       });
     }
 
     if (user.status === USER_STATUS.REJECTED) {
       recordLoginFailure(limit.key);
-      return res.status(403).json({ 
-        error: '계정 가입 거절됨',
+      return res.status(403).json({
+        errorCode: SERVER_ERROR_CODES.auth.rejected,
         status: USER_STATUS.REJECTED,
-        message: '계정 가입이 거절되었습니다. 관리자에게 문의해주세요.'
       });
     }
 
@@ -189,7 +188,7 @@ router.post('/login', async (req, res) => {
     clearLoginFailures(limit.key);
 
     res.json({
-      message: '로그인 성공',
+      messageCode: SERVER_MESSAGE_CODES.auth.loginSuccess,
       token,
       refreshToken: refreshTokenId,
       user: {
@@ -201,7 +200,7 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '로그인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.loginFail });
   }
 });
 
@@ -210,12 +209,12 @@ router.post('/refresh', async (req, res) => {
     const { refreshToken } = req.body || {};
     const user = await validateRefreshToken(refreshToken);
     if (!user) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Invalid or expired refresh token' });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.refreshTokenInvalid });
     }
     const token = generateToken(user);
     return res.json({ token });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '토큰 갱신 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.refreshFail });
   }
 });
 
@@ -223,11 +222,11 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: '사용자를 찾을 수 없습니다.' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.auth.userNotFound });
     }
     res.json(user);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: '사용자 정보를 불러오는 중 문제가 발생했습니다.' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.userLoadFail });
   }
 });
 

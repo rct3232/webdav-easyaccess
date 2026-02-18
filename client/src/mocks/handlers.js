@@ -167,7 +167,7 @@ export const handlers = [
 
   // 최근 파일 목록 초기화
   http.delete('/api/recent-files', () => {
-    return HttpResponse.json({ message: 'Recent files cleared successfully' });
+    return HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' });
   }),
 ];
 

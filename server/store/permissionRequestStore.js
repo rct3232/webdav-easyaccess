@@ -2,6 +2,8 @@ const {
   PERMISSIONS,
   PERMISSION_REQUEST_STATUS,
 } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 const { META_ROOT } = require('./metaPaths');
 const { ensureDir, exists, readFile, writeFile } = require('./storage');
 const { withLock } = require('./locks');
@@ -127,9 +129,7 @@ async function createRequest({
 }) {
   const perm = normalizePermission(requestedPermission);
   if (!perm) {
-    const e = new Error('Invalid requested permission');
-    e.code = 'INVALID_PERMISSION';
-    throw e;
+    throw createError(SERVER_ERROR_CODES.permissionRequests.invalidPermission, 400);
   }
 
   const isFileRequest = typeof filePath === 'string' && filePath.trim() !== '';
@@ -138,9 +138,7 @@ async function createRequest({
   const target_type = isFileRequest ? TARGET_TYPE.FILE : TARGET_TYPE.FOLDER;
 
   if (!isFileRequest && !folder_path) {
-    const e = new Error('folderPath or filePath is required');
-    e.code = 'INVALID_PATH';
-    throw e;
+    throw createError(SERVER_ERROR_CODES.permissionRequests.folderOrFileRequired, 400);
   }
 
   return await withLock('permission_requests', async () => {
@@ -223,9 +221,7 @@ async function listOutbox(requesterId, { status } = {}) {
 async function updateStatus(id, { status, resolvedBy } = {}) {
   const nextStatus = normalizeStatus(status);
   if (!nextStatus) {
-    const e = new Error('Invalid status');
-    e.code = 'INVALID_STATUS';
-    throw e;
+    throw createError(SERVER_ERROR_CODES.permissionRequests.invalidStatus, 400);
   }
 
   return await withLock('permission_requests', async () => {
@@ -234,17 +230,13 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
 
     const idx = doc.requests.findIndex((r) => r && Number(r.id) === Number(id));
     if (idx === -1) {
-      const e = new Error('Request not found');
-      e.code = 'NOT_FOUND';
-      throw e;
+      throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
     }
 
     const current = sanitizeRequest(doc.requests[idx]);
     if (!current) {
       // If corrupted entry, treat as not found
-      const e = new Error('Request not found');
-      e.code = 'NOT_FOUND';
-      throw e;
+      throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
     }
 
     const updated = {

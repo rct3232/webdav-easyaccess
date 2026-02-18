@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { EmailNotificationMessage } from '../components/feedback';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../utils/validationMessage';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 import { getPublicSettings } from '../services/settingsService';
 
 const Register = () => {
@@ -88,7 +89,7 @@ const Register = () => {
         navigate('/files');
       }
     } else {
-      setError(result.error);
+      setError(getServerErrorDisplay(result, t));
     }
     
     setLoading(false);

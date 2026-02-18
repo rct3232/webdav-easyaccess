@@ -66,7 +66,7 @@ import { FolderTree } from '../components/folder-tree';
 import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
-import { determineErrorType, getErrorMessageByType, showErrorFromError, ERROR_TYPES } from '../utils/errorUtils';
+import { determineErrorType, getErrorMessageByType, showErrorFromError, getServerErrorDisplay, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath, getBasename, getParentPath, toFilesPath } from '../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getUserBaseFolder } from '../utils/userUtils';
@@ -404,7 +404,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         navigate(toFilesPath(linkInfo.filePath));
       }
     } catch (err) {
-      showError(err.response?.data?.error || err.message || t('dialogs.addToSharedError'));
+      showError(getServerErrorDisplay(err?.response?.data, t) || err?.message || t('dialogs.addToSharedError'));
     } finally {
       setAddToSharedConfirmLoading(false);
     }
@@ -768,7 +768,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       progress: 0,
       total: filesToUpload.length,
       current: '',
-      name: `${filesToUpload.length}개 파일 업로드`,
+      name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
       fileItems: [...fileItems],
       cancellable: true,
       retryData: { type: 'upload', currentPath: uploadPath },
@@ -918,7 +918,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     } catch (error) {
       console.error('Upload error:', error);
       
-      let errorMessage = error.response?.data?.error || error.message || t('fileManager.uploadFailed');
+      let errorMessage = getServerErrorDisplay(error?.response?.data, t) || error?.message || t('fileManager.uploadFailed');
       if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
         errorMessage = t('fileManager.uploadNoPermission');
       } else if (error.response?.status === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
@@ -1043,7 +1043,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           // 경로 유효성 검사
           if (!filePath || filePath === '/' || filePath.trim() === '') {
             handleRecentFileError(
-              { message: 'Invalid path' },
+              { message: t('errors.invalidPath') },
               filePath
             );
             return;
@@ -1120,7 +1120,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           // 경로 유효성 검사
           if (!filePath || filePath === '/' || filePath.trim() === '') {
             handleRecentFileError(
-              { message: 'Invalid path' },
+              { message: t('errors.invalidPath') },
               filePath
             );
             return;
@@ -1223,7 +1223,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       status: 'preparing',
       progress: 0,
       total: filesToUpload.length,
-      current: t('fileManager.conflictChecking'),
+      current: t('fileManager.statusConflictCheck'),
       name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
     });
 
@@ -1423,7 +1423,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       status: 'preparing',
       progress: 0,
       total: filesToUpload.length,
-      current: t('fileManager.conflictChecking'),
+      current: t('fileManager.statusConflictCheck'),
       name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
     });
 
@@ -1609,7 +1609,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
               <Box
                 component="img"
                 src="/logo_white.png"
-                alt="WebDAV EasyAccess"
+                alt={t('nav.logoAlt')}
                 sx={{
                   height: isMobile ? '27px' : '33.75px',
                   maxWidth: '100%',
@@ -1692,7 +1692,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   px: 3,
                 }}
               >
-                파일을 여기에 놓으세요
+                {t('dialogs.uploadDropHere')}
               </Typography>
             </Box>
           )}

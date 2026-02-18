@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const envPath = path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
@@ -78,7 +79,7 @@ app.use('/api/share', require('./routes/sharePublic'));
 app.use('/api/recent-files', require('./routes/recentFiles'));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'WebDAV EasyAccess API is running' });
+  res.json({ status: 'ok', messageCode: SERVER_MESSAGE_CODES.api.healthOk });
 });
 
 // Error handler middleware (must be after all routes)
@@ -93,7 +94,8 @@ app.get('/api/webdav/test', async (req, res) => {
   } catch (error) {
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
       success: false, 
-      message: `WebDAV test failed: ${error.message}` 
+      errorCode: SERVER_ERROR_CODES.api.webdavTestFailed,
+      params: { reason: error.message },
     });
   }
 });
@@ -113,14 +115,14 @@ app.get('/api/webdav/info', (req, res) => {
     }
     res.json({ url: displayUrl });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get WebDAV info' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
   }
 });
 
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'API endpoint not found' });
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
     }
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });

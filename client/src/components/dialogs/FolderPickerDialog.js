@@ -75,7 +75,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
           <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
             <Breadcrumbs
               separator={<ChevronRightIcon fontSize="small" />}
-              aria-label="breadcrumb"
+              aria-label={t('nav.breadcrumb')}
               sx={{
                 p: 1.5,
                 backgroundColor: 'grey.100',

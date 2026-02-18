@@ -25,17 +25,26 @@ export { getBasename, getParentPaths };
 export const isSubPath = isPathUnder;
 
 /**
- * Get folder name from path (UI / localization)
+ * Get folder name from path (UI / localization).
+ * @param {string} path - Path (e.g. '/', '/__shared__', '/__recent__', '/a/b/c')
+ * @param {(key: string) => string} [t] - Optional i18n t function; when provided, virtual roots and root use translated labels
+ * @returns {string} Display name for the path
  */
-export const getFolderName = (path) => {
-  if (!path || path === '/') return 'Root';
+export const getFolderName = (path, t) => {
+  if (!path || path === '/') {
+    return typeof t === 'function' ? t('nav.root') : 'Root';
+  }
   if (sharedIsRootPath(path, VIRTUAL_ROOTS)) {
-    if (path === '/__shared__') return '공유됨';
-    if (path === '/__recent__') return '최근';
-    return 'Root';
+    if (path === '/__shared__') {
+      return typeof t === 'function' ? t('nav.shared') : 'Shared';
+    }
+    if (path === '/__recent__') {
+      return typeof t === 'function' ? t('nav.recentShort') : 'Recent';
+    }
+    return typeof t === 'function' ? t('nav.root') : 'Root';
   }
   const parts = path.split('/').filter(Boolean);
-  return parts[parts.length - 1] || 'Root';
+  return parts[parts.length - 1] || (typeof t === 'function' ? t('nav.root') : 'Root');
 };
 
 /**

@@ -161,10 +161,12 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
         console.error(`Failed to upload ${fileName}:`, error);
       }
 
+      const errData = error.response?.data || {};
       errors.push({
         file,
         relativePath: fileName,
-        error: error.response?.data?.error || error.message,
+        ...errData,
+        error: errData.error || error.message,
       });
 
       if (onProgress) {
@@ -173,7 +175,8 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
           total: files.length,
           currentFile: fileName,
           status: 'error',
-          error: error.response?.data?.error || error.message,
+          ...errData,
+          error: errData.error || error.message,
         });
       }
     }
@@ -355,6 +358,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
     return { success: true, downloadId, filename, skippedCount, skippedInfo };
   } catch (error) {
     console.error('Download multiple files error:', error);
+    const errData = error.response?.data || {};
     if (onProgress) {
       onProgress({
         id: downloadId,
@@ -364,7 +368,8 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
         total: 0,
         current: '',
         zipName: '',
-        error: error.response?.data?.error || error.message,
+        ...errData,
+        error: errData.error || error.message,
       });
     }
     throw error;

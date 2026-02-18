@@ -65,7 +65,7 @@ describe('ShareLink Routes', () => {
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('File path is required');
+      expect(response.body.errorCode).toBe('serverErrors.share.pathRequired');
     });
 
     it('fails if file does not exist', async () => {
@@ -79,7 +79,7 @@ describe('ShareLink Routes', () => {
         });
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toContain('not found');
+      expect(response.body.errorCode).toBe('serverErrors.share.fileNotFound');
     });
 
     it('fails without authentication', async () => {
@@ -181,7 +181,7 @@ describe('SharePublic Routes (공개 접근)', () => {
         .get('/api/share/invalid-token/info');
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toContain('not found');
+      expect(response.body.errorCode).toBe('serverErrors.share.shareLinkNotFound');
     });
 
     it('returns 410 for expired link (S7)', async () => {
@@ -193,7 +193,7 @@ describe('SharePublic Routes (공개 접근)', () => {
         .get(`/api/share/${expiredLink.token}/info`);
 
       expect(response.status).toBe(410);
-      expect(response.body.error).toContain('expired');
+      expect(response.body.errorCode).toBe('serverErrors.share.shareLinkExpired');
     });
 
     it('returns 404 if file no longer exists', async () => {
@@ -203,7 +203,7 @@ describe('SharePublic Routes (공개 접근)', () => {
         .get(`/api/share/${shareLink.token}/info`);
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toContain('File not found');
+      expect(response.body.errorCode).toBe('serverErrors.share.fileNotFound');
     });
   });
 
@@ -247,7 +247,7 @@ describe('SharePublic Routes (공개 접근)', () => {
         .get(`/api/share/${expiredLink.token}`);
 
       expect(response.status).toBe(410);
-      expect(response.body.error).toContain('expired');
+      expect(response.body.errorCode).toBe('serverErrors.share.shareLinkExpired');
     });
   });
 

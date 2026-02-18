@@ -123,11 +123,12 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user: normalizedUser };
     } catch (error) {
       const errorData = error.response?.data || {};
-      return { 
-        success: false, 
-        error: errorData.error || errorData.message || 'Login failed',
+      return {
+        success: false,
+        ...errorData,
+        error: errorData.error || errorData.message,
         status: errorData.status,
-        message: errorData.message
+        message: errorData.message,
       };
     }
   };
@@ -150,7 +151,8 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Registration failed' };
+      const data = error.response?.data || {};
+      return { success: false, ...data, error: data.error || data.message };
     }
   };
 

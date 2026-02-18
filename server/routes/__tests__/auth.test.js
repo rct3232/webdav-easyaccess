@@ -34,7 +34,7 @@ describe('Auth Routes', () => {
         });
 
       expect(response.status).toBe(201);
-      expect(response.body.message).toContain('회원가입이 완료되었습니다');
+      expect(response.body.messageCode).toBe('serverMessages.auth.registerSuccess');
       expect(response.body.user.username).toBe('newuser');
       expect(response.body.user.status).toBe('pending');
     });
@@ -51,7 +51,7 @@ describe('Auth Routes', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toContain('회원가입이 비활성화');
+      expect(response.body.errorCode).toBe('serverErrors.auth.registrationDisabled');
     });
 
     it('fails with missing fields', async () => {
@@ -62,7 +62,7 @@ describe('Auth Routes', () => {
         });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('모두 입력해주세요');
+      expect(response.body.errorCode).toBe('serverErrors.auth.requiredFields');
     });
   });
 
@@ -102,7 +102,7 @@ describe('Auth Routes', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toContain('승인 대기 중');
+      expect(response.body.errorCode).toBe('serverErrors.auth.pendingApproval');
     });
 
     it('fails with wrong credentials', async () => {
@@ -120,7 +120,7 @@ describe('Auth Routes', () => {
         });
 
       expect(response.status).toBe(401);
-      expect(response.body.error).toContain('올바르지 않습니다');
+      expect(response.body.errorCode).toBe('serverErrors.auth.invalidCredentials');
     });
   });
 

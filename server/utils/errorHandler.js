@@ -3,6 +3,7 @@
  * Provides asyncHandler wrapper and error handler middleware
  */
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 /**
  * Wraps async route handlers to automatically catch errors
@@ -23,30 +24,40 @@ function asyncHandler(fn) {
 }
 
 /**
- * Standard error response format
- * @param {Error} error - Error object
+ * Standard error response format.
+ * When error.errorCode is set, returns { errorCode, params } for client i18n.
+ * Otherwise returns legacy { error } for backward compatibility.
+ * @param {Error} error - Error object (may have errorCode, params)
  * @param {Object} options - Additional options
- * @param {string} options.defaultMessage - Default error message
+ * @param {string} options.defaultErrorCode - Default i18n error code
  * @param {number} options.defaultStatus - Default HTTP status code
  * @returns {Object} Standardized error response
- * @property {string} error - Error message
- * @property {string} [details] - Error details (development only)
  */
 function formatErrorResponse(error, options = {}) {
   const {
-    defaultMessage = 'An error occurred',
+    defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError,
     defaultStatus = HTTP_STATUS.INTERNAL_SERVER_ERROR,
   } = options;
 
   const status = error.status || error.statusCode || defaultStatus;
-  const message = error.message || defaultMessage;
 
   // Don't expose internal error details in production
   const isDevelopment = process.env.NODE_ENV !== 'production';
   const details = isDevelopment && error.stack ? error.stack : undefined;
 
+  if (error.errorCode) {
+    return {
+      errorCode: error.errorCode,
+      ...(error.params && Object.keys(error.params).length > 0 && { params: error.params }),
+      ...(details && { details }),
+    };
+  }
+
+  // No errorCode: return default error code so client can translate (optionally include reason for debugging)
+  const params = error.message ? { reason: error.message } : undefined;
   return {
-    error: message,
+    errorCode: defaultErrorCode,
+    ...(params && Object.keys(params).length > 0 && { params }),
     ...(details && { details }),
   };
 }
@@ -96,7 +107,7 @@ function errorHandler(err, req, res, next) {
 
   // Format error response
   const response = formatErrorResponse(err, {
-    defaultMessage: 'Internal server error',
+    defaultErrorCode: SERVER_ERROR_CODES.errorHandler.internalServerError,
     defaultStatus: HTTP_STATUS.INTERNAL_SERVER_ERROR,
   });
 
@@ -108,62 +119,72 @@ function errorHandler(err, req, res, next) {
 }
 
 /**
- * Create a custom error with status code
- * @param {string} message - Error message
+ * Create a custom error with status code.
+ * @param {string} errorCode - i18n error code (e.g. SERVER_ERROR_CODES.auth.userNotFound)
  * @param {number} status - HTTP status code (default: 500)
- * @returns {Error} Error object with status property
+ * @param {Object} [params] - Optional params for i18n interpolation
+ * @returns {Error} Error object with status, errorCode, params
  * @example
- * throw createError('User not found', 404);
+ * throw createError(SERVER_ERROR_CODES.auth.userNotFound, 404);
  */
-function createError(message, status = HTTP_STATUS.INTERNAL_SERVER_ERROR) {
-  const error = new Error(message);
+function createError(errorCode, status = HTTP_STATUS.INTERNAL_SERVER_ERROR, params = undefined) {
+  const error = new Error(errorCode);
   error.status = status;
+  error.errorCode = errorCode;
+  if (params != null && Object.keys(params).length > 0) {
+    error.params = params;
+  }
   return error;
 }
 
 /**
  * Validation error (400)
- * @param {string} message - Error message
+ * @param {string} errorCode - i18n error code
+ * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Validation error
  */
-function validationError(message) {
-  return createError(message, 400);
+function validationError(errorCode, params = undefined) {
+  return createError(errorCode, 400, params);
 }
 
 /**
  * Unauthorized error (401)
- * @param {string} message - Error message
+ * @param {string} [errorCode] - i18n error code (default: utilsAuth token error)
+ * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Unauthorized error
  */
-function unauthorizedError(message = 'Unauthorized') {
-  return createError(message, 401);
+function unauthorizedError(errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken, params = undefined) {
+  return createError(errorCode, 401, params);
 }
 
 /**
  * Forbidden error (403)
- * @param {string} message - Error message
+ * @param {string} [errorCode] - i18n error code
+ * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Forbidden error
  */
-function forbiddenError(message = 'Forbidden') {
-  return createError(message, 403);
+function forbiddenError(errorCode = SERVER_ERROR_CODES.permissionsMiddleware.accessDenied, params = undefined) {
+  return createError(errorCode, 403, params);
 }
 
 /**
  * Not found error (404)
- * @param {string} message - Error message
+ * @param {string} errorCode - i18n error code
+ * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Not found error
  */
-function notFoundError(message = 'Not found') {
-  return createError(message, 404);
+function notFoundError(errorCode, params = undefined) {
+  return createError(errorCode, 404, params);
 }
 
 /**
  * Conflict error (409)
- * @param {string} message - Error message
+ * @param {string} errorCode - i18n error code
+ * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Conflict error
  */
-function conflictError(message = 'Conflict') {
-  return createError(message, 409);
+function conflictError(errorCode, params = undefined) {
+  return createError(errorCode, 409, params);
 }
 
 module.exports = {

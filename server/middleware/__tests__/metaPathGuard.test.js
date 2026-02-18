@@ -1,5 +1,6 @@
 const { checkMetaPathAccess } = require('../metaPathGuard');
 const { isMetaPath } = require('../../store/metaPaths');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 jest.mock('../../store/metaPaths');
 
@@ -31,7 +32,7 @@ describe('checkMetaPathAccess middleware', () => {
     isMetaPath.mockReturnValue(true);
     req.query.path = '/.wea/config.json';
 
-    expect(() => checkMetaPathAccess(req, res, next)).toThrow('Access denied');
+    expect(() => checkMetaPathAccess(req, res, next)).toThrow(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -50,7 +51,7 @@ describe('checkMetaPathAccess middleware', () => {
     req.body.sourcePath = '/.wea/source';
     req.body.destinationPath = '/regular/dest';
 
-    expect(() => checkMetaPathAccess(req, res, next)).toThrow('Access denied');
+    expect(() => checkMetaPathAccess(req, res, next)).toThrow(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   });
 
   describe('checkMetaPath factory', () => {
@@ -61,7 +62,7 @@ describe('checkMetaPathAccess middleware', () => {
       isMetaPath.mockReturnValue(true);
       req.query.path = '/.wea/some';
 
-      expect(() => middleware(req, res, next)).toThrow('Access denied');
+      expect(() => middleware(req, res, next)).toThrow(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     });
 
     it('uses custom path extractor', () => {
@@ -70,7 +71,7 @@ describe('checkMetaPathAccess middleware', () => {
       isMetaPath.mockReturnValue(true);
       req.params.custom = '/.wea/custom';
 
-      expect(() => middleware(req, res, next)).toThrow('Access denied');
+      expect(() => middleware(req, res, next)).toThrow(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     });
 
     it('allows access when extractor returns null', () => {
@@ -93,7 +94,7 @@ describe('checkMetaPathAccess middleware', () => {
       isMetaPath.mockReturnValue(true);
       req.body.path = '/.wea/body';
 
-      expect(() => middleware(req, res, next)).toThrow('Access denied');
+      expect(() => middleware(req, res, next)).toThrow(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     });
   });
 });

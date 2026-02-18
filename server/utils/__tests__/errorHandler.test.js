@@ -17,6 +17,7 @@ const {
   conflictError,
   asyncHandler,
 } = require('../errorHandler');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 describe('errorHandler utilities', () => {
   let consoleErrorSpy;
@@ -30,57 +31,41 @@ describe('errorHandler utilities', () => {
   });
 
   describe('formatErrorResponse', () => {
-    it('uses default options when options omitted', () => {
+    it('uses default errorCode when options omitted and error has no errorCode', () => {
       const err = new Error('fail');
       err.status = 404;
       const res = formatErrorResponse(err);
-      expect(res.error).toBe('fail');
+      expect(res.errorCode).toBeDefined();
+      expect(res.params).toEqual({ reason: 'fail' });
       expect(res.details).toBeDefined();
     });
 
-    it('uses defaultMessage from options when provided', () => {
+    it('uses defaultErrorCode from options when error has no errorCode', () => {
       const err = { statusCode: 500 };
-      const res = formatErrorResponse(err, { defaultMessage: 'Custom default' });
-      expect(res.error).toBe('Custom default');
+      const res = formatErrorResponse(err, { defaultErrorCode: 'serverErrors.errorHandler.defaultMessage' });
+      expect(res.errorCode).toBe('serverErrors.errorHandler.defaultMessage');
+      expect(res.params).toBeUndefined();
     });
 
     it('uses defaultStatus from options when provided', () => {
       const err = new Error('msg');
       const res = formatErrorResponse(err, { defaultStatus: 503 });
-      expect(res.error).toBe('msg');
+      expect(res.errorCode).toBeDefined();
+      expect(res.params).toEqual({ reason: 'msg' });
     });
 
-    it('prefers error.status over error.statusCode and defaultStatus', () => {
+    it('includes params.reason when error has message', () => {
       const err = new Error('x');
       err.status = 400;
-      err.statusCode = 500;
-      const res = formatErrorResponse(err, { defaultStatus: 503 });
-      expect(res.error).toBe('x');
-    });
-
-    it('uses error.statusCode when error.status is absent', () => {
-      const err = new Error('y');
-      err.statusCode = 403;
-      const res = formatErrorResponse(err, { defaultStatus: 500 });
-      expect(res.error).toBe('y');
-    });
-
-    it('uses defaultStatus when error has neither status nor statusCode', () => {
-      const err = new Error('z');
-      const res = formatErrorResponse(err, { defaultStatus: 502 });
-      expect(res.error).toBe('z');
-    });
-
-    it('uses error.message when present', () => {
-      const err = new Error('my message');
       const res = formatErrorResponse(err);
-      expect(res.error).toBe('my message');
+      expect(res.params).toEqual({ reason: 'x' });
     });
 
-    it('uses defaultMessage when error.message is absent', () => {
-      const err = { status: 500 };
-      const res = formatErrorResponse(err, { defaultMessage: 'Fallback message' });
-      expect(res.error).toBe('Fallback message');
+    it('omits params when error has no message', () => {
+      const err = { statusCode: 403 };
+      const res = formatErrorResponse(err);
+      expect(res.errorCode).toBeDefined();
+      expect(res.params).toBeUndefined();
     });
 
     it('includes details when NODE_ENV is not production and error has stack', () => {
@@ -98,7 +83,8 @@ describe('errorHandler utilities', () => {
       process.env.NODE_ENV = 'production';
       const res = formatErrorResponse(err);
       expect(res.details).toBeUndefined();
-      expect(res.error).toBe('prod error');
+      expect(res.errorCode).toBeDefined();
+      expect(res.params).toEqual({ reason: 'prod error' });
       process.env.NODE_ENV = prev;
     });
 
@@ -108,18 +94,27 @@ describe('errorHandler utilities', () => {
       process.env.NODE_ENV = 'development';
       const res = formatErrorResponse(err);
       expect(res.details).toBeUndefined();
-      expect(res.error).toBe('no stack');
+      expect(res.params).toEqual({ reason: 'no stack' });
       process.env.NODE_ENV = prev;
     });
 
-    it('omits details key when details is undefined (details && { details } false branch)', () => {
+    it('omits details key when details is undefined', () => {
       const err = { message: 'x', status: 400 };
       const prev = process.env.NODE_ENV;
       process.env.NODE_ENV = 'production';
       const res = formatErrorResponse(err);
-      expect(res).toEqual({ error: 'x' });
+      expect(res.errorCode).toBeDefined();
+      expect(res.params).toEqual({ reason: 'x' });
       expect(res).not.toHaveProperty('details');
       process.env.NODE_ENV = prev;
+    });
+
+    it('returns errorCode and params when error has errorCode', () => {
+      const err = { errorCode: 'serverErrors.auth.invalidCredentials', params: { foo: 'bar' }, status: 401 };
+      const res = formatErrorResponse(err);
+      expect(res.errorCode).toBe('serverErrors.auth.invalidCredentials');
+      expect(res.params).toEqual({ foo: 'bar' });
+      expect(res).not.toHaveProperty('error');
     });
   });
 
@@ -161,7 +156,7 @@ describe('errorHandler utilities', () => {
       errorHandler(err, req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Bad request' }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'Bad request' }));
       const logged = consoleErrorSpy.mock.calls[0][1];
       expect(logged).toContain('user');
       expect(logged).toContain('42');
@@ -185,7 +180,7 @@ describe('errorHandler utilities', () => {
       errorHandler(err, req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Unauthorized' }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'Unauthorized' }));
       expect(consoleErrorSpy).toHaveBeenCalledWith('[Error]', expect.any(String));
     });
 
@@ -214,16 +209,18 @@ describe('errorHandler utilities', () => {
   });
 
   describe('createError', () => {
-    it('creates error with message and status', () => {
+    it('creates error with errorCode and status', () => {
       const err = createError('Not found', 404);
       expect(err).toBeInstanceOf(Error);
       expect(err.message).toBe('Not found');
+      expect(err.errorCode).toBe('Not found');
       expect(err.status).toBe(404);
     });
 
     it('uses default status 500 when status omitted', () => {
       const err = createError('Internal');
       expect(err.message).toBe('Internal');
+      expect(err.errorCode).toBe('Internal');
       expect(err.status).toBe(500);
     });
   });
@@ -243,10 +240,10 @@ describe('errorHandler utilities', () => {
       expect(err.message).toBe('Token expired');
     });
 
-    it('returns 401 error with default message when message omitted', () => {
+    it('returns 401 error with default errorCode when message omitted', () => {
       const err = unauthorizedError();
       expect(err.status).toBe(401);
-      expect(err.message).toBe('Unauthorized');
+      expect(err.message).toBe(SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken);
     });
   });
 
@@ -257,10 +254,10 @@ describe('errorHandler utilities', () => {
       expect(err.message).toBe('Access denied');
     });
 
-    it('returns 403 error with default message when message omitted', () => {
+    it('returns 403 error with default errorCode when message omitted', () => {
       const err = forbiddenError();
       expect(err.status).toBe(403);
-      expect(err.message).toBe('Forbidden');
+      expect(err.message).toBe(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     });
   });
 
@@ -271,10 +268,10 @@ describe('errorHandler utilities', () => {
       expect(err.message).toBe('User not found');
     });
 
-    it('returns 404 error with default message when message omitted', () => {
+    it('returns 404 error when errorCode omitted (status only)', () => {
       const err = notFoundError();
       expect(err.status).toBe(404);
-      expect(err.message).toBe('Not found');
+      expect(err.errorCode).toBeUndefined();
     });
   });
 
@@ -285,10 +282,10 @@ describe('errorHandler utilities', () => {
       expect(err.message).toBe('Resource exists');
     });
 
-    it('returns 409 error with default message when message omitted', () => {
+    it('returns 409 error when errorCode omitted (status only)', () => {
       const err = conflictError();
       expect(err.status).toBe(409);
-      expect(err.message).toBe('Conflict');
+      expect(err.errorCode).toBeUndefined();
     });
   });
 

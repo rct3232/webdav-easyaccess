@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { HTTP_STATUS, PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { asyncHandler, forbiddenError } = require('../utils/errorHandler');
 const ShareLink = require('../models/ShareLink');
@@ -74,10 +75,10 @@ router.get('/:token/check-my-permission', authenticateToken, requireUser, asyncH
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
   if (ShareLink.isExpired(link)) {
-    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
   const folderPath = normalizePath(link.filePath);
@@ -112,26 +113,26 @@ router.post('/:token/add-to-my-permissions', authenticateToken, requireUser, asy
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
   if (ShareLink.isExpired(link)) {
-    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
   const folderPath = normalizePath(link.filePath);
   const createdBy = link.createdBy;
   if (!createdBy) {
-    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Cannot add this share to your permissions' });
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.share.cannotAddShare });
   }
 
   const creatorUser = await User.findById(createdBy);
   if (!creatorUser) {
-    return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Cannot add this share to your permissions' });
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.share.cannotAddShare });
   }
 
   const canGrant = await canGrantPermission(creatorUser, folderPath, createdBy);
   if (!canGrant) {
-    throw forbiddenError('You do not have permission to add this path to your shared items');
+    throw forbiddenError(SERVER_ERROR_CODES.share.cannotAddShare);
   }
 
   const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);
@@ -144,7 +145,7 @@ router.post('/:token/add-to-my-permissions', authenticateToken, requireUser, asy
     if (rank >= readRank) continue;
     await Permission.grant(req.user.id, p, PERMISSIONS.READ);
   }
-  res.json({ message: 'Added to your shared items' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.share.addedToShared });
 }));
 
 /**
@@ -156,18 +157,18 @@ router.get('/:token/info', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
   }
 
   const fileName = link.filePath.split('/').pop();
@@ -206,18 +207,18 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
   }
 
   // 파일 미리보기 (inline)
@@ -232,7 +233,7 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Failed to preview file:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to preview file' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.share.previewFail });
   }
 }));
 
@@ -245,18 +246,18 @@ router.get('/:token', asyncHandler(async (req, res) => {
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'Share link not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
   // 만료 확인
   if (ShareLink.isExpired(link)) {
-    return res.status(HTTP_STATUS.GONE).json({ error: 'Share link has expired' });
+    return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(link.filePath);
   if (!exists) {
-    return res.status(HTTP_STATUS.NOT_FOUND).json({ error: 'File not found' });
+    return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
   }
 
   // 파일 다운로드
@@ -272,7 +273,7 @@ router.get('/:token', asyncHandler(async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Failed to download file:', error);
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to download file' });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.share.downloadFail });
   }
 }));
 

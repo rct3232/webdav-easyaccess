@@ -103,9 +103,9 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Handle network errors
+    // Handle network errors - do not set error.message; client uses determineErrorType
+    // and t('errors.networkError') for display
     if (!error.response) {
-      error.message = 'Network error. Please check your connection.';
       return Promise.reject(error);
     }
 

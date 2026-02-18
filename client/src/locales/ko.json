@@ -13,7 +13,8 @@
     "unknown": "알 수 없음",
     "unknownError": "알 수 없는 오류",
     "noItems": "(목록 없음)",
-    "cancelledByUser": "사용자에 의해 취소됨"
+    "cancelledByUser": "사용자에 의해 취소됨",
+    "errorOccurred": "오류가 발생했습니다."
   },
   "login": {
     "title": "로그인",
@@ -62,7 +63,8 @@
     "login": "로그인",
     "folderTreeOpen": "폴더 트리 열기",
     "folderTreeClose": "폴더 트리 닫기",
-    "shareLink": "공유 링크"
+    "shareLink": "공유 링크",
+    "breadcrumb": "경로"
   },
   "fileManager": {
     "noFiles": "파일이 없습니다",
@@ -121,7 +123,11 @@
     "bulkActionDone": "({{done}}/{{total}}) {{action}} 완료",
     "bulkActionDonePartial": "({{done}}/{{total}}) {{action}} 완료 ({{failCount}}개 실패)",
     "bulkExcludedByPermission": "권한으로 제외된 항목: {{count}}개",
+    "bulkExcludedTruncated": "(일부만 표시됨)",
     "bulkSkippedCount": "건너뛴 항목: {{count}}개",
+    "cancelOperation": "작업 취소",
+    "retry": "재시도",
+    "failedItemsLabel": "실패한 항목:",
     "progressTitle": "진행 중인 작업",
     "statusPreparing": "준비 중...",
     "statusProcessing": "처리 중...",
@@ -319,6 +325,7 @@
   "mypage": {
     "accountInfo": "계정 정보",
     "editAccountInfo": "계정 정보 수정",
+    "language": "언어",
     "read": "읽기",
     "write": "쓰기",
     "pending": "대기",
@@ -383,7 +390,8 @@
     "pdfLoadFail": "PDF 파일을 불러올 수 없습니다.",
     "pdfLoadFailWithReason": "PDF 파일을 불러올 수 없습니다: {{reason}}",
     "notSupported": "이 파일 형식은 미리보기를 지원하지 않습니다.",
-    "downloadHint": "우측 상단의 다운로드 버튼을 클릭하세요"
+    "downloadHint": "우측 상단의 다운로드 버튼을 클릭하세요",
+    "fileTypeLabel": "파일 형식:"
   },
   "share": {
     "externalLink": "외부 공유 링크",
@@ -434,7 +442,9 @@
     "usernameInvalidChars": "사용자명은 영문, 숫자, 언더스코어(_), 하이픈(-)만 사용할 수 있습니다",
     "usernameReserved": "예약된 사용자명은 사용할 수 없습니다",
     "match": "{{fieldName}}가 일치하지 않습니다",
-    "required": "{{fieldName}}를 입력하세요"
+    "required": "{{fieldName}}를 입력하세요",
+    "field": "필드",
+    "genericError": "입력값이 올바르지 않습니다."
   },
   "errors": {
     "fileNotFound": "파일 또는 경로가 존재하지 않습니다.",
@@ -449,5 +459,223 @@
     "recentRemovedFromList": "파일 또는 경로가 존재하지 않습니다. 최근항목에서 제거되었습니다.",
     "folderAccessDenied": "폴더에 접근할 수 없습니다. 권한을 확인해주세요.",
     "fileCheckError": "파일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+  },
+  "serverErrors": {
+    "auth": {
+      "registrationDisabled": "현재 회원가입이 비활성화되어 있습니다. 관리자에게 문의해주세요.",
+      "requiredFields": "사용자명, 이메일, 비밀번호를 모두 입력해주세요.",
+      "usernameTaken": "이미 사용 중인 사용자명입니다.",
+      "emailTaken": "이미 사용 중인 이메일입니다.",
+      "emailSendFail": "이메일 발송에 실패했습니다. 관리자에게 문의해주세요.",
+      "registerFail": "회원가입 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "loginRequiredFields": "사용자명과 비밀번호를 입력해주세요.",
+      "loginRateLimit": "로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.",
+      "invalidCredentials": "사용자명 또는 비밀번호가 올바르지 않습니다.",
+      "pendingApproval": "계정이 관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.",
+      "rejected": "계정 가입이 거절되었습니다. 관리자에게 문의해주세요.",
+      "loginFail": "로그인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "refreshTokenInvalid": "유효하지 않거나 만료된 새로고침 토큰입니다.",
+      "refreshFail": "토큰 갱신 중 문제가 발생했습니다.",
+      "userNotFound": "사용자를 찾을 수 없습니다.",
+      "userLoadFail": "사용자 정보를 불러오는 중 문제가 발생했습니다."
+    },
+    "admin": {
+      "adminRequired": "관리자 권한이 필요합니다.",
+      "permissionCheckFail": "권한 확인 중 문제가 발생했습니다.",
+      "settingsLoadFail": "설정을 불러오는 중 문제가 발생했습니다.",
+      "settingsSaveFail": "설정 저장 중 문제가 발생했습니다.",
+      "userListLoadFail": "사용자 목록을 불러오는 중 문제가 발생했습니다.",
+      "createUserRequiredFields": "사용자명, 이메일, 비밀번호를 모두 입력해주세요.",
+      "passwordMinLength": "비밀번호는 최소 6자 이상이어야 합니다.",
+      "usernameTaken": "이미 사용 중인 사용자명입니다.",
+      "emailTaken": "이미 사용 중인 이메일입니다.",
+      "userFolderFail": "사용자 폴더 확인/생성에 실패했습니다. 사용자 계정이 삭제되었습니다.",
+      "userPermissionFail": "사용자 권한 부여에 실패했습니다. 사용자 계정이 삭제되었습니다.",
+      "createUserFail": "사용자 추가 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "userNotFound": "사용자를 찾을 수 없습니다.",
+      "notPending": "승인 대기 중인 사용자가 아닙니다.",
+      "approveFolderFail": "사용자 폴더 확인/생성에 실패했습니다. 관리자에게 문의해주세요.",
+      "approvePermissionFail": "사용자 권한 부여에 실패했습니다. 승인이 취소되었습니다. 다시 시도해주세요.",
+      "approveFail": "승인 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "rejectNotFound": "사용자를 찾을 수 없습니다.",
+      "notPendingReject": "승인 대기 중인 사용자가 아닙니다.",
+      "rejectFail": "거절 처리 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "deleteSelf": "자기 자신의 계정은 삭제할 수 없습니다.",
+      "deleteNotFound": "사용자를 찾을 수 없습니다.",
+      "deleteOtherAdmin": "다른 관리자 계정은 삭제할 수 없습니다.",
+      "deleteFail": "사용자 삭제 중 문제가 발생했습니다. 관리자에게 문의해주세요.",
+      "folderListFail": "폴더 목록을 불러오는데 실패했습니다.",
+      "invalidPermissionList": "권한 목록이 올바르지 않습니다.",
+      "permissionUpdateFail": "권한 업데이트에 실패했습니다.",
+      "cleanupFail": "권한 정리 중 오류가 발생했습니다.",
+      "orphanCleanupFail": "고아 데이터 정리에 실패했습니다."
+    },
+    "users": {
+      "emailRequired": "이메일을 입력해주세요."
+    },
+    "share": {
+      "shareLinkNotFound": "공유 링크를 찾을 수 없습니다.",
+      "shareLinkExpired": "공유 링크가 만료되었습니다.",
+      "cannotAddShare": "이 공유를 권한에 추가할 수 없습니다.",
+      "fileNotFound": "파일을 찾을 수 없습니다.",
+      "previewFail": "미리보기에 실패했습니다.",
+      "downloadFail": "다운로드에 실패했습니다.",
+      "pathRequired": "파일 경로가 필요합니다.",
+      "invalidExpiration": "유효기간이 올바르지 않습니다. 0 이상의 숫자이거나 제한 없음(null)이어야 합니다."
+    },
+    "folders": {
+      "pathRequired": "폴더 경로가 필요합니다.",
+      "folderAlreadyExists": "\"{{folderName}}\" 이름의 폴더가 이미 존재합니다."
+    },
+    "recentFiles": {
+      "pathRequired": "파일 경로가 필요합니다.",
+      "movesRequired": "moves 배열이 필요합니다.",
+      "pathsMustBeArrays": "filePaths와 folderPaths는 배열이어야 합니다."
+    },
+    "files": {
+      "folderAccessDenied": "이 폴더에 대한 접근 권한이 없습니다.",
+      "accessDenied": "접근이 거부되었습니다.",
+      "invalidPath": "잘못된 경로입니다.",
+      "sourceDestRequired": "소스 및 대상 경로가 필요합니다.",
+      "uploadFail": "업로드에 실패했습니다.",
+      "zipFail": "ZIP 아카이브 생성에 실패했습니다.",
+      "duplicateFile": "같은 이름의 파일 또는 폴더가 이미 존재합니다.",
+      "jobNotFound": "작업을 찾을 수 없거나 만료되었습니다.",
+      "progressNotFound": "진행 정보를 찾을 수 없습니다."
+    },
+    "permissions": {
+      "permissionHigherThanParent": "파일 권한은 상위 경로 권한보다 높아야 합니다.",
+      "viewPermissionsDenied": "접근이 거부되었습니다. 이 폴더의 권한을 볼 권한이 없습니다."
+    },
+    "permissionRequests": {
+      "folderOrFileRequired": "folderPath 또는 filePath 중 하나와 permission이 필요합니다.",
+      "accessDenied": "접근이 거부되었습니다.",
+      "invalidPermission": "권한이 올바르지 않습니다. read 또는 write여야 합니다.",
+      "userNotFound": "사용자를 찾을 수 없습니다.",
+      "invalidPathOwner": "소유자 전용 요청에 대한 경로가 올바르지 않습니다.",
+      "ownerNotFound": "이 경로의 소유자를 찾을 수 없습니다.",
+      "ownPath": "자신의 경로에 대한 권한을 요청할 수 없습니다.",
+      "createFail": "권한 요청 생성에 실패했습니다.",
+      "listInboxFail": "권한 요청 목록을 불러오는데 실패했습니다.",
+      "listOutboxFail": "권한 요청 목록을 불러오는데 실패했습니다.",
+      "pathRequired": "folderPath 또는 filePath가 필요합니다.",
+      "invalidRequestId": "요청 ID가 올바르지 않습니다.",
+      "invalidStatus": "잘못된 상태입니다.",
+      "requestNotFound": "요청을 찾을 수 없습니다.",
+      "onlyPendingApprove": "승인 대기 중인 요청만 승인할 수 있습니다.",
+      "approveFail": "권한 요청 승인에 실패했습니다.",
+      "checkOwnerFail": "소유자 확인에 실패했습니다."
+    },
+    "requireUser": {
+      "authenticationRequired": "인증이 필요합니다."
+    },
+    "permissionsMiddleware": {
+      "pathRequired": "경로가 필요합니다.",
+      "authenticationRequired": "인증이 필요합니다.",
+      "accessDenied": "접근이 거부되었습니다.",
+      "checkFail": "권한 확인에 실패했습니다."
+    },
+    "errorHandler": {
+      "defaultMessage": "오류가 발생했습니다.",
+      "internalServerError": "서버 오류가 발생했습니다."
+    },
+    "api": {
+      "webdavTestFailed": "WebDAV 테스트 실패: {{reason}}"
+    },
+    "thumbnails": {
+      "invalidOrExpiredToken": "유효하지 않거나 만료된 썸네일 토큰입니다.",
+      "notFound": "썸네일을 찾을 수 없습니다."
+    },
+    "webdav": {
+      "credentialsNotConfigured": ".env 파일에 WebDAV 인증 정보가 설정되지 않았습니다.",
+      "serverNotResponding": "WebDAV 서버가 응답하지 않습니다. 서버가 실행 중인지 확인하세요.",
+      "cannotConnect": "WebDAV 서버에 연결할 수 없습니다. .env의 WEBDAV_URL을 확인하세요.",
+      "allConnectionAttemptsFailed": "모든 연결 시도가 실패했습니다.",
+      "operationFailed": "WebDAV 작업 실패: {{reason}}",
+      "pathNotFound": "경로를 찾을 수 없습니다. 상위 디렉토리가 존재하는지 확인하세요.",
+      "permissionDeniedUpload": "권한 없음: 이 경로에 업로드할 수 없습니다.",
+      "conflictUpload": "충돌: 파일이 이미 있거나 상위 디렉토리가 없을 수 있습니다.",
+      "connectionRefused": "연결이 거부되었습니다. WebDAV 서버 URL과 네트워크를 확인하세요.",
+      "uploadFailed": "파일 업로드에 실패했습니다.",
+      "fileOrFolderNotFound": "파일 또는 폴더를 찾을 수 없습니다.",
+      "permissionDeniedDelete": "권한 없음: 이 경로를 삭제할 수 없습니다.",
+      "dirNotEmptyOrConflict": "디렉토리가 비어 있지 않거나 충돌이 있습니다.",
+      "deleteFailed": "삭제에 실패했습니다.",
+      "destinationExists": "대상이 이미 존재합니다.",
+      "sourceNotFound": "대상을 찾을 수 없습니다.",
+      "createDirFailed": "디렉토리 생성에 실패했습니다."
+    },
+    "thumbnail": {
+      "downloadFailed": "WebDAV에서 파일을 다운로드하지 못했습니다.",
+      "videoDownloadFailed": "WebDAV에서 동영상을 다운로드하지 못했습니다.",
+      "frameExtractionFailed": "프레임 추출 실패 - 출력 파일을 찾을 수 없습니다.",
+      "ffmpegFailed": "FFmpeg 실패: {{reason}}"
+    },
+    "selectiveTransfer": {
+      "invalidMode": "잘못된 모드입니다.",
+      "callbacksRequired": "필요한 콜백이 제공되지 않았습니다.",
+      "accessDenied": "접근이 거부되었습니다.",
+      "destinationExists": "충돌: 대상이 이미 존재합니다."
+    },
+    "storage": {
+      "invalidPathMapping": "잘못된 경로 매핑입니다."
+    },
+    "utilsAuth": {
+      "accessTokenRequired": "액세스 토큰이 필요합니다.",
+      "invalidOrExpiredToken": "유효하지 않거나 만료된 토큰입니다.",
+      "shareLinkNotFound": "공유 링크를 찾을 수 없습니다.",
+      "shareLinkExpired": "공유 링크가 만료되었습니다.",
+      "tokenRequired": "액세스 토큰 또는 공유 토큰이 필요합니다."
+    }
+  },
+  "serverMessages": {
+    "folders": {
+      "createSuccess": "폴더가 생성되었습니다."
+    },
+    "recentFiles": {
+      "clearedSuccess": "최근 파일 목록이 초기화되었습니다."
+    },
+    "api": {
+      "healthOk": "WebDAV EasyAccess API가 실행 중입니다.",
+      "webdavTestOk": "WebDAV 연결 성공"
+    },
+    "auth": {
+      "registerSuccess": "회원가입이 완료되었습니다. 관리자 승인을 기다려주세요.",
+      "loginSuccess": "로그인 성공"
+    },
+    "admin": {
+      "settingsSaved": "설정이 저장되었습니다.",
+      "userAdded": "사용자가 추가되었습니다.",
+      "userApproved": "사용자가 승인되었습니다.",
+      "userRejected": "사용자 가입이 거절되었으며, 계정이 삭제되었습니다.",
+      "userDeleted": "사용자가 삭제되었습니다.",
+      "permissionUpdated": "권한이 업데이트되었습니다.",
+      "orphanCleanupDone": "고아 데이터 정리가 완료되었습니다."
+    },
+    "share": {
+      "addedToShared": "공유 항목에 추가되었습니다."
+    },
+    "shareLinks": {
+      "shareLinkDeleted": "공유 링크가 삭제되었습니다."
+    },
+    "files": {
+      "uploadSkipped": "파일 업로드가 건너뛰어졌습니다.",
+      "uploadSuccess": "파일이 성공적으로 업로드되었습니다.",
+      "nameUnchanged": "파일 이름이 변경되지 않았습니다.",
+      "renameSuccess": "파일 이름이 성공적으로 변경되었습니다.",
+      "cancelRequested": "취소 요청됨"
+    },
+    "permissions": {
+      "permissionGranted": "권한이 부여되었습니다.",
+      "permissionRevoked": "권한이 취소되었습니다.",
+      "filePermissionGranted": "파일 권한이 부여되었습니다.",
+      "filePermissionRevoked": "파일 권한이 취소되었습니다.",
+      "filePermissionUpdated": "파일 권한이 업데이트되었습니다."
+    },
+    "users": {
+      "passwordUpdated": "비밀번호가 변경되었습니다.",
+      "emailUpdated": "이메일이 변경되었습니다.",
+      "permissionUpdated": "권한이 업데이트되었습니다."
+    }
   }
 }

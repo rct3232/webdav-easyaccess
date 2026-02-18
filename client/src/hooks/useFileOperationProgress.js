@@ -81,12 +81,11 @@ export const useFileOperationProgress = () => {
             const ufi = progressItem.updatedFileItem;
             const fileName = ufi.fileName;
             const fileStatus = ufi.status;
-            const fileError = ufi.error;
             const base = fileItemsByProgressIdRef.current.get(progressItem.id) ?? existing.fileItems;
             const idx = base.findIndex((it) => it.fileName === fileName);
             if (idx !== -1) {
               const next = [...base];
-              next[idx] = { ...next[idx], status: fileStatus, ...(fileError !== undefined && { error: fileError }) };
+              next[idx] = { ...next[idx], ...ufi, status: fileStatus };
               fileItemsByProgressIdRef.current.set(progressItem.id, next);
               merged.fileItems = next;
             } else {

@@ -1,6 +1,8 @@
 const path = require('path');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 
 function posixJoin(a, b) {
   const left = a === '/' ? '' : String(a || '');
@@ -32,12 +34,12 @@ async function selectiveCollectFiles({
   webdav = defaultWebdavAdapter(),
 } = {}) {
   if (typeof canEnterDirectory !== 'function' || typeof canIncludeFile !== 'function') {
-    throw new Error('canEnterDirectory and canIncludeFile are required');
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.callbacksRequired, 400);
   }
 
   const root = normalizePath(rootPath);
   if (isMetaPath(root)) {
-    throw new Error('Access denied');
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.accessDenied, 403);
   }
 
   const files = [];

@@ -86,7 +86,7 @@ describe('Files Routes', () => {
         .attach('file', Buffer.from('new content'), 'new.txt');
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('successfully');
+      expect(response.body.messageCode).toBe('serverMessages.files.uploadSuccess');
       expect(webdav.putFileContents).toHaveBeenCalledWith('/testuser/new.txt', expect.any(Buffer));
     });
   });

@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const requireUser = require('../middleware/requireUser');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../utils/errorHandler');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const ShareLink = require('../models/ShareLink');
 const Permission = require('../models/Permission');
 const { pathExists, listDirectory } = require('../utils/webdav');
@@ -19,20 +20,20 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
   const user = req.user.full;
 
   if (!filePath) {
-    throw validationError('File path is required');
+    throw validationError(SERVER_ERROR_CODES.share.pathRequired);
   }
 
   const normalizedPath = normalizePath(filePath);
 
   // 메타 경로는 공유 불가
   if (isMetaPath(normalizedPath)) {
-    throw forbiddenError('Cannot share metadata paths');
+    throw forbiddenError(SERVER_ERROR_CODES.share.cannotAddShare);
   }
 
   // 파일 존재 여부 확인
   const exists = await pathExists(normalizedPath);
   if (!exists) {
-    throw notFoundError('File or folder not found');
+    throw notFoundError(SERVER_ERROR_CODES.share.fileNotFound);
   }
 
   // 디렉터리 여부 판별 (listDirectory 성공 시 디렉터리)
@@ -55,7 +56,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
   if (expiresInDaysValue !== null && expiresInDaysValue !== undefined) {
     const days = parseInt(expiresInDaysValue, 10);
     if (isNaN(days) || days < 0) {
-      throw validationError('Invalid expiration days. Must be a non-negative number or null for unlimited.');
+      throw validationError(SERVER_ERROR_CODES.share.invalidExpiration);
     }
     expiresInDaysValue = days;
   }
@@ -100,12 +101,12 @@ router.get('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    throw notFoundError('Share link not found');
+    throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
   // 자신이 생성한 링크만 조회 가능
   if (link.createdBy !== user.id && !user.is_admin) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   res.json({
@@ -129,12 +130,12 @@ router.put('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    throw notFoundError('Share link not found');
+    throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
   // 자신이 생성한 링크만 수정 가능
   if (link.createdBy !== user.id && !user.is_admin) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   let updates = {};
@@ -144,7 +145,7 @@ router.put('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
     } else {
       const days = parseInt(expiresInDays, 10);
       if (isNaN(days) || days < 0) {
-        throw validationError('Invalid expiration days. Must be a non-negative number or null for unlimited.');
+        throw validationError(SERVER_ERROR_CODES.share.invalidExpiration);
       }
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + days);
@@ -174,18 +175,18 @@ router.delete('/:token', authenticateToken, requireUser, asyncHandler(async (req
 
   const link = await ShareLink.findByToken(token);
   if (!link) {
-    throw notFoundError('Share link not found');
+    throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
   // 자신이 생성한 링크만 삭제 가능
   if (link.createdBy !== user.id && !user.is_admin) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   await ShareLink.delete(token);
   await Permission.revokeSharePermission(token);
 
-  res.json({ message: 'Share link deleted successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.shareLinks.shareLinkDeleted });
 }));
 
 module.exports = router;

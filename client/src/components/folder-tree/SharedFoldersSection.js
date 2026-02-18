@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   List,
@@ -31,6 +32,7 @@ const SharedFoldersSection = ({
   onExplorerDrop,
   isMobile,
 }) => {
+  const { t } = useTranslation();
   if (user?.is_admin || sharedFolders.length === 0) return null;
 
   return (
@@ -97,7 +99,7 @@ const SharedFoldersSection = ({
                   fontWeight: currentPath === '/__shared__' ? 700 : 400,
                 }}
               >
-                공유됨
+                {t('nav.shared')}
               </Typography>
             }
           />

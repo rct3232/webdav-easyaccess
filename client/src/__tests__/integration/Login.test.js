@@ -80,7 +80,7 @@ describe('Login Integration Tests', () => {
     const mockLogin = jest.fn().mockResolvedValue({ 
       success: false, 
       status: 'pending',
-      message: 'Waiting for approval' 
+      error: 'Waiting for approval',
     });
     
     renderWithProviders(<Login />, {

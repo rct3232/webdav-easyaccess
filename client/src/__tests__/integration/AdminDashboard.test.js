@@ -61,23 +61,23 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
 
     describe('사용자 승인 (AD2)', () => {
       it('approves a pending user', async () => {
-        axios.post.mockResolvedValue({ data: { message: '승인되었습니다.' } });
+        axios.post.mockResolvedValue({ data: { messageCode: 'serverMessages.admin.userApproved' } });
 
         const result = await axios.post('/api/admin/users/2/approve');
 
         expect(axios.post).toHaveBeenCalledWith('/api/admin/users/2/approve');
-        expect(result.data.message).toContain('승인');
+        expect(result.data.messageCode).toBe('serverMessages.admin.userApproved');
       });
     });
 
     describe('사용자 거절 (AD3)', () => {
       it('rejects a pending user', async () => {
-        axios.post.mockResolvedValue({ data: { message: '거절되었습니다.' } });
+        axios.post.mockResolvedValue({ data: { messageCode: 'serverMessages.admin.userRejected' } });
 
         const result = await axios.post('/api/admin/users/2/reject');
 
         expect(axios.post).toHaveBeenCalledWith('/api/admin/users/2/reject');
-        expect(result.data.message).toContain('거절');
+        expect(result.data.messageCode).toBe('serverMessages.admin.userRejected');
       });
     });
   });
@@ -120,7 +120,7 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
 
       it('fails with duplicate username', async () => {
         axios.post.mockRejectedValue({
-          response: { data: { error: '이미 사용 중인 사용자명입니다.' } }
+          response: { data: { errorCode: 'serverErrors.admin.usernameTaken' } }
         });
 
         await expect(
@@ -130,30 +130,30 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
             password: 'password123',
           })
         ).rejects.toMatchObject({
-          response: { data: { error: expect.stringContaining('사용 중인 사용자명') } }
+          response: { data: { errorCode: 'serverErrors.admin.usernameTaken' } }
         });
       });
     });
 
     describe('사용자 삭제 (AD6)', () => {
       it('deletes a user', async () => {
-        axios.delete.mockResolvedValue({ data: { message: '삭제되었습니다.' } });
+        axios.delete.mockResolvedValue({ data: { messageCode: 'serverMessages.admin.userDeleted' } });
 
         const result = await axios.delete('/api/admin/users/2');
 
         expect(axios.delete).toHaveBeenCalledWith('/api/admin/users/2');
-        expect(result.data.message).toContain('삭제');
+        expect(result.data.messageCode).toBe('serverMessages.admin.userDeleted');
       });
 
       it('prevents admin from deleting themselves', async () => {
         axios.delete.mockRejectedValue({
-          response: { data: { error: '자신을 삭제할 수 없습니다.' } }
+          response: { data: { errorCode: 'serverErrors.admin.deleteSelf' } }
         });
 
         await expect(
           axios.delete('/api/admin/users/1')
         ).rejects.toMatchObject({
-          response: { data: { error: expect.stringContaining('자신') } }
+          response: { data: { errorCode: 'serverErrors.admin.deleteSelf' } }
         });
       });
     });
@@ -178,7 +178,7 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
       it('updates registration setting', async () => {
         axios.put.mockResolvedValue({ 
           data: { 
-            message: '설정이 저장되었습니다.',
+            messageCode: 'serverMessages.admin.settingsSaved',
             settings: { registration_enabled: false }
           }
         });
@@ -187,7 +187,7 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
           registration_enabled: false,
         });
 
-        expect(result.data.message).toContain('저장');
+        expect(result.data.messageCode).toBe('serverMessages.admin.settingsSaved');
         expect(result.data.settings.registration_enabled).toBe(false);
       });
     });
@@ -196,7 +196,7 @@ describe('Admin Dashboard Integration Tests (AD1-AD8)', () => {
   describe('권한 검사', () => {
     it('rejects non-admin access to admin endpoints', async () => {
       axios.get.mockRejectedValue({
-        response: { status: 403, data: { error: '관리자 권한이 필요합니다.' } }
+        response: { status: 403, data: { errorCode: 'serverErrors.admin.adminRequired' } }
       });
 
       await expect(

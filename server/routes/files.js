@@ -19,6 +19,7 @@ const {
 } = require('../utils/webdav');
 const { getThumbnailUrl } = require('../utils/thumbnail');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const {
@@ -238,12 +239,12 @@ async function runBulkJobWorker(jobId) {
   try {
     user = await User.findById(userId);
     if (!user) {
-      updateJob(jobId, { status: 'failed', errorMessage: 'User not found' });
+      updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.auth.userNotFound });
       return;
     }
     user = user.toObject ? user.toObject() : user;
   } catch (e) {
-    updateJob(jobId, { status: 'failed', errorMessage: e.message });
+    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
     return;
   }
 
@@ -271,7 +272,7 @@ async function runBulkJobWorker(jobId) {
         paths,
         async (filePath) => {
           if (!filePath || typeof filePath !== 'string') {
-            pushResult({ path: filePath, status: 'failed', error: 'Invalid path' });
+            pushResult({ path: filePath, status: 'failed', errorCode: SERVER_ERROR_CODES.files.invalidPath });
             return;
           }
           try {
@@ -344,7 +345,7 @@ async function runBulkJobWorker(jobId) {
             if (errorStatus === 403 || errorStatus === 401) {
               pushResult({ path: filePath, status: 'skipped' });
             } else {
-              pushResult({ path: filePath, status: 'failed', error: error.message || 'Unknown error' });
+              pushResult({ path: filePath, status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
             }
           }
         },
@@ -385,7 +386,7 @@ async function runBulkJobWorker(jobId) {
               sourcePath: sourcePath || 'unknown',
               destinationPath: destinationPath || 'unknown',
               status: 'failed',
-              error: 'Source and destination paths are required',
+              errorCode: SERVER_ERROR_CODES.files.sourceDestRequired,
             });
             return;
           }
@@ -471,7 +472,7 @@ async function runBulkJobWorker(jobId) {
                 sourcePath,
                 destinationPath,
                 status: 'failed',
-                error: error.message || 'Unknown error',
+                errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage,
               });
             }
           }
@@ -514,7 +515,7 @@ async function runBulkJobWorker(jobId) {
               sourcePath: sourcePath || 'unknown',
               destinationPath: destinationPath || 'unknown',
               status: 'failed',
-              error: 'Source and destination paths are required',
+              errorCode: SERVER_ERROR_CODES.files.sourceDestRequired,
             });
             return;
           }
@@ -592,7 +593,7 @@ async function runBulkJobWorker(jobId) {
                 sourcePath,
                 destinationPath,
                 status: 'failed',
-                error: error.message || 'Unknown error',
+                errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage,
               });
             }
           }
@@ -606,17 +607,17 @@ async function runBulkJobWorker(jobId) {
       return;
     }
 
-    updateJob(jobId, { status: 'failed', errorMessage: 'Unknown operation' });
+    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
   } catch (err) {
     console.error('runBulkJobWorker error:', err);
-    updateJob(jobId, { status: 'failed', errorMessage: err.message || 'Unknown error' });
+    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
   }
 }
 
 router.post('/check-conflicts', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { operations, limit = true } = req.body;
   if (!operations || !Array.isArray(operations)) {
-    throw validationError('Operations array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
   const conflicts = await getConflicts(operations, { limit });
@@ -628,10 +629,10 @@ const METADATA_PATHS_LIMIT = 100;
 router.post('/metadata', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const paths = req.body.paths;
   if (!Array.isArray(paths)) {
-    throw validationError('paths must be an array');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   if (paths.length > METADATA_PATHS_LIMIT) {
-    throw validationError(`paths length must not exceed ${METADATA_PATHS_LIMIT}`);
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
   const principalId = req.principalId;
   const results = [];
@@ -674,8 +675,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
   if (!hasPermission) {
     if (isShare) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({
-        error: 'Access denied',
-        message: '이 폴더에 대한 접근 권한이 없습니다.'
+        errorCode: SERVER_ERROR_CODES.files.folderAccessDenied,
       });
     }
     const user = req.user.full;
@@ -684,8 +684,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       folderPath = userFolder;
     } else if (!folderPath.startsWith(userFolder)) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({
-        error: 'Access denied',
-        message: '이 폴더에 대한 접근 권한이 없습니다.'
+        errorCode: SERVER_ERROR_CODES.files.folderAccessDenied,
       });
     }
   }
@@ -699,7 +698,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
     } catch (error) {
       // Handle 404 errors (directory doesn't exist) with proper status code
       if (error.status === HTTP_STATUS.NOT_FOUND) {
-        throw notFoundError(`Directory not found: ${folderPath}`);
+        throw notFoundError(SERVER_ERROR_CODES.files.invalidPath);
       }
       // Re-throw other errors
       throw error;
@@ -775,13 +774,13 @@ router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathPara
   const inline = req.query.inline === 'true';
   
   if (!filePath) {
-    throw validationError('File path is required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   const principalId = req.principalId;
   const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
     if (!hasPermission) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
     }
 
     const buffer = await getFileContents(filePath);
@@ -803,7 +802,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathPara
 
 router.post('/upload', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) {
-    throw validationError('No file uploaded');
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
 
   let originalFilename = req.file.originalname;
@@ -832,7 +831,7 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
       } else {
         const ok = await canWriteFolder(user, normalizedPath);
         if (!ok) {
-          return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
+          return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
         }
         folderPath = normalizedPath;
       }
@@ -938,11 +937,11 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
 
   // If onConflict is 'skip' and file exists, return success without uploading
   if (fileExists && onConflict === 'skip') {
-    return res.json({ message: 'File upload skipped', path: filePath, skipped: true });
+    return res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSkipped, path: filePath, skipped: true });
   }
 
   if (fileExists && onConflict !== 'overwrite') {
-    throw conflictError(`파일 업로드 실패: "${originalFilename}" 이름의 파일이 이미 존재합니다.`);
+    throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
 
   // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
@@ -950,14 +949,14 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
 
   await putFileContents(filePath, req.file.buffer);
 
-  res.json({ message: 'File uploaded successfully', path: filePath });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, path: filePath });
 }));
 
 // Batch delete endpoint (Job-based: returns 202 + jobId, worker runs in background)
 router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { paths } = req.body;
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
-    throw validationError('Paths array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'delete', { paths });
   setImmediate(runBulkJobWorker, jobId);
@@ -967,7 +966,7 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
 router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { oldPath, newName } = req.body;
   if (!oldPath || !newName) {
-    throw validationError('Old path and new name are required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
   const user = req.user.full;
@@ -979,7 +978,7 @@ router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkM
     : await canWriteFileByParent(user, normalizedOld);
 
   if (!hasPermission) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
 
   const dir = path.dirname(oldPath);
@@ -988,12 +987,12 @@ router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkM
   const normalizedNewPath = newPath.replace(/\\/g, '/');
   
   if (normalizedOldPath === normalizedNewPath) {
-    return res.json({ message: 'File name unchanged', path: newPath });
+    return res.json({ messageCode: SERVER_MESSAGE_CODES.files.nameUnchanged, path: newPath });
   }
 
   const targetExists = await pathExists(newPath);
   if (targetExists) {
-    throw conflictError(`파일 이름 변경 실패: "${newName}" 이름의 파일이 이미 존재합니다.`);
+    throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
 
   await moveFile(oldPath, newPath, null, false, { isDirectory: isDir });
@@ -1014,7 +1013,7 @@ router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkM
       console.error('Failed to grant home owner admin permission after directory rename:', homeOwnerPermError);
     }
   }
-  res.json({ message: 'File renamed successfully', path: newPath });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, path: newPath });
 }));
 
 // Helper to handle onConflict in batch operations
@@ -1026,7 +1025,7 @@ const handleSingleOpConflict = async (destPath, onConflict) => {
   if (isDestDir) return 'none';
   if (onConflict === 'skip') return 'skip';
   if (onConflict !== 'overwrite') {
-    throw conflictError('대상 디렉토리에 같은 이름의 파일이 이미 존재합니다');
+    throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
   return 'overwrite';
 };
@@ -1035,7 +1034,7 @@ const handleSingleOpConflict = async (destPath, onConflict) => {
 router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { moves, onConflict } = req.body;
   if (!moves || !Array.isArray(moves) || moves.length === 0) {
-    throw validationError('Moves array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'move', { moves, onConflict });
   setImmediate(runBulkJobWorker, jobId);
@@ -1046,7 +1045,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
 router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { copies, onConflict } = req.body;
   if (!copies || !Array.isArray(copies) || copies.length === 0) {
-    throw validationError('Copies array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'copy', { copies, onConflict });
   setImmediate(runBulkJobWorker, jobId);
@@ -1058,10 +1057,10 @@ router.get('/bulk-operation/:jobId', authenticateToken, requireUser, asyncHandle
   const { jobId } = req.params;
   const job = getJob(jobId);
   if (!job) {
-    throw notFoundError('Job not found or expired');
+    throw notFoundError(SERVER_ERROR_CODES.files.jobNotFound);
   }
   if (String(job.userId) !== String(req.user.id)) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
   res.json({
     status: job.status,
@@ -1077,13 +1076,13 @@ router.post('/bulk-operation/:jobId/cancel', authenticateToken, requireUser, asy
   const { jobId } = req.params;
   const job = getJob(jobId);
   if (!job) {
-    throw notFoundError('Job not found or expired');
+    throw notFoundError(SERVER_ERROR_CODES.files.jobNotFound);
   }
   if (String(job.userId) !== String(req.user.id)) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
   setJobCancelled(jobId);
-  res.json({ message: 'Cancel requested', jobId });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.cancelRequested, jobId });
 }));
 
 router.get('/thumbnail/:hash', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -1101,12 +1100,12 @@ router.get('/thumbnail/:hash', authenticateToken, requireUser, asyncHandler(asyn
   }
 
   if (!foundThumbnail) {
-    throw notFoundError('Thumbnail not found');
+    throw notFoundError(SERVER_ERROR_CODES.files.invalidPath);
   }
 
   const canRead = await canReadFile(req.user.id, foundPath, PERMISSIONS.READ);
   if (!canRead) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
 
   res.setHeader('Content-Type', foundThumbnail.mimeType);
@@ -1118,7 +1117,7 @@ router.post('/thumbnails/batch', authenticateTokenOrShare, requireAuth, checkMet
   const { paths } = req.body;
 
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
-    throw validationError('Paths array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
   const principalId = req.principalId;
@@ -1159,7 +1158,7 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normali
   const downloadId = clientDownloadId || `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
-    throw validationError('Paths array is required');
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
   const principalId = req.principalId;
@@ -1308,7 +1307,7 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normali
     }
 
   if (allFiles.length === 0) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
 
     if (paths.length > 1) {
@@ -1370,10 +1369,10 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normali
         total: allFiles.length,
         current: '',
         zipName: `${zipName}.zip`,
-        error: err.message,
+        errorCode: SERVER_ERROR_CODES.files.zipFail,
       });
       if (!res.headersSent) {
-        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create zip archive' });
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.files.zipFail });
       }
     });
 
@@ -1418,7 +1417,7 @@ router.get('/download-progress/:id', authenticateTokenOrShare, requireAuth, asyn
   const progress = downloadProgress.get(id);
   
   if (!progress) {
-    throw notFoundError('Download progress not found');
+    throw notFoundError(SERVER_ERROR_CODES.files.progressNotFound);
   }
   
   res.json(progress);
@@ -1429,7 +1428,7 @@ router.get('/operation-progress/:id', authenticateToken, asyncHandler(async (req
   const progress = operationProgress.get(id);
   
   if (!progress) {
-    throw notFoundError('Operation progress not found');
+    throw notFoundError(SERVER_ERROR_CODES.files.progressNotFound);
   }
   
   res.json(progress);

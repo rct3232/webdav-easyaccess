@@ -73,8 +73,11 @@ export const getShareLinkUrl = (token) => {
 export const getPublicShareLinkInfo = async (token) => {
   const response = await fetch(`/api/share/${token}/info`);
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || 'Failed to get share link info');
+    const body = await response.json().catch(() => ({}));
+    const data = body.errorCode ? body : { errorCode: 'errors.unknown' };
+    const err = new Error(data.errorCode);
+    err.response = { data };
+    throw err;
   }
   return response.json();
 };

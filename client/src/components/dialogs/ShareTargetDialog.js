@@ -30,6 +30,7 @@ import { collectSubfolderPaths } from '../../utils/folderUtils';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
+import { getServerErrorDisplay } from '../../utils/errorUtils';
 import SharedManageBody from './SharedManageBody';
 
 const getPermissionOptions = (t) => [
@@ -347,7 +348,7 @@ const ShareTargetDialog = ({
       if (onSave) onSave();
       onClose();
     } catch (err) {
-      const msg = err.response?.data?.error || (isDirectory ? t('dialogs.folderShareFail') : t('dialogs.permissionSaveFail'));
+      const msg = getServerErrorDisplay(err?.response?.data, t) || (isDirectory ? t('dialogs.folderShareFail') : t('dialogs.permissionSaveFail'));
       if (onMessage) onMessage({ show: true, text: msg, type: 'error' });
     } finally {
       setSaving(false);
@@ -404,7 +405,7 @@ const ShareTargetDialog = ({
               {filteredUsers.length === 0 ? (
                 <Box sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    검색 결과가 없습니다.
+                    {t('dialogs.noSearchResults')}
                   </Typography>
                 </Box>
               ) : (
@@ -441,7 +442,7 @@ const ShareTargetDialog = ({
               {accessList.length === 0 ? (
                 <Box sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    접근 권한이 있는 사용자가 없습니다.
+                    {t('dialogs.noUsersWithAccess')}
                   </Typography>
                 </Box>
               ) : (

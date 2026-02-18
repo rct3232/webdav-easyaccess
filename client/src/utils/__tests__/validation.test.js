@@ -68,14 +68,14 @@ describe('validation utilities', () => {
   describe('validateRequired', () => {
     it('should validate required fields', () => {
       expect(validateRequired('content')).toBeNull();
-      expect(validateRequired('')).toEqual({ key: 'validation.required', fieldName: '필드' });
+      expect(validateRequired('')).toEqual({ key: 'validation.required', fieldName: undefined });
       expect(validateRequired('', '사용자명')).toEqual({ key: 'validation.required', fieldName: '사용자명' });
     });
   });
 
   describe('validateMatch', () => {
     it('should return key with fieldName when values do not match', () => {
-      expect(validateMatch('a', 'b')).toEqual({ key: 'validation.match', fieldName: '값' });
+      expect(validateMatch('a', 'b')).toEqual({ key: 'validation.match', fieldName: undefined });
       expect(validateMatch('a', 'b', '비밀번호')).toEqual({ key: 'validation.match', fieldName: '비밀번호' });
     });
     it('should return null when values match', () => {

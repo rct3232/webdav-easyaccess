@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { PERMISSIONS, USER_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../models/User');
 const { authenticateToken, deleteAllRefreshTokensForUser } = require('../utils/auth');
 const { asyncHandler, notFoundError, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
@@ -34,7 +35,7 @@ router.get('/approved', authenticateToken, asyncHandler(async (req, res) => {
 router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) {
-    throw notFoundError('User not found');
+    throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
   }
   res.json(user);
 }));
@@ -42,38 +43,38 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
 // Update password
 router.put('/:id/password', authenticateToken, asyncHandler(async (req, res) => {
   if (parseInt(req.params.id) !== req.user.id) {
-    throw forbiddenError('Forbidden');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   const { password } = req.body;
   if (!password) {
-    throw validationError('Password is required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   const userId = parseInt(req.params.id, 10);
   await User.updatePassword(userId, password);
   deleteAllRefreshTokensForUser(userId);
-  res.json({ message: 'Password updated successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.users.passwordUpdated });
 }));
 
 // Update email
 router.put('/:id/email', authenticateToken, asyncHandler(async (req, res) => {
   if (parseInt(req.params.id) !== req.user.id) {
-    throw forbiddenError('Forbidden');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   const { email } = req.body;
   if (!email) {
-    throw validationError('Email is required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   const existingEmail = await User.findByEmail(email);
   if (existingEmail && existingEmail.id !== req.user.id) {
-    throw conflictError('Email already exists');
+    throw conflictError(SERVER_ERROR_CODES.auth.emailTaken);
   }
 
   await User.updateEmail(req.params.id, email);
-  res.json({ message: 'Email updated successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.users.emailUpdated });
 }));
 
 // Update user permissions (bulk) - admin can update any user's permissions, users can update their own (with restrictions)
@@ -82,18 +83,18 @@ router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) 
   const { permissions } = req.body; // Array of { folderPath, permission: 'read' | 'write' }
   
   if (!Array.isArray(permissions)) {
-    throw validationError('권한 목록이 올바르지 않습니다.');
+    throw validationError(SERVER_ERROR_CODES.admin.invalidPermissionList);
   }
   
   const requestingUser = await User.findById(req.user.id);
   if (!requestingUser) {
-    throw notFoundError('User not found');
+    throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
   }
   
   // 관리자는 모든 사용자의 권한을 수정할 수 있고, 일반 사용자는 자신의 권한만 수정할 수 있음
   // 하지만 일반 사용자가 자신의 권한을 수정하는 것은 제한적이므로 (보안상), 관리자만 허용
   if (!requestingUser.is_admin) {
-    throw forbiddenError('Access denied. Admin permission required');
+    throw forbiddenError(SERVER_ERROR_CODES.admin.adminRequired);
   }
   
   const Permission = require('../models/Permission');
@@ -108,7 +109,7 @@ router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) 
     }
   }
   
-  res.json({ message: '권한이 업데이트되었습니다.' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.users.permissionUpdated });
 }));
 
 module.exports = router;

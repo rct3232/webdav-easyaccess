@@ -7,6 +7,7 @@ import { PERMISSIONS, HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { getUserBaseFolder } from '../utils/userUtils';
 import { approvePermissionRequest } from '../services/permissionRequestService';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 
 /**
  * ShareDialog 상태 및 API 로직 훅.
@@ -479,7 +480,7 @@ export function useShareDialog({
         onClose();
       } catch (error) {
         console.error('Failed to approve permission request:', error);
-        const errorMsg = error.response?.data?.error || t('dialogs.permissionRequestApproveFail');
+        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('dialogs.permissionRequestApproveFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);
@@ -517,7 +518,7 @@ export function useShareDialog({
         onClose();
       } catch (error) {
         console.error('Failed to share folder:', error);
-        const errorMsg = error.response?.data?.error || t('dialogs.folderShareFail');
+        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('dialogs.folderShareFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);

@@ -13,7 +13,8 @@
     "unknown": "Unknown",
     "unknownError": "Unknown error",
     "noItems": "(No items)",
-    "cancelledByUser": "Cancelled by user"
+    "cancelledByUser": "Cancelled by user",
+    "errorOccurred": "An error occurred."
   },
   "login": {
     "title": "Login",
@@ -62,7 +63,8 @@
     "login": "Login",
     "folderTreeOpen": "Open folder tree",
     "folderTreeClose": "Close folder tree",
-    "shareLink": "Share link"
+    "shareLink": "Share link",
+    "breadcrumb": "Breadcrumb"
   },
   "fileManager": {
     "noFiles": "No files",
@@ -121,7 +123,11 @@
     "bulkActionDone": "({{done}}/{{total}}) {{action}} complete",
     "bulkActionDonePartial": "({{done}}/{{total}}) {{action}} complete ({{failCount}} failed)",
     "bulkExcludedByPermission": "Excluded by permission: {{count}}",
+    "bulkExcludedTruncated": "(partial list only)",
     "bulkSkippedCount": "Skipped: {{count}}",
+    "cancelOperation": "Cancel operation",
+    "retry": "Retry",
+    "failedItemsLabel": "Failed items:",
     "progressTitle": "In progress",
     "statusPreparing": "Preparing...",
     "statusProcessing": "Processing...",
@@ -319,6 +325,7 @@
   "mypage": {
     "accountInfo": "Account info",
     "editAccountInfo": "Edit account info",
+    "language": "Language",
     "read": "Read",
     "write": "Write",
     "pending": "Pending",
@@ -383,7 +390,8 @@
     "pdfLoadFail": "Unable to load PDF file.",
     "pdfLoadFailWithReason": "Unable to load PDF file: {{reason}}",
     "notSupported": "This file type does not support preview.",
-    "downloadHint": "Click the download button in the top right"
+    "downloadHint": "Click the download button in the top right",
+    "fileTypeLabel": "File type:"
   },
   "share": {
     "externalLink": "External share link",
@@ -434,7 +442,9 @@
     "usernameInvalidChars": "Username can only contain letters, numbers, underscore (_), and hyphen (-)",
     "usernameReserved": "This username is reserved",
     "match": "{{fieldName}} do not match",
-    "required": "Please enter {{fieldName}}"
+    "required": "Please enter {{fieldName}}",
+    "field": "Field",
+    "genericError": "Validation error"
   },
   "errors": {
     "fileNotFound": "File or path not found.",
@@ -449,5 +459,223 @@
     "recentRemovedFromList": "File or path not found. Removed from recent list.",
     "folderAccessDenied": "You do not have access to this folder. Please check your permission.",
     "fileCheckError": "An error occurred while checking the file. Please try again later."
+  },
+  "serverErrors": {
+    "auth": {
+      "registrationDisabled": "Registration is currently disabled. Please contact the administrator.",
+      "requiredFields": "Please enter username, email, and password.",
+      "usernameTaken": "This username is already in use.",
+      "emailTaken": "This email is already in use.",
+      "emailSendFail": "Failed to send email. Please contact the administrator.",
+      "registerFail": "Registration failed. Please contact the administrator.",
+      "loginRequiredFields": "Please enter username and password.",
+      "loginRateLimit": "Too many login attempts. Please try again later.",
+      "invalidCredentials": "Invalid username or password.",
+      "pendingApproval": "Your account is pending approval. You can log in after the administrator approves.",
+      "rejected": "Your registration has been rejected. Please contact the administrator.",
+      "loginFail": "Login failed. Please contact the administrator.",
+      "refreshTokenInvalid": "Invalid or expired refresh token",
+      "refreshFail": "Failed to refresh token.",
+      "userNotFound": "User not found.",
+      "userLoadFail": "Failed to load user information."
+    },
+    "admin": {
+      "adminRequired": "Administrator permission required.",
+      "permissionCheckFail": "Failed to verify permissions.",
+      "settingsLoadFail": "Failed to load settings.",
+      "settingsSaveFail": "Failed to save settings.",
+      "userListLoadFail": "Failed to load user list.",
+      "createUserRequiredFields": "Please enter username, email, and password.",
+      "passwordMinLength": "Password must be at least 6 characters.",
+      "usernameTaken": "This username is already in use.",
+      "emailTaken": "This email is already in use.",
+      "userFolderFail": "Failed to create or verify user folder. The user account has been removed.",
+      "userPermissionFail": "Failed to grant user permissions. The user account has been removed.",
+      "createUserFail": "Failed to add user. Please contact the administrator.",
+      "userNotFound": "User not found.",
+      "notPending": "User is not pending approval.",
+      "approveFolderFail": "Failed to create or verify user folder. Please contact the administrator.",
+      "approvePermissionFail": "Failed to grant permissions. Approval has been reverted. Please try again.",
+      "approveFail": "Failed to approve. Please contact the administrator.",
+      "rejectNotFound": "User not found.",
+      "notPendingReject": "User is not pending approval.",
+      "rejectFail": "Failed to reject. Please contact the administrator.",
+      "deleteSelf": "You cannot delete your own account.",
+      "deleteNotFound": "User not found.",
+      "deleteOtherAdmin": "You cannot delete another administrator account.",
+      "deleteFail": "Failed to delete user. Please contact the administrator.",
+      "folderListFail": "Failed to load folder list.",
+      "invalidPermissionList": "Invalid permission list.",
+      "permissionUpdateFail": "Failed to update permissions.",
+      "cleanupFail": "An error occurred during permission cleanup.",
+      "orphanCleanupFail": "Failed to cleanup orphaned data."
+    },
+    "users": {
+      "emailRequired": "Email is required."
+    },
+    "share": {
+      "shareLinkNotFound": "Share link not found",
+      "shareLinkExpired": "Share link has expired",
+      "cannotAddShare": "Cannot add this share to your permissions",
+      "fileNotFound": "File not found",
+      "previewFail": "Failed to preview file",
+      "downloadFail": "Failed to download file",
+      "pathRequired": "File path is required",
+      "invalidExpiration": "Invalid expiration. Must be a non-negative number or null for unlimited."
+    },
+    "folders": {
+      "pathRequired": "Folder path is required.",
+      "folderAlreadyExists": "A folder with the name \"{{folderName}}\" already exists."
+    },
+    "recentFiles": {
+      "pathRequired": "File path is required.",
+      "movesRequired": "moves array is required.",
+      "pathsMustBeArrays": "filePaths and folderPaths must be arrays."
+    },
+    "files": {
+      "folderAccessDenied": "You do not have access to this folder.",
+      "accessDenied": "Access denied",
+      "invalidPath": "Invalid path.",
+      "sourceDestRequired": "Source and destination paths are required.",
+      "uploadFail": "Upload failed.",
+      "zipFail": "Failed to create zip archive.",
+      "duplicateFile": "A file or folder with the same name already exists.",
+      "jobNotFound": "Job not found or expired.",
+      "progressNotFound": "Progress not found."
+    },
+    "permissions": {
+      "permissionHigherThanParent": "File permission must be higher than parent path permission.",
+      "viewPermissionsDenied": "Access denied. You do not have permission to view permissions for this folder."
+    },
+    "permissionRequests": {
+      "folderOrFileRequired": "One of folderPath or filePath, and permission are required.",
+      "accessDenied": "Access denied",
+      "invalidPermission": "Invalid permission. Must be read or write.",
+      "userNotFound": "User not found.",
+      "invalidPathOwner": "Invalid path for owner-only requests.",
+      "ownerNotFound": "Owner not found for this path.",
+      "ownPath": "Cannot request permissions for your own path.",
+      "createFail": "Failed to create permission request.",
+      "listInboxFail": "Failed to list permission requests.",
+      "listOutboxFail": "Failed to list permission requests.",
+      "pathRequired": "folderPath or filePath is required.",
+      "invalidRequestId": "Invalid request id.",
+      "invalidStatus": "Invalid status.",
+      "requestNotFound": "Request not found.",
+      "onlyPendingApprove": "Only pending requests can be approved.",
+      "approveFail": "Failed to approve permission request.",
+      "checkOwnerFail": "Failed to check owner existence."
+    },
+    "requireUser": {
+      "authenticationRequired": "Authentication required"
+    },
+    "permissionsMiddleware": {
+      "pathRequired": "Path is required.",
+      "authenticationRequired": "Authentication required",
+      "accessDenied": "Access denied",
+      "checkFail": "Failed to check permissions."
+    },
+    "errorHandler": {
+      "defaultMessage": "An error occurred",
+      "internalServerError": "Internal server error"
+    },
+    "api": {
+      "webdavTestFailed": "WebDAV test failed: {{reason}}"
+    },
+    "thumbnails": {
+      "invalidOrExpiredToken": "Invalid or expired thumbnail token",
+      "notFound": "Thumbnail not found"
+    },
+    "webdav": {
+      "credentialsNotConfigured": "WebDAV credentials not configured in .env file",
+      "serverNotResponding": "WebDAV server is not responding. Check if server is running and accessible.",
+      "cannotConnect": "Cannot connect to WebDAV server. Check WEBDAV_URL in .env file.",
+      "allConnectionAttemptsFailed": "All connection attempts failed.",
+      "operationFailed": "WebDAV operation failed: {{reason}}",
+      "pathNotFound": "Path not found. Please ensure the parent directory exists.",
+      "permissionDeniedUpload": "Permission denied: Cannot upload to this path",
+      "conflictUpload": "Conflict: File may already exist or parent directory is missing.",
+      "connectionRefused": "Connection refused. Check WebDAV server URL and network connection.",
+      "uploadFailed": "Failed to upload file.",
+      "fileOrFolderNotFound": "File or folder not found",
+      "permissionDeniedDelete": "Permission denied: Cannot delete this path",
+      "dirNotEmptyOrConflict": "Directory not empty or conflict",
+      "deleteFailed": "Failed to delete.",
+      "destinationExists": "Destination already exists",
+      "sourceNotFound": "Source not found",
+      "createDirFailed": "Failed to create directory."
+    },
+    "thumbnail": {
+      "downloadFailed": "Failed to download file from WebDAV",
+      "videoDownloadFailed": "Failed to download video from WebDAV",
+      "frameExtractionFailed": "Frame extraction failed - output file not found",
+      "ffmpegFailed": "FFmpeg failed: {{reason}}"
+    },
+    "selectiveTransfer": {
+      "invalidMode": "Invalid mode",
+      "callbacksRequired": "Required callbacks not provided",
+      "accessDenied": "Access denied",
+      "destinationExists": "Conflict: Destination already exists"
+    },
+    "storage": {
+      "invalidPathMapping": "Invalid path mapping"
+    },
+    "utilsAuth": {
+      "accessTokenRequired": "Access token required",
+      "invalidOrExpiredToken": "Invalid or expired token",
+      "shareLinkNotFound": "Share link not found",
+      "shareLinkExpired": "Share link has expired",
+      "tokenRequired": "Access token or share token required"
+    }
+  },
+  "serverMessages": {
+    "folders": {
+      "createSuccess": "Folder created successfully"
+    },
+    "recentFiles": {
+      "clearedSuccess": "Recent files cleared successfully"
+    },
+    "api": {
+      "healthOk": "WebDAV EasyAccess API is running",
+      "webdavTestOk": "WebDAV connection successful"
+    },
+    "auth": {
+      "registerSuccess": "Registration complete. Please wait for administrator approval.",
+      "loginSuccess": "Login successful"
+    },
+    "admin": {
+      "settingsSaved": "Settings saved.",
+      "userAdded": "User has been added.",
+      "userApproved": "User has been approved.",
+      "userRejected": "User registration has been rejected and the account has been deleted.",
+      "userDeleted": "User has been deleted.",
+      "permissionUpdated": "Permissions have been updated.",
+      "orphanCleanupDone": "Orphaned data cleanup completed"
+    },
+    "share": {
+      "addedToShared": "Added to your shared items"
+    },
+    "shareLinks": {
+      "shareLinkDeleted": "Share link deleted successfully"
+    },
+    "files": {
+      "uploadSkipped": "File upload skipped",
+      "uploadSuccess": "File uploaded successfully",
+      "nameUnchanged": "File name unchanged",
+      "renameSuccess": "File renamed successfully",
+      "cancelRequested": "Cancel requested"
+    },
+    "permissions": {
+      "permissionGranted": "Permission granted successfully",
+      "permissionRevoked": "Permission revoked successfully",
+      "filePermissionGranted": "File permission granted successfully",
+      "filePermissionRevoked": "File permission revoked successfully",
+      "filePermissionUpdated": "File permission updated successfully"
+    },
+    "users": {
+      "passwordUpdated": "Password updated successfully",
+      "emailUpdated": "Email updated successfully",
+      "permissionUpdated": "Permissions have been updated."
+    }
   }
 }

@@ -9,6 +9,7 @@
  */
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../models/User');
 const { notFoundError } = require('../utils/errorHandler');
 
@@ -29,13 +30,13 @@ async function requireAuth(req, res, next) {
     if (req.user && req.user.id) {
       if (!req.user.full) {
         const user = await User.findById(req.user.id);
-        if (!user) throw notFoundError('User not found');
+        if (!user) throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
         req.user.full = user;
       }
       req.principalId = req.user.id;
       return next();
     }
-    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
   } catch (error) {
     next(error);
   }
@@ -57,7 +58,7 @@ async function requireAuth(req, res, next) {
 async function requireUser(req, res, next) {
   try {
     if (!req.user || !req.user.id) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
     }
 
     // Skip userStore if authenticateToken already set req.user.full (e.g. from cache)
@@ -67,7 +68,7 @@ async function requireUser(req, res, next) {
 
     const user = await User.findById(req.user.id);
     if (!user) {
-      throw notFoundError('User not found');
+      throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
     }
 
     req.user.full = user;

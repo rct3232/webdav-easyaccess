@@ -44,6 +44,7 @@ import { useNavigate } from 'react-router-dom';
 import * as adminService from '../services/adminService';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../utils/validationMessage';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 import { ShareDialog } from '../components/dialogs';
 import { useResponsive } from '../hooks/useResponsive';
 import { formatDate } from '../utils/format';
@@ -149,7 +150,7 @@ const AdminDashboard = () => {
         text: messageText,
       });
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.error || t('admin.orphanCleanupFail') });
+      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.orphanCleanupFail') });
     } finally {
       setCleanupLoading(false);
     }
@@ -175,7 +176,7 @@ const AdminDashboard = () => {
         text: messageText,
       });
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.error || t('admin.permissionCleanupFail') });
+      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('admin.permissionCleanupFail') });
     } finally {
       setPermissionCleanupLoading(false);
     }
@@ -202,7 +203,7 @@ const AdminDashboard = () => {
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || t('admin.approveFail'),
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.approveFail'),
       });
     } finally {
       setActionLoadingIds((prev) => {
@@ -222,7 +223,7 @@ const AdminDashboard = () => {
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || t('admin.rejectFail'),
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.rejectFail'),
       });
     } finally {
       setActionLoadingIds((prev) => {
@@ -248,7 +249,7 @@ const AdminDashboard = () => {
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || t('admin.deleteFail'),
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.deleteFail'),
       });
     } finally {
       setDeleteLoading(false);
@@ -315,7 +316,7 @@ const AdminDashboard = () => {
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || t('admin.addUserFail'),
+        text: getServerErrorDisplay(error?.response?.data, t) || t('admin.addUserFail'),
       });
     } finally {
       setCreateUserLoading(false);

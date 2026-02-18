@@ -2,6 +2,8 @@ const path = require('path');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 const { asyncLimit } = require('../utils/asyncUtils');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 
 function posixJoin(a, b) {
   const left = a === '/' ? '' : String(a || '');
@@ -55,17 +57,17 @@ async function selectiveTransfer({
   webdav = defaultWebdavAdapter(),
 } = {}) {
   if (mode !== 'move' && mode !== 'copy') {
-    throw new Error(`Invalid mode: ${mode}`);
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.invalidMode, 400, { mode });
   }
   if (typeof canEnterDirectory !== 'function' || typeof canTransferFile !== 'function') {
-    throw new Error('canEnterDirectory and canTransferFile are required');
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.callbacksRequired, 400);
   }
 
   const srcRoot = normalizePath(sourceRoot);
   const dstRoot = normalizePath(destRoot);
 
   if (isMetaPath(srcRoot) || isMetaPath(dstRoot)) {
-    throw new Error('Access denied');
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.accessDenied, 403);
   }
 
   await safeEnsureDir(webdav, dstRoot);
@@ -81,7 +83,7 @@ async function selectiveTransfer({
         skippedPaths.push(srcPath);
         return false;
       } else if (onConflict === 'error') {
-        throw new Error(`Conflict: Destination already exists: ${dstPath}`);
+        throw createError(SERVER_ERROR_CODES.selectiveTransfer.destinationExists, 409, { path: dstPath });
       }
       // 'overwrite' falls through to move/copy with Overwrite: 'T'
     }

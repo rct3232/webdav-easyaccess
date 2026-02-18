@@ -70,7 +70,7 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
       const error = validator(value, values);
       return error || null;
     } catch (err) {
-      return err.message || 'Validation error';
+      return err.message || 'validation.genericError';
     }
   }, [validators, values]);
 

@@ -40,8 +40,8 @@ describe('Permission Routes', () => {
         });
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('successfully');
-      
+      expect(response.body.messageCode).toBe('serverMessages.permissions.permissionGranted');
+
       const perms = await Permission.getUserPermissions(user2.id);
       expect(perms).toHaveLength(1);
       expect(perms[0].folder_path).toBe('/user1/shared');

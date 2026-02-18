@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { getPublicShareLinkInfo } from '../services/shareLinkService';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 import FileManager from './FileManager';
 import ShareLinkSingleFileView from './ShareLinkSingleFileView';
 
@@ -39,8 +40,9 @@ const ShareLinkLoader = () => {
       } catch (err) {
         if (!cancelled) {
           console.error('Share link load error:', err);
-          const msg = err.message || t('shareLink.loadFail');
-          setError(msg.includes('만료') || msg.includes('expired') ? t('shareLink.expired') : msg);
+          const data = err?.response?.data;
+          const msg = data ? getServerErrorDisplay(data, t) : t('shareLink.loadFail');
+          setError(msg);
         }
       } finally {
         if (!cancelled) {

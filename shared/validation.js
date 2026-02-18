@@ -99,14 +99,14 @@ function validateUsername(username) {
   return null;
 }
 
-function validateMatch(value1, value2, fieldName = '값') {
+function validateMatch(value1, value2, fieldName) {
   if (value1 !== value2) {
     return { key: 'validation.match', fieldName };
   }
   return null;
 }
 
-function validateRequired(value, fieldName = '필드') {
+function validateRequired(value, fieldName) {
   if (value === null || value === undefined || value === '') {
     return { key: 'validation.required', fieldName };
   }

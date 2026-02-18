@@ -7,7 +7,11 @@
 export function getValidationMessage(result, t) {
   if (result == null) return null;
   if (typeof result === 'object' && result.key) {
-    return t(result.key, result);
+    const params = { ...result };
+    if (params.fieldName == null) {
+      params.fieldName = t('validation.field');
+    }
+    return t(params.key, params);
   }
   return t(result);
 }

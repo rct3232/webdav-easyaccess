@@ -1,4 +1,6 @@
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 const {
   META_ROOT,
   PERMISSIONS_DIR,
@@ -52,9 +54,7 @@ function containsPathTraversal(p) {
 async function grantSharePermission(token, rootPath, isDirectory) {
   const root = normalizeWebdavPath(rootPath);
   if (containsPathTraversal(root)) {
-    const err = new Error('Invalid path');
-    err.code = 'INVALID_PATH';
-    throw err;
+    throw createError(SERVER_ERROR_CODES.files.invalidPath, 400);
   }
   await ensureShareDirs();
   const doc = {
@@ -537,9 +537,7 @@ async function grantFilePermission(userId, filePath, permission) {
   const uid = String(userId);
   const normalized = normalizeFilePath(filePath);
   if (!PERMISSIONS.isValid(permission)) {
-    const err = new Error('Invalid permission');
-    err.code = 'INVALID_PERMISSION';
-    throw err;
+    throw createError(SERVER_ERROR_CODES.permissionRequests.invalidPermission, 400);
   }
   return await withLock(`perm:${uid}`, async () => {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
@@ -547,14 +545,10 @@ async function grantFilePermission(userId, filePath, permission) {
     const parentPath = getParentPath(normalized);
     const pathEffective = getPathEffectivePermissionFromDoc(doc, parentPath);
     if (pathEffective === PERMISSIONS.ADMIN) {
-      const err = new Error('Cannot grant file permission: parent path has admin');
-      err.code = 'PATH_IS_ADMIN';
-      throw err;
+      throw createError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent, 400);
     }
     if (pathEffective != null && permissionRank(permission) <= permissionRank(pathEffective)) {
-      const err = new Error('File permission must be higher than parent path permission');
-      err.code = 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH';
-      throw err;
+      throw createError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent, 400);
     }
     doc.file_permissions[normalized] = permission;
     await writeUserPermissionsDoc(uid, doc);

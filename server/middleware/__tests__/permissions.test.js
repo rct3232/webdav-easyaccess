@@ -19,6 +19,7 @@ const {
   createTestUser,
   grantTestPermission
 } = require('../../test-utils');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 describe('Permissions Middleware', () => {
   let adminUser;
@@ -249,7 +250,7 @@ describe('Permissions Middleware', () => {
       await middleware(mockReq, mockRes, mockNext);
       
       expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access denied' });
+      expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.accessDenied });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -259,7 +260,7 @@ describe('Permissions Middleware', () => {
       await middleware(mockReq, mockRes, mockNext);
       
       expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Path is required' });
+      expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.pathRequired });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -311,7 +312,7 @@ describe('Permissions Middleware', () => {
       
       // null principalId results in 401 Authentication required
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication required' });
+      expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired });
     });
   });
 
@@ -350,7 +351,7 @@ describe('Permissions Middleware', () => {
       await middleware(mockReq, mockRes, mockNext);
       
       expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access denied' });
+      expect(mockRes.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.accessDenied });
       expect(mockNext).not.toHaveBeenCalled();
     });
 

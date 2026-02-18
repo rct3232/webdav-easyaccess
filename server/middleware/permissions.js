@@ -3,6 +3,7 @@
  */
 
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
@@ -180,24 +181,24 @@ function requirePermission(permissionType = PERMISSIONS.READ, pathExtractor = (r
     try {
       const path = pathExtractor(req);
       if (!path) {
-        return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.pathRequired });
       }
 
       const principalId = req.principalId ?? req.user?.id;
       if (principalId == null) {
-        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired });
       }
 
       const hasPermission = await checkFilePermission(principalId, path, permissionType);
       
       if (!hasPermission) {
-        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.accessDenied });
       }
 
       next();
     } catch (error) {
       console.error('Permission check error:', error);
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to check permissions' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.checkFail });
     }
   };
 }
@@ -214,24 +215,24 @@ function requireFolderPermission(permissionType = PERMISSIONS.READ, pathExtracto
     try {
       const path = pathExtractor(req);
       if (!path) {
-        return res.status(HTTP_STATUS.BAD_REQUEST).json({ error: 'Path is required' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.pathRequired });
       }
 
       const principalId = req.principalId ?? req.user?.id;
       if (principalId == null) {
-        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ error: 'Authentication required' });
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired });
       }
 
       const hasPermission = await checkFolderPermission(principalId, path, permissionType);
       
       if (!hasPermission) {
-        return res.status(HTTP_STATUS.FORBIDDEN).json({ error: 'Access denied' });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.accessDenied });
       }
 
       next();
     } catch (error) {
       console.error('Permission check error:', error);
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ error: 'Failed to check permissions' });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.permissionsMiddleware.checkFail });
     }
   };
 }

@@ -87,7 +87,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>속성</DialogTitle>
+      <DialogTitle>{t('dialogs.propertiesTitle')}</DialogTitle>
       <DialogContent>
         {/* 1. 아이콘/이름 블록: 좌측 정렬, 썸네일 배경 + 그래디언트 */}
         <Box

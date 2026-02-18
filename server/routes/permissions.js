@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../utils/auth');
 const Permission = require('../models/Permission');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
@@ -15,11 +16,11 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
   const { userId, folderPath, permission, target } = req.body;
 
   if (!userId || !folderPath || !permission) {
-    throw validationError('User ID, folder path, and permission are required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   if (!PERMISSIONS.isValid(permission)) {
-    throw validationError('Invalid permission. Must be read, write, or admin');
+    throw validationError(SERVER_ERROR_CODES.permissionRequests.invalidPermission);
   }
 
   const user = req.user.full;
@@ -28,7 +29,7 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
 
   const canGrant = await canGrantPermission(user, pathForCheck, req.user.id);
   if (!canGrant) {
-    throw forbiddenError(isFile ? 'Access denied. You do not have permission to grant file permission for this path' : 'Access denied. You do not have permission to share this folder');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   const options = isFile ? { target: 'file' } : {};
@@ -36,11 +37,11 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
     await Permission.grant(userId, folderPath, permission, options);
   } catch (err) {
     if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(err.message || 'File permission must be higher than parent path permission');
+      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
     }
     throw err;
   }
-  res.json({ message: 'Permission granted successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionGranted });
 }));
 
 // Revoke permission (folder or file; use scope: 'pathOnly' for file-level only)
@@ -48,7 +49,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
   const { userId, folderPath, includeSubfolders, scope } = req.query;
 
   if (!userId || !folderPath) {
-    throw validationError('User ID and folder path are required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   const requestingUser = req.user.full;
@@ -58,12 +59,12 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
 
   const canRevoke = await canRevokePermission(requestingUser, pathForCheck, req.user.id, targetUserId);
   if (!canRevoke) {
-    throw forbiddenError(isPathOnly ? 'Access denied. You do not have permission to revoke file permission for this path' : 'Access denied. You do not have permission to revoke access to this folder');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   if (isPathOnly) {
     await Permission.revoke(userId, folderPath, { scope: 'pathOnly' });
-    return res.json({ message: 'Permission revoked successfully' });
+    return res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
   }
 
   const normalizedFolderPath = normalizePath(folderPath);
@@ -87,13 +88,13 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
       }
     }
     return res.json({
-      message: 'Permission revoked successfully',
+      messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked,
       deletedCount,
     });
   }
 
   await Permission.revoke(userId, folderPath);
-  res.json({ message: 'Permission revoked successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
 }));
 
 // Get user permissions
@@ -102,11 +103,11 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
   const requestingUser = await User.findById(req.user.id);
 
   if (!requestingUser) {
-    throw notFoundError('User not found');
+    throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
   }
   // 관리자는 모든 사용자의 권한 조회 가능, 일반 사용자는 본인만
   if (!requestingUser.is_admin && parseInt(userId) !== req.user.id) {
-    throw forbiddenError('Access denied');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
   const permissions = await Permission.getUserPermissions(userId);
@@ -163,7 +164,7 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
     }
   }
   if (!canView) {
-    throw forbiddenError('Access denied. You do not have permission to view permissions for this folder');
+    throw forbiddenError(SERVER_ERROR_CODES.permissions.viewPermissionsDenied);
   }
 
   let permissions;
@@ -218,23 +219,23 @@ router.get('/check', authenticateToken, requireUser, normalizePathParam, asyncHa
 router.post('/file/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
   const { userId, filePath, permission } = req.body;
   if (!userId || !filePath || !permission) {
-    throw validationError('User ID, file path, and permission are required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
   if (!PERMISSIONS.isValid(permission)) {
-    throw validationError('Invalid permission. Must be read, write, or admin');
+    throw validationError(SERVER_ERROR_CODES.permissionRequests.invalidPermission);
   }
   const user = req.user.full;
   const parentPath = getParentPath(normalizePath(filePath));
   const canGrant = await canGrantPermission(user, parentPath, req.user.id);
   if (!canGrant) {
-    throw forbiddenError('Access denied. You do not have permission to grant file permission for this path');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
   try {
     await Permission.grantFile(userId, filePath, permission);
-    res.json({ message: 'File permission granted successfully' });
+    res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionGranted });
   } catch (err) {
     if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(err.message || 'File permission must be higher than parent path permission');
+      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
     }
     throw err;
   }
@@ -244,40 +245,40 @@ router.post('/file/grant', authenticateToken, requireUser, normalizePathParam, a
 router.delete('/file/revoke', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
   const { userId, filePath } = req.query;
   if (!userId || !filePath) {
-    throw validationError('User ID and file path are required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
   const requestingUser = req.user.full;
   const targetUserId = parseInt(userId, 10);
   const parentPath = getParentPath(normalizePath(filePath));
   const canRevoke = await canRevokePermission(requestingUser, parentPath, req.user.id, targetUserId);
   if (!canRevoke) {
-    throw forbiddenError('Access denied. You do not have permission to revoke file permission for this path');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
   await Permission.revokeFile(userId, filePath);
-  res.json({ message: 'File permission revoked successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionRevoked });
 }));
 
 // Update file permission (same validation as grant)
 router.patch('/file', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
   const { userId, filePath, permission } = req.body;
   if (!userId || !filePath || !permission) {
-    throw validationError('User ID, file path, and permission are required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
   if (!PERMISSIONS.isValid(permission)) {
-    throw validationError('Invalid permission. Must be read, write, or admin');
+    throw validationError(SERVER_ERROR_CODES.permissionRequests.invalidPermission);
   }
   const user = req.user.full;
   const parentPath = getParentPath(normalizePath(filePath));
   const canGrant = await canGrantPermission(user, parentPath, req.user.id);
   if (!canGrant) {
-    throw forbiddenError('Access denied. You do not have permission to update file permission for this path');
+    throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
   try {
     await Permission.grantFile(userId, filePath, permission);
-    res.json({ message: 'File permission updated successfully' });
+    res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionUpdated });
   } catch (err) {
     if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(err.message || 'File permission must be higher than parent path permission');
+      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
     }
     throw err;
   }
@@ -287,7 +288,7 @@ router.patch('/file', authenticateToken, requireUser, normalizePathParam, asyncH
 router.get('/file/check', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
   const pathParam = req.query.path;
   if (!pathParam) {
-    throw validationError('Path is required');
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
   const filePath = normalizePath(pathParam);
   const doc = await Permission.getPermissionDoc(req.user.id);

@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 import { validateRequired } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../utils/validationMessage';
 import { getPublicSettings } from '../services/settingsService';
@@ -74,12 +75,13 @@ export const LoginForm = ({
         onSuccess?.(result);
       }
     } else {
+      const msg = getServerErrorDisplay(result, t);
       if (result.status === 'pending') {
-        setWarning(result.message || t('login.pendingApproval'));
+        setWarning(msg || t('login.pendingApproval'));
       } else if (result.status === 'rejected') {
-        setError(result.message || t('login.rejected'));
+        setError(msg || t('login.rejected'));
       } else {
-        setError(result.error || t('login.failed'));
+        setError(msg || t('login.failed'));
       }
     }
 

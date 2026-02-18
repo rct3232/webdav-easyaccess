@@ -32,6 +32,13 @@ describe('errorUtils', () => {
       expect(result.raw).toBe('Server says no');
     });
 
+    it('returns errorCode as key when server sends errorCode (no raw)', () => {
+      const error = { response: { data: { errorCode: 'serverErrors.auth.invalidCredentials' } } };
+      const result = getErrorMessage(error);
+      expect(result.key).toBe('serverErrors.auth.invalidCredentials');
+      expect(result).not.toHaveProperty('raw');
+    });
+
     it('returns default key when error is null', () => {
       expect(getErrorMessage(null, 'errors.unknown')).toEqual({ key: 'errors.unknown' });
     });

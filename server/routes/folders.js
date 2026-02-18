@@ -9,6 +9,7 @@ const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/path
 const { canWriteFolder, isOwnerPath, getHomeOwnerUserIdForPath } = require('../utils/permissionPolicy');
 const { isMetaPath } = require('../store/metaPaths');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const requireUser = require('../middleware/requireUser');
 const { checkMetaPathAccess } = require('../middleware/metaPathGuard');
 const normalizePathParam = require('../middleware/normalizePathParam');
@@ -18,7 +19,7 @@ const path = require('path');
 router.post('/create', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   let { path: folderPath } = req.body;
   if (!folderPath) {
-    throw validationError('Folder path is required');
+    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
   }
 
   // Check access for non-admin users
@@ -27,13 +28,13 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   // 관리자는 모든 경로에 폴더 생성 가능
   if (!user.is_admin) {
     if (folderPath === '/' || folderPath === '') {
-      throw forbiddenError('Access denied');
+      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     }
     if (!isOwnerPath(user, folderPath)) {
       const parentPath = getParentPath(folderPath);
       const ok = await canWriteFolder(user, parentPath);
       if (!ok) {
-        throw forbiddenError('Access denied');
+        throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
       }
     }
   }
@@ -45,7 +46,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   const folderExists = await pathExists(folderPath);
   if (folderExists) {
     const folderName = path.basename(folderPath.slice(0, -1));
-    throw conflictError(`폴더 생성 실패: "${folderName}" 이름의 폴더가 이미 존재합니다.`);
+    throw conflictError(SERVER_ERROR_CODES.folders.folderAlreadyExists, { folderName });
   }
 
   await createDirectory(folderPath);
@@ -68,7 +69,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
     console.error('Failed to grant home owner admin permission after folder creation:', permError);
   }
 
-  res.json({ message: 'Folder created successfully', path: folderPath });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.folders.createSuccess, path: folderPath });
 }));
 
 module.exports = router;

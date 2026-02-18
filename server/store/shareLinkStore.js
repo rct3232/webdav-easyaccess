@@ -1,5 +1,7 @@
 const storage = require('./storage');
 const { normalizeWebdavPath } = require('./metaPaths');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 
 const SHARE_LINKS_DIR = '/.wea/share-links/';
 
@@ -134,7 +136,7 @@ async function getUserShareLinks(userId) {
 async function updateShareLink(token, updates) {
   const link = await getShareLink(token);
   if (!link) {
-    throw new Error('Share link not found');
+    throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
   }
   
   const updatedLink = {
@@ -166,7 +168,7 @@ async function deleteShareLink(token) {
 async function incrementDownloadCount(token) {
   const link = await getShareLink(token);
   if (!link) {
-    throw new Error('Share link not found');
+    throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
   }
   
   return await updateShareLink(token, {

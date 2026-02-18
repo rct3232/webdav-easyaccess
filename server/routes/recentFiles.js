@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateToken } = require('../utils/auth');
 const requireUser = require('../middleware/requireUser');
 const { asyncHandler, validationError } = require('../utils/errorHandler');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const recentFilesStore = require('../store/recentFilesStore');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
@@ -26,7 +27,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
   const user = req.user.full;
 
   if (!path) {
-    throw validationError('File path is required');
+    throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
   }
 
   const normalizedPath = normalizePath(path);
@@ -51,7 +52,7 @@ router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(asyn
   const user = req.user.full;
 
   if (!filePath) {
-    throw validationError('File path is required');
+    throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
   }
 
   // URL 디코딩
@@ -72,7 +73,7 @@ router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res)
   
   await recentFilesStore.clearRecentFiles(user.id);
   
-  res.json({ message: 'Recent files cleared successfully' });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.recentFiles.clearedSuccess });
 }));
 
 /**
@@ -85,7 +86,7 @@ router.post('/apply-moves', authenticateToken, requireUser, asyncHandler(async (
   const user = req.user.full;
 
   if (!Array.isArray(moves)) {
-    throw validationError('moves array is required');
+    throw validationError(SERVER_ERROR_CODES.recentFiles.movesRequired);
   }
 
   const updatedFiles = await recentFilesStore.applyBulkMove(user.id, moves);
@@ -102,7 +103,7 @@ router.post('/remove-paths', authenticateToken, requireUser, asyncHandler(async 
   const user = req.user.full;
 
   if (!Array.isArray(filePaths) || !Array.isArray(folderPaths)) {
-    throw validationError('filePaths and folderPaths must be arrays');
+    throw validationError(SERVER_ERROR_CODES.recentFiles.pathsMustBeArrays);
   }
 
   const updatedFiles = await recentFilesStore.removePaths(user.id, filePaths, folderPaths);

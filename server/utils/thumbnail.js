@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('./errorHandler');
 
 const THUMBNAIL_TOKEN_SECRET = process.env.THUMBNAIL_TOKEN_SECRET || process.env.JWT_SECRET || 'thumbnail-secret';
 const THUMBNAIL_TOKEN_EXPIRY = process.env.THUMBNAIL_TOKEN_EXPIRY || '15m';
@@ -171,7 +173,7 @@ async function generateImageThumbnail(filePath, webdavPath) {
 
     const buffer = await getFileContents(webdavPath);
     if (!buffer || buffer.length === 0) {
-      throw new Error('Failed to download file from WebDAV');
+      throw createError(SERVER_ERROR_CODES.thumbnail.downloadFailed, 500);
     }
     
     const metadata = await sharp(buffer).metadata();
@@ -226,7 +228,7 @@ async function generateVideoThumbnail(filePath, webdavPath) {
     
     const buffer = await getFileContents(webdavPath);
     if (!buffer || buffer.length === 0) {
-      throw new Error('Failed to download video from WebDAV');
+      throw createError(SERVER_ERROR_CODES.thumbnail.videoDownloadFailed, 500);
     }
     
     const { getDataDir } = require('./paths');
@@ -255,20 +257,12 @@ async function generateVideoThumbnail(filePath, webdavPath) {
         })
         .on('end', () => resolve())
         .on('error', (err) => {
-          let errorMessage = `FFmpeg failed: ${err.message}`;
-          if (err.message.includes('ENOENT') || err.message.includes('spawn')) {
-            errorMessage += `\n\nFFmpeg is not installed or not found in PATH.\n`;
-            errorMessage += `Please install FFmpeg:\n`;
-            errorMessage += `  Windows: Download from https://ffmpeg.org/download.html or use: choco install ffmpeg\n`;
-            errorMessage += `  Or set FFMPEG_PATH in .env file to the full path of ffmpeg.exe\n`;
-            errorMessage += `  Example: FFMPEG_PATH=C:\\ffmpeg\\bin\\ffmpeg.exe`;
-          }
-          reject(new Error(errorMessage));
+          reject(createError(SERVER_ERROR_CODES.thumbnail.ffmpegFailed, 500, { reason: err.message }));
         });
     });
     
     if (!fs.existsSync(tempFramePath)) {
-      throw new Error('Frame extraction failed - output file not found');
+      throw createError(SERVER_ERROR_CODES.thumbnail.frameExtractionFailed, 500);
     }
     const frameBuffer = fs.readFileSync(tempFramePath);
     const thumbnailBuffer = await sharp(frameBuffer)

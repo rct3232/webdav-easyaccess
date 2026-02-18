@@ -9,6 +9,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { formatDateOnly } from '../../utils/format';
+import { getServerErrorDisplay } from '../../utils/errorUtils';
 import {
   Link as LinkIcon,
   ContentCopy as ContentCopyIcon,
@@ -114,7 +115,7 @@ const ExternalShareSection = ({
                 console.error('Failed to create share link:', error);
                 if (onMessage) {
                   onMessage({
-                    text: error.response?.data?.error || t('share.linkCreateFail'),
+                    text: getServerErrorDisplay(error?.response?.data, t) || t('share.linkCreateFail'),
                     type: 'error',
                   });
                 }

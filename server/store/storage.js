@@ -12,6 +12,8 @@ const {
   putFileContentsAdvanced,
 } = require('../utils/webdav');
 const { normalizeWebdavPath } = require('./metaPaths');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 
 function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
@@ -35,7 +37,7 @@ function webdavToFsPath(webdavPath) {
   // Safety: ensure path stays under base
   const resolved = path.resolve(joined);
   if (!resolved.startsWith(base)) {
-    throw new Error(`Invalid path mapping for "${webdavPath}"`);
+    throw createError(SERVER_ERROR_CODES.storage.invalidPathMapping, 400, { path: webdavPath });
   }
   return resolved;
 }

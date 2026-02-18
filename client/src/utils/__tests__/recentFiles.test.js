@@ -67,7 +67,7 @@ const setupRecentFilesMocks = (getStore, updateStore, clearStore) => {
     }
     if (url === '/recent-files') {
       clearStore();
-      return Promise.resolve({ data: { message: 'Recent files cleared successfully' } });
+      return Promise.resolve({ data: { messageCode: 'serverMessages.recentFiles.clearedSuccess' } });
     }
     return Promise.reject(new Error('Not mocked'));
   });

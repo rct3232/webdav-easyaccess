@@ -4,6 +4,8 @@
  */
 
 import { useState, useCallback } from 'react';
+import i18n from '../i18n';
+import { getServerErrorDisplay } from '../utils/errorUtils';
 
 /**
  * Message hook for unified message display
@@ -98,20 +100,24 @@ export const useMessage = (options = {}) => {
   }, []);
 
   /**
-   * Show error from error object
+   * Show error from error object. Prefers server errorCode when present.
    * @param {Error} error - Error object
    * @param {string} defaultMsg - Default error message
    * @param {number} duration - Duration in milliseconds
    */
-  const showErrorFromError = useCallback((error, defaultMsg = '오류가 발생했습니다', duration = null) => {
-    let errorMsg = defaultMsg;
-    
-    if (error?.response?.data?.error) {
-      errorMsg = error.response.data.error;
+  const showErrorFromError = useCallback((error, defaultMsg, duration = null) => {
+    const data = error?.response?.data;
+    if (data?.errorCode) {
+      showError(getServerErrorDisplay(data, (key, opts) => i18n.t(key, opts)), duration);
+      return;
+    }
+    const fallbackMsg = defaultMsg ?? i18n.t('errors.unknown');
+    let errorMsg = fallbackMsg;
+    if (data?.error) {
+      errorMsg = data.error;
     } else if (error?.message) {
       errorMsg = error.message;
     }
-    
     showError(errorMsg, duration);
   }, [showError]);
 

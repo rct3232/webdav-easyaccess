@@ -56,16 +56,16 @@ export const determineErrorType = (error) => {
   
   // 에러 메시지 기반 판별
   const message = (error.message || error.response?.data?.error || '').toLowerCase();
-  if (message.includes('permission') || message.includes('권한')) {
+  if (message.includes('permission')) {
     return ERROR_TYPES.PERMISSION_DENIED;
   }
-  if (message.includes('not found') || message.includes('존재하지')) {
+  if (message.includes('not found')) {
     return ERROR_TYPES.FILE_NOT_FOUND;
   }
-  if (message.includes('invalid') || message.includes('잘못된')) {
+  if (message.includes('invalid')) {
     return ERROR_TYPES.INVALID_PATH;
   }
-  if (message.includes('already exists') || message.includes('이미 존재')) {
+  if (message.includes('already exists')) {
     return ERROR_TYPES.DUPLICATE_FILE;
   }
   
@@ -83,6 +83,7 @@ export const getErrorMessageByType = (errorType) => {
 
 /**
  * Extract error message from error object. Returns key for translation or raw server message.
+ * When server sends errorCode, returns that key (no raw). Otherwise falls back to type inference or raw.
  * @param {Error} error - Error object
  * @param {string} defaultKey - Default i18n key (e.g. 'errors.unknown')
  * @returns {{ key: string, raw?: string }} key always set; raw set when server provided a message to show as-is
@@ -90,14 +91,19 @@ export const getErrorMessageByType = (errorType) => {
 export const getErrorMessage = (error, defaultKey = 'errors.unknown') => {
   if (!error) return { key: defaultKey };
 
+  const data = error.response?.data;
+  if (data?.errorCode) {
+    return { key: data.errorCode };
+  }
+
   const errorType = determineErrorType(error);
 
   if (errorType !== ERROR_TYPES.UNKNOWN) {
     return { key: getErrorMessageByType(errorType) };
   }
 
-  if (error.response?.data?.error) {
-    return { key: defaultKey, raw: error.response.data.error };
+  if (data?.error) {
+    return { key: defaultKey, raw: data.error };
   }
 
   if (error.message) {
@@ -108,13 +114,51 @@ export const getErrorMessage = (error, defaultKey = 'errors.unknown') => {
 };
 
 /**
+ * Get display string for server error response (errorCode + params).
+ * @param {Object} data - Response data with optional errorCode, params
+ * @param {Function} t - i18n t function
+ * @returns {string} Translated message or fallback
+ */
+export const getServerErrorDisplay = (data, t) => {
+  if (!data) return t('errors.unknown');
+  if (data.errorCode) {
+    const msg = t(data.errorCode, data.params || {});
+    return typeof msg === 'string' ? msg : t('errors.unknown');
+  }
+  if (data.error) return data.error;
+  return t('errors.unknown');
+};
+
+/**
+ * Get display string for server success message (messageCode + params).
+ * @param {Object} data - Response data with optional messageCode, params
+ * @param {Function} t - i18n t function
+ * @returns {string} Translated message or fallback
+ */
+export const getServerMessageDisplay = (data, t) => {
+  if (!data) return '';
+  if (data.messageCode) {
+    const msg = t(data.messageCode, data.params || {});
+    return typeof msg === 'string' ? msg : '';
+  }
+  if (data.message) return data.message;
+  return '';
+};
+
+/**
  * Show user-facing error message from an error object.
+ * Prefers server errorCode when present; otherwise uses getErrorMessage (type or raw).
  * @param {Error} error - Error object
  * @param {Function} showErrorFn - Function to display the message (e.g. useMessage().showError)
- * @param {(key: string) => string} t - i18n t function
+ * @param {(key: string, params?: object) => string} t - i18n t function
  * @param {string} [defaultKey='errors.unknown'] - Default i18n key
  */
 export const showErrorFromError = (error, showErrorFn, t, defaultKey = 'errors.unknown') => {
+  const data = error?.response?.data;
+  if (data?.errorCode) {
+    showErrorFn(getServerErrorDisplay(data, t));
+    return;
+  }
   const { key, raw } = getErrorMessage(error, defaultKey);
   showErrorFn(raw != null ? raw : t(key));
 };

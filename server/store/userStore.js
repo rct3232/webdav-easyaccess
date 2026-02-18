@@ -1,4 +1,6 @@
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../utils/errorHandler');
 const {
   META_ROOT,
   USERS_DIR,
@@ -127,7 +129,7 @@ async function findById(id) {
 
 async function createUser({ username, email, passwordHash, isAdmin = false }) {
   if (!username || !email || !passwordHash) {
-    throw new Error('username, email, passwordHash are required');
+    throw createError(SERVER_ERROR_CODES.admin.createUserRequiredFields, 400);
   }
 
   return await withLock('users', async () => {
@@ -135,9 +137,7 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
 
     // Username uniqueness
     if (await exists(userPathByUsername(username))) {
-      const e = new Error('Username already exists');
-      e.code = 'USER_EXISTS';
-      throw e;
+      throw createError(SERVER_ERROR_CODES.admin.usernameTaken, 409);
     }
 
     // Email uniqueness (via hash index)
@@ -145,9 +145,7 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
     const emailHash = sha256HexLower(emailNorm);
     const emailIdxPath = emailIndexPathByEmailHash(emailHash);
     if (await exists(emailIdxPath)) {
-      const e = new Error('Email already exists');
-      e.code = 'EMAIL_EXISTS';
-      throw e;
+      throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
     }
 
     const id = index.nextId;
@@ -202,14 +200,12 @@ async function updateStatus(userId, status) {
 
 async function updateEmail(userId, newEmail) {
   const newNorm = normalizeEmail(newEmail);
-  if (!newNorm) throw new Error('Email is required');
+  if (!newNorm) throw createError(SERVER_ERROR_CODES.users.emailRequired, 400);
 
   return await withLock('users', async () => {
     const user = await findById(userId);
     if (!user) {
-      const e = new Error('User not found');
-      e.code = 'USER_NOT_FOUND';
-      throw e;
+      throw createError(SERVER_ERROR_CODES.admin.userNotFound, 404);
     }
 
     const newHash = sha256HexLower(newNorm);
@@ -218,9 +214,7 @@ async function updateEmail(userId, newEmail) {
       const buf = await readFile(newIdxPath);
       const existingUsername = Buffer.from(buf).toString('utf8').trim();
       if (existingUsername && existingUsername !== user.username) {
-        const e = new Error('Email already exists');
-        e.code = 'EMAIL_EXISTS';
-        throw e;
+        throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
       }
     } else {
       await writeFile(newIdxPath, `${user.username}\n`, {

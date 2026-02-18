@@ -34,6 +34,7 @@ import {
 import { useResponsive } from '../../hooks/useResponsive';
 import { checkmarkAnimation, progressCompleteAnimation } from './FileOperationProgress/styles';
 import ProgressSummary from './FileOperationProgress/ProgressSummary';
+import { getServerErrorDisplay } from '../../utils/errorUtils';
 
 const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
   const { t } = useTranslation();
@@ -102,10 +103,11 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
       return t('fileManager.statusCompleted');
     }
     if (item.status === 'warning') {
-      return item.error || t('fileManager.statusExcluded');
+      return item.errorCode ? getServerErrorDisplay(item, t) : (item.error || t('fileManager.statusExcluded'));
     }
     if (item.status === 'error') {
-      return t('fileManager.errorWithMessage', { message: item.error || t('common.unknownError') });
+      const msg = item.errorCode ? getServerErrorDisplay(item, t) : (item.error || t('common.unknownError'));
+      return t('fileManager.errorWithMessage', { message: msg });
     }
     return t('fileManager.statusWaiting');
   };
@@ -166,7 +168,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
       const cur = rep.current || '';
       const conflictLabel = t('fileManager.statusConflictCheck');
       const preparingLabel = t('fileManager.statusPreparing');
-      if (cur.includes('충돌 확인') || cur.includes(conflictLabel)) return t('fileManager.statusPreparing');
+      if (cur.includes(conflictLabel)) return t('fileManager.statusPreparing');
       if (cur === '' || cur.includes(preparingLabel) || cur.includes(t('fileManager.statusUploadPreparing')) || cur.includes(t('fileManager.statusRetryPreparing'))) return t('fileManager.statusPreparing');
       if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return t('fileManager.statusPreparing');
       const typeLabels = {
@@ -193,7 +195,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
       const cur = rep.current || '';
       const conflictLabel = t('fileManager.statusConflictCheck');
       const preparingLabel = t('fileManager.statusPreparing');
-      if (cur.includes('충돌 확인') || cur.includes(conflictLabel)) return t('fileManager.statusConflictCheck');
+      if (cur.includes(conflictLabel)) return t('fileManager.statusConflictCheck');
       if (cur === '') return t('fileManager.statusProcessing');
       if (cur === preparingLabel) return t('fileManager.statusPreparing');
       if (cur.includes(t('fileManager.statusUploadPreparing'))) return t('fileManager.statusUploadPreparing');
@@ -407,7 +409,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                         }}
                       >
                         <CloseIcon fontSize="small" sx={{ fontSize: '0.875rem' }} />
-                        작업 취소
+                        {t('fileManager.cancelOperation')}
                       </Typography>
                     )}
                   </Box>
@@ -557,7 +559,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                         <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
                         <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main' }}>
-                          건너뛴 항목: {(item.skippedCountByConflict ?? item.skippedPathsByConflict.length)}개
+                          {t('fileManager.bulkSkippedCount', { count: item.skippedCountByConflict ?? item.skippedPathsByConflict.length })}
                         </Typography>
                       </Box>
                       <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
@@ -596,7 +598,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                         return (
                           <>
                             <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main', mb: 1, display: 'block' }}>
-                              권한으로 제외된 항목: {skippedCount}개{truncated ? ' (일부만 표시됨)' : ''}
+                              {t('fileManager.bulkExcludedByPermission', { count: skippedCount })}{truncated ? ` ${t('fileManager.bulkExcludedTruncated')}` : ''}
                             </Typography>
                             <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
                               {skippedPaths.map((p, idx) => (
@@ -623,7 +625,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                   {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
                     <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
                       <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
-                        실패한 항목:
+                        {t('fileManager.failedItemsLabel')}
                       </Typography>
                       <List dense sx={{ py: 0 }}>
                         {item.failedItems.map((failedItem, failedIndex) => (
@@ -687,7 +689,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                         onClick={() => onRetry(item.id)}
                         sx={{ flex: 1 }}
                       >
-                        재시도
+                        {t('fileManager.retry')}
                       </Button>
                     )}
                     <Button
@@ -696,7 +698,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       onClick={() => onClose?.(item.id)}
                       sx={{ flex: 1 }}
                     >
-                      확인
+                      {t('common.confirm')}
                     </Button>
                   </Box>
                 )}

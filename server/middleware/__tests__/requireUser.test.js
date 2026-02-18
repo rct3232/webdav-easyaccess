@@ -1,5 +1,6 @@
 const requireUser = require('../requireUser');
 const User = require('../../models/User');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 jest.mock('../../models/User');
 
@@ -35,7 +36,7 @@ describe('requireUser middleware', () => {
     await requireUser(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Authentication required' });
+    expect(res.json).toHaveBeenCalledWith({ errorCode: SERVER_ERROR_CODES.requireUser.authenticationRequired });
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -45,7 +46,7 @@ describe('requireUser middleware', () => {
     await requireUser(req, res, next);
 
     expect(next).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'User not found',
+      message: SERVER_ERROR_CODES.auth.userNotFound,
       status: 404
     }));
   });

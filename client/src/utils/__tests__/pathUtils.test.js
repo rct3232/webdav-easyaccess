@@ -44,7 +44,7 @@ describe('pathUtils', () => {
     it('extracts last segment', () => {
       expect(getFolderName('/a/b/c')).toBe('c');
       expect(getFolderName('/')).toBe('Root');
-      expect(getFolderName('/__shared__')).toBe('공유됨');
+      expect(getFolderName('/__shared__')).toBe('Shared');
     });
   });
 });

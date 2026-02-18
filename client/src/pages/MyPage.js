@@ -15,6 +15,8 @@ import {
   Chip,
   Stack,
   CircularProgress,
+  Menu,
+  MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -22,6 +24,7 @@ import {
   Edit as EditIcon,
   ContentCopy as ContentCopyIcon,
   Check as CheckIcon,
+  Language as LanguageIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +43,9 @@ import {
 import { grantPermission } from '../services/permissionService';
 import { formatDate, formatDateOnly } from '../utils/format';
 import { getValidationMessage } from '../utils/validationMessage';
+import { getServerErrorDisplay } from '../utils/errorUtils';
+import { getFlagEmoji } from '../utils/flagEmoji';
+import i18n from '../i18n';
 
 const MyPage = () => {
   const { t } = useTranslation();
@@ -66,6 +72,13 @@ const MyPage = () => {
   const [shareLinks, setShareLinks] = useState([]);
   const [shareLinksLoading, setShareLinksLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(null);
+
+  // 언어 선택 메뉴
+  const [languageMenuAnchor, setLanguageMenuAnchor] = useState(null);
+  const LANGUAGES = [
+    { code: 'ko', label: 'ko' },
+    { code: 'en', label: 'en' },
+  ];
 
   useEffect(() => {
     if (user) {
@@ -135,7 +148,7 @@ const MyPage = () => {
       setOutboxRequests([]);
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || t('mypage.requestListLoadFail'),
+        text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.requestListLoadFail'),
       });
     } finally {
       setRequestLoading(false);
@@ -187,7 +200,7 @@ const MyPage = () => {
       await loadShareLinks();
     } catch (error) {
       console.error('Failed to delete share link:', error);
-      setMessage({ type: 'error', text: error.response?.data?.error || t('mypage.linkDeleteFail') });
+      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkDeleteFail') });
     }
   };
 
@@ -198,7 +211,7 @@ const MyPage = () => {
       await loadShareLinks();
     } catch (error) {
       console.error('Failed to extend link:', error);
-      setMessage({ type: 'error', text: error.response?.data?.error || t('mypage.linkExtendFail') });
+      setMessage({ type: 'error', text: getServerErrorDisplay(error?.response?.data, t) || t('mypage.linkExtendFail') });
     }
   };
 
@@ -282,7 +295,7 @@ const MyPage = () => {
         setEditDialogOpen(false);
       }
     } catch (error) {
-      const serverMsg = error.response?.data?.error;
+      const serverMsg = getServerErrorDisplay(error?.response?.data, t);
       if (emailUpdated && shouldUpdatePassword) {
         setMessage({
           type: 'error',
@@ -335,8 +348,42 @@ const MyPage = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            마이페이지
+            {t('nav.mypage')}
           </Typography>
+          <IconButton
+            edge="end"
+            color="inherit"
+            onClick={(e) => setLanguageMenuAnchor(e.currentTarget)}
+            aria-label={t('mypage.language')}
+            aria-controls={languageMenuAnchor ? 'language-menu' : undefined}
+            aria-haspopup="true"
+            aria-expanded={languageMenuAnchor ? 'true' : undefined}
+          >
+            <LanguageIcon />
+          </IconButton>
+          <Menu
+            id="language-menu"
+            anchorEl={languageMenuAnchor}
+            open={Boolean(languageMenuAnchor)}
+            onClose={() => setLanguageMenuAnchor(null)}
+            MenuListProps={{ 'aria-labelledby': 'language-button' }}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            {LANGUAGES.map(({ code, label }) => (
+              <MenuItem
+                key={code}
+                onClick={() => {
+                  i18n.changeLanguage(code);
+                  setLanguageMenuAnchor(null);
+                }}
+                selected={i18n.language === code || i18n.language?.startsWith(code)}
+              >
+                <span style={{ marginRight: 8 }}>{getFlagEmoji(code)}</span>
+                {label}
+              </MenuItem>
+            ))}
+          </Menu>
         </Toolbar>
       </AppBar>
 
@@ -402,7 +449,7 @@ const MyPage = () => {
                 {t('mypage.accountStatus')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                {user?.status === 'approved' ? t('mypage.approvedStatus') : user?.status}
+                {user?.status === 'approved' ? t('mypage.approvedStatus') : (user?.status === 'pending' ? t('mypage.pending') : user?.status === 'rejected' ? t('mypage.rejected') : user?.status)}
               </Typography>
             </Box>
 

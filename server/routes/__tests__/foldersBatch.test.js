@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../index');
 const { resetTestStore, teardownTestStore, createTestUser, createTestToken } = require('../../test-utils');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const Permission = require('../../models/Permission');
 const webdav = require('../../utils/webdav');
 
@@ -68,7 +69,7 @@ describe('Folders and Batch Operations Routes', () => {
         .send({ path: '/testuser/newfolder' });
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('created');
+      expect(response.body.messageCode).toBe(SERVER_MESSAGE_CODES.folders.createSuccess);
       expect(webdav.createDirectory).toHaveBeenCalled();
     });
 
@@ -81,7 +82,7 @@ describe('Folders and Batch Operations Routes', () => {
         .send({ path: '/testuser/existing' });
 
       expect(response.status).toBe(409);
-      expect(response.body.error).toContain('이미 존재');
+      expect(response.body.errorCode).toBe(SERVER_ERROR_CODES.folders.folderAlreadyExists);
     });
 
     it('fails without folder path', async () => {
@@ -490,7 +491,7 @@ describe('Folders and Batch Operations Routes', () => {
         });
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toContain('unchanged');
+      expect(response.body.messageCode).toBe('serverMessages.files.nameUnchanged');
     });
   });
 });

@@ -9,6 +9,7 @@ import BaseDialog from './BaseDialog';
 import { useFormState } from '../../hooks/useFormState';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../utils/validationMessage';
+import { getServerErrorDisplay } from '../../utils/errorUtils';
 
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
   const { t } = useTranslation();
@@ -47,7 +48,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
             onProgress({
               ...progressItem,
               status: 'processing',
-              current: '(0/1) 생성중...',
+              current: t('fileManager.statusCreatingFolder'),
             });
           }
 
@@ -68,7 +69,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
             }, 3000);
           }
         } catch (error) {
-          const errorMsg = error.response?.data?.error || t('dialogs.createFolderFail');
+          const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('dialogs.createFolderFail');
           setValue('folderName', values.folderName); // Trigger validation
 
           if (onProgress) {

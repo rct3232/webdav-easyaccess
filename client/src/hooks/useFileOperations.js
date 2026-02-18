@@ -160,7 +160,7 @@ export const useFileOperations = ({
         onProgress({
           ...progressItem,
           status: 'processing',
-          current: '(0/1) 이름 변경중...',
+          current: t('fileManager.statusRenaming'),
         });
       }
 

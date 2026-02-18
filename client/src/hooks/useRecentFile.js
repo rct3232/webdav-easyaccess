@@ -268,7 +268,7 @@ export const useRecentFile = ({
               clearTracking(parentPath);
             } else {
               handleRecentFileError(
-                { response: { status: HTTP_STATUS.NOT_FOUND }, message: 'File not found' },
+                { response: { status: HTTP_STATUS.NOT_FOUND }, message: t('errors.fileNotFound') },
                 filePath
               );
               setRecentFileToPreview(null);
@@ -279,7 +279,7 @@ export const useRecentFile = ({
             console.error('Failed to verify file existence:', error);
             if (error.response?.status === HTTP_STATUS.NOT_FOUND || error.response?.status === HTTP_STATUS.FORBIDDEN) {
               handleRecentFileError(
-                { response: { status: HTTP_STATUS.NOT_FOUND }, message: 'File not found' },
+                { response: { status: HTTP_STATUS.NOT_FOUND }, message: t('errors.fileNotFound') },
                 filePath
               );
             } else {

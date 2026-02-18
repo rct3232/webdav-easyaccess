@@ -9,18 +9,18 @@ const resources = {
 };
 
 const getInitialLanguage = () => {
-  if (typeof navigator === 'undefined') return 'ko';
+  if (typeof navigator === 'undefined') return 'en';
   const lang = navigator.language || navigator.userLanguage;
   if (lang && (lang.startsWith('ko') || lang.startsWith('en'))) {
     return lang.startsWith('ko') ? 'ko' : 'en';
   }
-  return 'ko';
+  return 'en';
 };
 
 i18n.use(initReactI18next).init({
   resources,
   lng: getInitialLanguage(),
-  fallbackLng: 'ko',
+  fallbackLng: 'en',
   interpolation: {
     escapeValue: false,
   },

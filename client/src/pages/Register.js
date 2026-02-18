@@ -10,12 +10,15 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { EmailNotificationMessage } from '../components/feedback';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../utils/validationMessage';
 import { getPublicSettings } from '../services/settingsService';
 
 const Register = () => {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,29 +51,29 @@ const Register = () => {
     setError('');
     setSuccess(false);
 
-    const requiredError = validateRequired(username, '사용자명') || validateRequired(email, '이메일');
+    const requiredError = validateRequired(username, t('register.username')) || validateRequired(email, t('register.email'));
     if (requiredError) {
-      setError(requiredError);
+      setError(getValidationMessage(requiredError, t));
       return;
     }
     const usernameError = validateUsername(username);
     if (usernameError) {
-      setError(usernameError);
+      setError(getValidationMessage(usernameError, t));
       return;
     }
     const emailError = validateEmail(email);
     if (emailError) {
-      setError(emailError);
+      setError(getValidationMessage(emailError, t));
       return;
     }
-    const matchError = validateMatch(password, confirmPassword, '비밀번호');
+    const matchError = validateMatch(password, confirmPassword, t('register.password'));
     if (matchError) {
-      setError(matchError);
+      setError(getValidationMessage(matchError, t));
       return;
     }
     const passwordError = validatePassword(password);
     if (passwordError) {
-      setError(passwordError);
+      setError(getValidationMessage(passwordError, t));
       return;
     }
 
@@ -105,7 +108,7 @@ const Register = () => {
           <Box
             component="img"
             src="/logo.png"
-            alt="WebDAV EasyAccess"
+            alt={t('register.logoAlt')}
             sx={{
               height: '96px',
               maxWidth: '100%',
@@ -115,7 +118,7 @@ const Register = () => {
             }}
           />
           <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary" sx={{ mb: 3 }}>
-            회원가입
+            {t('register.title')}
           </Typography>
 
           {error && (
@@ -127,10 +130,10 @@ const Register = () => {
           {success && (
             <Alert severity="success" sx={{ mb: 2 }}>
               <Typography variant="subtitle2" gutterBottom>
-                회원가입이 완료되었습니다!
+                {t('register.successTitle')}
               </Typography>
               <Typography variant="body2">
-                관리자 승인 후 이용하실 수 있습니다.
+                {t('register.successBody')}
                 {emailEnabled && (
                   <>
                     <br />
@@ -149,7 +152,7 @@ const Register = () => {
             <form onSubmit={handleSubmit}>
               <TextField
                 fullWidth
-                label="사용자명"
+                label={t('register.username')}
                 variant="outlined"
                 margin="normal"
                 value={username}
@@ -159,7 +162,7 @@ const Register = () => {
               />
               <TextField
                 fullWidth
-                label="이메일"
+                label={t('register.email')}
                 type="email"
                 variant="outlined"
                 margin="normal"
@@ -169,7 +172,7 @@ const Register = () => {
               />
               <TextField
                 fullWidth
-                label="비밀번호"
+                label={t('register.password')}
                 type="password"
                 variant="outlined"
                 margin="normal"
@@ -179,7 +182,7 @@ const Register = () => {
               />
               <TextField
                 fullWidth
-                label="비밀번호 확인"
+                label={t('register.confirmPassword')}
                 type="password"
                 variant="outlined"
                 margin="normal"
@@ -195,12 +198,12 @@ const Register = () => {
                 sx={{ mt: 3, mb: 2 }}
                 disabled={loading || success}
               >
-                {loading ? '가입 중...' : '회원가입'}
+                {loading ? t('register.registering') : t('register.submit')}
               </Button>
               <Box textAlign="center">
                 <Link to="/login" style={{ textDecoration: 'none', color: 'inherit' }}>
                   <Typography variant="body2" color="primary">
-                    이미 계정이 있으신가요? 로그인
+                    {t('register.hasAccount')}
                   </Typography>
                 </Link>
               </Box>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   SwipeableDrawer,
   List,
@@ -41,8 +42,8 @@ const FileActionSheet = ({
   hasWritePermission = true,
   user,
 }) => {
+  const { t } = useTranslation();
   if (!file) return null;
-
   const handleAction = (action) => {
     action();
     onClose();
@@ -92,7 +93,7 @@ const FileActionSheet = ({
               {file.basename || file.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {isDirectory ? '폴더' : '파일'}
+              {isDirectory ? t('actions.folder') : t('actions.file')}
             </Typography>
           </Box>
         </Box>
@@ -110,7 +111,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <VisibilityIcon />
               </ListItemIcon>
-              <ListItemText primary="미리보기" />
+              <ListItemText primary={t('actions.preview')} />
             </ListItem>
           )}
 
@@ -123,7 +124,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <InfoIcon />
               </ListItemIcon>
-              <ListItemText primary="속성" />
+              <ListItemText primary={t('actions.properties')} />
             </ListItem>
           )}
 
@@ -136,7 +137,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <DownloadIcon />
               </ListItemIcon>
-              <ListItemText primary="다운로드" />
+              <ListItemText primary={t('actions.download')} />
             </ListItem>
           )}
 
@@ -149,7 +150,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <EditIcon />
               </ListItemIcon>
-              <ListItemText primary="이름 변경" />
+              <ListItemText primary={t('actions.rename')} />
             </ListItem>
           )}
 
@@ -162,7 +163,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <MoveIcon />
               </ListItemIcon>
-              <ListItemText primary="이동" />
+              <ListItemText primary={t('actions.move')} />
             </ListItem>
           )}
 
@@ -175,7 +176,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <CopyIcon />
               </ListItemIcon>
-              <ListItemText primary="복사" />
+              <ListItemText primary={t('actions.copy')} />
             </ListItem>
           )}
 
@@ -188,7 +189,7 @@ const FileActionSheet = ({
               <ListItemIcon>
                 <ShareIcon />
               </ListItemIcon>
-              <ListItemText primary="공유" />
+              <ListItemText primary={t('actions.share')} />
             </ListItem>
           )}
 
@@ -207,7 +208,7 @@ const FileActionSheet = ({
                 <ListItemIcon sx={{ color: 'error.main' }}>
                   <DeleteIcon />
                 </ListItemIcon>
-                <ListItemText primary="삭제" />
+                <ListItemText primary={t('actions.delete')} />
               </ListItem>
             </>
           )}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Paper,
   Typography,
@@ -24,6 +25,7 @@ const BulkActionToolbar = ({
   disabled: bulkActionsDisabled = false,
   downloadOnly = false,
 }) => {
+  const { t } = useTranslation();
   const moveDeleteDisabled = bulkActionsDisabled || !hasWritePermission;
   const copyDisabled = bulkActionsDisabled; // destination permission checked separately
   const downloadDisabled = bulkActionsDisabled;
@@ -58,7 +60,7 @@ const BulkActionToolbar = ({
             fontSize: '0.75rem',
           }}
         >
-          읽기 전용 파일이 포함되어있습니다
+          {t('fileManager.readOnlyInSelection')}
         </Typography>
       )}
       <Box
@@ -73,7 +75,7 @@ const BulkActionToolbar = ({
         variant="body2"
         sx={{ fontWeight: 500, color: 'text.primary', flexShrink: 0 }}
       >
-        {selectedFiles.size}개 선택
+        {t('fileManager.selected', { count: selectedFiles.size })}
       </Typography>
       {!downloadOnly && (
       <IconButton
@@ -81,7 +83,7 @@ const BulkActionToolbar = ({
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkMove}
         disabled={moveDeleteDisabled}
-        title="이동"
+        title={t('actions.move')}
         sx={{ 
           backgroundColor: 'primary.main',
           color: 'white',
@@ -98,7 +100,7 @@ const BulkActionToolbar = ({
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkCopy}
         disabled={copyDisabled}
-        title="복사"
+        title={t('actions.copy')}
         sx={{ 
           backgroundColor: 'primary.main',
           color: 'white',
@@ -114,7 +116,7 @@ const BulkActionToolbar = ({
         size={isMobile ? "medium" : "small"}
         onClick={handleBulkDownload}
         disabled={downloadDisabled}
-        title="다운로드"
+        title={t('actions.download')}
         sx={{ 
           backgroundColor: 'primary.main',
           color: 'white',
@@ -135,7 +137,7 @@ const BulkActionToolbar = ({
           }
         }}
         disabled={moveDeleteDisabled}
-        title="삭제"
+        title={t('actions.delete')}
         sx={{ 
           backgroundColor: 'error.main',
           color: 'white',

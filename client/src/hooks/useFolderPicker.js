@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getUserPermissions } from '../services/permissionService';
 import { listFiles, checkPermission } from '../services/fileService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
@@ -16,6 +17,7 @@ export function useFolderPicker({
   sourceFilePath,
   sourceFilePaths,
 }) {
+  const { t } = useTranslation();
   const [selectedPath, setSelectedPath] = useState(currentPath || '/');
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -265,14 +267,14 @@ export function useFolderPicker({
   }, [user, selectedPath]);
 
   const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
-  const homeLabel = user?.is_admin ? 'root' : '홈';
+  const homeLabel = user?.is_admin ? t('nav.root') : t('nav.home');
   const isHomePath = user?.is_admin
     ? (selectedPath?.startsWith('/') && selectedPath !== '/__shared__')
     : (selectedPath === homePath || selectedPath.startsWith(homePath + '/'));
 
   let breadcrumbs = [];
   if (selectedPath === '/__shared__') {
-    breadcrumbs = [{ name: '공유됨', path: '/__shared__' }];
+    breadcrumbs = [{ name: t('nav.shared'), path: '/__shared__' }];
   } else if (isHomePath) {
     const pathParts = selectedPath.split('/').filter(Boolean);
     breadcrumbs = [
@@ -295,7 +297,7 @@ export function useFolderPicker({
     }
     if (startIndex >= 0) {
       breadcrumbs = [
-        { name: '공유됨', path: '/__shared__' },
+        { name: t('nav.shared'), path: '/__shared__' },
         ...pathParts.slice(startIndex).map((part, index) => ({
           name: part,
           path: '/' + pathParts.slice(0, startIndex + index + 1).join('/'),
@@ -303,7 +305,7 @@ export function useFolderPicker({
       ];
     } else {
       breadcrumbs = [
-        { name: '공유됨', path: '/__shared__' },
+        { name: t('nav.shared'), path: '/__shared__' },
         ...pathParts.map((part, index) => ({ name: part, path: '/' + pathParts.slice(0, index + 1).join('/') })),
       ];
     }

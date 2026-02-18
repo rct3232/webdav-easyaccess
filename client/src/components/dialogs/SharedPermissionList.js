@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import {
   Box,
@@ -54,6 +55,7 @@ export default function SharedPermissionList({
   onCancelPendingRequest,
   onRevokeClick,
 }) {
+  const { t } = useTranslation();
   const { pathReadLevel, pathWriteLevel, fileReadLevel, fileWriteLevel } = getPermissionLevels(
     isDirectory,
     { hasReadPermission, hasWritePermission },
@@ -84,12 +86,12 @@ export default function SharedPermissionList({
             disabled={requestDisabled}
             sx={{ py: 1.5 }}
           >
-            읽기 권한 요청
+            {t('dialogs.requestReadPermission')}
           </Button>
           {pendingRequest.read.pending && (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="caption" color="text.secondary">
-                읽기 권한 요청됨
+                {t('dialogs.requestedRead')}
               </Typography>
               <Button
                 variant="text"
@@ -98,7 +100,7 @@ export default function SharedPermissionList({
                 disabled={loading || ownerExists === false || ownerExists === null}
                 sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
               >
-                요청 회수
+                {t('dialogs.cancelRequest')}
               </Button>
             </Box>
           )}
@@ -115,12 +117,12 @@ export default function SharedPermissionList({
             disabled={writeRequestDisabled}
             sx={{ py: 1.5 }}
           >
-            쓰기 권한 요청
+            {t('dialogs.requestWritePermission')}
           </Button>
           {pendingRequest.write.pending && (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="caption" color="text.secondary">
-                쓰기 권한 요청됨
+                {t('dialogs.requestedWrite')}
               </Typography>
               <Button
                 variant="text"
@@ -129,7 +131,7 @@ export default function SharedPermissionList({
                 disabled={loading || ownerExists === false || ownerExists === null}
                 sx={{ minWidth: 'auto', px: 0.5, py: 0 }}
               >
-                요청 회수
+                {t('dialogs.cancelRequest')}
               </Button>
             </Box>
           )}
@@ -146,7 +148,7 @@ export default function SharedPermissionList({
           disabled={revokeDisabled}
           sx={{ py: 1.5 }}
         >
-          권한 반납
+          {t('dialogs.revokePermission')}
         </Button>
       )}
 
@@ -160,7 +162,7 @@ export default function SharedPermissionList({
           disabled={revokeDisabled}
           sx={{ py: 1.5 }}
         >
-          읽기권한 반납
+          {t('dialogs.revokeRead')}
         </Button>
       )}
 
@@ -174,7 +176,7 @@ export default function SharedPermissionList({
           disabled={revokeDisabled}
           sx={{ py: 1.5 }}
         >
-          쓰기권한 반납
+          {t('dialogs.revokeWrite')}
         </Button>
       )}
     </Box>

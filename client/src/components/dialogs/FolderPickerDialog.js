@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -28,6 +29,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useFolderPicker } from '../../hooks/useFolderPicker';
 
 const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
 
   const {
@@ -64,11 +66,11 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
       fullWidth
       fullScreen={isMobile}
     >
-      <DialogTitle>{title || '폴더 선택'}</DialogTitle>
+      <DialogTitle>{title || t('dialogs.folderSelectTitle')}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            현재 선택된 경로:
+            {t('dialogs.currentPathLabel')}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
             <Breadcrumbs
@@ -102,12 +104,12 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
                 >
                   {index === 0 && crumb.path === '/__shared__' && <ShareIcon sx={{ mr: 0.5, fontSize: 18 }} />}
                   {index === 0 && crumb.path !== '/__shared__' && <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />}
-                  {crumb.name || '홈'}
+                  {crumb.name || t('nav.home')}
                 </Link>
               ))}
             </Breadcrumbs>
             {(action === 'copy' || action === 'move') && user && !user.is_admin && (
-              <Tooltip title={getCurrentPathType() === 'home' ? '공유됨으로 전환' : '홈으로 전환'}>
+              <Tooltip title={getCurrentPathType() === 'home' ? t('dialogs.switchToShared') : t('dialogs.switchToHome')}>
                 <IconButton
                   onClick={() => handleTogglePath(null, getCurrentPathType() === 'home' ? 'shared' : 'home')}
                   size="small"
@@ -143,7 +145,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
             </Box>
           ) : folders.length === 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
-              <Typography color="text.secondary">하위 폴더가 없습니다</Typography>
+              <Typography color="text.secondary">{t('dialogs.noSubfolders')}</Typography>
             </Box>
           ) : (
             <List>
@@ -186,7 +188,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>취소</Button>
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
         <Button
           onClick={handleSelect}
           variant="contained"
@@ -197,7 +199,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
             isInvalidDestination()
           }
         >
-          선택
+          {t('dialogs.select')}
         </Button>
       </DialogActions>
     </Dialog>

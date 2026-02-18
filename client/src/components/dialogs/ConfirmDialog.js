@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -19,14 +20,18 @@ const ConfirmDialog = ({
   open,
   onClose,
   onConfirm,
-  title = '확인',
+  title,
   message,
-  confirmText = '확인',
-  cancelText = '취소',
+  confirmText,
+  cancelText,
   confirmColor = 'primary',
   loading = false,
   variant,
 }) => {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t('common.confirm');
+  const resolvedConfirmText = confirmText ?? t('common.confirm');
+  const resolvedCancelText = cancelText ?? t('common.cancel');
   const handleConfirm = () => {
     if (onConfirm) {
       onConfirm();
@@ -58,13 +63,13 @@ const ConfirmDialog = ({
       maxWidth="xs"
       fullWidth
     >
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle>{resolvedTitle}</DialogTitle>
       <DialogContent>
         <DialogContentText>{message}</DialogContentText>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel} disabled={loading}>
-          {cancelText}
+          {resolvedCancelText}
         </Button>
         <Button
           onClick={handleConfirm}
@@ -72,7 +77,7 @@ const ConfirmDialog = ({
           color={confirmColor}
           disabled={loading}
         >
-          {confirmText}
+          {resolvedConfirmText}
         </Button>
       </DialogActions>
     </Dialog>

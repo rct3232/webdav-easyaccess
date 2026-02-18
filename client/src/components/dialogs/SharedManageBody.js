@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Button,
@@ -11,9 +12,6 @@ import {
   Skeleton,
 } from '@mui/material';
 import SharedPermissionList from './SharedPermissionList';
-
-const REVOKE_CONFIRM_TITLE = '권한 반납 확인';
-const REVOKE_CONFIRM_FOOTER = '이 작업은 되돌릴 수 없습니다.';
 
 /**
  * 공유 관리 본문 (presentational). 훅 없이 호출부에서 넘긴 값만으로 UI 렌더.
@@ -37,8 +35,10 @@ export default function SharedManageBody({
   onRevokePermission,
   loadingVariant = 'skeleton',
 }) {
-  const label = (isDirectory ? '폴더' : '파일') + ': ' + (displayName || '');
-  const revokeConfirmBody = `정말로 "${displayName || ''}"에 대한 권한을 반납하시겠습니까?`;
+  const { t } = useTranslation();
+  const name = displayName || '';
+  const label = (isDirectory ? t('actions.folder') : t('actions.file')) + ': ' + name;
+  const revokeConfirmBody = t('dialogs.revokeConfirmBody', { name });
 
   return (
     <>
@@ -75,23 +75,23 @@ export default function SharedManageBody({
 
       {ownerExists === false && (
         <Typography variant="caption" color="error.main" sx={{ mt: 1, display: 'block' }}>
-          소유자가 삭제되어 권한을 요청할 수 없습니다.
+          {t('dialogs.ownerDeleted')}
         </Typography>
       )}
 
       <Dialog open={confirmDialogOpen} onClose={() => !loading && setConfirmDialogOpen(false)}>
-        <DialogTitle>{REVOKE_CONFIRM_TITLE}</DialogTitle>
+        <DialogTitle>{t('dialogs.revokeConfirmTitle')}</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ mb: 1 }}>
             {revokeConfirmBody}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {REVOKE_CONFIRM_FOOTER}
+            {t('dialogs.revokeConfirmFooter')}
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmDialogOpen(false)} disabled={loading}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={onRevokePermission}
@@ -99,7 +99,7 @@ export default function SharedManageBody({
             color="error"
             disabled={loading}
           >
-            {loading ? '처리 중...' : '확인'}
+            {loading ? t('dialogs.processing') : t('common.confirm')}
           </Button>
         </DialogActions>
       </Dialog>

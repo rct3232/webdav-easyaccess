@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Paper,
@@ -35,6 +36,7 @@ import { checkmarkAnimation, progressCompleteAnimation } from './FileOperationPr
 import ProgressSummary from './FileOperationProgress/ProgressSummary';
 
 const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const { isMobile } = useResponsive();
 
@@ -91,17 +93,21 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
 
   const getStatusText = (item) => {
     if (item.status === 'preparing') {
-      return '준비 중...';
-    } else if (item.status === 'downloading' || item.status === 'processing' || item.status === 'uploading') {
-      return item.current || '처리 중...';
-    } else if (item.status === 'completed') {
-      return '완료';
-    } else if (item.status === 'warning') {
-      return item.error || '일부 제외됨';
-    } else if (item.status === 'error') {
-      return `오류: ${item.error || '알 수 없는 오류'}`;
+      return t('fileManager.statusPreparing');
     }
-    return '대기 중...';
+    if (item.status === 'downloading' || item.status === 'processing' || item.status === 'uploading') {
+      return item.current || t('fileManager.statusProcessing');
+    }
+    if (item.status === 'completed') {
+      return t('fileManager.statusCompleted');
+    }
+    if (item.status === 'warning') {
+      return item.error || t('fileManager.statusExcluded');
+    }
+    if (item.status === 'error') {
+      return t('fileManager.errorWithMessage', { message: item.error || t('common.unknownError') });
+    }
+    return t('fileManager.statusWaiting');
   };
 
   const getProgress = (item) => {
@@ -151,28 +157,30 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
 
   const BATCH_TYPES = ['copy', 'move', 'delete', 'upload', 'download', 'rename', 'createFolder'];
   const getMinimizedPrimaryLabel = () => {
-    if (overallStatus === 'completed') return '완료';
-    if (overallStatus === 'warning') return '일부 제외됨';
-    if (overallStatus === 'error') return overallProgress > 0 ? '일부 실패' : '실패';
+    if (overallStatus === 'completed') return t('fileManager.statusCompleted');
+    if (overallStatus === 'warning') return t('fileManager.statusExcluded');
+    if (overallStatus === 'error') return overallProgress > 0 ? t('fileManager.statusPartialFail') : t('fileManager.statusFail');
     if (overallStatus === 'processing') {
       const rep = getRepresentativeProcessingItem();
-      if (!rep) return '작업 중';
+      if (!rep) return t('fileManager.statusWorking');
       const cur = rep.current || '';
-      if (cur.includes('충돌 확인')) return '준비 중';
-      if (cur === '' || cur.includes('준비 중') || cur.includes('업로드 준비') || cur.includes('재시도 준비')) return '준비 중';
-      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return '준비 중';
+      const conflictLabel = t('fileManager.statusConflictCheck');
+      const preparingLabel = t('fileManager.statusPreparing');
+      if (cur.includes('충돌 확인') || cur.includes(conflictLabel)) return t('fileManager.statusPreparing');
+      if (cur === '' || cur.includes(preparingLabel) || cur.includes(t('fileManager.statusUploadPreparing')) || cur.includes(t('fileManager.statusRetryPreparing'))) return t('fileManager.statusPreparing');
+      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return t('fileManager.statusPreparing');
       const typeLabels = {
-        delete: '삭제 중',
-        copy: '복사 중',
-        move: '이동 중',
-        upload: '업로드 중',
-        download: '다운로드 중',
-        rename: '이름 변경 중',
-        createFolder: '폴더 생성 중',
+        delete: t('fileManager.statusDeleting'),
+        copy: t('fileManager.statusCopying'),
+        move: t('fileManager.statusMoving'),
+        upload: t('fileManager.statusUploading'),
+        download: t('fileManager.statusDownloading'),
+        rename: t('fileManager.statusRenaming'),
+        createFolder: t('fileManager.statusCreatingFolder'),
       };
-      return typeLabels[rep.type] ?? '작업 중';
+      return typeLabels[rep.type] ?? t('fileManager.statusWorking');
     }
-    return '작업 중';
+    return t('fileManager.statusWorking');
   };
 
   const getMinimizedSecondaryLabel = () => {
@@ -183,12 +191,14 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
       const rep = getRepresentativeProcessingItem();
       if (!rep) return `${overallProgress}%`;
       const cur = rep.current || '';
-      if (cur.includes('충돌 확인')) return '중복 확인 중';
-      if (cur === '') return '처리 중';
-      if (cur === '준비 중...') return '준비 중';
-      if (cur.includes('업로드 준비 중')) return '업로드 준비 중';
-      if (cur.includes('재시도 준비 중')) return '재시도 준비 중';
-      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return '처리 중';
+      const conflictLabel = t('fileManager.statusConflictCheck');
+      const preparingLabel = t('fileManager.statusPreparing');
+      if (cur.includes('충돌 확인') || cur.includes(conflictLabel)) return t('fileManager.statusConflictCheck');
+      if (cur === '') return t('fileManager.statusProcessing');
+      if (cur === preparingLabel) return t('fileManager.statusPreparing');
+      if (cur.includes(t('fileManager.statusUploadPreparing'))) return t('fileManager.statusUploadPreparing');
+      if (cur.includes(t('fileManager.statusRetryPreparing'))) return t('fileManager.statusRetryPreparing');
+      if (overallProgress === 0 && BATCH_TYPES.includes(rep.type)) return t('fileManager.statusProcessing');
       return `${overallProgress}%`;
     }
     return `${overallProgress}%`;
@@ -286,7 +296,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexShrink: 0 }}>
             <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-              진행 중인 작업
+              {t('fileManager.progressTitle')}
             </Typography>
             <IconButton
               size="small"
@@ -366,7 +376,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                       }}
                       title={item.name || item.zipName}
                     >
-                      {item.name || item.zipName || '작업 중...'}
+                      {item.name || item.zipName || t('fileManager.workingFallback')}
                     </Typography>
                     {onCancelAll && (
                       (item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading'))
@@ -599,7 +609,7 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                               ))}
                               {skippedPaths.length === 0 && (
                                 <ListItem sx={{ px: 0, py: 0.25 }}>
-                                  <ListItemText primary="(목록 없음)" primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }} />
+                                  <ListItemText primary={t('common.noItems')} primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }} />
                                 </ListItem>
                               )}
                             </List>

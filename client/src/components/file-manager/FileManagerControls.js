@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   IconButton,
@@ -44,11 +45,12 @@ const FileManagerControls = ({
   saveViewMode,
   selectionActionsDisabled = false,
 }) => {
+  const { t } = useTranslation();
   return (
     <Box sx={{ px: 2, py: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
       <IconButton
         onClick={(e) => setSortMenuAnchor(e.currentTarget)}
-        title="정렬"
+        title={t('fileManager.sort')}
       >
         <SortIcon />
       </IconButton>
@@ -57,7 +59,7 @@ const FileManagerControls = ({
         color={selectionMode ? 'primary' : 'default'}
         onClick={handleToggleSelectionMode}
         disabled={selectionActionsDisabled}
-        title={selectionMode ? '선택 모드' : '선택'}
+        title={selectionMode ? t('fileManager.selectionMode') : t('fileManager.select')}
         sx={{
           backgroundColor: selectionMode ? 'primary.main' : 'transparent',
           color: selectionMode ? 'primary.contrastText' : 'inherit',
@@ -73,14 +75,14 @@ const FileManagerControls = ({
         <>
           {isMobile ? (
             <>
-              <IconButton size="small" onClick={handleSelectAll} title="모두 선택" disabled={selectionActionsDisabled}>
+              <IconButton size="small" onClick={handleSelectAll} title={t('fileManager.selectAll')} disabled={selectionActionsDisabled}>
                 <SelectAllIcon />
               </IconButton>
-              <IconButton size="small" onClick={handleDeselectAll} title="모두 해제" disabled={selectionActionsDisabled}>
+              <IconButton size="small" onClick={handleDeselectAll} title={t('fileManager.deselectAll')} disabled={selectionActionsDisabled}>
                 <DeselectIcon />
               </IconButton>
               <Typography variant="caption" sx={{ ml: 1, fontSize: '0.75rem' }}>
-                {selectedFiles.size}개
+                {t('fileManager.selectedCount', { count: selectedFiles.size })}
               </Typography>
             </>
           ) : (
@@ -91,7 +93,7 @@ const FileManagerControls = ({
                 onClick={handleSelectAll}
                 disabled={selectionActionsDisabled}
               >
-                모두 선택
+                {t('fileManager.selectAll')}
               </Button>
               <Button
                 size="small"
@@ -99,10 +101,10 @@ const FileManagerControls = ({
                 onClick={handleDeselectAll}
                 disabled={selectionActionsDisabled}
               >
-                모두 해제
+                {t('fileManager.deselectAll')}
               </Button>
               <Typography variant="body2" sx={{ ml: 1 }}>
-                {selectedFiles.size}개 선택됨
+                {t('fileManager.selectedCountFull', { count: selectedFiles.size })}
               </Typography>
             </>
           )}
@@ -127,7 +129,7 @@ const FileManagerControls = ({
       >
         <Box sx={{ px: 2, py: 1 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            이름
+            {t('fileManager.sortByName')}
           </Typography>
           <RadioGroup
             value={sortMode}
@@ -141,19 +143,19 @@ const FileManagerControls = ({
             <FormControlLabel
               value={SORT_MODES.NAME_ASC}
               control={<Radio size="small" />}
-              label="오름차순"
+              label={t('fileManager.asc')}
             />
             <FormControlLabel
               value={SORT_MODES.NAME_DESC}
               control={<Radio size="small" />}
-              label="내림차순"
+              label={t('fileManager.desc')}
             />
           </RadioGroup>
         </Box>
         <Divider />
         <Box sx={{ px: 2, py: 1 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            수정 날짜
+            {t('fileManager.sortByDate')}
           </Typography>
           <RadioGroup
             value={sortMode}
@@ -167,12 +169,12 @@ const FileManagerControls = ({
             <FormControlLabel
               value={SORT_MODES.DATE_ASC}
               control={<Radio size="small" />}
-              label="오름차순"
+              label={t('fileManager.asc')}
             />
             <FormControlLabel
               value={SORT_MODES.DATE_DESC}
               control={<Radio size="small" />}
-              label="내림차순"
+              label={t('fileManager.desc')}
             />
           </RadioGroup>
         </Box>
@@ -183,7 +185,7 @@ const FileManagerControls = ({
         <>
           <IconButton
             onClick={(e) => setViewModeMenuAnchor(e.currentTarget)}
-            title="보기 모드"
+            title={t('fileManager.viewMode')}
           >
             {viewMode === VIEW_MODES.LIST && <ViewStreamIcon />}
             {viewMode === VIEW_MODES.GRID && <ViewModuleIcon />}
@@ -213,7 +215,7 @@ const FileManagerControls = ({
               <ListItemIcon>
                 <ViewStreamIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>리스트 보기</ListItemText>
+              <ListItemText>{t('fileManager.listView')}</ListItemText>
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -226,7 +228,7 @@ const FileManagerControls = ({
               <ListItemIcon>
                 <ViewModuleIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>그리드 보기</ListItemText>
+              <ListItemText>{t('fileManager.gridView')}</ListItemText>
             </MenuItem>
             {!isMobile && (
               <MenuItem
@@ -240,7 +242,7 @@ const FileManagerControls = ({
                 <ListItemIcon>
                   <ViewListIcon fontSize="small" />
                 </ListItemIcon>
-                <ListItemText>상세 보기</ListItemText>
+                <ListItemText>{t('fileManager.detailView')}</ListItemText>
               </MenuItem>
             )}
           </Menu>
@@ -253,7 +255,7 @@ const FileManagerControls = ({
               setViewMode(VIEW_MODES.LIST);
               if (saveViewMode) saveViewMode(VIEW_MODES.LIST);
             }}
-            title="목록 보기"
+            title={t('fileManager.listViewTitle')}
           >
             <ViewStreamIcon />
           </IconButton>
@@ -263,7 +265,7 @@ const FileManagerControls = ({
               setViewMode(VIEW_MODES.GRID);
               if (saveViewMode) saveViewMode(VIEW_MODES.GRID);
             }}
-            title="그리드 보기"
+            title={t('fileManager.gridViewTitle')}
           >
             <ViewModuleIcon />
           </IconButton>
@@ -274,7 +276,7 @@ const FileManagerControls = ({
                 setViewMode(VIEW_MODES.DETAIL);
                 if (saveViewMode) saveViewMode(VIEW_MODES.DETAIL);
               }}
-              title="상세 보기"
+              title={t('fileManager.detailViewTitle')}
             >
               <ViewListIcon />
             </IconButton>

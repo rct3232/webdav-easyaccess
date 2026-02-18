@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   Box,
@@ -24,6 +25,7 @@ const AccountEditDialog = ({
   message,
   onClearMessage,
 }) => {
+  const { t } = useTranslation();
   const passwordMismatch = String(confirmPassword || '').length > 0 && password !== confirmPassword;
 
   const handleSubmit = (e) => {
@@ -35,14 +37,14 @@ const AccountEditDialog = ({
     <BaseDialog
       open={open}
       onClose={onClose}
-      title="정보 변경"
+      title={t('dialogs.accountEditTitle')}
       actions={
         <>
           <Button onClick={onClose} disabled={loading}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button type="submit" variant="contained" disabled={!canSave || loading} form="account-edit-form">
-            저장
+            {t('common.save')}
           </Button>
         </>
       }
@@ -59,11 +61,11 @@ const AccountEditDialog = ({
           ) : null}
 
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-            이메일
+            {t('dialogs.email')}
           </Typography>
           <TextField
             fullWidth
-            label="이메일"
+            label={t('dialogs.email')}
             type="email"
             value={email}
             onChange={(e) => (onEmailChange ? onEmailChange(e.target.value) : undefined)}
@@ -73,11 +75,11 @@ const AccountEditDialog = ({
           <Divider sx={{ my: 2 }} />
 
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-            비밀번호
+            {t('register.password')}
           </Typography>
           <TextField
             fullWidth
-            label="새 비밀번호"
+            label={t('dialogs.newPassword')}
             type="password"
             value={password}
             onChange={(e) => (onPasswordChange ? onPasswordChange(e.target.value) : undefined)}
@@ -86,7 +88,7 @@ const AccountEditDialog = ({
           />
           <TextField
             fullWidth
-            label="비밀번호 확인"
+            label={t('dialogs.confirmPassword')}
             type="password"
             value={confirmPassword}
             onChange={(e) =>
@@ -94,7 +96,7 @@ const AccountEditDialog = ({
             }
             autoComplete="new-password"
             error={passwordMismatch}
-            helperText={passwordMismatch ? '비밀번호가 다릅니다.' : ' '}
+            helperText={passwordMismatch ? t('dialogs.passwordMismatch') : ' '}
           />
       </Box>
     </BaseDialog>

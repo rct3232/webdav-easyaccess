@@ -10,8 +10,10 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { validateRequired } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../utils/validationMessage';
 import { getPublicSettings } from '../services/settingsService';
 
 /**
@@ -31,6 +33,7 @@ export const LoginForm = ({
   const [loading, setLoading] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -54,9 +57,9 @@ export const LoginForm = ({
     e.preventDefault();
     setError('');
     setWarning('');
-    const requiredError = validateRequired(username, '사용자명') || validateRequired(password, '비밀번호');
+    const requiredError = validateRequired(username, t('login.username')) || validateRequired(password, t('login.password'));
     if (requiredError) {
-      setError(requiredError);
+      setError(getValidationMessage(requiredError, t));
       return;
     }
     setLoading(true);
@@ -72,11 +75,11 @@ export const LoginForm = ({
       }
     } else {
       if (result.status === 'pending') {
-        setWarning(result.message || '계정이 승인 대기 중입니다. 관리자의 승인을 기다려 주세요.');
+        setWarning(result.message || t('login.pendingApproval'));
       } else if (result.status === 'rejected') {
-        setError(result.message || '계정 가입이 거절되었습니다. 관리자에게 문의하세요.');
+        setError(result.message || t('login.rejected'));
       } else {
-        setError(result.error || '로그인에 실패했습니다.');
+        setError(result.error || t('login.failed'));
       }
     }
 
@@ -88,7 +91,7 @@ export const LoginForm = ({
       <Box
         component="img"
         src="/logo.png"
-        alt="WebDAV EasyAccess"
+        alt={t('login.logoAlt')}
         sx={{
           height: '96px',
           maxWidth: '100%',
@@ -98,7 +101,7 @@ export const LoginForm = ({
         }}
       />
       <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary" sx={{ mb: 3 }}>
-        로그인
+        {t('login.title')}
       </Typography>
 
       {error && (
@@ -122,7 +125,7 @@ export const LoginForm = ({
           <form onSubmit={handleSubmit}>
             <TextField
               fullWidth
-              label="사용자명"
+              label={t('login.username')}
               variant="outlined"
               margin="normal"
               name="username"
@@ -133,7 +136,7 @@ export const LoginForm = ({
             />
             <TextField
               fullWidth
-              label="비밀번호"
+              label={t('login.password')}
               type="password"
               variant="outlined"
               margin="normal"
@@ -150,13 +153,13 @@ export const LoginForm = ({
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {loading ? '로그인 중...' : '로그인'}
+              {loading ? t('login.loggingIn') : t('login.submit')}
             </Button>
             {registrationEnabled && (
               <Box textAlign="center">
                 <Link to="/register" style={{ textDecoration: 'none', color: 'inherit' }}>
                   <Typography variant="body2" color="primary">
-                    계정이 없으신가요? 회원가입
+                    {t('login.noAccount')}
                   </Typography>
                 </Link>
               </Box>

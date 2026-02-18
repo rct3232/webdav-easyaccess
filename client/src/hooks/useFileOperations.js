@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { downloadFile, downloadMultipleFiles, renameFile } from '../services/fileService';
 import { getErrorMessage } from '../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../utils/processingUtils';
@@ -30,6 +31,8 @@ export const useFileOperations = ({
   onClose,
   onConflictResolveStart,
 }) => {
+  const { t } = useTranslation();
+
   /**
    * Handle file download
    * @param {Object} file - File object
@@ -67,7 +70,7 @@ export const useFileOperations = ({
             id: progressId,
             type: 'download',
             status: 'warning',
-            error: `권한으로 제외된 항목: ${skippedCount || skippedPaths.length}개`,
+            error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedPaths.length }),
             keepOnError: true,
             skippedPaths,
             skippedCount: skippedCount || skippedPaths.length,
@@ -88,10 +91,9 @@ export const useFileOperations = ({
         onClose();
       }
     } catch (error) {
-      const errorMsg = getErrorMessage(error, '다운로드에 실패했습니다');
-      
+      const { key, raw } = getErrorMessage(error, 'errors.downloadFailed');
+      const errorMsg = raw != null ? raw : t(key);
       if (onProgress) {
-        // Progress에 에러 표시
         const progressId = `download_${Date.now()}`;
         onProgress({
           id: progressId,
@@ -104,7 +106,7 @@ export const useFileOperations = ({
         alert(errorMsg);
       }
     }
-  }, [onProgress, onClose]);
+  }, [onProgress, onClose, t]);
 
   /**
    * Handle file rename
@@ -115,7 +117,7 @@ export const useFileOperations = ({
    */
   const handleFileRename = useCallback(async (file, newName, context = {}) => {
     if (!file || !newName || !newName.trim()) {
-      const msg = '이름을 입력하세요';
+      const msg = t('validation.fileNameRequired');
       if (onProgress) {
         const progressId = `rename_invalid_${Date.now()}`;
         onProgress({
@@ -124,7 +126,7 @@ export const useFileOperations = ({
           status: 'error',
           error: msg,
           keepOnError: true,
-          name: `${file?.basename || '파일'} 이름 변경`,
+          name: `${file?.basename || t('actions.file')} ${t('dialogs.renameTitle')}`,
         });
       } else {
         alert(msg);
@@ -142,7 +144,7 @@ export const useFileOperations = ({
       progress: 0,
       total: 1,
       current: '',
-      name: `${file.basename} 이름 변경`,
+      name: `${file.basename} ${t('dialogs.renameTitle')}`,
     };
     
     // Mark processing
@@ -197,14 +199,15 @@ export const useFileOperations = ({
           status: 'completed',
           progress: 1,
           total: 1,
-          current: '완료',
+          current: t('fileManager.statusCompleted'),
         });
         setTimeout(() => {
           onProgress({ id: progressId, remove: true });
         }, 3000);
       }
     } catch (error) {
-      const errorMsg = getErrorMessage(error, '이름 변경에 실패했습니다');
+      const { key, raw } = getErrorMessage(error, 'errors.renameFailed');
+      const errorMsg = raw != null ? raw : t(key);
       if (onProgress) {
         onProgress({
           ...progressItem,
@@ -226,7 +229,7 @@ export const useFileOperations = ({
         onProcessingEnd([filePath]);
       }
     }
-  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose]);
+  }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose, t]);
 
   return {
     handleFileDownload,

@@ -1,5 +1,8 @@
+import { useTranslation } from 'react-i18next';
+
 const EmailNotificationMessage = () => {
-  return '승인 결과는 입력하신 이메일로 안내드립니다.';
+  const { t } = useTranslation();
+  return t('emailNotification.message');
 };
 
 export default EmailNotificationMessage;

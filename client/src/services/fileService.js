@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
+import i18n from '../i18n';
 import { get, post, put } from './apiClient';
 import {
   checkPermission as checkPermissionApi,
@@ -259,7 +260,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
       const currentFromServer = server?.current;
       const zipNameFromServer = server?.zipName || '';
       const status = server?.status === 'preparing' ? 'preparing' : 'downloading';
-      const currentLabel = status === 'preparing' ? '준비 중…' : (currentFromServer ? `${currentFromServer} · ${Math.round(combined)}%` : `다운로드 중 (${Math.round(combined)}%)`);
+      const currentLabel = status === 'preparing' ? i18n.t('fileManager.downloadPreparing') : (currentFromServer ? `${currentFromServer} · ${Math.round(combined)}%` : i18n.t('fileManager.downloadingPercent', { percent: Math.round(combined) }));
       onProgress({
         id: downloadId,
         type: 'download',
@@ -344,7 +345,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
         progress: total,
         total: total,
         percentage: 100,
-        current: '완료',
+        current: i18n.t('fileManager.pullRefreshDone'),
         zipName: filename,
         skippedCount,
         skippedInfo,

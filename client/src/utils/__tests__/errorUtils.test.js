@@ -20,18 +20,20 @@ describe('errorUtils', () => {
   });
 
   describe('getErrorMessage', () => {
-    it('returns appropriate message for known error types', () => {
+    it('returns key for known error types', () => {
       const error = { response: { status: 403 } };
-      expect(getErrorMessage(error)).toBe('접근 권한이 없습니다.');
+      expect(getErrorMessage(error)).toEqual({ key: 'errors.permissionDenied' });
     });
 
-    it('returns server error message if type is unknown', () => {
+    it('returns key and raw when server provides error message', () => {
       const error = { response: { data: { error: 'Server says no' } } };
-      expect(getErrorMessage(error)).toBe('Server says no');
+      const result = getErrorMessage(error);
+      expect(result.key).toBe('errors.unknown');
+      expect(result.raw).toBe('Server says no');
     });
 
-    it('returns default message if everything fails', () => {
-      expect(getErrorMessage(null, 'default')).toBe('default');
+    it('returns default key when error is null', () => {
+      expect(getErrorMessage(null, 'errors.unknown')).toEqual({ key: 'errors.unknown' });
     });
   });
 });

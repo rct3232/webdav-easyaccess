@@ -1,4 +1,11 @@
 import '@testing-library/jest-dom';
+import i18n from './i18n';
+
+// Fix i18n language for tests so getByText(/한글/) and role names work
+beforeAll(() => {
+  i18n.changeLanguage('ko');
+});
+
 import { TextEncoder, TextDecoder } from 'util';
 import { ReadableStream, TransformStream, WritableStream } from 'stream/web';
 

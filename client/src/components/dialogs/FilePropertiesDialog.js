@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -16,9 +17,11 @@ import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getFolderPermissions } from '../../services/permissionService';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
-import { PERMISSION_LABELS, PERMISSION_ORDER } from '../../constants/permissions';
+import { getPermissionLabels, PERMISSION_ORDER } from '../../constants/permissions';
 
 const FilePropertiesDialog = ({ open, onClose, file }) => {
+  const { t } = useTranslation();
+  const permissionLabels = getPermissionLabels(t);
   const { isMobile } = useResponsive();
   const [permissions, setPermissions] = useState([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -52,23 +55,23 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
 
   const propertyItems = [
     {
-      label: '타입',
-      value: isDirectory ? '폴더' : (file.mime || '파일'),
+      label: t('dialogs.type'),
+      value: isDirectory ? t('actions.folder') : (file.mime || t('actions.file')),
     },
     ...(isDirectory
       ? []
       : [
           {
-            label: '크기',
+            label: t('dialogs.size'),
             value: formatFileSize(file.size),
           },
         ]),
     {
-      label: '수정날짜',
+      label: t('dialogs.modifiedDate'),
       value: formatDate(file.lastmod),
     },
     {
-      label: '경로',
+      label: t('dialogs.path'),
       value: file.path || '-',
     },
   ];
@@ -160,7 +163,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             return (
               <Box key={perm} sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {PERMISSION_LABELS[perm]}
+                  {permissionLabels[perm]}
                 </Typography>
                 {permissionsLoading ? (
                   <Skeleton variant="circular" width={36} height={36} />
@@ -205,7 +208,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} variant="contained">
-          닫기
+          {t('common.close')}
         </Button>
       </DialogActions>
     </Dialog>

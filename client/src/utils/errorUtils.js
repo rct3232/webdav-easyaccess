@@ -24,14 +24,14 @@ const STATUS_CODE_TO_ERROR_TYPE = {
   [HTTP_STATUS.CONFLICT]: ERROR_TYPES.DUPLICATE_FILE,
 };
 
-// 에러 타입별 메시지 맵
-const ERROR_MESSAGES = {
-  [ERROR_TYPES.FILE_NOT_FOUND]: '파일 또는 경로가 존재하지 않습니다.',
-  [ERROR_TYPES.PERMISSION_DENIED]: '접근 권한이 없습니다.',
-  [ERROR_TYPES.NETWORK_ERROR]: '네트워크 오류가 발생했습니다.',
-  [ERROR_TYPES.DUPLICATE_FILE]: '같은 이름의 파일이 이미 존재합니다.',
-  [ERROR_TYPES.INVALID_PATH]: '잘못된 경로입니다.',
-  [ERROR_TYPES.UNKNOWN]: '오류가 발생했습니다.',
+// i18n keys for error messages (caller uses t(key))
+export const ERROR_MESSAGE_KEYS = {
+  [ERROR_TYPES.FILE_NOT_FOUND]: 'errors.fileNotFound',
+  [ERROR_TYPES.PERMISSION_DENIED]: 'errors.permissionDenied',
+  [ERROR_TYPES.NETWORK_ERROR]: 'errors.networkError',
+  [ERROR_TYPES.DUPLICATE_FILE]: 'errors.duplicateFile',
+  [ERROR_TYPES.INVALID_PATH]: 'errors.invalidPath',
+  [ERROR_TYPES.UNKNOWN]: 'errors.unknown',
 };
 
 /**
@@ -73,50 +73,48 @@ export const determineErrorType = (error) => {
 };
 
 /**
- * Get error message by error type
+ * Get i18n key for error type (caller uses t(getErrorMessageByType(errorType)))
  * @param {string} errorType - Error type
- * @returns {string} Error message
+ * @returns {string} i18n key
  */
 export const getErrorMessageByType = (errorType) => {
-  return ERROR_MESSAGES[errorType] || ERROR_MESSAGES[ERROR_TYPES.UNKNOWN];
+  return ERROR_MESSAGE_KEYS[errorType] || ERROR_MESSAGE_KEYS[ERROR_TYPES.UNKNOWN];
 };
 
 /**
- * Extract error message from error object
+ * Extract error message from error object. Returns key for translation or raw server message.
  * @param {Error} error - Error object
- * @param {string} defaultMsg - Default message if error message cannot be extracted
- * @returns {string} Error message
+ * @param {string} defaultKey - Default i18n key (e.g. 'errors.unknown')
+ * @returns {{ key: string, raw?: string }} key always set; raw set when server provided a message to show as-is
  */
-export const getErrorMessage = (error, defaultMsg = '오류가 발생했습니다') => {
-  if (!error) return defaultMsg;
-  
-  // 에러 타입 판별
+export const getErrorMessage = (error, defaultKey = 'errors.unknown') => {
+  if (!error) return { key: defaultKey };
+
   const errorType = determineErrorType(error);
-  
-  // 에러 타입별 메시지 반환
+
   if (errorType !== ERROR_TYPES.UNKNOWN) {
-    return getErrorMessageByType(errorType);
+    return { key: getErrorMessageByType(errorType) };
   }
-  
-  // 기존 로직 (서버에서 제공한 에러 메시지 우선)
+
   if (error.response?.data?.error) {
-    return error.response.data.error;
+    return { key: defaultKey, raw: error.response.data.error };
   }
-  
+
   if (error.message) {
-    return error.message;
+    return { key: defaultKey, raw: error.message };
   }
-  
-  return defaultMsg;
+
+  return { key: defaultKey };
 };
 
 /**
  * Show user-facing error message from an error object.
- * Uses determineErrorType and getErrorMessage internally, then calls the given show function.
  * @param {Error} error - Error object
  * @param {Function} showErrorFn - Function to display the message (e.g. useMessage().showError)
- * @param {string} [defaultMessage='오류가 발생했습니다'] - Default message when message cannot be extracted
+ * @param {(key: string) => string} t - i18n t function
+ * @param {string} [defaultKey='errors.unknown'] - Default i18n key
  */
-export const showErrorFromError = (error, showErrorFn, defaultMessage = '오류가 발생했습니다') => {
-  showErrorFn(getErrorMessage(error, defaultMessage));
+export const showErrorFromError = (error, showErrorFn, t, defaultKey = 'errors.unknown') => {
+  const { key, raw } = getErrorMessage(error, defaultKey);
+  showErrorFn(raw != null ? raw : t(key));
 };

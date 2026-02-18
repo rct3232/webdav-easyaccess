@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Menu,
   MenuItem,
@@ -29,7 +30,7 @@ const FileContextMenu = ({
   onProperties,
   onDelete,
 }) => {
-  // Prefer per-item permission if available
+  const { t } = useTranslation();
   const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
   if (!file) return null;
@@ -63,7 +64,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>다운로드</ListItemText>
+          <ListItemText>{t('actions.download')}</ListItemText>
         </MenuItem>
       )}
       {onRename && (
@@ -74,7 +75,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <EditIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>이름 변경</ListItemText>
+          <ListItemText>{t('actions.rename')}</ListItemText>
         </MenuItem>
       )}
       {onMove && (
@@ -85,7 +86,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <MoveIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>이동</ListItemText>
+          <ListItemText>{t('actions.move')}</ListItemText>
         </MenuItem>
       )}
       {onCopy && (
@@ -93,7 +94,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <CopyIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>복사</ListItemText>
+          <ListItemText>{t('actions.copy')}</ListItemText>
         </MenuItem>
       )}
       {onShare && (
@@ -101,7 +102,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <ShareIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>공유</ListItemText>
+          <ListItemText>{t('actions.share')}</ListItemText>
         </MenuItem>
       )}
       {onProperties && (
@@ -109,7 +110,7 @@ const FileContextMenu = ({
               <ListItemIcon>
                 <InfoIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>속성</ListItemText>
+              <ListItemText>{t('actions.properties')}</ListItemText>
             </MenuItem>
           )}
       {onDelete && (
@@ -120,7 +121,7 @@ const FileContextMenu = ({
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>
-          <ListItemText>삭제</ListItemText>
+          <ListItemText>{t('actions.delete')}</ListItemText>
         </MenuItem>
       )}
     </Menu>

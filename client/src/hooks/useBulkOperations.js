@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   downloadMultipleFiles,
   batchDeleteFiles,
@@ -27,6 +28,7 @@ export const useBulkOperations = (
   getCurrentPath,
   options = {}
 ) => {
+  const { t } = useTranslation();
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [folderPickerAction, setFolderPickerAction] = useState(null);
   const [bulkConflictData, setBulkConflictData] = useState(null);
@@ -65,8 +67,8 @@ export const useBulkOperations = (
   }, [updateProgress]);
 
   const getActionName = useCallback((action) => {
-    return action === 'move' ? '이동' : '복사';
-  }, []);
+    return action === 'move' ? t('actions.move') : t('actions.copy');
+  }, [t]);
 
   const handleBulkMove = () => {
     dismissFailedItems();
@@ -104,8 +106,8 @@ export const useBulkOperations = (
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: '준비 중...',
-      name: `${filePaths.length}개 항목 삭제`,
+      current: t('fileManager.bulkPreparing'),
+      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: t('actions.delete') }),
     }, retryDataObj);
 
     let jobId;
@@ -117,14 +119,14 @@ export const useBulkOperations = (
       updateProgressWithRetry(progressId, {
         type: 'delete',
         status: 'error',
-        error: err.message || '삭제 시작 실패',
+        error: err.message || t('fileManager.bulkDeleteStartFail'),
         keepOnError: true,
       }, retryDataObj);
       clearProcessing(filePaths);
       return;
     }
 
-    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: '삭제 중...' }, retryDataObj);
+    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: t('fileManager.bulkDeleting') }, retryDataObj);
 
     const poll = async () => {
       try {
@@ -137,14 +139,14 @@ export const useBulkOperations = (
         const failCount = failed.length;
         const successCount = succeeded.length;
         const failedItems = failed.map(f => ({
-          fileName: (f.path || '').split('/').pop() || '알 수 없음',
-          error: f.error || '알 수 없는 오류',
+          fileName: (f.path || '').split('/').pop() || t('common.unknown'),
+          error: f.error || t('common.unknownError'),
         }));
 
         updateProgressWithRetry(progressId, {
           progress: jobProgress,
           total: jobTotal,
-          current: jobStatus === 'running' ? '삭제 중...' : undefined,
+          current: jobStatus === 'running' ? t('fileManager.bulkDeleting') : undefined,
         }, retryDataObj);
 
         if (jobStatus !== 'pending' && jobStatus !== 'running') {
@@ -156,18 +158,18 @@ export const useBulkOperations = (
           });
           const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'));
           const currentMsg = jobStatus === 'cancelled'
-            ? `취소됨 (${successCount}/${filePaths.length} 완료)`
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: filePaths.length })
             : failCount > 0
-              ? `(${successCount}/${filePaths.length}) 삭제 완료 (${failCount}개 실패)`
-              : `(${successCount}/${filePaths.length}) 삭제 완료`;
+              ? t('fileManager.bulkDeleteDonePartial', { done: successCount, total: filePaths.length, failCount })
+              : t('fileManager.bulkDeleteDone', { done: successCount, total: filePaths.length });
           updateProgressWithRetry(progressId, {
             type: 'delete',
             status: finalStatus,
             progress: successCount,
             total: filePaths.length,
             current: currentMsg,
-            name: `${filePaths.length}개 항목 삭제`,
-            error: jobStatus === 'cancelled' ? '사용자에 의해 취소됨' : (failCount > 0 ? `${failCount}개 실패` : (skippedSet.size > 0 ? `권한으로 제외된 항목: ${skippedSet.size}개` : undefined)),
+            name: t('fileManager.bulkItemCount', { count: filePaths.length, action: t('actions.delete') }),
+            error: jobStatus === 'cancelled' ? t('common.cancelledByUser') : (failCount > 0 ? t('fileManager.uploadFailCount', { count: failCount }) : (skippedSet.size > 0 ? t('fileManager.bulkExcludedByPermission', { count: skippedSet.size }) : undefined)),
             failedItems: failedItems.length > 0 ? failedItems : undefined,
             keepOnError: failCount > 0 || skippedSet.size > 0 || jobStatus === 'cancelled',
             skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
@@ -202,7 +204,7 @@ export const useBulkOperations = (
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     poll();
-  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress]);
+  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress, t]);
 
   const handleBulkDownload = async () => {
     if (selectedFiles.size === 0) return;
@@ -239,7 +241,7 @@ export const useBulkOperations = (
           id: progressId,
           type: 'download',
           status: 'warning',
-          error: `권한으로 제외된 항목: ${skippedCount || skippedPaths.length}개`,
+          error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedPaths.length }),
           keepOnError: true,
           skippedPaths,
           skippedCount: skippedCount || skippedPaths.length,
@@ -294,8 +296,8 @@ export const useBulkOperations = (
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: '준비 중...',
-      name: `${filePaths.length}개 항목 ${actionName}`,
+      current: t('fileManager.bulkPreparing'),
+      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
     }, retryDataObj);
 
     let jobId;
@@ -309,7 +311,7 @@ export const useBulkOperations = (
       updateProgressWithRetry(progressId, {
         type: action,
         status: 'error',
-        error: err.message || '시작 실패',
+        error: err.message || t('fileManager.bulkStartFail'),
         keepOnError: true,
       }, retryDataObj);
       clearProcessing(filePaths);
@@ -318,7 +320,7 @@ export const useBulkOperations = (
       return;
     }
 
-    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: `${actionName} 중...` }, retryDataObj);
+    updateProgressWithRetry(progressId, { jobId, status: 'processing', current: t('fileManager.bulkActionProgress', { action: actionName }) }, retryDataObj);
 
     const poll = async () => {
       try {
@@ -334,14 +336,14 @@ export const useBulkOperations = (
         const hasSkippedByPermission = skippedByPermission.length > 0;
         const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
         const failedItems = failed.map(f => ({
-          fileName: (f.sourcePath || f.path || '').split('/').pop() || '알 수 없음',
-          error: f.error || '알 수 없는 오류',
+          fileName: (f.sourcePath || f.path || '').split('/').pop() || t('common.unknown'),
+          error: f.error || t('common.unknownError'),
         }));
 
         updateProgressWithRetry(progressId, {
           progress: jobProgress,
           total: jobTotal,
-          current: jobStatus === 'running' ? `${actionName} 중...` : undefined,
+          current: jobStatus === 'running' ? t('fileManager.bulkActionProgress', { action: actionName }) : undefined,
         }, retryDataObj);
 
         if (jobStatus !== 'pending' && jobStatus !== 'running') {
@@ -349,24 +351,24 @@ export const useBulkOperations = (
           let skippedErrorMsg;
           if (hasAnySkipped) {
             const parts = [];
-            if (hasSkippedByConflict) parts.push(`건너뛴 항목: ${skippedByConflict.length}개`);
-            if (hasSkippedByPermission) parts.push(`권한으로 제외된 항목: ${skippedByPermission.length}개`);
+            if (hasSkippedByConflict) parts.push(t('fileManager.bulkSkippedCount', { count: skippedByConflict.length }));
+            if (hasSkippedByPermission) parts.push(t('fileManager.bulkExcludedByPermission', { count: skippedByPermission.length }));
             skippedErrorMsg = parts.join(', ');
           }
           const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (hasAnySkipped ? 'warning' : 'completed'));
           const currentMsg = jobStatus === 'cancelled'
-            ? `취소됨 (${successCount}/${filePaths.length} 완료)`
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: filePaths.length })
             : failCount > 0
-              ? `(${successCount}/${filePaths.length}) ${actionName} 완료 (${failCount}개 실패)`
-              : `(${successCount}/${filePaths.length}) ${actionName} 완료`;
+              ? t('fileManager.bulkActionDonePartial', { done: successCount, total: filePaths.length, action: actionName, failCount })
+              : t('fileManager.bulkActionDone', { done: successCount, total: filePaths.length, action: actionName });
           updateProgressWithRetry(progressId, {
             type: action,
             status: finalStatus,
             progress: successCount,
             total: filePaths.length,
             current: currentMsg,
-            name: `${filePaths.length}개 항목 ${actionName}`,
-            error: jobStatus === 'cancelled' ? '사용자에 의해 취소됨' : (failCount > 0 ? `${failCount}개 실패` : skippedErrorMsg),
+            name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
+            error: jobStatus === 'cancelled' ? t('common.cancelledByUser') : (failCount > 0 ? t('fileManager.uploadFailCount', { count: failCount }) : skippedErrorMsg),
             failedItems: failedItems.length > 0 ? failedItems : undefined,
             keepOnError: failCount > 0 || hasAnySkipped || jobStatus === 'cancelled',
             skippedPathsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
@@ -410,7 +412,7 @@ export const useBulkOperations = (
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     poll();
-  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files]);
+  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files, t]);
 
   /**
    * Handle folder picker selection with conflict check
@@ -440,8 +442,8 @@ export const useBulkOperations = (
       status: 'preparing',
       progress: 0,
       total: filePaths.length,
-      current: '충돌 확인 중...',
-      name: `${filePaths.length}개 항목 ${actionName}`,
+      current: t('fileManager.conflictChecking'),
+      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
     }, retryDataForModal);
 
     markProcessing(filePaths, action);
@@ -471,7 +473,7 @@ export const useBulkOperations = (
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation, markProcessing, clearProcessing]);
+  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation, markProcessing, clearProcessing, t]);
 
   /**
    * Resolve bulk conflicts

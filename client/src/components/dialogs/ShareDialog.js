@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -118,6 +119,13 @@ const ShareDialog = ({
     hasPermissionChanged,
   } = permissionManager;
 
+  const { t } = useTranslation();
+  const dialogTitle = isAdminMode
+    ? `${t('dialogs.permissionSettings')} - ${username}`
+    : isReviewMode
+      ? `${t('dialogs.permissionReview')} - ${folderName}`
+      : `${t('dialogs.folderShare')} - ${folderName}`;
+
   const renderFolderTreeWrapper = (rootPathArg, level = 0) => (
     <ShareFolderTree
       rootPath={rootPathArg}
@@ -140,12 +148,6 @@ const ShareDialog = ({
       level={level}
     />
   );
-
-  const dialogTitle = isAdminMode
-    ? `권한 설정 - ${username}`
-    : isReviewMode
-      ? `권한 검토 - ${folderName}`
-      : `폴더 공유 - ${folderName}`;
 
   return (
     <>
@@ -173,7 +175,7 @@ const ShareDialog = ({
         }}
       >
         <DialogTitle>
-          {enableExternalShare ? '외부 공유 링크 생성' : dialogTitle}
+          {enableExternalShare ? t('dialogs.externalShareTitle') : dialogTitle}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
           {enableExternalShare && filePath && (
@@ -213,7 +215,7 @@ const ShareDialog = ({
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={handleClose} disabled={saving || externalShareLoading}>
-            {enableExternalShare ? '닫기' : '취소'}
+            {enableExternalShare ? t('common.close') : t('common.cancel')}
           </Button>
           {!enableExternalShare && (
             <Button
@@ -223,7 +225,7 @@ const ShareDialog = ({
               disabled={saving || loadingAllFolders}
               sx={{ ml: 1 }}
             >
-              {saving ? '저장 중...' : '확인'}
+              {saving ? t('common.saving') : t('common.confirm')}
             </Button>
           )}
         </DialogActions>

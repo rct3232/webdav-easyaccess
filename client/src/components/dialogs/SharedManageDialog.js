@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -47,10 +48,12 @@ const SharedManageDialog = ({
     onClose,
   });
 
+  const { t } = useTranslation();
+
   return (
     <>
       <Dialog open={open && !confirmDialogOpen} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>공유 관리</DialogTitle>
+        <DialogTitle>{t('dialogs.sharedManageTitle')}</DialogTitle>
         <DialogContent>
           <SharedManageBody
             displayName={displayName}
@@ -74,11 +77,11 @@ const SharedManageDialog = ({
         <DialogActions>
           {ownerExists === false && (
             <Typography variant="caption" color="error.main" sx={{ mr: 'auto' }}>
-              소유자가 삭제되어 권한을 요청할 수 없습니다.
+              {t('dialogs.ownerDeleted')}
             </Typography>
           )}
           <Button onClick={onClose} disabled={loading}>
-            닫기
+            {t('common.close')}
           </Button>
         </DialogActions>
       </Dialog>

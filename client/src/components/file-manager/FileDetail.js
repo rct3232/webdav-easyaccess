@@ -1,4 +1,5 @@
 import React, { useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Table,
   TableBody,
@@ -19,6 +20,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { FileDetailSkeleton } from './FileSkeletons';
 
 const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
   const theme = useTheme();
@@ -197,7 +199,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                 </TableCell>
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                   <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                    {file.type === 'directory' ? '폴더' : file.mime || '-'}
+                    {file.type === 'directory' ? t('actions.folder') : file.mime || '-'}
                   </Typography>
                 </TableCell>
                 <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -236,7 +238,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
             <TableRow>
               <TableCell colSpan={selectionMode ? 5 : 4} sx={{ border: 'none' }}>
                 <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography color="text.secondary">파일이 없습니다</Typography>
+                  <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
                 </Box>
               </TableCell>
             </TableRow>

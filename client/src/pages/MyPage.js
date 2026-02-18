@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   AppBar,
@@ -37,8 +38,11 @@ import {
   approvePermissionRequest,
 } from '../services/permissionRequestService';
 import { grantPermission } from '../services/permissionService';
+import { formatDate, formatDateOnly } from '../utils/format';
+import { getValidationMessage } from '../utils/validationMessage';
 
 const MyPage = () => {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -84,16 +88,16 @@ const MyPage = () => {
     !(passwordEntered && (passwordMismatch || passwordTooShort || passwordConfirmMissing));
 
   const formatPermissionLabel = (p) => {
-    if (p === PERMISSIONS.READ) return '읽기';
-    if (p === PERMISSIONS.WRITE) return '쓰기';
+    if (p === PERMISSIONS.READ) return t('mypage.read');
+    if (p === PERMISSIONS.WRITE) return t('mypage.write');
     return String(p || '');
   };
 
   const formatStatusLabel = (s) => {
-    if (s === 'pending') return { label: '대기', color: 'warning' };
-    if (s === 'approved') return { label: '승인', color: 'success' };
-    if (s === 'rejected') return { label: '거절', color: 'error' };
-    if (s === 'cancelled') return { label: '취소', color: 'default' };
+    if (s === 'pending') return { label: t('mypage.pending'), color: 'warning' };
+    if (s === 'approved') return { label: t('mypage.approved'), color: 'success' };
+    if (s === 'rejected') return { label: t('mypage.rejected'), color: 'error' };
+    if (s === 'cancelled') return { label: t('mypage.cancelled'), color: 'default' };
     return { label: String(s || ''), color: 'default' };
   };
 
@@ -131,7 +135,7 @@ const MyPage = () => {
       setOutboxRequests([]);
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || '권한 요청 목록을 불러오는데 실패했습니다.',
+        text: error.response?.data?.error || t('mypage.requestListLoadFail'),
       });
     } finally {
       setRequestLoading(false);
@@ -169,32 +173,32 @@ const MyPage = () => {
       await navigator.clipboard.writeText(url);
       setLinkCopied(token);
       setTimeout(() => setLinkCopied(null), 2000);
-      setMessage({ type: 'success', text: '링크가 클립보드에 복사되었습니다.' });
+      setMessage({ type: 'success', text: t('mypage.linkCopied') });
     } catch (error) {
       console.error('Failed to copy link:', error);
-      setMessage({ type: 'error', text: '링크 복사에 실패했습니다.' });
+      setMessage({ type: 'error', text: t('mypage.linkCopyFail') });
     }
   };
 
   const handleDeleteLink = async (token) => {
     try {
       await deleteShareLink(token);
-      setMessage({ type: 'success', text: '공유 링크가 삭제되었습니다.' });
+      setMessage({ type: 'success', text: t('mypage.linkDeleted') });
       await loadShareLinks();
     } catch (error) {
       console.error('Failed to delete share link:', error);
-      setMessage({ type: 'error', text: error.response?.data?.error || '링크 삭제에 실패했습니다.' });
+      setMessage({ type: 'error', text: error.response?.data?.error || t('mypage.linkDeleteFail') });
     }
   };
 
   const handleExtendLink = async (token, days) => {
     try {
       await updateShareLink(token, { expiresInDays: days });
-      setMessage({ type: 'success', text: '링크 유효기간이 연장되었습니다.' });
+      setMessage({ type: 'success', text: t('mypage.linkExtended') });
       await loadShareLinks();
     } catch (error) {
       console.error('Failed to extend link:', error);
-      setMessage({ type: 'error', text: error.response?.data?.error || '링크 연장에 실패했습니다.' });
+      setMessage({ type: 'error', text: error.response?.data?.error || t('mypage.linkExtendFail') });
     }
   };
 
@@ -226,24 +230,24 @@ const MyPage = () => {
     if (shouldUpdateEmail) {
       const emailError = validateEmail(trimmedEmail);
       if (emailError) {
-        setMessage({ type: 'error', text: emailError });
+        setMessage({ type: 'error', text: getValidationMessage(emailError, t) });
         return;
       }
     }
 
-    if (shouldUpdatePassword) {
-      if (passwordConfirmMissing) {
-        setMessage({ type: 'error', text: '비밀번호 확인을 입력해주세요.' });
-        return;
-      }
-      const matchError = validateMatch(password, confirmPassword, '비밀번호');
+      if (shouldUpdatePassword) {
+        if (passwordConfirmMissing) {
+          setMessage({ type: 'error', text: t('mypage.confirmPasswordRequired') });
+          return;
+        }
+      const matchError = validateMatch(password, confirmPassword, t('login.password'));
       if (matchError) {
-        setMessage({ type: 'error', text: matchError });
+        setMessage({ type: 'error', text: getValidationMessage(matchError, t) });
         return;
       }
       const passwordError = validatePassword(password, { minLength: 4 });
       if (passwordError) {
-        setMessage({ type: 'error', text: passwordError });
+        setMessage({ type: 'error', text: getValidationMessage(passwordError, t) });
         return;
       }
     }
@@ -263,7 +267,7 @@ const MyPage = () => {
         await updatePasswordApi(user.id, password);
         setMessage({
           type: 'success',
-          text: '비밀번호가 성공적으로 변경되었습니다. 보안을 위해 다시 로그인해주세요.',
+          text: t('mypage.passwordChangedSuccess'),
         });
         setPassword('');
         setConfirmPassword('');
@@ -274,7 +278,7 @@ const MyPage = () => {
       }
 
       if (shouldUpdateEmail) {
-        setMessage({ type: 'success', text: '이메일이 성공적으로 변경되었습니다.' });
+        setMessage({ type: 'success', text: t('mypage.emailChangedSuccess') });
         setEditDialogOpen(false);
       }
     } catch (error) {
@@ -283,13 +287,13 @@ const MyPage = () => {
         setMessage({
           type: 'error',
           text: serverMsg
-            ? `이메일은 변경되었으나 비밀번호 변경에 실패했습니다: ${serverMsg}`
-            : '이메일은 변경되었으나 비밀번호 변경에 실패했습니다.',
+            ? `${t('mypage.emailChangedPasswordFail')}: ${serverMsg}`
+            : t('mypage.emailChangedPasswordFail'),
         });
       } else {
         setMessage({
           type: 'error',
-          text: serverMsg || '저장에 실패했습니다.',
+          text: serverMsg || t('mypage.saveFail'),
         });
       }
     } finally {
@@ -368,8 +372,8 @@ const MyPage = () => {
         >
           <Paper sx={{ p: 3 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography variant="h6">계정 정보</Typography>
-              <IconButton aria-label="계정 정보 수정" onClick={handleOpenEditDialog} size="small">
+              <Typography variant="h6">{t('mypage.accountInfo')}</Typography>
+              <IconButton aria-label={t('mypage.editAccountInfo')} onClick={handleOpenEditDialog} size="small">
                 <EditIcon />
               </IconButton>
             </Stack>
@@ -377,7 +381,7 @@ const MyPage = () => {
 
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                사용자명
+                {t('login.username')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
                 {user?.username}
@@ -386,7 +390,7 @@ const MyPage = () => {
 
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                이메일
+                {t('dialogs.email')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
                 {email || user?.email || '-'}
@@ -395,19 +399,19 @@ const MyPage = () => {
 
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                계정 상태
+                {t('mypage.accountStatus')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                {user?.status === 'approved' ? '승인됨' : user?.status}
+                {user?.status === 'approved' ? t('mypage.approvedStatus') : user?.status}
               </Typography>
             </Box>
 
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                권한
+                {t('mypage.permission')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                {user?.is_admin ? '관리자' : '일반 사용자'}
+                {user?.is_admin ? t('mypage.admin') : t('mypage.normalUser')}
               </Typography>
             </Box>
           </Paper>
@@ -415,12 +419,12 @@ const MyPage = () => {
           {!user?.is_admin && (
             <Paper sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
-                공유 관리
+                {t('mypage.shareManage')}
               </Typography>
               <Divider sx={{ mb: 2 }} />
 
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                내 홈 디렉토리 하위의 모든 폴더에 대한 권한을 설정할 수 있습니다.
+                {t('mypage.shareManageDescription')}
               </Typography>
 
               <Button
@@ -430,16 +434,16 @@ const MyPage = () => {
                 fullWidth
                 sx={{ mb: 3 }}
               >
-                공유 관리 열기
+                {t('mypage.openShareManage')}
               </Button>
 
               <Divider sx={{ mb: 2 }} />
 
               <Tabs value={requestTab} onChange={(e, v) => setRequestTab(v)} sx={{ mb: 2 }}>
-                <Tab label={`받은 요청 (${inboxRequests.length})`} />
-                <Tab label={`내 요청 (${outboxRequests.length})`} />
+                <Tab label={t('mypage.inboxRequestsCount', { count: inboxRequests.length })} />
+                <Tab label={t('mypage.outboxRequestsCount', { count: outboxRequests.length })} />
                 {!user?.is_admin && (
-                  <Tab label={`링크 (${shareLinks.length})`} />
+                  <Tab label={t('mypage.linksCount', { count: shareLinks.length })} />
                 )}
               </Tabs>
 
@@ -451,7 +455,7 @@ const MyPage = () => {
                   </Box>
                 ) : shareLinks.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
-                    생성한 공유 링크가 없습니다.
+                    {t('mypage.noShareLinks')}
                   </Typography>
                 ) : (
                   <Stack spacing={1.5}>
@@ -498,12 +502,12 @@ const MyPage = () => {
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Chip
                               size="small"
-                              label={link.isExpired ? '만료됨' : link.expiresAt ? `만료: ${new Date(link.expiresAt).toLocaleDateString('ko-KR')}` : '무제한'}
+                              label={link.isExpired ? t('mypage.expired') : link.expiresAt ? t('mypage.expiresAtDate', { date: formatDateOnly(link.expiresAt) }) : t('mypage.unlimited')}
                               color={link.isExpired ? 'error' : 'default'}
                             />
                             <Chip
                               size="small"
-                              label={`다운로드: ${link.downloadCount || 0}회`}
+                              label={t('mypage.downloadCount', { count: link.downloadCount || 0 })}
                             />
                           </Box>
                           
@@ -519,7 +523,7 @@ const MyPage = () => {
                                   handleExtendLink(link.token, daysLeft + 7);
                                 }}
                               >
-                                +7일 연장
+                                {t('mypage.extend7Days')}
                               </Button>
                             )}
                             <Button
@@ -527,12 +531,12 @@ const MyPage = () => {
                               variant="outlined"
                               color="error"
                               onClick={() => {
-                                if (window.confirm('정말로 이 링크를 삭제하시겠습니까?')) {
+                                if (window.confirm(t('mypage.confirmDeleteLink'))) {
                                   handleDeleteLink(link.token);
                                 }
                               }}
                             >
-                              삭제
+                              {t('common.delete')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -548,7 +552,7 @@ const MyPage = () => {
                 <Stack spacing={1.5}>
                   {(requestTab === 0 ? inboxRequests : outboxRequests).length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      표시할 요청이 없습니다.
+                      {t('mypage.noRequestsToShow')}
                     </Typography>
                   ) : (
                     (requestTab === 0 ? inboxRequests : outboxRequests).map((r) => {
@@ -568,27 +572,27 @@ const MyPage = () => {
                               />
                               <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
                               <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                                {r.created_at ? new Date(r.created_at).toLocaleString('ko-KR') : ''}
+                                {r.created_at ? formatDate(r.created_at) : ''}
                               </Typography>
                             </Stack>
 
                             <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                              {r.target_type === 'file' ? '파일' : '폴더'}: {r.file_path ?? r.folder_path}
+                              {r.target_type === 'file' ? t('mypage.file') : t('mypage.folder')}: {r.file_path ?? r.folder_path}
                             </Typography>
 
                             {requestTab === 0 ? (
                               <Typography variant="caption" color="text.secondary">
-                                요청자: {r.requester_username || r.requester_id}
+                                {t('mypage.requester')}: {r.requester_username || r.requester_id}
                               </Typography>
                             ) : (
                               <Typography variant="caption" color="text.secondary">
-                                소유자: {r.owner_username || r.owner_id}
+                                {t('mypage.owner')}: {r.owner_username || r.owner_id}
                               </Typography>
                             )}
 
                             {r.message ? (
                               <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
-                                메시지: {r.message}
+                                {t('mypage.messageLabel')}: {r.message}
                               </Typography>
                             ) : null}
 
@@ -609,12 +613,12 @@ const MyPage = () => {
                                             target: 'file',
                                           });
                                           await approvePermissionRequest(r.id);
-                                          setMessage({ type: 'success', text: '파일 권한 요청을 승인했습니다.' });
+                                          setMessage({ type: 'success', text: t('mypage.permissionApproved') });
                                           await loadPermissionRequests();
                                         })
                                       }
                                     >
-                                      승인
+                                      {t('mypage.approved')}
                                     </Button>
                                   ) : (
                                     <Button
@@ -626,7 +630,7 @@ const MyPage = () => {
                                         setReviewDialogOpen(true);
                                       }}
                                     >
-                                      검토
+                                      {t('mypage.review')}
                                     </Button>
                                   )}
                                   <Button
@@ -637,12 +641,12 @@ const MyPage = () => {
                                     onClick={() =>
                                       withRequestActionLoading(r.id, async () => {
                                         await rejectPermissionRequest(r.id);
-                                        setMessage({ type: 'success', text: '요청을 거절했습니다.' });
+                                        setMessage({ type: 'success', text: t('mypage.requestRejected') });
                                         await loadPermissionRequests();
                                       })
                                     }
                                   >
-                                    거절
+                                    {t('mypage.rejected')}
                                   </Button>
                                 </>
                               ) : (
@@ -653,12 +657,12 @@ const MyPage = () => {
                                   onClick={() =>
                                     withRequestActionLoading(r.id, async () => {
                                       await cancelPermissionRequest(r.id);
-                                      setMessage({ type: 'success', text: '요청을 취소했습니다.' });
+                                      setMessage({ type: 'success', text: t('mypage.requestCancelled') });
                                       await loadPermissionRequests();
                                     })
                                   }
                                 >
-                                  취소
+                                  {t('mypage.cancelled')}
                                 </Button>
                               )}
                             </Stack>
@@ -681,7 +685,7 @@ const MyPage = () => {
             onClose={() => setShareDialogOpen(false)}
             mode="share"
             folderPath={user?.username ? `/${user.username}` : null}
-            folderName={user?.username || '홈 디렉토리'}
+            folderName={user?.username || t('mypage.homeDir')}
             user={user}
             onMessage={(msg) => {
               setMessage({ type: msg.type, text: msg.text });
@@ -696,7 +700,7 @@ const MyPage = () => {
             mode="review"
             permissionRequest={reviewPermissionRequest}
             folderPath={reviewPermissionRequest?.folder_path || null}
-            folderName={reviewPermissionRequest?.folder_path?.split('/').filter(Boolean).pop() || '폴더'}
+            folderName={reviewPermissionRequest?.folder_path?.split('/').filter(Boolean).pop() || t('mypage.folder')}
             user={user}
             onMessage={(msg) => {
               setMessage({ type: msg.type, text: msg.text });

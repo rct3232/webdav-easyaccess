@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../utils/pathUtils';
 import { getRecentFiles, removeRecentFile } from '../utils/recentFiles';
@@ -32,6 +33,7 @@ export const useRecentFile = ({
   loading,
   currentPath,
 }) => {
+  const { t } = useTranslation();
   // --- useRecentFileNavigation 로직 ---
   const recentFilePathsRef = useRef(new Map());
   const pathHistoryRef = useRef(new Map());
@@ -122,16 +124,16 @@ export const useRecentFile = ({
 
               if (foundRecentFile) {
                 await removeRecentFile(foundRecentFile.path);
-                showError('파일 또는 경로가 존재하지 않습니다. 최근항목에서 제거되었습니다.');
+                showError(t('errors.recentRemovedFromList'));
               } else {
-                showError('파일 또는 경로가 존재하지 않습니다.');
+                showError(t('errors.fileNotFound'));
               }
             } catch (err) {
               console.error('Failed to remove from recent files on 404:', err);
-              showError('파일 또는 경로가 존재하지 않습니다.');
+              showError(t('errors.fileNotFound'));
             }
           } else {
-            showError('폴더에 접근할 수 없습니다. 권한을 확인해주세요.');
+            showError(t('errors.folderAccessDenied'));
           }
         } catch (verifyError) {
           console.error('Failed to verify file existence on 404:', verifyError);
@@ -148,16 +150,16 @@ export const useRecentFile = ({
 
               if (foundRecentFile) {
                 await removeRecentFile(foundRecentFile.path);
-                showError('파일 또는 경로가 존재하지 않습니다. 최근항목에서 제거되었습니다.');
+                showError(t('errors.recentRemovedFromList'));
               } else {
-                showError('파일 또는 경로가 존재하지 않습니다.');
+                showError(t('errors.fileNotFound'));
               }
             } catch (err) {
               console.error('Failed to remove from recent files on verify error:', err);
-              showError('파일 또는 경로가 존재하지 않습니다.');
+              showError(t('errors.fileNotFound'));
             }
           } else {
-            showError('파일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+            showError(t('errors.fileCheckError'));
           }
         }
 
@@ -199,8 +201,7 @@ export const useRecentFile = ({
       }
 
       const errorType = determineErrorType(error);
-      const errorMessage = getErrorMessageByType(errorType);
-      showError(errorMessage);
+      showError(t(getErrorMessageByType(errorType)));
 
       processingErrorRef.current.delete(path);
       processingErrorRef.current.delete(normalizedPath);
@@ -213,6 +214,7 @@ export const useRecentFile = ({
       showError,
       user,
       currentPathRef,
+      t,
     ]
   );
 
@@ -281,7 +283,7 @@ export const useRecentFile = ({
                 filePath
               );
             } else {
-              showError('파일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+              showError(t('errors.fileCheckError'));
             }
             setRecentFileToPreview(null);
             clearTracking(normalizedParentPath);
@@ -293,6 +295,7 @@ export const useRecentFile = ({
   }, [
     files,
     loading,
+    t,
     currentPath,
     recentFileToPreview,
     handleRecentFileError,

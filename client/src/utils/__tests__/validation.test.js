@@ -9,29 +9,29 @@ import {
 
 describe('validation utilities', () => {
   describe('validateFileName', () => {
-    it('should return error for empty name', () => {
-      expect(validateFileName('')).toBe('이름을 입력하세요');
-      expect(validateFileName('  ')).toBe('이름을 입력하세요');
+    it('should return error key for empty name', () => {
+      expect(validateFileName('')).toBe('validation.fileNameRequired');
+      expect(validateFileName('  ')).toBe('validation.fileNameRequired');
     });
 
-    it('should return error for invalid characters', () => {
-      expect(validateFileName('test/file')).toBe('파일명에 사용할 수 없는 문자가 포함되어 있습니다');
-      expect(validateFileName('test*file')).toBe('파일명에 사용할 수 없는 문자가 포함되어 있습니다');
+    it('should return error key for invalid characters', () => {
+      expect(validateFileName('test/file')).toBe('validation.fileNameInvalidChars');
+      expect(validateFileName('test*file')).toBe('validation.fileNameInvalidChars');
     });
 
-    it('should return error for reserved names', () => {
-      expect(validateFileName('CON')).toBe('예약된 이름은 사용할 수 없습니다');
-      expect(validateFileName('aux')).toBe('예약된 이름은 사용할 수 없습니다');
+    it('should return error key for reserved names', () => {
+      expect(validateFileName('CON')).toBe('validation.fileNameReserved');
+      expect(validateFileName('aux')).toBe('validation.fileNameReserved');
     });
 
-    it('should return error for trailing spaces or dots', () => {
-      expect(validateFileName('test ')).toBe('이름은 공백이나 점으로 끝날 수 없습니다');
-      expect(validateFileName('test.')).toBe('이름은 공백이나 점으로 끝날 수 없습니다');
+    it('should return error key for trailing spaces or dots', () => {
+      expect(validateFileName('test ')).toBe('validation.fileNameNoTrailing');
+      expect(validateFileName('test.')).toBe('validation.fileNameNoTrailing');
     });
 
-    it('should return error for long names', () => {
+    it('should return error key for long names', () => {
       const longName = 'a'.repeat(256);
-      expect(validateFileName(longName)).toBe('이름은 255자를 초과할 수 없습니다');
+      expect(validateFileName(longName)).toBe('validation.fileNameTooLong');
     });
 
     it('should return null for valid names', () => {
@@ -43,15 +43,15 @@ describe('validation utilities', () => {
   describe('validateEmail', () => {
     it('should validate email format', () => {
       expect(validateEmail('test@example.com')).toBeNull();
-      expect(validateEmail('invalid-email')).toBe('올바른 이메일 형식이 아닙니다');
-      expect(validateEmail('')).toBe('이메일을 입력하세요');
+      expect(validateEmail('invalid-email')).toBe('validation.emailInvalid');
+      expect(validateEmail('')).toBe('validation.emailRequired');
     });
   });
 
   describe('validatePassword', () => {
     it('should validate password length', () => {
       expect(validatePassword('123456')).toBeNull();
-      expect(validatePassword('123')).toBe('비밀번호는 최소 6자 이상이어야 합니다');
+      expect(validatePassword('123')).toEqual({ key: 'validation.passwordMinLength', minLength: 6 });
       expect(validatePassword('123', { minLength: 2 })).toBeNull();
     });
   });
@@ -59,17 +59,27 @@ describe('validation utilities', () => {
   describe('validateUsername', () => {
     it('should validate username rules', () => {
       expect(validateUsername('user123')).toBeNull();
-      expect(validateUsername('us')).toBe('사용자명은 최소 3자 이상이어야 합니다');
-      expect(validateUsername('admin')).toBe('예약된 사용자명은 사용할 수 없습니다');
-      expect(validateUsername('user@name')).toBe('사용자명은 영문, 숫자, 언더스코어(_), 하이픈(-)만 사용할 수 있습니다');
+      expect(validateUsername('us')).toBe('validation.usernameMinLength');
+      expect(validateUsername('admin')).toBe('validation.usernameReserved');
+      expect(validateUsername('user@name')).toBe('validation.usernameInvalidChars');
     });
   });
 
   describe('validateRequired', () => {
     it('should validate required fields', () => {
       expect(validateRequired('content')).toBeNull();
-      expect(validateRequired('')).toBe('필드를 입력하세요');
-      expect(validateRequired('', '사용자명')).toBe('사용자명를 입력하세요');
+      expect(validateRequired('')).toEqual({ key: 'validation.required', fieldName: '필드' });
+      expect(validateRequired('', '사용자명')).toEqual({ key: 'validation.required', fieldName: '사용자명' });
+    });
+  });
+
+  describe('validateMatch', () => {
+    it('should return key with fieldName when values do not match', () => {
+      expect(validateMatch('a', 'b')).toEqual({ key: 'validation.match', fieldName: '값' });
+      expect(validateMatch('a', 'b', '비밀번호')).toEqual({ key: 'validation.match', fieldName: '비밀번호' });
+    });
+    it('should return null when values match', () => {
+      expect(validateMatch('a', 'a')).toBeNull();
     });
   });
 });

@@ -1,3 +1,7 @@
+import i18n from '../i18n';
+
+const getLocale = () => (i18n.language && i18n.language.startsWith('en') ? 'en-US' : 'ko-KR');
+
 export const formatFileSize = (bytes) => {
   if (!bytes || bytes === 0) return '0 B';
   
@@ -13,7 +17,7 @@ export const formatDate = (dateString) => {
   
   try {
     const date = new Date(dateString);
-    return date.toLocaleString('ko-KR', {
+    return date.toLocaleString(getLocale(), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -22,6 +26,16 @@ export const formatDate = (dateString) => {
     });
   } catch (error) {
     return dateString;
+  }
+};
+
+/** Date only, for use in components that need locale-aware date display */
+export const formatDateOnly = (dateString) => {
+  if (!dateString) return '';
+  try {
+    return new Date(dateString).toLocaleDateString(getLocale());
+  } catch (error) {
+    return String(dateString);
   }
 };
 

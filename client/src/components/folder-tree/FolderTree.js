@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   List,
@@ -35,6 +36,7 @@ const FolderTree = ({
   shareLinkSection,
   shareLinkActions,
 }) => {
+  const { t } = useTranslation();
   const [expandedPaths, setExpandedPaths] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [recentFilesList, setRecentFilesList] = useState([]);
@@ -239,7 +241,7 @@ const FolderTree = ({
                   '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
                 }}
               >
-                공유됨 추가
+                {t('nav.addToShared')}
               </Button>
             ) : (
               <Button
@@ -255,7 +257,7 @@ const FolderTree = ({
                   '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
                 }}
               >
-                로그인
+                {t('nav.login')}
               </Button>
             )
           ) : (
@@ -263,7 +265,7 @@ const FolderTree = ({
               <IconButton
                 onClick={onCreateFolder}
                 disabled={!hasWritePermission}
-                title="폴더 생성"
+                title={t('fileManager.createFolder')}
                 sx={{
                   flex: 1,
                   borderRadius: '20px 0 0 20px',
@@ -278,7 +280,7 @@ const FolderTree = ({
               <IconButton
                 onClick={onUploadFile}
                 disabled={!hasWritePermission}
-                title="파일 업로드"
+                title={t('fileManager.uploadFile')}
                 sx={{
                   flex: 1,
                   borderRadius: '0 20px 20px 0',
@@ -310,7 +312,7 @@ const FolderTree = ({
             <>
               <BaseFolderTreeItem
                 path={homePath}
-                name={user?.is_admin ? '홈' : user?.username || '홈'}
+                name={user?.is_admin ? t('nav.home') : user?.username || t('nav.home')}
                 level={0}
                 currentPath={currentPath}
                 onPathClick={onPathClick}

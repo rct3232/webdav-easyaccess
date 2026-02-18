@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Custom hook for managing file operation progress
@@ -29,6 +30,7 @@ import { useState, useCallback, useRef } from 'react';
  * updateProgress({ id: 'move_123', remove: true });
  */
 export const useFileOperationProgress = () => {
+  const { t } = useTranslation();
   const [progressItems, setProgressItems] = useState([]);
   /** progressId별 최신 fileItems (배치/이중 호출 시 prev 대신 사용해 델타 누적) */
   const fileItemsByProgressIdRef = useRef(new Map());
@@ -231,11 +233,11 @@ export const useFileOperationProgress = () => {
    * @param {Error} [error] - Optional error object
    * @param {string} [defaultErrorMsg] - Default error message
    */
-  const updateProgressWithError = useCallback((progressId, progressData, error = null, defaultErrorMsg = null) => {
+  const updateProgressWithError = useCallback((progressId, progressData, error = null, defaultKey = 'errors.operationFailed') => {
     if (error) {
       const { getErrorMessage } = require('../utils/errorUtils');
-      const errorMsg = getErrorMessage(error, defaultErrorMsg || '작업에 실패했습니다');
-      
+      const { key, raw } = getErrorMessage(error, defaultKey);
+      const errorMsg = raw != null ? raw : t(key);
       updateProgress({
         id: progressId,
         ...progressData,
@@ -249,7 +251,7 @@ export const useFileOperationProgress = () => {
         ...progressData,
       });
     }
-  }, [updateProgress]);
+  }, [updateProgress, t]);
 
   /**
    * Create and initialize a progress item
@@ -273,7 +275,7 @@ export const useFileOperationProgress = () => {
       status: 'completed',
       progress: 1,
       total: 1,
-      current: '완료',
+      current: t('fileManager.statusCompleted'),
     });
     
     if (delay > 0) {
@@ -281,7 +283,7 @@ export const useFileOperationProgress = () => {
         updateProgress({ id: progressId, remove: true });
       }, delay);
     }
-  }, [updateProgress]);
+  }, [updateProgress, t]);
 
   return {
     progressItems,

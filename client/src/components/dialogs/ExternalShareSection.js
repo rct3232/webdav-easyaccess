@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Typography,
@@ -7,6 +8,7 @@ import {
   TextField,
   CircularProgress,
 } from '@mui/material';
+import { formatDateOnly } from '../../utils/format';
 import {
   Link as LinkIcon,
   ContentCopy as ContentCopyIcon,
@@ -30,20 +32,22 @@ const ExternalShareSection = ({
   fileName,
   onMessage,
 }) => {
+  const { t } = useTranslation();
+  const displayName = fileName || filePath?.split('/').pop() || '';
   return (
     <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
       <Typography variant="subtitle2" gutterBottom>
-        외부 공유 링크
+        {t('share.externalLink')}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {fileName || filePath.split('/').pop()}에 대한 공유 링크를 생성합니다.
+        {t('share.createLinkFor', { name: displayName })}
       </Typography>
       
       {!externalShareLink ? (
         <>
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" gutterBottom>
-              유효기간
+              {t('share.expiresIn')}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Button
@@ -54,7 +58,7 @@ const ExternalShareSection = ({
                   setExternalShareExpiresInDays(null);
                 }}
               >
-                무제한
+                {t('share.unlimited')}
               </Button>
               <Button
                 variant={!externalShareUnlimited ? 'outlined' : 'contained'}
@@ -64,7 +68,7 @@ const ExternalShareSection = ({
                   setExternalShareExpiresInDays(14);
                 }}
               >
-                지정
+                {t('share.specify')}
               </Button>
               {!externalShareUnlimited && (
                 <TextField
@@ -83,7 +87,7 @@ const ExternalShareSection = ({
               )}
               {!externalShareUnlimited && (
                 <Typography variant="body2" color="text.secondary">
-                  일
+                  {t('share.days')}
                 </Typography>
               )}
             </Box>
@@ -102,7 +106,7 @@ const ExternalShareSection = ({
                 setExternalShareLink(link);
                 if (onMessage) {
                   onMessage({
-                    text: '공유 링크가 생성되었습니다.',
+                    text: t('share.linkCreated'),
                     type: 'success',
                   });
                 }
@@ -110,7 +114,7 @@ const ExternalShareSection = ({
                 console.error('Failed to create share link:', error);
                 if (onMessage) {
                   onMessage({
-                    text: error.response?.data?.error || '공유 링크 생성에 실패했습니다.',
+                    text: error.response?.data?.error || t('share.linkCreateFail'),
                     type: 'error',
                   });
                 }
@@ -121,14 +125,14 @@ const ExternalShareSection = ({
             disabled={externalShareLoading}
             startIcon={externalShareLoading ? <CircularProgress size={20} /> : <LinkIcon />}
           >
-            {externalShareLoading ? '생성 중...' : '링크 생성'}
+            {externalShareLoading ? t('share.creating') : t('share.createLink')}
           </Button>
         </>
       ) : (
         <>
           <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
             <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-              공유 링크
+              {t('share.linkLabel')}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Typography
@@ -161,7 +165,7 @@ const ExternalShareSection = ({
                     setTimeout(() => setLinkCopied(false), 2000);
                     if (onMessage) {
                       onMessage({
-                        text: '링크가 클립보드에 복사되었습니다.',
+                        text: t('share.linkCopied'),
                         type: 'success',
                       });
                     }
@@ -169,7 +173,7 @@ const ExternalShareSection = ({
                     console.error('Failed to copy link:', error);
                     if (onMessage) {
                       onMessage({
-                        text: '링크 복사에 실패했습니다.',
+                        text: t('share.linkCopyFail'),
                         type: 'error',
                       });
                     }
@@ -183,9 +187,9 @@ const ExternalShareSection = ({
           
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary">
-              만료일: {externalShareLink.expiresAt 
-                ? new Date(externalShareLink.expiresAt).toLocaleDateString('ko-KR')
-                : '무제한'}
+              {t('share.expiresAt')} {externalShareLink.expiresAt 
+                ? formatDateOnly(externalShareLink.expiresAt)
+                : t('share.unlimited')}
             </Typography>
           </Box>
           
@@ -198,7 +202,7 @@ const ExternalShareSection = ({
               setExternalShareUnlimited(false);
             }}
           >
-            새 링크 생성
+            {t('share.newLink')}
           </Button>
         </>
       )}

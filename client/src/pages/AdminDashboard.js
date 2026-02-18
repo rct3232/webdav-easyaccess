@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   AppBar,
@@ -42,11 +43,14 @@ import CategoryIcon from '@mui/icons-material/Category';
 import { useNavigate } from 'react-router-dom';
 import * as adminService from '../services/adminService';
 import { validateRequired, validateUsername, validateEmail, validatePassword, validateMatch } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../utils/validationMessage';
 import { ShareDialog } from '../components/dialogs';
 import { useResponsive } from '../hooks/useResponsive';
+import { formatDate } from '../utils/format';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../utils/localStorage';
 
 const AdminDashboard = () => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const navigate = useNavigate();
   const [tab, setTab] = useState(0); // 0: 전체 사용자, 1: 설정
@@ -70,34 +74,34 @@ const AdminDashboard = () => {
   const [saveSettingsLoading, setSaveSettingsLoading] = useState(false);
   const [createUserLoading, setCreateUserLoading] = useState(false);
 
-  const loadPendingUsers = async () => {
+  const loadPendingUsers = useCallback(async () => {
     try {
       const data = await adminService.getPendingUsers();
       setPendingUsers(data);
     } catch (error) {
       console.error('Failed to load pending users:', error);
     }
-  };
+  }, []);
 
-  const loadAllUsers = async () => {
+  const loadAllUsers = useCallback(async () => {
     try {
       const data = await adminService.getUsers();
       setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
     }
-  };
+  }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const data = await adminService.getSettings();
       setTempSettings(data);
       setHasSettingsChanges(false);
     } catch (error) {
       console.error('Failed to load settings:', error);
-      setMessage({ type: 'error', text: '설정을 불러오는데 실패했습니다.' });
+      setMessage({ type: 'error', text: t('admin.settingsLoadFail') });
     }
-  };
+  }, [t]);
 
   const handleToggleRegistration = () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -109,11 +113,11 @@ const AdminDashboard = () => {
     setSaveSettingsLoading(true);
     try {
       await adminService.updateSettings(tempSettings);
-      setMessage({ type: 'success', text: '설정이 저장되었습니다.' });
+      setMessage({ type: 'success', text: t('admin.settingsSaveSuccess') });
       await loadSettings();
     } catch (error) {
       console.error('Failed to update settings:', error);
-      setMessage({ type: 'error', text: '설정 저장에 실패했습니다.' });
+      setMessage({ type: 'error', text: t('admin.settingsSaveFail') });
     } finally {
       setSaveSettingsLoading(false);
     }
@@ -133,11 +137,11 @@ const AdminDashboard = () => {
       
       let messageText;
       if (totalCleaned === 0) {
-        messageText = '정리할 데이터가 없습니다.';
+        messageText = t('admin.noDataToClean');
       } else if (results.errors?.length) {
-        messageText = `정리 완료. 총 ${totalCleaned}개 항목 삭제됨. 일부 실패.`;
+        messageText = t('admin.cleanupDonePartial', { count: totalCleaned });
       } else {
-        messageText = `정리 완료. 총 ${totalCleaned}개 항목 삭제됨.`;
+        messageText = t('admin.cleanupDone', { count: totalCleaned });
       }
       
       setMessage({
@@ -145,7 +149,7 @@ const AdminDashboard = () => {
         text: messageText,
       });
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.error || 'Orphaned 데이터 정리 실패' });
+      setMessage({ type: 'error', text: error.response?.data?.error || t('admin.orphanCleanupFail') });
     } finally {
       setCleanupLoading(false);
     }
@@ -160,18 +164,18 @@ const AdminDashboard = () => {
       const total = (upgradedPaths || 0) + (grantedPaths || 0);
       let messageText;
       if (total === 0 && (!errors || errors.length === 0)) {
-        messageText = '보정할 권한이 없습니다.';
+        messageText = t('admin.noPermissionToFix');
       } else if (errors?.length) {
-        messageText = `권한 정리 완료. ${updatedUsers || 0}명 사용자, ${total}개 경로 보정. 일부 실패.`;
+        messageText = t('admin.permissionCleanupDonePartial', { users: updatedUsers || 0, paths: total });
       } else {
-        messageText = `권한 정리 완료. ${updatedUsers || 0}명 사용자, ${total}개 경로 보정.`;
+        messageText = t('admin.permissionCleanupDone', { users: updatedUsers || 0, paths: total });
       }
       setMessage({
         type: errors?.length ? 'warning' : (total > 0 ? 'success' : 'info'),
         text: messageText,
       });
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.error || '권한 정리에 실패했습니다.' });
+      setMessage({ type: 'error', text: error.response?.data?.error || t('admin.permissionCleanupFail') });
     } finally {
       setPermissionCleanupLoading(false);
     }
@@ -187,18 +191,18 @@ const AdminDashboard = () => {
       }
     };
     loadData();
-  }, []);
+  }, [loadPendingUsers, loadAllUsers, loadSettings]);
 
   const handleApprove = async (userId, username) => {
     setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
       await adminService.approveUser(userId);
-      setMessage({ type: 'success', text: `${username} 계정이 승인되었습니다.` });
+      setMessage({ type: 'success', text: t('admin.approveSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || '승인에 실패했습니다.',
+        text: error.response?.data?.error || t('admin.approveFail'),
       });
     } finally {
       setActionLoadingIds((prev) => {
@@ -213,12 +217,12 @@ const AdminDashboard = () => {
     setActionLoadingIds((prev) => new Set(prev).add(userId));
     try {
       await adminService.rejectUser(userId);
-      setMessage({ type: 'success', text: `${username} 계정이 거절되었습니다.` });
+      setMessage({ type: 'success', text: t('admin.rejectSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || '거절에 실패했습니다.',
+        text: error.response?.data?.error || t('admin.rejectFail'),
       });
     } finally {
       setActionLoadingIds((prev) => {
@@ -239,12 +243,12 @@ const AdminDashboard = () => {
     try {
       await adminService.deleteUser(userId);
       setDeleteDialog({ open: false, userId: null, username: '' });
-      setMessage({ type: 'success', text: `${username} 계정이 삭제되었습니다.` });
+      setMessage({ type: 'success', text: t('admin.deleteSuccess', { name: username }) });
       await Promise.all([loadPendingUsers(), loadAllUsers()]);
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || '삭제에 실패했습니다.',
+        text: error.response?.data?.error || t('admin.deleteFail'),
       });
     } finally {
       setDeleteLoading(false);
@@ -267,29 +271,29 @@ const AdminDashboard = () => {
 
   const handleCreateSubmit = async () => {
     // Validation
-    const requiredError = validateRequired(newUser.username, '사용자명') || validateRequired(newUser.email, '이메일') || validateRequired(newUser.password, '비밀번호');
+    const requiredError = validateRequired(newUser.username, t('admin.username')) || validateRequired(newUser.email, t('admin.email')) || validateRequired(newUser.password, t('login.password'));
     if (requiredError) {
-      setMessage({ type: 'error', text: requiredError });
+      setMessage({ type: 'error', text: getValidationMessage(requiredError, t) });
       return;
     }
     const usernameError = validateUsername(newUser.username);
     if (usernameError) {
-      setMessage({ type: 'error', text: usernameError });
+      setMessage({ type: 'error', text: getValidationMessage(usernameError, t) });
       return;
     }
     const emailError = validateEmail(newUser.email);
     if (emailError) {
-      setMessage({ type: 'error', text: emailError });
+      setMessage({ type: 'error', text: getValidationMessage(emailError, t) });
       return;
     }
-    const matchError = validateMatch(newUser.password, newUser.confirmPassword, '비밀번호');
+    const matchError = validateMatch(newUser.password, newUser.confirmPassword, t('login.password'));
     if (matchError) {
-      setMessage({ type: 'error', text: matchError });
+      setMessage({ type: 'error', text: getValidationMessage(matchError, t) });
       return;
     }
     const passwordError = validatePassword(newUser.password);
     if (passwordError) {
-      setMessage({ type: 'error', text: passwordError });
+      setMessage({ type: 'error', text: getValidationMessage(passwordError, t) });
       return;
     }
 
@@ -303,7 +307,7 @@ const AdminDashboard = () => {
 
       setMessage({
         type: 'success',
-        text: `${newUser.username} 계정이 추가되었습니다. 사용자가 로그인하면 자동으로 홈 디렉토리로 이동합니다.`,
+        text: t('admin.addUserSuccess', { name: newUser.username }),
       });
       setCreateDialog({ open: false });
       setNewUser({ username: '', email: '', password: '', confirmPassword: '' });
@@ -311,7 +315,7 @@ const AdminDashboard = () => {
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.error || '사용자 추가에 실패했습니다.',
+        text: error.response?.data?.error || t('admin.addUserFail'),
       });
     } finally {
       setCreateUserLoading(false);
@@ -320,16 +324,12 @@ const AdminDashboard = () => {
 
   const getStatusChip = (status) => {
     const statusMap = {
-      pending: { label: '승인대기', color: 'warning' },
-      approved: { label: '승인됨', color: 'success' },
-      rejected: { label: '거절됨', color: 'error' },
+      pending: { label: t('admin.statusPending'), color: 'warning' },
+      approved: { label: t('admin.statusApproved'), color: 'success' },
+      rejected: { label: t('admin.statusRejected'), color: 'error' },
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Chip label={config.label} color={config.color} size="small" />;
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('ko-KR');
   };
 
   const handleUserClick = (userId, username) => {
@@ -397,7 +397,7 @@ const AdminDashboard = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            관리자 대시보드
+            {t('admin.title')}
           </Typography>
         </Toolbar>
       </AppBar>
@@ -406,8 +406,8 @@ const AdminDashboard = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
           <Paper sx={{ flex: 1 }}>
             <Tabs value={tab} onChange={(e, newValue) => setTab(newValue)}>
-              <Tab label={`사용자 (${users.length})`} />
-              <Tab label="설정" />
+              <Tab label={t('admin.usersTab', { count: users.length })} />
+              <Tab label={t('admin.settingsTab')} />
             </Tabs>
           </Paper>
           {tab === 1 ? (
@@ -420,7 +420,7 @@ const AdminDashboard = () => {
               size={isMobile ? "small" : "medium"}
               startIcon={saveSettingsLoading ? <CircularProgress size={18} color="inherit" /> : null}
             >
-              {saveSettingsLoading ? '저장 중...' : '저장'}
+              {saveSettingsLoading ? t('admin.saving') : t('admin.save')}
             </Button>
           ) : (
             <Button
@@ -431,7 +431,7 @@ const AdminDashboard = () => {
               sx={{ ml: isMobile ? 1 : 2 }}
               size={isMobile ? "small" : "medium"}
             >
-              {isMobile ? "추가" : "사용자 추가"}
+              {isMobile ? t('common.add') : t('admin.addUser')}
             </Button>
           )}
         </Box>
@@ -457,7 +457,7 @@ const AdminDashboard = () => {
                 {userList.length === 0 ? (
                   <Paper sx={{ p: 3, textAlign: 'center', flexShrink: 0 }}>
                     <Typography variant="body1" color="text.secondary">
-                      등록된 사용자가 없습니다.
+                      {t('admin.noUsers')}
                     </Typography>
                   </Paper>
                 ) : (
@@ -483,13 +483,13 @@ const AdminDashboard = () => {
                         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                           {getStatusChip(user.status)}
                           {user.is_admin ? (
-                            <Chip label="관리자" color="primary" size="small" />
+                            <Chip label={t('admin.adminRole')} color="primary" size="small" />
                           ) : (
-                            <Chip label="일반" size="small" />
+                            <Chip label={t('admin.normalRole')} size="small" />
                           )}
                         </Box>
                         <Typography variant="caption" color="text.secondary">
-                          가입일: {formatDate(user.created_at)}
+                          {t('admin.joinedAtLabel', { date: formatDate(user.created_at) })}
                         </Typography>
                       </CardContent>
                       <CardActions sx={{ px: 2, pb: 2, pt: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -504,7 +504,7 @@ const AdminDashboard = () => {
                               disabled={actionLoadingIds.has(user.id)}
                               sx={{ flex: 1 }}
                             >
-                              승인
+                              {t('admin.approve')}
                             </Button>
                             <Button
                               variant="contained"
@@ -515,7 +515,7 @@ const AdminDashboard = () => {
                               disabled={actionLoadingIds.has(user.id)}
                               sx={{ flex: 1 }}
                             >
-                              거절
+                              {t('admin.reject')}
                             </Button>
                           </>
                         ) : (
@@ -524,7 +524,7 @@ const AdminDashboard = () => {
                               color="error"
                               size="small"
                               onClick={() => handleDeleteClick(user.id, user.username)}
-                              title="사용자 삭제"
+                              title={t('admin.deleteUser')}
                               sx={{ ml: 'auto' }}
                             >
                               <DeleteIcon />
@@ -550,19 +550,19 @@ const AdminDashboard = () => {
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell>사용자명</TableCell>
-                      <TableCell>이메일</TableCell>
-                      <TableCell>상태</TableCell>
-                      <TableCell>권한</TableCell>
-                      <TableCell>가입일</TableCell>
-                      <TableCell align="center">작업</TableCell>
+                      <TableCell>{t('admin.username')}</TableCell>
+                      <TableCell>{t('admin.email')}</TableCell>
+                      <TableCell>{t('admin.status')}</TableCell>
+                      <TableCell>{t('admin.permission')}</TableCell>
+                      <TableCell>{t('admin.joinedAt')}</TableCell>
+                      <TableCell align="center">{t('admin.actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {userList.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} align="center">
-                          등록된 사용자가 없습니다.
+                          {t('admin.noUsers')}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -577,9 +577,9 @@ const AdminDashboard = () => {
                           <TableCell>{getStatusChip(user.status)}</TableCell>
                           <TableCell>
                             {user.is_admin ? (
-                              <Chip label="관리자" color="primary" size="small" />
+                              <Chip label={t('admin.adminRole')} color="primary" size="small" />
                             ) : (
-                              <Chip label="일반" size="small" />
+                              <Chip label={t('admin.normalRole')} size="small" />
                             )}
                           </TableCell>
                           <TableCell>{formatDate(user.created_at)}</TableCell>
@@ -595,7 +595,7 @@ const AdminDashboard = () => {
                               disabled={actionLoadingIds.has(user.id)}
                               sx={{ mr: 1 }}
                             >
-                              승인
+                              {t('admin.approve')}
                             </Button>
                             <Button
                               variant="contained"
@@ -605,7 +605,7 @@ const AdminDashboard = () => {
                               onClick={() => handleReject(user.id, user.username)}
                               disabled={actionLoadingIds.has(user.id)}
                             >
-                              거절
+                              {t('admin.reject')}
                             </Button>
                               </>
                             ) : (
@@ -614,7 +614,7 @@ const AdminDashboard = () => {
                                   color="error"
                                   size="small"
                                   onClick={() => handleDeleteClick(user.id, user.username)}
-                                  title="사용자 삭제"
+                                  title={t('admin.deleteUser')}
                                 >
                                   <DeleteIcon />
                                 </IconButton>
@@ -641,15 +641,15 @@ const AdminDashboard = () => {
             WebkitOverflowScrolling: 'touch',
           }}>
             <Typography variant="h6" gutterBottom>
-              시스템 설정
+              {t('admin.systemSettings')}
             </Typography>
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body1">
-                  회원가입 허용
+                  {t('admin.registrationEnabled')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  로그인 페이지에서 회원가입 버튼 표시
+                  {t('admin.registrationEnabledDesc')}
                 </Typography>
               </Box>
               <Switch
@@ -662,10 +662,10 @@ const AdminDashboard = () => {
             <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body1">
-                  숨김 파일 보기
+                  {t('admin.showHiddenFiles')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  숨김 파일 및 폴더 표시
+                  {t('admin.showHiddenFilesDesc')}
                 </Typography>
               </Box>
               <Switch
@@ -682,10 +682,10 @@ const AdminDashboard = () => {
             <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body1">
-                  데이터 정리
+                  {t('admin.dataCleanup')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  불필요한 데이터 정리
+                  {t('admin.dataCleanupDesc')}
                 </Typography>
               </Box>
               <IconButton
@@ -700,10 +700,10 @@ const AdminDashboard = () => {
             <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body1">
-                  권한 정리
+                  {t('admin.permissionCleanup')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  각 사용자 홈 경로에 admin 권한이 누락된 경우 부여합니다.
+                  {t('admin.permissionCleanupDesc')}
                 </Typography>
               </Box>
               <IconButton
@@ -725,26 +725,26 @@ const AdminDashboard = () => {
         onClose={handleDeleteCancel}
         fullScreen={isMobile}
       >
-        <DialogTitle>사용자 삭제 확인</DialogTitle>
+        <DialogTitle>{t('admin.deleteUserConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText component="div">
-            <strong>{deleteDialog.username}</strong> 계정을 정말 삭제하시겠습니까?
+            {t('admin.deleteUserConfirmBody', { name: deleteDialog.username })}
             <br />
             <br />
-            이 작업은 되돌릴 수 없으며, 다음 항목이 함께 삭제됩니다:
+            {t('admin.deleteUserConfirmNote')}
             <ul>
-              <li>사용자 계정</li>
-              <li>폴더 접근 권한</li>
+              <li>{t('admin.deleteUserConfirmItem1')}</li>
+              <li>{t('admin.deleteUserConfirmItem2')}</li>
             </ul>
-            <strong>참고:</strong> WebDAV 서버의 사용자 폴더는 자동으로 삭제되지 않습니다.
+            <strong>{t('admin.deleteUserConfirmWebdavNote')}</strong>
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDeleteCancel} color="primary" disabled={deleteLoading}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus disabled={deleteLoading}>
-            {deleteLoading ? <CircularProgress size={20} color="inherit" /> : '삭제'}
+            {deleteLoading ? <CircularProgress size={20} color="inherit" /> : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -755,21 +755,21 @@ const AdminDashboard = () => {
         onClose={() => setCleanupConfirmOpen(false)}
         fullScreen={isMobile}
       >
-        <DialogTitle>Orphaned 데이터 정리 확인</DialogTitle>
+        <DialogTitle>{t('admin.orphanCleanupConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            존재하지 않는 사용자의 permission 파일을 삭제합니다.
+            {t('admin.orphanCleanupConfirmBody')}
             <br />
             <br />
-            이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
+            {t('admin.orphanCleanupConfirmNote')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCleanupConfirmOpen(false)} color="primary">
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleCleanupOrphaned} color="error" variant="contained" autoFocus>
-            정리
+            {t('admin.runCleanup')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -780,21 +780,21 @@ const AdminDashboard = () => {
         onClose={() => setPermissionCleanupConfirmOpen(false)}
         fullScreen={isMobile}
       >
-        <DialogTitle>권한 정리 확인</DialogTitle>
+        <DialogTitle>{t('admin.permissionCleanupConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            각 사용자 홈 경로에 admin 권한이 누락된 경우 부여합니다.
+            {t('admin.permissionCleanupDesc')}
             <br />
             <br />
-            권한 정리를 실행할까요?
+            {t('admin.permissionCleanupConfirmQuestion')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPermissionCleanupConfirmOpen(false)} color="primary">
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handlePermissionCleanup} color="primary" variant="contained" autoFocus>
-            실행
+            {t('admin.run')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -807,14 +807,14 @@ const AdminDashboard = () => {
         fullWidth
         fullScreen={isMobile}
       >
-        <DialogTitle>새 사용자 추가</DialogTitle>
+        <DialogTitle>{t('admin.newUserTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            새 사용자를 추가합니다. 즉시 승인된 상태로 생성되며, 전용 폴더가 자동으로 생성됩니다.
+            {t('admin.newUserDesc')}
           </DialogContentText>
           <TextField
             fullWidth
-            label="사용자명"
+            label={t('admin.username')}
             value={newUser.username}
             onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
             margin="normal"
@@ -823,7 +823,7 @@ const AdminDashboard = () => {
           />
           <TextField
             fullWidth
-            label="이메일"
+            label={t('admin.email')}
             type="email"
             value={newUser.email}
             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
@@ -832,17 +832,17 @@ const AdminDashboard = () => {
           />
           <TextField
             fullWidth
-            label="비밀번호"
+            label={t('login.password')}
             type="password"
             value={newUser.password}
             onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
             margin="normal"
-            helperText="최소 6자 이상"
+            helperText={t('admin.passwordMinLength')}
             required
           />
           <TextField
             fullWidth
-            label="비밀번호 확인"
+            label={t('admin.confirmPassword')}
             type="password"
             value={newUser.confirmPassword}
             onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
@@ -852,10 +852,10 @@ const AdminDashboard = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCreateCancel} color="primary" disabled={createUserLoading}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleCreateSubmit} color="primary" variant="contained" disabled={createUserLoading}>
-            {createUserLoading ? <CircularProgress size={20} color="inherit" /> : '추가'}
+            {createUserLoading ? <CircularProgress size={20} color="inherit" /> : t('admin.add')}
           </Button>
         </DialogActions>
       </Dialog>

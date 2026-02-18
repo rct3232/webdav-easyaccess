@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Box, Chip, IconButton } from '@mui/material';
 import {
   Home as HomeIcon,
@@ -18,6 +19,7 @@ import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils'
  * When shareRootPath is set, uses share mode: root = share folder, segments = path within share
  */
 const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
+  const { t } = useTranslation();
   const scrollContainerRef = useRef(null);
   const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
 
@@ -171,19 +173,19 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
   let homeIcon, homeLabel, homePath;
   if (isRecentView) {
     homeIcon = <AccessTimeIcon />;
-    homeLabel = '최근항목';
+    homeLabel = t('nav.recentShort');
     homePath = '/__recent__';
   } else if (shareRootPath) {
     homeIcon = <ShareIcon />;
-    homeLabel = shareRootName || normalizePath(shareRootPath).split('/').filter(Boolean).pop() || '공유 폴더';
+    homeLabel = shareRootName || normalizePath(shareRootPath).split('/').filter(Boolean).pop() || t('nav.sharedFolder');
     homePath = normalizePath(shareRootPath);
   } else if (isSharedView) {
     homeIcon = <ShareIcon />;
-    homeLabel = '공유됨';
+    homeLabel = t('nav.shared');
     homePath = '/__shared__';
   } else {
     homeIcon = <HomeIcon />;
-    homeLabel = user?.is_admin ? '전체' : '홈';
+    homeLabel = user?.is_admin ? t('nav.all') : t('nav.home');
     homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
   }
 
@@ -266,7 +268,7 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
           minHeight: 44,
           transition: 'transform 0.2s',
         }}
-        title={isFolderTreeOpen ? '폴더 트리 닫기' : '폴더 트리 열기'}
+        title={isFolderTreeOpen ? t('nav.folderTreeClose') : t('nav.folderTreeOpen')}
       >
         {isFolderTreeOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
       </IconButton>

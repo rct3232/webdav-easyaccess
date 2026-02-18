@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { revokePermission, checkPermission } from '../services/permissionService';
 import {
@@ -20,6 +21,7 @@ export function useSharedManage({
   onActionComplete,
   onClose,
 }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -163,14 +165,14 @@ export function useSharedManage({
         if (onMessage) {
           onMessage({
             show: true,
-            text: `${permissionToCancel === PERMISSIONS.READ ? '읽기' : '쓰기'} 권한 요청을 회수했습니다.`,
+            text: t('sharedManage.requestCancelledSuccess', { permission: permissionToCancel === PERMISSIONS.READ ? t('mypage.read') : t('mypage.write') }),
             type: 'success',
           });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
         }
       } catch (error) {
         console.error('Failed to cancel permission request:', error);
-        const errorMsg = error.response?.data?.error || '요청 회수에 실패했습니다.';
+        const errorMsg = error.response?.data?.error || t('sharedManage.cancelRequestFail');
         if (onMessage) {
           onMessage({ show: true, text: errorMsg, type: 'error' });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
@@ -179,7 +181,7 @@ export function useSharedManage({
         setLoading(false);
       }
     },
-    [pendingRequest, onMessage]
+    [pendingRequest, onMessage, t]
   );
 
   const handlePermissionRequest = useCallback(
@@ -207,14 +209,16 @@ export function useSharedManage({
         if (onMessage) {
           onMessage({
             show: true,
-            text: `${requestedPermission === 'read' ? '읽기' : '쓰기'} 권한 요청을 보냈습니다.`,
+            text: t('sharedManage.requestSentSuccess', {
+              permission: requestedPermission === 'read' ? t('mypage.read') : t('mypage.write'),
+            }),
             type: 'success',
           });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
         }
       } catch (error) {
         console.error('Failed to create permission request:', error);
-        const errorMsg = error.response?.data?.error || '권한 요청에 실패했습니다.';
+        const errorMsg = error.response?.data?.error || t('sharedManage.requestSentFail');
         if (onMessage) {
           onMessage({ show: true, text: errorMsg, type: 'error' });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
@@ -223,7 +227,7 @@ export function useSharedManage({
         setLoading(false);
       }
     },
-    [targetPath, user, isDirectory, hasReadPermission, pendingRequest, onMessage]
+    [targetPath, user, isDirectory, hasReadPermission, pendingRequest, onMessage, t]
   );
 
   const handleRevokePermission = useCallback(async () => {
@@ -235,7 +239,7 @@ export function useSharedManage({
         if (onMessage) {
           onMessage({
             show: true,
-            text: `"${displayName}" 폴더와 하위 폴더의 권한이 반납되었습니다.`,
+            text: t('sharedManage.revokeFolderSuccess', { name: displayName }),
             type: 'success',
           });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
@@ -245,7 +249,7 @@ export function useSharedManage({
         if (onMessage) {
           onMessage({
             show: true,
-            text: `"${displayName || targetPath}" 파일 권한이 반납되었습니다.`,
+            text: t('sharedManage.revokeFileSuccess', { name: displayName || targetPath }),
             type: 'success',
           });
           setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
@@ -255,7 +259,7 @@ export function useSharedManage({
       onClose();
     } catch (error) {
       console.error('Failed to revoke permission:', error);
-      const errorMsg = error.response?.data?.error || '권한 반납에 실패했습니다.';
+      const errorMsg = error.response?.data?.error || t('sharedManage.revokeFail');
       if (onMessage) {
         onMessage({ show: true, text: errorMsg, type: 'error' });
         setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
@@ -264,7 +268,7 @@ export function useSharedManage({
       setLoading(false);
       setConfirmDialogOpen(false);
     }
-  }, [user, targetPath, displayName, isDirectory, onMessage, onActionComplete, onClose]);
+  }, [user, targetPath, displayName, isDirectory, onMessage, onActionComplete, onClose, t]);
 
   const hasFileLevelPermission = !isDirectory && permissionInfo.source === 'file';
   const filePermissionLevel = hasFileLevelPermission

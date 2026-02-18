@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getApprovedUsers, updateUserPermissions } from '../services/userService';
 import { getUserPermissions, getFolderPermissions, grantPermission, revokePermission } from '../services/permissionService';
 import { listFiles } from '../services/fileService';
@@ -39,6 +40,7 @@ export function useShareDialog({
   handleToggleUserPermission,
   hasPermissionChanged,
 }) {
+  const { t } = useTranslation();
   const isAdminMode = mode === 'admin';
   const isShareMode = mode === 'share';
   const isReviewMode = mode === 'review';
@@ -69,10 +71,10 @@ export function useShareDialog({
     } catch (error) {
       console.error('Failed to load users:', error);
       if (onMessage) {
-        onMessage({ text: '사용자 목록을 불러오는데 실패했습니다.', type: 'error' });
+        onMessage({ text: t('dialogs.userListLoadFail'), type: 'error' });
       }
     }
-  }, [onMessage]);
+  }, [onMessage, t]);
 
   const loadFolderChildren = useCallback(async (path) => {
     if (loadingPaths.has(path)) {
@@ -305,7 +307,7 @@ export function useShareDialog({
     } catch (error) {
       console.error('Failed to initialize dialog:', error);
       setLoadingAllFolders(false);
-      if (onMessage) onMessage({ text: '다이얼로그 초기화에 실패했습니다.', type: 'error' });
+      if (onMessage) onMessage({ text: t('dialogs.initFail'), type: 'error' });
     }
   }, [
     enableExternalShare,
@@ -324,6 +326,7 @@ export function useShareDialog({
     setUserInfoMap,
     setLoadingPermissions,
     onMessage,
+    t,
   ]);
 
   useEffect(() => {
@@ -435,15 +438,15 @@ export function useShareDialog({
         });
         await updateUserPermissions(userId, permissions);
         if (onSave) onSave();
-        if (onMessage) onMessage({ text: '권한이 저장되었습니다.', type: 'success' });
+        if (onMessage) onMessage({ text: t('dialogs.permissionSaveSuccess'), type: 'success' });
         onClose();
       } catch (error) {
         console.error('Failed to save permissions:', error);
-        if (onMessage) onMessage({ text: '권한 저장에 실패했습니다.', type: 'error' });
+        if (onMessage) onMessage({ text: t('dialogs.permissionSaveFail'), type: 'error' });
       }
     } else if (isReviewMode) {
       if (!permissionRequest || !permissionRequest.id) {
-        if (onMessage) onMessage({ text: '권한 신청 정보가 없습니다.', type: 'error' });
+        if (onMessage) onMessage({ text: t('dialogs.noPermissionRequestInfo'), type: 'error' });
         return;
       }
       setSaving(true);
@@ -471,19 +474,19 @@ export function useShareDialog({
           }
         }
         await approvePermissionRequest(permissionRequest.id);
-        if (onMessage) onMessage({ text: '권한 신청을 승인했습니다.', type: 'success' });
+        if (onMessage) onMessage({ text: t('dialogs.permissionRequestApproved'), type: 'success' });
         if (onApprove) onApprove();
         onClose();
       } catch (error) {
         console.error('Failed to approve permission request:', error);
-        const errorMsg = error.response?.data?.error || '권한 신청 승인에 실패했습니다.';
+        const errorMsg = error.response?.data?.error || t('dialogs.permissionRequestApproveFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);
       }
     } else {
       if (folderPermissions.size === 0) {
-        if (onMessage) onMessage({ text: '공유할 폴더를 선택해주세요.', type: 'error' });
+        if (onMessage) onMessage({ text: t('dialogs.selectFolderToShare'), type: 'error' });
         return;
       }
       setSaving(true);
@@ -510,11 +513,11 @@ export function useShareDialog({
             await grantPermission({ userId: targetUserId, folderPath: normalizedPath, permission });
           }
         }
-        if (onMessage) onMessage({ text: '폴더 공유가 완료되었습니다.', type: 'success' });
+        if (onMessage) onMessage({ text: t('dialogs.folderShareSuccess'), type: 'success' });
         onClose();
       } catch (error) {
         console.error('Failed to share folder:', error);
-        const errorMsg = error.response?.data?.error || '폴더 공유에 실패했습니다.';
+        const errorMsg = error.response?.data?.error || t('dialogs.folderShareFail');
         if (onMessage) onMessage({ text: errorMsg, type: 'error' });
       } finally {
         setSaving(false);
@@ -533,6 +536,7 @@ export function useShareDialog({
     onApprove,
     onClose,
     setSaving,
+    t,
   ]);
 
   const handleClose = useCallback(() => {

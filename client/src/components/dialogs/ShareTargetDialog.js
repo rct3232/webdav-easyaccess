@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -22,7 +23,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { getApprovedUsers } from '../../services/userService';
 import { getFolderPermissions, grantPermission, revokePermission } from '../../services/permissionService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { PERMISSION_LABELS } from '../../constants/permissions';
+import { getPermissionLabels } from '../../constants/permissions';
 import { normalizePath } from '../../utils/pathUtils';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
 import { collectSubfolderPaths } from '../../utils/folderUtils';
@@ -31,10 +32,10 @@ import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
 import SharedManageBody from './SharedManageBody';
 
-const PERMISSION_OPTIONS = [
-  { value: PERMISSIONS.WRITE, label: '편집자' },
-  { value: PERMISSIONS.READ, label: '열람자' },
-  { value: 'revoke', label: '회수' },
+const getPermissionOptions = (t) => [
+  { value: PERMISSIONS.WRITE, label: t('dialogs.editor') },
+  { value: PERMISSIONS.READ, label: t('dialogs.viewer') },
+  { value: 'revoke', label: t('dialogs.revoke') },
 ];
 
 function permissionRank(p) {
@@ -48,28 +49,29 @@ function permissionRank(p) {
  * 경로 권한이 없을 때(pathPermission == null): 열람자, 편집자, 삭제.
  * hasSameLevelFilePermission true면 경로 옵션은 편집자/열람자 라벨로 하고, '경로와 동일'(revoke) 옵션 추가.
  */
-function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission) {
+function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission, t) {
+  const labels = getPermissionLabels(t);
   if (pathPermission == null) {
     return [
-      { value: PERMISSIONS.READ, label: '열람자' },
-      { value: PERMISSIONS.WRITE, label: '편집자' },
-      { value: 'revoke', label: '삭제' },
+      { value: PERMISSIONS.READ, label: labels[PERMISSIONS.READ] },
+      { value: PERMISSIONS.WRITE, label: labels[PERMISSIONS.WRITE] },
+      { value: 'revoke', label: t('common.delete') },
     ];
   }
   const path = pathPermission;
   if (path === PERMISSIONS.ADMIN) {
-    return [{ value: PERMISSIONS.ADMIN, label: PERMISSION_LABELS[PERMISSIONS.ADMIN] }];
+    return [{ value: PERMISSIONS.ADMIN, label: labels[PERMISSIONS.ADMIN] }];
   }
   const rank = permissionRank(path);
-  const pathOptionLabel = hasSameLevelFilePermission ? PERMISSION_LABELS[path] || path : '경로와 동일';
+  const pathOptionLabel = hasSameLevelFilePermission ? labels[path] || path : t('dialogs.sameAsPath');
   const options = [{ value: path, label: pathOptionLabel }];
   PERMISSIONS.ALL.forEach((perm) => {
     if (perm !== PERMISSIONS.ADMIN && permissionRank(perm) > rank) {
-      options.push({ value: perm, label: PERMISSION_LABELS[perm] || perm });
+      options.push({ value: perm, label: labels[perm] || perm });
     }
   });
   if (hasSameLevelFilePermission) {
-    options.push({ value: 'revoke', label: '경로와 동일' });
+    options.push({ value: 'revoke', label: t('dialogs.sameAsPath') });
   }
   return options;
 }
@@ -140,6 +142,8 @@ const ShareTargetDialog = ({
   onMessage,
   onSave,
 }) => {
+  const { t } = useTranslation();
+  const permissionLabels = React.useMemo(() => getPermissionLabels(t), [t]);
   const { isMobile } = useResponsive();
   const [users, setUsers] = useState([]);
   const [accessList, setAccessList] = useState([]);
@@ -168,9 +172,9 @@ const ShareTargetDialog = ({
       setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load users:', err);
-      if (onMessage) onMessage({ show: true, text: '사용자 목록을 불러오는데 실패했습니다.', type: 'error' });
+      if (onMessage) onMessage({ show: true, text: t('dialogs.userListLoadFail'), type: 'error' });
     }
-  }, [onMessage]);
+  }, [onMessage, t]);
 
   const loadPermissions = useCallback(async () => {
     if (!targetPath) return;
@@ -205,13 +209,13 @@ const ShareTargetDialog = ({
       setInitialAccessList(list.map((u) => ({ ...u })));
     } catch (err) {
       console.error('Failed to load permissions:', err);
-      if (onMessage) onMessage({ show: true, text: '권한 목록을 불러오는데 실패했습니다.', type: 'error' });
+      if (onMessage) onMessage({ show: true, text: t('dialogs.permissionListLoadFail'), type: 'error' });
       setAccessList([]);
       setInitialAccessList([]);
     } finally {
       setLoading(false);
     }
-  }, [targetPath, isDirectory, onMessage]);
+  }, [targetPath, isDirectory, onMessage, t]);
 
   useEffect(() => {
     if (open) {
@@ -339,11 +343,11 @@ const ShareTargetDialog = ({
         }
       }
 
-      if (onMessage) onMessage({ show: true, text: isDirectory ? '폴더 공유가 완료되었습니다.' : '권한이 저장되었습니다.', type: 'success' });
+      if (onMessage) onMessage({ show: true, text: isDirectory ? t('dialogs.folderShareSuccess') : t('dialogs.permissionSaveSuccess'), type: 'success' });
       if (onSave) onSave();
       onClose();
     } catch (err) {
-      const msg = err.response?.data?.error || (isDirectory ? '폴더 공유에 실패했습니다.' : '권한 저장에 실패했습니다.');
+      const msg = err.response?.data?.error || (isDirectory ? t('dialogs.folderShareFail') : t('dialogs.permissionSaveFail'));
       if (onMessage) onMessage({ show: true, text: msg, type: 'error' });
     } finally {
       setSaving(false);
@@ -356,6 +360,7 @@ const ShareTargetDialog = ({
     onMessage,
     onSave,
     onClose,
+    t,
   ]);
 
   const handleSearchFocus = (e) => {
@@ -379,7 +384,7 @@ const ShareTargetDialog = ({
           sx: isMobile ? {} : { maxHeight: '85vh' },
         }}
       >
-        <DialogTitle>{displayName ? `${displayName} 공유` : '공유'}</DialogTitle>
+        <DialogTitle>{displayName ? `${displayName} ${t('dialogs.shareWith')}` : t('dialogs.shareWith')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
           {hasAdmin ? (
           <>
@@ -387,7 +392,7 @@ const ShareTargetDialog = ({
             <TextField
               fullWidth
               size="small"
-              placeholder="사용자 검색"
+              placeholder={t('dialogs.userSearchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={handleSearchFocus}
@@ -425,7 +430,7 @@ const ShareTargetDialog = ({
           </Popper>
 
           <Typography variant="subtitle2" color="text.secondary">
-            접근권한이 있는 사용자
+            {t('dialogs.usersWithAccess')}
           </Typography>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
@@ -474,13 +479,13 @@ const ShareTargetDialog = ({
                           displayEmpty
                           disabled={(isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)}
                           renderValue={(v) => {
-                            if (v === PERMISSIONS.ADMIN) return PERMISSION_LABELS[PERMISSIONS.ADMIN];
-                            if (v === 'revoke') return '경로와 동일';
+                            if (v === PERMISSIONS.ADMIN) return permissionLabels[PERMISSIONS.ADMIN];
+                            if (v === 'revoke') return t('dialogs.sameAsPath');
                             if (!isDirectory && u.pathPermission != null && v === u.pathPermission) {
-                              if (u.filePermission != null && u.filePermission === u.pathPermission) return PERMISSION_LABELS[v] || v;
-                              return '경로와 동일';
+                              if (u.filePermission != null && u.filePermission === u.pathPermission) return permissionLabels[v] || v;
+                              return t('dialogs.sameAsPath');
                             }
-                            return PERMISSION_LABELS[v] || v;
+                            return permissionLabels[v] || v;
                           }}
                           variant="standard"
                           disableUnderline
@@ -517,17 +522,17 @@ const ShareTargetDialog = ({
                         >
                           {((isDirectory && u.permission === PERMISSIONS.ADMIN) || (!isDirectory && u.pathPermission === PERMISSIONS.ADMIN)) && (
                             <MenuItem value={PERMISSIONS.ADMIN} disabled>
-                              {PERMISSION_LABELS[PERMISSIONS.ADMIN]}
+                              {permissionLabels[PERMISSIONS.ADMIN]}
                             </MenuItem>
                           )}
                           {isDirectory
-                            ? PERMISSION_OPTIONS.map((opt) => (
+                            ? getPermissionOptions(t).map((opt) => (
                                 <MenuItem key={opt.value} value={opt.value}>
                                   {opt.label}
                                 </MenuItem>
                               ))
                             : u.pathPermission !== PERMISSIONS.ADMIN &&
-                              getFilePermissionOptions(u.pathPermission, u.filePermission != null && u.filePermission === u.pathPermission).map((opt) => (
+                              getFilePermissionOptions(u.pathPermission, u.filePermission != null && u.filePermission === u.pathPermission, t).map((opt) => (
                                 <MenuItem key={opt.value} value={opt.value}>
                                   {opt.label}
                                 </MenuItem>
@@ -576,15 +581,15 @@ const ShareTargetDialog = ({
           {hasAdmin ? (
             <>
               <Button onClick={onClose} disabled={saving}>
-                취소
+                {t('common.cancel')}
               </Button>
               <Button variant="contained" color="primary" onClick={handleSave} disabled={saving || loading}>
-                {saving ? '저장 중...' : '저장'}
+                {saving ? t('common.saving') : t('common.save')}
               </Button>
             </>
           ) : (
             <Button onClick={onClose}>
-              닫기
+              {t('common.close')}
             </Button>
           )}
         </DialogActions>

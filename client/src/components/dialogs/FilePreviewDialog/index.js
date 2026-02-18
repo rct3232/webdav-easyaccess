@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -34,6 +35,7 @@ if (typeof window !== 'undefined') {
 const HIDE_UI_DELAY_MS = 5000;
 
 const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded, hideCloseButton = false }) => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -192,10 +194,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       setLoading(false);
     } catch (err) {
       console.error('Preview load error:', err);
-      setError('파일을 불러올 수 없습니다.');
+      setError(t('preview.loadFail'));
       setLoading(false);
     }
-  }, [displayFile, file, shareToken]);
+  }, [displayFile, file, shareToken, t]);
 
   useEffect(() => {
     const targetFile = displayFile || file;
@@ -572,7 +574,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                     previewUrl,
                     hasBlob: !!previewBlob,
                   });
-                  setError(`PDF 파일을 불러올 수 없습니다: ${error.message || '알 수 없는 오류'}`);
+                  setError(t('preview.pdfLoadFailWithReason', { reason: error.message || t('common.unknownError') }));
                 }}
                 loading={
                   <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
@@ -635,7 +637,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
         return (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-              이 파일 형식은 미리보기를 지원하지 않습니다.
+              {t('preview.notSupported')}
             </Typography>
           </Box>
         );
@@ -709,7 +711,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               </Typography>
             </Box>
             <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
-              <IconButton onClick={handleDownload} size="small" title="다운로드" sx={{ color: 'inherit' }}>
+              <IconButton onClick={handleDownload} size="small" title={t('actions.download')} sx={{ color: 'inherit' }}>
                 <DownloadIcon />
               </IconButton>
               {!hideCloseButton && (

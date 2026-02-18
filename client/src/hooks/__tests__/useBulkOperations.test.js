@@ -76,6 +76,6 @@ describe('useBulkOperations', () => {
       await result.current.handleBulkDownload();
     });
 
-    expect(fileService.downloadMultipleFiles).toHaveBeenCalledWith(['/f1', '/f2'], expect.any(Function));
+    expect(fileService.downloadMultipleFiles).toHaveBeenCalledWith(['/f1', '/f2'], expect.any(Function), undefined);
   });
 });

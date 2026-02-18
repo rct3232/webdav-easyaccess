@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Typography,
   Box,
@@ -96,6 +97,7 @@ const FileListItem = React.memo(({
   isMobile,
   onCheck,
 }) => {
+  const { t } = useTranslation();
   const thumbnail = getThumbnail(file);
 
   return (
@@ -129,7 +131,7 @@ const FileListItem = React.memo(({
         </Typography>
         <Box sx={metaContainerStyles}>
           <Typography variant="caption" color="text.secondary">
-            {file.type === 'directory' ? '폴더' : formatFileSize(file.size)}
+            {file.type === 'directory' ? t('actions.folder') : formatFileSize(file.size)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             {formatDate(file.lastmod)}

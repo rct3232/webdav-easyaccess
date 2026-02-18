@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Fab,
   SpeedDial,
@@ -44,6 +45,7 @@ const MobileFAB = ({
   shareLinkMode,
 }) => {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
 
   if (shareLinkMode) {
     const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
@@ -51,7 +53,7 @@ const MobileFAB = ({
     return (
       <Fab
         color="primary"
-        aria-label={isLoggedIn ? '공유됨 추가' : '로그인'}
+        aria-label={isLoggedIn ? t('nav.addToShared') : t('nav.login')}
         onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}
         sx={{
           position: 'fixed',
@@ -70,13 +72,13 @@ const MobileFAB = ({
   const actions = [
     { 
       icon: <CreateNewFolderIcon />, 
-      name: '폴더 생성', 
+      name: t('fileManager.createFolder'), 
       onClick: onCreateFolder,
       show: hasWritePermission,
     },
     { 
       icon: <UploadIcon />, 
-      name: '파일 업로드', 
+      name: t('fileManager.uploadFile'), 
       onClick: onUpload,
       show: hasWritePermission,
     },
@@ -94,7 +96,7 @@ const MobileFAB = ({
 
   return (
     <SpeedDial
-      ariaLabel="파일 작업"
+      ariaLabel={t('fileManager.fileActions')}
       sx={{
         position: 'fixed',
         bottom: 16,

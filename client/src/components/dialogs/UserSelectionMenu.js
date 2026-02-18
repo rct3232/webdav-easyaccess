@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import {
   Menu,
@@ -35,6 +36,7 @@ const UserSelectionMenu = ({
   permissionRequest,
   handleUserSelect,
 }) => {
+  const { t } = useTranslation();
   if (!folderMenuPath) return null;
 
   const currentFolderUserPerms = folderPermissions.get(folderMenuPath) || new Map();
@@ -145,7 +147,7 @@ const UserSelectionMenu = ({
         }}
       >
         <ListItemText 
-          primary="사용자 추가" 
+          primary={t('dialogs.addUser')} 
           primaryTypographyProps={{ 
             sx: { 
               display: 'flex', 
@@ -173,7 +175,7 @@ const UserSelectionMenu = ({
               setFolderMenuView('manage');
             }}
           >
-            <ListItemText primary="← 뒤로" />
+            <ListItemText primary={t('dialogs.back')} />
           </MenuItem>
           
           <MenuItem disabled sx={{ py: 0 }}>
@@ -186,18 +188,18 @@ const UserSelectionMenu = ({
                 e.stopPropagation();
                 handleUserSelect(
                   requesterId, 
-                  permissionRequest.requester_username || `사용자 ${requesterId}`
+                  permissionRequest.requester_username || t('dialogs.userIdFallback', { id: requesterId })
                 );
               }}
             >
               <ListItemText 
-                primary={permissionRequest.requester_username || `사용자 ${requesterId}`}
-                secondary="신청자"
+                primary={permissionRequest.requester_username || t('dialogs.userIdFallback', { id: requesterId })}
+                secondary={t('dialogs.applicant')}
               />
             </MenuItem>
           ) : (
             <MenuItem disabled>
-              <ListItemText primary="이미 추가된 사용자입니다." />
+              <ListItemText primary={t('dialogs.alreadyAdded')} />
             </MenuItem>
           )}
         </>
@@ -220,7 +222,7 @@ const UserSelectionMenu = ({
             setFolderMenuView('manage');
           }}
         >
-          <ListItemText primary="← 뒤로" />
+          <ListItemText primary={t('dialogs.back')} />
         </MenuItem>
         
         <MenuItem disabled sx={{ py: 0 }}>
@@ -229,7 +231,7 @@ const UserSelectionMenu = ({
         
         {availableUsers.length === 0 ? (
           <MenuItem disabled>
-            <ListItemText primary="추가할 수 있는 사용자가 없습니다." />
+            <ListItemText primary={t('dialogs.noUsersToAdd')} />
           </MenuItem>
         ) : (
           availableUsers.map(u => (

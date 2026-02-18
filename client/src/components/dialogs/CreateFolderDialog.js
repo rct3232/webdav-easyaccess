@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   TextField,
@@ -7,8 +8,10 @@ import { createFolder } from '../../services/fileService';
 import BaseDialog from './BaseDialog';
 import { useFormState } from '../../hooks/useFormState';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../../utils/validationMessage';
 
 const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
+  const { t } = useTranslation();
   const {
     values,
     isSubmitting,
@@ -31,7 +34,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
           progress: 0,
           total: 1,
           current: '',
-          name: `"${finalFolderName}" 폴더 생성`,
+          name: `"${finalFolderName}" ${t('fileManager.createFolder')}`,
         };
 
         try {
@@ -58,14 +61,14 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
               status: 'completed',
               progress: 1,
               total: 1,
-              current: '완료',
+              current: t('common.confirm'),
             });
             setTimeout(() => {
               onProgress({ id: progressId, remove: true });
             }, 3000);
           }
         } catch (error) {
-          const errorMsg = error.response?.data?.error || '폴더 생성에 실패했습니다';
+          const errorMsg = error.response?.data?.error || t('dialogs.createFolderFail');
           setValue('folderName', values.folderName); // Trigger validation
 
           if (onProgress) {
@@ -91,14 +94,14 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
     <BaseDialog
       open={open}
       onClose={handleClose}
-      title="새 폴더 만들기"
+      title={t('dialogs.createFolderTitle')}
       actions={
         <>
           <Button onClick={handleClose} disabled={isSubmitting}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} variant="contained" disabled={isSubmitting}>
-            만들기
+            {t('dialogs.create')}
           </Button>
         </>
       }
@@ -106,13 +109,13 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
         <TextField
           autoFocus
           margin="dense"
-          label="폴더 이름"
+          label={t('dialogs.folderName')}
           fullWidth
           variant="outlined"
           value={values.folderName}
           onChange={(e) => handleChange('folderName', e.target.value)}
           error={!!getFieldError('folderName')}
-          helperText={getFieldError('folderName')}
+          helperText={getValidationMessage(getFieldError('folderName'), t)}
           onKeyPress={(e) => {
             if (e.key === 'Enter' && !isSubmitting) {
               handleSubmit(e);

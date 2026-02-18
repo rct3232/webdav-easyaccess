@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { getPublicShareLinkInfo } from '../services/shareLinkService';
@@ -12,6 +13,7 @@ import ShareLinkSingleFileView from './ShareLinkSingleFileView';
  * - 단일 파일 → ShareLinkSingleFileView (전체 화면 미리보기)
  */
 const ShareLinkLoader = () => {
+  const { t } = useTranslation();
   const { token } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,7 +21,7 @@ const ShareLinkLoader = () => {
 
   useEffect(() => {
     if (!token) {
-      setError('유효하지 않은 링크입니다.');
+      setError(t('shareLink.invalidLink'));
       setLoading(false);
       return;
     }
@@ -37,8 +39,8 @@ const ShareLinkLoader = () => {
       } catch (err) {
         if (!cancelled) {
           console.error('Share link load error:', err);
-          const msg = err.message || '파일을 불러올 수 없습니다.';
-          setError(msg.includes('만료') || msg.includes('expired') ? '공유 링크가 만료되었습니다.' : msg);
+          const msg = err.message || t('shareLink.loadFail');
+          setError(msg.includes('만료') || msg.includes('expired') ? t('shareLink.expired') : msg);
         }
       } finally {
         if (!cancelled) {
@@ -51,7 +53,7 @@ const ShareLinkLoader = () => {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, t]);
 
   if (loading) {
     return (
@@ -65,7 +67,7 @@ const ShareLinkLoader = () => {
       >
         <CircularProgress />
         <Typography variant="body2" color="text.secondary">
-          공유 링크 불러오는 중...
+          {t('shareLink.loading')}
         </Typography>
       </Box>
     );
@@ -86,7 +88,7 @@ const ShareLinkLoader = () => {
           {error}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          링크가 만료되었거나 파일을 찾을 수 없습니다.
+          {t('shareLink.expiredOrNotFound')}
         </Typography>
       </Box>
     );

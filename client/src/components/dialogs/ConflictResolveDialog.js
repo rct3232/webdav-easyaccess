@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -23,8 +24,9 @@ const ConflictResolveDialog = ({
   onClose,
   onResolve,
   conflicts = [],
-  operationType = '이동', // '이동', '복사', '업로드'
+  operationType,
 }) => {
+  const { t } = useTranslation();
   const handleOverwrite = () => {
     onResolve('overwrite');
   };
@@ -44,10 +46,10 @@ const ConflictResolveDialog = ({
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>중복 항목 처리</DialogTitle>
+      <DialogTitle>{t('dialogs.conflictTitle')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
-          대상 경로에 동일한 이름의 파일이나 폴더가 이미 존재합니다. 어떻게 처리할까요?
+          {t('dialogs.conflictMessage')}
         </DialogContentText>
         
         <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, maxHeight: 200, overflow: 'auto', p: 1 }}>
@@ -69,14 +71,14 @@ const ConflictResolveDialog = ({
         </Box>
         
         <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-          * '병합/덮어쓰기'를 선택하면 기존 항목이 대체됩니다.
+          * {t('dialogs.conflictMergeNote')}
           <br />
-          * '건너뛰기'를 선택하면 중복된 항목을 제외하고 나머지 작업만 진행합니다.
+          * {t('dialogs.conflictSkipNote')}
         </Typography>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={handleCancel} color="inherit">
-          취소
+          {t('common.cancel')}
         </Button>
         <Box sx={{ flexGrow: 1 }} />
         <Button 
@@ -84,14 +86,14 @@ const ConflictResolveDialog = ({
           variant="outlined" 
           color="primary"
         >
-          중복 건너뛰기
+          {t('dialogs.conflictSkip')}
         </Button>
         <Button
           onClick={handleOverwrite}
           variant="contained"
           color="primary"
         >
-          병합/덮어쓰기
+          {t('dialogs.conflictMerge')}
         </Button>
       </DialogActions>
     </Dialog>

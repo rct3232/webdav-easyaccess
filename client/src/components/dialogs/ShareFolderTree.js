@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   IconButton,
@@ -36,6 +37,7 @@ const ShareFolderTree = ({
   isMobile,
   level = 0,
 }) => {
+  const { t } = useTranslation();
   const node = folderTree.get(rootPath);
   if (!node) return null;
   
@@ -171,7 +173,7 @@ const ShareFolderTree = ({
           return (
             <Box
               component="button"
-              title={isFolderWithAdminPermission ? '사용자 소유의 경로입니다' : undefined}
+              title={isFolderWithAdminPermission ? t('dialogs.ownerPathTooltip') : undefined}
               onClick={(e) => {
                 e.stopPropagation();
                 if (isFolderWithAdminPermission) return;

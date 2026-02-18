@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogTitle,
@@ -19,14 +20,15 @@ const RenameDialog = ({
   onConfirm,
   fullScreen = false,
 }) => {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onClose={onClose} fullScreen={fullScreen}>
-      <DialogTitle>이름 변경</DialogTitle>
+      <DialogTitle>{t('dialogs.renameTitle')}</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
           margin="dense"
-          label="새 이름"
+          label={t('dialogs.newName')}
           fullWidth
           variant="outlined"
           value={value}
@@ -45,14 +47,14 @@ const RenameDialog = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={loading}>
-          취소
+          {t('common.cancel')}
         </Button>
         <Button
           onClick={onConfirm}
           variant="contained"
           disabled={loading || !(value || '').trim()}
         >
-          변경
+          {t('dialogs.change')}
         </Button>
       </DialogActions>
     </Dialog>

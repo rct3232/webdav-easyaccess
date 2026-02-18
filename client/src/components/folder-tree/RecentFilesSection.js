@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   List,
@@ -26,6 +27,7 @@ const RecentFilesSection = ({
   onPathClick,
   onFileClick,
 }) => {
+  const { t } = useTranslation();
   return (
     <>
       {/* 최근 항목 섹션 - 항상 표시 */}
@@ -91,7 +93,7 @@ const RecentFilesSection = ({
                   fontWeight: currentPath === '/__recent__' ? 700 : 400,
                 }}
               >
-                최근 항목
+                {t('fileManager.recentItems')}
               </Typography>
             }
           />
@@ -109,7 +111,7 @@ const RecentFilesSection = ({
                     fontSize: '0.875rem',
                   }}
                 >
-                  최근 항목이 없습니다
+                  {t('fileManager.recentItemsEmpty')}
                 </Typography>
               </Box>
             </ListItem>

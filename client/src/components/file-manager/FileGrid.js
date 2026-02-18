@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Grid,
   Typography,
@@ -12,6 +13,7 @@ import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileGridItem from './FileGridItem';
 
 const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
@@ -109,7 +111,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   if (files.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
-        <Typography color="text.secondary">파일이 없습니다</Typography>
+        <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
       </Box>
     );
   }

@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Typography,
   Box,
@@ -11,6 +12,7 @@ import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileListItem from './FileListItem';
 
 const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+  const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
@@ -107,7 +109,7 @@ const FileList = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   if (files.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
-        <Typography color="text.secondary">파일이 없습니다</Typography>
+        <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
       </Box>
     );
   }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AppBar,
   Toolbar,
@@ -25,6 +26,7 @@ const FileManagerHeader = ({
   navigate,
   handleLogout,
 }) => {
+  const { t } = useTranslation();
   return (
     <AppBar 
       position="sticky" 
@@ -44,7 +46,7 @@ const FileManagerHeader = ({
               autoFocus
               fullWidth
               size="small"
-              placeholder="파일 검색..."
+              placeholder={t('nav.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               sx={{
@@ -83,19 +85,18 @@ const FileManagerHeader = ({
                 setIsSearchMode(false);
                 setSearchQuery('');
               }}
-              title="검색 닫기"
+              title={t('nav.searchClose')}
             >
               <CloseIcon />
             </IconButton>
           </Box>
         ) : (
-          // 일반 모드: 로고와 버튼들 표시
           <>
             <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
               <Box
                 component="img"
                 src="/logo_white.png"
-                alt="WebDAV EasyAccess"
+                alt={t('nav.logoAlt')}
                 sx={{
                   height: isMobile ? '27px' : '33.75px',
                   maxWidth: '100%',
@@ -108,7 +109,7 @@ const FileManagerHeader = ({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
                 <TextField
                   size="small"
-                  placeholder="파일 검색..."
+                  placeholder={t('nav.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setIsSearchMode(true)}
@@ -160,19 +161,19 @@ const FileManagerHeader = ({
               </Box>
             )}
             {isMobile && (
-              <IconButton color="inherit" onClick={() => setIsSearchMode(true)} title="검색">
+              <IconButton color="inherit" onClick={() => setIsSearchMode(true)} title={t('nav.search')}>
                 <SearchIcon />
               </IconButton>
             )}
             {user?.is_admin && (
-              <IconButton color="inherit" onClick={() => navigate('/admin')} title="관리자 대시보드">
+              <IconButton color="inherit" onClick={() => navigate('/admin')} title={t('nav.adminDashboard')}>
                 <AdminIcon />
               </IconButton>
             )}
-            <IconButton color="inherit" onClick={() => navigate('/mypage')} title="마이페이지">
+            <IconButton color="inherit" onClick={() => navigate('/mypage')} title={t('nav.mypage')}>
               <PersonIcon />
             </IconButton>
-            <IconButton color="inherit" onClick={handleLogout} title="로그아웃">
+            <IconButton color="inherit" onClick={handleLogout} title={t('nav.logout')}>
               <LogoutIcon />
             </IconButton>
           </>

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Typography,
@@ -34,6 +35,7 @@ import { createProcessingUpdater } from '../utils/processingUtils';
 import { shouldRefreshAfterOperation } from '../utils/refreshPolicy';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../utils/validationMessage';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import {
   FileList,
@@ -73,6 +75,7 @@ import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
 import { checkMyPermissionForShare, addShareLinkToMyPermissions } from '../services/shareLinkService';
 
 const FileManager = ({ shareToken, linkInfo } = {}) => {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const fileContentRef = useRef(null);
@@ -94,8 +97,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [linkInfo]
   );
   const shareRootName = useMemo(
-    () => linkInfo?.fileName || getBasename(shareRootPath) || '공유 폴더',
-    [linkInfo, shareRootPath]
+    () => linkInfo?.fileName || getBasename(shareRootPath) || t('nav.sharedFolder'),
+    [linkInfo, shareRootPath, t]
   );
   
   // 디바운스 타이머 ref 및 최신 핸들러 ref
@@ -401,11 +404,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         navigate(toFilesPath(linkInfo.filePath));
       }
     } catch (err) {
-      showError(err.response?.data?.error || err.message || '공유됨 항목에 추가하지 못했습니다.');
+      showError(err.response?.data?.error || err.message || t('dialogs.addToSharedError'));
     } finally {
       setAddToSharedConfirmLoading(false);
     }
-  }, [shareToken, linkInfo, navigate, showError]);
+  }, [shareToken, linkInfo, navigate, showError, t]);
 
   /** 공유됨 추가 버튼 클릭 시: 모달을 열고 로딩 → 권한 확인 후 확인 문구 또는 닫기 */
   const openAddToSharedModal = useCallback(() => {
@@ -662,16 +665,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // 텍스트 내용 계산
   const textContent = useMemo(() => {
     if (showRefreshSuccess) {
-      return '완료';
+      return t('fileManager.pullRefreshDone');
     }
     if (isRefreshing || loading) {
-      return '로딩 중...';
+      return t('fileManager.pullRefreshLoading');
     }
     if (hasReachedThreshold) {
-      return '놓으면 새로고침';
+      return t('fileManager.pullRefreshRelease');
     }
-    return '당겨서 새로고침';
-  }, [showRefreshSuccess, isRefreshing, loading, hasReachedThreshold]);
+    return t('fileManager.pullRefreshPull');
+  }, [showRefreshSuccess, isRefreshing, loading, hasReachedThreshold, t]);
 
 
   // Processing map updater
@@ -776,7 +779,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       updateProgress({
         ...baseProgress,
         status: 'error',
-        error: '업로드 권한이 없습니다',
+        error: t('fileManager.uploadNoPermission'),
         keepOnError: true,
       });
       return;
@@ -785,7 +788,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     updateProgress({
       ...baseProgress,
       status: 'preparing',
-      current: '준비 중...',
+      current: t('fileManager.uploadPreparing'),
     });
 
     const cancelledSet = explorerUploadCancelledRef.current.get(progressId);
@@ -840,7 +843,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             progress: completedCount + skippedCount,
             total: progress.total,
             current: `(${progress.current}/${progress.total}) ${progress.currentFile}`,
-            error: failCount > 0 ? `${failCount}개 실패` : undefined,
+            error: failCount > 0 ? t('fileManager.uploadFailCount', { count: failCount }) : undefined,
             keepOnError: failCount > 0 || skippedCount > 0 || undefined,
             updatedFileItem: {
               fileName,
@@ -874,8 +877,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           status: 'error',
           progress: completedCount + skippedCount,
           total: filesToUpload.length,
-          current: '완료 (일부 실패)',
-          error: `${failCount}개 파일 업로드 실패`,
+          current: t('fileManager.uploadCompletePartial'),
+          error: t('fileManager.uploadFailMessage', { count: failCount }),
           keepOnError: true,
           failedItems: failedItems.length > 0 ? failedItems : undefined,
           fileItems: [...fileItems],
@@ -886,8 +889,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           status: 'warning',
           progress: completedCount + skippedCount,
           total: filesToUpload.length,
-          current: '완료',
-          error: `건너뛴 항목: ${skippedCount}개`,
+          current: t('fileManager.pullRefreshDone'),
+          error: t('fileManager.uploadSkippedCount', { count: skippedCount }),
           keepOnError: true,
           fileItems: [...fileItems],
         });
@@ -897,7 +900,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           status: 'completed',
           progress: filesToUpload.length,
           total: filesToUpload.length,
-          current: '완료',
+          current: t('fileManager.pullRefreshDone'),
           fileItems: [...fileItems],
         });
         setTimeout(() => {
@@ -915,11 +918,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     } catch (error) {
       console.error('Upload error:', error);
       
-      let errorMessage = error.response?.data?.error || error.message || '업로드에 실패했습니다';
+      let errorMessage = error.response?.data?.error || error.message || t('fileManager.uploadFailed');
       if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
-        errorMessage = '업로드 권한이 없습니다';
+        errorMessage = t('fileManager.uploadNoPermission');
       } else if (error.response?.status === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
-        errorMessage = `서버 오류: ${errorMessage}`;
+        errorMessage = t('fileManager.uploadServerError', { message: errorMessage });
       }
       
       updateProgress({
@@ -935,7 +938,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       explorerUploadCancelledRef.current.delete(progressId);
       explorerUploadCancelAllRequestedRef.current.delete(progressId);
     }
-  }, [currentPath, dismissFailedItems, hasWritePermission, user, updateProgress, handleOperationComplete]);
+  }, [currentPath, dismissFailedItems, hasWritePermission, user, updateProgress, handleOperationComplete, t]);
 
   /**
    * Resolve upload conflicts
@@ -1062,7 +1065,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
               handleRecentFileError(error, filePath);
             } else {
-              showErrorFromError(error, showError);
+              showErrorFromError(error, showError, t);
             }
           }
           return;
@@ -1070,7 +1073,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         
         // 권한이 없는 폴더는 클릭 불가 (이미 표시된 정보 활용)
         if (file.hasReadPermission === false) {
-          showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+          showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
           return;
         }
         
@@ -1093,17 +1096,17 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             if (!permission.hasRead) {
               // 권한 없음: 롤백
               setCurrentPath(previousPath);
-              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
               return;
             }
           } catch (error) {
             setCurrentPath(previousPath);
             const errorType = determineErrorType(error);
             if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
-              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
             } else {
               console.error('Failed to check permission:', error);
-              showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
+              showErrorFromError(error, showError, t, 'fileManager.permissionCheckError');
             }
             return;
           }
@@ -1148,7 +1151,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
               handleRecentFileError(error, filePath);
             } else {
-              showErrorFromError(error, showError);
+              showErrorFromError(error, showError, t);
             }
           }
           return;
@@ -1220,8 +1223,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       status: 'preparing',
       progress: 0,
       total: filesToUpload.length,
-      current: '충돌 확인 중...',
-      name: `${filesToUpload.length}개 파일 업로드`,
+      current: t('fileManager.conflictChecking'),
+      name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
     });
 
     try {
@@ -1240,7 +1243,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, uploadPath);
     }
-  }, [executeExplorerUpload, closeUploadDialog, updateProgress]);
+  }, [executeExplorerUpload, closeUploadDialog, updateProgress, t]);
 
   // Cancel upload handlers (upload_drop_* only; all uploads use executeExplorerUpload)
   const handleCancelUploadFileWrapper = useCallback((progressId, fileName) => {
@@ -1280,13 +1283,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         id: progressId,
         fileItems: updatedFileItems,
         status: 'warning',
-        error: '업로드가 취소되었습니다.',
+        error: t('fileManager.uploadCancelled'),
         keepOnError: true,
       });
       handleOperationComplete({ opType: 'upload', startedPath: progressItem.retryData?.currentPath ?? currentPathRef.current });
       setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() });
     }
-  }, [progressItems, updateProgress, handleOperationComplete, setTreeUpdateTrigger]);
+  }, [progressItems, updateProgress, handleOperationComplete, setTreeUpdateTrigger, t]);
 
   const handleCancelAllWrapper = useCallback((progressId) => {
     const item = progressItems.find((i) => i.id === progressId);
@@ -1368,7 +1371,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     if (!targetFile) return;
     const nameError = validateFileName(renameNewName);
     if (nameError) {
-      setRenameError(nameError);
+      setRenameError(getValidationMessage(nameError, t));
       return;
     }
 
@@ -1420,8 +1423,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       status: 'preparing',
       progress: 0,
       total: filesToUpload.length,
-      current: '충돌 확인 중...',
-      name: `${filesToUpload.length}개 파일 업로드`,
+      current: t('fileManager.conflictChecking'),
+      name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
     });
 
     try {
@@ -1440,7 +1443,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       updateProgress({ id: progressId, remove: true });
       await executeExplorerUpload(filesToUpload, targetPath);
     }
-  }, [currentPath, updateProgress, executeExplorerUpload]);
+  }, [currentPath, updateProgress, executeExplorerUpload, t]);
 
   // Handle drops on the entire file content area
   const handleContentAreaDragOver = (e) => {
@@ -1504,30 +1507,30 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
     const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
     if (!user?.is_admin && currentPath === homePath) {
-      return { label: '홈', startIcon: <HomeIcon />, disabled: true, onClick: undefined };
+      return { label: t('nav.home'), startIcon: <HomeIcon />, disabled: true, onClick: undefined };
     }
     if (user?.is_admin && currentPath === '/') {
-      return { label: '홈', startIcon: <HomeIcon />, disabled: true, onClick: undefined };
+      return { label: t('nav.home'), startIcon: <HomeIcon />, disabled: true, onClick: undefined };
     }
     if (!user?.is_admin && currentPath === '/__shared__') {
-      return { label: '공유됨', startIcon: <ShareIcon />, disabled: true, onClick: undefined };
+      return { label: t('nav.shared'), startIcon: <ShareIcon />, disabled: true, onClick: undefined };
     }
     if (currentPath === '/__recent__') {
-      return { label: '최근항목', startIcon: <AccessTimeIcon />, disabled: true, onClick: undefined };
+      return { label: t('nav.recentShort'), startIcon: <AccessTimeIcon />, disabled: true, onClick: undefined };
     }
     const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
     if (!parentPath || parentPath === currentPath) return null;
     if (!user?.is_admin && parentPath !== '/' && !parentPath.startsWith(homePath)) {
       return {
-        label: '공유됨',
+        label: t('nav.shared'),
         startIcon: <ChevronLeftIcon />,
         disabled: false,
         onClick: () => setCurrentPath('/__shared__'),
       };
     }
     const parentName = parentPath === '/'
-      ? (user?.is_admin ? '루트' : '홈')
-      : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? '루트' : '홈');
+      ? (user?.is_admin ? t('nav.root') : t('nav.home'))
+      : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? t('nav.root') : t('nav.home'));
     return {
       label: parentName,
       startIcon: <ChevronLeftIcon />,
@@ -1545,7 +1548,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 return;
               }
               setCurrentPath(previousPath);
-              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
               return;
             }
           } catch (error) {
@@ -1557,17 +1560,17 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 setCurrentPath('/__shared__');
                 return;
               }
-              showError(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED));
+              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
             } else {
               console.error('Failed to check permission:', error);
-              showErrorFromError(error, showError, '권한 확인 중 오류가 발생했습니다.');
+              showErrorFromError(error, showError, t, 'fileManager.permissionCheckError');
             }
             return;
           }
         }
       },
     };
-  }, [isShareLinkMode, currentPath, shareRootPath, shareRootName, setCurrentPath, user, showError]);
+  }, [isShareLinkMode, currentPath, shareRootPath, shareRootName, setCurrentPath, user, showError, t]);
 
   return (
     <Box
@@ -1989,10 +1992,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           open={addToSharedModalOpen}
           onClose={() => setAddToSharedModalOpen(false)}
           variant={addToSharedStatus === 'loading' ? 'loading' : undefined}
-          title="공유 링크"
-          message="공유됨 항목에 추가하시겠습니까?"
-          confirmText={addToSharedConfirmLoading ? '추가 중...' : '확인'}
-          cancelText="취소"
+          title={t('dialogs.shareLink')}
+          message={t('dialogs.addToSharedConfirm')}
+          confirmText={addToSharedConfirmLoading ? t('common.adding') : t('common.confirm')}
+          cancelText={t('common.cancel')}
           loading={addToSharedConfirmLoading}
           onConfirm={handleAddToSharedConfirm}
         />
@@ -2005,10 +2008,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           setLeaveShareConfirmTargetPath(null);
         }}
         onConfirm={handleLeaveShareConfirm}
-        title="확인"
-        message="이 위치를 벗어나시겠습니까?"
-        confirmText="이동"
-        cancelText="취소"
+        title={t('common.confirm')}
+        message={t('dialogs.leaveShareConfirm')}
+        confirmText={t('common.move')}
+        cancelText={t('common.cancel')}
       />
 
       <FileContextMenu
@@ -2073,8 +2076,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         }}
         title={
           mobilePickerFile
-            ? `${mobilePickerAction === 'move' ? '이동' : '복사'}: ${mobilePickerFile.basename}`
-            : folderPickerAction === 'move' ? '이동할 폴더 선택' : '복사할 폴더 선택'
+            ? `${mobilePickerAction === 'move' ? t('actions.move') : t('actions.copy')}: ${mobilePickerFile.basename}`
+            : folderPickerAction === 'move' ? t('dialogs.moveFolderSelect') : t('dialogs.copyFolderSelect')
         }
         currentPath={currentPath}
         user={user}
@@ -2258,10 +2261,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             open={bulkDeleteDialogOpen}
             onClose={closeBulkDeleteDialog}
             onConfirm={handleBulkDeleteConfirm}
-            title="삭제 확인"
-            message={`선택한 ${bulkDeleteFilePaths.length}개의 파일/폴더를 삭제하시겠습니까?`}
-            confirmText="삭제"
-            cancelText="취소"
+            title={t('dialogs.deleteConfirm')}
+            message={t('dialogs.bulkDeleteMessage', { count: bulkDeleteFilePaths.length })}
+            confirmText={t('common.delete')}
+            cancelText={t('common.cancel')}
             confirmColor="error"
           />
           <ConflictResolveDialog
@@ -2269,14 +2272,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             onClose={() => setBulkConflictData(null)}
             onResolve={resolveBulkConflict}
             conflicts={bulkConflictData?.conflicts || []}
-            operationType={bulkConflictData?.action === 'move' ? '이동' : '복사'}
+            operationType={bulkConflictData?.action === 'move' ? t('actions.move') : t('actions.copy')}
           />
           <ConflictResolveDialog
             open={!!uploadConflictData}
             onClose={() => setUploadConflictData(null)}
             onResolve={resolveUploadConflict}
             conflicts={uploadConflictData?.conflicts || []}
-            operationType="업로드"
+            operationType={t('dialogs.uploadOperation')}
           />
         </>
       )}

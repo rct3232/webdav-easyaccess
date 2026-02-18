@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   List,
@@ -30,6 +31,7 @@ const ShareLinkSection = ({
   onShareLinkPathClick,
   isMobile = false,
 }) => {
+  const { t } = useTranslation();
   const rootPath = normalizePath(shareRootPath || '/');
   const [shareLinkExpanded, setShareLinkExpanded] = useState(true);
   const [expandedPaths, setExpandedPaths] = useState(new Set([rootPath]));
@@ -173,7 +175,7 @@ const ShareLinkSection = ({
                   fontWeight: isSelected ? 700 : 400,
                 }}
               >
-                {shareRootName || '공유 링크'}
+                {shareRootName || t('nav.shareLink')}
               </Typography>
             }
           />

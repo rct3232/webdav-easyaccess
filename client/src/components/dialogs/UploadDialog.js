@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   Box,
@@ -13,6 +14,7 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import BaseDialog from './BaseDialog';
 
 const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
+  const { t } = useTranslation();
   const [files, setFiles] = useState([]);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -68,14 +70,14 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
     <BaseDialog
       open={open}
       onClose={handleClose}
-      title="파일 업로드"
+      title={t('dialogs.uploadTitle')}
       actions={
         <>
           <Button onClick={handleClose}>
-            취소
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleUpload} variant="contained" disabled={files.length === 0}>
-            업로드
+            {t('dialogs.upload')}
           </Button>
         </>
       }
@@ -95,7 +97,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
       >
         <input {...getInputProps()} />
         <Typography variant="body1">
-          {isDragActive ? '파일을 여기에 놓으세요' : '파일을 드래그하거나 클릭하여 선택하세요'}
+          {isDragActive ? t('dialogs.uploadDropHere') : t('dialogs.uploadDropOrClick')}
         </Typography>
       </Box>
 

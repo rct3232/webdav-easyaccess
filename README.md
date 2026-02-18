@@ -1,23 +1,26 @@
 # WebDAV EasyAccess
 
-WebDAV EasyAccess는 WebDAV 서버를 기반으로 하는 **설치형(Self-hosted) 다중 사용자 파일 관리 시스템**입니다. 
+WebDAV EasyAccess is a **self-hosted, multi-user file management system** built on top of a WebDAV server.
 
-단순 클라이언트와 달리 **Node.js 기반의 전용 서버**를 통해 구동되며, 사용자는 별도의 프로그램 설치 없이 웹 브라우저로 접속하여 파일을 관리합니다. 서버 사이드에서 인증 및 권한 로직을 처리하므로 안전한 다중 사용자 환경과 미디어 미리보기 기능을 제공합니다.
+Unlike a simple client, it runs via a **dedicated Node.js server**, and users can manage files through a web browser without installing any software. Authentication and permission logic are handled on the server side, providing a secure multi-user environment and media preview capabilities.
 
-> **중요**: 본 프로젝트의 코드/문서는 **AI Agent로만 작성된 프로젝트**입니다. 운영 환경에 투입하기 전, 보안/품질/라이선스 관점의 검토를 권장합니다.
+> **Important**: This project's code and documentation were **written entirely by an AI Agent**. Review from security, quality, and licensing perspectives before deploying to production.
 
-## 스크린샷
+## Screenshot
 
 ![WebDAV EasyAccess Screenshot](docs/screenshot.jpg)
 
-## 핵심 특징
+## Key Features
 
-- **서버 기반 아키텍처**: Node.js 백엔드가 WebDAV 연결을 관리하며, 사용자는 웹 인터페이스만 이용합니다.
-- **다중 사용자 시스템**: 서비스 자체 계정 시스템과 가입 승인 프로세스를 제공합니다.
-- **정교한 권한 제어**: WebDAV의 기본 권한 외에 폴더별로 사용자 권한(읽기/쓰기/관리)을 세부 설정할 수 있습니다.
-- **미디어 미리보기**: 서버에서 생성하는 썸네일을 통해 이미지 및 비디오 파일을 웹에서 즉시 확인합니다.
+- **Server-based architecture**: Node.js backend manages WebDAV connections; users interact only through the web interface.
+- **Multi-user system**: Built-in account system with signup approval workflow.
+- **Fine-grained permission control**: Per-folder user permissions (read/write/admin) beyond WebDAV's default capabilities.
+- **Media preview**: View images and videos instantly in the browser via server-generated thumbnails.
+- **External share links**: Create time-limited public links for files; anyone with the link can view or download without logging in.
+- **Recent files**: Recently accessed files appear in the left sidebar; the list updates automatically on rename, move, or delete.
+- **Internationalization (i18n)**: UI supports Korean and English; language is auto-detected from the browser.
 
-## 아키텍처
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -29,18 +32,18 @@ flowchart LR
   MetaStore --> FSMeta["Local FS (optional)"]
 ```
 
-## 기술 스택
+## Tech Stack
 
 - **Backend**: Node.js, Express.js
-- **Frontend**: React, MUI(Material UI)
+- **Frontend**: React, MUI (Material UI)
 - **Auth**: JWT
 - **WebDAV Client**: `webdav`
-- **Thumbnails**: Sharp (+ Video는 FFmpeg 필요)
-- **Metadata store**: 기본 WebDAV `/.wea/` 아래 JSON (옵션으로 local filesystem 저장 가능)
+- **Thumbnails**: Sharp (FFmpeg required for video)
+- **Metadata store**: JSON under WebDAV `/.wea/` (optional local filesystem storage)
 
-## 설치 및 실행
+## Installation & Running
 
-자세한 설치 및 실행 방법은 [`docs/SETUP.md`](docs/SETUP.md)를 참조하세요.
+For detailed installation and setup, see [`docs/SETUP.md`](docs/SETUP.md).
 
 ### Quickstart
 
@@ -55,11 +58,11 @@ cp .env.example .env
 npm run dev
 ```
 
-- 접속: `http://localhost:3000`
+- Access: `http://localhost:3000`
 
-## 운영(Production)
+## Production
 
-운영 환경에서는 프론트엔드를 빌드한 뒤, 서버가 `client/build`를 정적 파일로 서빙합니다.
+In production, build the frontend first; the server serves `client/build` as static assets.
 
 ```bash
 # 1) Build frontend
@@ -70,126 +73,141 @@ cd server
 npm start
 ```
 
-- 접속: `http://localhost:5001` (또는 `.env`의 `PORT`)
+- Access: `http://localhost:5001` (or `PORT` from `.env`)
 
-## 환경 변수(.env)
+## Environment Variables (.env)
 
-`.env`는 **레포 루트**에 두며, 서버가 읽고(필수), 개발 시 클라이언트 프록시가 `PORT`를 참고합니다.
+`.env` should be placed at the **repository root**. The server reads it (required), and the client proxy uses `PORT` during development.
 
-### 필수
+### Required
 
-- **WEBDAV_URL**: WebDAV 서버 URL (경로 prefix 포함 가능)
-- **WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV 계정
-- **JWT_SECRET**: JWT 서명 키(프로덕션에서 반드시 변경, 미설정 시 서버가 시작되지 않음)
-- **PORT**: 서버 포트 (기본값 `5001`)
+- **WEBDAV_URL**: WebDAV server URL (path prefix allowed)
+- **WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV credentials
+- **JWT_SECRET**: JWT signing key (must be changed in production; server will not start if unset)
+- **PORT**: Server port (default `5001`)
 
-### 선택(주요)
+### Optional (main)
 
-- **JWT_EXPIRES_IN**: JWT 만료 시간 (기본 `30m`, 예: `15m`, `1h`)
-- **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: 가입/승인 알림 메일
-- **ADMIN_DEFAULT_PASSWORD**: 기본 admin 비밀번호(기본 `admin`)
-- **WEA_DISABLE_DEFAULT_ADMIN**: 기본 admin 자동 생성 비활성화(`true`)
-- **WEA_STORAGE_BACKEND**: 메타데이터 저장소 선택(`webdav` 또는 `fs`, 기본은 `webdav`)
-- **WEA_FS_DIR / WEA_METADATA_DIR**: `fs` 저장소 사용 시 저장 경로
-- **CORS_ORIGINS / CORS_ORIGIN**: CORS 허용 Origin 제한(권장: 운영에서 설정, 쉼표로 여러 개 가능)
-- **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: 로그인 rate limit (best-effort, in-memory)
-- **WEBDAV_AUTH_TYPE**: `auto/basic/digest`
-- **WEBDAV_UPSTREAM_URL**: 프록시 환경에서 MOVE/COPY가 502 등을 반환할 때 우회용 upstream base URL
-- **MAX_THUMBNAIL_SIZE**: 썸네일 최대 크기(기본 `300`)
-- **FFMPEG_PATH**: FFmpeg 경로(자동 감지 실패 시)
+- **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
+- **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
+- **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)
+- **WEA_DISABLE_DEFAULT_ADMIN**: Disable default admin auto-creation (`true`)
+- **WEA_STORAGE_BACKEND**: Metadata storage (`webdav` or `fs`, default `webdav`)
+- **WEA_FS_DIR / WEA_METADATA_DIR**: Storage path when using `fs` backend
+- **CORS_ORIGINS / CORS_ORIGIN**: Allowed CORS origins (recommended in production; comma-separated)
+- **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: Login rate limit (best-effort, in-memory)
+- **WEBDAV_AUTH_TYPE**: `auto` / `basic` / `digest`
+- **WEBDAV_UPSTREAM_URL**: Upstream base URL for MOVE/COPY issues behind a proxy (502, etc.)
+- **MAX_THUMBNAIL_SIZE**: Max thumbnail resolution (default `300`)
+- **FFMPEG_PATH**: FFmpeg path (when auto-detect fails)
+- **THUMBNAIL_CONCURRENCY_LIMIT**: Max concurrent thumbnail tasks (default `10`)
 
-## 보안 메모
+## Security Notes
 
-- **브라우저 종료 시 로그아웃**: 인증 토큰은 `sessionStorage`에 저장되어 브라우저(탭/창) 종료 시 자동으로 로그아웃됩니다.
-- **비밀번호 변경 시 재로그인**: 비밀번호 변경 시 서버가 `token_version`을 증가시켜 기존 토큰을 즉시 무효화합니다(다른 기기 포함).
-- **HTTPS 권장/강제**: HTTP/혼재 환경에서는 네트워크 구간에서 토큰/자격증명이 탈취될 수 있습니다. 운영은 **HTTPS를 강제**하는 구성을 권장합니다.
+- **Logout on browser close**: Auth tokens are stored in `sessionStorage`; closing the browser (tab/window) logs you out automatically.
+- **Re-login on password change**: Changing the password increments `token_version` on the server, invalidating all existing tokens (including on other devices).
+- **HTTPS recommended/required**: In HTTP or mixed environments, tokens and credentials can be intercepted. Production deployments should **enforce HTTPS**.
 
-## 권한 정책(요약)
+## Permission Policy (Summary)
 
-- **권한 레벨**: `read` / `write` / `admin`
-- **Owner 예외**: 사용자 루트 폴더 `/{username}` 및 하위는 해당 사용자에게 항상 read/write로 취급됩니다.
-- **읽기(Read)**: 상위 경로 권한을 포함한 **effective(상속) 읽기** 정책을 사용합니다.
-  - 예: `/share`에 읽기 권한이 있으면, 하위 폴더 탐색에 필요한 읽기 권한을 상속하여 동작합니다.
-- **쓰기(Write)**: 공유 경로는 기본적으로 **direct-only(직접) 쓰기** 정책을 사용합니다(상위 권한 상속 없음).
-  - 예: `/share`에 쓰기 권한이 있어도 `/share/sub`에 직접 권한이 없으면 쓰기 작업이 제한될 수 있습니다.
-- **예약 경로**: `/.wea`는 메타데이터 저장용 예약 경로로 UI/서버에서 숨김/차단됩니다.
+- **Permission levels**: `read` / `write` / `admin`
+- **Owner exception**: User root folder `/{username}` and its children always grant read/write to that user.
+- **Read**: Uses **inherited read** policy—parent path permissions apply to children.
+  - Example: Read on `/share` grants inherited read for browsing subfolders.
+- **Write**: Shared paths use **direct-only write** (no inheritance).
+  - Example: Write on `/share` does not imply write on `/share/sub` unless explicitly granted.
+- **Reserved path**: `/.wea` is reserved for metadata; hidden/blocked in UI and server.
 
-## 사용 방법
+## Usage
 
-### 일반 사용자
+### General Users
 
-1. **회원가입 및 로그인**
-   - 관리자가 활성화한 경우 회원가입 가능
-   - 가입 후 관리자 승인 대기 (이메일 알림)
-   - 승인된 계정으로 로그인하면 전용 폴더(`/사용자명`)에 접근
+1. **Sign up and log in**
+   - Signup available when enabled by admin
+   - New users wait for admin approval (email notification)
+   - After approval, log in to access your home folder (`/username`)
 
-2. **파일 관리**
-   - 드래그 앤 드롭: 업로드, 이동, 복사
-   - 우클릭: 다운로드, 이름 변경, 이동, 복사, 삭제
-   - 미리보기: 파일 클릭으로 이미지, 비디오, PDF, 텍스트 확인
-   - 보기 모드: 그리드, 리스트, 상세 보기 전환
+2. **File management**
+   - Drag & drop: upload, move, copy
+   - Right-click: download, rename, move, copy, delete
+   - Preview: click files to view images, video, PDF, text
+   - View modes: grid, list, detail
+   - Bulk operations: multi-select files/folders, then use the toolbar for move, copy, download (ZIP), or delete (with progress and cancellation)
+   - Recent files: recently accessed files appear in the left sidebar
 
-3. **폴더 공유**
-   - 파일 또는 폴더 우클릭 → "공유"로 다른 사용자에게 권한 부여
-   - 마이페이지에서 공유한 폴더 관리
-   - 받은 공유 폴더는 좌측 폴더 트리의 "공유됨" 섹션에서 확인
+3. **Folder sharing**
+   - Right-click file or folder → "Share" to grant permissions to other users
+   - Manage shared folders from MyPage
+   - Received shares appear under "Shared" in the left folder tree
 
-4. **마이페이지**
-   - 우상단 사용자 아이콘에서 비밀번호/이메일 변경
-   - 홈 디렉토리 하위 폴더 공유 관리
+4. **Permission requests**
+   - Users can **request** folder access from owners (separate from admin approval)
+   - Requests appear in MyPage inbox (for owners) and outbox (for requesters)
+   - Owners approve or reject; requesters can cancel pending requests
 
-### 관리자
+5. **External share links**
+   - In Share dialog → "External share" tab: create time-limited public links for files
+   - Anyone with the link can view/download without logging in
+   - Manage share links in MyPage → Share Links tab
+   - Recipients can add the shared item to their own permissions if they have an account
 
-1. **첫 로그인**
-   - 기본 계정: `admin` / `admin` (또는 `ADMIN_DEFAULT_PASSWORD`)
-   - ⚠️ 즉시 비밀번호 변경 권장
+6. **MyPage**
+   - User icon (top right): change password/email
+   - Manage shared folders under your home directory
+   - Permission request inbox/outbox
+   - Share links management
 
-2. **사용자/설정 관리**
-   - 신규 가입자 승인/거절, 사용자 직접 추가/삭제
-   - 회원가입 기능 활성화/비활성화
-   - 사용자별 폴더 권한 부여 및 관리
+### Administrators
 
-## 테스트
+1. **First login**
+   - Default: `admin` / `admin` (or `ADMIN_DEFAULT_PASSWORD`)
+   - Change the password immediately
 
-- **클라이언트**
+2. **User and settings management**
+   - Approve/reject new signups; add/delete users directly
+   - Enable/disable signup
+   - Grant and manage per-user folder permissions
+
+## Testing
+
+- **Client**
   - `cd client && npm run test:unit`
   - `cd client && npm run test:integration`
   - `cd client && npm run test:ci`
-  - 요약: `client/TEST_SUMMARY.md`
-- **서버**
+  - Summary: `client/TEST_SUMMARY.md`
+- **Server**
   - `cd server && npm run test:unit`
   - `cd server && npm run test:integration`
   - `cd server && npm run test:ci`
-  - 요약: `server/TEST_SUMMARY.md`
-- 테스트 코드 Git 관리 가이드: [`docs/TEST_GIT_GUIDE.md`](docs/TEST_GIT_GUIDE.md)
+  - Summary: `server/TEST_SUMMARY.md`
+- Test code Git guide: [`docs/TEST_GIT_GUIDE.md`](docs/TEST_GIT_GUIDE.md)
 
-## 트러블슈팅
+## Troubleshooting
 
-### WebDAV URL에 경로 prefix가 포함된 경우
+### WebDAV URL with path prefix
 
-예: `https://example.com/webdav` 처럼 URL에 경로가 포함되어도 동작하도록 처리되어 있습니다. 다만 서버별 차이가 있으므로, 연결이 실패하면 먼저 URL/인증 정보를 점검하세요.
+Paths like `https://example.com/webdav` are supported. If connection fails, verify URL and credentials; server behavior may vary.
 
-### MOVE/COPY가 502 등으로 실패(프록시 환경)
+### MOVE/COPY returns 502 (proxy environment)
 
-리버스 프록시(또는 업스트림) 환경에서 `MOVE`/`COPY` 요청의 `Destination` 헤더가 차단/변형되는 경우가 있습니다. 이때 `WEBDAV_UPSTREAM_URL`로 **실제 업스트림 base URL**을 지정해 우회할 수 있습니다.
+Reverse proxies may block or alter the `Destination` header. Set `WEBDAV_UPSTREAM_URL` to the **actual upstream base URL** to work around this.
 
-### 동영상 썸네일이 생성되지 않음
+### Video thumbnails not generated
 
-FFmpeg가 필요합니다. 자동 감지가 실패하면 `FFMPEG_PATH`를 설정하세요.
+FFmpeg is required. Set `FFMPEG_PATH` if auto-detect fails.
 
-### 이메일이 발송되지 않음
+### Email not sending
 
-`EMAIL_HOST`, `EMAIL_USER`, `EMAIL_PASSWORD`가 없으면 메일은 전송되지 않고 콘솔로만 출력됩니다.
+Without `EMAIL_HOST`, `EMAIL_USER`, and `EMAIL_PASSWORD`, emails are not sent; output goes to console only.
 
-### 업로드가 409(Conflict)로 실패
+### Upload fails with 409 (Conflict)
 
-동일한 파일명이 이미 존재할 때 정상적으로 거부됩니다. 파일명을 바꾸거나 대상 경로를 변경하세요.
+Normal when a file with the same name already exists. Rename the file or change the target path.
 
-### `/.wea` 관련 경로가 보이지 않음
+### `/.wea` path not visible
 
-`/.wea`는 메타데이터 저장용 예약 경로로 UI/서버에서 숨김/차단됩니다.
+`/.wea` is a reserved path for metadata; it is hidden and blocked in the UI and server.
 
-## 라이선스
+## License
 
 MIT
-

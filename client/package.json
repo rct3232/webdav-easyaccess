@@ -26,7 +26,8 @@
     "test:integration": "react-scripts test --testPathPattern=integration --watchAll=false",
     "test:unit": "react-scripts test --testPathPattern='(hooks|utils|components)/__tests__' --watchAll=false",
     "test:coverage": "react-scripts test --watchAll=false --coverage --collectCoverageFrom='src/**/*.{js,jsx}' --collectCoverageFrom='!src/index.js' --collectCoverageFrom='!src/setupTests.js' --collectCoverageFrom='!src/setupProxy.js' --collectCoverageFrom='!src/mocks/**' --collectCoverageFrom='!src/test-utils/**'",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "test:mutation": "stryker run"
   },
   "eslintConfig": {
     "extends": [
@@ -46,9 +47,12 @@
     ]
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.5.1",
+    "@stryker-mutator/jest-runner": "^9.5.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
+    "fast-check": "^3.22.0",
     "msw": "^2.12.7",
     "react-scripts": "5.0.1",
     "undici": "^7.18.2"

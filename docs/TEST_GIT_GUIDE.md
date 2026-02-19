@@ -252,6 +252,20 @@ cd client && npm run test:coverage
 cd server && npm run test:coverage
 ```
 
+### Mutation Testing (Stryker)
+
+Coverage alone can be misleading—tests may cover code without catching real bugs. Mutation testing (Stryker) mutates your code and checks if tests fail; a high Mutation Score means your tests are effective.
+
+```bash
+# Client (uses create-react-app Jest)
+cd client && npm run test:mutation
+
+# Server (uses custom Jest)
+cd server && npm run test:mutation
+```
+
+Recommendation: Prioritize improving the Mutation Score over coverage percentage. Start with small modules (e.g. `server/utils/errorHandler.js`) and expand the mutate scope gradually. See `stryker.config.json` in each package for the mutate range.
+
 ## Commit Message Conventions
 
 ### Test-Only Commits
@@ -279,6 +293,7 @@ refactor: improve path normalization + tests
 ❌ `.nyc_output/` directory  
 ❌ `*.lcov` files  
 ❌ `.jest-cache/` directory  
+❌ `stryker-tmp/` or `.stryker-tmp/` directory (mutation testing temp)  
 ❌ Personal or temporary test files
 
 ### Always Commit

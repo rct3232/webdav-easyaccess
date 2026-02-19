@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "testRunner": "jest",
+  "tempDirName": "stryker-tmp",
+  "mutate": [
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "!src/**/__tests__/**",
+    "!src/**/*.test.js",
+    "!src/**/*.test.jsx",
+    "!src/index.js",
+    "!src/setupTests.js",
+    "!src/setupProxy.js",
+    "!src/mocks/**",
+    "!src/test-utils/**"
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/coverage/**"
+  ],
+  "jest": {
+    "projectType": "create-react-app"
+  }
+}

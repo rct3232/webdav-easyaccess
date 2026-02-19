@@ -18,6 +18,10 @@ coverage/
 # Jest cache (Jest 캐시)
 .jest-cache/
 
+# Stryker mutation testing
+stryker-tmp/
+.stryker-tmp/
+
 # Test results (테스트 결과 파일 - 선택적)
 test-results/
 *.xml

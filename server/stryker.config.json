@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "testRunner": "jest",
+  "tempDirName": "stryker-tmp",
+  "mutate": [
+    "utils/**/*.js",
+    "middleware/**/*.js",
+    "store/**/*.js",
+    "models/**/*.js",
+    "services/**/*.js"
+  ],
+  "ignorePatterns": [
+    "**/__tests__/**",
+    "**/*.test.js",
+    "**/node_modules/**",
+    "**/coverage/**"
+  ],
+  "jest": {
+    "projectType": "custom"
+  }
+}

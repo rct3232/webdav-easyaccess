@@ -105,7 +105,7 @@ sequenceDiagram
     participant Cache as Memory Cache
     participant W as WebDAV
     
-    C->>S: GET /api/thumbnails/:hash.:ext (optional token)
+    C->>S: GET /api/thumbnails/:hash.:ext?token= (required)
     S->>Cache: Check Cache
     alt In Cache
         Cache-->>S: Return Buffer
@@ -123,7 +123,7 @@ sequenceDiagram
     end
 ```
 
-*   **Endpoints**: `GET /api/thumbnails/:hash.:ext` (with optional token) and `GET /api/files/thumbnail/:hash` for single thumbnail; `POST /api/files/thumbnails/batch` for batch.
+*   **Endpoints**: `GET /api/thumbnails/:hash.:ext` (token in query required) and `GET /api/files/thumbnail/:hash` (JWT) for single thumbnail; `POST /api/files/thumbnails/batch` for batch.
 *   **Performance**:
     *   Thumbnails are cached in server memory (max 1000).
     *   Clients request multiple thumbnails in viewport via batch API.
@@ -223,7 +223,7 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 
 ### 4.9 Users and Settings
 *   `GET /api/users`, `GET /api/users/approved`, `GET /api/users/:id`: User listing and profile.
-*   `PUT /api/users/:id/password`, `PUT /api/users/:id/email`, `PUT /api/users/:id/permissions`: Update user.
+*   `PUT /api/users/:id/password`, `PUT /api/users/:id/email`: Update own profile. `PUT /api/users/:id/permissions`: Set user folder permissions (admin only).
 *   `GET /api/settings/public`: Public settings (e.g. signup enabled).
 
 ---

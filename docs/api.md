@@ -17,7 +17,7 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/api/auth/register` | None | Sign up. Body: e.g. username, email, password. |
-| POST | `/api/auth/login` | None | Login. Returns `user`, `token` (and optionally refresh token). |
+| POST | `/api/auth/login` | None | Login. Returns `user`, `token` (and optionally refresh token). May return 429 if rate limited. |
 | POST | `/api/auth/refresh` | None | Refresh access token using refresh token in body. |
 | GET | `/api/auth/me` | Token | Current user info. |
 
@@ -30,9 +30,9 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | GET | `/api/users` | Token | List users (e.g. for share dialogs). |
 | GET | `/api/users/approved` | Token | List approved users. |
 | GET | `/api/users/:id` | Token | Get user by id. |
-| PUT | `/api/users/:id/password` | Token | Change password (body: currentPassword, newPassword). |
+| PUT | `/api/users/:id/password` | Token | Change password (body: `password` — new password only). |
 | PUT | `/api/users/:id/email` | Token | Update email. |
-| PUT | `/api/users/:id/permissions` | Token | Update current user's own permissions (e.g. home folder). |
+| PUT | `/api/users/:id/permissions` | Token + Admin | Set user folder permissions (admin only). Body: `permissions` (array of `{ folderPath, permission }`). |
 
 ---
 
@@ -41,21 +41,21 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/files/list` | Token or share | List folder contents. Query: `path`. |
-| GET | `/api/files/download` | Token or share | Download file. Query: `path`. |
-| POST | `/api/files/upload` | Token | Upload file. Multipart: `file`, body/query `path`. |
+| GET | `/api/files/download` | Token or share | Download file. Query: `path`; optional `inline` (true/false). |
+| POST | `/api/files/upload` | Token | Upload file. Multipart: `file`; body: `path`, `relativePath`, `onConflict` (error, overwrite, skip). |
 | PUT | `/api/files/rename` | Token | Rename. Body: e.g. `oldPath`, `newName`. |
-| POST | `/api/files/batch-move` | Token | Move items. Body: e.g. `sourcePaths`, `destinationPath`. |
-| POST | `/api/files/batch-copy` | Token | Copy items. Body: e.g. `sourcePaths`, `destinationPath`. |
+| POST | `/api/files/batch-move` | Token | Move items. Body: `moves` (array of `{ sourcePath, destinationPath }`), optional `onConflict` (error, overwrite, skip). Returns 202 + `jobId`. |
+| POST | `/api/files/batch-copy` | Token | Copy items. Body: `copies` (array of `{ sourcePath, destinationPath }`), optional `onConflict`. Returns 202 + `jobId`. |
 | POST | `/api/files/batch-delete` | Token | Delete items. Body: e.g. `paths`. |
-| POST | `/api/files/download-multiple` | Token or share | ZIP multiple files/folders. Body: e.g. `paths`. |
+| POST | `/api/files/download-multiple` | Token or share | ZIP multiple files/folders. Body: `paths`; optional `downloadId`. |
 | GET | `/api/files/download-progress/:id` | Token or share | Progress of ZIP download. |
 | GET | `/api/files/operation-progress/:id` | Token | Progress of bulk operation (move/copy/delete). |
 | GET | `/api/files/bulk-operation/:jobId` | Token | Bulk job status. |
 | POST | `/api/files/bulk-operation/:jobId/cancel` | Token | Cancel bulk operation. |
 | GET | `/api/files/thumbnail/:hash` | Token | Single thumbnail image. |
 | POST | `/api/files/thumbnails/batch` | Token or share | Batch thumbnails. Body: e.g. `paths` or items with path/hash. |
-| GET | `/api/thumbnails/:hash.:ext` | None (or token) | Thumbnail by hash and extension (separate route). |
-| POST | `/api/files/check-conflicts` | Token | Check name conflicts before paste. Body: e.g. `paths`, `destinationPath`. |
+| GET | `/api/thumbnails/:hash.:ext` | Query `token` required | Thumbnail by hash and extension. Query: `?token=` (signed token from batch API). |
+| POST | `/api/files/check-conflicts` | Token | Check name conflicts before paste. Body: `operations` (array), optional `limit` (boolean, default true). |
 | POST | `/api/files/metadata` | Token or share | Get file metadata. Body: e.g. `paths`. |
 | POST | `/api/folders/create` | Token | Create folder. Body: `path`. |
 
@@ -70,13 +70,13 @@ Path parameters are normalized by middleware. All paths that accept `path`, `sou
 | POST | `/api/permissions/grant` | Token | Grant folder or file permission. Body: `folderPath`, `userId`, `permission`; optional `target` ('file' for file-level). |
 | DELETE | `/api/permissions/revoke` | Token | Revoke permission. Query: `userId`, `folderPath`; optional `includeSubfolders`, `scope` ('pathOnly' for file-level). |
 | GET | `/api/permissions/user/:userId` | Token | List permissions for a user. |
-| GET | `/api/permissions/folder` | Token | List permissions for a folder. Query: `path`. |
+| GET | `/api/permissions/folder` | Token | List permissions for a folder. Query: `path`; optional `includeSubfolders`, `filePath`. |
 | GET | `/api/permissions/check` | Token | Check current user permission for a path. Query: `path`. |
-| POST | `/api/permissions/file/grant` | Token | Grant file-level permission. |
-| DELETE | `/api/permissions/file/revoke` | Token | Revoke file-level permission. |
-| PATCH | `/api/permissions/file` | Token | Update file-level permission. |
-| GET | `/api/permissions/file/check` | Token | Check file permission. |
-| GET | `/api/permissions/file/list` | Token | List file permissions. |
+| POST | `/api/permissions/file/grant` | Token | Grant file-level permission. Body: `filePath`, `userId`, `permission`. |
+| DELETE | `/api/permissions/file/revoke` | Token | Revoke file-level permission. Query: `userId`, `filePath`. |
+| PATCH | `/api/permissions/file` | Token | Update file-level permission. Body: `userId`, `filePath`, `permission`. |
+| GET | `/api/permissions/file/check` | Token | Check file permission. Query: `path`. |
+| GET | `/api/permissions/file/list` | Token | List file permissions. Query: `folderPath` (optional). |
 
 Path params are normalized; `/.wea` is blocked for non-admin.
 
@@ -159,7 +159,7 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | POST | `/api/admin/users/:id/approve` | Token + Admin | Approve signup. |
 | POST | `/api/admin/users/:id/reject` | Token + Admin | Reject signup. |
 | DELETE | `/api/admin/users/:id` | Token + Admin | Delete user. |
-| GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. |
+| GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. Query: `path` (optional, default `/`). |
 | PUT | `/api/admin/users/:id/permissions` | Token + Admin | Set user folder permissions. |
 | POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin. |
 | POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. |

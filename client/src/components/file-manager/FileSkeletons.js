@@ -80,7 +80,7 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
 /**
  * Grid view skeleton loader
  * Matches the layout of FileGrid cards: square image area + text
- * Uses responsive grid layout for all screen sizes
+ * Uses same CSS Grid layout as FileGrid: 2 cols on mobile, 200px fixed on PC
  */
 export const FileGridSkeleton = ({ count, selectionMode = false }) => {
   const { isMobile } = useResponsive();
@@ -92,12 +92,9 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
         display: 'grid',
         gridTemplateColumns: {
           xs: 'repeat(2, 1fr)',
-          sm: 'repeat(3, 1fr)',
-          md: 'repeat(4, 1fr)',
-          lg: 'repeat(5, 1fr)',
-          xl: 'repeat(6, 1fr)',
+          md: 'repeat(auto-fill, 200px)',
         },
-        gap: { xs: 1.5, sm: 2 },
+        gap: { xs: 1.5, md: 2 },
       }}
     >
       {Array.from({ length: skeletonCount }).map((_, index) => (

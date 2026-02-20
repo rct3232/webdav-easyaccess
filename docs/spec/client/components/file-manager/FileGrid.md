@@ -48,21 +48,31 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, useFileViewCommon, useResponsive, useThumbnailLazyLoad, FileGridSkeleton, FileGridItem
+- **imports:** React, Box, useFileViewCommon, useResponsive, useThumbnailLazyLoad, FileGridSkeleton, FileGridItem
+- **Layout:** CSS Grid via Box `sx` (no MUI Grid)
 - **Reference implementation:** `client/src/components/file-manager/FileGrid.js`
 
 ### 2.5 i18n Keys
 
 - `fileManager.noFiles` – empty state
 
-### 2.6 Conditional Rendering
+### 2.6 Layout (CSS Grid)
+
+Uses CSS Grid (same pattern as FileList), not MUI Grid:
+
+- **Container:** `Box` with `display: 'grid'`, `gridTemplateColumns` (responsive), `gap`.
+- **Mobile (xs/sm):** `repeat(2, 1fr)` — 2 columns, equal width (≈50% each).
+- **PC (md and up):** `repeat(auto-fill, 200px)` — fixed 200px per item; as many columns as fit.
+- **Gap:** `1.5` on mobile, `2` on PC (aligned with `isMobile`).
+- **loadMore area:** `gridColumn: '1 / -1'` to span full width.
+
+### 2.7 Conditional Rendering
 
 - loading && files.length === 0: FileGridSkeleton
 - files.length === 0: empty message
 - Long-press on mobile when !selectionMode
-- Grid item sizing: xs=6, sm=4, md=3, lg=2, xl=2
 
-### 2.7 Verification Scenarios
+### 2.8 Verification Scenarios
 
 Checklist for unit test writing:
 
@@ -73,6 +83,6 @@ Checklist for unit test writing:
 - [ ] Drag-and-drop
 - [ ] loadMoreRef when hasMore
 
-### 2.8 Edge Cases
+### 2.9 Edge Cases
 
 - Same as FileList for disabled, permission, touch handling

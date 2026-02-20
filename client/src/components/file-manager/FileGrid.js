@@ -1,7 +1,6 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Grid,
   Typography,
   Box,
   useTheme,
@@ -117,11 +116,15 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   }
 
   return (
-    <Grid
-      container
-      spacing={isMobile ? 1.5 : 2}
+    <Box
       ref={gridRef}
       sx={{
+        display: 'grid',
+        gridTemplateColumns: {
+          xs: 'repeat(2, 1fr)',
+          md: 'repeat(auto-fill, 200px)',
+        },
+        gap: { xs: 1.5, md: 2 },
         position: 'relative',
         minHeight: 'auto',
       }}
@@ -137,54 +140,52 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
 
         return (
-          <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={file.path}>
-            <Box
-              data-file-path={file.path}
-              {...dragHandlers}
-              {...dropHandlers}
-              {...longPressHandlers}
-              onClick={() => {
-                if (!isDisabled) {
-                  onFileClick(file);
-                }
-              }}
-              onContextMenu={(e) => {
-                if (canOpenMenu) {
-                  onContextMenu(e, file);
-                }
-              }}
-              sx={{ height: '100%' }}
-            >
-              <FileGridItem
-                file={file}
-                isSelected={isSelected}
-                isDisabled={isDisabled}
-                isProcessing={isProcessing}
-                processingType={processingType}
-                isDropTarget={isDropTarget}
-                isDragging={isDragging}
-                selectionMode={selectionMode}
-                isMobile={isMobile}
-                onCheck={handleCheck}
-              />
-            </Box>
-          </Grid>
+          <Box
+            key={file.path}
+            data-file-path={file.path}
+            {...dragHandlers}
+            {...dropHandlers}
+            {...longPressHandlers}
+            onClick={() => {
+              if (!isDisabled) {
+                onFileClick(file);
+              }
+            }}
+            onContextMenu={(e) => {
+              if (canOpenMenu) {
+                onContextMenu(e, file);
+              }
+            }}
+            sx={{ height: '100%' }}
+          >
+            <FileGridItem
+              file={file}
+              isSelected={isSelected}
+              isDisabled={isDisabled}
+              isProcessing={isProcessing}
+              processingType={processingType}
+              isDropTarget={isDropTarget}
+              isDragging={isDragging}
+              selectionMode={selectionMode}
+              isMobile={isMobile}
+              onCheck={handleCheck}
+            />
+          </Box>
         );
       })}
       {hasMore && (
-        <Grid item xs={12}>
-          <Box
-            ref={loadMoreRef}
-            sx={{
-              height: 20,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          />
-        </Grid>
+        <Box
+          ref={loadMoreRef}
+          sx={{
+            gridColumn: '1 / -1',
+            height: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        />
       )}
-    </Grid>
+    </Box>
   );
 };
 

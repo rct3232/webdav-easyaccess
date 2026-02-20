@@ -39,6 +39,40 @@ describe('FileSkeletons', () => {
       expect(skeletons.length).toBeGreaterThan(0);
     });
 
+    it('applies gradual opacity: count=2 last at 50%', () => {
+      const { container } = renderWithProviders(<FileGridSkeleton count={2} />);
+      const grid = Array.from(container.querySelectorAll('*')).find(
+        (el) => el.children?.length === 2 && getComputedStyle(el).display === 'grid'
+      );
+      expect(grid).toBeTruthy();
+      const lastItem = grid.children[grid.children.length - 1];
+      expect(getComputedStyle(lastItem).opacity).toBe('0.5');
+    });
+
+    it('applies gradual opacity: count=4 last three at 75%, 50%, 25%', () => {
+      const { container } = renderWithProviders(<FileGridSkeleton count={4} />);
+      const grid = Array.from(container.querySelectorAll('*')).find(
+        (el) => el.children?.length === 4 && getComputedStyle(el).display === 'grid'
+      );
+      expect(grid).toBeTruthy();
+      const items = grid.children;
+      expect(getComputedStyle(items[1]).opacity).toBe('0.75');
+      expect(getComputedStyle(items[2]).opacity).toBe('0.5');
+      expect(getComputedStyle(items[3]).opacity).toBe('0.25');
+    });
+
+    it('applies gradual opacity: count=5 last three at 75%, 50%, 25%', () => {
+      const { container } = renderWithProviders(<FileGridSkeleton count={5} />);
+      const grid = Array.from(container.querySelectorAll('*')).find(
+        (el) => el.children?.length === 5 && getComputedStyle(el).display === 'grid'
+      );
+      expect(grid).toBeTruthy();
+      const items = grid.children;
+      expect(getComputedStyle(items[2]).opacity).toBe('0.75');
+      expect(getComputedStyle(items[3]).opacity).toBe('0.5');
+      expect(getComputedStyle(items[4]).opacity).toBe('0.25');
+    });
+
     it('adds checkbox placeholder when selectionMode', () => {
       const { container } = renderWithProviders(<FileGridSkeleton count={2} selectionMode />);
       const skeletons = container.querySelectorAll('.MuiSkeleton-root');

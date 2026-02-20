@@ -3,6 +3,23 @@ import { Box, Skeleton, TableRow, TableCell } from '@mui/material';
 import { useResponsive } from '../../hooks/useResponsive';
 
 /**
+ * Returns opacity for skeleton at index (0–1). Undefined means 100%.
+ * Gradual fade for last 1–3 items: count=2→50%; count=3→66%,33%; count≥4→75%,50%,25%.
+ * When count≥5, first (count−3) stay at 100%.
+ * @param {number} index - 0-based skeleton index
+ * @param {number} count - total skeleton count
+ * @returns {number|undefined}
+ */
+const getSkeletonOpacity = (index, count) => {
+  if (count < 2) return undefined;
+  const fadeSteps =
+    count === 2 ? [0.5] : count === 3 ? [2 / 3, 1 / 3] : [0.75, 0.5, 0.25];
+  const startIndex = count - fadeSteps.length;
+  if (index < startIndex) return undefined;
+  return fadeSteps[index - startIndex];
+};
+
+/**
  * List view skeleton loader
  * Matches the layout of FileList items: icon (40x40) + text area + metadata
  * Uses responsive grid layout: single column on mobile, grid on desktop
@@ -19,7 +36,9 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
         gap: 2,
       }}
     >
-      {Array.from({ length: skeletonCount }).map((_, index) => (
+      {Array.from({ length: skeletonCount }).map((_, index) => {
+        const opacity = getSkeletonOpacity(index, skeletonCount);
+        return (
         <Box
           key={index}
           sx={{
@@ -27,7 +46,7 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
             alignItems: 'center',
             p: 1.5,
             borderRadius: 1,
-            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
+            ...(opacity != null && { opacity }),
           }}
         >
           {selectionMode && (
@@ -73,7 +92,8 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
             </Box>
           </Box>
         </Box>
-      ))}
+        );
+      })}
     </Box>
   );
 };
@@ -98,7 +118,9 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
         gap: { xs: 1.5, md: 2 },
       }}
     >
-      {Array.from({ length: skeletonCount }).map((_, index) => (
+      {Array.from({ length: skeletonCount }).map((_, index) => {
+        const opacity = getSkeletonOpacity(index, skeletonCount);
+        return (
         <Box
           key={index}
           sx={{
@@ -110,7 +132,7 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
             border: '1px solid',
             borderColor: 'divider',
             position: 'relative',
-            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
+            ...(opacity != null && { opacity }),
           }}
         >
           {selectionMode && (
@@ -154,7 +176,8 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
             />
           </Box>
         </Box>
-      ))}
+        );
+      })}
     </Box>
   );
 };
@@ -168,12 +191,14 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
 
   return (
     <>
-      {Array.from({ length: skeletonCount }).map((_, index) => (
+      {Array.from({ length: skeletonCount }).map((_, index) => {
+        const opacity = getSkeletonOpacity(index, skeletonCount);
+        return (
         <TableRow
           key={index}
           sx={{
             height: '40px',
-            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
+            ...(opacity != null && { opacity }),
           }}
         >
           {selectionMode && (
@@ -228,7 +253,8 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
             />
           </TableCell>
         </TableRow>
-      ))}
+        );
+      })}
     </>
   );
 };
@@ -241,7 +267,9 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
 export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
   return (
     <>
-      {Array.from({ length: count }).map((_, index) => (
+      {Array.from({ length: count }).map((_, index) => {
+        const opacity = getSkeletonOpacity(index, count);
+        return (
         <Box
           key={index}
           sx={{
@@ -250,7 +278,7 @@ export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
             py: 0.5,
             pl: level * 2,
             minHeight: 32,
-            ...(index === count - 1 && count > 1 && { opacity: 0.5 }),
+            ...(opacity != null && { opacity }),
           }}
         >
           {/* Expand icon placeholder */}
@@ -282,7 +310,8 @@ export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
             />
           </Box>
         </Box>
-      ))}
+        );
+      })}
     </>
   );
 };

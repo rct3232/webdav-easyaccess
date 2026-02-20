@@ -53,6 +53,7 @@
 - selectionMode: checkbox placeholder in each skeleton
 - useResponsive for FileListSkeleton/FileGridSkeleton count
 - FileTreeSkeleton level: pl = level * 2
+- When count > 1: the last skeleton item has `opacity: 0.5` (50% transparent)
 
 ### 2.7 Verification Scenarios
 
@@ -63,6 +64,7 @@ Checklist for unit test writing:
 - [ ] FileDetailSkeleton renders table rows
 - [ ] FileTreeSkeleton renders indented items
 - [ ] selectionMode adds checkbox placeholder
+- [ ] When count > 1, last skeleton item has opacity 0.5
 
 ### 2.8 Edge Cases
 

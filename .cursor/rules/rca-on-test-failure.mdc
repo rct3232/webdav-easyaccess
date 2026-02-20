@@ -1,0 +1,54 @@
+---
+description: RCA on Test Failure — diagnose first, fix later
+globs: ["**/*.test.js", "**/*.spec.js", "**/__tests__/**"]
+alwaysApply: false
+---
+
+If this rule applied, notify me 'RCA rule applied' when answer start.
+
+# RCA on Test Failure
+
+When tests fail, **DO NOT** immediately modify source code or test code.
+
+## Step 1: Diagnose
+
+1. Collect:
+   - Full `npm test` (or `npm run test:ci`) error output
+   - Failing test file and the specific failing test name
+   - Source module under test
+2. Cross-check with **Source of Truth**:
+   - `docs/spec/<client|server>/<path-to-module>.md` (Implementation Spec, Verification Scenarios)
+   - `docs/shared-contracts.md` (error format, validation return values, constants)
+   - `docs/api.md` (for API-related tests)
+
+## Step 2: Classify
+
+Determine which of the following applies:
+
+| Case | Description | Action |
+|------|-------------|--------|
+| **A** | Source code violates spec or contract. Expected behavior is defined but implementation is wrong. | Fix the source code. |
+| **B** | Test misinterprets spec, asserts on implementation details, or expects behavior not in spec. | Fix the test code. |
+| **C** | Spec/contract does not define this edge case. Ambiguity in requirements. | Update the spec first (docs/spec or shared-contracts), then fix source or test as needed. |
+
+## Step 3: Act
+
+Only after classification:
+
+- **Case A:** Modify the source module. Re-run tests to confirm.
+- **Case B:** Modify the test to align with spec/contract. Do not weaken assertions (e.g. `toBe` → `toBeTruthy`).
+- **Case C:** Add or clarify the scenario in the spec, then apply the appropriate fix.
+
+## Step 4: Record (optional but recommended)
+
+Add an entry to [.cursor/fail_log.md](.cursor/fail_log.md) with Case, root cause, action taken, and lesson learned. Helps avoid repeating the same mistakes.
+
+## Source of Truth
+
+Before changing tests, verify against:
+
+- `docs/shared-contracts.md` — error response format, validation return shape, constants
+- `docs/spec/**/*.md` — Implementation Spec and Verification Scenarios per module
+- `docs/api.md` — API request/response schemas
+
+**If you add or change an assertion that is not grounded in these documents, stop and update the spec first.**

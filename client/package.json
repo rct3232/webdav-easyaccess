@@ -9,7 +9,6 @@
     "@mui/icons-material": "^7.3.8",
     "@mui/material": "^7.3.8",
     "@webdav-easyaccess/shared": "1.0.0",
-    "axios": "^1.6.2",
     "i18next": "^25.8.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -59,7 +58,10 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(msw|@bundled-es-modules|@open-draft|until-async|strict-event-emitter|axios)/)"
-    ]
+      "node_modules/(?!(msw|@bundled-es-modules|@open-draft|until-async|strict-event-emitter)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    }
   }
 }

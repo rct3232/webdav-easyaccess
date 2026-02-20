@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/folder-tree/BaseFolderTreeItem.js`
-- **Test file:** `client/src/components/__tests__/BaseFolderTreeItem.test.js`
+- **Test file:** `client/src/components/folder-tree/__tests__/BaseFolderTreeItem.test.js`
 
 ### 2.2 Props
 

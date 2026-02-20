@@ -22,7 +22,7 @@ export const renderProcessingIcon = (processingType) => {
  * @returns {Object} State object with isSelected, isDisabled, isProcessing, processingType
  */
 export const getFileItemState = (file, selectionMode, selectedFiles, processingMap) => {
-  const isSelected = selectionMode && selectedFiles && selectedFiles.has(file.path);
+  const isSelected = Boolean(selectionMode && selectedFiles && selectedFiles.has(file.path));
   
   // Directory permission check (files are always accessible)
   const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;

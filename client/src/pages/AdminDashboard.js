@@ -694,6 +694,7 @@ const AdminDashboard = () => {
                 disabled={cleanupLoading}
                 color="primary"
                 sx={{ ml: 2 }}
+                aria-label={t('admin.runCleanup')}
               >
                 {cleanupLoading ? <CircularProgress size={24} /> : <CleaningServicesIcon />}
               </IconButton>
@@ -712,6 +713,7 @@ const AdminDashboard = () => {
                 disabled={permissionCleanupLoading}
                 color="primary"
                 sx={{ ml: 2 }}
+                aria-label={t('admin.run')}
               >
                 {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
               </IconButton>

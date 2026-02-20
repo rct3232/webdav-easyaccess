@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/layout/MainLayout.js`
-- **Test file:** `client/src/components/__tests__/MainLayout.test.js`
+- **Test file:** `client/src/components/layout/__tests__/MainLayout.test.js`
 
 ### 2.2 Props
 

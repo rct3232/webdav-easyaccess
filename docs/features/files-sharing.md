@@ -137,10 +137,26 @@ flowchart TD
 
 When implementing or reviewing tests for files and sharing, cover at least:
 
+**Scenario locations:**
+
+| Scenario | Server test location | Client test location |
+|----------|---------------------|---------------------|
+| Create folder | folders.test.js | FileManager (create folder flow) |
+| Upload | files.test.js | FileManager (upload flow) |
+| Move (batch) | files.test.js | FileManager (bulk move) |
+| Copy (batch) | files.test.js | FileManager (bulk copy) |
+| Delete (batch) | files.test.js | FileManager (delete flow) |
+| Rename | files.test.js | FileManager (rename flow) |
+| Download (single) | files.test.js | FileManager (download) |
+| Download multiple (ZIP) | files.test.js | FileManager (bulk download) |
+
+**Coverage checklist:**
 - **Direct read/write:** User without read on a folder gets 403 on list/download for that folder (or file under it). User without write on a folder gets 403 on upload/rename/move/copy/delete there. No inheritance from parent path (see [permissions.md](permissions.md)).
 - **Reserved path:** Requests involving `/.wea` for non-admin → 403.
 - **Batch operations:** After batch-move or batch-copy, only allowed items are moved/copied; ACL metadata updated. After batch-delete, permissions cleaned and recent-files remove-paths/apply-moves called where applicable.
-- **apply-moves / remove-paths:** Recent-files list updated correctly after bulk move and bulk delete; integration test can assert on list content or API calls.
+- **check-conflicts:** Before paste, POST /api/files/check-conflicts returns conflicts array (files.test.js).
+- **Bulk operation progress/cancel:** GET bulk-operation/:jobId, POST cancel (files.test.js).
+- **Recent files:** apply-moves after bulk move; remove-paths after bulk delete (FileManager delete flow).
 - **Share link expiry:** Expired share link → 410 on info/download/preview.
 - **Permission request states:** Create → pending; owner approve → approved; owner reject → rejected; requester cancel → cancelled. Inbox/outbox and check-owner behave as specified.
 

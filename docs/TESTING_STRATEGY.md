@@ -25,11 +25,11 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 
 ### Schema-first principle
 
-- **Use only schema-derived or validated mocks:** Mocks (including MSW handlers) must be generated from or validated against the defined contract (e.g. OpenAPI spec, `docs/openapi.yaml`). Hand-written mocks that diverge from the schema lead to false confidence. When the schema changes, regenerate or update mocks accordingly.
+- **Use only schema-derived or validated mocks:** Mocks (including MSW handlers) must be validated against the defined contract (e.g. `docs/api.md`, `docs/shared-contracts.md`). Hand-written mocks that diverge from the contract lead to false confidence. When the contract changes, update mocks accordingly.
 
 ### Client
 
-- **MSW (Mock Service Worker):** All API calls are mocked in tests via handlers in `client/src/mocks/`. Use this for both unit tests (e.g. services that call `fetch`/axios) and integration tests (full component trees that trigger API calls). Keep handlers in sync with [api.md](api.md) and [shared-contracts.md](shared-contracts.md) so contract changes are reflected in mocks.
+- **MSW (Mock Service Worker):** All API calls are mocked in tests via handlers in `client/src/mocks/`. Use this for both unit tests (e.g. services that call `fetch`) and integration tests (full component trees that trigger API calls). Keep handlers in sync with [api.md](api.md) and [shared-contracts.md](shared-contracts.md) so contract changes are reflected in mocks.
 - **Services:** Prefer mocking at the network layer (MSW) rather than replacing service modules, so integration tests exercise the real client API usage.
 
 ### Server
@@ -96,11 +96,37 @@ Run from each directory: `cd client && npm run test:coverage` and `cd server && 
 
 ---
 
+## Documenting Test Results
+
+When the full test suite has completed (e.g. after adding tests, refactoring, or major changes), update the test summary documents in each package:
+
+- Write [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.md) and [server/TEST_SUMMARY.md](../server/TEST_SUMMARY.md) in each respective folder.
+- Follow the format in [TEST_SUMMARY_TEMPLATE.md](TEST_SUMMARY_TEMPLATE.md) so that test counts, coverage, infrastructure, and running instructions stay consistent across the project.
+
+---
+
+## When Tests Fail
+
+When a test fails (during development, CI, or when fixing regressions):
+
+1. **Diagnose:** Run the failing test, read the error message, and identify the root cause.
+2. **Classify:** Determine whether it is:
+   - **A** — Bug in production code
+   - **B** — Bug in the test itself
+   - **C** — Spec/contract mismatch
+3. **Act:** Apply the fix (or update spec) according to the classification. Do not modify code before classifying.
+4. **Record:** Add an entry to [.cursor/fail_log.md](../.cursor/fail_log.md) with date, summary, classification, and action taken.
+
+This RCA (Root Cause Analysis) procedure is mandatory. See [.cursor/rules/rca-on-test-failure.mdc](../.cursor/rules/rca-on-test-failure.mdc) for the full rule.
+
+---
+
 ## Relationship to Other Docs
 
 | Document | Purpose |
 |----------|---------|
-| **TESTING_STRATEGY.md** (this file) | What to test, unit vs integration, mocking, checklist for new code. |
+| **TESTING_STRATEGY.md** (this file) | What to test, unit vs integration, mocking, checklist for new code, RCA when tests fail. |
+| **TEST_SUMMARY_TEMPLATE.md** | Template for writing `client/TEST_SUMMARY.md` and `server/TEST_SUMMARY.md` when tests complete. |
 | **TEST_GIT_GUIDE.md** | How to run tests, what to commit, CI, coverage commands, commit messages. |
-| **client/TEST_SUMMARY.md**, **server/TEST_SUMMARY.md** | Current test counts and coverage summary. |
+| **client/TEST_SUMMARY.md**, **server/TEST_SUMMARY.md** | Current test counts and coverage summary per package. |
 | **api.md**, **shared-contracts.md** | Contract to test against; keep mocks and assertions in sync. |

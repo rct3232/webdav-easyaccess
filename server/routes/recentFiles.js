@@ -44,6 +44,19 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
 }));
 
 /**
+ * 전체 최근 파일 목록 초기화
+ * DELETE /api/recent-files
+ * Must be defined before /:filePath(*) so it matches DELETE /api/recent-files (no path segment).
+ */
+router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const user = req.user.full;
+  
+  await recentFilesStore.clearRecentFiles(user.id);
+  
+  res.json({ messageCode: SERVER_MESSAGE_CODES.recentFiles.clearedSuccess });
+}));
+
+/**
  * 특정 파일 제거
  * DELETE /api/recent-files/:filePath
  */
@@ -62,18 +75,6 @@ router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(asyn
   const updatedFiles = await recentFilesStore.removeRecentFile(user.id, normalizedPath);
   
   res.json(updatedFiles);
-}));
-
-/**
- * 전체 최근 파일 목록 초기화
- * DELETE /api/recent-files
- */
-router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  const user = req.user.full;
-  
-  await recentFilesStore.clearRecentFiles(user.id);
-  
-  res.json({ messageCode: SERVER_MESSAGE_CODES.recentFiles.clearedSuccess });
 }));
 
 /**

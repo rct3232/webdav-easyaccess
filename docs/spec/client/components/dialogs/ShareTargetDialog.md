@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ShareTargetDialog.js`
-- **Test file:** `client/src/components/__tests__/ShareTargetDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ShareTargetDialog.test.js`
 
 ### 2.2 Props
 
@@ -62,3 +62,8 @@
 
 - pathPermission ADMIN – limited options
 - hasSameLevelFilePermission – revoke/same-as-path options
+
+### 2.9 API Error Behavior
+
+- **On API success (permission grant, revoke, share link):** onActionComplete called; parent may close dialog.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onMessage. User can retry or close. Same pattern as RenameDialog, ShareDialog, useSharedManage.

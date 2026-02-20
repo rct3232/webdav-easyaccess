@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/folder-tree/RecentFilesSection.js`
-- **Test file:** `client/src/components/__tests__/RecentFilesSection.test.js`
+- **Test file:** `client/src/components/folder-tree/__tests__/RecentFilesSection.test.js`
 
 ### 2.2 Props
 
@@ -45,20 +45,25 @@
 
 ### 2.5 i18n Keys
 
-- nav.recentFiles, fileManager.noRecentFiles
+- fileManager.recentItems (section header), fileManager.recentItemsEmpty (empty state)
 
 ### 2.6 Conditional Rendering
 
 - Selected when currentPath === '/__recent__'
 - Collapse for file list
-- Empty: noRecentFiles message
+- Empty: recentItemsEmpty message
+- List limited to first 10 items (slice 0–10)
 
 ### 2.7 Verification Scenarios
 
 - [ ] Section click, expand
 - [ ] File/folder click
 - [ ] Empty state
+- [ ] File click when onFileClick undefined: falls back to onPathClick(parentPath)
+- [ ] List shows max 10 items
 
 ### 2.8 Edge Cases
 
 - recentFilesList empty
+- recentFilesList undefined/null: 빈 배열로 취급하여 크래시하지 않음 (방어적 처리)
+- recentFilesList length > 10: only first 10 displayed

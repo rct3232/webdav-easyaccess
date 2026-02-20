@@ -14,8 +14,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/.../[ComponentName].js`
-- **Test file:** `client/src/components/__tests__/[ComponentName].test.js`
+- **Source:** `client/src/components/{subdir}/[ComponentName].js` (subdir = dialogs, folder-tree, file-manager, layout, mobile, feedback 등 소스 위치)
+- **Test file:** `client/src/components/{subdir}/__tests__/[ComponentName].test.js` (소스와 같은 디렉터리 내 `__tests__/`에 colocated)
 
 ### 2.2 Props
 

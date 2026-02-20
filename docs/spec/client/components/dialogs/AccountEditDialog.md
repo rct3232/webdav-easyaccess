@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/AccountEditDialog.js`
-- **Test file:** `client/src/components/__tests__/AccountEditDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/AccountEditDialog.test.js`
 
 ### 2.2 Props
 
@@ -68,3 +68,8 @@
 ### 2.8 Edge Cases
 
 - passwordMismatch when confirmPassword length > 0
+
+### 2.9 API Error Behavior
+
+- **On API success:** Parent calls onClose; dialog closes.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via message prop (Alert). User can correct input, retry, or close. Same pattern as RenameDialog, CreateFolderDialog, LoginDialog.

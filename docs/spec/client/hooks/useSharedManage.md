@@ -62,6 +62,7 @@
 ### 2.6 Error Handling
 
 - getServerErrorDisplay, onMessage
+- **On API failure (request, cancel, revoke – 4xx/5xx, network error):** Do **not** call onClose. Dialog stays open; error shown via onMessage. User can retry or close. Same pattern as useFileOperations §2.6, useShareDialog.
 
 ### 2.7 Verification Scenarios
 

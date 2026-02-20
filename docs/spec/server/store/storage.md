@@ -47,4 +47,12 @@
 - [ ] webdavToFsPath: path stays under base; invalid → 400
 - [ ] ensureDir creates dirs; WebDAV MKCOL per segment
 - [ ] writeFile ifNoneMatchStar → 412 when exists
-- [ ] listDir returns { basename, type }[] 
+- [ ] listDir returns { basename, type }[]
+- [ ] writeFile ENOSPC 시 throw
+- [ ] listDir EACCES 시 throw
+
+### 2.6 Error Cases
+
+- writeFile 디스크 풀(ENOSPC): throw; 상위에서 500 처리
+- WebDAV 연결 끊김: adapter에서 throw; 상위 retry 또는 500
+- listDir 권한 없음: EACCES 등 throw; 상위 403

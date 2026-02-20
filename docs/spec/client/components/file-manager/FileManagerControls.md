@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/FileManagerControls.js`
-- **Test file:** `client/src/components/__tests__/FileManagerControls.test.js`
+- **Test file:** `client/src/components/file-manager/__tests__/FileManagerControls.test.js`
 
 ### 2.2 Props
 

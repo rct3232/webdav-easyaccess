@@ -47,6 +47,11 @@
 - List, download, metadata, download-multiple, thumbnails: support share token (header/query)
 - Path params normalized; meta path (/.wea) blocked for non-admin
 - Bulk ops: returns jobId; poll via bulk-operation
+- Upload 413 (payload too large): body-parser 또는 서버 제한; 413 반환
+- download-multiple paths 빈 배열: 400 (validation)
+- download-multiple: POST returns 200 with ZIP stream (application/zip) directly. Client sends optional `downloadId` in body; server writes progress to `downloadProgress` map under that ID. Progress is polled via GET /download-progress/:id. Does not return 202+downloadId.
+- bulk-operation/:jobId 존재하지 않음: 404
+- Share token + write 요청(rename, batch-move 등): 403 (share는 read-only)
 
 ### 2.5 Related Documents
 
@@ -58,5 +63,13 @@
 - [ ] List returns files with correct permissions
 - [ ] Download returns blob
 - [ ] Upload accepts multipart
-- [ ] Batch move/copy return jobId
+- [ ] PUT /rename: oldPath, newName required; validation errors
+- [ ] POST /check-conflicts returns conflicts array
+- [ ] POST /metadata with shareToken
+- [ ] POST /bulk-operation/:jobId/cancel returns 200
+- [ ] Batch move/copy return 202 + jobId (API contract only; worker execution covered by selectiveTransfer unit tests)
 - [ ] Share token allows list/download for valid token
+- [ ] Upload 413 when payload too large
+- [ ] download-multiple 빈 paths → 400
+- [ ] bulk-operation 404 for invalid jobId
+- [ ] Share token write 요청 → 403

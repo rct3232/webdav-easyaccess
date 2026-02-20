@@ -42,6 +42,7 @@
 |-----------|----------|
 | No req.user / req.user.id | 401 |
 | User not found | notFoundError, 404 |
+| User.findById throw (DB/Store 예외) | 500 (errorHandler) |
 | Success | next() |
 
 ### 2.6 Mock Targets
@@ -53,4 +54,5 @@
 - [ ] next() when user loaded
 - [ ] 401 when no user
 - [ ] 404 when User.findById returns null
+- [ ] User.findById throw 시 500
 - [ ] requireAuth: req.principalId set

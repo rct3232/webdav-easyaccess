@@ -71,6 +71,13 @@ async function requireUser(req, res, next) {
       throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
     }
 
+    // Reject token if password (or token_version) was changed after this token was issued
+    const jwtVersion = req.user.token_version;
+    const dbVersion = Number.isInteger(user.token_version) ? user.token_version : 0;
+    if (Number.isInteger(jwtVersion) && jwtVersion !== dbVersion) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
+    }
+
     req.user.full = user;
     next();
   } catch (error) {

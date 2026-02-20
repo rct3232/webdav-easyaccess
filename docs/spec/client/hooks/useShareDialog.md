@@ -70,6 +70,7 @@
 ### 2.6 Error Handling
 
 - onMessage for errors
+- **On API failure (save, approve – 4xx/5xx, network error):** Do **not** call onClose. Dialog stays open; error shown via onMessage. User can retry or close. Same pattern as useFileOperations §2.6, useSharedManage.
 
 ### 2.7 Verification Scenarios
 

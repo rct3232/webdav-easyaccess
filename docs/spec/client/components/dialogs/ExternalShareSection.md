@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ExternalShareSection.js`
-- **Test file:** `client/src/components/__tests__/ExternalShareSection.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ExternalShareSection.test.js`
 
 ### 2.2 Props
 

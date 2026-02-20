@@ -34,8 +34,8 @@
 
 ### 2.4 Request/Response Spec
 
-- Create: body folderPath or filePath (one required), permission, message
-- Inbox/outbox: 200 array
+- Create: body folderPath or filePath (one required), permission, message. 200: `{ id, requester_id, owner_id, requested_permission, status, ... }` (snake_case).
+- Inbox/outbox: 200 array (snake_case fields)
 - Approve/reject/cancel: 200
 
 ### 2.5 Related Documents

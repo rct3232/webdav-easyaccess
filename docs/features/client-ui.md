@@ -79,7 +79,7 @@ flowchart LR
     G -->|No| E
 ```
 
-- On load, `AuthProvider` checks sessionStorage for token; if present, sets axios header and calls `GET /api/auth/me`. 401/403 from any API trigger global logout (clear token, redirect to login).
+- On load, `AuthProvider` checks sessionStorage for token; if present, sets axios header and calls `GET /api/auth/me`. 401만 global logout/redirect 처리; 403은 apiClient에서 별도 정책에 따라 처리 (URL 이동 직후: history.back() 또는 '/', 그 외: 리다이렉트 없음).
 
 ### File manager: multi-select and batch
 

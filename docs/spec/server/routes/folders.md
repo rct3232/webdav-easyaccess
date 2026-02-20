@@ -29,6 +29,8 @@
 ### 2.4 Request/Response Spec
 
 - **POST /create:** Body: `{ path }`. 200 or 201. Errors: 403 (meta path), 400, 404.
+- 동일 경로에 폴더 이미 존재: 409 (duplicate)
+- 부모 경로 없음: 404
 
 ### 2.5 Related Documents
 
@@ -38,3 +40,5 @@
 
 - [ ] Create folder requires auth and write permission
 - [ ] Meta path returns 403 for non-admin
+- [ ] 동일 폴더명 create → 409
+- [ ] 부모 경로 없음 → 404

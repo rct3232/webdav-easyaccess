@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/LoginDialog.js`
-- **Test file:** `client/src/components/__tests__/LoginDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/LoginDialog.test.js`
 
 ### 2.2 Props
 
@@ -52,3 +52,8 @@
 ### 2.8 Edge Cases
 
 - redirectAfterLogin=false – no redirect after login
+
+### 2.9 API Error Behavior
+
+- **On API success:** onClose called; dialog closes.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. LoginForm shows error. User can correct credentials, retry, or close. Same pattern as RenameDialog, CreateFolderDialog, useFileOperations.

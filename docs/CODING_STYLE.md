@@ -52,6 +52,7 @@ import { getFileIcon } from '../../utils/fileIconUtils';
 
 ## Express Patterns
 
+- **API JSON response field names**: Use `snake_case` (e.g. `requester_id`, `owner_id`, `created_at`, `is_admin`) for consistency with store/DB schema. Error response fields `errorCode`, `params`, `details` remain unchanged per [shared-contracts.md](shared-contracts.md).
 - **Route handlers**: Wrap async handlers with `asyncHandler` from `server/utils/errorHandler.js` so thrown errors are passed to the error handler middleware.
 - **Errors**: The global `errorHandler` formats responses. In route code, throw errors with `status`, `errorCode`, and optionally `params` for i18n. See [shared-contracts.md](shared-contracts.md) for the error response format.
 - **Auth and user**: After `authenticateToken`, `req.user.id` is set. After `requireUser`, `req.user.full` contains the loaded user. Use `normalizePathParam` for path inputs; then use `req.query.path`, `req.body.path`, or other normalized body/query params as documented (not `req.path`, which is the URL path).

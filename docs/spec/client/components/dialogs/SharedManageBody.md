@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/SharedManageBody.js`
-- **Test file:** `client/src/components/__tests__/SharedManageBody.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/SharedManageBody.test.js`
 
 ### 2.2 Props
 

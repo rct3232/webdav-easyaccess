@@ -30,7 +30,7 @@
 ### 2.3 Input / Output
 
 - JWT payload: id, username, token_version, is_admin
-- 401 when no token or invalid
+- authenticateToken: 401 when no token; 401 when invalid or expired token
 
 ### 2.4 Dependencies
 

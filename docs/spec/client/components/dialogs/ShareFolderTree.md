@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ShareFolderTree.js`
-- **Test file:** `client/src/components/__tests__/ShareFolderTree.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ShareFolderTree.test.js`
 
 ### 2.2 Props
 

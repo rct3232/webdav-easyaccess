@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/SharedManageDialog.js`
-- **Test file:** `client/src/components/__tests__/SharedManageDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/SharedManageDialog.test.js`
 
 ### 2.2 Props
 
@@ -63,3 +63,8 @@
 ### 2.8 Edge Cases
 
 - ownerDeleted – owner no longer exists
+
+### 2.9 API Error Behavior
+
+- **On API success (request, cancel, revoke):** onActionComplete called; parent may close dialog.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onMessage. User can retry or close. Same pattern as RenameDialog, ShareTargetDialog, useSharedManage.

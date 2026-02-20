@@ -224,6 +224,11 @@ router.get('/me', authenticateToken, async (req, res) => {
     if (!user) {
       return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.auth.userNotFound });
     }
+    const jwtVersion = req.user.token_version;
+    const dbVersion = Number.isInteger(user.token_version) ? user.token_version : 0;
+    if (Number.isInteger(jwtVersion) && jwtVersion !== dbVersion) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
+    }
     res.json(user);
   } catch (error) {
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.userLoadFail });

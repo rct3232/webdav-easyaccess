@@ -195,8 +195,11 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
 
 // Check current user's effective permission for a path (folder or file; file-level overrides path)
 router.get('/check', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  let path = req.query.path || '/';
-  path = normalizePath(path);
+  const pathParam = req.query.path;
+  if (pathParam === undefined || pathParam === null || String(pathParam).trim() === '') {
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
+  }
+  let path = normalizePath(pathParam);
 
   const effective = await Permission.getEffectivePermission(req.user.id, path);
   const filePerm = await Permission.getFilePermission(req.user.id, path);

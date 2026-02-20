@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ShareDialog.js`
-- **Test file:** `client/src/components/__tests__/ShareDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ShareDialog.test.js`
 
 ### 2.2 Props
 
@@ -79,3 +79,10 @@
 
 - permissionRequest for review mode
 - filePath/fileName for single file share
+- mode='review'이고 permissionRequest null: 정의되지 않음; parent가 null 전달하지 않도록 보장
+- filePath 있음, fileName null: basename(filePath)로 fallback 또는 parent가 항상 전달
+
+### 2.9 API Error Behavior
+
+- **On API success (save, approve):** Parent calls onClose; dialog closes.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onMessage. User can correct and retry, or close. Same pattern as RenameDialog, CreateFolderDialog, useFileOperations.

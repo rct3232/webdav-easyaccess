@@ -33,10 +33,10 @@
 
 ### 2.4 Request/Response Spec
 
-- **GET /:token/info:** 200: `{ filePath, fileName, isDirectory, isExpired?, ... }`
-- **GET /:token:** streams file blob
-- **GET /:token/preview:** streams file (inline)
-- **GET /:token/check-my-permission:** 200: `{ hasSufficientPermission, path? }`
+- **GET /:token/info:** 200: `{ filePath, fileName, isDirectory, isExpired?, ... }`; 만료 시 403 또는 404 + isExpired
+- **GET /:token:** streams file blob; 만료 시 403
+- **GET /:token/preview:** streams file (inline); 만료 시 403
+- **GET /:token/check-my-permission:** 200: `{ hasSufficientPermission, path? }`; 비인증 401
 - **POST /:token/add-to-my-permissions:** 200: `{ message }`
 
 ### 2.5 Related Documents
@@ -48,3 +48,5 @@
 - [ ] Info returns without auth; expired link returns error
 - [ ] Download/preview stream correct file
 - [ ] check-my-permission, add-to-my-permissions require auth
+- [ ] 만료된 링크 download/preview → 403
+- [ ] check-my-permission 비인증 → 401

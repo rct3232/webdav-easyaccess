@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/CreateFolderDialog.js`
-- **Test file:** `client/src/components/__tests__/CreateFolderDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/CreateFolderDialog.test.js`
 
 ### 2.2 Props
 
@@ -75,3 +75,10 @@ Checklist for unit test writing:
 - currentPath with trailing – `${currentPath}/${folderName}`
 - Trimmed folder name used for API and onComplete
 - Progress item remove: true after 3s on success
+- 폴더명 길이 제한: validateFileName(shared) 기준; 초과 시 validation error
+- 동일 경로에 동시 생성 요청: 409 또는 400(이미 존재); 에러 표시 후 사용자 재시도
+
+### 2.9 API Error Behavior
+
+- **On API success:** Parent calls onClose; dialog closes. onComplete called; list refreshes.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onProgress (status 'error') or getServerErrorDisplay. User can correct input, retry, or cancel. Same pattern as RenameDialog, LoginDialog, useFileOperations.

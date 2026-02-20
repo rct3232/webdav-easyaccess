@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/FolderPickerDialog.js`
-- **Test file:** `client/src/components/__tests__/FolderPickerDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/FolderPickerDialog.test.js`
 
 ### 2.2 Props
 
@@ -78,3 +78,5 @@ Checklist for unit test writing:
 - selectedPath === '/__shared__' – Select disabled, handleSelect returns early
 - isInvalidDestination – from useFolderPicker (e.g. source === dest)
 - fullScreen on mobile via useResponsive
+- sourcePath가 destPath의 ancestor (자기 폴더 내 하위로 이동): isInvalidDestination true
+- currentPath 빈 문자열: normalizePath 결과 사용; root로 fallback

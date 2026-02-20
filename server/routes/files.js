@@ -49,6 +49,14 @@ const { checkMetaPathAccess } = require('../middleware/metaPathGuard');
 const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../utils/errorHandler');
 
+/** Reject Share principal on write routes; Share links are read-only. Use after authenticateTokenOrShare, requireAuth. */
+function requireTokenNotShare(req, res, next) {
+  if (isSharePrincipal(req.principalId)) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
+  }
+  next();
+}
+
 const downloadProgress = new Map();
 const operationProgress = new Map();
 
@@ -227,6 +235,13 @@ async function getConflicts(operations, opts = {}) {
   });
 
   return conflicts;
+}
+
+function scheduleBulkWorker(jobId) {
+  if (process.env.NODE_ENV === 'test' && process.env.WEA_SKIP_BULK_WORKER === '1') {
+    return;
+  }
+  setImmediate(runBulkJobWorker, jobId);
 }
 
 async function runBulkJobWorker(jobId) {
@@ -959,11 +974,11 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'delete', { paths });
-  setImmediate(runBulkJobWorker, jobId);
+  scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
-router.put('/rename', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { oldPath, newName } = req.body;
   if (!oldPath || !newName) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -1037,7 +1052,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'move', { moves, onConflict });
-  setImmediate(runBulkJobWorker, jobId);
+  scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
@@ -1048,7 +1063,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
   const { jobId } = createJob(req.user.id, 'copy', { copies, onConflict });
-  setImmediate(runBulkJobWorker, jobId);
+  scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 

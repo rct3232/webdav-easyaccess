@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/FilePropertiesDialog.js`
-- **Test file:** `client/src/components/__tests__/FilePropertiesDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/FilePropertiesDialog.test.js`
 
 ### 2.2 Props
 

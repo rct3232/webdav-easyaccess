@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/FolderShareSection.js`
-- **Test file:** `client/src/components/__tests__/FolderShareSection.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/FolderShareSection.test.js`
 
 ### 2.2 Props
 

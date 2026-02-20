@@ -4,6 +4,8 @@ globs: ["**/*.test.js", "**/*.spec.js", "**/__tests__/**"]
 alwaysApply: false
 ---
 
+If this rule applied, notify me 'Testing principles applied' when answer start.
+
 # Testing: Verify What, Not How
 
 When writing or reviewing tests:
@@ -24,3 +26,7 @@ expect(mockFn.mock.calls[0][1]).toEqual({ x: 1 });
 ```
 
 See [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) for full black-box testing guidance.
+
+## When Tests Fail
+
+You **MUST** follow [rca-on-test-failure.mdc](.cursor/rules/rca-on-test-failure.mdc): diagnose first, classify (A/B/C), then fix. Record each incident in [fail_log.md](.cursor/fail_log.md). Do not modify code until classification is done.

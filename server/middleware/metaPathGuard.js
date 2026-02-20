@@ -49,23 +49,24 @@ function checkMetaPathAccess(req, res, next) {
     return next();
   }
 
-  const path = req.query.path || req.body.path || req.params.path || req.body.sourcePath || req.body.destinationPath;
+  const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+  const pathsToCheck = [
+    req.query.path,
+    req.body.path,
+    req.params.path,
+    req.body.sourcePath,
+    req.body.destinationPath,
+    ...(Array.isArray(req.body.paths) ? req.body.paths : []),
+  ].filter(Boolean);
 
-  if (path && isMetaPath(path)) {
-    if (!user || !user.is_admin) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
-    }
-  }
-
-  if (req.body.sourcePath && isMetaPath(req.body.sourcePath)) {
-    if (!user || !user.is_admin) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
-    }
-  }
-
-  if (req.body.destinationPath && isMetaPath(req.body.destinationPath)) {
-    if (!user || !user.is_admin) {
-      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+  for (const p of pathsToCheck) {
+    const pathVal = typeof p === 'string' ? p.trim() : '';
+    if (!pathVal) continue;
+    const normalized = normalizePath(pathVal);
+    if (isMetaPath(normalized)) {
+      if (!user || !user.is_admin) {
+        throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+      }
     }
   }
 

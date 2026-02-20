@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "jest",
-    "test:unit": "jest --testMatch='**/(utils|models|middleware)/**/*.test.js'",
-    "test:integration": "jest --testMatch='**/routes/**/*.test.js'",
-    "test:ci": "jest --ci --coverage --maxWorkers=2",
-    "test:coverage": "jest --coverage",
+    "test": "NODE_OPTIONS=--max-old-space-size=8192 jest",
+    "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/(utils|models|middleware)/**/*.test.js'",
+    "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/**/*.test.js'",
+    "test:ci": "NODE_OPTIONS=--max-old-space-size=8192 jest --ci --coverage --maxWorkers=2",
+    "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 jest --coverage",
     "test:mutation": "stryker run"
   },
   "dependencies": {

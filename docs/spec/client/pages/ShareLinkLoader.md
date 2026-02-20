@@ -39,12 +39,19 @@
 - Directory: render FileManager with shareToken and linkInfo
 - Single file: render ShareLinkSingleFileView
 
+### 2.5.1 Error Handling
+
+- 잘못된 token 형식(빈 문자열, URL 인코딩 오류 등): getPublicShareLinkInfo 호출 → 404/400 등; Error state 표시
+- 404: 링크 없음; 403: 접근 불가; 5xx/network: 서버/네트워크 오류. 모두 동일하게 error message + hint 표시 (메시지 키는 공통 가능)
+
 ### 2.6 Integration Test Scenarios
 
 - [ ] Loading state while fetching
 - [ ] Error state when fetch fails or token invalid
 - [ ] Directory link renders FileManager with shareToken/linkInfo
 - [ ] Single file link renders ShareLinkSingleFileView
+- [ ] Invalid token 형식 → Error state
+- [ ] 404 vs 403 vs 5xx 구분 표시(선택: 공통 메시지여도 OK)
 
 ### 2.7 Conditional Rendering
 

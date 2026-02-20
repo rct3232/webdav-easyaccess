@@ -1,0 +1,49 @@
+---
+description: Docs-first workflow — update spec and feature docs before implementing code changes
+alwaysApply: true
+---
+
+# Docs-First Workflow
+
+If this rule applied, notify me "Docs first workflow applied" when answer start.
+
+---
+
+When adding, modifying, or deleting features (or making any source code changes), follow this order:
+
+## 1. Read Docs First
+
+Read the relevant `/docs` documents for the scope of your change:
+
+| Change type | Documents to read |
+|-------------|-------------------|
+| Client component/hook/page/service | `docs/spec/client/**/*.md`, `docs/features/*.md` |
+| Server route/middleware/store/util | `docs/spec/server/**/*.md`, `docs/features/*.md` |
+| API/contract change | `docs/shared-contracts.md`, `docs/spec/server/routes/*.md` |
+| General | `docs/CODING_STYLE.md`, `docs/ARCHITECTURE.md`, `docs/spec/README.md` |
+
+## 2. Update Spec and Feature Docs First
+
+**Before writing code**, update or add:
+
+- **Spec docs** (`docs/spec/`): Props, signatures, dependencies, verification scenarios, etc.
+  - Templates: `docs/spec/client/components/_TEMPLATE.md`, `docs/spec/client/hooks/_TEMPLATE.md`, etc.
+  - New modules: Create spec from the corresponding `_TEMPLATE.md`.
+- **Feature docs** (`docs/features/`): Feature requirements, API, flows.
+  - e.g. `auth-users-settings.md`, `files-sharing.md`, `client-ui.md`, `permissions.md`.
+
+## 3. Implement Code According to Docs
+
+- Follow the **"2. Implementation Spec"** section of each spec.
+- Use **"Verification scenarios"** in specs when writing unit tests.
+- Follow patterns in `docs/CODING_STYLE.md`.
+
+## Rules
+
+1. **Do not write code first** if spec and feature docs are not yet updated.
+2. API or error format changes require updating `shared-contracts.md` and `docs/spec/server/routes/*` first.
+3. New specs must follow the format in `docs/spec/*/_TEMPLATE.md`.
+
+## Document Writing Guidelines
+
+- **All documents must be written in English** (including spec, feature, and any new or modified docs in `/docs`).

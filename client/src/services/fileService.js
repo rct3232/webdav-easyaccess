@@ -1,5 +1,6 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import i18n from '../i18n';
+import { normalizePath } from '../utils/pathUtils';
 import { get, post, put } from './apiClient';
 import {
   checkPermission as checkPermissionApi,
@@ -16,8 +17,9 @@ function shareTokenHeaders(shareToken) {
 
 export const listFiles = async (path = '/', options = {}) => {
   const { shareToken } = options;
+  const normalizedPath = path === '' || path == null ? '/' : normalizePath(path);
   const response = await get(`${API_BASE}/list`, {
-    params: { path, ...(shareToken && { shareToken }) },
+    params: { path: normalizedPath, ...(shareToken && { shareToken }) },
     headers: shareTokenHeaders(shareToken),
   });
   return response.data;

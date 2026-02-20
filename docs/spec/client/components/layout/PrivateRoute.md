@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/layout/PrivateRoute.js`
-- **Test file:** `client/src/components/__tests__/PrivateRoute.test.js`
+- **Test file:** `client/src/components/layout/__tests__/PrivateRoute.test.js`
 
 ### 2.2 Props
 

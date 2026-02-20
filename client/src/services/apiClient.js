@@ -1,209 +1,361 @@
 /**
- * Centralized API client with interceptors
+ * Centralized API client (fetch-based)
  * Provides common error handling, token injection, and retry logic
- * 
+ *
  * @module services/apiClient
  * @example
  * import { get, post, put, del } from './apiClient';
- * 
+ *
  * // GET request
  * const users = await get('/users');
- * 
+ *
  * // POST request
  * const result = await post('/users', { name: 'John' });
  */
-import axios from 'axios';
-import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
+const BASE_URL = '/api';
+const DEFAULT_TIMEOUT = 300000; // 5 minutes for large file operations
 
-// Create axios instance
-const apiClient = axios.create({
-  baseURL: '/api',
-  timeout: 300000, // 5 minutes for large file operations
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+function buildFullPath(url) {
+  const base = BASE_URL.replace(/\/+$/, '');
+  const path = (url || '').replace(/^\/+/, '');
+  return (base + '/' + path).replace(/\/+/g, '/');
+}
 
-// Request interceptor: Add auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    // Get token from sessionStorage
-    const token = sessionStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+function appendParamsToUrl(pathOrUrl, params) {
+  if (!params || typeof params !== 'object') return pathOrUrl;
+  const serialized = new URLSearchParams(params).toString();
+  if (!serialized) return pathOrUrl;
+  const sep = pathOrUrl.indexOf('?') === -1 ? '?' : '&';
+  return pathOrUrl + sep + serialized;
+}
+
+function getOrigin() {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
   }
-);
-
-// Response interceptor: Handle common errors and token refresh
-apiClient.interceptors.response.use(
-  (response) => {
-    // Check for new token in response header and update it
-    const newToken = response.headers['x-new-token'];
-    if (newToken) {
-      // Update token in sessionStorage
-      sessionStorage.setItem('token', newToken);
-      
-      // Update axios default headers
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      
-      // Dispatch event for AuthContext to update its state
-      window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
-    }
-    return response;
-  },
-  async (error) => {
-    const originalRequest = error.config;
-
-    // 401 or 403: try refresh once if we have a refresh token, then retry or redirect
-    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
-      const refreshToken = sessionStorage.getItem('refreshToken');
-      if (refreshToken) {
-        originalRequest._retry = true;
-        try {
-          // Use axios directly so this call does not go through apiClient interceptors
-          const refreshRes = await axios.post('/api/auth/refresh', { refreshToken });
-          const newToken = refreshRes.data?.token;
-          if (newToken) {
-            sessionStorage.setItem('token', newToken);
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
-            return apiClient(originalRequest);
-          }
-        } catch (refreshErr) {
-          // Refresh failed; fall through to clear and redirect
-        }
-      }
-
-      // No refresh token or refresh failed: clear and redirect to login
-      // Exception: do NOT redirect when the failed request was login/register - let the page show the error
-      // Exception: do NOT redirect when request used X-Share-Token (Share link view) - let the page show expired/invalid
-      // Exception: do NOT redirect when on share permission check (share link page) - let the modal close instead
-      const isAuthAttempt = typeof originalRequest?.url === 'string' &&
-        (originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/register'));
-      const isShareRequest = originalRequest?.headers?.['X-Share-Token'];
-      const isSharePermissionCheck = typeof originalRequest?.url === 'string' &&
-        originalRequest.url.includes('/share/') && originalRequest.url.includes('/check-my-permission');
-      if (!isAuthAttempt && !isShareRequest && !isSharePermissionCheck) {
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('refreshToken');
-        window.location.href = '/login';
-      }
-      return Promise.reject(error);
-    }
-
-    // Handle 409 Conflict
-    if (error.response?.status === HTTP_STATUS.CONFLICT) {
-      // Conflict errors are expected in some cases (e.g., file already exists)
-      return Promise.reject(error);
-    }
-
-    // Handle network errors - do not set error.message; client uses determineErrorType
-    // and t('errors.networkError') for display
-    if (!error.response) {
-      return Promise.reject(error);
-    }
-
-    // For other errors, preserve the original error
-    return Promise.reject(error);
-  }
-);
+  return 'http://localhost';
+}
 
 /**
- * Retry a request with exponential backoff
- * @param {Function} requestFn - Function that returns a promise
- * @param {number} maxRetries - Maximum number of retries
- * @param {number} baseDelay - Base delay in milliseconds
- * @returns {Promise} Request promise
+ * Parse fetch Response into { data, status, statusText, headers }. Supports onDownloadProgress for streaming.
  */
-async function retryRequest(requestFn, maxRetries = 3, baseDelay = 1000) {
+async function parseResponse(response, config) {
+  const contentType = response.headers.get('Content-Type') || '';
+  const contentLength = response.headers.get('Content-Length');
+  const total = contentLength ? parseInt(contentLength, 10) : null;
+
+  let data;
+  if (config.responseType === 'blob') {
+    if (config.onDownloadProgress && response.body && total != null && total > 0) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let loaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        config.onDownloadProgress({ loaded, total, progressEvent: { loaded, total } });
+      }
+      data = new Blob(chunks);
+    } else {
+      data = await response.blob();
+    }
+  } else {
+    const text = await response.text();
+    if (contentType.includes('application/json') && text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    } else {
+      data = text;
+    }
+  }
+
+  return {
+    data,
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+  };
+}
+
+/**
+ * Build request body. FormData: pass through without Content-Type. String: pass through. Object: JSON.stringify.
+ */
+function buildBody(data, headers) {
+  if (data == null) return undefined;
+  if (data instanceof FormData) {
+    headers.delete('Content-Type');
+    return data;
+  }
+  if (typeof data === 'string') return data;
+  return JSON.stringify(data);
+}
+
+/**
+ * Whether a 403 on this request should trigger history.back() or '/' redirect.
+ * Only GET requests to /api/files/list or /api/admin/* qualify.
+ *
+ * @param {{ method?: string; url?: string }} config - Request config
+ * @returns {boolean}
+ */
+function is403RedirectableRequest(config) {
+  const method = (config?.method || 'GET').toUpperCase();
+  const url = typeof config?.url === 'string' ? config.url : '';
+  if (method !== 'GET') return false;
+  return /files\/list|(\/|^)admin(\/|$)/.test(url);
+}
+
+/**
+ * Core fetch request. Returns { data, status, statusText, headers } or throws with error.response, error.config.
+ */
+async function doRequest(config) {
+  let path = buildFullPath(config.url);
+  const method = (config.method || 'GET').toUpperCase();
+  path = appendParamsToUrl(path, config.params);
+
+  const fullUrl = path.startsWith('http') ? path : getOrigin() + path;
+  const headers = new Headers(config.headers || {});
+  if (!headers.has('Content-Type') && config.data != null && !(config.data instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const body = buildBody(config.data, headers);
+
+  const controller = new AbortController();
+  const timeout = config.timeout ?? DEFAULT_TIMEOUT;
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  if (config.signal) {
+    config.signal.addEventListener('abort', () => controller.abort());
+  }
+
+  try {
+    const init = {
+      method,
+      headers,
+      signal: controller.signal,
+      body: method !== 'GET' && method !== 'HEAD' ? body : undefined,
+    };
+
+    const response = await fetch(fullUrl, init);
+    clearTimeout(timeoutId);
+
+    const result = await parseResponse(response, {
+      responseType: config.responseType,
+      onDownloadProgress: config.onDownloadProgress,
+    });
+
+    // x-new-token: update sessionStorage and dispatch event
+    const newToken = response.headers.get('x-new-token');
+    if (newToken) {
+      sessionStorage.setItem('token', newToken);
+      window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
+    }
+
+    if (response.status >= 400) {
+      const err = new Error(`Request failed with status code ${response.status}`);
+      err.response = result;
+      err.config = config;
+      err.code = undefined;
+      throw err;
+    }
+
+    return result;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      const error = new Error(`timeout of ${timeout}ms exceeded`);
+      error.code = 'ECONNABORTED';
+      error.config = config;
+      throw error;
+    }
+    if (err.response) throw err;
+    const networkError = new Error(err.message || 'Network Error');
+    networkError.code = 'ERR_NETWORK';
+    networkError.config = config;
+    throw networkError;
+  }
+}
+
+/**
+ * Handle 403 (Forbidden). Does not attempt token refresh.
+ * - Excluded (login, register, share): no redirect, throws error.
+ * - Redirectable (GET /api/files/list, GET /api/admin/*): history.back() or '/' redirect, then returns.
+ * - Other: no redirect, throws error.
+ *
+ * @param {object} config - Request config
+ * @param {Error} error - The 403 error
+ * @returns {void}
+ */
+function handle403(config, error) {
+  const isAuthAttempt =
+    typeof config?.url === 'string' &&
+    (config.url.includes('/auth/login') || config.url.includes('/auth/register'));
+  const h = config?.headers;
+  const isShareRequest = h && (h instanceof Headers ? h.get('X-Share-Token') : h['X-Share-Token']);
+  const isSharePermissionCheck =
+    typeof config?.url === 'string' &&
+    config.url.includes('/share/') &&
+    config.url.includes('/check-my-permission');
+
+  if (isAuthAttempt || isShareRequest || isSharePermissionCheck) {
+    throw error;
+  }
+
+  if (!is403RedirectableRequest(config)) {
+    throw error;
+  }
+
+  if (typeof window !== 'undefined' && window.history?.length > 1) {
+    window.history.back();
+  } else if (typeof window !== 'undefined') {
+    window.location.href = '/';
+  } else {
+    throw error;
+  }
+}
+
+/**
+ * Handle 401 (Unauthorized): attempt token refresh once, then retry the request.
+ * On refresh success: stores new token, retries with it, returns result.
+ * On refresh failure: removes tokens, redirects to /login (except login/register/share).
+ * Excluded endpoints (login, register, share) return null without redirect.
+ *
+ * @param {object} config - Original request config
+ * @returns {Promise<{data:*, status:number, statusText:string, headers:object}|null>} Retry result or null
+ */
+async function handleAuthError(config) {
+  const isAuthAttempt =
+    typeof config?.url === 'string' &&
+    (config.url.includes('/auth/login') || config.url.includes('/auth/register'));
+  const h = config?.headers;
+  const isShareRequest = h && (h instanceof Headers ? h.get('X-Share-Token') : h['X-Share-Token']);
+  const isSharePermissionCheck =
+    typeof config?.url === 'string' &&
+    config.url.includes('/share/') &&
+    config.url.includes('/check-my-permission');
+
+  if (isAuthAttempt || isShareRequest || isSharePermissionCheck) {
+    return null;
+  }
+
+  const refreshToken = sessionStorage.getItem('refreshToken');
+  if (!refreshToken) {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refreshToken');
+    window.location.href = '/login';
+    return null;
+  }
+
+  try {
+    const refreshUrl = getOrigin() + BASE_URL + '/auth/refresh';
+    const res = await fetch(refreshUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    const json = await res.json();
+    const newToken = json?.token;
+    if (!newToken) throw new Error('No token in refresh response');
+    sessionStorage.setItem('token', newToken);
+    window.dispatchEvent(new CustomEvent('token-refreshed', { detail: { token: newToken } }));
+
+    const retryConfig = { ...config };
+    retryConfig._retry = true;
+    retryConfig.headers = new Headers(config.headers || {});
+    retryConfig.headers.set('Authorization', `Bearer ${newToken}`);
+    return doRequest(retryConfig);
+  } catch {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refreshToken');
+    window.location.href = '/login';
+    return null;
+  }
+}
+
+/**
+ * Execute request with retry and auth handling.
+ */
+async function requestWithRetry(config) {
+  const maxRetries = config.maxRetries ?? 3;
+  const baseDelay = 1000;
   let lastError;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await requestFn();
+      const headers = new Headers(config.headers || {});
+      const token = sessionStorage.getItem('token');
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+      return await doRequest({ ...config, headers });
     } catch (error) {
       lastError = error;
-      
-      // Don't retry on 4xx errors (client errors)
+
+      if (error.response?.status === 401) {
+        if (!config._retry) {
+          const retried = await handleAuthError(config);
+          if (retried) return retried;
+        }
+        throw error;
+      }
+
+      if (error.response?.status === 403) {
+        handle403(config, error);
+        return;
+      }
+
       if (error.response?.status >= 400 && error.response?.status < 500) {
         throw error;
       }
-      
-      // Don't retry on last attempt
-      if (attempt === maxRetries) {
-        break;
-      }
-      
-      // Calculate delay with exponential backoff
+
+      if (attempt === maxRetries) break;
       const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError;
 }
 
 /**
  * Make a GET request with retry
- * @param {string} url - Request URL (relative to /api)
- * @param {Object} config - Axios config
- * @returns {Promise<Object>} Response promise
- * @example
- * const response = await get('/users');
- * const data = response.data;
  */
 export function get(url, config = {}) {
-  return retryRequest(() => apiClient.get(url, config));
+  return requestWithRetry({ ...config, method: 'GET', url });
 }
 
 /**
  * Make a POST request with retry
- * @param {string} url - Request URL (relative to /api)
- * @param {Object} data - Request data
- * @param {Object} config - Axios config
- * @returns {Promise<Object>} Response promise
- * @example
- * const response = await post('/users', { name: 'John' });
  */
 export function post(url, data = {}, config = {}) {
-  return retryRequest(() => apiClient.post(url, data, config));
+  return requestWithRetry({ ...config, method: 'POST', url, data });
 }
 
 /**
  * Make a PUT request with retry
- * @param {string} url - Request URL
- * @param {Object} data - Request data
- * @param {Object} config - Axios config
- * @returns {Promise} Response promise
  */
 export function put(url, data = {}, config = {}) {
-  return retryRequest(() => apiClient.put(url, data, config));
+  return requestWithRetry({ ...config, method: 'PUT', url, data });
 }
 
 /**
  * Make a DELETE request with retry
- * @param {string} url - Request URL
- * @param {Object} config - Axios config
- * @returns {Promise} Response promise
  */
 export function del(url, config = {}) {
-  return retryRequest(() => apiClient.delete(url, config));
+  return requestWithRetry({ ...config, method: 'DELETE', url });
 }
 
 /**
- * Make a request with custom config (for file uploads, etc.)
- * @param {Object} config - Axios config
- * @returns {Promise} Response promise
+ * Make a request with custom config
  */
 export function request(config) {
-  return retryRequest(() => apiClient.request(config));
+  return requestWithRetry(config);
 }
 
-// Export the axios instance for advanced usage
+// Default export for advanced usage (get/post/put/del/request)
+const apiClient = { get, post, put, del, request };
 export default apiClient;

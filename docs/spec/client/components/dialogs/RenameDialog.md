@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/RenameDialog.js`
-- **Test file:** `client/src/components/__tests__/RenameDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/RenameDialog.test.js`
 
 ### 2.2 Props
 
@@ -77,3 +77,10 @@ Checklist for unit test writing:
 - value = '' – Confirm disabled
 - helperText = ' ' (space) when no error – preserves layout
 - fullScreen for mobile layouts
+- value가 기존 이름과 동일: parent가 onConfirm 전에 비교하여 API 호출 생략 가능; 또는 API 호출 시 200 (no-op)
+- validateFileName 금지 문자: shared 검증; 에러 prop 표시
+
+### 2.9 API Error Behavior (consistent with CreateFolderDialog, LoginDialog, useFileOperations)
+
+- **On API success:** Parent calls onClose; dialog closes. List and recent files refresh.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via FileOperationProgress (onProgress status 'error') or alert. User can correct input, retry, or cancel. Same pattern as other dialogs (useFileOperations §2.6–2.7: onClose only on success).

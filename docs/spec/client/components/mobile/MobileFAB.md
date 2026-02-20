@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/mobile/MobileFAB.js`
-- **Test file:** `client/src/components/__tests__/MobileFAB.test.js`
+- **Test file:** `client/src/components/mobile/__tests__/MobileFAB.test.js`
 
 ### 2.2 Props
 

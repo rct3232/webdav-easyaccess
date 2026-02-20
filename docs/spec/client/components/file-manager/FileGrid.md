@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/FileGrid.js`
-- **Test file:** `client/src/components/__tests__/FileGrid.test.js`
+- **Test file:** `client/src/components/file-manager/__tests__/FileGrid.test.js`
 
 ### 2.2 Props
 

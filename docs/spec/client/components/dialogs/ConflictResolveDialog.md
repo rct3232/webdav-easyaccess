@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ConflictResolveDialog.js`
-- **Test file:** `client/src/components/__tests__/ConflictResolveDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ConflictResolveDialog.test.js`
 
 ### 2.2 Props
 
@@ -57,3 +57,5 @@
 ### 2.8 Edge Cases
 
 - Empty conflicts array – list empty
+- onResolve('overwrite'/'skip'): 전체 conflicts에 대해 일괄 적용 (개별 선택 아님)
+- conflicts 배열 resolve 중 변경: 부모가 immutable로 관리; 변경 시 예측 불가

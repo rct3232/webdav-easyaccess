@@ -46,6 +46,8 @@
 - Missing callbacks → 400
 - Meta path in source/dest → 403
 - Destination exists + onConflict 'error' → 409
+- move 중 source 삭제: 각 파일/디렉터리 작업 시 not found → throw 또는 skippedPaths
+- copy 중 dest disk full: writeFile ENOSPC → throw
 
 ### 2.6 Verification Scenarios
 
@@ -53,3 +55,5 @@
 - [ ] onConflict skip: skippedPaths include conflicting items
 - [ ] Meta path throws 403
 - [ ] Store/WebDAV mock for unit tests
+- [ ] move 중 source 없음 시 동작
+- [ ] copy 중 disk full 시 throw

@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/dialogs/ConfirmDialog.js`
-- **Test file:** `client/src/components/__tests__/ConfirmDialog.test.js`
+- **Test file:** `client/src/components/dialogs/__tests__/ConfirmDialog.test.js`
 
 ### 2.2 Props
 

@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/mobile/MobileBreadcrumb.js`
-- **Test file:** `client/src/components/__tests__/MobileBreadcrumb.test.js`
+- **Test file:** `client/src/components/mobile/__tests__/MobileBreadcrumb.test.js`
 
 ### 2.2 Props
 

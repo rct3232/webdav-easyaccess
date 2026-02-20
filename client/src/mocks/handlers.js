@@ -1,8 +1,7 @@
 /**
- * MSW handlers aligned with OpenAPI spec (docs/openapi.yaml) and actual server routes.
+ * MSW handlers aligned with docs/api.md and actual server routes.
  * Routes use batch-move, batch-copy, batch-delete, PUT /rename - NOT the legacy move/delete paths.
  * @see docs/api.md
- * @see docs/openapi.yaml
  * @see docs/shared-contracts.md
  */
 import { http, HttpResponse } from 'msw';
@@ -13,6 +12,24 @@ const API_BASE = '/api';
 const mockFiles = new Map();
 const mockBulkJobs = new Map();
 let jobIdCounter = 0;
+
+// Mock state for permission requests and share links (tests may override via server.use)
+export const mockPermissionRequests = {
+  inbox: [],
+  outbox: [],
+};
+export const mockShareLinks = [];
+
+// Mock admin state (tests may override via server.use)
+export const mockAdminSettings = { registration_enabled: 'false' };
+export const mockAdminUsers = {
+  pending: [
+    { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false },
+  ],
+  approved: [
+    { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false },
+  ],
+};
 
 function nextJobId() {
   jobIdCounter += 1;
@@ -79,15 +96,80 @@ export const handlers = [
   }),
 
   // --- Files: list, download, upload ---
+  // Non-admin users get currentPath redirected to /:username; list is called with that path.
+  // Return path-prefixed items so folder click navigates to e.g. /testuser/folder and list(/testuser/folder) returns children.
   http.get(`${API_BASE}/files/list`, ({ request }) => {
     const url = new URL(request.url);
-    const path = url.searchParams.get('path') || '/';
-    const items = mockFiles.get(path) ?? [
-      { path: '/test.txt', basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: '/folder', basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+    let path = url.searchParams.get('path') || '/';
+    path = path.replace(/\/$/, '') || '/';
+    const custom = mockFiles.get(path);
+    if (custom) return HttpResponse.json(custom);
+    const segments = path.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1];
+    // Leaf: /nested paths return empty to avoid infinite recursion in loadAllSubfoldersRecursive
+    if (lastSegment === 'nested') {
+      return HttpResponse.json([]);
+    }
+    const isFolderPath = path.endsWith('/folder') || lastSegment === 'folder';
+    const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+    const rootItems = [
+      { path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
+    const folderItems = [
+      { path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+    ];
+    // /docs paths: return folderItems (finite) to avoid docs/docs/docs... infinite depth
+    const items = lastSegment === 'docs' ? folderItems : (isFolderPath ? folderItems : rootItems);
     return HttpResponse.json(items);
   }),
+
+  // --- Permissions (required for FileManager path navigation and permission checks) ---
+  http.get(`${API_BASE}/permissions/check`, () => {
+    return HttpResponse.json({ hasRead: true, hasWrite: true });
+  }),
+  http.get(`${API_BASE}/permissions/user/:userId`, () => {
+    return HttpResponse.json([]);
+  }),
+
+  http.get(`${API_BASE}/permissions/folder`, () => {
+    return HttpResponse.json([]);
+  }),
+
+  // --- Recent files (required for FolderTree / FileManager) ---
+  http.get(`${API_BASE}/recent-files`, () => HttpResponse.json([])),
+
+  http.post(`${API_BASE}/recent-files/apply-moves`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body?.moves)) {
+      return errorResponse('serverErrors.recentFiles.movesRequired', 400);
+    }
+    return HttpResponse.json([]);
+  }),
+
+  http.post(`${API_BASE}/recent-files/remove-paths`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body?.filePaths) || !Array.isArray(body?.folderPaths)) {
+      return errorResponse('serverErrors.recentFiles.pathsMustBeArrays', 400);
+    }
+    return HttpResponse.json([]);
+  }),
+
+  http.post(`${API_BASE}/recent-files`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body?.path) {
+      return errorResponse('serverErrors.recentFiles.pathRequired', 400);
+    }
+    return HttpResponse.json([]);
+  }),
+
+  http.delete(`${API_BASE}/recent-files`, () =>
+    HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
+  ),
+
+  http.delete(`${API_BASE}/recent-files/:encodedPath`, () => HttpResponse.json([])),
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
@@ -285,7 +367,7 @@ export const handlers = [
   }),
 
   http.get(`${API_BASE}/settings/public`, () => {
-    return HttpResponse.json({ signupEnabled: true });
+    return HttpResponse.json({ registration_enabled: true, email_enabled: false });
   }),
 
   http.get(`${API_BASE}/webdav/info`, () => {
@@ -303,5 +385,175 @@ export const handlers = [
 
   http.get(`${API_BASE}/users/approved`, () => {
     return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
+  }),
+
+  // --- Admin ---
+  http.get(`${API_BASE}/admin/settings`, () => {
+    return HttpResponse.json(mockAdminSettings);
+  }),
+
+  http.put(`${API_BASE}/admin/settings`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    Object.assign(mockAdminSettings, body);
+    return HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' });
+  }),
+
+  http.get(`${API_BASE}/admin/users/pending`, () => {
+    return HttpResponse.json(mockAdminUsers.pending);
+  }),
+
+  http.get(`${API_BASE}/admin/users`, () => {
+    return HttpResponse.json(mockAdminUsers.approved);
+  }),
+
+  http.post(`${API_BASE}/admin/users`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body.username || !body.email || !body.password) {
+      return errorResponse('serverErrors.auth.requiredFields', 400);
+    }
+    const user = {
+      id: `u_${Date.now()}`,
+      username: body.username,
+      email: body.email,
+      status: 'approved',
+      created_at: new Date().toISOString(),
+      is_admin: false,
+    };
+    mockAdminUsers.approved.push(user);
+    return HttpResponse.json(user, { status: 201 });
+  }),
+
+  http.post(`${API_BASE}/admin/users/:id/approve`, ({ params }) => {
+    const idx = mockAdminUsers.pending.findIndex((u) => u.id === params.id);
+    if (idx === -1) return errorResponse('serverErrors.admin.userNotFound', 404);
+    const [user] = mockAdminUsers.pending.splice(idx, 1);
+    user.status = 'approved';
+    mockAdminUsers.approved.push(user);
+    return HttpResponse.json({ messageCode: 'serverMessages.admin.userApproved' });
+  }),
+
+  http.post(`${API_BASE}/admin/users/:id/reject`, ({ params }) => {
+    const idx = mockAdminUsers.pending.findIndex((u) => u.id === params.id);
+    if (idx === -1) return errorResponse('serverErrors.admin.userNotFound', 404);
+    mockAdminUsers.pending.splice(idx, 1);
+    return HttpResponse.json({ messageCode: 'serverMessages.admin.userRejected' });
+  }),
+
+  http.delete(`${API_BASE}/admin/users/:id`, ({ params }) => {
+    const approvedIdx = mockAdminUsers.approved.findIndex((u) => u.id === params.id);
+    if (approvedIdx !== -1) {
+      mockAdminUsers.approved.splice(approvedIdx, 1);
+      return HttpResponse.json({ messageCode: 'serverMessages.admin.userDeleted' });
+    }
+    return errorResponse('serverErrors.admin.userNotFound', 404);
+  }),
+
+  http.post(`${API_BASE}/admin/cleanup/orphaned`, () => {
+    return HttpResponse.json({ results: [], messageCode: 'serverMessages.admin.cleanupComplete' });
+  }),
+
+  // --- Permission requests ---
+  http.get(`${API_BASE}/permission-requests/inbox`, () => {
+    return HttpResponse.json(mockPermissionRequests.inbox);
+  }),
+  http.get(`${API_BASE}/permission-requests/outbox`, () => {
+    return HttpResponse.json(mockPermissionRequests.outbox);
+  }),
+  http.get(`${API_BASE}/permission-requests/check-owner`, ({ request }) => {
+    const url = new URL(request.url);
+    const folderPath = url.searchParams.get('folderPath');
+    const filePath = url.searchParams.get('filePath');
+    if (!folderPath && !filePath) {
+      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    }
+    return HttpResponse.json({ hasOwner: true });
+  }),
+  http.post(`${API_BASE}/permission-requests`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { folderPath, filePath, permission, message } = body;
+    if (!folderPath && !filePath) {
+      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    }
+    const id = `pr_${Date.now()}`;
+    const req = {
+      id,
+      requester_id: '1',
+      owner_id: '2',
+      folder_path: folderPath || null,
+      file_path: filePath || null,
+      requested_permission: permission || 'read',
+      status: 'pending',
+      message: message || null,
+      created_at: new Date().toISOString(),
+    };
+    mockPermissionRequests.outbox.push(req);
+    return HttpResponse.json(req, { status: 201 });
+  }),
+  http.post(`${API_BASE}/permission-requests/:id/approve`, ({ params }) => {
+    const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
+    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    req.status = 'approved';
+    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.approved' });
+  }),
+  http.post(`${API_BASE}/permission-requests/:id/reject`, ({ params }) => {
+    const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
+    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    req.status = 'rejected';
+    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.rejected' });
+  }),
+  http.post(`${API_BASE}/permission-requests/:id/cancel`, ({ params }) => {
+    const idx = mockPermissionRequests.outbox.findIndex((r) => r.id === params.id);
+    if (idx === -1) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    mockPermissionRequests.outbox.splice(idx, 1);
+    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.cancelled' });
+  }),
+
+  // --- Share links (authenticated) ---
+  http.get(`${API_BASE}/share-links`, () => {
+    return HttpResponse.json(mockShareLinks);
+  }),
+  http.post(`${API_BASE}/share-links`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { filePath, expiresInDays } = body;
+    if (!filePath) {
+      return errorResponse('serverErrors.share.filePathRequired', 400);
+    }
+    const token = `sl_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const link = {
+      token,
+      filePath,
+      fileName: filePath.split('/').pop() || 'file',
+      fileType: 'file',
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null,
+      downloadCount: 0,
+      isExpired: false,
+    };
+    mockShareLinks.push(link);
+    return HttpResponse.json(link, { status: 201 });
+  }),
+  http.delete(`${API_BASE}/share-links/:token`, ({ params }) => {
+    const idx = mockShareLinks.findIndex((l) => l.token === params.token);
+    if (idx === -1) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    mockShareLinks.splice(idx, 1);
+    return HttpResponse.json({ messageCode: 'serverMessages.share.deleted' });
+  }),
+
+  // --- Share (public) ---
+  http.get(`${API_BASE}/share/:token/info`, ({ params }) => {
+    if (params.token === 'invalid' || params.token === 'expired') {
+      return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    }
+    return HttpResponse.json({
+      token: params.token,
+      filePath: '/user/docs/file.pdf',
+      fileName: 'file.pdf',
+      fileType: 'pdf',
+      isDirectory: false,
+      createdAt: new Date().toISOString(),
+      expiresAt: null,
+      downloadCount: 0,
+      isExpired: false,
+    });
   }),
 ];

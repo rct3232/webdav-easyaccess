@@ -1,6 +1,4 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import * as authService from '../services/authService';
 
 export const AuthContext = createContext();
@@ -43,25 +41,7 @@ export const AuthProvider = ({ children }) => {
     }
     setToken(null);
     setUser(null);
-    delete axios.defaults.headers.common['Authorization'];
   }, []);
-
-  useEffect(() => {
-    // Global auto-logout on invalid/expired auth (covers all API calls).
-    const interceptorId = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        const status = error?.response?.status;
-        if ((status === HTTP_STATUS.UNAUTHORIZED || status === HTTP_STATUS.FORBIDDEN) && sessionStorage.getItem('token')) {
-          logout();
-        }
-        return Promise.reject(error);
-      }
-    );
-    return () => {
-      axios.interceptors.response.eject(interceptorId);
-    };
-  }, [logout]);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -80,7 +60,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       if (!user) {
         fetchUser();
       }
@@ -95,7 +74,6 @@ export const AuthProvider = ({ children }) => {
       const { token: newToken } = event.detail;
       if (newToken) {
         setToken(newToken);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       }
     };
 
@@ -118,7 +96,6 @@ export const AuthProvider = ({ children }) => {
         is_admin: Boolean(userData.is_admin),
       };
       setUser(normalizedUser);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
       return { success: true, user: normalizedUser };
     } catch (error) {
@@ -147,7 +124,6 @@ export const AuthProvider = ({ children }) => {
       if (newRefreshToken) sessionStorage.setItem('refreshToken', newRefreshToken);
       setToken(newToken);
       setUser(userData);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
       return { success: true };
     } catch (error) {

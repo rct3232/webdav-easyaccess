@@ -34,7 +34,7 @@ The application uses JWT-based authentication. Users sign up (when registration 
 
 **Session storage:**
 
-- Client stores `token` (and optionally `refreshToken`) in **sessionStorage** only. No localStorage for auth (legacy cleanup removes it). 401/403 on any API call with a stored token trigger global logout (clear token and user).
+- Client stores `token` (and optionally `refreshToken`) in **sessionStorage** only. No localStorage for auth (legacy cleanup removes it). 401: 인증 실패 → refresh 시도 후 실패 시 logout, `/login` 리다이렉트. 403: 인가 실패 → URL 이동 직후(list, admin 등)는 `history.back()` 또는 `/`, 그 외는 리다이렉트 없음 (에러 전파).
 
 ### User APIs
 
@@ -110,7 +110,8 @@ flowchart TD
 
 ### 401/403 and logout
 
-- Any API response with 401 or 403 while the client has a token in sessionStorage triggers the global response interceptor to call `logout()`: clear sessionStorage, clear user state, remove `Authorization` header. User is effectively logged out and can be redirected to `/login`.
+- **401:** 인증 실패 (토큰 없음/무효/만료). refresh 1회 시도 후 실패 시 logout, `/login` 리다이렉트.
+- **403:** 인가 실패. URL 이동 직후(list, admin 등)는 `history.back()` 또는 `/` 리다이렉트. 그 외는 리다이렉트 없음 (에러 전파).
 
 ---
 

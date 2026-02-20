@@ -35,9 +35,10 @@
 - [ ] Returns [folderPath] for leaf folder
 - [ ] Returns [folderPath, ...children] for nested structure
 - [ ] Paths normalized
-- [ ] On listFiles error: logs and skips that branch; continues traverse
+- [ ] On listFiles error: logs and skips that branch; continues traverse. **Skips that branch** = does not include the path that failed to list nor its descendants. Only paths we successfully listed are included.
 
 ### 2.6 Edge Cases
 
 - Empty listFiles response → dirs=[]
 - Traverse catches errors, continues with siblings
+- Paths whose listFiles fails → excluded from result (per 2.5)

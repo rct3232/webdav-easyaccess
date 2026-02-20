@@ -189,7 +189,14 @@ async function listDir(dirPath) {
         basename: ent.name,
         type: ent.isDirectory() ? 'directory' : 'file',
       }));
-    } catch {
+    } catch (e) {
+      // spec 2.6: EACCES 등 권한 없음 → throw; 상위 403
+      if (e?.code === 'EACCES' || e?.code === 'EPERM') {
+        const err = new Error(e.message || 'Permission denied');
+        err.code = e.code;
+        err.status = 403;
+        throw err;
+      }
       return [];
     }
   }

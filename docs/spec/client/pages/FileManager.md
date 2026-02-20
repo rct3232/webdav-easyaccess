@@ -70,6 +70,7 @@
 - [ ] Context menu opens and actions call correct handlers
 - [ ] Upload flow (conflict check, progress, completion)
 - [ ] Share link mode: unauthenticated vs authenticated behavior
+- [ ] Permission request from ShareTargetDialog: open Share on folder (no permission) → Request read permission → UI shows requested state (plan 3.2, MyPage 2.6)
 
 ### 2.7 Conditional Rendering
 

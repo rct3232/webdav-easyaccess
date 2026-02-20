@@ -1,146 +1,114 @@
 # Server Test Implementation Summary
 
 ## Overview
-Successfully implemented comprehensive unit test infrastructure for the Express.js server, achieving 100% coverage for all refactored code and core business logic.
+
+Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV and stores use test doubles or in-memory storage. See [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) and [.cursor/rules/testing-principles.mdc](../.cursor/rules/testing-principles.mdc).
 
 ## Test Statistics
-- **Total Test Suites**: 30
-- **Total Tests**: 373
-- **Pass Rate**: 100% (373 passed, 0 failed) ✅
-- **Execution Time**: ~16.75 seconds
+
+- **Total Test Suites**: 35
+- **Total Tests**: 340
+- **Pass Rate**: 100% (340 passed, 0 failed) ✅
+- **Execution Time**: ~22 seconds
 
 ## Test Breakdown by Category
 
-### 1. Path Utils Tests (42 tests) ✅
-**File**: `utils/__tests__/pathUtils.test.js`  
-**Coverage**: 100% (all metrics)  
+### Unit Tests
 
-### 2. Auth Utils Tests (20 tests) ✅
-**File**: `utils/__tests__/auth.test.js`  
-**Coverage**: 87.87% lines
+Single modules in isolation (utils, models, middleware, store). External dependencies (WebDAV, file system) are mocked or use test doubles.
 
-### 3. User Model Tests (31 tests) ✅
-**File**: `models/__tests__/User.test.js`  
-**Coverage**: 100% lines
+| Test File | Notes |
+|-----------|-------|
+| `utils/__tests__/pathUtils.test.js` | Path normalization, getParentPath, segment validation |
+| `utils/__tests__/auth.test.js` | Token generation, verification, password hashing |
+| `utils/__tests__/errorHandler.test.js` | Error formatting, status mapping |
+| `models/__tests__/User.test.js` | User CRUD, status, password |
+| `models/__tests__/Permission.test.js` | Permission model operations |
+| `models/__tests__/ShareLink.test.js` | ShareLink CRUD |
+| `models/__tests__/Settings.test.js` | Settings model |
+| `models/__tests__/PermissionRequest.test.js` | Permission request model |
+| `middleware/__tests__/requireUser.test.js` | JWT auth, 401 handling |
+| `middleware/__tests__/permissions.test.js` | Permission checks, read/write validation |
+| `middleware/__tests__/metaPathGuard.test.js` | Meta path protection |
+| `middleware/__tests__/normalizePathParam.test.js` | Path param normalization |
+| `store/__tests__/userStore.test.js` | User store operations |
+| `store/__tests__/permissionStore.test.js` | Permission store sync |
+| `store/__tests__/permissionRequestStore.test.js` | Permission request store |
+| `store/__tests__/shareLinkStore.test.js` | Share link store |
+| `store/__tests__/recentFilesStore.test.js` | Recent files store |
+| `store/__tests__/settingsStore.test.js` | Settings store |
+| `store/__tests__/bulkJobStore.test.js` | Bulk job store |
+| `store/__tests__/storage.test.js` | Storage operations |
+| `store/__tests__/locks.test.js` | Lock store |
+| `services/__tests__/selectiveTransfer.test.js` | Selective transfer service |
 
-### 4. Permission Model Tests (32 tests) ✅
-**File**: `models/__tests__/Permission.test.js`  
-**Coverage**: 100% lines
+### Integration Tests
 
-### 5. Permissions Middleware Tests (44 tests) ✅
-**File**: `middleware/__tests__/permissions.test.js`  
-**Coverage**: 95.4% lines
+API route tests with Supertest. Full request/response cycle; backing services use test doubles.
 
-### 6. ShareLink Model Tests (13 tests) ✅
-**File**: `models/__tests__/ShareLink.test.js`
-**Coverage**: 100% lines
-
-### 7. Store Tests ✅
-- **RecentFilesStore**: 5 tests ✅
-- **SettingsStore**: 3 tests ✅
-- **ShareLinkStore**: 5 tests ✅
-- **UserStore**: 5 tests ✅
-- **PermissionRequestStore**: 2 tests ✅
-- **PermissionStore Sync**: 4 tests ✅
-
-### 8. Error Handler Tests (43 tests) ✅
-**File**: `utils/__tests__/errorHandler.test.js`  
-**Coverage**: 100% (all metrics)  
-
-### 9. Route Tests (Integration Tests) ✅
-- **Auth Routes**: 8 tests ✅
-- **File Routes**: 5 tests ✅
-- **Permission Routes**: 4 tests ✅
-
-### 10. Additional New Tests ✅
-- **MetaPathGuard**: 9 tests ✅
-- **SelectiveTransfer/Download/Delete**: 6 tests ✅
-- **PermissionPolicy**: 6 tests ✅
-- **WebdavDestination**: 4 tests ✅
+| Test File / Area | Notes |
+|------------------|-------|
+| `routes/__tests__/auth.test.js` | Register, login, logout, token refresh |
+| `routes/__tests__/files.test.js` | List, download, upload, rename, batch operations |
+| `routes/__tests__/folders.test.js` | Create folder, list |
+| `routes/__tests__/permissions.test.js` | Grant, revoke, list permissions |
+| `routes/__tests__/permissionRequests.test.js` | Create, approve, deny requests |
+| `routes/__tests__/shareLinks.test.js` | Create, list, delete share links |
+| `routes/__tests__/sharePublic.test.js` | Public share resolution |
+| `routes/__tests__/users.test.js` | User CRUD, password |
+| `routes/__tests__/admin.test.js` | Admin users, settings |
+| `routes/__tests__/recentFiles.test.js` | Recent files API |
+| `routes/__tests__/settings.test.js` | User settings |
+| `routes/__tests__/thumbnails.test.js` | Thumbnail generation |
+| `routes/__tests__/health.test.js` | Health check |
 
 ## Coverage Report
 
-### Tested Modules
+### Coverage Goals (from TESTING_STRATEGY)
+
+- **New code:** ≥80%
+- **Refactored code:** ≥90%
+- **Core business logic:** ≥95%
+
+### Key Modules
+
 | Module | Statements | Branches | Functions | Lines |
 |--------|-----------|----------|-----------|-------|
-| **pathUtils.js** | **100%** | **100%** | **100%** | **100%** |
-| **requireUser.js** | **100%** | **100%** | **100%** | **100%** |
-| **User.js** | **100%** | **100%** | **100%** | **100%** |
-| **Settings.js** | **100%** | **100%** | **100%** | **100%** |
-| **ShareLink.js** | **100%** | **100%** | **100%** | **100%** |
-| **Permission.js** | **100%** | **100%** | **100%** | **100%** |
-| **errorHandler.js** | **100%** | **100%** | **100%** | **100%** |
-| **permissions.js (middleware)** | 94.31% | 92.5% | **100%** | 95.4% |
-| **auth.js (utils)** | 87.87% | 75% | **100%** | 87.87% |
+| utils/errorHandler.js | 100 | 97.56 | 100 | 100 |
+| utils/auth.js | 91.78 | 82.45 | 100 | 92.85 |
+| middleware/normalizePathParam.js | 100 | 100 | 100 | 100 |
+| middleware/requireUser.js | 89.47 | 78.12 | 100 | 91.66 |
+| middleware/metaPathGuard.js | 92.3 | 82.05 | 75 | 97.29 |
+| models/User.js | 100 | 66.66 | 100 | 100 |
+| models/Settings.js | 100 | 100 | 100 | 100 |
+| models/ShareLink.js | 100 | 100 | 100 | 100 |
+| routes/auth.js | 83.89 | 76.05 | 100 | 83.76 |
+| routes/folders.js | 82.22 | 56.25 | 100 | 82.22 |
+| routes/recentFiles.js | 97.95 | 94.11 | 100 | 97.95 |
+| routes/settings.js | 100 | 100 | 100 | 100 |
+| store/settingsStore.js | 91.42 | 87.5 | 100 | 91.17 |
+| store/userStore.js | 88.46 | 63.75 | 100 | 91.72 |
 
 ### Overall Project Coverage
-- **Statements**: 88.91%
-- **Branches**: 77.57%
-- **Functions**: 96.15%
-- **Lines**: 91.26%
 
-*Note: Overall coverage has significantly increased and now exceeds the 75% target for most metrics.*
+- **Statements**: 52.47%
+- **Branches**: 38.87%
+- **Functions**: 63.63%
+- **Lines**: 54.06%
 
-## Key Achievements
+### Server Folder Coverage
 
-### ✅ 100% Pass Rate
-All 287 tests are passing, including previously failing auth middleware tests.
+- **Statements**: 81.33%
+- **Branches**: 55%
+- **Functions**: 70%
+- **Lines**: 82.31%
 
-### ✅ High Coverage of Core Logic
-All core modules now have >85% coverage, with many at 100%.
-
-### ✅ Comprehensive Integration Tests
-API routes are fully tested with Supertest, ensuring end-to-end reliability.
-
-## Test Infrastructure Files
-
-### Configuration
-- `jest.config.js`: Jest configuration with coverage thresholds
-- `test-setup.js`: Global test environment setup
-- `test-utils.js`: Helper functions for test database and user creation
-- `package.json`: Test scripts (test, test:unit, test:coverage, test:ci)
-
-### Test Utilities
-- `createTestDatabase()`: In-memory SQLite setup
-- `initializeTestSchema()`: Database schema initialization
-- `createTestUser()`: Test user creation helper
-- `grantTestPermission()`: Permission setup helper
-- `cleanupTestDatabase()`: Test cleanup
-- `createTestToken()`: JWT token generation for tests
-
-## Running Tests
-
-```bash
-# Run all unit tests
-npm run test:unit
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run tests in CI mode
-npm run test:ci
-
-# Watch mode (development)
-npm test
-```
-
-## Future Enhancements (Optional)
-
-### Additional Coverage Targets
-If needed, add tests for:
-- WebDAV utilities (`utils/webdav.js`): Complex mocking required
-- Email utilities (`utils/email.js`): Email service mocking
-- Additional store/model edge cases
+*Note: "All files" includes routes, services, and utils. Core server modules (models, middleware, store) maintain higher coverage than the project overall.*
 
 ## Conclusion
 
-The server test implementation successfully achieved the primary goals:
-
-1. ✅ **High coverage** across all core modules (>75% overall)
-2. ✅ **Comprehensive integration tests** for API routes
-3. ✅ **Fast and reliable** test execution
-4. ✅ **Production-ready** test infrastructure
-5. ✅ **CI/CD ready** with proper test scripts
-
-The 287 tests provide strong confidence in the core functionality, ensuring that changes maintain correct behavior and future modifications won't break existing functionality.
-
+- 340 tests across 35 suites, 100% pass rate
+- Core modules (models, middleware, auth, errorHandler) have high coverage
+- Route integration tests cover main API endpoints
+- Test infrastructure and commands documented
+- RCA procedure for failures defined

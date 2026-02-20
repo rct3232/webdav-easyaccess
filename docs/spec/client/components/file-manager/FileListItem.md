@@ -15,7 +15,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/components/file-manager/FileListItem.js`
-- **Test file:** `client/src/components/__tests__/FileListItem.test.js`
+- **Test file:** `client/src/components/file-manager/__tests__/FileListItem.test.js`
 
 ### 2.2 Props
 

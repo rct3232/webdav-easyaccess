@@ -14,9 +14,11 @@ export const formatFileSize = (bytes) => {
 
 export const formatDate = (dateString) => {
   if (!dateString) return '-';
-  
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return dateString;
+
   try {
-    const date = new Date(dateString);
     return date.toLocaleString(getLocale(), {
       year: 'numeric',
       month: '2-digit',
@@ -32,8 +34,12 @@ export const formatDate = (dateString) => {
 /** Date only, for use in components that need locale-aware date display */
 export const formatDateOnly = (dateString) => {
   if (!dateString) return '';
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return String(dateString);
+
   try {
-    return new Date(dateString).toLocaleDateString(getLocale());
+    return date.toLocaleDateString(getLocale());
   } catch (error) {
     return String(dateString);
   }

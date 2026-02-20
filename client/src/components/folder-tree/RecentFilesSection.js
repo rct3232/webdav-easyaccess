@@ -101,7 +101,7 @@ const RecentFilesSection = ({
       </ListItem>
       <Collapse in={recentExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
-          {recentFilesList.length === 0 ? (
+          {(recentFilesList ?? []).length === 0 ? (
             <ListItem disablePadding>
               <Box sx={{ pl: 3, py: 1 }}>
                 <Typography
@@ -116,7 +116,7 @@ const RecentFilesSection = ({
               </Box>
             </ListItem>
           ) : (
-            recentFilesList.slice(0, 10).map((recentFile) => (
+            (recentFilesList ?? []).slice(0, 10).map((recentFile) => (
               <ListItem key={recentFile.path} disablePadding>
                 <ListItemButton
                   onClick={() => {

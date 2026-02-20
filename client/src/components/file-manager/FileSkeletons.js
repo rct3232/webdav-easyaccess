@@ -27,6 +27,7 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
             alignItems: 'center',
             p: 1.5,
             borderRadius: 1,
+            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
           }}
         >
           {selectionMode && (
@@ -109,6 +110,7 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
             border: '1px solid',
             borderColor: 'divider',
             position: 'relative',
+            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
           }}
         >
           {selectionMode && (
@@ -167,10 +169,11 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
   return (
     <>
       {Array.from({ length: skeletonCount }).map((_, index) => (
-        <TableRow 
-          key={index} 
-          sx={{ 
+        <TableRow
+          key={index}
+          sx={{
             height: '40px',
+            ...(index === skeletonCount - 1 && skeletonCount > 1 && { opacity: 0.5 }),
           }}
         >
           {selectionMode && (
@@ -247,6 +250,7 @@ export const FileTreeSkeleton = ({ count = 3, level = 0 }) => {
             py: 0.5,
             pl: level * 2,
             minHeight: 32,
+            ...(index === count - 1 && count > 1 && { opacity: 0.5 }),
           }}
         >
           {/* Expand icon placeholder */}

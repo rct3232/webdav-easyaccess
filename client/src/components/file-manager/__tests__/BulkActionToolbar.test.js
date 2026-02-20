@@ -1,6 +1,6 @@
 /**
  * BulkActionToolbar tests.
- * Verifies visible outcome: toolbar renders, selection count, action buttons.
+ * Verifies visible outcome: toolbar renders, action buttons.
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
@@ -24,11 +24,6 @@ const defaultProps = {
 describe('BulkActionToolbar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  it('renders selection count', () => {
-    renderWithProviders(<BulkActionToolbar {...defaultProps} />);
-    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
   });
 
   it('shows move button when not downloadOnly', () => {
@@ -115,7 +110,6 @@ describe('BulkActionToolbar', () => {
 
   it('renders correctly when isMobile', () => {
     renderWithProviders(<BulkActionToolbar {...defaultProps} isMobile />);
-    expect(screen.getByText(/2 selected/i)).toBeInTheDocument();
     expect(screen.getByTitle(/move/i)).toBeInTheDocument();
   });
 });

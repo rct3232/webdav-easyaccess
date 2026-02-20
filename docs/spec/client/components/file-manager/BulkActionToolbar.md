@@ -48,7 +48,6 @@
 
 ### 2.5 i18n Keys
 
-- `fileManager.selected` – selection count (count param)
 - `fileManager.readOnlyInSelection` – warning when hasReadOnlyInSelection
 - `actions.move`, `actions.copy`, `actions.download`, `actions.delete` – button titles
 
@@ -64,7 +63,6 @@
 
 Checklist for unit test writing:
 
-- [ ] Selection count displayed (fileManager.selected)
 - [ ] Each button click invokes corresponding callback
 - [ ] Move/copy/delete disabled when hasWritePermission false
 - [ ] All buttons disabled when disabled prop true

@@ -71,12 +71,6 @@ const BulkActionToolbar = ({
           justifyContent: 'center',
         }}
       >
-      <Typography
-        variant="body2"
-        sx={{ fontWeight: 500, color: 'text.primary', flexShrink: 0 }}
-      >
-        {t('fileManager.selected', { count: selectedFiles.size })}
-      </Typography>
       {!downloadOnly && (
       <IconButton
         color="primary"

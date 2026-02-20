@@ -59,6 +59,7 @@ export const useFileManager = (user, options = {}) => {
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const requestIdRef = useRef(0);
   const prevPathRef = useRef(currentPath);
+  const permRequestIdRef = useRef(0);
   
   // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
   useEffect(() => {
@@ -321,11 +322,15 @@ export const useFileManager = (user, options = {}) => {
         
         // 현재 경로의 쓰기 권한 확인
         const loadPermission = async () => {
+          const permId = ++permRequestIdRef.current;
           try {
             const permission = await checkPermission(currentPath);
+            // Ignore stale results: when redirecting / -> /username, older loadPermission('/') can complete after loadPermission('/username')
+            if (permId !== permRequestIdRef.current) return;
             setHasWritePermission(permission.hasWrite);
           } catch (error) {
             console.error('Failed to check permission:', error);
+            if (permId !== permRequestIdRef.current) return;
             // 에러 발생 시 기본값: 관리자는 true, 일반 사용자는 자신의 폴더인지 확인
             // 단, 권한 체크 실패 시에는 보안을 위해 false로 설정하는 것이 안전함
             if (user?.is_admin) {

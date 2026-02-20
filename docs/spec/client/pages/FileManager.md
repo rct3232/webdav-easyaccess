@@ -31,9 +31,10 @@
 
 ### 2.3 Main Child Components
 
-- FileManagerHeader, FileManagerControls, DesktopPathBar, MobileBreadcrumb, MobileFAB
+- FileManagerHeader, Breadcrumb, FileManagerControls, FAB (DesktopPathBar removed – Breadcrumb provides path navigation)
 - FileList, FileGrid, FileDetail (view-mode-dependent)
 - FileContextMenu, FileActionSheet
+- FolderTreeActionBar (above FolderTree in desktop sidebar)
 - FolderTree
 - BulkActionToolbar
 - FileOperationProgress
@@ -76,5 +77,6 @@
 
 - Loading: spinner while loading files
 - Share link mode: simplified header, no upload/create, download-only bulk actions
-- Mobile: MobileBreadcrumb, collapsible FolderTree, FileActionSheet, MobileFAB
+- Breadcrumb, FAB: shown on all viewports
+- Mobile: collapsible FolderTree, FileActionSheet
 - Add-to-shared modal when user has share link but lacks permission

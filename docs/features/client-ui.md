@@ -6,7 +6,7 @@ This document describes the React client’s routing, protected routes, file man
 
 ## Overview
 
-The app is a single-page React application using React Router. Public routes include login and register; authenticated routes (files, mypage, admin) are wrapped in `PrivateRoute`, which redirects to `/login` when the user is not authenticated. The main file management UI supports list/grid/detail views, sort by name/date, search, multi-selection, and toolbar actions (move, copy, download, delete) with progress and cancellation. Dialogs handle rename, create folder, upload, share, folder picker, conflict resolution, and preview. Share link access is handled by `/share/:token`, which loads link info then renders either the file manager (folder) or a single-file preview. On small screens, a FAB and action sheet provide touch-friendly actions. UI text is localized (i18n) with English and Korean.
+The app is a single-page React application using React Router. Public routes include login and register; authenticated routes (files, mypage, admin) are wrapped in `PrivateRoute`, which redirects to `/login` when the user is not authenticated. The main file management UI supports list/grid/detail views, sort by name/date, search, multi-selection, and toolbar actions (move, copy, download, delete) with progress and cancellation. Dialogs handle rename, create folder, upload, share, folder picker, conflict resolution, and preview. Share link access is handled by `/share/:token`, which loads link info then renders either the file manager (folder) or a single-file preview. A FAB (on all viewports) and action sheet (on mobile) provide touch-friendly actions. UI text is localized (i18n) with English and Korean.
 
 ---
 
@@ -50,8 +50,8 @@ The app is a single-page React application using React Router. Public routes inc
 ### Responsive and mobile
 
 - **Breakpoints:** MUI theme breakpoints (xs/sm/md/lg/xl). `useResponsive` (or similar) exposes `isMobile` for conditional layout.
-- **Mobile FAB:** On small screens, floating action button (FAB) with speed dial: Upload, Create folder (and in share link mode: Login or Add to my permissions). Disabled when no write permission or in read-only share.
-- **Mobile breadcrumb:** Compact breadcrumb or path bar for current folder on mobile.
+- **FAB:** Shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. Hidden when no write permission, selection mode, or read-only share.
+- **Breadcrumb:** Path breadcrumb (chips) for current folder, shown on all viewports above the selection/sort/view-mode row. Replaces DesktopPathBar (back button) for consistent navigation.
 - **Action sheet:** On mobile, long-press or selection opens bottom sheet instead of context menu.
 - **Pull-to-refresh:** Optional pull-to-refresh on mobile to reload current folder.
 
@@ -109,7 +109,7 @@ When implementing or reviewing client tests, cover at least:
 - **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.
 - **Drag-drop and dialogs:** Drop triggers upload or move/copy; conflict dialog appears when name conflicts; rename dialog calls rename API and refreshes list. Assert on API calls and list state.
 - **Share link:** `/share/:token` loads; with MSW returning directory vs file, correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message.
-- **Mobile:** On small viewport, FAB and action sheet are used; assertions can be based on visibility or role/label.
+- **Mobile:** FAB shown on all viewports; action sheet on mobile (small viewport). Assertions can be based on visibility or role/label.
 - **Errors:** API error responses surface as snackbar or inline message using `t(errorCode, params)` (see [errorUtils](../../client/src/utils/errorUtils.js) and shared-contracts).
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.

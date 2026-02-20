@@ -117,8 +117,8 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
   }
 
   return (
-    <Grid 
-      container 
+    <Grid
+      container
       spacing={isMobile ? 1.5 : 2}
       ref={gridRef}
       sx={{
@@ -135,7 +135,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
         const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
-        
+
         return (
           <Grid item xs={6} sm={4} md={3} lg={2} xl={2} key={file.path}>
             <Box

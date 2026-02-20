@@ -26,13 +26,10 @@
 | onFileClick | function | N | - | File click (recent) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
-| onCreateFolder | function | N | - | Create folder |
-| onUploadFile | function | N | - | Upload |
 | hasWritePermission | boolean | N | - | Write permission |
 | onExplorerDrop | function | N | - | Drop handler |
 | isMobile | boolean | N | false | Mobile |
 | shareLinkSection | ReactNode | N | - | Share link section |
-| shareLinkActions | object | N | - | Share link actions |
 
 ### 2.3 Callback Signatures
 
@@ -40,8 +37,6 @@
 |----------|--------------|-----------|
 | onPathClick | Folder click | (path) |
 | onFileClick | Recent file click | (file) |
-| onCreateFolder | Create folder | - |
-| onUploadFile | Upload | - |
 | onExplorerDrop | Drop | - |
 
 ### 2.4 Dependencies

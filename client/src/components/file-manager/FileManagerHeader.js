@@ -13,7 +13,6 @@ import {
   Close as CloseIcon,
   AdminPanelSettings as AdminIcon,
   Person as PersonIcon,
-  Logout as LogoutIcon,
 } from '@mui/icons-material';
 
 const FileManagerHeader = ({
@@ -24,7 +23,6 @@ const FileManagerHeader = ({
   setSearchQuery,
   user,
   navigate,
-  handleLogout,
 }) => {
   const { t } = useTranslation();
   return (
@@ -172,9 +170,6 @@ const FileManagerHeader = ({
             )}
             <IconButton color="inherit" onClick={() => navigate('/mypage')} title={t('nav.mypage')}>
               <PersonIcon />
-            </IconButton>
-            <IconButton color="inherit" onClick={handleLogout} title={t('nav.logout')}>
-              <LogoutIcon />
             </IconButton>
           </>
         )}

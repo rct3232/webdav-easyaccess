@@ -25,6 +25,7 @@ import {
   ContentCopy as ContentCopyIcon,
   Check as CheckIcon,
   Language as LanguageIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -350,6 +351,17 @@ const MyPage = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             {t('nav.mypage')}
           </Typography>
+          <IconButton
+            color="inherit"
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            title={t('nav.logout')}
+            aria-label={t('nav.logout')}
+          >
+            <LogoutIcon />
+          </IconButton>
           <IconButton
             edge="end"
             color="inherit"

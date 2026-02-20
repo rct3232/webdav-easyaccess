@@ -1,16 +1,16 @@
 /**
- * MobileFAB tests.
+ * FAB tests.
  * Verifies observable outcomes per spec: SpeedDial actions, shareLinkMode (login vs add-to-shared),
  * returns null when no write permission, disabled disables Fab.
- * @see docs/spec/client/components/mobile/MobileFAB.md
+ * @see docs/spec/client/components/file-manager/FAB.md
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
-import MobileFAB from '../MobileFAB';
+import FAB from '../FAB';
 
-describe('MobileFAB', () => {
+describe('FAB', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -19,7 +19,7 @@ describe('MobileFAB', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
     renderWithProviders(
-      <MobileFAB
+      <FAB
         onCreateFolder={onCreateFolder}
         onUpload={onUpload}
         hasWritePermission={true}
@@ -36,7 +36,7 @@ describe('MobileFAB', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
     renderWithProviders(
-      <MobileFAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
+      <FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
     );
     fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /create folder/i }));
@@ -47,7 +47,7 @@ describe('MobileFAB', () => {
     const onCreateFolder = jest.fn();
     const onUpload = jest.fn();
     renderWithProviders(
-      <MobileFAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
+      <FAB onCreateFolder={onCreateFolder} onUpload={onUpload} />
     );
     fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /upload file/i }));
@@ -56,7 +56,7 @@ describe('MobileFAB', () => {
 
   it('returns null when hasWritePermission is false', () => {
     renderWithProviders(
-      <MobileFAB
+      <FAB
         onCreateFolder={jest.fn()}
         onUpload={jest.fn()}
         hasWritePermission={false}
@@ -68,7 +68,7 @@ describe('MobileFAB', () => {
   it('renders Login Fab in shareLinkMode when user not logged in', () => {
     const onLoginClick = jest.fn();
     renderWithProviders(
-      <MobileFAB
+      <FAB
         shareLinkMode={{
           user: null,
           onLoginClick,
@@ -85,7 +85,7 @@ describe('MobileFAB', () => {
   it('renders Add to shared Fab in shareLinkMode when user logged in', () => {
     const onAddToSharedClick = jest.fn();
     renderWithProviders(
-      <MobileFAB
+      <FAB
         shareLinkMode={{
           user: { id: '1', username: 'u' },
           onLoginClick: jest.fn(),
@@ -101,7 +101,7 @@ describe('MobileFAB', () => {
 
   it('disables Fab when disabled prop is true', () => {
     renderWithProviders(
-      <MobileFAB
+      <FAB
         onCreateFolder={jest.fn()}
         onUpload={jest.fn()}
         disabled={true}

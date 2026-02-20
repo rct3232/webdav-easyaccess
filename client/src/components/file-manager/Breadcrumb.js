@@ -14,11 +14,11 @@ import { normalizePath } from '../../utils/pathUtils';
 import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils';
 
 /**
- * Mobile-friendly breadcrumb navigation component
+ * Path breadcrumb navigation component
  * Displays current path as clickable chips for easy navigation
  * When shareRootPath is set, uses share mode: root = share folder, segments = path within share
  */
-const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
+const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
   const { t } = useTranslation();
   const scrollContainerRef = useRef(null);
   const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
@@ -203,8 +203,6 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
         alignItems: 'center',
         py: 1,
         px: 2,
-        borderBottom: '1px solid',
-        borderColor: 'divider',
         backgroundColor: 'background.paper',
       }}
     >
@@ -277,4 +275,4 @@ const MobileBreadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, 
   );
 };
 
-export default MobileBreadcrumb;
+export default Breadcrumb;

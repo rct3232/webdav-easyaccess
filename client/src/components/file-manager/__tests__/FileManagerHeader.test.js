@@ -15,7 +15,6 @@ const defaultProps = {
   searchQuery: '',
   setSearchQuery: jest.fn(),
   navigate: jest.fn(),
-  handleLogout: jest.fn(),
 };
 
 describe('FileManagerHeader', () => {
@@ -61,13 +60,6 @@ describe('FileManagerHeader', () => {
     renderWithProviders(<FileManagerHeader {...defaultProps} navigate={navigate} />);
     fireEvent.click(screen.getByTitle(/my page|mypage/i));
     expect(navigate).toHaveBeenCalledWith('/mypage');
-  });
-
-  it('calls handleLogout when logout icon clicked', () => {
-    const handleLogout = jest.fn();
-    renderWithProviders(<FileManagerHeader {...defaultProps} handleLogout={handleLogout} />);
-    fireEvent.click(screen.getByTitle(/log out|logout/i));
-    expect(handleLogout).toHaveBeenCalledTimes(1);
   });
 
   it('hides admin icon when !user?.is_admin', () => {

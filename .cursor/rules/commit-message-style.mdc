@@ -1,0 +1,60 @@
+---
+description: Enforce checking commit history and following existing commit message style before committing
+alwaysApply: true
+---
+
+# Commit Message Style
+
+## MANDATORY BEFORE ANY COMMIT
+
+Before creating or suggesting a commit, complete these steps in order:
+
+1. **Check existing commit history** — Run `git log --oneline -20` (or more if needed).
+2. **Match the existing style** — Use the same format and conventions as prior commits.
+3. **Write in English** — All commit messages must be in English.
+
+Do not suggest or create a commit until steps 1–2 are done.
+
+---
+
+## Commit Message Format
+
+This project uses **Conventional Commits**:
+
+```
+<type>: <short description>
+```
+
+### Types (from existing history)
+
+| Type       | Use for |
+|-----------|---------|
+| `feat:`   | New features |
+| `fix:`    | Bug fixes |
+| `docs:`   | Documentation only |
+| `refactor:` | Code restructuring without behavior change |
+| `test:`   | Adding or updating tests |
+
+### Rules
+
+- **Type** in lowercase, followed by colon and space.
+- **Description** in lowercase, imperative mood (e.g. "add", "fix", "update").
+- Keep the first line under ~72 characters; add body for details if needed.
+
+### Examples (from project history)
+
+```
+feat: add comprehensive client-side unit tests and update docs
+fix: refine effect dependencies in FileManager and useThumbnailLazyLoad
+docs: migrate existing tests to comprehensive specification documentation
+refactor: centralize permission constants and folder utilities
+test: add unit tests for Breadcrumb component
+```
+
+---
+
+## Workflow
+
+1. Run `git log --oneline -20` to inspect recent commits.
+2. Choose the appropriate type and wording that fits the project style.
+3. Propose only English commit messages that match this format.

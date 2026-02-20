@@ -39,6 +39,7 @@
 - Manage share links: list, copy URL, extend expiry, delete
 - Permission requests: inbox (approve/reject), outbox (cancel)
 - Language switch via Menu
+- Logout via AppBar IconButton (only page with logout in appbar)
 - Back to home
 
 ### 2.6 Integration Test Scenarios

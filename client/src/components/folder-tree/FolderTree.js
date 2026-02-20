@@ -1,18 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  List,
-  IconButton,
-  Button,
-} from '@mui/material';
-import {
-  Home as HomeIcon,
-  CreateNewFolder as CreateNewFolderIcon,
-  Upload as UploadIcon,
-  Login as LoginIcon,
-  AddLink as AddLinkIcon,
-} from '@mui/icons-material';
+import { Box, List } from '@mui/material';
+import { Home as HomeIcon } from '@mui/icons-material';
 import { getRecentFiles, onRecentFilesChange } from '../../utils/recentFiles';
 import { normalizePath } from '../../utils/pathUtils';
 import { getUserBaseFolder, filterOutUserOwnFolders } from '../../utils/userUtils';
@@ -28,13 +17,10 @@ const FolderTree = ({
   onFileClick,
   user,
   treeUpdateTrigger,
-  onCreateFolder,
-  onUploadFile,
   hasWritePermission,
   onExplorerDrop,
   isMobile = false,
   shareLinkSection,
-  shareLinkActions,
 }) => {
   const { t } = useTranslation();
   const [expandedPaths, setExpandedPaths] = useState(new Set());
@@ -210,8 +196,6 @@ const FolderTree = ({
     onPathClick(folderPath);
   };
 
-  const showShareLinkActions = shareLinkActions && (shareLinkActions.onLoginClick || shareLinkActions.onAddToSharedClick);
-
   return (
     <Box
       sx={{
@@ -224,79 +208,7 @@ const FolderTree = ({
         height: '100%',
       }}
     >
-      {(!isMobile || !showShareLinkActions) && (
-        <Box sx={{ p: 3, display: 'flex', gap: 0 }}>
-          {showShareLinkActions ? (
-            shareLinkActions.user ? (
-              <Button
-                onClick={shareLinkActions.onAddToSharedClick}
-                startIcon={<AddLinkIcon />}
-                sx={{
-                  flex: 1,
-                  borderRadius: '20px',
-                  backgroundColor: 'white',
-                  color: 'text.secondary',
-                  boxShadow: 2,
-                  textTransform: 'none',
-                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-                }}
-              >
-                {t('nav.addToShared')}
-              </Button>
-            ) : (
-              <Button
-                onClick={shareLinkActions.onLoginClick}
-                startIcon={<LoginIcon />}
-                sx={{
-                  flex: 1,
-                  borderRadius: '20px',
-                  backgroundColor: 'white',
-                  color: 'text.secondary',
-                  boxShadow: 2,
-                  textTransform: 'none',
-                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-                }}
-              >
-                {t('nav.login')}
-              </Button>
-            )
-          ) : (
-            <>
-              <IconButton
-                onClick={onCreateFolder}
-                disabled={!hasWritePermission}
-                title={t('fileManager.createFolder')}
-                sx={{
-                  flex: 1,
-                  borderRadius: '20px 0 0 20px',
-                  backgroundColor: 'white',
-                  color: 'text.secondary',
-                  boxShadow: 2,
-                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-                }}
-              >
-                <CreateNewFolderIcon />
-              </IconButton>
-              <IconButton
-                onClick={onUploadFile}
-                disabled={!hasWritePermission}
-                title={t('fileManager.uploadFile')}
-                sx={{
-                  flex: 1,
-                  borderRadius: '0 20px 20px 0',
-                  backgroundColor: 'white',
-                  color: 'text.secondary',
-                  boxShadow: 2,
-                  '&:hover': { backgroundColor: 'grey.100', boxShadow: 3 },
-                }}
-              >
-                <UploadIcon />
-              </IconButton>
-            </>
-          )}
-        </Box>
-      )}
-      <Box sx={{ flex: 1, overflow: 'auto', px: '5px', pt: isMobile && !showShareLinkActions ? 2 : 0 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', px: '5px', pt: isMobile ? 2 : 0 }}>
         <List dense sx={{ py: 1 }}>
           {shareLinkSection && (
             <ShareLinkSection
@@ -308,7 +220,7 @@ const FolderTree = ({
               isMobile={isMobile}
             />
           )}
-          {(!shareLinkSection || shareLinkActions?.user) && (
+          {(!shareLinkSection || user) && (
             <>
               <BaseFolderTreeItem
                 path={homePath}

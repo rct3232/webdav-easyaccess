@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Sticky header with logo, search, admin link (for admins), mypage, logout. Mobile: search icon toggles full-width search bar. |
+| Role | Sticky header with logo, search, admin link (for admins), mypage. Logout is shown only on MyPage AppBar. Mobile: search icon toggles full-width search bar. |
 | Used in | FileManager |
 | Related components | MUI AppBar, Toolbar, TextField, IconButton |
 
@@ -28,7 +28,6 @@
 | setSearchQuery | function | Y | - | Set search query |
 | user | object | N | - | User (user.is_admin for admin icon) |
 | navigate | function | Y | - | Navigation (admin, mypage) |
-| handleLogout | function | Y | - | Logout handler |
 
 ### 2.3 Callback Signatures
 
@@ -37,11 +36,10 @@
 | setIsSearchMode | Search mode toggle | (boolean) |
 | setSearchQuery | Input change | (string) |
 | navigate | Admin/MyPage click | (path) |
-| handleLogout | Logout click | - |
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI AppBar/Toolbar/Box/TextField/InputAdornment/IconButton, Search/Close/Admin/Person/Logout icons
+- **imports:** React, useTranslation, MUI AppBar/Toolbar/Box/TextField/InputAdornment/IconButton, Search/Close/Admin/Person icons
 - **Reference implementation:** `client/src/components/file-manager/FileManagerHeader.js`
 
 ### 2.5 i18n Keys
@@ -51,7 +49,6 @@
 - `nav.logoAlt` – logo alt text
 - `nav.adminDashboard` – admin link title
 - `nav.mypage` – mypage link title
-- `nav.logout` – logout title
 
 ### 2.6 Conditional Rendering
 
@@ -65,11 +62,10 @@
 
 Checklist for unit test writing:
 
-- [ ] Logo, search, admin (when admin), mypage, logout render
+- [ ] Logo, search, admin (when admin), mypage render
 - [ ] setIsSearchMode(true) when search focused (desktop) or search icon (mobile)
 - [ ] setSearchQuery on input change
 - [ ] navigate('/admin'), navigate('/mypage')
-- [ ] handleLogout on logout click
 - [ ] Mobile search mode: full-width search, close clears query and exits mode
 
 ### 2.8 Edge Cases

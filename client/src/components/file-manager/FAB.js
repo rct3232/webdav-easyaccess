@@ -33,20 +33,22 @@ const fabGradientSx = {
 };
 
 /**
- * Floating Action Button with speed dial for mobile
+ * Floating Action Button with speed dial
  * Provides quick access to common actions.
  * shareLinkMode: { user, onLoginClick, onAddToSharedClick } — 공유 링크 모드일 때 단일 Fab (로그인/공유됨 추가)
  */
-const MobileFAB = ({
+const FAB = ({
   onUpload,
   onCreateFolder,
   hasWritePermission = true,
   disabled = false,
   shareLinkMode,
+  isMobile = false,
 }) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
 
+  const offset = isMobile ? 16 : 48; // PC: 3x more inward (16 * 3)
   if (shareLinkMode) {
     const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
     const isLoggedIn = !!user;
@@ -57,8 +59,8 @@ const MobileFAB = ({
         onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}
         sx={{
           position: 'fixed',
-          bottom: 16,
-          right: 16,
+          bottom: offset,
+          right: offset,
           zIndex: 1050,
           paddingBottom: 'env(safe-area-inset-bottom)',
           ...fabGradientSx,
@@ -70,15 +72,15 @@ const MobileFAB = ({
   }
 
   const actions = [
-    { 
-      icon: <CreateNewFolderIcon />, 
-      name: t('fileManager.createFolder'), 
+    {
+      icon: <CreateNewFolderIcon />,
+      name: t('fileManager.createFolder'),
       onClick: onCreateFolder,
       show: hasWritePermission,
     },
-    { 
-      icon: <UploadIcon />, 
-      name: t('fileManager.uploadFile'), 
+    {
+      icon: <UploadIcon />,
+      name: t('fileManager.uploadFile'),
       onClick: onUpload,
       show: hasWritePermission,
     },
@@ -99,8 +101,8 @@ const MobileFAB = ({
       ariaLabel={t('fileManager.fileActions')}
       sx={{
         position: 'fixed',
-        bottom: 16,
-        right: 16,
+        bottom: offset,
+        right: offset,
         '& .MuiFab-primary': {
           ...fabGradientSx,
         },
@@ -134,4 +136,4 @@ const MobileFAB = ({
   );
 };
 
-export default MobileFAB;
+export default FAB;

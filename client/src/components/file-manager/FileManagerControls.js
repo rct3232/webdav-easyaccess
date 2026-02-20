@@ -47,7 +47,7 @@ const FileManagerControls = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <Box sx={{ px: 2, py: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+    <Box sx={{ px: 2, py: 0, display: 'flex', gap: 2, alignItems: 'center' }}>
       <IconButton
         onClick={(e) => setSortMenuAnchor(e.currentTarget)}
         title={t('fileManager.sort')}

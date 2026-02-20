@@ -10,13 +10,7 @@ import {
   AppBar,
   Toolbar,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  ChevronLeft as ChevronLeftIcon,
-  Home as HomeIcon,
-  Share as ShareIcon,
-  AccessTime as AccessTimeIcon,
-} from '@mui/icons-material';
+import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { VIEW_MODES } from '../constants/fileManager';
@@ -44,10 +38,11 @@ import {
   FileContextMenu,
   FileOperationProgress,
   FileActionSheet,
-  DesktopPathBar,
   FileManagerHeader,
   FileManagerControls,
   BulkActionToolbar,
+  Breadcrumb,
+  FAB,
 } from '../components/file-manager';
 import {
   UploadDialog,
@@ -62,8 +57,7 @@ import {
   RenameDialog,
   LoginDialog,
 } from '../components/dialogs';
-import { FolderTree } from '../components/folder-tree';
-import { MobileBreadcrumb, MobileFAB } from '../components/mobile';
+import { FolderTree, FolderTreeActionBar } from '../components/folder-tree';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, getServerErrorDisplay, ERROR_TYPES } from '../utils/errorUtils';
@@ -76,7 +70,7 @@ import { checkMyPermissionForShare, addShareLinkToMyPermissions } from '../servi
 
 const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const fileContentRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -964,11 +958,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleBulkDelete({ filePaths }, null);
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
   const handlePathClick = async (path) => {
     if (isShareLinkMode) {
       setCurrentPath(normalizePath(path));
@@ -1490,88 +1479,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   };
 
-  // Desktop path/back bar state (share-link and normal modes)
-  const desktopPathBarState = useMemo(() => {
-    if (isShareLinkMode) {
-      if (currentPath === shareRootPath) {
-        return { label: shareRootName, startIcon: <ShareIcon />, disabled: true, onClick: undefined };
-      }
-      const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
-      const parentName = parentPath === shareRootPath ? shareRootName : getBasename(parentPath) || parentPath;
-      return {
-        label: parentName,
-        startIcon: <ChevronLeftIcon />,
-        disabled: false,
-        onClick: () => setCurrentPath(parentPath),
-      };
-    }
-    const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-    if (!user?.is_admin && currentPath === homePath) {
-      return { label: t('nav.home'), startIcon: <HomeIcon />, disabled: true, onClick: undefined };
-    }
-    if (user?.is_admin && currentPath === '/') {
-      return { label: t('nav.home'), startIcon: <HomeIcon />, disabled: true, onClick: undefined };
-    }
-    if (!user?.is_admin && currentPath === '/__shared__') {
-      return { label: t('nav.shared'), startIcon: <ShareIcon />, disabled: true, onClick: undefined };
-    }
-    if (currentPath === '/__recent__') {
-      return { label: t('nav.recentShort'), startIcon: <AccessTimeIcon />, disabled: true, onClick: undefined };
-    }
-    const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
-    if (!parentPath || parentPath === currentPath) return null;
-    if (!user?.is_admin && parentPath !== '/' && !parentPath.startsWith(homePath)) {
-      return {
-        label: t('nav.shared'),
-        startIcon: <ChevronLeftIcon />,
-        disabled: false,
-        onClick: () => setCurrentPath('/__shared__'),
-      };
-    }
-    const parentName = parentPath === '/'
-      ? (user?.is_admin ? t('nav.root') : t('nav.home'))
-      : parentPath.substring(parentPath.lastIndexOf('/') + 1) || (user?.is_admin ? t('nav.root') : t('nav.home'));
-    return {
-      label: parentName,
-      startIcon: <ChevronLeftIcon />,
-      disabled: false,
-      onClick: async () => {
-        const previousPath = currentPathRef.current;
-        setCurrentPath(parentPath);
-        if (!user?.is_admin) {
-          try {
-            const permission = await checkPermission(parentPath);
-            if (!permission.hasRead) {
-              const userBaseFolder = getUserBaseFolder(user);
-              if (!parentPath.startsWith(userBaseFolder)) {
-                setCurrentPath('/__shared__');
-                return;
-              }
-              setCurrentPath(previousPath);
-              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
-              return;
-            }
-          } catch (error) {
-            setCurrentPath(previousPath);
-            const errorType = determineErrorType(error);
-            if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
-              const userBaseFolder = getUserBaseFolder(user);
-              if (!parentPath.startsWith(userBaseFolder)) {
-                setCurrentPath('/__shared__');
-                return;
-              }
-              showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
-            } else {
-              console.error('Failed to check permission:', error);
-              showErrorFromError(error, showError, t, 'fileManager.permissionCheckError');
-            }
-            return;
-          }
-        }
-      },
-    };
-  }, [isShareLinkMode, currentPath, shareRootPath, shareRootName, setCurrentPath, user, showError, t]);
-
   return (
     <Box
       sx={{
@@ -1591,7 +1498,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           setSearchQuery={setSearchQuery}
           user={user}
           navigate={navigate}
-          handleLogout={handleLogout}
         />
       ) : (
         <AppBar
@@ -1623,32 +1529,50 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {!isMobile && (
-          <FolderTree
-            currentPath={currentPath}
-            onPathClick={isShareLinkMode ? handleLeaveSharePathClick : handlePathClick}
-            onFileClick={handleFileClick}
-            user={user}
-            treeUpdateTrigger={treeUpdateTrigger}
-            onCreateFolder={openCreateFolderDialog}
-            onUploadFile={openUploadDialog}
-            hasWritePermission={hasWritePermission}
-            onExplorerDrop={handleExplorerDrop}
-            isMobile={false}
-            shareLinkSection={isShareLinkMode ? {
-              shareRootPath,
-              shareRootName,
-              shareToken,
-              onShareLinkPathClick: handlePathClick,
-            } : undefined}
-            shareLinkActions={isShareLinkMode ? {
-              user,
-              onLoginClick: () => setLoginModalOpen(true),
-              onAddToSharedClick: () => {
-                setAddToSharedModalOpen(true);
-                setAddToSharedStatus('confirm');
-              },
-            } : undefined}
-          />
+          <Box
+            sx={{
+              width: 200,
+              borderRight: 1,
+              borderColor: 'divider',
+              display: 'flex',
+              flexDirection: 'column',
+              bgcolor: 'background.paper',
+              height: '100%',
+            }}
+          >
+            <FolderTreeActionBar
+              showShareLinkActions={isShareLinkMode}
+              shareLinkActions={isShareLinkMode ? {
+                user,
+                onLoginClick: () => setLoginModalOpen(true),
+                onAddToSharedClick: () => {
+                  setAddToSharedModalOpen(true);
+                  setAddToSharedStatus('confirm');
+                },
+              } : undefined}
+              onCreateFolder={openCreateFolderDialog}
+              onUploadFile={openUploadDialog}
+              hasWritePermission={hasWritePermission}
+            />
+            <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+              <FolderTree
+                currentPath={currentPath}
+                onPathClick={isShareLinkMode ? handleLeaveSharePathClick : handlePathClick}
+                onFileClick={handleFileClick}
+                user={user}
+                treeUpdateTrigger={treeUpdateTrigger}
+                hasWritePermission={hasWritePermission}
+                onExplorerDrop={handleExplorerDrop}
+                isMobile={false}
+                shareLinkSection={isShareLinkMode ? {
+                  shareRootPath,
+                  shareRootName,
+                  shareToken,
+                  onShareLinkPathClick: handlePathClick,
+                } : undefined}
+              />
+            </Box>
+          </Box>
         )}
 
         <Box 
@@ -1697,16 +1621,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             </Box>
           )}
 
+          <Breadcrumb
+            currentPath={currentPath}
+            onPathClick={handlePathClick}
+            {...(isShareLinkMode ? { shareRootPath, shareRootName, showFolderTreeToggle: true } : { user })}
+            {...(isMobile ? {
+              onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
+              isFolderTreeOpen: drawerOpen,
+            } : {})}
+          />
+
           {isMobile && (
-            <>
-              <MobileBreadcrumb
-                currentPath={currentPath}
-                onPathClick={handlePathClick}
-                {...(isShareLinkMode ? { shareRootPath, shareRootName, showFolderTreeToggle: true } : { user })}
-                onToggleFolderTree={() => setDrawerOpen(!drawerOpen)}
-                isFolderTreeOpen={drawerOpen}
-              />
-              <Collapse in={drawerOpen} timeout="auto">
+            <Collapse in={drawerOpen} timeout="auto">
                 <Box
                   sx={{
                     maxHeight: '50vh',
@@ -1732,14 +1658,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                     }}
                     user={user}
                     treeUpdateTrigger={treeUpdateTrigger}
-                    onCreateFolder={() => {
-                      openCreateFolderDialog();
-                      setDrawerOpen(false);
-                    }}
-                    onUploadFile={() => {
-                      openUploadDialog();
-                      setDrawerOpen(false);
-                    }}
                     hasWritePermission={hasWritePermission}
                     onExplorerDrop={handleExplorerDrop}
                     isMobile
@@ -1752,18 +1670,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                         setDrawerOpen(false);
                       },
                     } : undefined}
-                    shareLinkActions={isShareLinkMode ? {
-                      user,
-                      onLoginClick: () => setLoginModalOpen(true),
-                      onAddToSharedClick: () => {
-                        setAddToSharedModalOpen(true);
-                        setAddToSharedStatus('confirm');
-                      },
-                    } : undefined}
                   />
                 </Box>
               </Collapse>
-            </>
           )}
 
           <FileManagerControls
@@ -1785,16 +1694,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             saveViewMode={saveViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
           />
-
-          {/* 뒤로가기 버튼 (데스크톱 전용) - 공유 링크 모드도 일반과 동일하게 루트일 때 비활성 버튼, 하위일 때 상위로 가기 */}
-          {!isMobile && desktopPathBarState && (
-            <DesktopPathBar
-              label={desktopPathBarState.label}
-              startIcon={desktopPathBarState.startIcon}
-              disabled={desktopPathBarState.disabled}
-              onClick={desktopPathBarState.onClick}
-            />
-          )}
 
           <Box
             ref={scrollContainerRef}
@@ -2144,21 +2043,23 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         onCancelAll={handleCancelAllWrapper}
       />
 
-      {/* Mobile FAB */}
-      {isMobile && !selectionMode && (
+      {/* FAB - all viewports */}
+      {!selectionMode && (
         isShareLinkMode ? (
-          <MobileFAB
+          <FAB
             shareLinkMode={{
               user,
               onLoginClick: () => setLoginModalOpen(true),
               onAddToSharedClick: openAddToSharedModal,
             }}
+            isMobile={isMobile}
           />
         ) : (
-          <MobileFAB
+          <FAB
             onUpload={openUploadDialog}
             onCreateFolder={openCreateFolderDialog}
             hasWritePermission={hasWritePermission}
+            isMobile={isMobile}
           />
         )
       )}

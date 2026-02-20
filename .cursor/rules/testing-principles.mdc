@@ -1,7 +1,7 @@
 ---
 description: Testing principles — verify What (outcomes), not How (implementation)
 globs: ["**/*.test.js", "**/*.spec.js", "**/__tests__/**"]
-alwaysApply: false
+alwaysApply: true
 ---
 
 If this rule applied, notify me 'Testing principles applied' when answer start.

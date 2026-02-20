@@ -1,10 +1,10 @@
-# MobileBreadcrumb Spec
+# Breadcrumb Spec
 
 ## 1. Overview
 
 | Item | Description |
 |------|-------------|
-| Role | Mobile breadcrumb: path segments as chips. shareRootPath: share mode (path within share). Optional folder tree toggle. Loads shared permission paths for path display. |
+| Role | Path breadcrumb: path segments as chips. Shown on all viewports (mobile and desktop). shareRootPath: share mode (path within share). Optional folder tree toggle. Loads shared permission paths for path display. |
 | Used in | FileManager |
 | Related components | getUserPermissions, normalizePath, userUtils |
 
@@ -14,8 +14,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/mobile/MobileBreadcrumb.js`
-- **Test file:** `client/src/components/mobile/__tests__/MobileBreadcrumb.test.js`
+- **Source:** `client/src/components/file-manager/Breadcrumb.js`
+- **Test file:** `client/src/components/file-manager/__tests__/Breadcrumb.test.js`
 
 ### 2.2 Props
 
@@ -40,7 +40,7 @@
 ### 2.4 Dependencies
 
 - **imports:** getUserPermissions, normalizePath, isUserOwnFolder, filterOutUserOwnFolders
-- **Reference implementation:** `client/src/components/mobile/MobileBreadcrumb.js`
+- **Reference implementation:** `client/src/components/file-manager/Breadcrumb.js`
 
 ### 2.5 i18n Keys
 

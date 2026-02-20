@@ -1,10 +1,10 @@
-# MobileFAB Spec
+# FAB Spec
 
 ## 1. Overview
 
 | Item | Description |
 |------|-------------|
-| Role | Floating Action Button: SpeedDial for create folder and upload. shareLinkMode: single Fab for login or add-to-shared. Hidden when no write permission. |
+| Role | Floating Action Button: SpeedDial for create folder and upload. shareLinkMode: single Fab for login or add-to-shared. Shown on all viewports (mobile and desktop). Hidden when no write permission. |
 | Used in | FileManager |
 | Related components | MUI Fab, SpeedDial, SpeedDialAction |
 
@@ -14,8 +14,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/mobile/MobileFAB.js`
-- **Test file:** `client/src/components/mobile/__tests__/MobileFAB.test.js`
+- **Source:** `client/src/components/file-manager/FAB.js`
+- **Test file:** `client/src/components/file-manager/__tests__/FAB.test.js`
 
 ### 2.2 Props
 
@@ -39,7 +39,7 @@
 ### 2.4 Dependencies
 
 - **imports:** MUI Fab, SpeedDial, SpeedDialAction, SpeedDialIcon
-- **Reference implementation:** `client/src/components/mobile/MobileFAB.js`
+- **Reference implementation:** `client/src/components/file-manager/FAB.js`
 
 ### 2.5 i18n Keys
 

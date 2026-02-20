@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Presentational bar: single button with label and optional icon. Used for share-link root, home, shared, recent, parent navigation. |
+| Role | *(Deprecated in FileManager)* Presentational bar: single button with label and optional icon. Previously used for share-link root, home, shared, recent, parent navigation. Replaced by Breadcrumb on all viewports. FileManager no longer renders this. |
 | Used in | FileManager |
 | Related components | MUI Box, Button |
 

@@ -41,8 +41,6 @@ const defaultProps = {
   onFileClick: jest.fn(),
   user: { id: '1', username: 'testuser', is_admin: false },
   treeUpdateTrigger: null,
-  onCreateFolder: jest.fn(),
-  onUploadFile: jest.fn(),
   hasWritePermission: true,
   onExplorerDrop: jest.fn(),
   isMobile: false,
@@ -81,29 +79,4 @@ describe('FolderTree', () => {
     expect(defaultProps.onPathClick).toHaveBeenCalledWith('/testuser');
   });
 
-  it('calls onCreateFolder when create folder button clicked', async () => {
-    renderWithProviders(<FolderTree {...defaultProps} />);
-    await waitFor(() => {
-      expect(screen.getByTitle(/create folder/i)).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByTitle(/create folder/i));
-    expect(defaultProps.onCreateFolder).toHaveBeenCalled();
-  });
-
-  it('calls onUploadFile when upload button clicked', async () => {
-    renderWithProviders(<FolderTree {...defaultProps} />);
-    await waitFor(() => {
-      expect(screen.getByTitle(/upload file/i)).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByTitle(/upload file/i));
-    expect(defaultProps.onUploadFile).toHaveBeenCalled();
-  });
-
-  it('disables create and upload when hasWritePermission false', async () => {
-    renderWithProviders(<FolderTree {...defaultProps} hasWritePermission={false} />);
-    await waitFor(() => {
-      expect(screen.getByTitle(/create folder/i)).toBeDisabled();
-      expect(screen.getByTitle(/upload file/i)).toBeDisabled();
-    });
-  });
 });

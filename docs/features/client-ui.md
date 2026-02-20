@@ -51,7 +51,7 @@ The app is a single-page React application using React Router. Public routes inc
 
 - **Breakpoints:** MUI theme breakpoints (xs/sm/md/lg/xl). `useResponsive` (or similar) exposes `isMobile` for conditional layout.
 - **FAB:** Shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. Hidden when no write permission, selection mode, or read-only share.
-- **Breadcrumb:** Path breadcrumb (chips) for current folder, shown on all viewports above the selection/sort/view-mode row. Replaces DesktopPathBar (back button) for consistent navigation.
+- **Breadcrumb:** Path breadcrumb (chips) for current folder, shown on all viewports above the selection/sort/view-mode row.
 - **Action sheet:** On mobile, long-press or selection opens bottom sheet instead of context menu.
 - **Pull-to-refresh:** Optional pull-to-refresh on mobile to reload current folder.
 

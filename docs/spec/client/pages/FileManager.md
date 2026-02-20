@@ -31,10 +31,9 @@
 
 ### 2.3 Main Child Components
 
-- FileManagerHeader, Breadcrumb, FileManagerControls, FAB (DesktopPathBar removed – Breadcrumb provides path navigation)
+- FileManagerHeader, Breadcrumb, FileManagerControls, FAB
 - FileList, FileGrid, FileDetail (view-mode-dependent)
 - FileContextMenu, FileActionSheet
-- FolderTreeActionBar (above FolderTree in desktop sidebar)
 - FolderTree
 - BulkActionToolbar
 - FileOperationProgress

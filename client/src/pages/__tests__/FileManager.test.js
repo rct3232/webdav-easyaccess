@@ -459,8 +459,10 @@ describe('FileManager', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    const createFolderBtn = screen.getByTitle(/create folder/i);
-    await user.click(createFolderBtn);
+    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
+    await user.click(fab);
+    const createFolderBtn = screen.getByRole('menuitem', { name: /create folder/i });
+    fireEvent.click(createFolderBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
     const nameInput = within(dialog).getByLabelText(/folder name/i);
@@ -504,11 +506,9 @@ describe('FileManager', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /upload file/i });
-      expect(btn).not.toBeDisabled();
-    }, { timeout: 5000 });
-    const uploadBtn = screen.getByRole('button', { name: /upload file/i });
+    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
+    await user.click(fab);
+    const uploadBtn = screen.getByRole('menuitem', { name: /upload file/i });
     fireEvent.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
@@ -568,11 +568,9 @@ describe('FileManager', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /upload file/i });
-      expect(btn).not.toBeDisabled();
-    }, { timeout: 5000 });
-    const uploadBtn = screen.getByRole('button', { name: /upload file/i });
+    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
+    await user.click(fab);
+    const uploadBtn = screen.getByRole('menuitem', { name: /upload file/i });
     fireEvent.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });

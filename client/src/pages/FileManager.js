@@ -57,7 +57,7 @@ import {
   RenameDialog,
   LoginDialog,
 } from '../components/dialogs';
-import { FolderTree, FolderTreeActionBar } from '../components/folder-tree';
+import { FolderTree } from '../components/folder-tree';
 import { checkPermission, checkConflicts } from '../services/fileService';
 import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, getServerErrorDisplay, ERROR_TYPES } from '../utils/errorUtils';
@@ -1540,20 +1540,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
               height: '100%',
             }}
           >
-            <FolderTreeActionBar
-              showShareLinkActions={isShareLinkMode}
-              shareLinkActions={isShareLinkMode ? {
-                user,
-                onLoginClick: () => setLoginModalOpen(true),
-                onAddToSharedClick: () => {
-                  setAddToSharedModalOpen(true);
-                  setAddToSharedStatus('confirm');
-                },
-              } : undefined}
-              onCreateFolder={openCreateFolderDialog}
-              onUploadFile={openUploadDialog}
-              hasWritePermission={hasWritePermission}
-            />
             <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
               <FolderTree
                 currentPath={currentPath}

@@ -62,11 +62,11 @@
 
 ### 2.6 Layout (CSS Grid)
 
-Uses CSS Grid (same pattern as FileList), not MUI Grid:
+Uses CSS Grid (breakpoint-based `repeat(N, 1fr)`), not MUI Grid:
 
 - **Container:** `Box` with `display: 'grid'`, `gridTemplateColumns` (responsive), `gap`.
-- **Mobile (xs/sm):** `repeat(2, 1fr)` — 2 columns, equal width (≈50% each).
-- **PC (md and up):** `repeat(auto-fill, 200px)` — fixed 200px per item; as many columns as fit.
+- **Breakpoints:** `xs: repeat(2, 1fr)`, `sm: repeat(3, 1fr)`, `md: repeat(4, 1fr)`, `lg: repeat(6, 1fr)`, `xl: repeat(6, 1fr)` — fixed column count per breakpoint; item width = container width / N (filename-independent).
+- **Grid item:** `minWidth: 0` so content does not expand beyond column; ellipsis on long filenames.
 - **Gap:** `1.5` on mobile, `2` on PC (aligned with `isMobile`).
 - **loadMore area:** `gridColumn: '1 / -1'` to span full width.
 

@@ -80,6 +80,7 @@ const FileGridItem = React.memo(({
 
   // 동적 카드 스타일
   const cardStyles = {
+    minWidth: 0,
     cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
     '&:hover': {
       boxShadow: isDisabled ? 2 : 4,
@@ -117,10 +118,12 @@ const FileGridItem = React.memo(({
   };
 
   // 카드 컨텐츠 스타일 (파일명 중앙 정렬)
+  // '&:last-child': { pb: 1 } overrides MUI CardContent default paddingBottom so it matches FileGridSkeleton
   const cardContentStyles = {
     p: 1,
     pt: 0.5,
     pb: 1,
+    '&:last-child': { pb: 1 },
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

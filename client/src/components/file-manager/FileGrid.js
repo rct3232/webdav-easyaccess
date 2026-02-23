@@ -107,7 +107,10 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
         display: 'grid',
         gridTemplateColumns: {
           xs: 'repeat(2, 1fr)',
-          md: 'repeat(auto-fill, 200px)',
+          sm: 'repeat(3, 1fr)',
+          md: 'repeat(4, 1fr)',
+          lg: 'repeat(6, 1fr)',
+          xl: 'repeat(auto-fill, minmax(150px, 1fr))',
         },
         gap: { xs: 1.5, md: 2 },
         position: 'relative',
@@ -141,7 +144,7 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
                 onContextMenu(e, file);
               }
             }}
-            sx={{ height: '100%' }}
+            sx={{ height: '100%', minWidth: 0 }}
           >
             <FileGridItem
               file={file}

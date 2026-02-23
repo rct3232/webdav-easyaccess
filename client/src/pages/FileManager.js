@@ -587,8 +587,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // ref에 콜백 저장
   handleRefreshCompleteRef.current = handleRefreshComplete;
 
-
-
   // 진행률 계산 및 임계값 도달 여부
   const progress = Math.min(pullDistance / threshold, 1);
   const hasReachedThreshold = pullDistance >= threshold;

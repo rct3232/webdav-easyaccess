@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Sticky header with logo, search, admin link (for admins), mypage. Logout is shown only on MyPage AppBar. Mobile: search icon toggles full-width search bar. |
+| Role | Sticky header with logo and mypage. Search bar is in FloatingSearchBar (bottom, left of FAB). Logout is shown only on MyPage AppBar. |
 | Used in | FileManager |
-| Related components | MUI AppBar, Toolbar, TextField, IconButton |
+| Related components | MUI AppBar, Toolbar, Box, IconButton; FloatingSearchBar |
 
 ---
 
@@ -22,53 +22,30 @@
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | isMobile | boolean | Y | - | Mobile layout |
-| isSearchMode | boolean | Y | - | Search bar visible (mobile) |
-| setIsSearchMode | function | Y | - | Toggle search mode |
-| searchQuery | string | Y | - | Search input value |
-| setSearchQuery | function | Y | - | Set search query |
-| user | object | N | - | User (user.is_admin for admin icon) |
-| navigate | function | Y | - | Navigation (admin, mypage) |
+| user | object | N | - | User |
+| navigate | function | Y | - | Navigation (mypage) |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| setIsSearchMode | Search mode toggle | (boolean) |
-| setSearchQuery | Input change | (string) |
-| navigate | Admin/MyPage click | (path) |
+| navigate | MyPage click | (path) |
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI AppBar/Toolbar/Box/TextField/InputAdornment/IconButton, Search/Close/Admin/Person icons
+- **imports:** React, useTranslation, MUI AppBar/Toolbar/Box/IconButton, Person icon
 - **Reference implementation:** `client/src/components/file-manager/FileManagerHeader.js`
 
 ### 2.5 i18n Keys
 
-- `nav.searchPlaceholder` – search placeholder
-- `nav.searchClose` – close search (mobile)
 - `nav.logoAlt` – logo alt text
-- `nav.adminDashboard` – admin link title
 - `nav.mypage` – mypage link title
 
 ### 2.6 Conditional Rendering
 
-- isMobile && isSearchMode: full-width search bar, close button
-- !isMobile: search bar always visible (300px width), optional endAdornment clear
-- isMobile && !isSearchMode: search icon to open search
-- user?.is_admin: admin icon
 - Logo size: mobile 27px, desktop 33.75px
 
 ### 2.7 Verification Scenarios
 
-Checklist for unit test writing:
-
-- [ ] Logo, search, admin (when admin), mypage render
-- [ ] setIsSearchMode(true) when search focused (desktop) or search icon (mobile)
-- [ ] setSearchQuery on input change
-- [ ] navigate('/admin'), navigate('/mypage')
-- [ ] Mobile search mode: full-width search, close clears query and exits mode
-
-### 2.8 Edge Cases
-
-- searchQuery non-empty: desktop shows clear button
-- Admin icon hidden when !user?.is_admin
+- [ ] Logo, mypage render
+- [ ] navigate('/mypage')

@@ -757,10 +757,15 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
             isOwnerPath(user, normalizedPath) || Permission.checkPermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
         }
       } else {
-        hasReadPermission =
-          isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.READ);
-        hasWritePermission =
-          isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
+        if (user.is_admin) {
+          hasReadPermission = true;
+          hasWritePermission = true;
+        } else {
+          hasReadPermission =
+            isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.READ);
+          hasWritePermission =
+            isOwnerPath(user, normalizedPath) || Permission.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
+        }
       }
 
       let thumbnailUrl = null;

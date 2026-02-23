@@ -26,7 +26,7 @@ const FileManagerHeader = ({
       elevation={0}
     >
       <Toolbar>
-        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             component="img"
             src="/logo_white.png"
@@ -38,6 +38,16 @@ const FileManagerHeader = ({
             }}
           />
         </Box>
+        <Box
+          id="file-progress-slot"
+          sx={{
+            flexGrow: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            pr: 1,
+          }}
+        />
         <IconButton color="inherit" onClick={() => navigate('/mypage')} title={t('nav.mypage')}>
           <PersonIcon />
         </IconButton>

@@ -19,6 +19,9 @@ const mockItems = [
 
 const defaultProps = {
   items: mockItems,
+  drawerOpen: true,
+  onDrawerOpen: jest.fn(),
+  onDrawerClose: jest.fn(),
   onClose: jest.fn(),
   onRetry: jest.fn(),
 };
@@ -29,12 +32,16 @@ describe('FileOperationProgress', () => {
   });
 
   it('returns null when items empty', () => {
-    const { container } = renderWithProviders(<FileOperationProgress items={[]} />);
+    const { container } = renderWithProviders(
+      <FileOperationProgress items={[]} drawerOpen={false} onDrawerOpen={jest.fn()} onDrawerClose={jest.fn()} />
+    );
     expect(container.firstChild).toBeNull();
   });
 
   it('returns null when items null', () => {
-    const { container } = renderWithProviders(<FileOperationProgress items={null} />);
+    const { container } = renderWithProviders(
+      <FileOperationProgress items={null} drawerOpen={false} onDrawerOpen={jest.fn()} onDrawerClose={jest.fn()} />
+    );
     expect(container.firstChild).toBeNull();
   });
 
@@ -44,7 +51,11 @@ describe('FileOperationProgress', () => {
   });
 
   it('renders item names', () => {
-    renderWithProviders(<FileOperationProgress {...defaultProps} />);
+    const itemsNoError = [
+      { id: '1', type: 'download', status: 'completed', name: 'file1.txt' },
+      { id: '2', type: 'upload', status: 'completed', name: 'file2.txt' },
+    ];
+    renderWithProviders(<FileOperationProgress {...defaultProps} items={itemsNoError} />);
     expect(screen.getByText('file1.txt')).toBeInTheDocument();
     expect(screen.getAllByText('file2.txt').length).toBeGreaterThan(0);
   });
@@ -66,5 +77,34 @@ describe('FileOperationProgress', () => {
     renderWithProviders(<FileOperationProgress {...defaultProps} onRetry={onRetry} />);
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledWith('2');
+  });
+
+  it('calls showError when item has error status and showError provided', () => {
+    const showError = jest.fn();
+    const showWarning = jest.fn();
+    renderWithProviders(
+      <FileOperationProgress {...defaultProps} showError={showError} showWarning={showWarning} />
+    );
+    expect(showError).toHaveBeenCalled();
+    expect(showError.mock.calls[0][0]).toMatch(/error|err/i);
+  });
+
+  it('calls showWarning when item has warning status and showWarning provided', () => {
+    const showError = jest.fn();
+    const showWarning = jest.fn();
+    const warningItems = [
+      { id: '1', type: 'upload', status: 'warning', name: 'test.zip', error: 'Skipped: 2' },
+    ];
+    renderWithProviders(
+      <FileOperationProgress
+        items={warningItems}
+        drawerOpen={true}
+        onDrawerOpen={jest.fn()}
+        onDrawerClose={jest.fn()}
+        showError={showError}
+        showWarning={showWarning}
+      />
+    );
+    expect(showWarning).toHaveBeenCalledWith('Skipped: 2');
   });
 });

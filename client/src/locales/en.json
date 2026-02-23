@@ -9,6 +9,8 @@
     "add": "Add",
     "adding": "Adding...",
     "close": "Close",
+    "collapse": "Collapse",
+    "expand": "Expand",
     "move": "Move",
     "unknown": "Unknown",
     "unknownError": "Unknown error",

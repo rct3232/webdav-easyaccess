@@ -111,7 +111,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   }, [isMobile]);
 
-  const { message, showError, clearMessage } = useMessage();
+  const { message, showError, showWarning, clearMessage } = useMessage();
   
   const {
     currentPath,
@@ -2072,6 +2072,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         onRetry={handleRetryUpload}
         onCancelFile={handleCancelUploadFileWrapper}
         onCancelAll={handleCancelAllWrapper}
+        showError={showError}
+        showWarning={showWarning}
       />
 
       {/* FloatingSearchBar - shown when header is shown; expands to FAB space when FAB hidden (selection mode) */}

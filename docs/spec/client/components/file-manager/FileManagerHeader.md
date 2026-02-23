@@ -41,11 +41,17 @@
 - `nav.logoAlt` – logo alt text
 - `nav.mypage` – mypage link title
 
-### 2.6 Conditional Rendering
+### 2.6 Layout and Slot
+
+- Toolbar layout: Logo | `#file-progress-slot` (flexGrow: 1, flex-end) | Person icon
+- The slot (`id="file-progress-slot"`) is used by FileOperationProgress to portal the shrink chip when progress items exist. Do not remove this slot.
+
+### 2.7 Conditional Rendering
 
 - Logo size: mobile 27px, desktop 33.75px
 
-### 2.7 Verification Scenarios
+### 2.8 Verification Scenarios
 
 - [ ] Logo, mypage render
 - [ ] navigate('/mypage')
+- [ ] #file-progress-slot present in Toolbar

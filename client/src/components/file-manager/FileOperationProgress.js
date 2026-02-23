@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
+  Drawer,
   Paper,
   Typography,
   LinearProgress,
   IconButton,
-  Collapse,
   CircularProgress,
   Button,
   List,
@@ -22,54 +23,98 @@ import {
   DriveFileRenameOutline as RenameIcon,
   CreateNewFolder as CreateFolderIcon,
   CheckCircle as CheckCircleIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
   ErrorOutline as ErrorIcon,
   WarningAmber as WarningIcon,
   Refresh as RefreshIcon,
   Close as CloseIcon,
   SkipNext as SkipNextIcon,
   Cancel as CancelIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
+  KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
 import { useResponsive } from '../../hooks/useResponsive';
 import { checkmarkAnimation, progressCompleteAnimation } from './FileOperationProgress/styles';
 import ProgressSummary from './FileOperationProgress/ProgressSummary';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 
-const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancelAll }) => {
+const FileOperationProgress = ({
+  items,
+  drawerOpen,
+  onDrawerOpen,
+  onDrawerClose,
+  onClose,
+  onRetry,
+  onCancelFile,
+  onCancelAll,
+  showError,
+  showWarning,
+}) => {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
+  const [expandedItemIndex, setExpandedItemIndex] = useState(null);
   const { isMobile } = useResponsive();
 
   const prevItemIdsRef = React.useRef(new Set());
+  const toastedItemIdsRef = React.useRef(new Set());
 
-  // 새 작업 시작 시 최소화 상태로 설정, 실패 시 자동 확장
+  const getStatusTextForItem = (item) => {
+    if (item.status === 'warning') {
+      return item.errorCode ? getServerErrorDisplay(item, t) : (item.error || t('fileManager.statusExcluded'));
+    }
+    if (item.status === 'error') {
+      const msg = item.errorCode ? getServerErrorDisplay(item, t) : (item.error || t('common.unknownError'));
+      return t('fileManager.errorWithMessage', { message: msg });
+    }
+    return '';
+  };
+
+  // Toast on error/warning (once per item)
+  useEffect(() => {
+    if (!showError || !showWarning) return;
+    items?.forEach((item) => {
+      if (item.status !== 'error' && item.status !== 'warning') return;
+      if (toastedItemIdsRef.current.has(item.id)) return;
+      const text = getStatusTextForItem(item);
+      if (!text) return;
+      if (item.status === 'error') {
+        showError(text);
+      } else {
+        showWarning(text);
+      }
+      toastedItemIdsRef.current.add(item.id);
+    });
+  }, [items, showError, showWarning, t]);
+
+  // 새 작업 시작 시 접기, 에러/경고 시 해당 항목 펼치고 drawer 오픈
   useEffect(() => {
     const currentItemIds = new Set(items?.map(item => item.id) || []);
     const prevItemIds = prevItemIdsRef.current;
 
-    // 새 작업이 시작된 경우 (새로운 id가 추가됨)
     const newItemIds = Array.from(currentItemIds).filter(id => !prevItemIds.has(id));
     if (newItemIds.length > 0) {
-      // 새로 추가된 항목 중 preparing 또는 processing 상태인 것이 있으면 최소화 상태로
       const newItems = items?.filter(item => newItemIds.includes(item.id)) || [];
-      const hasNewPreparing = newItems.some(item => 
+      const hasNewPreparing = newItems.some(item =>
         item.status === 'preparing' || item.status === 'processing' || item.status === 'downloading' || item.status === 'uploading'
       );
       if (hasNewPreparing) {
-        setExpanded(false);
+        setExpandedItemIndex(null);
       }
     }
 
-    // 에러/경고 시 자동 확장
-    const hasErrorOrWarning = items?.some(item => item.status === 'error' || item.status === 'warning');
-    if (hasErrorOrWarning) {
-      setExpanded(true);
+    const errorOrWarningIndex = items?.findIndex(item => item.status === 'error' || item.status === 'warning');
+    if (errorOrWarningIndex >= 0) {
+      setExpandedItemIndex(errorOrWarningIndex);
+      // Do not auto-open drawer on error/warning; user opens via chip click
     }
 
-    // 이전 id 집합 업데이트
     prevItemIdsRef.current = currentItemIds;
-  }, [items]);
+  }, [items, onDrawerOpen]);
+
+  // Reset expandedItemIndex when it points to a non-existent item
+  useEffect(() => {
+    if (expandedItemIndex != null && (!items || !items[expandedItemIndex])) {
+      setExpandedItemIndex(null);
+    }
+  }, [items, expandedItemIndex]);
 
   const getStatusIcon = (type) => {
     switch (type) {
@@ -263,71 +308,246 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
     );
   };
 
-  const renderMinimizedUI = () => (
+  const shrinkChip = (
     <ProgressSummary
-      onExpand={() => setExpanded(true)}
+      variant="appbar"
+      onOpenDrawer={onDrawerOpen}
       renderStatusIcon={renderMinimizedStatusIcon}
       primaryLabel={getMinimizedPrimaryLabel()}
       secondaryLabel={getMinimizedSecondaryLabel()}
     />
   );
 
-  // 확장 UI 렌더링
-  const renderExpandedUI = () => {
+  const renderExpandedItemContent = () => {
+    const item = items[expandedItemIndex];
+    if (!item) return null;
+    const canShowDeterminate =
+      (item.total ?? 0) > 0 &&
+      item.status !== 'preparing' &&
+      ['move', 'copy', 'delete', 'upload', 'download'].includes(item.type);
     return (
-      <Box
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          ...(isMobile 
-            ? { left: 16, right: 16, width: 'auto' }
-            : { right: 16, maxWidth: 400, width: '100%' }
-          ),
-          zIndex: 1300,
-        }}
-      >
-        <Paper
-          elevation={6}
+      <>
+        <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Box sx={{ flexShrink: 0, pb: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              {item.status === 'completed' ? (
+                <CheckCircleIcon sx={{ color: 'success.main', animation: `${checkmarkAnimation} 0.5s ease-in-out` }} />
+              ) : item.status === 'warning' ? (
+                <WarningIcon sx={{ color: 'warning.main' }} />
+              ) : item.status === 'error' ? (
+                <ErrorIcon sx={{ color: 'error.main' }} />
+              ) : (
+                getStatusIcon(item.type)
+              )}
+              <Typography variant="body2" sx={{ ml: 1, flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name || item.zipName}>
+                {item.name || item.zipName || t('fileManager.workingFallback')}
+              </Typography>
+              {onCancelAll && (
+                (item.type === 'upload' && item.cancellable !== false && (item.status === 'preparing' || item.status === 'processing' || item.status === 'uploading'))
+                || ((item.type === 'delete' || item.type === 'move' || item.type === 'copy') && item.jobId && (item.status === 'preparing' || item.status === 'processing'))
+              ) && (
+                <Typography component="button" variant="caption" onClick={(e) => { e.stopPropagation(); onCancelAll(item.id); }} sx={{ ml: 0.5, color: 'text.secondary', fontSize: '0.75rem', cursor: 'pointer', border: 'none', background: 'none', padding: 0, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 0.5, '&:hover': { color: 'text.primary' } }}>
+                  <CloseIcon fontSize="small" sx={{ fontSize: '0.875rem' }} />{t('fileManager.cancelOperation')}
+                </Typography>
+              )}
+            </Box>
+            {item.status === 'completed' ? (
+              <Box sx={{ height: 6, borderRadius: 3, backgroundColor: 'success.main', opacity: 0.2, mb: 0.5, position: 'relative', overflow: 'hidden', '&::after': { content: '""', position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', backgroundColor: 'success.main', animation: `${progressCompleteAnimation} 0.5s ease-in-out` } }} />
+            ) : (
+              <LinearProgress variant={canShowDeterminate ? 'determinate' : 'indeterminate'} value={canShowDeterminate ? getProgress(item) : undefined} sx={{ mb: 0.5, height: 6, borderRadius: 3, ...(item.status === 'error' && { '& .MuiLinearProgress-bar': { backgroundColor: 'error.main' } }), ...(item.status === 'warning' && { '& .MuiLinearProgress-bar': { backgroundColor: 'warning.main' } }) }} />
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">{getStatusText(item)}</Typography>
+              {(item.total > 0 || item.type === 'move' || item.type === 'copy' || item.type === 'delete') && item.status !== 'completed' && (
+                <Typography variant="caption" color="text.secondary">
+                  {item.type === 'upload' ? `${item.progress}/${item.total}` : (item.type === 'move' || item.type === 'copy' || item.type === 'delete' ? `${item.progress}/${item.total} (${Math.round((item.progress / item.total) * 100)}%)` : item.percentage !== undefined ? `${Math.round(item.percentage)}%` : `${formatBytes(item.progress)} / ${formatBytes(item.total)}`)}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', mt: 1, scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+            {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <List dense sx={{ py: 0 }}>
+                  {item.fileItems.map((fileItem, fileIndex) => {
+                    const fileStatus = fileItem.status;
+                    const canCancel = item.cancellable !== false && fileStatus === 'pending' && onCancelFile;
+                    return (
+                      <ListItem
+                        key={fileIndex}
+                        sx={{ px: 0, py: 0.25 }}
+                        secondaryAction={
+                          <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {canCancel ? (
+                              <IconButton edge="end" size="small" onClick={() => onCancelFile(item.id, fileItem.fileName)} sx={{ p: 0, minWidth: 24, minHeight: 24 }}>
+                                <CloseIcon fontSize="small" sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            ) : fileStatus === 'uploading' ? (
+                              <CircularProgress size={16} variant="indeterminate" />
+                            ) : fileStatus === 'completed' ? (
+                              <CheckCircleIcon fontSize="small" color="success" sx={{ fontSize: 16 }} />
+                            ) : fileStatus === 'skipped' ? (
+                              <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                            ) : fileStatus === 'error' ? (
+                              <ErrorIcon fontSize="small" color="error" sx={{ fontSize: 16 }} />
+                            ) : fileStatus === 'cancelled' ? (
+                              <CancelIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                            ) : null}
+                          </Box>
+                        }
+                      >
+                        <ListItemText primary={fileItem.fileName} primaryTypographyProps={{ variant: 'caption' }} />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </Box>
+            )}
+            {(Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0) && (
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                  <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                  <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main' }}>
+                    {t('fileManager.bulkSkippedCount', { count: item.skippedCountByConflict ?? item.skippedPathsByConflict.length })}
+                  </Typography>
+                </Box>
+                <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+                  {item.skippedPathsByConflict.map((p, idx) => (
+                    <ListItem key={idx} sx={{ px: 0, py: 0.25 }} secondaryAction={
+                      <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+                      </Box>
+                    }>
+                      <ListItemText primary={p} primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+            {(() => {
+              const hasSkippedByPermission = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0;
+              const hasLegacySkipped = (typeof item.skippedCount === 'number' ? item.skippedCount : 0) > 0 || (Array.isArray(item.skippedPaths) && item.skippedPaths.length > 0);
+              const hasSkippedByConflict = Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0;
+              return (hasSkippedByPermission || (hasLegacySkipped && !hasSkippedByConflict));
+            })() && (
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                {(() => {
+                  const skippedPaths = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0
+                    ? item.skippedPathsByPermission
+                    : (Array.isArray(item.skippedPaths) ? item.skippedPaths : []);
+                  const skippedCount = typeof item.skippedCountByPermission === 'number'
+                    ? item.skippedCountByPermission
+                    : (typeof item.skippedCount === 'number' ? item.skippedCount : skippedPaths.length);
+                  const truncated = Boolean(item.skippedTruncated) || (typeof skippedCount === 'number' && skippedPaths.length < skippedCount);
+                  return (
+                    <>
+                      <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main', mb: 1, display: 'block' }}>
+                        {t('fileManager.bulkExcludedByPermission', { count: skippedCount })}{truncated ? ` ${t('fileManager.bulkExcludedTruncated')}` : ''}
+                      </Typography>
+                      <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+                        {skippedPaths.map((p, idx) => (
+                          <ListItem key={idx} sx={{ px: 0, py: 0.25 }}>
+                            <ListItemText primary={p} primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }} />
+                          </ListItem>
+                        ))}
+                        {skippedPaths.length === 0 && (
+                          <ListItem sx={{ px: 0, py: 0.25 }}>
+                            <ListItemText primary={t('common.noItems')} primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }} />
+                          </ListItem>
+                        )}
+                      </List>
+                    </>
+                  );
+                })()}
+              </Box>
+            )}
+            {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
+              <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
+                  {t('fileManager.failedItemsLabel')}
+                </Typography>
+                <List dense sx={{ py: 0 }}>
+                  {item.failedItems.map((failedItem, failedIndex) => (
+                    <ListItem key={failedIndex} sx={{ px: 0, py: 0.25 }}>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', width: '100%', gap: 0.5 }}>
+                        <Typography variant="caption" title={failedItem.fileName} sx={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {failedItem.fileName}
+                        </Typography>
+                        {failedItem.error != null && failedItem.error !== '' && (
+                          <Typography variant="caption" component="span" title={failedItem.error} sx={{ flex: '0 1 auto', maxWidth: '100%', textAlign: 'right', fontSize: 11, color: 'error.main', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                            {failedItem.error}
+                          </Typography>
+                        )}
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+          </Box>
+          {(item.status === 'error' || item.status === 'warning') && (
+            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexShrink: 0 }}>
+              {item.status === 'error' && item.failedItems?.length > 0 && onRetry && (
+                <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={() => onRetry(item.id)} sx={{ flex: 1 }}>
+                  {t('fileManager.retry')}
+                </Button>
+              )}
+              <Button variant="contained" size="small" onClick={() => onClose?.(item.id)} sx={{ flex: 1 }}>
+                {t('common.confirm')}
+              </Button>
+            </Box>
+          )}
+        </Box>
+        <Box
+          component="button"
+          onClick={() => setExpandedItemIndex(null)}
           sx={{
-            p: 2,
-            backgroundColor: 'background.paper',
-            maxHeight: '80vh',
+            width: '100%',
+            py: 0.5,
+            px: 1,
             display: 'flex',
-            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 0.5,
+            cursor: 'pointer',
+            border: 'none',
+            background: 'none',
+            flexShrink: 0,
+            borderTop: 1,
+            borderColor: 'divider',
+            '&:hover': { backgroundColor: 'action.hover' },
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexShrink: 0 }}>
-            <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-              {t('fileManager.progressTitle')}
-            </Typography>
-            <IconButton
-              size="small"
-              onClick={() => setExpanded(false)}
-              sx={{ mr: 1 }}
-            >
-              {expanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
-            </IconButton>
-          </Box>
+          <KeyboardArrowUpIcon fontSize="small" />
+          <Typography variant="caption">{t('common.collapse')}</Typography>
+        </Box>
+      </>
+    );
+  };
 
-          <Collapse 
-            in={expanded}
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Box
-              sx={{
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                maxHeight: 'calc(80vh - 120px)',
-                scrollbarWidth: 'none', // Firefox
-                '&::-webkit-scrollbar': {
-                  display: 'none', // Chrome, Safari, Edge
-                },
-              }}
-            >
-              {items.map((item, index) => {
+  const renderDrawerContent = () => (
+    <Paper
+      elevation={0}
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 0,
+        backgroundColor: 'background.paper',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', p: 2, pb: 1, flexShrink: 0, borderBottom: 1, borderColor: 'divider' }}>
+        <IconButton size="small" onClick={onDrawerClose} aria-label={t('common.close')} sx={{ mr: 1 }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+        <Typography variant="subtitle2" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+          {t('fileManager.progressTitle')}
+        </Typography>
+      </Box>
+
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2, pt: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {expandedItemIndex === null || !items[expandedItemIndex]
+          ? items.map((item, index) => {
                 const canShowDeterminate =
                   item.total > 0 &&
                   item.status !== 'preparing' &&
@@ -476,243 +696,61 @@ const FileOperationProgress = ({ items, onClose, onRetry, onCancelFile, onCancel
                     )}
                   </Box>
                 </Box>
-                
-                {/* 아이템 본문 (스크롤 가능) */}
+
                 <Box
+                  component="button"
+                  onClick={() => setExpandedItemIndex(index)}
                   sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflowY: 'auto',
-                    maxHeight: 200,
-                    scrollbarWidth: 'none',
-                    '&::-webkit-scrollbar': { display: 'none' },
+                    width: '100%',
+                    py: 0.5,
+                    px: 1,
+                    mt: 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 0.5,
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: 'none',
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    '&:hover': { backgroundColor: 'action.hover' },
                   }}
                 >
-                  {/* 업로드 타입일 때 개별 파일 목록 표시 */}
-                  {item.type === 'upload' && item.fileItems && item.fileItems.length > 0 && (
-                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <List dense sx={{ py: 0 }}>
-                        {item.fileItems.map((fileItem, fileIndex) => {
-                          const fileStatus = fileItem.status;
-                          const canCancel = item.cancellable !== false && fileStatus === 'pending' && onCancelFile;
-                          
-                          return (
-                            <ListItem 
-                              key={fileIndex} 
-                              sx={{ px: 0, py: 0.25 }}
-                              secondaryAction={
-                                <Box
-                                  sx={{
-                                    width: 24,
-                                    height: 24,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {canCancel ? (
-                                    <IconButton
-                                      edge="end"
-                                      size="small"
-                                      onClick={() => onCancelFile(item.id, fileItem.fileName)}
-                                      sx={{ p: 0, minWidth: 24, minHeight: 24 }}
-                                    >
-                                      <CloseIcon fontSize="small" sx={{ fontSize: 16 }} />
-                                    </IconButton>
-                                  ) : fileStatus === 'uploading' ? (
-                                    <CircularProgress size={16} variant="indeterminate" />
-                                  ) : fileStatus === 'completed' ? (
-                                    <CheckCircleIcon
-                                      fontSize="small"
-                                      color="success"
-                                      sx={{ fontSize: 16 }}
-                                    />
-                                  ) : fileStatus === 'skipped' ? (
-                                    <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
-                                  ) : fileStatus === 'error' ? (
-                                    <ErrorIcon
-                                      fontSize="small"
-                                      color="error"
-                                      sx={{ fontSize: 16 }}
-                                    />
-                                  ) : fileStatus === 'cancelled' ? (
-                                    <CancelIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-                                  ) : null}
-                                </Box>
-                              }
-                            >
-                              <ListItemText
-                                primary={fileItem.fileName}
-                                primaryTypographyProps={{ variant: 'caption' }}
-                              />
-                            </ListItem>
-                          );
-                        })}
-                      </List>
-                    </Box>
-                  )}
-
-                  {/* 건너뛴 항목 (중복) */}
-                  {(Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0) && (
-                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                        <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
-                        <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main' }}>
-                          {t('fileManager.bulkSkippedCount', { count: item.skippedCountByConflict ?? item.skippedPathsByConflict.length })}
-                        </Typography>
-                      </Box>
-                      <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
-                        {item.skippedPathsByConflict.map((p, idx) => (
-                          <ListItem key={idx} sx={{ px: 0, py: 0.25 }} secondaryAction={
-                            <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <SkipNextIcon sx={{ fontSize: 16, color: 'warning.main' }} />
-                            </Box>
-                          }>
-                            <ListItemText
-                              primary={p}
-                              primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-                  )}
-
-                  {/* 권한으로 제외된 항목 (하위호환: skippedPaths만 있으면 권한 제외로 간주) */}
-                  {(() => {
-                    const hasSkippedByPermission = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0;
-                    const hasLegacySkipped = (typeof item.skippedCount === 'number' ? item.skippedCount : 0) > 0 || (Array.isArray(item.skippedPaths) && item.skippedPaths.length > 0);
-                    const hasSkippedByConflict = Array.isArray(item.skippedPathsByConflict) && item.skippedPathsByConflict.length > 0;
-                    return (hasSkippedByPermission || (hasLegacySkipped && !hasSkippedByConflict));
-                  })() && (
-                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                      {(() => {
-                        const skippedPaths = Array.isArray(item.skippedPathsByPermission) && item.skippedPathsByPermission.length > 0
-                          ? item.skippedPathsByPermission
-                          : (Array.isArray(item.skippedPaths) ? item.skippedPaths : []);
-                        const skippedCount = typeof item.skippedCountByPermission === 'number'
-                          ? item.skippedCountByPermission
-                          : (typeof item.skippedCount === 'number' ? item.skippedCount : skippedPaths.length);
-                        const truncated = Boolean(item.skippedTruncated) || (typeof skippedCount === 'number' && skippedPaths.length < skippedCount);
-                        return (
-                          <>
-                            <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'warning.main', mb: 1, display: 'block' }}>
-                              {t('fileManager.bulkExcludedByPermission', { count: skippedCount })}{truncated ? ` ${t('fileManager.bulkExcludedTruncated')}` : ''}
-                            </Typography>
-                            <List dense sx={{ py: 0, maxHeight: 140, overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
-                              {skippedPaths.map((p, idx) => (
-                                <ListItem key={idx} sx={{ px: 0, py: 0.25 }}>
-                                  <ListItemText
-                                    primary={p}
-                                    primaryTypographyProps={{ variant: 'caption', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                                  />
-                                </ListItem>
-                              ))}
-                              {skippedPaths.length === 0 && (
-                                <ListItem sx={{ px: 0, py: 0.25 }}>
-                                  <ListItemText primary={t('common.noItems')} primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }} />
-                                </ListItem>
-                              )}
-                            </List>
-                          </>
-                        );
-                      })()}
-                    </Box>
-                  )}
-
-                  {/* 실패 내역 리스트 */}
-                  {item.status === 'error' && item.failedItems && item.failedItems.length > 0 && (
-                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="caption" color="error" sx={{ fontWeight: 'medium', mb: 1, display: 'block' }}>
-                        {t('fileManager.failedItemsLabel')}
-                      </Typography>
-                      <List dense sx={{ py: 0 }}>
-                        {item.failedItems.map((failedItem, failedIndex) => (
-                          <ListItem key={failedIndex} sx={{ px: 0, py: 0.25 }}>
-                            <Box
-                              sx={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                alignItems: 'flex-start',
-                                width: '100%',
-                                gap: 0.5,
-                              }}
-                            >
-                              <Typography
-                                variant="caption"
-                                title={failedItem.fileName}
-                                sx={{
-                                  flex: '1 1 0',
-                                  minWidth: 0,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {failedItem.fileName}
-                              </Typography>
-                              {failedItem.error != null && failedItem.error !== '' && (
-                                <Typography
-                                  variant="caption"
-                                  component="span"
-                                  title={failedItem.error}
-                                  sx={{
-                                    flex: '0 1 auto',
-                                    maxWidth: '100%',
-                                    textAlign: 'right',
-                                    fontSize: 11,
-                                    color: 'error.main',
-                                    whiteSpace: 'normal',
-                                    wordBreak: 'break-word',
-                                  }}
-                                >
-                                  {failedItem.error}
-                                </Typography>
-                              )}
-                            </Box>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-                  )}
+                  <KeyboardArrowDownIcon fontSize="small" />
+                  <Typography variant="caption">{t('common.expand')}</Typography>
                 </Box>
-
-                {/* 확인/재시도 - 본문 밖, 항상 노출 */}
-                {(item.status === 'error' || item.status === 'warning') && (
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1, flexShrink: 0 }}>
-                    {item.status === 'error' && item.failedItems?.length > 0 && onRetry && (
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<RefreshIcon />}
-                        onClick={() => onRetry(item.id)}
-                        sx={{ flex: 1 }}
-                      >
-                        {t('fileManager.retry')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() => onClose?.(item.id)}
-                      sx={{ flex: 1 }}
-                    >
-                      {t('common.confirm')}
-                    </Button>
-                  </Box>
-                )}
               </Box>
-              );
-              })}
-            </Box>
-          </Collapse>
-        </Paper>
+            );
+          })
+          : renderExpandedItemContent()}
       </Box>
-    );
-  };
+    </Paper>
+  );
 
-  return expanded ? renderExpandedUI() : renderMinimizedUI();
+  const slot = typeof document !== 'undefined' ? document.getElementById('file-progress-slot') : null;
+
+  return (
+    <>
+      {!drawerOpen && slot && createPortal(shrinkChip, slot)}
+      {drawerOpen && (
+        <Drawer
+          anchor="right"
+          open={drawerOpen}
+          onClose={onDrawerClose}
+          variant="temporary"
+          sx={{
+            '& .MuiDrawer-paper': {
+              width: isMobile ? '100%' : 400,
+              maxWidth: '100%',
+            },
+          }}
+        >
+          {renderDrawerContent()}
+        </Drawer>
+      )}
+    </>
+  );
 };
 
 export default FileOperationProgress;

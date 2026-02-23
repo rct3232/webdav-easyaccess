@@ -166,7 +166,8 @@ const FileGridItem = React.memo(({
               e.stopPropagation();
               onMoreClick?.(file, e);
             }}
-            onTouchStart={(e) => {
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => {
               e.stopPropagation();
               if (e.cancelable) e.preventDefault();
               onMoreClick?.(file, e);

@@ -27,6 +27,8 @@ Single modules in isolation (utils, hooks, services, components). API calls are 
 | `components/folder-tree/__tests__/*.test.js` | FolderTree, BaseFolderTreeItem, RecentFilesSection, ShareLinkSection, SharedFoldersSection |
 | `components/layout/__tests__/*.test.js` | MainLayout, PrivateRoute |
 | `components/feedback/__tests__/*.test.js` | EmailNotificationMessage |
+| `components/mypage/__tests__/*.test.js` | MyPageContentPanel, MyPageContentArea |
+| `components/mypage/content/__tests__/*.test.js` | AccountContent, PreferencesContent, SharingContent, SystemSettingsContent, UserManagementContent |
 | `contexts/__tests__/*.test.js` | AuthContext |
 
 ### Integration Tests
@@ -38,8 +40,7 @@ Tests that exercise full user flows (pages) with React Testing Library. API is m
 | `pages/__tests__/FileManager.test.js` | Search, layout, file operations, bulk actions |
 | `pages/__tests__/Login.test.js` | Login flow, error states |
 | `pages/__tests__/Register.test.js` | Registration flow, validation |
-| `pages/__tests__/AdminDashboard.test.js` | User management, settings, admin flows |
-| `pages/__tests__/MyPage.test.js` | User settings, account management |
+| `pages/__tests__/MyPage.test.js` | User settings, account management; admin category (user management, settings) migrated from AdminDashboard |
 | `pages/__tests__/ShareLinkLoader.test.js` | Share link resolution, redirect |
 | `pages/__tests__/ShareLinkSingleFileView.test.js` | Share link file view |
 

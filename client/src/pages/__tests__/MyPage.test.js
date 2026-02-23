@@ -1,8 +1,9 @@
 /**
  * MyPage page tests.
- * Verifies account info, permission requests (inbox approve/reject, outbox cancel) per spec.
+ * Verifies account info, permission requests (inbox approve/reject, outbox cancel),
+ * Admin category (Users, Settings) per spec. Chrome-style layout: category sidebar + list/detail.
  * Uses server.use to control inbox/outbox responses (per RCA).
- * @see docs/spec/client/pages/MyPage.md 2.6
+ * @see docs/spec/client/pages/MyPage.md
  */
 jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
 
@@ -13,6 +14,15 @@ import { http, HttpResponse } from 'msw';
 import { renderWithProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import MyPage from '../MyPage';
+
+/** Select Sharing category, then a sub-item (inbox/outbox/links). Non-admin user sees Sharing. Uses label pattern; count is shown via Badge. */
+const selectSharingAndItem = async (user, labelPattern) => {
+  await user.click(screen.getByRole('button', { name: /share management/i }));
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: labelPattern })).toBeInTheDocument();
+  }, { timeout: 3000 });
+  await user.click(screen.getByRole('button', { name: labelPattern }));
+};
 
 const inboxRequest = (overrides = {}) => ({
   id: 'pr-inbox-1',
@@ -56,8 +66,10 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    expect(document.body.textContent.length).toBeGreaterThan(100);
-    expect(document.body.textContent).toMatch(/inbox|outbox|link|permission|account|username|mypage/i);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /account info/i })).toBeInTheDocument();
+      expect(screen.getByText(/testuser/)).toBeInTheDocument();
+    }, { timeout: 3000 });
   });
 
   it('displays account info for current user', async () => {
@@ -67,12 +79,12 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    expect(screen.getByText(/account info/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /account info/i })).toBeInTheDocument();
     expect(screen.getByText(/testuser/)).toBeInTheDocument();
     expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
   });
 
-  it('share links tab: shows list when API returns links', async () => {
+  it('share links: shows list when API returns links', async () => {
     const link = {
       token: 'link-t1',
       filePath: '/testuser/docs/doc.pdf',
@@ -94,15 +106,14 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    const linksTab = screen.getByRole('tab', { name: /links \(\d+\)/i });
-    await user.click(linksTab);
+    await selectSharingAndItem(user, /links/i);
 
     await waitFor(() => {
       expect(screen.getByText(/doc\.pdf/)).toBeInTheDocument();
     });
   });
 
-  it('share links tab: shows empty state when no links', async () => {
+  it('share links: shows empty state when no links', async () => {
     server.use(
       http.get('/api/share-links', () => HttpResponse.json([])),
       http.get('/api/permission-requests/inbox', () => HttpResponse.json([])),
@@ -116,8 +127,7 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    const linksTab = screen.getByRole('tab', { name: /links \(\d+\)/i });
-    await user.click(linksTab);
+    await selectSharingAndItem(user, /links/i);
 
     await waitFor(() => {
       expect(screen.getByText(/no share links created/i)).toBeInTheDocument();
@@ -131,11 +141,14 @@ describe('MyPage', () => {
       http.get('/api/permission-requests/outbox', () => HttpResponse.json([]))
     );
 
+    const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
+
+    await selectSharingAndItem(user, /received requests/i);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review/i })).toBeInTheDocument();
@@ -166,6 +179,8 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
+    await selectSharingAndItem(user, /received requests/i);
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /approved/i })).toBeInTheDocument();
     }, { timeout: 3000 });
@@ -192,6 +207,8 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
+    await selectSharingAndItem(user, /received requests/i);
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /rejected/i })).toBeInTheDocument();
     }, { timeout: 3000 });
@@ -217,15 +234,101 @@ describe('MyPage', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    await user.click(screen.getByRole('tab', { name: /my requests/i }));
+    await selectSharingAndItem(user, /my requests/i);
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /cancelled/i })).toBeInTheDocument();
-    });
+    }, { timeout: 3000 });
 
     await user.click(screen.getByRole('button', { name: /cancelled/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/cancelled|success/i);
     });
+  });
+});
+
+describe('MyPage Admin categories (User Management, System Settings)', () => {
+  const pendingUser = { id: 'p1', username: 'pending1', email: 'p1@ex.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false };
+  const approvedUser = { id: '1', username: 'user1', email: 'user1@ex.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false };
+
+  const adminHandlers = () => [
+    http.get('/api/auth/me', () =>
+      HttpResponse.json({ id: '1', username: 'admin', email: 'admin@ex.com', is_admin: true, status: 'approved' })),
+    http.get('/api/admin/users/pending', () => HttpResponse.json([pendingUser])),
+    http.get('/api/admin/users', () => HttpResponse.json([approvedUser])),
+    http.get('/api/admin/settings', () => HttpResponse.json({ registration_enabled: 'false' })),
+  ];
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('token', 'admin-token');
+    sessionStorage.setItem('refreshToken', 'refresh');
+  });
+
+  it('admin: shows User Management when admin category (legacy) selected', async () => {
+    server.use(...adminHandlers());
+
+    renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin' } }] });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
+    expect(screen.getByText('user1')).toBeInTheDocument();
+  });
+
+  it('admin: shows user list when User Management category selected', async () => {
+    server.use(...adminHandlers());
+
+    renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin-users' } }] });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    expect(screen.getByText('user1')).toBeInTheDocument();
+  });
+
+  it('admin: approves pending user', async () => {
+    server.use(
+      ...adminHandlers(),
+      http.post('/api/admin/users/:id/approve', () =>
+        HttpResponse.json({ messageCode: 'serverMessages.admin.userApproved' }))
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin-users' } }] });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByRole('button', { name: /approve/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/success|approved/i);
+    });
+  });
+
+  it('admin: shows System Settings when Settings category selected', async () => {
+    server.use(...adminHandlers());
+
+    const user = userEvent.setup();
+    renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin-users' } }] });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /system settings/i })).toBeInTheDocument();
+    }, { timeout: 3000 });
   });
 });

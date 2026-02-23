@@ -11,7 +11,6 @@ import {
 import {
   Search as SearchIcon,
   Close as CloseIcon,
-  AdminPanelSettings as AdminIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
 
@@ -161,11 +160,6 @@ const FileManagerHeader = ({
             {isMobile && (
               <IconButton color="inherit" onClick={() => setIsSearchMode(true)} title={t('nav.search')}>
                 <SearchIcon />
-              </IconButton>
-            )}
-            {user?.is_admin && (
-              <IconButton color="inherit" onClick={() => navigate('/admin')} title={t('nav.adminDashboard')}>
-                <AdminIcon />
               </IconButton>
             )}
             <IconButton color="inherit" onClick={() => navigate('/mypage')} title={t('nav.mypage')}>

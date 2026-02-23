@@ -452,6 +452,10 @@ export const handlers = [
     return HttpResponse.json({ results: [], messageCode: 'serverMessages.admin.cleanupComplete' });
   }),
 
+  http.post(`${API_BASE}/admin/permissions/ensure-home-owner-admin`, () => {
+    return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
+  }),
+
   // --- Permission requests ---
   http.get(`${API_BASE}/permission-requests/inbox`, () => {
     return HttpResponse.json(mockPermissionRequests.inbox);

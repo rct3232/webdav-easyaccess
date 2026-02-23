@@ -117,6 +117,20 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-02-23 — MyPage.test.js — share links / inbox / outbox (6 tests)
+
+- **Case:** C (spec wrong; source correct)
+- **Root cause:** Spec §2.5–2.6 incorrectly required `inboxRequestsCount`, `outboxRequestsCount`, `linksCount`. Source correctly uses label + Badge. Tests used getByText(/Links \(1\)/i) which failed because Badge renders count in separate element.
+- **Action taken:** (1) Reverted SharingContent to label + Badge. (2) Updated SharingContent.md spec to document label + Badge. (3) Fixed MyPage.test.js: selectSharingAndItem now uses getByRole('button', { name: labelPattern }) instead of getByText with count format.
+- **Lesson:** When source is correct and spec wrong (Case C), fix spec and tests; do not change source.
+
+## 2026-02-23 — MyPage.test.js — admin: shows System Settings when Settings category selected
+
+- **Case:** B
+- **Root cause:** getByText(/system settings/i) matched two elements: sidebar ListItemText and content area Typography h6. Same text in multiple places.
+- **Action taken:** Changed to getByRole('heading', { name: /system settings/i }) to target the content title (h6) specifically.
+- **Lesson:** When same text appears in sidebar and content, use role-based query (e.g. heading) to disambiguate.
+
 ## 2026-02-20 — ShareLinkSection.test.js — MSW migration (jest.mock → MSW)
 
 - **Case:** B (refinement)

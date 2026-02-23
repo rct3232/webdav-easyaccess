@@ -5,53 +5,117 @@
 | Item | Description |
 |------|-------------|
 | Route path | `/mypage` |
-| Role | User profile and share management: account info, edit email/password, share links, permission requests (inbox/outbox). |
+| Role | User profile and settings: Chrome-style layout with category sidebar (Account, Sharing, User Management, System Settings, Preferences). Account info, edit email/password, share links, permission requests (inbox/outbox), user management, system settings, language. |
 
 ---
 
-## 2. Implementation Spec
+## 2. Layout (Chrome Settings Style)
 
-### 2.1 File Path
+### 2.1 PC (Desktop) Layout
+
+- **Left:** Category sidebar (200px fixed width, same as FileManager folder tree; always visible; no divider between sidebar and content). Categories: Account, Sharing, Preferences; User Management, System Settings (admin only).
+- **Right:** Content area (flex: 1, scrollable) for selected category.
+- **AppBar:** Logo (left, same as FileManager `/logo_white.png`), Close (X, right) → navigates to `/`. No menu button.
+
+### 2.2 Mobile Layout
+
+- **Drawer closed:** AppBar with Menu (left, opens drawer), Close (right). Content area fills screen.
+- **Drawer open:** Category list slides in from left with dimmed overlay. Selecting a category closes the drawer.
+- **AppBar:** Menu (left), Close (right).
+
+### 2.3 Summary
+
+| Area         | Desktop                           | Mobile                    |
+|--------------|-----------------------------------|---------------------------|
+| AppBar Left  | Logo (same as FileManager)        | Menu icon (opens drawer)  |
+| AppBar Right | Close (X) → navigate to `/`       | Same                      |
+| Left Panel   | Category sidebar (always visible) | Inside drawer only        |
+| Center       | Content                           | Content                   |
+
+---
+
+## 3. Implementation Spec
+
+### 3.1 File Path
 
 - **Source:** `client/src/pages/MyPage.js`
 - **Test file:** `client/src/pages/__tests__/MyPage.test.js`
 
-### 2.2 Hooks Used
+### 3.2 Hooks Used
 
 - useAuth (user, logout)
 - useNavigate
 - useTranslation
+- useLocation (for `location.state?.category` when navigating from admin icon)
+- useResponsive (isMobile)
 
-### 2.3 Main Child Components
+### 3.3 Main Child Components
 
-- AppBar, Paper, Tabs, Stack, Chip, Button
-- ShareDialog (mode share, mode review)
-- AccountEditDialog
+- **Inline in MyPage:** AppBar (do not extract)
+- **Layout:** MyPageSidebar, MyPageContentArea, MyPageContentPanel
+- **Content:** AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent
+- **Dialogs:** ShareDialog (mode share, mode review), AccountEditDialog
 
-### 2.4 Route Protection
+### 3.4 State
+
+| State               | Purpose                                                   |
+|---------------------|-----------------------------------------------------------|
+| selectedCategory    | Current category. Reset selectedContentItem when changed. |
+| selectedContentItem | For multi-item categories: null = list view, non-null = detail view. |
+| categoryDrawerOpen  | Mobile sidebar drawer visibility.                         |
+
+Initial `selectedCategory` may come from `location.state?.category` (e.g. `navigate('/mypage', { state: { category: 'admin-users' } })`). Legacy `admin` maps to `admin-users`.
+
+### 3.5 Categories and Content Flow
+
+| Category      | Type     | Content |
+|---------------|----------|---------|
+| Account       | Direct   | Profile info, Edit (email, password), Logout at bottom |
+| Sharing       | List→Detail | Sub-items: Inbox requests, Outbox requests, Share links. Hidden for admin. |
+| User Management | Direct | UserManagementContent. Admin only. |
+| System Settings | Direct | SystemSettingsContent. Admin only. |
+| Preferences   | Direct   | Language selector (moved from AppBar) |
+
+**List → Detail pattern (Sharing only):**
+
+1. List view: show sub-items as clickable list.
+2. On click → replace list with Back button + detail content.
+3. Back → return to list. When category changes, reset to list view.
+
+**Single-item (Account, Preferences):** Direct content, no list.
+
+### 3.6 Route Protection
 
 - Wrapped by PrivateRoute; auth required.
 
-### 2.5 Main User Flows
+### 3.7 Main User Flows
 
 - View account info (username, email, status, permission)
 - Edit account (email, password) via AccountEditDialog
-- Manage share links: list, copy URL, extend expiry, delete
-- Permission requests: inbox (approve/reject), outbox (cancel)
-- Language switch via Menu
-- Logout via AppBar IconButton (only page with logout in appbar)
-- Back to home
+- Logout at bottom of Account content (removed from AppBar)
+- Sharing: Inbox (approve/reject), Outbox (cancel), Share links (list, copy, extend, delete). Hidden for admin.
+- User Management (approve, reject, delete, create), System Settings (registration, show hidden files, cleanup). Admin only.
+- Preferences: Language switch (moved from AppBar)
+- Close (X) → navigate to `/`
 
-### 2.6 Integration Test Scenarios
+### 3.8 Integration Test Scenarios
 
+- [ ] PC: Logo visible on AppBar left (same as FileManager)
+- [ ] Category selection updates content; when category changes, reset to list view if multi-item
+- [ ] Menu button visible only on mobile; toggles category drawer
+- [ ] Close navigates to `/`
 - [ ] Account info displays for current user
 - [ ] Account edit: email/password update, password change logs out
-- [ ] Share links tab: list, copy, delete, extend
-- [ ] Inbox requests: approve, reject
-- [ ] Outbox requests: cancel
+- [ ] Logout at bottom of Account content
+- [ ] Language rendered in Preferences content
+- [ ] Multi-item (Sharing): List view shows sub-items; click item → Detail view (Back button + content); Back → List view
+- [ ] User Management and System Settings visible only when `user.is_admin`; Sharing hidden when admin
+- [ ] Share links, inbox/outbox flows work as before
 
-### 2.7 Conditional Rendering
+### 3.9 Conditional Rendering
 
-- Share management section hidden for admin users
-- Links tab visible only for non-admin
-- Loading states for share links and permission requests
+- Admin category visible only when `user.is_admin`
+- Sharing category hidden when `user.is_admin`
+- Share links tab (inside Sharing) visible only for non-admin
+- Mobile: Menu button; categories inside SwipeableDrawer
+- Desktop: No drawer; fixed left sidebar

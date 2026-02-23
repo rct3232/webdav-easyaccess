@@ -8,7 +8,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
-import AdminDashboard from './pages/AdminDashboard';
 import ShareLinkLoader from './pages/ShareLinkLoader';
 
 const theme = createTheme({
@@ -90,11 +89,7 @@ function App() {
               />
               <Route
                 path="/admin"
-                element={
-                  <PrivateRoute>
-                    <AdminDashboard />
-                  </PrivateRoute>
-                }
+                element={<Navigate to="/mypage" state={{ category: 'admin' }} replace />}
               />
               <Route path="/share/:token" element={<ShareLinkLoader />} />
             </Route>

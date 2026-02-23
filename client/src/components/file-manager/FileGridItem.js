@@ -5,9 +5,11 @@ import {
   CardContent,
   Typography,
   Box,
-  Checkbox,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../../utils/fileIconUtils';
 
@@ -21,14 +23,6 @@ const mobileStyles = {
   msUserSelect: 'none',
   WebkitTouchCallout: 'none',
   touchAction: 'manipulation',
-};
-
-const checkboxStyles = {
-  position: 'absolute',
-  top: 8,
-  left: 8,
-  zIndex: 1,
-  backgroundColor: 'rgba(255, 255, 255, 0.9)',
 };
 
 const thumbnailContainerBaseStyles = {
@@ -58,6 +52,13 @@ const processingOverlayStyles = {
   pointerEvents: 'none',
 };
 
+const moreButtonOverlayStyles = {
+  position: 'absolute',
+  top: 4,
+  right: 4,
+  zIndex: 1,
+};
+
 /**
  * 파일 그리드 아이템 컴포넌트
  * React.memo로 감싸서 불필요한 리렌더링 방지
@@ -71,8 +72,9 @@ const FileGridItem = React.memo(({
   isDropTarget,
   isDragging,
   selectionMode,
+  showMoreButton,
+  onMoreClick,
   isMobile,
-  onCheck,
 }) => {
   const thumbnail = getThumbnail(file);
 
@@ -81,14 +83,19 @@ const FileGridItem = React.memo(({
     cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
     '&:hover': {
       boxShadow: isDisabled ? 2 : 4,
+      ...(!isDropTarget && isSelected && {
+        backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.2),
+      }),
     },
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
     opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
-    border: isDropTarget ? '2px solid' : isSelected ? '2px solid' : 'none',
+    border: isDropTarget ? '2px solid' : 'none',
     borderColor: 'primary.main',
-    backgroundColor: isSelected ? 'action.selected' : 'transparent',
+    backgroundColor: isDropTarget
+      ? 'transparent'
+      : (isSelected ? (theme) => alpha(theme.palette.primary.main, 0.12) : 'transparent'),
     transition: 'all 0.2s',
     position: 'relative',
     color: isDisabled ? 'text.disabled' : 'inherit',
@@ -109,34 +116,35 @@ const FileGridItem = React.memo(({
     }),
   };
 
-  // 카드 컨텐츠 스타일
+  // 카드 컨텐츠 스타일 (파일명 중앙 정렬)
   const cardContentStyles = {
     p: 1,
     pt: 0.5,
     pb: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    minHeight: 0,
     ...(isDropTarget && {
       backgroundColor: 'primary.main',
     }),
   };
 
-  // 텍스트 스타일
+  // 텍스트 스타일 (중앙 정렬, 말줄임 처리)
   const textStyles = {
     fontWeight: 'medium',
     fontSize: '0.875rem',
     textAlign: 'center',
     color: isDropTarget ? 'white' : 'inherit',
+    width: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   };
 
   return (
     <Card sx={cardStyles}>
-      {selectionMode && (
-        <Checkbox
-          checked={isSelected}
-          onChange={(e) => onCheck(file, e.target.checked, e)}
-          onClick={(e) => e.stopPropagation()}
-          sx={checkboxStyles}
-        />
-      )}
       <Box sx={thumbnailContainerStyles}>
         {thumbnail ? (
           <CardMedia
@@ -147,6 +155,26 @@ const FileGridItem = React.memo(({
           />
         ) : (
           getFileIconForGrid(file)
+        )}
+        {showMoreButton && (
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoreClick?.(file, e);
+            }}
+            sx={{
+              ...moreButtonOverlayStyles,
+              color: isDropTarget ? 'white' : 'inherit',
+              '&:hover': {
+                backgroundColor: (theme) =>
+                  alpha(theme.palette.background.paper, isDropTarget ? 0.3 : 0.5),
+              },
+            }}
+            aria-label="More actions"
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
         )}
       </Box>
       <CardContent sx={cardContentStyles}>
@@ -177,6 +205,7 @@ const FileGridItem = React.memo(({
     prevProps.isDropTarget === nextProps.isDropTarget &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.selectionMode === nextProps.selectionMode &&
+    prevProps.showMoreButton === nextProps.showMoreButton &&
     prevProps.isMobile === nextProps.isMobile &&
     prevProps.file.path === nextProps.file.path &&
     prevProps.file.thumbnailUrl === nextProps.file.thumbnailUrl &&

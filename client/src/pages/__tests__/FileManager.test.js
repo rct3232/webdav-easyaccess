@@ -137,7 +137,7 @@ describe('FileManager', () => {
       { timeout: 8000 }
     );
     await act(async () => {
-      await user.click(folderRow);
+      await user.dblClick(folderRow);
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -210,18 +210,14 @@ describe('FileManager', () => {
       expect(document.body.textContent).toMatch(/folder|docs|test/i);
     }, { timeout: 3000 });
 
-    // Enter selection mode (button with title "Select")
-    const selectModeBtn = screen.getByRole('button', { name: /^select$/i });
-    await user.click(selectModeBtn);
-
-    // Select two files: scope to file list so "docs" is unique (also appears in folder tree)
+    // Enter selection mode by single-clicking a file (desktop: single click = enter selection + select)
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
     const fileListContainer = rowTestTxt.parentElement;
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(within(rowTestTxt).getByRole('checkbox'));
+    await user.click(screen.getByText(/test\.txt/i));
     await user.click(within(rowDocs).getByRole('checkbox'));
 
     // Bulk move: click Move in toolbar
@@ -278,16 +274,13 @@ describe('FileManager', () => {
       expect(document.body.textContent).toMatch(/folder|docs|test/i);
     }, { timeout: 3000 });
 
-    const selectModeBtn = screen.getByRole('button', { name: /^select$/i });
-    await user.click(selectModeBtn);
-
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
     const fileListContainer = rowTestTxt.parentElement;
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(within(rowTestTxt).getByRole('checkbox'));
+    await user.click(screen.getByText(/test\.txt/i));
     await user.click(within(rowDocs).getByRole('checkbox'));
 
     const copyBtn = screen.getByRole('button', { name: /^copy$/i });
@@ -352,16 +345,13 @@ describe('FileManager', () => {
       expect(document.body.textContent).toMatch(/test|doc2|folder|docs/i);
     }, { timeout: 3000 });
 
-    const selectModeBtn = screen.getByRole('button', { name: /^select$/i });
-    await user.click(selectModeBtn);
-
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
     const fileListContainer = rowTestTxt.parentElement;
     const doc2InList = within(fileListContainer).getByText(/doc2\.txt/i);
     const rowDoc2 = doc2InList.closest('div')?.parentElement;
     expect(rowDoc2).toBeTruthy();
-    await user.click(within(rowTestTxt).getByRole('checkbox'));
+    await user.click(screen.getByText(/test\.txt/i));
     await user.click(within(rowDoc2).getByRole('checkbox'));
 
     const downloadBtn = screen.getByRole('button', { name: /download/i });
@@ -403,16 +393,13 @@ describe('FileManager', () => {
       expect(document.body.textContent).toMatch(/folder|docs|test/i);
     }, { timeout: 3000 });
 
-    const selectModeBtn = screen.getByRole('button', { name: /^select$/i });
-    await user.click(selectModeBtn);
-
     const rowTestTxt = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
     expect(rowTestTxt).toBeTruthy();
     const fileListContainer = rowTestTxt.parentElement;
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(within(rowTestTxt).getByRole('checkbox'));
+    await user.click(screen.getByText(/test\.txt/i));
     await user.click(within(rowDocs).getByRole('checkbox'));
 
     const deleteBtn = screen.getByRole('button', { name: /delete/i });
@@ -428,6 +415,47 @@ describe('FileManager', () => {
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/complete|done/i);
     }, { timeout: 10000 });
+  }, 15000);
+
+  /**
+   * Desktop: click on empty space exits selection mode (client-ui.md, plan selection_mode_click-to-deselect).
+   * Verifies observable outcome: bulk toolbar disappears when clicking non-file area.
+   */
+  it('selection mode: click empty space exits selection mode on desktop', async () => {
+    localStorage.setItem('viewMode', 'list');
+    server.use(
+      http.get('/api/files/list', ({ request }) => {
+        const url = new URL(request.url);
+        const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
+        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        return HttpResponse.json(rootFilesForUser(base));
+      }),
+      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/user/:userId', () => HttpResponse.json([]))
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    }, { timeout: 8000 });
+    await waitFor(() => {
+      expect(document.body.textContent).toMatch(/folder|docs|test/i);
+    }, { timeout: 3000 });
+
+    await user.click(screen.getByText(/test\.txt/i));
+
+    expect(screen.getByRole('button', { name: /move/i })).toBeInTheDocument();
+
+    const fileRow = document.querySelector('[data-file-path]');
+    const gridContainer = fileRow?.parentElement;
+    expect(gridContainer).toBeTruthy();
+    fireEvent.click(gridContainer);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /move/i })).not.toBeInTheDocument();
+    }, { timeout: 3000 });
   }, 15000);
 
   /**
@@ -805,17 +833,12 @@ describe('FileManager', () => {
     expect(screen.queryByRole('button', { name: /upload file/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /create folder/i })).not.toBeInTheDocument();
 
-    // Download-only bulk: enter selection, select one file, toolbar shows Download but not Move/Copy/Delete
+    // Download-only bulk: enter selection by single-clicking file, toolbar shows Download but not Move/Copy/Delete
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/test|folder|docs/i);
     }, { timeout: 3000 });
 
-    const selectModeBtn = screen.getByRole('button', { name: /^select$/i });
-    await user.click(selectModeBtn);
-
-    const fileRow = screen.getByText(/test\.txt/i).closest('div')?.parentElement;
-    expect(fileRow).toBeTruthy();
-    await user.click(within(fileRow).getByRole('checkbox'));
+    await user.click(screen.getByText(/test\.txt/i));
 
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^move$/i })).not.toBeInTheDocument();

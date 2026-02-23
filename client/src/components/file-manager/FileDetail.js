@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Table,
@@ -8,10 +8,12 @@ import {
   TableRow,
   Typography,
   Box,
-  Checkbox,
   CircularProgress,
+  IconButton,
   useTheme,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { useFileViewCommon } from '../../hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
@@ -19,19 +21,28 @@ import { getFileIcon } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileDetailSkeleton } from './FileSkeletons';
 
-const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
   const theme = useTheme();
   const longPressTimersRef = useRef(new Map());
   const touchMovedRef = useRef(new Map());
-  
+
+  useEffect(() => {
+    const timers = longPressTimersRef.current;
+    const touchMoved = touchMovedRef.current;
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+      timers.clear();
+      touchMoved.clear();
+    };
+  }, []);
+
   const {
     draggedFile,
     dropTarget,
     getFileState,
-    handleFileCheck: handleCheck,
     getDragHandlers,
     getDropHandlers,
   } = useFileViewCommon({
@@ -44,32 +55,16 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
     isMobile,
   });
 
-  // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file, canOpenMenu = false) => {
-    if (!isMobile || selectionMode) return {};
-    
-    const handleTouchStart = (e) => {
+  // Long-press handlers: mobile long-press enters selection mode and selects file (not context menu)
+  const getLongPressHandlers = useCallback((file) => {
+    if (!isMobile || selectionMode || !onLongPressSelect) return {};
+
+    const handleTouchStart = () => {
       touchMovedRef.current.set(file.path, false);
-      
-      // 터치 이벤트에서 좌표 추출 (touches 배열 사용)
-      const touch = e.touches?.[0] || e.changedTouches?.[0] || {};
-      const syntheticEvent = {
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        pageX: touch.pageX,
-        pageY: touch.pageY,
-        target: e.target,
-        currentTarget: e.currentTarget,
-        cancelable: false,
-        preventDefault: () => {},
-      };
-      
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          if (canOpenMenu) {
-            onContextMenu(syntheticEvent, file);
-          }
+          onLongPressSelect(file);
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -97,7 +92,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
       onTouchEnd: handleTouchEnd,
       onTouchMove: handleTouchMove,
     };
-  }, [isMobile, selectionMode, onContextMenu]);
+  }, [isMobile, selectionMode, onLongPressSelect]);
 
   return (
     <TableContainer 
@@ -129,19 +124,26 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
             const isDropTarget = dropTarget === file.path;
             const dragHandlers = getDragHandlers(file, isDisabled);
             const dropHandlers = getDropHandlers(file, isDisabled);
-            
+
             return (
               <TableRow
                 key={`${file.path}-${index}`}
+                data-file-path={file.path}
                 {...dragHandlers}
                 {...dropHandlers}
-                {...getLongPressHandlers(file, canOpenMenu)}
+                {...getLongPressHandlers(file)}
                 hover={!isDisabled}
-                selected={checked}
-                sx={{ 
+                sx={{
                   cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
                   opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
-                  backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
+                  backgroundColor: isDropTarget
+                    ? 'primary.main'
+                    : (selectionMode && checked ? (t) => alpha(t.palette.primary.main, 0.12) : 'transparent'),
+                  ...(selectionMode && checked && !isDropTarget && {
+                    '&:hover': {
+                      backgroundColor: (t) => alpha(t.palette.primary.main, 0.2),
+                    },
+                  }),
                   transition: 'all 0.2s',
                   borderBottom: '1px solid',
                   borderColor: 'divider',
@@ -169,9 +171,9 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                     touchAction: 'manipulation',
                   }),
                 }}
-                onClick={() => {
+                onClick={(e) => {
                   if (!isDisabled) {
-                    onFileClick(file);
+                    onFileClick(file, e);
                   }
                 }}
                 onContextMenu={(e) => {
@@ -180,17 +182,6 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   }
                 }}
               >
-                {selectionMode && (
-                  <TableCell padding="checkbox" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Checkbox
-                      checked={checked}
-                      size="small"
-                      sx={{ padding: '4px' }}
-                      onChange={(e) => handleCheck(file, e.target.checked, e)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </TableCell>
-                )}
                 <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
                     {getFileIcon(file)}
@@ -211,6 +202,20 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
                   <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
                     {formatDate(file.lastmod)}
                   </Typography>
+                </TableCell>
+                <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }}>
+                  {(showMoreButton ?? !selectionMode) && onMoreClick && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onMoreClick(file, e);
+                      }}
+                      aria-label="More actions"
+                    >
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
+                  )}
                 </TableCell>
                 {isProcessing && (
                   <Box
@@ -236,7 +241,7 @@ const FileDetail = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMo
           )}
           {!loading && files.length === 0 && (
             <TableRow>
-              <TableCell colSpan={selectionMode ? 5 : 4} sx={{ border: 'none' }}>
+              <TableCell colSpan={5} sx={{ border: 'none' }}>
                 <Box sx={{ textAlign: 'center', py: 4 }}>
                   <Typography color="text.secondary">{t('fileManager.noFiles')}</Typography>
                 </Box>

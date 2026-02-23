@@ -31,11 +31,10 @@
 
 ### 2.3 Main Child Components
 
-- FileManagerHeader, Breadcrumb, FileManagerControls, FAB
+- FileManagerHeader, Breadcrumb, FileManagerControls (includes bulk actions when selection mode), FAB
 - FileList, FileGrid, FileDetail (view-mode-dependent)
 - FileContextMenu, FileActionSheet
 - FolderTree
-- BulkActionToolbar
 - FileOperationProgress
 - UploadDialog, CreateFolderDialog, FilePreviewDialog, FolderPickerDialog
 - ShareDialog, ShareTargetDialog, LoginDialog, ConfirmDialog
@@ -52,15 +51,23 @@
 - Search (client-side filter by name)
 - Sort (name, date, size, type)
 - View mode toggle (list, grid, detail)
-- Selection mode (bulk move, copy, download, delete)
-- File click: open preview or navigate folder
-- Context menu / action sheet: download, rename, move, copy, share, properties, delete
+- Selection mode: entry via desktop single click or mobile long-press; exit when `selectedFiles.size === 0` (auto-exit) or when desktop user clicks empty space; no manual toggle button; bulk move, copy, download, delete
+- File click: desktop — single click = enter selection mode + select; double click = open folder/preview; Ctrl+click = add/remove from selection; Shift+click = range select. Mobile — touch = open folder/preview; long-press = enter selection mode + select; in selection mode, tap = toggle selection
+- More button per item: opens FileActionSheet (context actions); visible when not in selection mode
+- Context menu / action sheet: right-click or More button — download, rename, move, copy, share, properties, delete
 - Drag-and-drop: file-to-folder move, external file upload
 - Pull-to-refresh (mobile)
 - Create folder, upload files
 - Share link mode: login, add to shared, leave share
 
-### 2.6 Integration Test Scenarios
+### 2.6 handleFileClick Semantics
+
+- **Signature:** `handleFileClick(file, event)` — receives file and synthetic event for modifier/key detection.
+- **Desktop:** Single click → enter selection mode + select only this (clear others); double click → open folder or preview; Ctrl+click → add/remove from selection; Shift+click → range select from last anchor to current. Uses `handleFileClickSelection` from `useSelection` for selection logic.
+- **Mobile:** Touch → open folder or preview (same as before). Long-press handled via `onLongPressSelect` (separate handler).
+- **Auto-exit:** When `selectedFiles.size === 0`, selection mode exits automatically (via `useSelection` or effect in FileManager).
+
+### 2.7 Integration Test Scenarios
 
 - [ ] Initial render with loading state
 - [ ] File list loads and displays after load
@@ -72,7 +79,7 @@
 - [ ] Share link mode: unauthenticated vs authenticated behavior
 - [ ] Permission request from ShareTargetDialog: open Share on folder (no permission) → Request read permission → UI shows requested state (plan 3.2, MyPage 2.6)
 
-### 2.7 Conditional Rendering
+### 2.8 Conditional Rendering
 
 - Loading: spinner while loading files
 - Share link mode: simplified header, no upload/create, download-only bulk actions

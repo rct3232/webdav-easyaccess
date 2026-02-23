@@ -6,7 +6,6 @@ export { default as FileDetail } from './FileDetail';
 export { FileListSkeleton, FileGridSkeleton, FileDetailSkeleton, FileTreeSkeleton } from './FileSkeletons';
 export { default as FileManagerHeader } from './FileManagerHeader';
 export { default as FileManagerControls } from './FileManagerControls';
-export { default as BulkActionToolbar } from './BulkActionToolbar';
 export { default as FileContextMenu } from './FileContextMenu';
 export { default as FileActionSheet } from './FileActionSheet';
 export { default as FileOperationProgress } from './FileOperationProgress';

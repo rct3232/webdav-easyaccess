@@ -40,7 +40,6 @@ import {
   FileActionSheet,
   FileManagerHeader,
   FileManagerControls,
-  BulkActionToolbar,
   Breadcrumb,
   FAB,
   FloatingSearchBar,
@@ -96,8 +95,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [linkInfo, shareRootPath, t]
   );
   
-  // 디바운스 타이머 ref 및 최신 핸들러 ref
-  const fileClickDebounceTimer = useRef(null);
+  // Double-click detection for desktop
+  const lastClickRef = useRef({ filePath: null, time: 0 });
   const handleFileClickInternalRef = useRef(null);
 
   // 로딩/새로고침 완료 콜백을 위한 ref (useFileManager 이전에 정의)
@@ -212,11 +211,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const {
     selectionMode,
     selectedFiles,
-    handleToggleSelectionMode,
     handleSelectAll,
     handleDeselectAll,
     handleFileCheck,
     toggleFileSelection,
+    handleFileClickSelection,
+    enterSelectionMode,
     setSelectionMode,
     setSelectedFiles,
   } = useSelection(displayedFiles, sortedFiles);
@@ -1004,10 +1004,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   };
 
-  // 실제 파일 클릭 처리 함수
-  const handleFileClickInternal = async (file) => {
+  // 실제 파일 클릭 처리 함수 (forceOpen: true 시 선택 모드 무시하고 열기)
+  const handleFileClickInternal = async (file, options = {}) => {
+    const { forceOpen = false } = options;
+    const inSelectionMode = forceOpen ? false : selectionMode;
+
     if (isShareLinkMode) {
-      if (selectionMode) {
+      if (inSelectionMode) {
         toggleFileSelection(file);
       } else if (file.type === 'directory') {
         setCurrentPath(file.path);
@@ -1021,7 +1024,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       return;
     }
 
-    if (selectionMode) {
+    if (inSelectionMode) {
       toggleFileSelection(file);
     } else {
       if (file.type === 'directory') {
@@ -1162,34 +1165,52 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleFileClickInternalRef.current = handleFileClickInternal;
   });
 
-  // 디바운스된 파일 클릭 핸들러 (200ms)
-  const handleFileClick = useCallback((file) => {
-    // 선택 모드에서는 즉시 실행 (디바운스 없음)
-    if (selectionMode) {
+  // 파일 클릭 핸들러: Desktop = single/ctrl/shift→선택, double→열기; Mobile = tap→열기
+  // event 없음(FolderTree 등) → 항상 열기
+  const handleFileClick = useCallback((file, event, fileIndex) => {
+    if (!file) return;
+
+    if (!event) {
       handleFileClickInternalRef.current(file);
       return;
     }
-    
-    // 기존 타이머 취소
-    if (fileClickDebounceTimer.current) {
-      clearTimeout(fileClickDebounceTimer.current);
-    }
-    
-    // 새 타이머 설정
-    fileClickDebounceTimer.current = setTimeout(() => {
-      handleFileClickInternalRef.current(file);
-    }, 200);
-  }, [selectionMode]);
-  
-  // 컴포넌트 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (fileClickDebounceTimer.current) {
-        clearTimeout(fileClickDebounceTimer.current);
-      }
-    };
-  }, []);
 
+    if (isMobile) {
+      handleFileClickInternalRef.current(file);
+      return;
+    }
+
+    const now = Date.now();
+    const last = lastClickRef.current;
+    const isDoubleClick = last.filePath === file.path && (now - last.time) < 350;
+
+    if (isDoubleClick) {
+      lastClickRef.current = { filePath: null, time: 0 };
+      handleFileClickInternalRef.current(file, { forceOpen: true });
+      return;
+    }
+
+    lastClickRef.current = { filePath: file.path, time: now };
+    const index = typeof fileIndex === 'number' ? fileIndex : displayedFiles.findIndex(f => f.path === file.path);
+    handleFileClickSelection(file, event, index >= 0 ? index : 0);
+  }, [isMobile, handleFileClickSelection, displayedFiles]);
+
+  const handleMoreClick = useCallback((file, e) => {
+    if (!file) return;
+    if (isMobile) {
+      setActionSheetFile(file);
+      setActionSheetOpen(true);
+    } else {
+      setContextMenu(e ? { mouseX: e.clientX, mouseY: e.clientY } : { mouseX: 0, mouseY: 0 });
+      setSelectedFile(file);
+    }
+  }, [isMobile]);
+
+  const handleLongPressSelect = useCallback((file) => {
+    if (!file) return;
+    enterSelectionMode();
+    setSelectedFiles(new Set([file.path]));
+  }, [enterSelectionMode, setSelectedFiles]);
 
   // Upload handlers (executeExplorerUpload + explorerUploadFilesRef for retry)
   const handleUploadStart = useCallback(async (files, uploadPath) => {
@@ -1479,6 +1500,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   };
 
+  // Desktop: click on empty space exits selection mode
+  const handleScrollAreaClick = useCallback((e) => {
+    if (isMobile || !selectionMode) return;
+    if (e.target.closest('[data-file-path]')) return;
+    handleDeselectAll();
+    setSelectionMode(false);
+  }, [isMobile, selectionMode, handleDeselectAll, setSelectionMode]);
+
   return (
     <Box
       sx={{
@@ -1660,7 +1689,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           <FileManagerControls
             isMobile={isMobile}
             selectionMode={selectionMode}
-            handleToggleSelectionMode={handleToggleSelectionMode}
             handleSelectAll={handleSelectAll}
             handleDeselectAll={handleDeselectAll}
             selectedFiles={selectedFiles}
@@ -1675,24 +1703,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             setViewMode={setViewMode}
             saveViewMode={saveViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
+            handleBulkMove={handleBulkMove}
+            handleBulkCopy={handleBulkCopy}
+            handleBulkDownload={handleBulkDownload}
+            openBulkDeleteDialog={openBulkDeleteDialog}
+            bulkWritePermission={isShareLinkMode ? false : allSelectedHaveWrite}
+            hasReadOnlyInSelection={hasReadOnlyInSelection}
+            bulkActionsDisabled={bulkMoveCopyInProgress}
+            downloadOnly={isShareLinkMode}
           />
-
-          {selectionMode && (
-            <BulkActionToolbar
-              selectedFiles={selectedFiles}
-              handleBulkMove={handleBulkMove}
-              handleBulkCopy={handleBulkCopy}
-              handleBulkDownload={handleBulkDownload}
-              openBulkDeleteDialog={openBulkDeleteDialog}
-              hasWritePermission={isShareLinkMode ? false : allSelectedHaveWrite}
-              hasReadOnlyInSelection={hasReadOnlyInSelection}
-              disabled={bulkMoveCopyInProgress}
-              downloadOnly={isShareLinkMode}
-            />
-          )}
 
           <Box
             ref={scrollContainerRef}
+            onClick={handleScrollAreaClick}
             sx={{
               flex: 1,
               overflow: 'auto',
@@ -1765,6 +1788,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
+                onMoreClick={handleMoreClick}
+                showMoreButton={!selectionMode}
+                onLongPressSelect={handleLongPressSelect}
                 onContextMenu={(e, file) => {
                   if (e?.cancelable) {
                     e.preventDefault();
@@ -1794,6 +1820,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
+                onMoreClick={handleMoreClick}
+                showMoreButton={!selectionMode}
+                onLongPressSelect={handleLongPressSelect}
                 onContextMenu={(e, file) => {
                   if (e?.cancelable) {
                     e.preventDefault();
@@ -1823,6 +1852,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 files={displayedFiles}
                 processingMap={processingMap}
                 onFileClick={handleFileClick}
+                onMoreClick={handleMoreClick}
+                showMoreButton={!selectionMode}
+                onLongPressSelect={handleLongPressSelect}
                 onContextMenu={(e, file) => {
                   if (e?.cancelable) {
                     e.preventDefault();

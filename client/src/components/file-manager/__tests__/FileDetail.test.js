@@ -20,6 +20,8 @@ const mockFiles = [
 const defaultProps = {
   files: mockFiles,
   onFileClick: jest.fn(),
+  onMoreClick: jest.fn(),
+  onLongPressSelect: jest.fn(),
   onContextMenu: jest.fn(),
   selectionMode: false,
   selectedFiles: new Set(),
@@ -43,7 +45,7 @@ describe('FileDetail', () => {
     const onFileClick = jest.fn();
     renderWithProviders(<FileDetail {...defaultProps} onFileClick={onFileClick} />);
     fireEvent.click(screen.getByText('doc.pdf'));
-    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0]);
+    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object));
   });
 
   it('calls onContextMenu on right-click', () => {
@@ -65,8 +67,26 @@ describe('FileDetail', () => {
     expect(screen.getByText(/no files|noFiles/i)).toBeInTheDocument();
   });
 
-  it('shows checkbox when selectionMode', () => {
+  it('does not render checkboxes when selectionMode (selection shown by row background)', () => {
     renderWithProviders(<FileDetail {...defaultProps} selectionMode />);
-    expect(screen.getAllByRole('checkbox').length).toBe(2);
+    expect(screen.queryAllByRole('checkbox').length).toBe(0);
+  });
+
+  it('shows More button when !selectionMode and onMoreClick provided', () => {
+    renderWithProviders(<FileDetail {...defaultProps} onMoreClick={jest.fn()} />);
+    expect(screen.getAllByRole('button', { name: /more actions/i }).length).toBe(2);
+  });
+
+  it('hides More button when selectionMode', () => {
+    renderWithProviders(<FileDetail {...defaultProps} selectionMode onMoreClick={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onMoreClick with file when More button clicked', () => {
+    const onMoreClick = jest.fn();
+    renderWithProviders(<FileDetail {...defaultProps} onMoreClick={onMoreClick} />);
+    const moreButtons = screen.getAllByRole('button', { name: /more actions/i });
+    fireEvent.click(moreButtons[0]);
+    expect(onMoreClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object));
   });
 });

@@ -20,6 +20,8 @@ const mockFiles = [
 const defaultProps = {
   files: mockFiles,
   onFileClick: jest.fn(),
+  onMoreClick: jest.fn(),
+  onLongPressSelect: jest.fn(),
   onContextMenu: jest.fn(),
   selectionMode: false,
   selectedFiles: new Set(),
@@ -43,7 +45,7 @@ describe('FileList', () => {
     const onFileClick = jest.fn();
     renderWithProviders(<FileList {...defaultProps} onFileClick={onFileClick} />);
     fireEvent.click(screen.getByText('a.txt'));
-    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0]);
+    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object), 0);
   });
 
   it('calls onContextMenu on right-click', () => {
@@ -73,8 +75,8 @@ describe('FileList', () => {
     expect(loadMoreRef.current).toBeTruthy();
   });
 
-  it('shows checkbox when selectionMode', () => {
+  it('does not render checkboxes when selectionMode (selection shown by row background)', () => {
     renderWithProviders(<FileList {...defaultProps} selectionMode />);
-    expect(screen.getAllByRole('checkbox').length).toBe(2);
+    expect(screen.queryAllByRole('checkbox').length).toBe(0);
   });
 });

@@ -112,4 +112,150 @@ describe('useSelection', () => {
     expect(result.current.selectedFiles.has('/visible.txt')).toBe(true);
     expect(result.current.selectedFiles.has('/hidden.txt')).toBe(true);
   });
+
+  describe('handleFileClickSelection', () => {
+    const createEvent = (opts = {}) => ({
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      ...opts,
+    });
+
+    it('single click enters selection mode and selects only that file', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+      const file = displayFiles[1];
+      const event = createEvent();
+
+      act(() => {
+        result.current.handleFileClickSelection(file, event, 1);
+      });
+
+      expect(result.current.selectionMode).toBe(true);
+      expect(result.current.selectedFiles.size).toBe(1);
+      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+    });
+
+    it('Ctrl+click adds file to selection', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[0], createEvent(), 0);
+      });
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[2], createEvent({ ctrlKey: true }), 2);
+      });
+
+      expect(result.current.selectionMode).toBe(true);
+      expect(result.current.selectedFiles.size).toBe(2);
+      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
+      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+    });
+
+    it('Ctrl+click removes file if already selected, auto-exits when last deselected', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[0], createEvent(), 0);
+      });
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[0], createEvent({ ctrlKey: true }), 0);
+      });
+
+      expect(result.current.selectionMode).toBe(false);
+      expect(result.current.selectedFiles.size).toBe(0);
+    });
+
+    it('Shift+click selects range from anchor to current', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[0], createEvent(), 0);
+      });
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[2], createEvent({ shiftKey: true }), 2);
+      });
+
+      expect(result.current.selectionMode).toBe(true);
+      expect(result.current.selectedFiles.size).toBe(3);
+      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
+      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+    });
+
+    it('Shift+click with no anchor uses index 0', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.handleFileClickSelection(displayFiles[1], createEvent({ shiftKey: true }), 1);
+      });
+
+      expect(result.current.selectionMode).toBe(true);
+      expect(result.current.selectedFiles.size).toBe(2);
+      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
+      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+    });
+  });
+
+  describe('selectRange', () => {
+    it('selects files in given index range', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.setSelectionMode(true);
+        result.current.selectRange(1, 2);
+      });
+
+      expect(result.current.selectedFiles.size).toBe(2);
+      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+    });
+
+    it('handles reversed indices', () => {
+      const { result } = renderHook(() => useSelection(displayFiles));
+
+      act(() => {
+        result.current.setSelectionMode(true);
+        result.current.selectRange(2, 0);
+      });
+
+      expect(result.current.selectedFiles.size).toBe(3);
+    });
+
+    it('no-op when displayedFiles is empty', () => {
+      const { result } = renderHook(() => useSelection([]));
+
+      act(() => {
+        result.current.setSelectionMode(true);
+        result.current.selectRange(0, 2);
+      });
+
+      expect(result.current.selectedFiles.size).toBe(0);
+    });
+  });
+
+  it('auto-exits selection mode when selectedFiles becomes empty', () => {
+    const { result } = renderHook(() => useSelection(displayFiles));
+
+    act(() => {
+      result.current.handleFileClickSelection(displayFiles[0], { ctrlKey: false, metaKey: false, shiftKey: false }, 0);
+    });
+    expect(result.current.selectionMode).toBe(true);
+
+    act(() => {
+      result.current.handleFileClickSelection(displayFiles[0], { ctrlKey: true, metaKey: false, shiftKey: false }, 0);
+    });
+
+    expect(result.current.selectionMode).toBe(false);
+    expect(result.current.selectedFiles.size).toBe(0);
+  });
+
+  it('enterSelectionMode enters selection mode', () => {
+    const { result } = renderHook(() => useSelection(displayFiles));
+
+    act(() => {
+      result.current.enterSelectionMode();
+    });
+
+    expect(result.current.selectionMode).toBe(true);
+  });
 });

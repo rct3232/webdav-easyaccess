@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Single row item in list view: checkbox, thumbnail/icon, filename, metadata (size/date). Shows processing overlay. React.memo optimized. |
+| Role | Single row item in list view: thumbnail/icon, filename, metadata (size/date), More button. Selection indicated by container light primary background. Shows processing overlay. React.memo optimized. |
 | Used in | FileList |
 | Related components | formatFileSize, formatDate, getFileIcon, getThumbnail, renderProcessingIcon |
 
@@ -22,34 +22,36 @@
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | file | object | Y | - | File object (path, basename, size, lastmod, type, thumbnailUrl, isHidden) |
-| isSelected | boolean | Y | - | Checkbox checked state |
+| isSelected | boolean | Y | - | Selected state (container shows light primary background) |
 | isDisabled | boolean | Y | - | Disabled appearance |
 | isProcessing | boolean | Y | - | Show processing overlay |
 | processingType | string | N | - | Type for renderProcessingIcon |
 | isDropTarget | boolean | Y | - | Drop target highlight |
 | isDragging | boolean | Y | - | Dragging state (handled by parent) |
-| selectionMode | boolean | Y | - | Show checkbox |
+| selectionMode | boolean | Y | - | Selection mode active (affects container styling when isSelected) |
+| showMoreButton | boolean | Y | - | Show More (⋮) button; false when in selection mode |
+| onMoreClick | function | Y | - | More button click handler; opens FileActionSheet; call stopPropagation so row tap does not toggle selection |
 | isMobile | boolean | Y | - | Mobile styles |
-| onCheck | function | Y | - | Checkbox change handler |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onCheck | Checkbox change | (file, checked, e) |
+| onMoreClick | More button click | (file) — must stopPropagation to prevent row click |
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Typography/Box/Checkbox/Avatar/CircularProgress, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail
+- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail
 - **Reference implementation:** `client/src/components/file-manager/FileListItem.js`
 
 ### 2.5 i18n Keys
 
 - `actions.folder` – label for directory type
 
-### 2.6 Conditional Rendering
+### 2.6 Layout and Conditional Rendering
 
-- Checkbox only when selectionMode
+- **More button placement:** Right side of item row. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent row tap does not trigger selection toggle.
+- **Selection display:** No checkbox. When selectionMode and isSelected, container (parent) uses light primary background (e.g. alpha(primary.main, 0.12)).
 - Thumbnail or icon based on getThumbnail(file)
 - Processing overlay (CircularProgress + icon) when isProcessing
 - Metadata: folder label or formatFileSize, formatDate(lastmod)
@@ -58,12 +60,12 @@
 
 Checklist for unit test writing:
 
-- [ ] Renders basename, size/date or folder label
-- [ ] Checkbox shown when selectionMode
-- [ ] onCheck called with (file, checked, e)
-- [ ] Thumbnail or icon displayed
-- [ ] Processing overlay when isProcessing
-- [ ] React.memo prevents re-render when props unchanged
+- [x] Renders basename, size/date or folder label
+- [x] Selection indicated by container light primary background when selectionMode and isSelected
+- [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
+- [x] Thumbnail or icon displayed
+- [x] Processing overlay when isProcessing
+- [x] React.memo prevents re-render when props unchanged
 
 ### 2.8 Edge Cases
 

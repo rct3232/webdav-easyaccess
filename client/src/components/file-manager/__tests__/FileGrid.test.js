@@ -20,6 +20,8 @@ const mockFiles = [
 const defaultProps = {
   files: mockFiles,
   onFileClick: jest.fn(),
+  onMoreClick: jest.fn(),
+  onLongPressSelect: jest.fn(),
   onContextMenu: jest.fn(),
   selectionMode: false,
   selectedFiles: new Set(),
@@ -43,7 +45,7 @@ describe('FileGrid', () => {
     const onFileClick = jest.fn();
     renderWithProviders(<FileGrid {...defaultProps} onFileClick={onFileClick} />);
     fireEvent.click(screen.getByText('a.txt'));
-    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0]);
+    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object), 0);
   });
 
   it('calls onContextMenu on right-click', () => {

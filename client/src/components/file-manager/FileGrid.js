@@ -11,7 +11,7 @@ import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileGridItem from './FileGridItem';
 
-const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
@@ -26,7 +26,6 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     draggedFile,
     dropTarget,
     getFileState,
-    handleFileCheck: handleCheck,
     getDragHandlers,
     getDropHandlers,
   } = useFileViewCommon({
@@ -39,30 +38,16 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
     isMobile,
   });
 
-  // Long-press handlers using useLongPress pattern
-  const getLongPressHandlers = useCallback((file, canOpenMenu) => {
-    if (!isMobile || selectionMode) return {};
-    
-    const handleTouchStart = (e) => {
+  // Long-press handlers: mobile long-press enters selection mode and selects file (not context menu)
+  const getLongPressHandlers = useCallback((file) => {
+    if (!isMobile || selectionMode || !onLongPressSelect) return {};
+
+    const handleTouchStart = () => {
       touchMovedRef.current.set(file.path, false);
-      
-      // 터치 이벤트에서 좌표 추출 (touches 배열 사용)
-      const touch = e.touches?.[0] || e.changedTouches?.[0] || {};
-      const syntheticEvent = {
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        pageX: touch.pageX,
-        pageY: touch.pageY,
-        target: e.target,
-        currentTarget: e.currentTarget,
-        cancelable: false,
-        preventDefault: () => {},
-      };
-      
       const timer = setTimeout(() => {
         if (!touchMovedRef.current.get(file.path)) {
           if (navigator.vibrate) navigator.vibrate(50);
-          onContextMenu(syntheticEvent, file);
+          onLongPressSelect(file);
         }
       }, 500);
       longPressTimersRef.current.set(file.path, timer);
@@ -90,7 +75,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
       onTouchEnd: handleTouchEnd,
       onTouchMove: handleTouchMove,
     };
-  }, [isMobile, selectionMode, onContextMenu]);
+  }, [isMobile, selectionMode, onLongPressSelect]);
 
   // 컴포넌트 언마운트 시 모든 타이머 정리
   useEffect(() => {
@@ -129,7 +114,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         minHeight: 'auto',
       }}
     >
-      {files.map((file) => {
+      {files.map((file, index) => {
         const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
         const allowContextMenu = isPermissionDisabled && !isProcessing;
         const canOpenMenu = !isDisabled || allowContextMenu;
@@ -137,7 +122,7 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
-        const longPressHandlers = getLongPressHandlers(file, canOpenMenu);
+        const longPressHandlers = getLongPressHandlers(file);
 
         return (
           <Box
@@ -146,9 +131,9 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
             {...dragHandlers}
             {...dropHandlers}
             {...longPressHandlers}
-            onClick={() => {
+            onClick={(e) => {
               if (!isDisabled) {
-                onFileClick(file);
+                onFileClick(file, e, index);
               }
             }}
             onContextMenu={(e) => {
@@ -167,8 +152,9 @@ const FileGrid = ({ files, onFileClick, onContextMenu, onFileDrop, selectionMode
               isDropTarget={isDropTarget}
               isDragging={isDragging}
               selectionMode={selectionMode}
+              showMoreButton={showMoreButton ?? !selectionMode}
+              onMoreClick={onMoreClick}
               isMobile={isMobile}
-              onCheck={handleCheck}
             />
           </Box>
         );

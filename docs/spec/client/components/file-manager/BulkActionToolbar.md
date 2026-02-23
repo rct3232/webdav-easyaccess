@@ -1,6 +1,10 @@
 # BulkActionToolbar Spec
 
-## 1. Overview
+**Deprecated.** Merged into FileManagerControls. See FileManagerControls.md.
+
+---
+
+## 1. Overview (Historical)
 
 | Item | Description |
 |------|-------------|

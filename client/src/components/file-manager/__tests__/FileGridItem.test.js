@@ -24,8 +24,9 @@ const defaultProps = {
   isDropTarget: false,
   isDragging: false,
   selectionMode: false,
+  showMoreButton: false,
+  onMoreClick: jest.fn(),
   isMobile: false,
-  onCheck: jest.fn(),
 };
 
 describe('FileGridItem', () => {
@@ -38,21 +39,9 @@ describe('FileGridItem', () => {
     expect(screen.getByText('photo.jpg')).toBeInTheDocument();
   });
 
-  it('shows checkbox when selectionMode', () => {
-    renderWithProviders(<FileGridItem {...defaultProps} selectionMode />);
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
-  });
-
-  it('hides checkbox when !selectionMode', () => {
-    renderWithProviders(<FileGridItem {...defaultProps} />);
+  it('does not render checkbox (selection shown by card background)', () => {
+    renderWithProviders(<FileGridItem {...defaultProps} selectionMode isSelected />);
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  });
-
-  it('calls onCheck with (file, checked, e) when checkbox changed', () => {
-    const onCheck = jest.fn();
-    renderWithProviders(<FileGridItem {...defaultProps} selectionMode onCheck={onCheck} />);
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(onCheck).toHaveBeenCalledWith(mockFile, true, expect.any(Object));
   });
 
   it('shows processing overlay when isProcessing', () => {
@@ -63,5 +52,22 @@ describe('FileGridItem', () => {
   it('shows thumbnail or icon', () => {
     renderWithProviders(<FileGridItem {...defaultProps} />);
     expect(document.querySelector('.MuiSvgIcon-root')).toBeInTheDocument();
+  });
+
+  it('shows More button when showMoreButton', () => {
+    renderWithProviders(<FileGridItem {...defaultProps} showMoreButton onMoreClick={jest.fn()} />);
+    expect(screen.getByRole('button', { name: /more actions/i })).toBeInTheDocument();
+  });
+
+  it('hides More button when !showMoreButton', () => {
+    renderWithProviders(<FileGridItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onMoreClick with file when More button clicked', () => {
+    const onMoreClick = jest.fn();
+    renderWithProviders(<FileGridItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />);
+    fireEvent.click(screen.getByRole('button', { name: /more actions/i }));
+    expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });
 });

@@ -22,12 +22,13 @@
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | files | array | Y | - | File objects |
-| onFileClick | function | Y | - | Row click handler |
+| onFileClick | function | Y | - | Row click handler; receives (file, event) for modifier detection |
+| onMoreClick | function | Y | - | More button click handler (file); opens FileActionSheet |
+| onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
 | onContextMenu | function | Y | - | Context menu handler |
 | onFileDrop | function | N | - | Drop handler |
-| selectionMode | boolean | Y | - | Show checkbox column |
+| selectionMode | boolean | Y | - | Selection mode active (row shows light primary background when selected) |
 | selectedFiles | Set | Y | - | Selected paths |
-| onFileCheck | function | Y | - | Checkbox handler |
 | processingMap | object | N | - | Processing state |
 | hasWritePermission | boolean | N | - | Write permission |
 | currentPath | string | Y | - | Current path |
@@ -38,9 +39,10 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onFileClick | Row click | (file) |
-| onContextMenu | Right-click or long-press | (e, file) |
-| onFileCheck | Checkbox change | (file, checked, e) |
+| onFileClick | Row click | (file, event) |
+| onMoreClick | More button click (IconButton in row) | (file) |
+| onLongPressSelect | Mobile long-press on row | (file) |
+| onContextMenu | Right-click | (e, file) |
 
 ### 2.4 Dependencies
 
@@ -56,18 +58,20 @@
 
 - loading && files.length === 0: FileDetailSkeleton
 - files.length === 0: empty row with noFiles
-- Long-press on mobile when !selectionMode
+- **Selection display:** No checkbox column. When selectionMode and row is selected, use light primary background (e.g. alpha(primary.main, 0.12)).
+- Long-press (onLongPressSelect) on mobile when !selectionMode — enters selection mode and selects file. More IconButton at right end of row (last TableCell); visible when !selectionMode.
 - Detail view hidden on mobile (via parent)
 
 ### 2.7 Verification Scenarios
 
 Checklist for unit test writing:
 
-- [ ] Table with name, type, size, date columns
-- [ ] onFileClick, onContextMenu, onFileCheck
-- [ ] Loading/empty states
-- [ ] Long-press on mobile
-- [ ] Drag-and-drop
+- [x] Table with name, type, size, date columns
+- [x] onFileClick, onContextMenu
+- [x] Loading/empty states
+- [x] Long-press invokes onLongPressSelect on mobile — enters selection mode
+- [x] Drag-and-drop
+- [x] More IconButton visible when !selectionMode; hidden when selectionMode; onMoreClick called with file
 
 ### 2.8 Edge Cases
 

@@ -25,7 +25,7 @@ describe('FileSkeletons', () => {
       expect(skeletons.length).toBeGreaterThan(0);
     });
 
-    it('adds checkbox placeholder when selectionMode', () => {
+    it('renders skeleton items when selectionMode', () => {
       const { container } = renderWithProviders(<FileListSkeleton count={2} selectionMode />);
       const skeletons = container.querySelectorAll('.MuiSkeleton-root');
       expect(skeletons.length).toBeGreaterThan(0);
@@ -73,7 +73,7 @@ describe('FileSkeletons', () => {
       expect(getComputedStyle(items[4]).opacity).toBe('0.25');
     });
 
-    it('adds checkbox placeholder when selectionMode', () => {
+    it('renders skeleton items when selectionMode', () => {
       const { container } = renderWithProviders(<FileGridSkeleton count={2} selectionMode />);
       const skeletons = container.querySelectorAll('.MuiSkeleton-root');
       expect(skeletons.length).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe('FileSkeletons', () => {
       expect(rows.length).toBe(4);
     });
 
-    it('adds checkbox column when selectionMode', () => {
+    it('renders table rows when selectionMode', () => {
       const { container } = renderWithProviders(
         <table>
           <tbody>
@@ -101,8 +101,8 @@ describe('FileSkeletons', () => {
           </tbody>
         </table>
       );
-      const cells = container.querySelectorAll('td');
-      expect(cells.length).toBeGreaterThan(0);
+      const rows = container.querySelectorAll('tr');
+      expect(rows.length).toBe(2);
     });
   });
 

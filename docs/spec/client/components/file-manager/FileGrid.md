@@ -22,7 +22,9 @@
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | files | array | Y | - | File objects |
-| onFileClick | function | Y | - | Click handler |
+| onFileClick | function | Y | - | Click handler; receives (file, event) for modifier detection |
+| onMoreClick | function | Y | - | More button click handler (file); opens FileActionSheet |
+| onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
 | onContextMenu | function | Y | - | Context menu handler |
 | onFileDrop | function | N | - | Drop handler |
 | selectionMode | boolean | Y | - | Show checkboxes |
@@ -42,8 +44,10 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onFileClick | Card click | (file) |
-| onContextMenu | Right-click or long-press | (e, file) |
+| onFileClick | Card click | (file, event) |
+| onMoreClick | More button click | (file) |
+| onLongPressSelect | Mobile long-press on file | (file) |
+| onContextMenu | Right-click | (e, file) |
 | onFileCheck | Checkbox toggle | (file, checked, e) |
 
 ### 2.4 Dependencies
@@ -70,7 +74,7 @@ Uses CSS Grid (same pattern as FileList), not MUI Grid:
 
 - loading && files.length === 0: FileGridSkeleton
 - files.length === 0: empty message
-- Long-press on mobile when !selectionMode
+- Long-press (onLongPressSelect) on mobile when !selectionMode — enters selection mode and selects file. onMoreClick and showMoreButton (!selectionMode) passed to FileGridItem.
 
 ### 2.8 Verification Scenarios
 
@@ -79,7 +83,7 @@ Checklist for unit test writing:
 - [ ] Renders FileGridItem for each file
 - [ ] onFileClick, onContextMenu, onFileCheck work
 - [ ] Loading/empty states
-- [ ] Long-press on mobile
+- [ ] Long-press invokes onLongPressSelect on mobile — enters selection mode
 - [ ] Drag-and-drop
 - [ ] loadMoreRef when hasMore
 

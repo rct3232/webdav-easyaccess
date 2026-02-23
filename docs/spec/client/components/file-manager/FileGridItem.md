@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Card-style grid item: checkbox, thumbnail/icon, filename. Processing overlay. React.memo optimized. |
+| Role | Card-style grid item: thumbnail/icon, filename, More button. Selection indicated by light primary background. Processing overlay. React.memo optimized. |
 | Used in | FileGrid |
 | Related components | getFileIconForGrid, getThumbnail, renderProcessingIcon |
 
@@ -28,42 +28,45 @@
 | processingType | string | N | - | Processing type |
 | isDropTarget | boolean | Y | - | Drop target highlight |
 | isDragging | boolean | Y | - | Dragging |
-| selectionMode | boolean | Y | - | Show checkbox |
+| selectionMode | boolean | Y | - | Selection mode active (affects card styling when isSelected) |
+| showMoreButton | boolean | Y | - | Show More (⋮) button; false when in selection mode |
+| onMoreClick | function | Y | - | More button click handler; opens FileActionSheet; call stopPropagation so card tap does not toggle selection |
 | isMobile | boolean | Y | - | Mobile styles |
-| onCheck | function | Y | - | Checkbox handler |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onCheck | Checkbox change | (file, checked, e) |
+| onMoreClick | More button click | (file) — must stopPropagation to prevent card click |
 
 ### 2.4 Dependencies
 
-- **imports:** React, MUI Card/CardMedia/CardContent/Typography/Box/Checkbox/CircularProgress, renderProcessingIcon, getFileIconForGrid, getThumbnail
+- **imports:** React, MUI Card/CardMedia/CardContent/Typography/Box/CircularProgress, renderProcessingIcon, getFileIconForGrid, getThumbnail
 - **Reference implementation:** `client/src/components/file-manager/FileGridItem.js`
 
 ### 2.5 i18n Keys
 
 - None
 
-### 2.6 Conditional Rendering
+### 2.6 Layout and Conditional Rendering
 
-- Checkbox when selectionMode
+- **More button placement:** Top-right of preview (thumbnail/icon) area, overlaid with `position: absolute`, `top`, `right`, and `z-index` so the icon is not pushed. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent card tap does not trigger selection toggle.
+- **Selection display:** No checkbox. When isSelected, card uses light primary background (e.g. alpha(primary.main, 0.12)) instead of border.
 - Thumbnail or getFileIconForGrid
 - Processing overlay when isProcessing
 - Border/background for isSelected, isDropTarget
+- **Filename placement:** CardContent uses flex (`display: flex`, `alignItems: center`, `justifyContent: center`) so the filename is centered horizontally and vertically within the content area.
 
 ### 2.7 Verification Scenarios
 
 Checklist for unit test writing:
 
-- [ ] Renders basename, thumbnail/icon
-- [ ] Checkbox when selectionMode
-- [ ] onCheck invocation
-- [ ] Selected/drop target styles
-- [ ] Processing overlay
-- [ ] React.memo optimization
+- [x] Renders basename, thumbnail/icon
+- [x] Selection indicated by light primary background when isSelected
+- [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
+- [x] Selected/drop target styles
+- [x] Processing overlay
+- [x] React.memo optimization
 
 ### 2.8 Edge Cases
 

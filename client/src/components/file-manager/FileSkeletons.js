@@ -49,16 +49,6 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
             ...(opacity != null && { opacity }),
           }}
         >
-          {selectionMode && (
-            <Box sx={{ minWidth: 40, display: 'flex', alignItems: 'center', mr: 1 }}>
-              <Skeleton 
-                variant="rectangular" 
-                width={24} 
-                height={24} 
-                animation="wave"
-              />
-            </Box>
-          )}
           <Box sx={{ minWidth: 56, display: 'flex', justifyContent: 'center', mr: 2 }}>
             <Skeleton 
               variant="rectangular" 
@@ -135,23 +125,6 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
             ...(opacity != null && { opacity }),
           }}
         >
-          {selectionMode && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                zIndex: 1,
-              }}
-            >
-              <Skeleton 
-                variant="rectangular" 
-                width={24} 
-                height={24} 
-                animation="wave"
-              />
-            </Box>
-          )}
           <Box
             sx={{
               width: '100%',
@@ -201,16 +174,6 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
             ...(opacity != null && { opacity }),
           }}
         >
-          {selectionMode && (
-            <TableCell padding="checkbox" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Skeleton 
-                variant="rectangular" 
-                width={20} 
-                height={20} 
-                animation="wave"
-              />
-            </TableCell>
-          )}
           <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <Skeleton 
@@ -252,6 +215,7 @@ export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
               animation="wave"
             />
           </TableCell>
+          <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }} />
         </TableRow>
         );
       })}

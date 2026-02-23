@@ -22,7 +22,9 @@
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | files | array | Y | - | File objects to display |
-| onFileClick | function | Y | - | Click handler for file |
+| onFileClick | function | Y | - | Click handler for file; receives (file, event) for modifier detection |
+| onMoreClick | function | Y | - | More button click handler (file); opens FileActionSheet |
+| onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
 | onContextMenu | function | Y | - | Context menu handler (e, file) |
 | onFileDrop | function | N | - | Drop handler for drag-and-drop |
 | selectionMode | boolean | Y | - | Whether selection mode active |
@@ -41,8 +43,10 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onFileClick | File row click | (file) |
-| onContextMenu | Right-click or long-press | (e, file) |
+| onFileClick | File row click | (file, event) |
+| onMoreClick | More button click | (file) |
+| onLongPressSelect | Mobile long-press on file | (file) |
+| onContextMenu | Right-click | (e, file) |
 | onFileDrop | File dropped on target | via useFileViewCommon |
 | onFileCheck | Checkbox toggle | (file, checked, e) |
 
@@ -59,7 +63,7 @@
 
 - loading && files.length === 0: FileListSkeleton
 - files.length === 0: empty message box
-- Long-press handlers only on mobile and when !selectionMode
+- Long-press (onLongPressSelect) only on mobile when !selectionMode — enters selection mode and selects file; does not open context menu
 - loadMoreRef/Box rendered when hasMore for infinite scroll
 
 ### 2.7 Verification Scenarios
@@ -69,7 +73,7 @@ Checklist for unit test writing:
 - [ ] Renders FileListItem for each file
 - [ ] onFileClick called when file row clicked (and not disabled)
 - [ ] onContextMenu called on right-click
-- [ ] Long-press opens context menu on mobile (500ms)
+- [ ] Long-press invokes onLongPressSelect on mobile (500ms) — enters selection mode
 - [ ] Checkbox and onFileCheck when selectionMode
 - [ ] Loading shows FileListSkeleton
 - [ ] Empty files shows noFiles message
@@ -80,5 +84,5 @@ Checklist for unit test writing:
 
 - isDisabled files – no onClick, reduced opacity
 - isPermissionDisabled && !isProcessing – allowContextMenu for read-only items
-- Touch move cancels long-press
+- Touch move cancels long-press. onMoreClick passed to FileListItem; More button visible when !selectionMode.
 - Timers cleared on unmount

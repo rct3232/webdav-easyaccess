@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Typography,
   Box,
-  Checkbox,
   Avatar,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { renderProcessingIcon, getDropTargetStyles } from '../../utils/fileViewUtils';
 import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
@@ -30,12 +32,6 @@ const mobileStyles = {
   msUserSelect: 'none',
   WebkitTouchCallout: 'none',
   touchAction: 'manipulation',
-};
-
-const checkboxContainerStyles = {
-  minWidth: 40,
-  display: 'flex',
-  alignItems: 'center',
 };
 
 const thumbnailContainerStyles = {
@@ -94,23 +90,15 @@ const FileListItem = React.memo(({
   isDropTarget,
   isDragging,
   selectionMode,
+  showMoreButton,
+  onMoreClick,
   isMobile,
-  onCheck,
 }) => {
   const { t } = useTranslation();
   const thumbnail = getThumbnail(file);
 
   return (
     <>
-      {selectionMode && (
-        <Box sx={checkboxContainerStyles}>
-          <Checkbox
-            checked={isSelected}
-            onChange={(e) => onCheck(file, e.target.checked, e)}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </Box>
-      )}
       <Box sx={thumbnailContainerStyles}>
         {thumbnail ? (
           <Avatar
@@ -138,6 +126,19 @@ const FileListItem = React.memo(({
           </Typography>
         </Box>
       </Box>
+      {showMoreButton && (
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoreClick?.(file, e);
+          }}
+          sx={{ ml: 0.5, flexShrink: 0 }}
+          aria-label="More actions"
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+      )}
       {isProcessing && (
         <Box sx={processingOverlayStyles}>
           <CircularProgress size={18} thickness={5} />
@@ -156,6 +157,7 @@ const FileListItem = React.memo(({
     prevProps.isDropTarget === nextProps.isDropTarget &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.selectionMode === nextProps.selectionMode &&
+    prevProps.showMoreButton === nextProps.showMoreButton &&
     prevProps.isMobile === nextProps.isMobile &&
     prevProps.file.path === nextProps.file.path &&
     prevProps.file.thumbnailUrl === nextProps.file.thumbnailUrl &&
@@ -177,12 +179,19 @@ export const getFileListItemContainerStyles = ({
   isHidden,
   isMobile,
   selectionMode,
+  isSelected,
 }) => ({
   ...baseStyles,
   '&:hover': {
-    backgroundColor: isDisabled ? 'transparent' : 'action.hover',
+    backgroundColor: isDisabled
+      ? 'transparent'
+      : (selectionMode && isSelected ? (theme) => alpha(theme.palette.primary.main, 0.2) : 'action.hover'),
   },
-  backgroundColor: isDropTarget ? 'primary.main' : 'transparent',
+  backgroundColor: isDropTarget
+    ? 'primary.main'
+    : (selectionMode && isSelected
+      ? (theme) => alpha(theme.palette.primary.main, 0.12)
+      : 'transparent'),
   opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (isHidden ? 0.5 : 1)),
   cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
   color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),

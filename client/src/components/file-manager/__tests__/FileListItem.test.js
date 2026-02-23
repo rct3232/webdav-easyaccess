@@ -24,8 +24,9 @@ const defaultProps = {
   isDropTarget: false,
   isDragging: false,
   selectionMode: false,
+  showMoreButton: false,
+  onMoreClick: jest.fn(),
   isMobile: false,
-  onCheck: jest.fn(),
 };
 
 describe('FileListItem', () => {
@@ -49,21 +50,9 @@ describe('FileListItem', () => {
     expect(screen.getByText('Folder')).toBeInTheDocument();
   });
 
-  it('shows checkbox when selectionMode', () => {
-    renderWithProviders(<FileListItem {...defaultProps} selectionMode />);
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
-  });
-
-  it('hides checkbox when !selectionMode', () => {
-    renderWithProviders(<FileListItem {...defaultProps} />);
+  it('does not render checkbox (selection shown by container background)', () => {
+    renderWithProviders(<FileListItem {...defaultProps} selectionMode isSelected />);
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  });
-
-  it('calls onCheck with (file, checked, e) when checkbox changed', () => {
-    const onCheck = jest.fn();
-    renderWithProviders(<FileListItem {...defaultProps} selectionMode onCheck={onCheck} />);
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(onCheck).toHaveBeenCalledWith(mockFile, true, expect.any(Object));
   });
 
   it('shows processing overlay when isProcessing', () => {
@@ -74,5 +63,22 @@ describe('FileListItem', () => {
   it('shows icon when no thumbnail', () => {
     renderWithProviders(<FileListItem {...defaultProps} />);
     expect(document.querySelector('.MuiSvgIcon-root, [class*="icon"]')).toBeTruthy();
+  });
+
+  it('shows More button when showMoreButton', () => {
+    renderWithProviders(<FileListItem {...defaultProps} showMoreButton onMoreClick={jest.fn()} />);
+    expect(screen.getByRole('button', { name: /more actions/i })).toBeInTheDocument();
+  });
+
+  it('hides More button when !showMoreButton', () => {
+    renderWithProviders(<FileListItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onMoreClick with file when More button clicked', () => {
+    const onMoreClick = jest.fn();
+    renderWithProviders(<FileListItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />);
+    fireEvent.click(screen.getByRole('button', { name: /more actions/i }));
+    expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });
 });

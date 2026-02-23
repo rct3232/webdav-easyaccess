@@ -18,6 +18,11 @@ export const SORT_MODES = {
   DATE_DESC: 'date_desc',
 };
 
+// Scroll container padding: height of FloatingSearchBar + FAB bottom area (offset + 56px)
+// Keep in sync with FloatingSearchBar MOBILE_OFFSET/DESKTOP_OFFSET + FAB_SIZE
+export const FLOATING_BOTTOM_HEIGHT_MOBILE = 72; // 16 + 56
+export const FLOATING_BOTTOM_HEIGHT_DESKTOP = 104; // 48 + 56
+
 export const PREVIEWABLE_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,
   ...VIDEO_EXTENSIONS,

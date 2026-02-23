@@ -13,7 +13,7 @@ import {
 import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { VIEW_MODES } from '../constants/fileManager';
+import { VIEW_MODES, FLOATING_BOTTOM_HEIGHT_MOBILE, FLOATING_BOTTOM_HEIGHT_DESKTOP } from '../constants/fileManager';
 import { canPreview, sortFiles } from '../utils/fileUtils';
 import { getViewMode, setViewMode as saveViewMode, setSortMode as saveSortMode } from '../utils/localStorage';
 import { useFileManager } from '../hooks/useFileManager';
@@ -43,6 +43,7 @@ import {
   BulkActionToolbar,
   Breadcrumb,
   FAB,
+  FloatingSearchBar,
 } from '../components/file-manager';
 import {
   UploadDialog,
@@ -138,7 +139,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchMode, setIsSearchMode] = useState(false);
 
   // 보기 모드 변경 시 저장
   useEffect(() => {
@@ -1492,10 +1492,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       {(!isShareLinkMode || (isShareLinkMode && user)) ? (
         <FileManagerHeader
           isMobile={isMobile}
-          isSearchMode={isSearchMode}
-          setIsSearchMode={setIsSearchMode}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
           user={user}
           navigate={navigate}
         />
@@ -1681,6 +1677,20 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             selectionActionsDisabled={bulkMoveCopyInProgress}
           />
 
+          {selectionMode && (
+            <BulkActionToolbar
+              selectedFiles={selectedFiles}
+              handleBulkMove={handleBulkMove}
+              handleBulkCopy={handleBulkCopy}
+              handleBulkDownload={handleBulkDownload}
+              openBulkDeleteDialog={openBulkDeleteDialog}
+              hasWritePermission={isShareLinkMode ? false : allSelectedHaveWrite}
+              hasReadOnlyInSelection={hasReadOnlyInSelection}
+              disabled={bulkMoveCopyInProgress}
+              downloadOnly={isShareLinkMode}
+            />
+          )}
+
           <Box
             ref={scrollContainerRef}
             sx={{
@@ -1689,8 +1699,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
               p: 2,
               minHeight: 0,
               position: 'relative',
-              // Avoid being hidden behind the fixed bottom selection action bar on mobile
-              pb: selectionMode && isMobile ? 'calc(88px + env(safe-area-inset-bottom))' : 2,
+              // Avoid being hidden behind fixed bottom elements: FloatingSearchBar + FAB
+              pb: `calc(${isMobile ? FLOATING_BOTTOM_HEIGHT_MOBILE : FLOATING_BOTTOM_HEIGHT_DESKTOP}px + env(safe-area-inset-bottom))`,
               // Enable smooth scrolling and bounce effect on iOS
               WebkitOverflowScrolling: 'touch',
               // Optional: contain bounce within this scroll area
@@ -2004,21 +2014,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         </Alert>
       </Snackbar>
 
-      {selectionMode && selectedFiles.size > 0 && (
-        <BulkActionToolbar
-          isMobile={isMobile}
-          selectedFiles={selectedFiles}
-          handleBulkMove={handleBulkMove}
-          handleBulkCopy={handleBulkCopy}
-          handleBulkDownload={handleBulkDownload}
-          openBulkDeleteDialog={openBulkDeleteDialog}
-          hasWritePermission={isShareLinkMode ? false : allSelectedHaveWrite}
-          hasReadOnlyInSelection={hasReadOnlyInSelection}
-          disabled={bulkMoveCopyInProgress}
-          downloadOnly={isShareLinkMode}
-        />
-      )}
-
       <FileOperationProgress
         items={progressItems}
         onClose={(id) => {
@@ -2028,6 +2023,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         onCancelFile={handleCancelUploadFileWrapper}
         onCancelAll={handleCancelAllWrapper}
       />
+
+      {/* FloatingSearchBar - shown when header is shown; expands to FAB space when FAB hidden (selection mode) */}
+      {(!isShareLinkMode || (isShareLinkMode && user)) && (
+        <FloatingSearchBar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          isMobile={isMobile}
+          fabVisible={!selectionMode}
+        />
+      )}
 
       {/* FAB - all viewports */}
       {!selectionMode && (

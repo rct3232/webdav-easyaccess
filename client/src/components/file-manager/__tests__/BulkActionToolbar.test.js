@@ -9,7 +9,6 @@ import { renderWithProviders } from '../../../test-utils';
 import BulkActionToolbar from '../BulkActionToolbar';
 
 const defaultProps = {
-  isMobile: false,
   selectedFiles: new Set(['/a.txt', '/b.txt']),
   handleBulkMove: jest.fn(),
   handleBulkCopy: jest.fn(),
@@ -108,8 +107,8 @@ describe('BulkActionToolbar', () => {
     expect(defaultProps.openBulkDeleteDialog).not.toHaveBeenCalled();
   });
 
-  it('renders correctly when isMobile', () => {
-    renderWithProviders(<BulkActionToolbar {...defaultProps} isMobile />);
+  it('renders toolbar with action buttons', () => {
+    renderWithProviders(<BulkActionToolbar {...defaultProps} />);
     expect(screen.getByTitle(/move/i)).toBeInTheDocument();
   });
 });

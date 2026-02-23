@@ -11,4 +11,5 @@ export { default as FileContextMenu } from './FileContextMenu';
 export { default as FileActionSheet } from './FileActionSheet';
 export { default as FileOperationProgress } from './FileOperationProgress';
 export { default as FAB } from './FAB';
+export { default as FloatingSearchBar } from './FloatingSearchBar';
 export { default as Breadcrumb } from './Breadcrumb';

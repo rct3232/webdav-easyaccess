@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Toolbar for bulk actions on selected files: move, copy, download, delete. Fixed at bottom (desktop: centered; mobile: full width). |
+| Role | Toolbar for bulk actions on selected files: move, copy, download, delete. Rendered inline below FileManagerControls (sort/select/view row), with icon+text buttons and no background. |
 | Used in | FileManager |
-| Related components | MUI Paper, IconButton, Typography, Box |
+| Related components | MUI Button, Typography, Box |
 
 ---
 
@@ -21,7 +21,6 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| isMobile | boolean | Y | - | Mobile layout flag |
 | selectedFiles | Set\<string\> | Y | - | Set of selected file paths |
 | handleBulkMove | function | Y | - | Move button handler |
 | handleBulkCopy | function | Y | - | Copy button handler |
@@ -36,14 +35,14 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| handleBulkMove | Move icon click | - |
-| handleBulkCopy | Copy icon click | - |
-| handleBulkDownload | Download icon click | - |
-| openBulkDeleteDialog | Delete icon click | (filePaths: string[]) |
+| handleBulkMove | Move button click | - |
+| handleBulkCopy | Copy button click | - |
+| handleBulkDownload | Download button click | - |
+| openBulkDeleteDialog | Delete button click | (filePaths: string[]) |
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Paper/Typography/IconButton/Box, Move/Copy/Download/Delete icons
+- **imports:** React, useTranslation, MUI Button/Typography/Box, Move/Copy/Download/Delete icons
 - **Reference implementation:** `client/src/components/file-manager/BulkActionToolbar.js`
 
 ### 2.5 i18n Keys
@@ -69,10 +68,8 @@ Checklist for unit test writing:
 - [ ] downloadOnly hides move, copy, delete
 - [ ] hasReadOnlyInSelection shows read-only caption
 - [ ] openBulkDeleteDialog receives array, not called when selectedFiles empty
-- [ ] isMobile affects layout (position, size)
 
 ### 2.8 Edge Cases
 
 - selectedFiles.size === 0 – toolbar may still render; delete checks length before calling
 - hasReadOnlyInSelection – message displayed; move/delete still disabled by hasWritePermission
-- Safe area inset on mobile (paddingBottom)

@@ -38,9 +38,9 @@ The app is a single-page React application using React Router. Public routes inc
 
 - **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted in localStorage (e.g. `getViewMode`, `setViewMode`).
 - **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted (e.g. `setSortMode`, `saveSortMode`). Applied via `sortFiles()` before render.
-- **Search:** Search query and “search mode” state; filter or highlight items by name (implementation may filter list or call list API with query).
+- **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
 - **Selection:** Multi-select (checkboxes or shift-click). Selected items drive toolbar visibility and batch actions. `useSelection` (or equivalent) holds selected set; clear selection after successful operation or on path change.
-- **Toolbar (bulk actions):** When one or more items selected, show toolbar with Move, Copy, Download (ZIP), Delete. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API.
+- **Toolbar (bulk actions):** When one or more items selected, show toolbar inline below the sort/select/view row (FileManagerControls). Uses icon+text buttons (Move, Copy, Download, Delete) with no background (`variant="text"`). Same layout on desktop and mobile. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API.
 - **Rename dialog:** Single item rename; `PUT /api/files/rename` with `oldPath`, `newName`. On success, refresh list and recent files if needed.
 - **Drag and drop:** Drop on folder tree or list to upload (to current or dropped folder) or to move/copy; `useDropToUpload` and paste/move/copy handlers. Conflict check before paste via `checkConflicts`; conflict resolve dialog when needed.
 - **Context menu (desktop):** Right-click on file/folder: Download, Rename, Move, Copy, Delete, Share, etc. Actions open the same dialogs as toolbar.
@@ -58,7 +58,7 @@ The app is a single-page React application using React Router. Public routes inc
 ### Responsive and mobile
 
 - **Breakpoints:** MUI theme breakpoints (xs/sm/md/lg/xl). `useResponsive` (or similar) exposes `isMobile` for conditional layout.
-- **FAB:** Shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. Hidden when no write permission, selection mode, or read-only share.
+- **FAB and search:** Search bar (FloatingSearchBar) is positioned to the left of the FAB at bottom-right. FAB: shown on all viewports (mobile and desktop). Speed dial: Upload, Create folder. Share link mode: Login or Add to my permissions. FAB hidden when selection mode. When FAB is hidden, the search bar expands to occupy the FAB’s space.
 - **Breadcrumb:** Path breadcrumb (chips) for current folder, shown on all viewports above the selection/sort/view-mode row.
 - **Action sheet:** On mobile, long-press or selection opens bottom sheet instead of context menu.
 - **Pull-to-refresh:** Optional pull-to-refresh on mobile to reload current folder.

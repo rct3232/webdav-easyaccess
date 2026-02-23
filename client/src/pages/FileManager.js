@@ -76,6 +76,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const scrollContainerRef = useRef(null);
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [progressDrawerOpen, setProgressDrawerOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [addToSharedModalOpen, setAddToSharedModalOpen] = useState(false);
   const [addToSharedStatus, setAddToSharedStatus] = useState('loading');
@@ -1198,8 +1199,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const handleMoreClick = useCallback((file, e) => {
     if (!file) return;
     if (isMobile) {
+      // setActionSheetFile already opens the sheet via actionSheet.open(file).
+      // Do NOT call setActionSheetOpen(true) — it would call actionSheet.open() with no arg and overwrite file with undefined.
       setActionSheetFile(file);
-      setActionSheetOpen(true);
     } else {
       setContextMenu(e ? { mouseX: e.clientX, mouseY: e.clientY } : { mouseX: 0, mouseY: 0 });
       setSelectedFile(file);
@@ -1536,7 +1538,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           elevation={0}
         >
           <Toolbar>
-            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Box
                 component="img"
                 src="/logo_white.png"
@@ -1548,6 +1550,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 }}
               />
             </Box>
+            <Box
+              id="file-progress-slot"
+              sx={{
+                flexGrow: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                pr: 1,
+              }}
+            />
           </Toolbar>
         </AppBar>
       )}
@@ -1796,7 +1808,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                     e.preventDefault();
                   }
                   if (isMobile) {
-                    setActionSheetFile(file);
+                    // Long-press triggers contextmenu on mobile; do not open action sheet.
+                    // Action sheet opens only via More button tap.
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);
@@ -1828,7 +1841,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                     e.preventDefault();
                   }
                   if (isMobile) {
-                    setActionSheetFile(file);
+                    // Long-press triggers contextmenu on mobile; do not open action sheet.
+                    // Action sheet opens only via More button tap.
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);
@@ -1860,7 +1874,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                     e.preventDefault();
                   }
                   if (isMobile) {
-                    setActionSheetFile(file);
+                    // Long-press triggers contextmenu on mobile; do not open action sheet.
+                    // Action sheet opens only via More button tap.
                   } else {
                     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
                     setSelectedFile(file);
@@ -2048,6 +2063,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
       <FileOperationProgress
         items={progressItems}
+        drawerOpen={progressDrawerOpen}
+        onDrawerOpen={() => setProgressDrawerOpen(true)}
+        onDrawerClose={() => setProgressDrawerOpen(false)}
         onClose={(id) => {
           updateProgress({ id, remove: true });
         }}

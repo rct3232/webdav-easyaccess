@@ -50,7 +50,7 @@
 
 ### 2.6 Layout and Conditional Rendering
 
-- **More button placement:** Right side of item row. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent row tap does not trigger selection toggle.
+- **More button placement:** Right side of item row. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent row tap does not trigger selection toggle. Uses `onTouchStart`/`onTouchEnd` with `stopPropagation` on mobile so parent long-press handler does not capture the touch and touch fires onMoreClick immediately (avoids click delay/loss on mobile).
 - **Selection display:** No checkbox. When selectionMode and isSelected, container (parent) uses light primary background (e.g. alpha(primary.main, 0.12)).
 - Thumbnail or icon based on getThumbnail(file)
 - Processing overlay (CircularProgress + icon) when isProcessing

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Mobile bottom sheet for file actions. Replaces context menu with touch-friendly list: preview, properties, download, rename, move, copy, share, delete. |
+| Role | Mobile bottom sheet for file actions. Replaces context menu with touch-friendly list: preview, properties, download, rename, move, copy, share, delete. Opens only via More (⋮) button tap on each file item; long-press does not open it (long-press enters selection mode). |
 | Used in | FileManager (mobile) |
 | Related components | SwipeableDrawer, getFileIcon |
 

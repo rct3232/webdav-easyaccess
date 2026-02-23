@@ -50,7 +50,7 @@
 
 ### 2.6 Layout and Conditional Rendering
 
-- **More button placement:** Top-right of preview (thumbnail/icon) area, overlaid with `position: absolute`, `top`, `right`, and `z-index` so the icon is not pushed. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent card tap does not trigger selection toggle.
+- **More button placement:** Top-right of preview (thumbnail/icon) area, overlaid with `position: absolute`, `top`, `right`, and `z-index` so the icon is not pushed. Hidden when `!showMoreButton` (i.e. when in selection mode). IconButton with ⋮ icon; onMoreClick must call `event.stopPropagation()` so parent card tap does not trigger selection toggle. Uses `onTouchStart`/`onTouchEnd` with `stopPropagation` on mobile so parent long-press handler does not capture the touch and touch fires onMoreClick immediately (avoids click delay/loss on mobile).
 - **Selection display:** No checkbox. When isSelected, card uses light primary background (e.g. alpha(primary.main, 0.12)) instead of border.
 - Thumbnail or getFileIconForGrid
 - Processing overlay when isProcessing

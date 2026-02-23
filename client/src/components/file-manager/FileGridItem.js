@@ -6,7 +6,6 @@ import {
   Typography,
   Box,
   CircularProgress,
-  IconButton,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
@@ -160,14 +159,30 @@ const FileGridItem = React.memo(({
           getFileIconForGrid(file)
         )}
         {showMoreButton && (
-          <IconButton
-            size="small"
+          <Box
+            component="button"
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onMoreClick?.(file, e);
             }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              onMoreClick?.(file, e);
+            }}
             sx={{
               ...moreButtonOverlayStyles,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0.5,
+              minWidth: 44,
+              minHeight: 44,
+              border: 'none',
+              borderRadius: '50%',
+              background: 'transparent',
+              cursor: 'pointer',
               color: isDropTarget ? 'white' : 'inherit',
               '&:hover': {
                 backgroundColor: (theme) =>
@@ -177,7 +192,7 @@ const FileGridItem = React.memo(({
             aria-label="More actions"
           >
             <MoreVertIcon fontSize="small" />
-          </IconButton>
+          </Box>
         )}
       </Box>
       <CardContent sx={cardContentStyles}>

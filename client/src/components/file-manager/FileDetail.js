@@ -9,7 +9,6 @@ import {
   Typography,
   Box,
   CircularProgress,
-  IconButton,
   useTheme,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -205,16 +204,35 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
                 </TableCell>
                 <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }}>
                   {(showMoreButton ?? !selectionMode) && onMoreClick && (
-                    <IconButton
-                      size="small"
+                    <Box
+                      component="button"
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onMoreClick(file, e);
                       }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        onMoreClick(file, e);
+                      }}
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0.5,
+                        minWidth: 44,
+                        minHeight: 44,
+                        border: 'none',
+                        borderRadius: '50%',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        color: 'inherit',
+                      }}
                       aria-label="More actions"
                     >
                       <MoreVertIcon fontSize="small" />
-                    </IconButton>
+                    </Box>
                   )}
                 </TableCell>
                 {isProcessing && (

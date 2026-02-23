@@ -5,7 +5,6 @@ import {
   Box,
   Avatar,
   CircularProgress,
-  IconButton,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
@@ -127,17 +126,37 @@ const FileListItem = React.memo(({
         </Box>
       </Box>
       {showMoreButton && (
-        <IconButton
-          size="small"
+        <Box
+          component="button"
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onMoreClick?.(file, e);
           }}
-          sx={{ ml: 0.5, flexShrink: 0 }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+            onMoreClick?.(file, e);
+          }}
+          sx={{
+            ml: 0.5,
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0.5,
+            minWidth: 44,
+            minHeight: 44,
+            border: 'none',
+            borderRadius: '50%',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'inherit',
+          }}
           aria-label="More actions"
         >
           <MoreVertIcon fontSize="small" />
-        </IconButton>
+        </Box>
       )}
       {isProcessing && (
         <Box sx={processingOverlayStyles}>

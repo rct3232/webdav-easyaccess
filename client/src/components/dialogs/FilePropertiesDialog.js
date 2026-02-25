@@ -120,25 +120,31 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             position: 'relative',
             overflow: 'hidden',
             borderRadius: 1,
-            ...(thumbnailUrl && {
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                inset: 0,
-                backgroundImage: `url(${thumbnailUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                zIndex: 0,
-              },
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                inset: 0,
-                background:
-                  'linear-gradient(to right, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.6) 35%, transparent 65%)',
-                zIndex: 1,
-              },
-            }),
+            background: 'linear-gradient(135deg, #4167ba 0%, #52c597 100%)',
+            '&::before': thumbnailUrl ? {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: `url(${thumbnailUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              zIndex: 0,
+            } : {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(255, 255, 255, 0.82)', // 화이트 오버레이 추가
+              zIndex: 1,
+            },
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background: thumbnailUrl
+                ? 'linear-gradient(to right, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.6) 35%, transparent 65%)'
+                : 'radial-gradient(circle at 20% 50%, rgba(251, 229, 89, 0.15) 0%, transparent 100%)',
+              zIndex: thumbnailUrl ? 1 : 2,
+            },
           }}
         >
           <Box
@@ -147,7 +153,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
               flexDirection: 'column',
               alignItems: 'flex-start',
               position: 'relative',
-              zIndex: 2,
+              zIndex: 3,
             }}
           >
             <Avatar
@@ -157,6 +163,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
                 height: 64,
                 bgcolor: 'primary.main',
                 mb: 2,
+                boxShadow: thumbnailUrl ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
                 '& svg': {
                   color: 'white',
                   fontSize: 36,
@@ -165,7 +172,15 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             >
               {getFileIcon(file)}
             </Avatar>
-            <Typography variant="h6" sx={{ textAlign: 'center', wordBreak: 'break-word', minWidth: 64 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                textAlign: (file.basename || file.name || '').length > 20 ? 'left' : 'center',
+                wordBreak: 'break-word',
+                minWidth: 64,
+                color: 'text.primary',
+              }}
+            >
               {file.basename || file.name}
             </Typography>
           </Box>

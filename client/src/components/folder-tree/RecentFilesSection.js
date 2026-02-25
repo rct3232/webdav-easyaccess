@@ -16,7 +16,9 @@ import {
   ExpandMore as ExpandMoreIcon,
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
+import { Tooltip } from '@mui/material';
 import { getFileIcon } from '../../utils/fileIconUtils';
+import { pixelMiddleTruncate } from '../../utils/stringUtils';
 
 const RecentFilesSection = ({
   recentExpanded,
@@ -28,6 +30,28 @@ const RecentFilesSection = ({
   onFileClick,
 }) => {
   const { t } = useTranslation();
+  const [containerWidth, setContainerWidth] = React.useState(200);
+  const containerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Padding/Margins total: ListItemButton pl:3(24px) + Icon(24px) + Icon mr:0.5(4px) + default right padding(~16px) = ~68px
+  // We use 72px for a bit more safety margin.
+  const maxPixelWidth = Math.max(40, containerWidth - 72);
+  const font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
   return (
     <>
       {/* 최근 항목 섹션 - 항상 표시 */}
@@ -100,7 +124,7 @@ const RecentFilesSection = ({
         </ListItemButton>
       </ListItem>
       <Collapse in={recentExpanded} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
+        <List component="div" disablePadding ref={containerRef}>
           {(recentFilesList ?? []).length === 0 ? (
             <ListItem disablePadding>
               <Box sx={{ pl: 3, py: 1 }}>
@@ -152,14 +176,30 @@ const RecentFilesSection = ({
                   </ListItemIcon>
                   <ListItemText
                     primary={
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontSize: '0.875rem',
-                        }}
-                      >
-                        {recentFile.name}
-                      </Typography>
+                      (() => {
+                        const originalName = recentFile.name;
+                        const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
+                        const isTruncated = truncatedName !== originalName;
+
+                        const typography = (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontSize: '0.875rem',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {truncatedName}
+                          </Typography>
+                        );
+
+                        return isTruncated ? (
+                          <Tooltip title={originalName} disableInteractive>
+                            {typography}
+                          </Tooltip>
+                        ) : typography;
+                      })()
                     }
                   />
                 </ListItemButton>

@@ -62,8 +62,8 @@
 - [ ] File click when onFileClick undefined: falls back to onPathClick(parentPath)
 - [ ] List shows max 10 items
 
-### 2.8 Edge Cases
+### 2.9 UI Enhancements
 
-- recentFilesList empty
-- recentFilesList undefined/null: 빈 배열로 취급하여 크래시하지 않음 (방어적 처리)
-- recentFilesList length > 10: only first 10 displayed
+- **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension.
+- **Dynamic Width:** Truncation should adapt to the component's width and consider character widths (e.g., CJK).
+- **Tooltip:** Full filename should be visible via tooltip on hover.

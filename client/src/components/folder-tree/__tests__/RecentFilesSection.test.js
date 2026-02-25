@@ -18,6 +18,19 @@ const defaultProps = {
   onFileClick: jest.fn(),
 };
 
+// Mock ResizeObserver
+global.ResizeObserver = class ResizeObserver {
+  constructor(callback) {
+    this.callback = callback;
+  }
+  observe(element) {
+    // Initial call to simulate observer trigger
+    this.callback([{ contentRect: { width: 200 } }]);
+  }
+  unobserve() { }
+  disconnect() { }
+};
+
 describe('RecentFilesSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -97,5 +110,20 @@ describe('RecentFilesSection', () => {
     expect(screen.getByText('file0.txt')).toBeInTheDocument();
     expect(screen.getByText('file9.txt')).toBeInTheDocument();
     expect(screen.queryByText('file10.txt')).not.toBeInTheDocument();
+  });
+
+  it('truncates very long filenames in the middle', () => {
+    const longName = 'this-is-a-very-long-filename-that-should-be-truncated.docx';
+    const files = [{ path: '/long.docx', name: longName, type: 'file' }];
+    renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
+
+    // With 200px width, maxVisibleLength is Math.floor((200-32)/8) = 21
+    // middleTruncate('...', 21)
+    // The resulting text should contain '...' and the extension
+    const truncatedElement = screen.getByTitle(longName);
+    expect(truncatedElement).toBeInTheDocument();
+    expect(truncatedElement.textContent).toContain('...');
+    expect(truncatedElement.textContent).toContain('.docx');
+    expect(truncatedElement.textContent.length).toBeLessThan(longName.length);
   });
 });

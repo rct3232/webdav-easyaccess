@@ -95,7 +95,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     () => linkInfo?.fileName || getBasename(shareRootPath) || t('nav.sharedFolder'),
     [linkInfo, shareRootPath, t]
   );
-  
+
   // Double-click detection for desktop
   const lastClickRef = useRef({ filePath: null, time: 0 });
   const handleFileClickInternalRef = useRef(null);
@@ -112,7 +112,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [isMobile]);
 
   const { message, showError, showWarning, clearMessage } = useMessage();
-  
+
   const {
     currentPath,
     setCurrentPath,
@@ -129,7 +129,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     shareToken,
     linkInfo,
   });
-  
+
   // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
   const currentPathRef = useRef(null);
 
@@ -152,7 +152,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   // 파일 목록을 로컬 상태로 관리하여 썸네일 업데이트 가능하도록 함
   const [files, setFiles] = useState([]);
-  
+
   // useFileManager의 files가 변경되면 로컬 상태 업데이트
   useEffect(() => {
     setFiles(filesFromHook);
@@ -176,10 +176,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [filteredFiles, sortMode]);
 
   // 무한 스크롤 훅 - 성능 최적화를 위해 초기 50개만 렌더링
-  const { 
-    displayedFiles, 
-    loadMoreRef, 
-    hasMore 
+  const {
+    displayedFiles,
+    loadMoreRef,
+    hasMore
   } = useInfiniteScroll(sortedFiles, {
     initialCount: 50,
     incrementCount: 50,
@@ -193,10 +193,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         const file = prevFiles.find(f => f.path === path);
         return file && !file.thumbnailUrl;
       });
-      
+
       // 변경사항이 없으면 동일한 참조 반환 (재렌더링 방지)
       if (!hasChanges) return prevFiles;
-      
+
       // 변경된 파일만 새 객체로 생성, 나머지는 동일 참조 유지
       return prevFiles.map(file => {
         const thumbnailUrl = thumbnailMap.get(file.path);
@@ -280,6 +280,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     mobilePickerAction, setMobilePickerAction,
   } = useFileManagerDialogs();
 
+  // Resolve file from current state to support live updates (e.g. thumbnails loading in background)
+  const propertiesFile = useMemo(() => {
+    const source = mobilePropertiesFile || actionSheetFile;
+    if (!source) return null;
+    return files.find(f => f.path === source.path) || source;
+  }, [files, mobilePropertiesFile, actionSheetFile]);
+
   // 미리보기 갤러리용 미디어 파일 목록 (같은 경로의 이미지/비디오)
   const mediaFiles = useMemo(() => {
     if (!selectedFile) return [];
@@ -328,7 +335,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
   const [processingMap, setProcessingMap] = useState(new Map());
   const loadFilesRef = useRef(loadFiles);
-  
+
   // 파일 로드 성공 시 경로 히스토리 정리
   useEffect(() => {
     if (!loading && files.length >= 0 && currentPath) {
@@ -337,7 +344,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       clearPathHistory(currentPath);
     }
   }, [loading, files, currentPath, clearPathHistory]);
-  
+
   useEffect(() => {
     loadFilesRef.current = loadFiles;
   }, [loadFiles]);
@@ -348,7 +355,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       const unsubscribe = onRecentFilesChange(() => {
         loadFiles();
       });
-      
+
       return () => {
         unsubscribe();
       };
@@ -456,16 +463,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     const payload = typeof info === 'string'
       ? { opType: 'delete', deletedFolderPath: info }
       : (info || {});
-    
+
     const opType = payload.opType || payload.type || 'refresh';
     const startedPath = payload.startedPath;
     const targetPath = payload.targetPath;
     const currentPathNow = currentPathRef.current;
-    
+
     const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
       ? payload.deletedFolderPaths
       : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
-    
+
     // Keep folder tree consistent (safe even if we skip list refresh)
     deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
       setTreeUpdateTrigger({
@@ -474,21 +481,21 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         timestamp: Date.now(),
       });
     });
-    
+
     const shouldRefresh = shouldRefreshAfterOperation({
       opType,
       startedPath: startedPath ?? currentPathNow,
       currentPathNow,
       targetPath,
     });
-    
+
     if (shouldRefresh) {
       const fn = loadFilesRef.current;
       if (typeof fn === 'function') {
         fn();
       }
     }
-    
+
     if (deletedFolderPaths.length > 0) {
       setTimeout(() => {
         setTreeUpdateTrigger({
@@ -498,14 +505,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       }, 500);
     }
   }, [setTreeUpdateTrigger]);
-  
+
   // FileActionSheet 관련 다이얼로그 상태
   const [renameLoading, setRenameLoading] = useState(false);
-  
+
   // 모바일 새로고침/폴더 이동 완료 상태
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const refreshSuccessTimeoutRef = useRef(null);
-  
+
   // 상수 정의
   const REFRESH_SUCCESS_DURATION = 500; // 체크 아이콘 표시 시간 (ms)
   const INDICATOR_BASE_HEIGHT = 60; // 기본 높이 (px)
@@ -550,18 +557,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
    */
   const showRefreshSuccessIndicator = useCallback((options = {}) => {
     const { shouldResetPull = false, shouldCheckRefreshing = false } = options;
-    
+
     if (!isMobile) return;
     if (shouldCheckRefreshing && isRefreshing) return;
-    
+
     // 이전 타임아웃이 있으면 클리어
     if (refreshSuccessTimeoutRef.current) {
       clearTimeout(refreshSuccessTimeoutRef.current);
     }
-    
+
     // 즉시 체크 아이콘 표시 (동기적으로 설정하여 깜빡임 방지)
     setShowRefreshSuccess(true);
-    
+
     // 지정된 시간 후 사라지도록
     refreshSuccessTimeoutRef.current = setTimeout(() => {
       setShowRefreshSuccess(false);
@@ -601,21 +608,21 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const indicatorStyles = useMemo(() => ({
     paddingTop: shouldShowIndicator ? '16px' : '0px',
     paddingBottom: shouldShowIndicator ? '16px' : '0px',
-    marginTop: isActiveLoading 
-      ? '0px' 
+    marginTop: isActiveLoading
+      ? '0px'
       : `${Math.max(-pullDistance * 0.5, -MAX_PULL_MARGIN)}px`,
-    transition: isActiveLoading 
-      ? 'margin-top 0.3s ease-out, min-height 0.3s ease-out, opacity 0.3s ease-out' 
+    transition: isActiveLoading
+      ? 'margin-top 0.3s ease-out, min-height 0.3s ease-out, opacity 0.3s ease-out'
       : isPulling
-      ? 'none' // 당기는 중에는 transition 없이 즉시 반응
-      : 'margin-top 0.15s ease-out, min-height 0.15s ease-out, opacity 0.15s ease-out',
-    opacity: shouldShowIndicator 
+        ? 'none' // 당기는 중에는 transition 없이 즉시 반응
+        : 'margin-top 0.15s ease-out, min-height 0.15s ease-out, opacity 0.15s ease-out',
+    opacity: shouldShowIndicator
       ? (isActiveLoading ? 1 : Math.min(pullDistance / threshold, 1))
       : 0,
     minHeight: shouldShowIndicator
       ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : `${INDICATOR_BASE_HEIGHT}px`)
       : 0,
-    height: shouldShowIndicator 
+    height: shouldShowIndicator
       ? (isPullingOnly ? `${INDICATOR_BASE_HEIGHT + pullDistance}px` : 'auto')
       : 0,
     overflow: 'hidden',
@@ -739,7 +746,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const executeExplorerUpload = useCallback(async (filesToUpload, targetPath, onConflict = 'error') => {
     // Use currentPath if targetPath is null
     const uploadPath = targetPath || currentPath;
-    
+
     if (!filesToUpload || filesToUpload.length === 0) return;
 
     dismissFailedItems();
@@ -910,14 +917,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       });
     } catch (error) {
       console.error('Upload error:', error);
-      
+
       let errorMessage = getServerErrorDisplay(error?.response?.data, t) || error?.message || t('fileManager.uploadFailed');
       if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
         errorMessage = t('fileManager.uploadNoPermission');
       } else if (error.response?.status === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
         errorMessage = t('fileManager.uploadServerError', { message: errorMessage });
       }
-      
+
       updateProgress({
         ...baseProgress,
         status: 'error',
@@ -938,10 +945,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
    */
   const resolveUploadConflict = useCallback(async (resolution) => {
     if (!uploadConflictData) return;
-    
+
     const { filesToUpload, targetPath } = uploadConflictData;
     setUploadConflictData(null);
-    
+
     if (filesToUpload.length > 0) {
       await executeExplorerUpload(filesToUpload, targetPath, resolution);
     }
@@ -969,20 +976,20 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setCurrentPath(path);
       return;
     }
-    
+
     // 이전 경로 저장 (롤백용)
     const previousPath = currentPathRef.current;
-    
+
     // 경로 정규화
     const normalizedPath = normalizePath(path);
-    
+
     // 경로 히스토리에 저장 (에러 발생 시 롤백용) - setCurrentPath 전에 저장!
     trackPathHistory(normalizedPath, previousPath);
     trackPathHistory(path, previousPath);
-    
+
     // Optimistic update: 경로 즉시 변경
     setCurrentPath(path);
-    
+
     // 권한 체크는 백그라운드에서 수행
     if (!user?.is_admin) {
       try {
@@ -1030,7 +1037,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         // 최근 파일에서 클릭한 경우
         if (file.isRecentFile) {
           const filePath = file.path;
-          
+
           // 경로 유효성 검사
           if (!filePath || filePath === '/' || filePath.trim() === '') {
             handleRecentFileError(
@@ -1039,11 +1046,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             );
             return;
           }
-          
+
           // 폴더로 직접 이동 시도
           // 최근 파일 경로 추적에 추가 (handlePathClick 전에 설정)
           trackRecentFileClick(filePath);
-          
+
           try {
             await handlePathClick(filePath);
             // handlePathClick이 성공하면 loadFiles가 호출되고,
@@ -1061,25 +1068,25 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           }
           return;
         }
-        
+
         // 권한이 없는 폴더는 클릭 불가 (이미 표시된 정보 활용)
         if (file.hasReadPermission === false) {
           showError(t(getErrorMessageByType(ERROR_TYPES.PERMISSION_DENIED)));
           return;
         }
-        
+
         // 이전 경로 저장
         const previousPath = currentPathRef.current;
-        
+
         // Optimistic update: 경로 즉시 변경
         setCurrentPath(file.path);
-        
+
         // 최근 파일에 추가 (파일만 추가, 폴더는 제외)
         if (file.type !== 'directory') {
           await addRecentFile(file);
           // 이벤트 리스너가 자동으로 loadFiles() 호출
         }
-        
+
         // 권한 체크는 백그라운드에서 수행 (서버 측 확인)
         if (!user?.is_admin) {
           try {
@@ -1107,7 +1114,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         if (file.isRecentFile) {
           const filePath = normalizePath(file.path);
           const fileName = file.basename || file.name;
-          
+
           // 경로 유효성 검사
           if (!filePath || filePath === '/' || filePath.trim() === '') {
             handleRecentFileError(
@@ -1116,18 +1123,18 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             );
             return;
           }
-          
+
           // 부모 경로 계산 (정규화된 경로 사용)
           const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
           const normalizedParentPath = normalizePath(parentPath);
-          
+
           // 부모 폴더 권한 확인 및 이동
           try {
             // 최근 파일 경로 추적에 추가 (부모 경로 -> 파일 경로 매핑)
             trackRecentFileClick(filePath, normalizedParentPath);
             // 부모 폴더로 이동 시도
             await handlePathClick(normalizedParentPath);
-            
+
             // 파일 정보를 저장하여 useEffect에서 처리
             setRecentFileToPreview({
               filePath,
@@ -1147,7 +1154,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           }
           return;
         }
-        
+
         const filename = file.basename || file.name;
         const canPreviewFile = canPreview(filename);
         setSelectedFile({ ...file, name: filename, canPreview: canPreviewFile });
@@ -1363,10 +1370,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       parentPath,
       timestamp: Date.now(),
     });
-    
+
     handleOperationComplete({ opType: 'createFolder', startedPath: parentPath });
     closeCreateFolderDialog();
-    
+
     setTimeout(() => {
       setTreeUpdateTrigger({
         type: 'refresh',
@@ -1458,10 +1465,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // Handle drops on the entire file content area
   const handleContentAreaDragOver = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
-    
+
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
-    
+
     if (isExternal) {
       handleFileAreaDragOver(e);
     }
@@ -1469,10 +1476,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const handleContentAreaDragEnter = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
-    
+
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
-    
+
     if (isExternal) {
       handleFileAreaDragEnter(e);
     }
@@ -1480,10 +1487,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const handleContentAreaDragLeave = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
-    
+
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
-    
+
     if (isExternal) {
       handleFileAreaDragLeave(e);
     }
@@ -1491,10 +1498,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const handleContentAreaDrop = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
-    
+
     const types = e.dataTransfer.types;
     const isExternal = types && types.includes('Files');
-    
+
     if (isExternal) {
       handleFileAreaDrop(e, currentPath, handleExplorerDrop);
     }
@@ -1596,12 +1603,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           </Box>
         )}
 
-        <Box 
+        <Box
           ref={fileContentRef}
-          sx={{ 
-            flex: 1, 
-            display: 'flex', 
-            flexDirection: 'column', 
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
             overflow: 'hidden',
             position: 'relative',
           }}
@@ -1654,46 +1661,46 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
           {isMobile && (
             <Collapse in={drawerOpen} timeout="auto">
-                <Box
-                  sx={{
-                    maxHeight: '50vh',
-                    overflow: 'auto',
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    backgroundColor: 'background.paper',
+              <Box
+                sx={{
+                  maxHeight: '50vh',
+                  overflow: 'auto',
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'background.paper',
+                }}
+              >
+                <FolderTree
+                  currentPath={currentPath}
+                  onPathClick={(path) => {
+                    if (isShareLinkMode) {
+                      handleLeaveSharePathClick(path);
+                    } else {
+                      handlePathClick(path);
+                    }
+                    setDrawerOpen(false);
                   }}
-                >
-                  <FolderTree
-                    currentPath={currentPath}
-                    onPathClick={(path) => {
-                      if (isShareLinkMode) {
-                        handleLeaveSharePathClick(path);
-                      } else {
-                        handlePathClick(path);
-                      }
+                  onFileClick={(file) => {
+                    handleFileClick(file);
+                    setDrawerOpen(false);
+                  }}
+                  user={user}
+                  treeUpdateTrigger={treeUpdateTrigger}
+                  hasWritePermission={hasWritePermission}
+                  onExplorerDrop={handleExplorerDrop}
+                  isMobile
+                  shareLinkSection={isShareLinkMode ? {
+                    shareRootPath,
+                    shareRootName,
+                    shareToken,
+                    onShareLinkPathClick: (path) => {
+                      handlePathClick(path);
                       setDrawerOpen(false);
-                    }}
-                    onFileClick={(file) => {
-                      handleFileClick(file);
-                      setDrawerOpen(false);
-                    }}
-                    user={user}
-                    treeUpdateTrigger={treeUpdateTrigger}
-                    hasWritePermission={hasWritePermission}
-                    onExplorerDrop={handleExplorerDrop}
-                    isMobile
-                    shareLinkSection={isShareLinkMode ? {
-                      shareRootPath,
-                      shareRootName,
-                      shareToken,
-                      onShareLinkPathClick: (path) => {
-                        handlePathClick(path);
-                        setDrawerOpen(false);
-                      },
-                    } : undefined}
-                  />
-                </Box>
-              </Collapse>
+                    },
+                  } : undefined}
+                />
+              </Box>
+            </Collapse>
           )}
 
           <FileManagerControls
@@ -1753,44 +1760,44 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   ...indicatorStyles,
                 }}
               >
-                  <Box sx={iconStyles}>
-                    {showRefreshSuccess ? (
-                      <CheckCircleIcon
-                        sx={{
-                          color: 'success.main',
-                          fontSize: 24,
-                          width: 24,
-                          height: 24,
-                        }}
-                      />
-                    ) : (
-                      <CircularProgress
-                        size={24}
-                        thickness={4}
-                        value={isDeterminateProgress ? progress * 100 : undefined}
-                        variant={isDeterminateProgress ? 'determinate' : 'indeterminate'}
-                        sx={{
-                          color: progressColor,
-                          transition: 'color 0.2s ease',
-                        }}
-                      />
-                    )}
-                  </Box>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: textColor,
-                      fontSize: '0.75rem',
-                      lineHeight: '1.2rem',
-                      height: '1.2rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      visibility: shouldShowIndicator ? 'visible' : 'hidden',
-                      transition: 'color 0.2s ease',
-                    }}
-                  >
-                    {textContent}
-                  </Typography>
+                <Box sx={iconStyles}>
+                  {showRefreshSuccess ? (
+                    <CheckCircleIcon
+                      sx={{
+                        color: 'success.main',
+                        fontSize: 24,
+                        width: 24,
+                        height: 24,
+                      }}
+                    />
+                  ) : (
+                    <CircularProgress
+                      size={24}
+                      thickness={4}
+                      value={isDeterminateProgress ? progress * 100 : undefined}
+                      variant={isDeterminateProgress ? 'determinate' : 'indeterminate'}
+                      sx={{
+                        color: progressColor,
+                        transition: 'color 0.2s ease',
+                      }}
+                    />
+                  )}
+                </Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: textColor,
+                    fontSize: '0.75rem',
+                    lineHeight: '1.2rem',
+                    height: '1.2rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    visibility: shouldShowIndicator ? 'visible' : 'hidden',
+                    transition: 'color 0.2s ease',
+                  }}
+                >
+                  {textContent}
+                </Typography>
               </Box>
             )}
             {viewMode === VIEW_MODES.LIST ? (
@@ -2227,11 +2234,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       )}
 
       {/* FilePropertiesDialog: 공유 링크에서도 속성 노출 */}
-      {(mobilePropertiesFile || actionSheetFile) && (
+      {propertiesFile && (
         <FilePropertiesDialog
           open={propertiesDialogOpen}
           onClose={closePropertiesDialog}
-          file={mobilePropertiesFile || actionSheetFile}
+          file={propertiesFile}
         />
       )}
     </Box>

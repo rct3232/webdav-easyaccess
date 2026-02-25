@@ -67,28 +67,28 @@ const MyPageSidebar = ({ selectedCategory, onSelectCategory, user, isMobile }) =
           />
         </Box>
       )}
-      <List sx={{ py: 1, minWidth: 200 }}>
+      <List sx={{ py: 1, minWidth: 240 }}>
         {visibleCategories.map(({ id, icon: Icon }) => (
-        <ListItemButton
-          key={id}
-          selected={selectedCategory === id}
-          onClick={() => onSelectCategory(id)}
-          sx={
-            !isMobile
-              ? {
+          <ListItemButton
+            key={id}
+            selected={selectedCategory === id}
+            onClick={() => onSelectCategory(id)}
+            sx={
+              !isMobile
+                ? {
                   py: 0.75,
                   minHeight: 42,
                   borderTopRightRadius: 24,
                   borderBottomRightRadius: 24,
                 }
-              : undefined
-          }
-        >
-          <ListItemIcon sx={{ minWidth: 40 }}>
-            <Icon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary={getLabel(id)} />
-        </ListItemButton>
+                : undefined
+            }
+          >
+            <ListItemIcon sx={{ minWidth: 40 }}>
+              <Icon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary={getLabel(id)} />
+          </ListItemButton>
         ))}
       </List>
     </>

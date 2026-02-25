@@ -128,7 +128,7 @@ const MyPage = () => {
         ) : (
           <Box
             sx={{
-              width: 200,
+              width: 240,
               flexShrink: 0,
               overflowY: 'auto',
             }}

@@ -1573,7 +1573,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         {!isMobile && (
           <Box
             sx={{
-              width: 200,
+              width: 240,
               borderRight: 1,
               borderColor: 'divider',
               display: 'flex',

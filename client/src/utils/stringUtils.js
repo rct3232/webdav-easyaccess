@@ -86,6 +86,11 @@ export const getTextWidth = (text, font = '14px Inter, Roboto, "Helvetica Neue",
     canvas = document.createElement('canvas');
   }
   const context = canvas.getContext('2d');
+  if (!context) {
+    // Fallback for environments where canvas.getContext('2d') returns null (e.g. JSDOM without jest-canvas-mock)
+    // Use getVisibleLength to estimate width (approx 8px per unit)
+    return getVisibleLength(text) * 8;
+  }
   context.font = font;
   const metrics = context.measureText(text);
   return metrics.width;

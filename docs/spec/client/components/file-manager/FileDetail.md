@@ -59,6 +59,7 @@
 - loading && files.length === 0: FileDetailSkeleton
 - files.length === 0: empty row with noFiles
 - **Selection display:** No checkbox column. When selectionMode and row is selected, use light primary background (e.g. alpha(primary.main, 0.12)).
+- **Filename:** Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - Long-press (onLongPressSelect) on mobile when !selectionMode — enters selection mode and selects file. More IconButton at right end of row (last TableCell); visible when !selectionMode. Uses `onTouchStart`/`onTouchEnd` with `stopPropagation` so parent long-press does not capture touch; touch fires onMoreClick immediately (avoids click delay/loss on mobile).
 - Detail view hidden on mobile (via parent)
 

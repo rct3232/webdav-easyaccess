@@ -6,11 +6,13 @@ import {
   Typography,
   Box,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
 import { getFileIconForGrid, getThumbnail } from '../../utils/fileIconUtils';
+import { pixelMiddleTruncate } from '../../utils/stringUtils';
 
 /**
  * 정적 스타일 - 컴포넌트 외부에 정의하여 매 렌더링마다 재생성 방지
@@ -76,6 +78,27 @@ const FileGridItem = React.memo(({
   isMobile,
 }) => {
   const thumbnail = getThumbnail(file);
+  const [containerWidth, setContainerWidth] = React.useState(150);
+  const containerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Card padding: p:1(8px) * 2 = 16px.
+  const maxPixelWidth = Math.max(40, containerWidth - 16);
+  const font = '500 14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
 
   // 동적 카드 스타일
   const cardStyles = {
@@ -196,15 +219,27 @@ const FileGridItem = React.memo(({
           </Box>
         )}
       </Box>
-      <CardContent sx={cardContentStyles}>
-        <Typography
-          variant="body2"
-          noWrap
-          title={file.basename}
-          sx={textStyles}
-        >
-          {file.basename}
-        </Typography>
+      <CardContent sx={cardContentStyles} ref={containerRef}>
+        {(() => {
+          const originalName = file.basename;
+          const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
+          const isTruncated = truncatedName !== originalName;
+
+          const typography = (
+            <Typography
+              variant="body2"
+              sx={textStyles}
+            >
+              {truncatedName}
+            </Typography>
+          );
+
+          return isTruncated ? (
+            <Tooltip title={originalName} disableInteractive>
+              {typography}
+            </Tooltip>
+          ) : typography;
+        })()}
       </CardContent>
       {isProcessing && (
         <Box sx={processingOverlayStyles}>

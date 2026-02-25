@@ -55,7 +55,7 @@
 - Thumbnail or getFileIconForGrid
 - Processing overlay when isProcessing
 - Border/background for isSelected, isDropTarget
-- **Filename placement:** CardContent uses flex (`display: flex`, `alignItems: center`, `justifyContent: center`) so the filename is centered horizontally and vertically within the content area.
+- **Filename placement:** CardContent uses flex (`display: flex`, `alignItems: center`, `justifyContent: center`) so the filename is centered horizontally and vertically within the content area. Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - **Padding:** `p: 1`, `pt: 0.5`, `pb: 1`; `'&:last-child': { pb: 1 }` overrides MUI CardContent default paddingBottom so the text area matches FileGridSkeleton.
 
 ### 2.7 Verification Scenarios

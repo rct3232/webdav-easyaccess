@@ -26,9 +26,16 @@ global.IntersectionObserver = class MockIntersectionObserver {
   constructor(callback) {
     this.callback = callback;
   }
-  observe() {}
-  disconnect() {}
-  unobserve() {}
+  observe() { }
+  disconnect() { }
+  unobserve() { }
+};
+
+// Mock ResizeObserver for JSDOM
+global.ResizeObserver = class ResizeObserver {
+  observe() { }
+  unobserve() { }
+  disconnect() { }
 };
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));

@@ -54,6 +54,7 @@
 - **Selection display:** No checkbox. When selectionMode and isSelected, container (parent) uses light primary background (e.g. alpha(primary.main, 0.12)).
 - Thumbnail or icon based on getThumbnail(file)
 - Processing overlay (CircularProgress + icon) when isProcessing
+- **Filename:** Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - Metadata: folder label or formatFileSize, formatDate(lastmod)
 
 ### 2.7 Verification Scenarios

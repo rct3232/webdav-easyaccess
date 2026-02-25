@@ -16,6 +16,7 @@ import { formatFileSize, formatDate } from '../../utils/format';
 import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getFolderPermissions } from '../../services/permissionService';
+import { getFolderStats } from '../../services/fileService';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
 import { getPermissionLabels, PERMISSION_ORDER } from '../../constants/permissions';
 
@@ -25,6 +26,8 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
   const { isMobile } = useResponsive();
   const [permissions, setPermissions] = useState([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [folderStats, setFolderStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !file) {
@@ -40,6 +43,16 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
       .then((data) => setPermissions(Array.isArray(data) ? data : []))
       .catch(() => setPermissions([]))
       .finally(() => setPermissionsLoading(false));
+
+    if (isDirectory) {
+      setStatsLoading(true);
+      getFolderStats(file.path)
+        .then((data) => setFolderStats(data))
+        .catch(() => setFolderStats(null))
+        .finally(() => setStatsLoading(false));
+    } else {
+      setFolderStats(null);
+    }
   }, [open, file]);
 
   if (!file) return null;
@@ -58,14 +71,17 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
       label: t('dialogs.type'),
       value: isDirectory ? t('actions.folder') : (file.mime || t('actions.file')),
     },
-    ...(isDirectory
-      ? []
-      : [
-          {
-            label: t('dialogs.size'),
-            value: formatFileSize(file.size),
-          },
-        ]),
+    {
+      label: t('dialogs.size'),
+      value: isDirectory
+        ? (folderStats
+          ? t('fileManager.folderStatsFormat', {
+            count: folderStats.fileCount,
+            size: formatFileSize(folderStats.totalSize),
+          })
+          : (statsLoading ? '...' : '-'))
+        : formatFileSize(file.size),
+    },
     {
       label: t('dialogs.modifiedDate'),
       value: formatDate(file.lastmod),
@@ -129,7 +145,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             sx={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               position: 'relative',
               zIndex: 2,
             }}
@@ -149,7 +165,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
             >
               {getFileIcon(file)}
             </Avatar>
-            <Typography variant="h6" sx={{ textAlign: 'center', wordBreak: 'break-word' }}>
+            <Typography variant="h6" sx={{ textAlign: 'center', wordBreak: 'break-word', minWidth: 64 }}>
               {file.basename || file.name}
             </Typography>
           </Box>
@@ -197,7 +213,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
               <Typography {...typoCommon} color="text.secondary" sx={{ mb: 0.25 }}>
                 {prop.label}
               </Typography>
-              {permissionsLoading ? (
+              {(permissionsLoading || (prop.label === t('dialogs.size') && isDirectory && statsLoading)) ? (
                 <Skeleton variant="text" width="60%" />
               ) : (
                 <Typography {...typoCommon}>{prop.value}</Typography>

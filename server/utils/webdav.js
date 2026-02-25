@@ -134,7 +134,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
   try {
     const normalizedSource = normalizePath(sourcePath);
     const normalizedDest = normalizePath(destinationPath);
-    
+
     let isDirectory = false;
     try {
       await client.getDirectoryContents(getRequestPath(normalizedSource));
@@ -142,7 +142,7 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
     } catch (dirError) {
       isDirectory = false;
     }
-    
+
     if (isDirectory) {
       try {
         await createDirectory(normalizedDest);
@@ -151,14 +151,14 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
           throw createError;
         }
       }
-      
+
       const sourceItems = await listDirectory(normalizedSource);
       await asyncLimit(5, sourceItems, async (item) => {
         const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
         const destItemPath = `${normalizedDest}/${item.basename}`;
         await moveFileStreamed(sourceItemPath, destItemPath);
       });
-      
+
       await deleteFile(normalizedSource, { isDirectory: true });
       return { success: true };
     } else {
@@ -182,18 +182,18 @@ async function moveFileStreamed(sourcePath, destinationPath, progressCallback) {
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
       }
-      
+
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
       }
       await putFileContents(normalizedDest, buffer);
-      
+
       await deleteFile(normalizedSource, { isDirectory: false });
-      
+
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
       }
-      
+
       return { success: true };
     }
   } catch (error) {
@@ -216,7 +216,7 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
   try {
     const normalizedSource = normalizePath(sourcePath);
     const normalizedDest = normalizePath(destinationPath);
-    
+
     let isDirectory = false;
     try {
       await client.getDirectoryContents(getRequestPath(normalizedSource));
@@ -224,7 +224,7 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
     } catch (dirError) {
       isDirectory = false;
     }
-    
+
     if (isDirectory) {
       try {
         await createDirectory(normalizedDest);
@@ -233,14 +233,14 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
           throw createError;
         }
       }
-      
+
       const sourceItems = await listDirectory(normalizedSource);
       await asyncLimit(5, sourceItems, async (item) => {
         const sourceItemPath = item.filename || `${normalizedSource}/${item.basename}`;
         const destItemPath = `${normalizedDest}/${item.basename}`;
         await copyFileStreamed(sourceItemPath, destItemPath);
       });
-      
+
       return { success: true };
     } else {
       let fileSize = 0;
@@ -263,16 +263,16 @@ async function copyFileStreamed(sourcePath, destinationPath, progressCallback) {
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'downloading', progress: buffer.length, total: fileSize });
       }
-      
+
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'uploading', progress: buffer.length, total: fileSize });
       }
       await putFileContents(normalizedDest, buffer);
-      
+
       if (progressCallback && fileSize > 0) {
         progressCallback({ stage: 'completed', progress: fileSize, total: fileSize });
       }
-      
+
       return { success: true };
     }
   } catch (error) {
@@ -619,6 +619,32 @@ async function getFileMetadata(filePath) {
   };
 }
 
+/**
+ * Get recursive statistics (file count and total size) for a folder.
+ * @param {string} folderPath - Normalized folder path
+ * @returns {Promise<{ fileCount: number, totalSize: number }>}
+ */
+async function getRecursiveFolderStats(folderPath) {
+  const normalizedPath = normalizePath(folderPath);
+  let fileCount = 0;
+  let totalSize = 0;
+
+  async function walk(currentPath) {
+    const items = await listDirectory(currentPath);
+    for (const item of items) {
+      if (item.type === 'directory') {
+        await walk(item.filename || `${currentPath}/${item.basename}`);
+      } else {
+        fileCount++;
+        totalSize += item.size || 0;
+      }
+    }
+  }
+
+  await walk(normalizedPath);
+  return { fileCount, totalSize };
+}
+
 module.exports = {
   getWebDAVClient,
   getRequestPath,
@@ -635,6 +661,7 @@ module.exports = {
   createDirectory,
   pathExists,
   getFileMetadata,
+  getRecursiveFolderStats,
   isImageFile,
   isVideoFile,
   testConnection,

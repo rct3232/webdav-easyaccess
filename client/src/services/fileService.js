@@ -65,7 +65,7 @@ export const downloadFile = async (filePath) => {
     params: { path: filePath },
     responseType: 'blob',
   });
-  
+
   // Create download link
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
@@ -202,6 +202,18 @@ export const createFolder = async (folderPath) => {
   return response.data;
 };
 
+/**
+ * 폴더의 재귀적 통계(파일 갯수, 전체 용량) 조회
+ * @param {string} folderPath - 폴더 경로
+ * @returns {Promise<{ fileCount: number, totalSize: number }>}
+ */
+export const getFolderStats = async (folderPath) => {
+  const response = await get('/folders/stats', {
+    params: { path: folderPath },
+  });
+  return response.data;
+};
+
 export const getWebDAVInfo = async () => {
   const response = await get('/webdav/info');
   return response.data;
@@ -306,7 +318,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     link.href = url;
-    
+
     const contentDisposition = response.headers['content-disposition'];
     let filename = 'download.zip';
     if (contentDisposition) {
@@ -320,7 +332,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
         }
       }
     }
-    
+
     // Optional: server may report skipped paths due to permission (URL-encoded JSON)
     const skippedCountHeader = response.headers['x-wea-skipped-count'];
     const skippedHeader = response.headers['x-wea-skipped'];

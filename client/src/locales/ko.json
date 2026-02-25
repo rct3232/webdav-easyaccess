@@ -150,7 +150,8 @@
     "statusRenaming": "이름 변경 중",
     "statusCreatingFolder": "폴더 생성 중",
     "errorWithMessage": "오류: {{message}}",
-    "workingFallback": "작업 중..."
+    "workingFallback": "작업 중...",
+    "folderStatsFormat": "{{size}}, {{count}}개 파일"
   },
   "actions": {
     "move": "이동",
@@ -342,9 +343,6 @@
     "approvedStatus": "승인됨",
     "admin": "관리자",
     "normalUser": "일반 사용자",
-    "inboxRequests": "받은 요청",
-    "outboxRequests": "내 요청",
-    "links": "링크",
     "expired": "만료됨",
     "expiresAtDate": "만료: {{date}}",
     "unlimited": "무제한",

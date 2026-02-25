@@ -4,12 +4,12 @@ const getLocale = () => (i18n.language && i18n.language.startsWith('en') ? 'en-U
 
 export const formatFileSize = (bytes) => {
   if (!bytes || bytes === 0) return '0 B';
-  
+
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+
+  return Math.round(bytes / Math.pow(k, i) * 10) / 10 + ' ' + sizes[i];
 };
 
 export const formatDate = (dateString) => {

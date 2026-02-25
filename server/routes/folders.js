@@ -24,7 +24,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
 
   // Check access for non-admin users
   const user = req.user.full;
-  
+
   // 관리자는 모든 경로에 폴더 생성 가능
   if (!user.is_admin) {
     if (folderPath === '/' || folderPath === '') {
@@ -50,7 +50,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   }
 
   await createDirectory(folderPath);
-  
+
   // 사용자가 생성한 폴더에 대해 자동으로 쓰기 권한 부여
   try {
     await Permission.grant(req.user.id, folderPath, PERMISSIONS.WRITE);
@@ -70,6 +70,28 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   }
 
   res.json({ messageCode: SERVER_MESSAGE_CODES.folders.createSuccess, path: folderPath });
+}));
+
+// Get folder recursive statistics
+router.get('/stats', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { path: folderPath } = req.query;
+  if (!folderPath) {
+    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+  }
+
+  // Check access for non-admin users
+  const user = req.user.full;
+  if (!user.is_admin) {
+    const { canReadFolder } = require('../utils/permissionPolicy');
+    const ok = await canReadFolder(user.id, folderPath);
+    if (!ok) {
+      throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+    }
+  }
+
+  const { getRecursiveFolderStats } = require('../utils/webdav');
+  const stats = await getRecursiveFolderStats(folderPath);
+  res.json(stats);
 }));
 
 module.exports = router;

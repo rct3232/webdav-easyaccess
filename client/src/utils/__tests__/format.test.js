@@ -39,8 +39,8 @@ describe('formatFileSize', () => {
     expect(formatFileSize(1024 * 1024 * 1024 * 1024)).toBe('1 TB');
   });
 
-  it('rounds to 2 decimal places', () => {
-    expect(formatFileSize(1024 * 1.234)).toMatch(/^\d+(\.\d+)? KB$/);
+  it('rounds to 1 decimal place', () => {
+    expect(formatFileSize(1024 * 1.234)).toBe('1.2 KB');
   });
 });
 

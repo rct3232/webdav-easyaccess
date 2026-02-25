@@ -63,7 +63,7 @@ import { addRecentFile, onRecentFilesChange } from '../utils/recentFiles';
 import { determineErrorType, getErrorMessageByType, showErrorFromError, getServerErrorDisplay, ERROR_TYPES } from '../utils/errorUtils';
 import { normalizePath, getBasename, getParentPath, toFilesPath } from '../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
-import { getUserBaseFolder } from '../utils/userUtils';
+
 import { useRecentFile } from '../hooks/useRecentFile';
 import { useFileManagerDialogs } from '../hooks/useFileManagerDialogs';
 import { checkMyPermissionForShare, addShareLinkToMyPermissions } from '../services/shareLinkService';
@@ -1211,7 +1211,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setContextMenu(e ? { mouseX: e.clientX, mouseY: e.clientY } : { mouseX: 0, mouseY: 0 });
       setSelectedFile(file);
     }
-  }, [isMobile]);
+  }, [isMobile, setActionSheetFile, setContextMenu, setSelectedFile]);
 
   const handleLongPressSelect = useCallback((file) => {
     if (!file) return;

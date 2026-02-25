@@ -53,7 +53,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
     } else {
       setFolderStats(null);
     }
-  }, [open, file?.path]);
+  }, [open, file]);
 
   if (!file) return null;
 

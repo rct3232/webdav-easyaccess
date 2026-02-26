@@ -179,12 +179,10 @@ const FileListItem = React.memo(({
             onMoreClick?.(file, e);
           }}
           sx={{
-            ml: 0.5,
             flexShrink: 0,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 0.5,
             minWidth: 44,
             minHeight: 44,
             border: 'none',

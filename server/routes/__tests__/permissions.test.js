@@ -10,19 +10,12 @@ const {
   PERMISSIONS,
 } = require('../../test-utils');
 
-jest.mock('../../utils/webdav', () => ({
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  pathExists: jest.fn().mockResolvedValue(true),
-  listDirectory: jest.fn().mockResolvedValue([]),
-  getFileContents: jest.fn().mockResolvedValue(Buffer.from('')),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  createDirectory: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({}),
-}));
+var mockWebdav;
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
 
 let app;
 let dbCleanup;

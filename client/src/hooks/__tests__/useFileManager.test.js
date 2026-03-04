@@ -9,31 +9,30 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useFileManager } from '../useFileManager';
 
 const mockNavigate = jest.fn();
+
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
 }));
 
-jest.mock('../../services/fileService', () => ({
-  listFiles: jest.fn(),
-  getWebDAVInfo: jest.fn(),
-  checkPermission: jest.fn(),
-  listFilePermissions: jest.fn(),
-  getFilesMetadata: jest.fn(),
-}));
-
-jest.mock('../../services/permissionService', () => ({
-  getUserPermissions: jest.fn(),
-}));
-
-jest.mock('../../utils/localStorage', () => ({
-  getShowHiddenFiles: () => false,
-  getSortMode: () => 'name',
-}));
-
-jest.mock('../../utils/recentFiles', () => ({
-  getRecentFiles: jest.fn(),
-}));
+jest.mock('../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
+jest.mock('../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
+jest.mock('../../utils/localStorage', () => {
+  const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
+  return createLocalStorageUiMock({
+    getSortMode: () => 'name',
+  });
+});
+jest.mock('../../utils/recentFiles', () => {
+  const { createRecentFilesMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesMock();
+});
 
 import * as fileService from '../../services/fileService';
 import * as permissionService from '../../services/permissionService';

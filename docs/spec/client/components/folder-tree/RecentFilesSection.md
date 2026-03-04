@@ -27,7 +27,7 @@
 | currentPath | string | Y | - | Current path |
 | recentFilesList | array | Y | - | Recent files |
 | onPathClick | function | Y | - | Path click (folder) |
-| onFileClick | function | Y | - | File click |
+| onFileClick | function | N | - | File click. If omitted, file click falls back to `onPathClick(parentPath)` |
 
 ### 2.3 Callback Signatures
 
@@ -59,7 +59,7 @@
 - [ ] Section click, expand
 - [ ] File/folder click
 - [ ] Empty state
-- [ ] File click when onFileClick undefined: falls back to onPathClick(parentPath)
+- [ ] File click when onFileClick is undefined falls back to `onPathClick(parentPath)`
 - [ ] List shows max 10 items
 
 ### 2.9 UI Enhancements
@@ -67,3 +67,4 @@
 - **Middle-Truncation:** Long filenames should be truncated in the middle (e.g., `abc...jk.docx`) to fit the component width while preserving the start and the extension.
 - **Dynamic Width:** Truncation should adapt to the component's width and consider character widths (e.g., CJK).
 - **Tooltip:** Full filename should be visible via tooltip on hover.
+- **A11y/testing note:** Tooltip content may be exposed via ARIA attributes; tests should verify user-observable full-name access and should not require a static `title` attribute on the text node.

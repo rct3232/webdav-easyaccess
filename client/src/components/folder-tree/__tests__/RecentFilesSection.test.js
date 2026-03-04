@@ -120,7 +120,7 @@ describe('RecentFilesSection', () => {
     // With 200px width, maxVisibleLength is Math.floor((200-32)/8) = 21
     // middleTruncate('...', 21)
     // The resulting text should contain '...' and the extension
-    const truncatedElement = screen.getByTitle(longName);
+    const truncatedElement = screen.getByLabelText(longName);
     expect(truncatedElement).toBeInTheDocument();
     expect(truncatedElement.textContent).toContain('...');
     expect(truncatedElement.textContent).toContain('.docx');

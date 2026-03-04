@@ -622,15 +622,16 @@ async function getFileMetadata(filePath) {
 /**
  * Get recursive statistics (file count and total size) for a folder.
  * @param {string} folderPath - Normalized folder path
+ * @param {typeof listDirectory} [listDir] - Optional listDirectory implementation (for tests).
  * @returns {Promise<{ fileCount: number, totalSize: number }>}
  */
-async function getRecursiveFolderStats(folderPath) {
+async function getRecursiveFolderStats(folderPath, listDir = listDirectory) {
   const normalizedPath = normalizePath(folderPath);
   let fileCount = 0;
   let totalSize = 0;
 
   async function walk(currentPath) {
-    const items = await listDirectory(currentPath);
+    const items = await listDir(currentPath);
     for (const item of items) {
       if (item.type === 'directory') {
         await walk(item.filename || `${currentPath}/${item.basename}`);

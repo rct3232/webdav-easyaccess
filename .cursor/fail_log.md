@@ -117,6 +117,48 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-04 — MyPage.test.js — 7 failures in detectOpenHandles/runInBand run (empty DOM / missing roles)
+
+- **Case:** B
+- **Root cause:** `MyPage` returns `null` until `AuthProvider` finishes `auth/me`; several tests executed immediate `getByRole`/click interactions right after render, so assertions ran against `<body><div /></body>`. This is a timing/test-contract issue, not a source-spec violation.
+- **Action taken:** Updated test/docs first, then aligned `MyPage.test.js` to wait for a stable post-auth anchor (`Close` button / `findByRole`) before category clicks and content assertions; replaced early synchronous queries with async waits in affected cases.
+- **Lesson:** For auth-gated pages, never assume immediate render after `renderWithProviders`; wait for observable ready state before interaction.
+
+## 2026-03-04 — client test runtime (`jest-polyfills`) — repeated `MESSAGEPORT` open-handle reports at suite end
+
+- **Case:** A
+- **Root cause:** `client/src/jest-polyfills.js` exposed `global.MessageChannel` in addition to `MessagePort`. Under React scheduler + jsdom, this increased persistent `MessagePort` handle detection in `--detectOpenHandles` runs and delayed clean Jest shutdown.
+- **Action taken:** Updated docs guardrails first, then reduced polyfill scope to `MessagePort` only (keeping safe fallback for environments without direct `MessagePort` export).
+- **Lesson:** In test runtime polyfills, export the minimum globals required by dependencies; avoid broad runtime shims that can change scheduler transport behavior.
+
+## 2026-03-04 — useShareDialog.test.js / client full test run — suite stalls around mid-run (no new PASS)
+
+- **Case:** A
+- **Root cause:** `useShareDialog.loadFolderChildren` used `setInterval` polling on `loadingPaths` React state to wait for an existing load. Under concurrent calls, the callback could observe stale state and never resolve, causing test runs to stall without FAIL/exit.
+- **Action taken:** Updated spec to require concurrent request deduplication via in-flight Promise reuse (no state-polling interval). Refactored `loadFolderChildren` to share a single Promise per path and added a regression test for concurrent same-path calls.
+- **Lesson:** Do not coordinate async waits by polling React state from a closure; use explicit Promise ownership maps for deterministic completion.
+
+## 2026-03-04 — FilePropertiesDialog/RecentFilesSection/FileManager tests — 11 failures after selection/props updates
+
+- **Case:** B
+- **Root cause:** Tests drifted from current UI contracts. (1) `FilePropertiesDialog` tests relied on unresolved/default mocks so `getFolderPermissions(...).then(...)` crashed when mock returned undefined; directory stats assertions were not controlled by `getFolderStats` mock. (2) `RecentFilesSection` test required a static `title` attribute while the component exposes full name through tooltip/ARIA behavior. (3) `FileManager` bulk tests expected row `checkbox` role even though current selection UX is click/modifier-based with no checkbox UI.
+- **Action taken:** Updated docs first (component/page/feature specs) to state current contracts, then aligned tests to observable behavior: Promise-returning service mocks for dialog tests, tooltip/accessibility-based filename checks for recent files, and click + Ctrl/Meta multi-select interactions for bulk flows. Added missing locale key requirement for folder stats format.
+- **Lesson:** Keep integration tests contract-driven ("what"), not DOM-mechanic assumptions ("how"): avoid role queries for controls that are intentionally not rendered, and always provide explicit async mock return values for Promise chains.
+
+## 2026-03-04 — client hook/component tests (useShareDialog/useFileManager/useFolderPicker/useRecentFile/FolderTree) — shared mock helper migration
+
+- **Case:** B
+- **Root cause:** Refactor used hoisted `jest.mock(..., () => mockXModule)` with top-level `const mockXModule = create...()`. In Jest (react-scripts), mock factories were evaluated before those constants initialized, causing TDZ errors (`Cannot access 'mockI18nModule' before initialization`).
+- **Action taken:** Switched to lazy module factory initialization inside each `jest.mock` callback using helper `require(...)` calls and direct returns.
+- **Lesson:** For hoisted `jest.mock` in this project, avoid referencing top-level `const` mock objects from the mock factory. Build mock modules inside the factory callback.
+
+## 2026-03-04 — server route tests (files/folders/share*/permissions/admin) — shared webdav/email mock migration
+
+- **Case:** B
+- **Root cause:** Refactor changed inline `jest.mock(..., () => ({ ... }))` to `jest.mock(..., () => mockWebdav)` with `const mockWebdav = ...`. Jest hoists `jest.mock`, so the factory referenced `mockWebdav` before initialization (TDZ), causing `ReferenceError: Cannot access 'mockWebdav' before initialization`.
+- **Action taken:** Reworked mocks to lazy-initialize inside the `jest.mock` factory (`let mockWebdav; jest.mock(..., () => { mockWebdav = createWebdavMock(); return mockWebdav; })`) and applied the same pattern for email mocks.
+- **Lesson:** In Jest, avoid returning top-level `const` mock objects directly from hoisted mock factories. Initialize shared mock instances inside the factory, then expose them via `let` references for per-test overrides.
+
 ## 2026-02-23 — MyPage.test.js — share links / inbox / outbox (6 tests)
 
 - **Case:** C (spec wrong; source correct)

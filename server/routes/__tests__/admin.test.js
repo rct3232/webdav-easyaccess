@@ -11,24 +11,18 @@ const {
 } = require('../../test-utils');
 const Settings = require('../../models/Settings');
 
-jest.mock('../../utils/email', () => ({
-  sendApprovalEmail: jest.fn().mockResolvedValue(undefined),
-  sendRejectionEmail: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('../../utils/webdav', () => ({
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  pathExists: jest.fn().mockResolvedValue(true),
-  listDirectory: jest.fn().mockResolvedValue([]),
-  getFileContents: jest.fn().mockResolvedValue(Buffer.from('')),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  createDirectory: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({}),
-}));
+var mockEmail;
+var mockWebdav;
+jest.mock('../../utils/email', () => {
+  const { createEmailMock } = require('../../testing/mocks/emailMock');
+  mockEmail = createEmailMock();
+  return mockEmail;
+});
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
 
 let app;
 let dbCleanup;

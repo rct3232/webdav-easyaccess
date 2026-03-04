@@ -62,10 +62,18 @@
 - normalizePath, getUserBaseFolder (pathUtils, userUtils)
 - getServerErrorDisplay (errorUtils)
 
+### 2.4.1 Test Mock Strategy
+
+- Consolidate repeated service mocks (userService, permissionService, fileService, permissionRequestService, errorUtils) into shared test mock helpers.
+- Keep i18n mock simple (`t(key) => key`) unless translation formatting itself is under test.
+- Favor outcome-driven assertions (state updates, callbacks, message behavior) over internal mock wiring details.
+- Use per-test overrides for permission/request edge cases; avoid embedding branching logic in mock factories.
+
 ### 2.5 Side Effects
 
 - loadUsers, loadFolderChildren on open
 - API calls for save, approve
+- `loadFolderChildren(path)` de-duplicates concurrent requests for the same path by reusing a single in-flight Promise. It must not poll React state (`loadingPaths`) via `setInterval` to wait for completion, because stale closures can leave unresolved waits in Jest and runtime edge cases.
 
 ### 2.6 Error Handling
 
@@ -83,3 +91,4 @@
 
 - isAdminMode, isShareMode, isReviewMode
 - rootPath from mode
+- Concurrent `loadFolderChildren` calls for the same `path` resolve from one request and all callers complete without hanging.

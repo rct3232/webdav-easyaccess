@@ -8,9 +8,24 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import FilePropertiesDialog from '../FilePropertiesDialog';
+import { getFolderPermissions } from '../../../services/permissionService';
+import { getFolderStats } from '../../../services/fileService';
 
 jest.mock('../../../hooks/useResponsive', () => ({
   useResponsive: () => ({ isMobile: false }),
+}));
+
+jest.mock('../../../services/permissionService', () => ({
+  getFolderPermissions: jest.fn().mockResolvedValue([]),
+  getUserPermissions: jest.fn().mockResolvedValue([]),
+  grantPermission: jest.fn().mockResolvedValue(),
+  revokePermission: jest.fn().mockResolvedValue(),
+  checkPermission: jest.fn().mockResolvedValue({}),
+  listFilePermissions: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../../../services/fileService', () => ({
+  getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
 }));
 
 const fileProps = {
@@ -40,6 +55,8 @@ describe('FilePropertiesDialog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.setItem('token', 'test-token');
+    getFolderPermissions.mockResolvedValue([]);
+    getFolderStats.mockResolvedValue({ fileCount: 42, totalSize: 2048 });
   });
 
   it('returns null when file is not provided', () => {
@@ -84,5 +101,26 @@ describe('FilePropertiesDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByText('docs')).toBeInTheDocument();
+  });
+
+  it('when directory, dialog shows folder stats (file count and size) after load', async () => {
+    renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} file={folderProps} />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/42/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/2\s*KB/i)).toBeInTheDocument();
+  });
+
+  it('when file, size row shows file size not folder stats', async () => {
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1\s*KB/i)).toBeInTheDocument();
   });
 });

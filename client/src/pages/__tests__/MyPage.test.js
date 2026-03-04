@@ -17,11 +17,22 @@ import MyPage from '../MyPage';
 
 /** Select Sharing category, then a sub-item (inbox/outbox/links). Non-admin user sees Sharing. Uses label pattern; count is shown via Badge. */
 const selectSharingAndItem = async (user, labelPattern) => {
-  await user.click(screen.getByRole('button', { name: /share management/i }));
+  const sharingButton = await screen.findByRole(
+    'button',
+    { name: /share management/i },
+    { timeout: 5000 }
+  );
+  await user.click(sharingButton);
   await waitFor(() => {
     expect(screen.getByRole('button', { name: labelPattern })).toBeInTheDocument();
   }, { timeout: 3000 });
   await user.click(screen.getByRole('button', { name: labelPattern }));
+};
+
+const waitForMyPageReady = async () => {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
+  }, { timeout: 5000 });
 };
 
 const inboxRequest = (overrides = {}) => ({
@@ -75,11 +86,9 @@ describe('MyPage', () => {
   it('displays account info for current user', async () => {
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
-    expect(screen.getByRole('heading', { name: /account info/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /account info/i })).toBeInTheDocument();
     expect(screen.getByText(/testuser/)).toBeInTheDocument();
     expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
   });
@@ -102,9 +111,7 @@ describe('MyPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
     await selectSharingAndItem(user, /links/i);
 
@@ -123,9 +130,7 @@ describe('MyPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
     await selectSharingAndItem(user, /links/i);
 
@@ -144,9 +149,7 @@ describe('MyPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
     await selectSharingAndItem(user, /received requests/i);
 
@@ -175,9 +178,7 @@ describe('MyPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
     await selectSharingAndItem(user, /received requests/i);
 
@@ -230,9 +231,7 @@ describe('MyPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
     await selectSharingAndItem(user, /my requests/i);
 
@@ -271,12 +270,12 @@ describe('MyPage Admin categories (User Management, System Settings)', () => {
 
     renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin' } }] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
-    expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
-    expect(screen.getByText('user1')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
+      expect(screen.getByText('user1')).toBeInTheDocument();
+    }, { timeout: 5000 });
   });
 
   it('admin: shows user list when User Management category selected', async () => {
@@ -284,11 +283,9 @@ describe('MyPage Admin categories (User Management, System Settings)', () => {
 
     renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin-users' } }] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
-    expect(screen.getByText('user1')).toBeInTheDocument();
+    expect(await screen.findByText('user1')).toBeInTheDocument();
   });
 
   it('admin: approves pending user', async () => {
@@ -321,11 +318,9 @@ describe('MyPage Admin categories (User Management, System Settings)', () => {
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: [{ pathname: '/mypage', state: { category: 'admin-users' } }] });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    }, { timeout: 5000 });
+    await waitForMyPageReady();
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(await screen.findByRole('button', { name: /settings/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /system settings/i })).toBeInTheDocument();

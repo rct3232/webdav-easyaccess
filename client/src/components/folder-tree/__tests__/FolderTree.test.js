@@ -9,31 +9,31 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FolderTree from '../FolderTree';
-
 jest.mock('../../../utils/recentFiles', () => {
-  const unsubscribe = () => {};
-  return {
+  const { createRecentFilesMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesMock({
     getRecentFiles: jest.fn().mockResolvedValue([]),
-    onRecentFilesChange: () => unsubscribe,
-  };
+    onRecentFilesChange: () => () => {},
+  });
 });
-
-jest.mock('../../../services/permissionService', () => ({
-  getUserPermissions: jest.fn().mockResolvedValue([]),
-}));
-
-jest.mock('../../../services/fileService', () => ({
-  listFiles: jest.fn().mockResolvedValue([]),
-}));
-
-jest.mock('../../../utils/localStorage', () => ({
-  getShowHiddenFiles: () => false,
-  setShowHiddenFiles: () => {},
-  getViewMode: () => 'list',
-  setViewMode: () => {},
-  getSortMode: () => 'name_asc',
-  setSortMode: () => {},
-}));
+jest.mock('../../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock({
+    getUserPermissions: jest.fn().mockResolvedValue([]),
+  });
+});
+jest.mock('../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createFileServiceMock({
+    listFiles: jest.fn().mockResolvedValue([]),
+  });
+});
+jest.mock('../../../utils/localStorage', () => {
+  const { createLocalStorageUiMock } = require('../../../testing/mocks/serviceMocks');
+  return createLocalStorageUiMock({
+    getSortMode: () => 'name_asc',
+  });
+});
 
 const defaultProps = {
   currentPath: '/',

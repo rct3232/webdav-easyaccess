@@ -31,11 +31,11 @@
 | Component | Prop | Type | Default | Description |
 |-----------|------|------|---------|-------------|
 | FileListSkeleton | count | number | 4 (mobile) / 6 (desktop) | Skeleton row count |
-| FileListSkeleton | selectionMode | boolean | false | Show checkbox skeleton |
+| FileListSkeleton | selectionMode | boolean | false | Reserved for layout compatibility; no checkbox placeholder is rendered |
 | FileGridSkeleton | count | number | 4 (mobile) / 8 (desktop) | Skeleton card count |
-| FileGridSkeleton | selectionMode | boolean | false | Show checkbox skeleton |
+| FileGridSkeleton | selectionMode | boolean | false | Reserved for layout compatibility; no checkbox placeholder is rendered |
 | FileDetailSkeleton | count | number | 6 | Table row count |
-| FileDetailSkeleton | selectionMode | boolean | false | Show checkbox column |
+| FileDetailSkeleton | selectionMode | boolean | false | Reserved for layout compatibility; no checkbox column placeholder is rendered |
 | FileTreeSkeleton | count | number | 3 | Tree item count |
 | FileTreeSkeleton | level | number | 0 | Indentation level |
 
@@ -50,7 +50,7 @@
 
 ### 2.6 Conditional Rendering
 
-- selectionMode: checkbox placeholder in each skeleton
+- selectionMode is accepted for API compatibility but does not render checkbox-specific placeholders
 - useResponsive for FileListSkeleton/FileGridSkeleton count
 - FileTreeSkeleton level: pl = level * 2
 - **Gradual opacity (max 3 items):** When count ≥ 2, the last 1–3 skeletons fade. Others stay 100%.
@@ -67,7 +67,7 @@ Checklist for unit test writing:
 - [ ] FileGridSkeleton renders grid with card-like items
 - [ ] FileDetailSkeleton renders table rows
 - [ ] FileTreeSkeleton renders indented items
-- [ ] selectionMode adds checkbox placeholder
+- [ ] selectionMode prop is accepted without changing skeleton structure
 - [ ] Gradual opacity: count=2→last 50%, count=4→last three 75%/50%/25%, count=5→first two 100% and last three 75%/50%/25%
 
 ### 2.8 Edge Cases

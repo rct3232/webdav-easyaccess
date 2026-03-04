@@ -13,7 +13,7 @@
 
 ### 2.1 PC (Desktop) Layout
 
-- **Left:** Category sidebar (200px fixed width, same as FileManager folder tree; always visible; no divider between sidebar and content). Categories: Account, Sharing, Preferences; User Management, System Settings (admin only).
+- **Left:** Category sidebar (always visible; no divider between sidebar and content). Categories: Account, Sharing, Preferences; User Management, System Settings (admin only).
 - **Right:** Content area (flex: 1, scrollable) for selected category.
 - **AppBar:** Logo (left, same as FileManager `/logo_white.png`), Close (X, right) → navigates to `/`. No menu button.
 
@@ -111,6 +111,7 @@ Initial `selectedCategory` may come from `location.state?.category` (e.g. `navig
 - [ ] Multi-item (Sharing): List view shows sub-items; click item → Detail view (Back button + content); Back → List view
 - [ ] User Management and System Settings visible only when `user.is_admin`; Sharing hidden when admin
 - [ ] Share links, inbox/outbox flows work as before
+- [ ] Tests must wait until authenticated user-driven layout is rendered before querying category controls or content headings (e.g. wait for AppBar Close button or visible category button). Avoid immediate synchronous `getBy*` right after render when AuthProvider still resolves `auth/me`.
 
 ### 3.9 Conditional Rendering
 

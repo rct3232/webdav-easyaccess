@@ -6,10 +6,10 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 93
-- **Total Tests**: 855
-- **Pass Rate**: 100% (855 passed, 0 failed) ✅
-- **Execution Time**: ~207 seconds
+- **Total Test Suites**: 101
+- **Total Tests**: 941
+- **Pass Rate**: 100% (941 passed, 0 failed) ✅
+- **Execution Time**: ~86 seconds
 
 ## Test Breakdown by Category
 
@@ -65,16 +65,16 @@ Tests that exercise full user flows (pages) with React Testing Library. API is m
 
 ### Overall Project Coverage
 
-- **Statements**: 66.24%
-- **Branches**: 54.90%
-- **Functions**: 64.02%
-- **Lines**: 67.99%
+- **Statements**: 67.11%
+- **Branches**: 55.53%
+- **Functions**: 63.96%
+- **Lines**: 68.98%
 
 *Note: Core business logic (utils, hooks) typically has higher coverage than the project overall.*
 
 ## Conclusion
 
-- 855 tests across 93 suites, 100% pass rate
+- 941 tests across 101 suites, 100% pass rate
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place
 - RCA procedure for failures defined

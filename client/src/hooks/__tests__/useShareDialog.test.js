@@ -7,34 +7,30 @@ import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShareDialog } from '../useShareDialog';
 import { usePermissionManager } from '../usePermissionManager';
-
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
-jest.mock('../../services/userService', () => ({
-  getApprovedUsers: jest.fn(),
-  updateUserPermissions: jest.fn(),
-}));
-
-jest.mock('../../services/permissionService', () => ({
-  getUserPermissions: jest.fn(),
-  getFolderPermissions: jest.fn(),
-  grantPermission: jest.fn(),
-  revokePermission: jest.fn(),
-}));
-
-jest.mock('../../services/fileService', () => ({
-  listFiles: jest.fn(),
-}));
-
-jest.mock('../../services/permissionRequestService', () => ({
-  approvePermissionRequest: jest.fn(),
-}));
-
-jest.mock('../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn((data) => data?.errorCode || 'error'),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+jest.mock('../../services/userService', () => {
+  const { createUserServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createUserServiceMock();
+});
+jest.mock('../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
+jest.mock('../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
+jest.mock('../../services/permissionRequestService', () => {
+  const { createPermissionRequestServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionRequestServiceMock();
+});
+jest.mock('../../utils/errorUtils', () => {
+  const { createErrorUtilsMock } = require('../../testing/mocks/serviceMocks');
+  return createErrorUtilsMock();
+});
 
 import * as userService from '../../services/userService';
 import * as permissionService from '../../services/permissionService';
@@ -209,6 +205,52 @@ describe('useShareDialog', () => {
 
     await waitFor(() => {
       expect(fileService.listFiles).toHaveBeenCalled();
+    });
+  });
+
+  it('reuses in-flight load for the same path and resolves all callers', async () => {
+    let resolveListFiles;
+    fileService.listFiles.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListFiles = resolve;
+        })
+    );
+
+    const { result } = renderHook(() =>
+      useShareDialogWithPermissionManager({
+        open: false,
+        mode: 'share',
+        folderPath: '/docs',
+        folderName: 'docs',
+        onClose: mockOnClose,
+      })
+    );
+
+    let firstCall;
+    let secondCall;
+    act(() => {
+      firstCall = result.current.loadFolderChildren('/docs');
+      secondCall = result.current.loadFolderChildren('/docs');
+    });
+
+    expect(fileService.listFiles).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveListFiles([
+        { path: '/docs/sub', type: 'directory', basename: 'sub' },
+      ]);
+      await Promise.all([firstCall, secondCall]);
+    });
+
+    await waitFor(() => {
+      const root = result.current.folderTree.get('/docs');
+      expect(root).toBeDefined();
+      expect(root.children).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: '/docs/sub', name: 'sub' }),
+        ])
+      );
     });
   });
 

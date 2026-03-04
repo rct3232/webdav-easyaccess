@@ -38,6 +38,7 @@
 | requestThumbnailsBatch | (paths, options?) | Promise\<Object\> | POST /api/files/thumbnails/batch |
 | checkPermission | (path) | Promise\<Object\> | delegates to permissionService |
 | getWebDAVInfo | () | Promise\<Object\> | GET /api/webdav/info |
+| getFolderStats | (folderPath) | Promise\<object\> | GET /api/folders/stats (params: path) |
 
 - `shareToken` in options: listFiles, getFilesMetadata, getFileBlob, uploadFileWithPath, uploadMultipleFiles, checkConflicts, downloadMultipleFiles, getDownloadProgress, requestThumbnailsBatch. When set, uses `X-Share-Token` header and query params.
 - `downloadFile` does **not** accept options (authenticated user only; no share token support).

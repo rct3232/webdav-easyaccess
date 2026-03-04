@@ -6,18 +6,18 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFolderPicker } from '../useFolderPicker';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
-jest.mock('../../services/permissionService', () => ({
-  getUserPermissions: jest.fn(),
-}));
-
-jest.mock('../../services/fileService', () => ({
-  listFiles: jest.fn(),
-  checkPermission: jest.fn(),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+jest.mock('../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
+jest.mock('../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 
 jest.mock('../../utils/userUtils', () => {
   const actual = jest.requireActual('../../utils/userUtils');

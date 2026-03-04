@@ -5,26 +5,25 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useRecentFile } from '../useRecentFile';
-
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
-jest.mock('../../utils/recentFiles', () => ({
-  getRecentFiles: jest.fn(),
-  removeRecentFile: jest.fn(),
-  applyRecentFilesAfterRename: jest.fn(),
-}));
-
-jest.mock('../../services/fileService', () => ({
-  listFiles: jest.fn(),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+jest.mock('../../utils/recentFiles', () => {
+  const { createRecentFilesMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesMock();
+});
+jest.mock('../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 
 // Use real errorUtils; determineErrorType/getErrorMessageByType are pure and map status to i18n keys
 
-jest.mock('../../utils/fileUtils', () => ({
-  canPreview: jest.fn(() => true),
-}));
+jest.mock('../../utils/fileUtils', () => {
+  const { createFileUtilsMock } = require('../../testing/mocks/serviceMocks');
+  return createFileUtilsMock();
+});
 
 import * as recentFiles from '../../utils/recentFiles';
 import * as fileService from '../../services/fileService';

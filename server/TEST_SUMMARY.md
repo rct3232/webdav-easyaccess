@@ -6,10 +6,10 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 35
-- **Total Tests**: 340
-- **Pass Rate**: 100% (340 passed, 0 failed) ✅
-- **Execution Time**: ~22 seconds
+- **Total Test Suites**: 36
+- **Total Tests**: 347
+- **Pass Rate**: 100% (347 passed, 0 failed) ✅
+- **Execution Time**: ~9 seconds
 
 ## Test Breakdown by Category
 
@@ -21,6 +21,7 @@ Single modules in isolation (utils, models, middleware, store). External depende
 |-----------|-------|
 | `utils/__tests__/pathUtils.test.js` | Path normalization, getParentPath, segment validation |
 | `utils/__tests__/auth.test.js` | Token generation, verification, password hashing |
+| `utils/__tests__/webdav.test.js` | Recursive folder stats aggregation |
 | `utils/__tests__/errorHandler.test.js` | Error formatting, status mapping |
 | `models/__tests__/User.test.js` | User CRUD, status, password |
 | `models/__tests__/Permission.test.js` | Permission model operations |
@@ -49,7 +50,7 @@ API route tests with Supertest. Full request/response cycle; backing services us
 | Test File / Area | Notes |
 |------------------|-------|
 | `routes/__tests__/auth.test.js` | Register, login, logout, token refresh |
-| `routes/__tests__/files.test.js` | List, download, upload, rename, batch operations |
+| `routes/__tests__/files.test.js` | List, download, upload, rename, batch operations, metadata, download-multiple |
 | `routes/__tests__/folders.test.js` | Create folder, list |
 | `routes/__tests__/permissions.test.js` | Grant, revoke, list permissions |
 | `routes/__tests__/permissionRequests.test.js` | Create, approve, deny requests |
@@ -75,7 +76,7 @@ API route tests with Supertest. Full request/response cycle; backing services us
 | Module | Statements | Branches | Functions | Lines |
 |--------|-----------|----------|-----------|-------|
 | utils/errorHandler.js | 100 | 97.56 | 100 | 100 |
-| utils/auth.js | 91.78 | 82.45 | 100 | 92.85 |
+| utils/auth.js | 91.78 | 84.21 | 100 | 92.85 |
 | middleware/normalizePathParam.js | 100 | 100 | 100 | 100 |
 | middleware/requireUser.js | 89.47 | 78.12 | 100 | 91.66 |
 | middleware/metaPathGuard.js | 92.3 | 82.05 | 75 | 97.29 |
@@ -91,10 +92,10 @@ API route tests with Supertest. Full request/response cycle; backing services us
 
 ### Overall Project Coverage
 
-- **Statements**: 52.47%
-- **Branches**: 38.87%
-- **Functions**: 63.63%
-- **Lines**: 54.06%
+- **Statements**: 52.83%
+- **Branches**: 39.21%
+- **Functions**: 64.03%
+- **Lines**: 54.43%
 
 ### Server Folder Coverage
 
@@ -107,7 +108,7 @@ API route tests with Supertest. Full request/response cycle; backing services us
 
 ## Conclusion
 
-- 340 tests across 35 suites, 100% pass rate
+- 347 tests across 36 suites, 100% pass rate
 - Core modules (models, middleware, auth, errorHandler) have high coverage
 - Route integration tests cover main API endpoints
 - Test infrastructure and commands documented

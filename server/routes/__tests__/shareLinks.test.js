@@ -9,21 +9,12 @@ const {
   grantTestPermission,
 } = require('../../test-utils');
 
-const mockPathExists = jest.fn().mockResolvedValue(true);
-const mockListDirectory = jest.fn();
-jest.mock('../../utils/webdav', () => ({
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  pathExists: (...args) => mockPathExists(...args),
-  listDirectory: (...args) => mockListDirectory(...args),
-  getFileContents: jest.fn().mockResolvedValue(Buffer.from('')),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  createDirectory: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({}),
-}));
+var mockWebdav;
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
 
 let app;
 let dbCleanup;
@@ -35,8 +26,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  mockPathExists.mockResolvedValue(true);
-  mockListDirectory.mockRejectedValue(new Error('not a dir'));
+  mockWebdav.pathExists.mockResolvedValue(true);
+  mockWebdav.listDirectory.mockRejectedValue(new Error('not a dir'));
 });
 
 afterAll(async () => {
@@ -80,7 +71,7 @@ describe('POST /api/share-links', () => {
   });
 
   it('returns 404 when file does not exist', async () => {
-    mockPathExists.mockResolvedValueOnce(false);
+    mockWebdav.pathExists.mockResolvedValueOnce(false);
     const { user, token } = await createAuthenticatedTestUser({
       username: `share-404-${Date.now()}`,
     });

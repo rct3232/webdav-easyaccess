@@ -12,25 +12,16 @@ const ShareLink = require('../../models/ShareLink');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 
-const mockPathExists = jest.fn().mockResolvedValue(true);
-const mockGetFileContents = jest.fn().mockResolvedValue(Buffer.from('file content'));
-const mockListDirectory = jest.fn().mockResolvedValue([]);
+var mockWebdav;
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
 
-jest.mock('../../utils/webdav', () => ({
-  pathExists: (...args) => mockPathExists(...args),
-  getFileContents: (...args) => mockGetFileContents(...args),
-  listDirectory: (...args) => mockListDirectory(...args),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  createDirectory: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({}),
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  isImageFile: () => false,
-  isVideoFile: () => false,
-}));
+mockWebdav.pathExists.mockResolvedValue(true);
+mockWebdav.getFileContents.mockResolvedValue(Buffer.from('file content'));
+mockWebdav.listDirectory.mockResolvedValue([]);
 
 let app;
 let dbCleanup;
@@ -42,9 +33,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  mockPathExists.mockResolvedValue(true);
-  mockGetFileContents.mockResolvedValue(Buffer.from('file content'));
-  mockListDirectory.mockResolvedValue([]);
+  mockWebdav.pathExists.mockResolvedValue(true);
+  mockWebdav.getFileContents.mockResolvedValue(Buffer.from('file content'));
+  mockWebdav.listDirectory.mockResolvedValue([]);
 });
 
 afterAll(async () => {

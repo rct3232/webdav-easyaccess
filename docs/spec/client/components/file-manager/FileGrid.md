@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Grid view of files (cards). Supports selection, drag-and-drop, long-press context menu on mobile, infinite scroll. |
+| Role | Grid view of files (cards). Supports selection, drag-and-drop, long-press selection entry on mobile, infinite scroll. |
 | Used in | FileManager |
 | Related components | FileGridItem, FileSkeletons, useFileViewCommon, useThumbnailLazyLoad |
 
@@ -27,9 +27,9 @@
 | onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
 | onContextMenu | function | Y | - | Context menu handler |
 | onFileDrop | function | N | - | Drop handler |
-| selectionMode | boolean | Y | - | Show checkboxes |
+| selectionMode | boolean | Y | - | Selection mode active; no checkboxes; selection indicated by card background highlight (see FileGridItem). |
 | selectedFiles | Set | Y | - | Selected paths |
-| onFileCheck | function | Y | - | Checkbox handler |
+| onFileCheck | function | Y | - | Selection toggle handler (e.g. called when card is clicked in selection mode); no checkbox UI. |
 | processingMap | object | N | - | Processing state map |
 | hasWritePermission | boolean | N | - | Write permission |
 | currentPath | string | Y | - | Current path |
@@ -48,7 +48,7 @@
 | onMoreClick | More button click | (file) |
 | onLongPressSelect | Mobile long-press on file | (file) |
 | onContextMenu | Right-click | (e, file) |
-| onFileCheck | Checkbox toggle | (file, checked, e) |
+| onFileCheck | Selection toggle (card click in selection mode) | (file, checked, e) |
 
 ### 2.4 Dependencies
 
@@ -86,6 +86,7 @@ Checklist for unit test writing:
 - [ ] Long-press invokes onLongPressSelect on mobile — enters selection mode
 - [ ] Drag-and-drop
 - [ ] loadMoreRef when hasMore
+- [ ] Selection mode does not require checkbox role UI; selection is card-interaction based
 
 ### 2.9 Edge Cases
 

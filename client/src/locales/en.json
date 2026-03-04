@@ -87,6 +87,7 @@
     "select": "Select",
     "recentItems": "Recent items",
     "recentItemsEmpty": "No recent items",
+    "folderStatsFormat": "{{count}} files ({{size}})",
     "selectedCount": "{{count}}",
     "selectedCountFull": "{{count}} selected",
     "listViewTitle": "List view",

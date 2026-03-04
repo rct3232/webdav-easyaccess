@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getApprovedUsers, updateUserPermissions } from '../services/userService';
 import { getUserPermissions, getFolderPermissions, grantPermission, revokePermission } from '../services/permissionService';
@@ -64,6 +64,7 @@ export function useShareDialog({
   const [externalShareExpiresInDays, setExternalShareExpiresInDays] = useState(14);
   const [externalShareUnlimited, setExternalShareUnlimited] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const inFlightFolderLoadsRef = useRef(new Map());
 
   const loadUsers = useCallback(async () => {
     try {
@@ -77,60 +78,58 @@ export function useShareDialog({
     }
   }, [onMessage, t]);
 
-  const loadFolderChildren = useCallback(async (path) => {
-    if (loadingPaths.has(path)) {
-      return new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (!loadingPaths.has(path)) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 50);
-      });
-    }
+  const loadFolderChildren = useCallback((path) => {
+    const inFlight = inFlightFolderLoadsRef.current.get(path);
+    if (inFlight) return inFlight;
 
-    setLoadingPaths(prev => new Set(prev).add(path));
-    try {
-      const data = await listFiles(path);
-      const folders = (data || [])
-        .filter(item => item.type === 'directory')
-        .map(folder => ({
-          path: folder.path,
-          name: folder.basename || folder.name,
-          children: [],
-        }));
-
-      setFolderTree(prev => {
-        const newMap = new Map(prev);
-        let current = newMap.get(path);
-        if (!current) {
-          current = {
-            path,
-            name: path === '/' ? 'Root' : path.split('/').filter(Boolean).pop() || 'Root',
+    const loadPromise = (async () => {
+      setLoadingPaths(prev => new Set(prev).add(path));
+      try {
+        const data = await listFiles(path);
+        const folders = (data || [])
+          .filter(item => item.type === 'directory')
+          .map(folder => ({
+            path: folder.path,
+            name: folder.basename || folder.name,
             children: [],
-          };
-        }
-        current.children = folders;
-        newMap.set(path, current);
-        folders.forEach(folder => {
-          if (!newMap.has(folder.path)) newMap.set(folder.path, folder);
-        });
-        return newMap;
-      });
+          }));
 
-      return folders;
-    } catch (error) {
-      if (error.response?.status === HTTP_STATUS.NOT_FOUND) return [];
-      console.error(`Failed to load folder children for ${path}:`, error);
-      return [];
-    } finally {
-      setLoadingPaths(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(path);
-        return newSet;
-      });
-    }
-  }, [loadingPaths]);
+        setFolderTree(prev => {
+          const newMap = new Map(prev);
+          let current = newMap.get(path);
+          if (!current) {
+            current = {
+              path,
+              name: path === '/' ? 'Root' : path.split('/').filter(Boolean).pop() || 'Root',
+              children: [],
+            };
+          }
+          current.children = folders;
+          newMap.set(path, current);
+          folders.forEach(folder => {
+            if (!newMap.has(folder.path)) newMap.set(folder.path, folder);
+          });
+          return newMap;
+        });
+
+        return folders;
+      } catch (error) {
+        if (error.response?.status === HTTP_STATUS.NOT_FOUND) return [];
+        console.error(`Failed to load folder children for ${path}:`, error);
+        return [];
+      } finally {
+        setLoadingPaths(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(path);
+          return newSet;
+        });
+        inFlightFolderLoadsRef.current.delete(path);
+      }
+    })();
+
+    inFlightFolderLoadsRef.current.set(path, loadPromise);
+    return loadPromise;
+  }, []);
 
   const loadAllSubfoldersRecursive = useCallback(async (parentPath) => {
     const expandedPathsSet = new Set();

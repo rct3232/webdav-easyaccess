@@ -42,10 +42,19 @@
 - `authenticateTokenOrShare`, `authenticateToken`, `requireUser`, `requireAuth`
 - `normalizePathParam`, `checkMetaPathAccess`
 
+### 2.3.1 Test Mock Strategy
+
+- Route integration tests use Supertest with shared WebDAV mock factories; avoid duplicated inline mock objects across test files.
+- Default mock behavior should stay deterministic and represent common success paths (`pathExists`, `listDirectory`, `getFileContents`).
+- Scenario-specific failures (404, conflict, permission-denied) must be applied as per-test overrides (`mockResolvedValueOnce` / `mockRejectedValueOnce`).
+- Batch worker internals are not validated in this route integration test. Validate API contract here and worker internals in dedicated service/unit tests.
+- Keep assertions outcome-focused (HTTP status, response body, visible side effects), not helper implementation details.
+
 ### 2.4 Request/Response Spec
 
 - List, download, metadata, download-multiple, thumbnails: support share token (header/query)
 - Path params normalized; meta path (/.wea) blocked for non-admin
+- **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
 - Bulk ops: returns jobId; poll via bulk-operation
 - Upload 413 (payload too large): body-parser 또는 서버 제한; 413 반환
 - download-multiple paths 빈 배열: 400 (validation)

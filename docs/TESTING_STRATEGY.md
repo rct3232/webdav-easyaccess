@@ -27,15 +27,49 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 
 - **Use only schema-derived or validated mocks:** Mocks (including MSW handlers) must be validated against the defined contract (e.g. `docs/api.md`, `docs/shared-contracts.md`). Hand-written mocks that diverge from the contract lead to false confidence. When the contract changes, update mocks accordingly.
 
+### Mock management policy (required)
+
+- **Prefer the smallest stable seam:** Mock at the lowest layer that keeps tests deterministic.
+- **Avoid logic-heavy mocks:** Mock factories should primarily return fixed values and simple `jest.fn()` stubs. Avoid re-implementing production branching inside mocks.
+- **Use shared factories for repeated dependencies:** When the same mock shape appears in 3+ files, move it to a shared factory/helper.
+- **Reset policy:** Use `jest.clearAllMocks()` in `beforeEach` by default. Use `jest.resetAllMocks()` only when previous mock implementations must be fully reset. Use `jest.restoreAllMocks()` when spies on real methods are used.
+- **Document decisions in fail log:** If a mocking approach causes regressions or infra incompatibility, record RCA in `.cursor/fail_log.md` and update this strategy/spec docs before broad migration.
+
 ### Client
 
-- **MSW (Mock Service Worker):** All API calls are mocked in tests via handlers in `client/src/mocks/`. Use this for both unit tests (e.g. services that call `fetch`) and integration tests (full component trees that trigger API calls). Keep handlers in sync with [api.md](api.md) and [shared-contracts.md](shared-contracts.md) so contract changes are reflected in mocks.
-- **Services:** Prefer mocking at the network layer (MSW) rather than replacing service modules, so integration tests exercise the real client API usage.
+- **MSW (Mock Service Worker):** API calls are mocked via handlers in `client/src/mocks/` for integration-style component/page tests. Keep handlers in sync with [api.md](api.md) and [shared-contracts.md](shared-contracts.md).
+- **Service/unit tests:** For isolated service or adapter behavior, module-level mocks (`jest.mock`) are allowed and often preferred.
+- **Known guardrails from RCA:** In this repository, avoid broad MSW migration for cases already recorded in `.cursor/fail_log.md` (for example, Node/Jest compatibility around axios response propagation and `request.formData()` parsing in jsdom).
+- **Jest polyfill guardrail:** In jsdom + undici tests, expose only the minimum globals required for stable runtime. Do not instantiate `new MessageChannel()` only to infer constructor types, and avoid unnecessary global `MessageChannel` wiring when `MessagePort` alone is sufficient. These patterns can leave open `MESSAGEPORT` handles and block graceful Jest worker shutdown. If a temporary channel fallback is unavoidable, close/unref both ports immediately.
+- **Auth-gated page guardrail:** For pages that return `null` until auth context resolves (for example `MyPage`), do not perform immediate `getBy*` queries after `render`. First wait for a stable post-auth UI anchor (`findByRole` or `waitFor`), then interact/assert.
+- **Decision rule:**  
+  - Component/page user flow tests -> prefer MSW  
+  - Service/hook/util unit tests -> prefer module mocks  
+  - Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
 
 ### Server
 
 - **WebDAV and stores:** Use test utilities and mocks so route tests don’t depend on a real WebDAV server or real metadata files. Mock or stub the WebDAV client and store modules where appropriate.
 - **Auth:** Use test helpers (e.g. create a test user, issue a JWT) so routes can be called with a valid `Authorization` header without going through the real login flow.
+- **Route mock reuse:** Prefer shared server mock factories (for example, WebDAV and email) over repeated in-file mock object literals.
+- **Override pattern:** Use `createXMock(overrides)` and only override behavior required by each scenario.
+
+### Recommended factory pattern
+
+```javascript
+// Shared test helper
+function createExampleMock(overrides = {}) {
+  return {
+    list: jest.fn().mockResolvedValue([]),
+    get: jest.fn().mockResolvedValue(null),
+    ...overrides,
+  };
+}
+```
+
+- Keep defaults deterministic.
+- Keep per-test setup explicit in `beforeEach` or test body.
+- Do not hide assertions in helper internals.
 
 ---
 

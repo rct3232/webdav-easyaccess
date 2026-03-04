@@ -41,6 +41,11 @@ function FileManagerWithRoutes() {
   );
 }
 
+const selectTwoItemsDesktop = async (user, firstItemElement, secondItemElement) => {
+  await user.click(firstItemElement);
+  fireEvent.click(secondItemElement, { ctrlKey: true, metaKey: true });
+};
+
 describe('FileManager', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -217,8 +222,7 @@ describe('FileManager', () => {
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(screen.getByText(/test\.txt/i));
-    await user.click(within(rowDocs).getByRole('checkbox'));
+    await selectTwoItemsDesktop(user, screen.getByText(/test\.txt/i), docsInList);
 
     // Bulk move: click Move in toolbar
     const moveBtn = screen.getByRole('button', { name: /move/i });
@@ -280,8 +284,7 @@ describe('FileManager', () => {
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(screen.getByText(/test\.txt/i));
-    await user.click(within(rowDocs).getByRole('checkbox'));
+    await selectTwoItemsDesktop(user, screen.getByText(/test\.txt/i), docsInList);
 
     const copyBtn = screen.getByRole('button', { name: /^copy$/i });
     await user.click(copyBtn);
@@ -351,8 +354,7 @@ describe('FileManager', () => {
     const doc2InList = within(fileListContainer).getByText(/doc2\.txt/i);
     const rowDoc2 = doc2InList.closest('div')?.parentElement;
     expect(rowDoc2).toBeTruthy();
-    await user.click(screen.getByText(/test\.txt/i));
-    await user.click(within(rowDoc2).getByRole('checkbox'));
+    await selectTwoItemsDesktop(user, screen.getByText(/test\.txt/i), doc2InList);
 
     const downloadBtn = screen.getByRole('button', { name: /download/i });
     await user.click(downloadBtn);
@@ -399,8 +401,7 @@ describe('FileManager', () => {
     const docsInList = within(fileListContainer).getByText(/\bdocs\b/i);
     const rowDocs = docsInList.closest('div')?.parentElement;
     expect(rowDocs).toBeTruthy();
-    await user.click(screen.getByText(/test\.txt/i));
-    await user.click(within(rowDocs).getByRole('checkbox'));
+    await selectTwoItemsDesktop(user, screen.getByText(/test\.txt/i), docsInList);
 
     const deleteBtn = screen.getByRole('button', { name: /delete/i });
     await user.click(deleteBtn);

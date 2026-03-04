@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | List view of files in a responsive grid. Supports selection, drag-and-drop, long-press context menu on mobile, infinite scroll. |
+| Role | List view of files in a responsive grid. Supports selection, drag-and-drop, long-press selection entry on mobile, infinite scroll. |
 | Used in | FileManager |
 | Related components | FileListItem, FileSkeletons, useFileViewCommon, useThumbnailLazyLoad |
 
@@ -29,7 +29,7 @@
 | onFileDrop | function | N | - | Drop handler for drag-and-drop |
 | selectionMode | boolean | Y | - | Whether selection mode active |
 | selectedFiles | Set | Y | - | Selected file paths |
-| onFileCheck | function | Y | - | Checkbox change handler |
+| onFileCheck | function | Y | - | Selection toggle handler (used by row interactions in selection mode; no checkbox UI required) |
 | processingMap | object | N | - | Map of path -> processing state |
 | currentPath | string | Y | - | Current folder path |
 | onPathClick | function | N | - | Path click handler |
@@ -48,7 +48,7 @@
 | onLongPressSelect | Mobile long-press on file | (file) |
 | onContextMenu | Right-click | (e, file) |
 | onFileDrop | File dropped on target | via useFileViewCommon |
-| onFileCheck | Checkbox toggle | (file, checked, e) |
+| onFileCheck | Selection toggle in selection mode | (file, checked, e) |
 
 ### 2.4 Dependencies
 
@@ -74,7 +74,8 @@ Checklist for unit test writing:
 - [ ] onFileClick called when file row clicked (and not disabled)
 - [ ] onContextMenu called on right-click
 - [ ] Long-press invokes onLongPressSelect on mobile (500ms) — enters selection mode
-- [ ] Checkbox and onFileCheck when selectionMode
+- [ ] Selection mode toggles via row interactions and calls `onFileCheck` appropriately
+- [ ] No checkbox role is required in selection mode
 - [ ] Loading shows FileListSkeleton
 - [ ] Empty files shows noFiles message
 - [ ] Drag-and-drop via useFileViewCommon

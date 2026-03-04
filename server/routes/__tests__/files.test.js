@@ -13,7 +13,14 @@ const {
 } = require('../../test-utils');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-const mockListDirectory = jest.fn((path) => {
+var mockWebdav;
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
+
+mockWebdav.listDirectory.mockImplementation((path) => {
   const p = String(path).replace(/\/$/, '');
   if (p && /\.\w+$/.test(p)) {
     return Promise.reject(Object.assign(new Error('Not a directory'), { status: 404 }));
@@ -23,23 +30,9 @@ const mockListDirectory = jest.fn((path) => {
     { basename: 'subdir', type: 'directory' },
   ]);
 });
-const mockPathExists = jest.fn().mockResolvedValue(true);
-const mockGetFileContents = jest.fn().mockResolvedValue(Buffer.from('content'));
-jest.mock('../../utils/webdav', () => ({
-  pathExists: (...args) => mockPathExists(...args),
-  listDirectory: (...args) => mockListDirectory(...args),
-  getFileContents: (...args) => mockGetFileContents(...args),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  createDirectory: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({ size: 7, lastmod: '2024-01-01', mime: 'text/plain' }),
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  isImageFile: () => false,
-  isVideoFile: () => false,
-}));
+mockWebdav.pathExists.mockResolvedValue(true);
+mockWebdav.getFileContents.mockResolvedValue(Buffer.from('content'));
+mockWebdav.getFileMetadata.mockResolvedValue({ size: 7, lastmod: '2024-01-01', mime: 'text/plain' });
 
 
 let app;
@@ -58,12 +51,12 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  mockListDirectory.mockResolvedValue([
+  mockWebdav.listDirectory.mockResolvedValue([
     { basename: 'file1.txt', type: 'file' },
     { basename: 'subdir', type: 'directory' },
   ]);
-  mockPathExists.mockResolvedValue(true);
-  mockGetFileContents.mockResolvedValue(Buffer.from('content'));
+  mockWebdav.pathExists.mockResolvedValue(true);
+  mockWebdav.getFileContents.mockResolvedValue(Buffer.from('content'));
 });
 
 describe('GET /api/files/list', () => {
@@ -102,6 +95,22 @@ describe('GET /api/files/list', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 200 with items when admin lists folder (admin bypass)', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `files-list-admin-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .get('/api/files/list')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ path: `/${user.username}` });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toBeDefined();
+    expect(Array.isArray(res.body.items) || Array.isArray(res.body)).toBe(true);
   });
 });
 
@@ -200,7 +209,7 @@ describe('POST /api/files/upload', () => {
     await grantTestPermission(user.id, `/${user.username}`, 'write');
 
     // Simulate new file upload: destination file does not exist yet.
-    mockPathExists.mockResolvedValue(false);
+    mockWebdav.pathExists.mockResolvedValue(false);
 
     const res = await request(app)
       .post('/api/files/upload')
@@ -336,7 +345,7 @@ describe('PUT /api/files/rename', () => {
     });
     await grantTestPermission(user.id, `/${user.username}`, 'write');
 
-    mockPathExists.mockResolvedValue(false);
+    mockWebdav.pathExists.mockResolvedValue(false);
 
     const res = await request(app)
       .put('/api/files/rename')

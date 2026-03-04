@@ -9,24 +9,12 @@ const {
   grantTestPermission,
 } = require('../../test-utils');
 
-const mockPathExists = jest.fn();
-const mockCreateDirectory = jest.fn();
-
-jest.mock('../../utils/webdav', () => ({
-  pathExists: (...args) => mockPathExists(...args),
-  createDirectory: (...args) => mockCreateDirectory(...args),
-  listDirectory: jest.fn().mockResolvedValue([]),
-  getFileContents: jest.fn().mockResolvedValue(Buffer.from('')),
-  putFileContents: jest.fn().mockResolvedValue(undefined),
-  putFileContentsAdvanced: jest.fn().mockResolvedValue(undefined),
-  deleteFile: jest.fn().mockResolvedValue(undefined),
-  moveFile: jest.fn().mockResolvedValue(undefined),
-  copyFile: jest.fn().mockResolvedValue(undefined),
-  getFileMetadata: jest.fn().mockResolvedValue({}),
-  testConnection: jest.fn().mockResolvedValue({ success: true }),
-  isImageFile: () => false,
-  isVideoFile: () => false,
-}));
+var mockWebdav;
+jest.mock('../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+  mockWebdav = createWebdavMock();
+  return mockWebdav;
+});
 
 let app;
 let dbCleanup;
@@ -38,9 +26,10 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  mockPathExists.mockResolvedValue(false);
-  mockCreateDirectory.mockResolvedValue(undefined);
-  mockCreateDirectory.mockClear();
+  mockWebdav.pathExists.mockResolvedValue(false);
+  mockWebdav.createDirectory.mockResolvedValue(undefined);
+  mockWebdav.createDirectory.mockClear();
+  mockWebdav.getRecursiveFolderStats.mockResolvedValue({ fileCount: 5, totalSize: 1200 });
 });
 
 afterAll(async () => {
@@ -72,7 +61,7 @@ describe('POST /api/folders/create', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
     expect(res.body.path).toBeDefined();
-    expect(mockCreateDirectory).toHaveBeenCalled();
+    expect(mockWebdav.createDirectory).toHaveBeenCalled();
   });
 
   it('returns 409 when folder already exists', async () => {
@@ -82,8 +71,8 @@ describe('POST /api/folders/create', () => {
     const folderPath = `/${user.username}/dupdir`;
     await grantTestPermission(user.id, `/${user.username}`, 'write');
 
-    mockPathExists.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    mockCreateDirectory.mockResolvedValueOnce(undefined);
+    mockWebdav.pathExists.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    mockWebdav.createDirectory.mockResolvedValueOnce(undefined);
 
     const res1 = await request(app)
       .post('/api/folders/create')
@@ -105,10 +94,10 @@ describe('POST /api/folders/create', () => {
     });
     await grantTestPermission(user.id, `/${user.username}`, 'write');
 
-    mockPathExists
+    mockWebdav.pathExists
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false);
-    mockCreateDirectory.mockRejectedValueOnce(Object.assign(new Error('Parent not found'), { status: 404 }));
+    mockWebdav.createDirectory.mockRejectedValueOnce(Object.assign(new Error('Parent not found'), { status: 404 }));
 
     const res = await request(app)
       .post('/api/folders/create')
@@ -132,6 +121,63 @@ describe('POST /api/folders/create', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
-    expect(mockCreateDirectory).not.toHaveBeenCalled();
+    expect(mockWebdav.createDirectory).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/folders/stats', () => {
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .query({ path: '/user1/folder' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 400 when path is missing', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `folders-stats-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 200 with fileCount and totalSize when user has read permission', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `folders-stats-ok-${Date.now()}`,
+    });
+    const folderPath = `/${user.username}/docs`;
+    await grantTestPermission(user.id, folderPath, 'read');
+
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ path: folderPath });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('fileCount', 5);
+    expect(res.body).toHaveProperty('totalSize', 1200);
+    expect(mockWebdav.getRecursiveFolderStats).toHaveBeenCalled();
+  });
+
+  it('returns 403 for path without read permission when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `folders-stats-403-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .get('/api/folders/stats')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ path: '/other-user/no-access' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
   });
 });

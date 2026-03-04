@@ -14,12 +14,25 @@ if (typeof global.TransformStream === 'undefined') global.TransformStream = Tran
 if (typeof global.ReadableStream === 'undefined') global.ReadableStream = ReadableStream;
 if (typeof global.WritableStream === 'undefined') global.WritableStream = WritableStream;
 
-// undici expects MessagePort; jsdom does not provide it
+// undici expects MessagePort in Node test runtime; jsdom may not provide it.
+// Keep polyfill surface minimal to reduce MessagePort open-handle noise in Jest.
 if (typeof global.MessagePort === 'undefined') {
-  const { MessageChannel } = require('worker_threads');
-  const ch = new MessageChannel();
-  global.MessagePort = ch.port1.constructor;
-  global.MessageChannel = MessageChannel;
+  const workerThreads = require('worker_threads');
+  const { MessagePort, MessageChannel } = workerThreads;
+
+  if (typeof global.MessagePort === 'undefined' && MessagePort) {
+    global.MessagePort = MessagePort;
+  }
+
+  // Fallback for runtimes without direct MessagePort export.
+  if (typeof global.MessagePort === 'undefined' && MessageChannel) {
+    const ch = new MessageChannel();
+    global.MessagePort = ch.port1.constructor;
+    ch.port1.close?.();
+    ch.port2.close?.();
+    ch.port1.unref?.();
+    ch.port2.unref?.();
+  }
 }
 
 const { fetch, FormData, Request, Response } = require('undici');

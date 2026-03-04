@@ -27,11 +27,11 @@
 - useDropToUpload, usePullToRefresh (mobile)
 - useResponsive (isMobile)
 - useInfiniteScroll
-- useMessage, useRecentFile
+- useMessage (toast/error·warning for progress and dialogs), useRecentFile
 
 ### 2.3 Main Child Components
 
-- FileManagerHeader, Breadcrumb, FileManagerControls (includes bulk actions when selection mode), FAB
+- FileManagerHeader, Breadcrumb, FileManagerControls (includes bulk actions when selection mode), FAB, FloatingSearchBar
 - FileList, FileGrid, FileDetail (view-mode-dependent)
 - FileContextMenu, FileActionSheet
 - FolderTree
@@ -52,6 +52,7 @@
 - Sort (name, date, size, type)
 - View mode toggle (list, grid, detail)
 - Selection mode: entry via desktop single click or mobile long-press; exit when `selectedFiles.size === 0` (auto-exit) or when desktop user clicks empty space; no manual toggle button; bulk move, copy, download, delete
+- No row/card checkbox controls are required for selection UX. Selection is interaction-driven (click/modifier/long-press) and visual state is shown by row/card highlighting.
 - File click: desktop — single click = enter selection mode + select; double click = open folder/preview; Ctrl+click = add/remove from selection; Shift+click = range select. Mobile — touch = open folder/preview; long-press = enter selection mode + select; in selection mode, tap = toggle selection
 - More button per item: opens FileActionSheet (context actions); visible when not in selection mode
 - Context menu / action sheet: right-click or More button — download, rename, move, copy, share, properties, delete
@@ -74,6 +75,7 @@
 - [ ] Path navigation updates list
 - [ ] Search filters files
 - [ ] Selection mode: select all, bulk actions
+- [ ] Selection interactions use click / Ctrl(or Meta)+click / Shift+click / long-press; tests should avoid `getByRole('checkbox')` for file rows
 - [ ] Context menu opens and actions call correct handlers
 - [ ] Upload flow (conflict check, progress, completion)
 - [ ] Share link mode: unauthenticated vs authenticated behavior
@@ -86,3 +88,5 @@
 - Breadcrumb, FAB: shown on all viewports
 - Mobile: collapsible FolderTree, FileActionSheet
 - Add-to-shared modal when user has share link but lacks permission
+- **Scroll area:** padding-bottom = FloatingSearchBar + FAB height (FLOATING_BOTTOM_HEIGHT_MOBILE / FLOATING_BOTTOM_HEIGHT_DESKTOP from constants/fileManager) + safe-area inset so the last list item can scroll above the fixed bottom area.
+- **Overscroll:** Global `overscroll-behavior: none` (e.g. index.css on html/body) and scroll container `overscrollBehaviorY: 'contain'` to prevent mobile bounce from shifting header and controls.

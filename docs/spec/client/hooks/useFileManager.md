@@ -47,6 +47,13 @@
 - HTTP_STATUS (shared constants)
 - useParams, useNavigate
 
+### 2.4.1 Test Mock Strategy
+
+- Use shared client test mock helpers for repeated dependencies (fileService, permissionService, recentFiles, router navigate).
+- Keep `useFileManager` tests focused on observable state transitions (`currentPath`, `files`, `loading`, permission flags) and navigation effects.
+- Prefer per-test override of service responses instead of redefining whole mock modules in each test file.
+- If migrating portions to MSW, keep router and local UI helper mocks at module level and use MSW only for stable API interactions.
+
 ### 2.5 Side Effects
 
 - listFiles on currentPath change

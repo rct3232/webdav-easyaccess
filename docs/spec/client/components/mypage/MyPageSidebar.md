@@ -45,24 +45,14 @@
 - `admin.settingsTab` – System settings category label
 - `mypage.language` – Preferences category label (or dedicated key like `mypage.preferences`)
 
-### 2.6 Layout (Desktop)
-
-- Parent container (MyPage) gives sidebar width 200px (same as FileManager folder tree).
-- No divider (no border) between sidebar and content area.
-- List item: compact height (py: 0.75, minHeight: 42); right corners rounded with `borderTopRightRadius: 12`, `borderBottomRightRadius: 12`.
-
-### 2.7 Layout (Mobile)
-
-- When `isMobile` is true: Renders a logo header at the top (same as AppBar: `/logo.png`, left-aligned), then the category list below.
-
-### 2.8 Conditional Rendering
+### 2.6 Conditional Rendering
 
 - **Admin categories (admin-users, admin-settings):** Visible only when `user?.is_admin` is true.
 - **Sharing category:** Hidden when `user?.is_admin` is true.
 - **Selected state:** Highlight the list item for `selectedCategory`.
 - Categories shown: Account (always), Sharing (non-admin only), User Management (admin only), System Settings (admin only), Preferences (always).
 
-### 2.9 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] Renders category list (Account, Preferences)
 - [ ] When `isMobile` is true, renders logo at top (same as AppBar)
@@ -71,7 +61,7 @@
 - [ ] Clicking a category calls `onSelectCategory(categoryId)`
 - [ ] Selected category is visually highlighted
 
-### 2.10 Edge Cases
+### 2.8 Edge Cases
 
 - `user` is null/undefined – assume non-admin (hide Admin categories, show Sharing).
 - Unknown `selectedCategory` – no item highlighted; still render all visible categories.

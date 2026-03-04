@@ -94,4 +94,14 @@ describe('MyPageContentPanel', () => {
     );
     expect(screen.getByRole('heading', { name: 'Account Info' })).toBeInTheDocument();
   });
+
+  it('usePageHeader throws when used outside PageHeaderContext.Provider', () => {
+    function ComponentThatCallsUsePageHeader() {
+      usePageHeader();
+      return null;
+    }
+    expect(() => {
+      renderWithProviders(<ComponentThatCallsUsePageHeader />);
+    }).toThrow('usePageHeader must be used within a PageHeaderContext.Provider');
+  });
 });

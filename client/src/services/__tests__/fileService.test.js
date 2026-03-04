@@ -26,6 +26,7 @@ import {
   getFileBlob,
   downloadFile,
   createFolder,
+  getFolderStats,
   uploadMultipleFiles,
   batchMoveFiles,
   batchCopyFiles,
@@ -73,6 +74,23 @@ describe('fileService', () => {
       await createFolder('/foo/bar');
 
       expect(post).toHaveBeenCalledWith('/folders/create', { path: '/foo/bar' });
+    });
+  });
+
+  describe('getFolderStats', () => {
+    it('calls GET /folders/stats with path param and returns fileCount and totalSize', async () => {
+      get.mockResolvedValueOnce({ data: { fileCount: 10, totalSize: 2048 } });
+
+      const result = await getFolderStats('/my/folder');
+
+      expect(get).toHaveBeenCalledWith(
+        '/folders/stats',
+        expect.objectContaining({
+          params: { path: '/my/folder' },
+        })
+      );
+      expect(result).toHaveProperty('fileCount', 10);
+      expect(result).toHaveProperty('totalSize', 2048);
     });
   });
 

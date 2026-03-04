@@ -37,6 +37,7 @@
 | isImageFile | (file) => boolean | Image check |
 | isVideoFile | (file) => boolean | Video check |
 | testConnection | () => Promise | Test WebDAV connection |
+| getRecursiveFolderStats | (path) => Promise\<object\> | Recursive folder statistics (fileCount, totalSize). Used by GET /api/folders/stats. |
 
 ### 2.3 Input / Output
 

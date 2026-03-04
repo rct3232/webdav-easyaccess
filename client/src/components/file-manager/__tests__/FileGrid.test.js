@@ -72,4 +72,25 @@ describe('FileGrid', () => {
     renderWithProviders(<FileGrid {...defaultProps} hasMore loadMoreRef={loadMoreRef} />);
     expect(loadMoreRef.current).toBeTruthy();
   });
+
+  it('calls onFileClick when card is clicked in selection mode', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileGrid
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set(['/a.txt'])}
+        onFileClick={onFileClick}
+      />
+    );
+    fireEvent.click(screen.getByText('a.txt'));
+    expect(onFileClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object), 0);
+  });
+
+  it('does not show checkbox in selection mode', () => {
+    renderWithProviders(
+      <FileGrid {...defaultProps} selectionMode selectedFiles={new Set()} />
+    );
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
 });

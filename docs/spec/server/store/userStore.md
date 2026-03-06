@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | User persistence: CRUD users, index by id/username/email. Stored under /.wea/users/ as JSON. Uses email hash index for lookup. |
+| Role | User persistence: CRUD users and identity lookups by id/username/email. Uses file JSON/index in `webdav`/`fs`, and normalized `users` table in `postgresql` backend. |
 
 ---
 
@@ -37,17 +37,36 @@
 - User files: `/.wea/users/{username}.json`
 - Email index: `/.wea/index/email/{sha256(email)}.txt` → username
 
-### 2.4 Dependencies
+### 2.4 PostgreSQL v2 Table Mapping
+
+- Table: `users`
+- Key columns: `id`, `username`, `email`, `email_hash`, `password`, `status`, `is_admin`, `token_version`, `created_at`, `updated_at`
+- Constraints:
+  - unique (`username`)
+  - unique (`email`)
+  - unique (`email_hash`)
+  - status check (`pending|approved|rejected`)
+
+### 2.5 Transaction Boundaries
+
+- `createUser`: single transaction for insert and uniqueness-safe writes.
+- `updateEmail`: single transaction for email + email_hash consistency.
+- `deleteUser`: single transaction for user deletion and related metadata cleanup.
+- `updatePassword`/`updateStatus`: atomic single-row updates (transactional by default).
+
+### 2.6 Dependencies
 
 - storage (ensureDir, exists, readFile, writeFile, deletePath, listDir)
 - metaPaths (META_ROOT, USERS_DIR, USERS_INDEX_PATH, userPathByUsername, emailIndexPathByEmailHash, sha256HexLower)
 - locks.withLock
 - errorHandler.createError, SERVER_ERROR_CODES
 
-### 2.5 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] createUser returns user; duplicate username/email throws 409
 - [ ] findByUsername, findByEmail, findById return user or undefined
 - [ ] findAll returns array sorted by created_at desc
 - [ ] updateStatus, updateEmail, updatePassword, deleteUser mutate correctly
 - [ ] Corrupt index → reset and write fallback
+- [ ] PostgreSQL: unique constraint violations map to duplicate username/email errors
+- [ ] PostgreSQL: updateEmail persists canonical email + email_hash in same transaction

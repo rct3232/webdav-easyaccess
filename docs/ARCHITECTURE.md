@@ -54,11 +54,36 @@ flowchart TD
 
 ### 2.1 Metadata Store
 
-Instead of a dedicated database (MySQL, MongoDB, etc.), the system uses **JSON-based file storage** so it can run entirely on a WebDAV server.
+Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store API across backends.
 
-*   **Backend selection**: Controlled by `WEA_STORAGE_BACKEND` in `.env`.
-    *   `webdav` (default): Stored under `/.wea` on the WebDAV server. (Enables full statelessness)
-    *   `fs`: Stored on the server's local filesystem. (Better performance)
+*   **Backend selection**:
+    *   `webdav` (default): Metadata JSON files under `/.wea` on WebDAV.
+    *   `fs`: Metadata JSON files on local server disk.
+    *   `postgresql`: Normalized relational schema for metadata and locks.
+
+#### PostgreSQL Normalized Schema
+
+When `WEA_STORAGE_BACKEND=postgresql`, metadata is persisted in normalized tables:
+
+*   `users`: identity/auth fields (`username`, `email`, `email_hash`, `status`, `token_version`, ...).
+    *   Constraints: unique (`username`), unique (`email`), unique (`email_hash`), status check (`pending|approved|rejected`).
+*   `settings`: key-value settings table.
+    *   Constraints: primary key (`key`).
+*   `permissions_user_paths`: user folder permissions.
+    *   Constraints: unique (`user_id`, `folder_path`), permission check (`read|write`).
+*   `permissions_user_files`: user file permissions.
+    *   Constraints: unique (`user_id`, `file_path`), permission check (`read|write`).
+*   `permissions_shares`: share-token permission roots.
+    *   Constraints: primary key (`token`), permission check (`read|write`).
+*   `share_links`: share-link metadata.
+    *   Constraints: primary key (`token`), check (`download_count >= 0`), `created_by` FK to `users`.
+*   `recent_files`: per-user recent files.
+    *   Constraints: unique (`user_id`, `path`), `user_id` FK to `users`.
+*   `permission_requests`: folder/file permission request workflow.
+    *   Constraints: target type check (`folder|file`), requested permission check (`read|write`), status check (`pending|approved|rejected|cancelled`), and target consistency check for folder/file columns.
+    *   Includes partial unique index for pending dedupe by requester/owner/permission/target.
+*   `locks`: distributed metadata lock records.
+    *   Constraints: primary key (`lock_name_hash`) with TTL (`expires_at`).
 
 #### Storage Layout (Remote/Local)
 ```
@@ -84,11 +109,29 @@ Instead of a dedicated database (MySQL, MongoDB, etc.), the system uses **JSON-b
 
 ### 2.2 Concurrency Control (Metadata Locking)
 
-A **distributed lock** mechanism (`server/store/locks.js`) prevents data loss when multiple users modify metadata concurrently.
+A **distributed lock** mechanism (`server/store/locks.js`) prevents metadata races across all backends.
 
-1.  Attempts atomic file creation via WebDAV `If-None-Match: *` header.
-2.  On success, lock is acquired; on failure, waits and retries.
-3.  TTL stored in lock files auto-releases locks after server failures.
+*   **webdav/fs**: lock files are created atomically, retried with backoff, and auto-expired via TTL.
+*   **postgresql**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup.
+
+#### Transaction Boundaries (PostgreSQL Backend)
+
+For `postgresql`, write paths use explicit transaction boundaries in store-layer operations:
+
+1.  **User lifecycle** (`createUser`, `updateEmail`, `deleteUser`): single transaction including index-equivalent uniqueness and related cleanup.
+2.  **Permission mutations** (`grant*`, `revoke*`, rewrite/revoke-prefix): transaction per mutation unit for atomic ACL updates.
+3.  **Permission request updates** (`createRequest`, `updateStatus`, bulk reject/delete): single transaction per call with status consistency checks.
+4.  **Share link counter update**: `incrementDownloadCount` uses atomic SQL increment (`SET download_count = download_count + 1`) and returns updated row.
+
+#### Canonical Path Rule
+
+Before metadata persistence, paths are normalized to canonical form:
+
+*   POSIX separators and normalized segments
+*   trailing slash removed for non-root paths
+*   root path preserved as `/`
+
+Comparisons and dedupe logic use canonical paths to keep behavior consistent across backends.
 
 ---
 

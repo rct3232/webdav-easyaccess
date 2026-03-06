@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Per-user recent files. Stored as JSON under /.wea/recent-files/{userId}.json. Max 20 entries. Supports add, remove, clear, bulk move, bulk remove. |
+| Role | Per-user recent files. Stored as JSON in `webdav`/`fs` and normalized rows in `postgresql`. Max 20 entries per user. Supports add, remove, clear, bulk move, bulk remove. |
 
 ---
 
@@ -32,16 +32,30 @@
 - Entry: { path, name, type, lastAccessed }
 - MAX_RECENT_FILES = 20
 
-### 2.4 Dependencies
+### 2.4 PostgreSQL v2 Table Mapping
+
+- Table: `recent_files(user_id, path, name, type, last_accessed)`
+- Constraints:
+  - unique (`user_id`, `path`)
+  - foreign key (`user_id`) references `users(id)`
+
+### 2.5 Transaction Boundaries
+
+- `addRecentFile`: single transaction that upserts by `(user_id, path)` and preserves recency ordering.
+- `removeRecentFile`, `clearRecentFiles`: single transaction per call.
+- `applyBulkMove`, `removePaths`: single transaction per batch to keep list updates atomic.
+
+### 2.6 Dependencies
 
 - storage (ensureDirSafe, exists, readFile, writeFile, deletePath)
 - metaPaths.normalizeWebdavPath
 - shared pathUtils.normalizePath
 
-### 2.5 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] addRecentFile dedupes; new entry at front; cap at 20
 - [ ] removeRecentFile filters by normalized path
 - [ ] applyBulkMove: folder → update subpaths; file → replace
 - [ ] removePaths: filePaths exact match; folderPaths remove descendants
 - [ ] Missing file → [] from getUserRecentFiles
+- [ ] PostgreSQL: unique `(user_id, path)` prevents duplicates under concurrent inserts

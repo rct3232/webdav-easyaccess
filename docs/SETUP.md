@@ -32,8 +32,10 @@ cp .env.example .env
 | **JWT_SECRET** | Yes | Secret key for token signing (must change in production!) | - |
 | **PORT** | No | Server port | `5001` |
 | **CORS_ORIGINS** | No | Allowed browser origins (comma-separated) | `*` (with warning) |
-| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`webdav` or `fs`) | `webdav` |
+| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`webdav`, `fs`, or `postgresql`) | `webdav` |
 | **WEA_FS_DIR** | No | Local storage path when using `fs` backend | OS temp dir under `webdav-easyaccess-meta` |
+| **DATABASE_URL** | No | PostgreSQL connection string when using `postgresql` backend | - |
+| **PGSSLMODE** | No | PostgreSQL SSL mode used by client/pool in secure environments | `prefer` |
 | **MAX_THUMBNAIL_SIZE** | No | Max thumbnail resolution (pixels) | `300` |
 | **FFMPEG_PATH** | No | Absolute path to FFmpeg executable (when auto-detect fails) | `ffmpeg` (PATH) |
 | **WEBDAV_AUTH_TYPE** | No | WebDAV auth method (`auto`, `basic`, `digest`) | `auto` |
@@ -43,7 +45,7 @@ cp .env.example .env
 
 ## 3. Metadata Storage Configuration
 
-The system stores user data and permissions (ACL) in files without a separate database.
+The system supports file-backed metadata and PostgreSQL-backed metadata with the same store interfaces.
 
 1.  **WebDAV backend (`webdav`)**:
     *   Stores all data under `/.wea` on the WebDAV server.
@@ -52,6 +54,30 @@ The system stores user data and permissions (ACL) in files without a separate da
     *   Stores data on the application server's local disk.
     *   Recommended when WebDAV response times are slow.
     *   Set `WEA_STORAGE_BACKEND=fs` and `WEA_FS_DIR=/path/to/data`.
+3.  **PostgreSQL backend (`postgresql`)**:
+    *   Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
+    *   Recommended for stronger consistency and high-concurrency metadata operations.
+    *   Set `WEA_STORAGE_BACKEND=postgresql` and provide `DATABASE_URL`.
+    *   Keep WebDAV settings configured for actual file content operations; PostgreSQL stores metadata only.
+
+### PostgreSQL Initialization (v2)
+
+When enabling `postgresql`, initialize the schema before running the server:
+
+1.  Apply the project migration/DDL for the v2 schema.
+2.  Verify required constraints exist:
+    *   user uniqueness (`username`, `email`, `email_hash`)
+    *   permission and request status checks
+    *   `recent_files` and permission uniqueness by `(user_id, path)`
+    *   pending permission-request dedupe partial index
+3.  Start the server and confirm `/api/health` reports healthy metadata store access.
+
+### Transaction and Concurrency Notes (postgresql)
+
+*   User creation/email change/deletion run in a single transaction.
+*   ACL grant/revoke and request status transitions run in per-operation transactions.
+*   Share download counters are incremented atomically in SQL.
+*   Metadata lock semantics use database locks table with TTL-aware cleanup.
 
 ## 4. Running the Application
 

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Permission requests (inbox/outbox). Single JSON file with nextId and requests array. Supports folder and file-level requests. |
+| Role | Permission requests (inbox/outbox) for folder/file ACL workflows. Uses single JSON document in `webdav`/`fs` and normalized `permission_requests` table in `postgresql`. |
 
 ---
 
@@ -36,7 +36,24 @@
 
 - id, requester_id, requester_username, owner_id, owner_username, folder_path, file_path, target_type ('folder'|'file'), requested_permission, status, message, created_at, resolved_at, resolved_by
 
-### 2.5 Dependencies
+### 2.5 PostgreSQL v2 Table Mapping
+
+- Table: `permission_requests`
+- Key columns: `id`, requester/owner fields, target fields, requested permission, status, message, timestamps, resolver
+- Constraints:
+  - check `target_type in ('folder','file')`
+  - check `requested_permission in ('read','write')`
+  - check `status in ('pending','approved','rejected','cancelled')`
+  - check target consistency: folder requests use `folder_path` only; file requests use `file_path` only
+  - partial unique index for pending dedupe on requester/owner/requested_permission/target
+
+### 2.6 Transaction Boundaries
+
+- `createRequest`: single transaction with pending dedupe check and insert.
+- `updateStatus`: single transaction with status transition and resolver/timestamp updates.
+- `deleteByRequesterId`, `rejectByOwnerId`: single transaction per bulk call.
+
+### 2.7 Dependencies
 
 - storage (ensureDir, exists, readFile, writeFile)
 - metaPaths (META_ROOT)
@@ -44,9 +61,11 @@
 - shared pathUtils, constants (PERMISSIONS, PERMISSION_REQUEST_STATUS)
 - errorHandler, SERVER_ERROR_CODES
 
-### 2.6 Verification Scenarios
+### 2.8 Verification Scenarios
 
 - [ ] createRequest returns request; duplicate pending returns existing
 - [ ] listInbox/listOutbox filter by owner/requester and status
 - [ ] updateStatus: PENDING → clear resolved_at/resolved_by; approved/rejected → set
 - [ ] Corrupt doc → reset to fallback
+- [ ] PostgreSQL: partial unique index prevents duplicate pending requests for same tuple
+- [ ] PostgreSQL: target consistency check rejects invalid folder/file column combinations

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | User and share-token permissions. Folder and file-level grants. Cached per-user and per-share-token. Supports path rewriting (rename/move) and prefix revocation. |
+| Role | User and share-token permissions. Folder/file-level grants with cache support. Uses JSON docs in `webdav`/`fs` and normalized permission tables in `postgresql`. Supports path rewriting (rename/move) and prefix revocation. |
 
 ---
 
@@ -44,13 +44,32 @@
 - User: `/.wea/permissions/users/{userId}.json` (permissions, file_permissions)
 - Share: `/.wea/permissions/shares/{token}.json`
 
-### 2.4 Dependencies
+### 2.4 PostgreSQL v2 Table Mapping
+
+- `permissions_user_paths(user_id, folder_path, permission, updated_at)`
+  - unique (`user_id`, `folder_path`)
+  - permission check (`read|write`)
+- `permissions_user_files(user_id, file_path, permission, updated_at)`
+  - unique (`user_id`, `file_path`)
+  - permission check (`read|write`)
+- `permissions_shares(token, root_path, is_directory, permission, updated_at)`
+  - primary key (`token`)
+  - permission check (`read|write`)
+
+### 2.5 Transaction Boundaries
+
+- `grant`, `revoke`, `grantFilePermission`, `revokeFilePermission`: per-call transaction to keep each ACL mutation atomic.
+- `rewritePermissionsForAllUsers`: single transaction per mapping batch.
+- `revokePermissionsPrefixForAllUsers`: single transaction per prefix batch.
+- Share permission grant/revoke: single-row transactional updates/deletes.
+
+### 2.6 Dependencies
 
 - storage, metaPaths, locks, userStore
 - shared pathUtils, constants (PERMISSIONS)
 - errorHandler, SERVER_ERROR_CODES
 
-### 2.5 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] grant/revoke folder; checkPermission returns correct boolean
 - [ ] grantFilePermission validates parent and rank; revokeFilePermission removes entry
@@ -58,3 +77,5 @@
 - [ ] checkSharePermission for directory vs file root
 - [ ] rewritePermissionsForAllUsers updates paths; revokePermissionsPrefixForAllUsers removes matching
 - [ ] Cache bypass and TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables)
+- [ ] PostgreSQL: duplicate path grant upserts/replaces permission without duplicate rows
+- [ ] PostgreSQL: permission check constraint rejects invalid values

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Share links: create, get, update, delete. Stored as JSON under /.wea/share-links/{token}.json. Supports expiration and download count. |
+| Role | Share links: create, get, update, delete, and download counting. Uses JSON docs in `webdav`/`fs` and `share_links` table in `postgresql`. |
 
 ---
 
@@ -32,16 +32,30 @@
 - `/.wea/share-links/{token}.json`
 - Link shape: token, filePath, createdBy, createdAt, expiresAt, downloadCount
 
-### 2.4 Dependencies
+### 2.4 PostgreSQL v2 Table Mapping
+
+- Table: `share_links(token, file_path, created_by, created_at, expires_at, download_count)`
+- Constraints:
+  - primary key (`token`)
+  - foreign key (`created_by`) references `users(id)`
+  - check (`download_count >= 0`)
+
+### 2.5 Transaction Boundaries
+
+- `createShareLink`, `updateShareLink`, `deleteShareLink`: single transaction per call.
+- `incrementDownloadCount`: atomic SQL update (`SET download_count = download_count + 1`) returning the updated row.
+
+### 2.6 Dependencies
 
 - storage (ensureDirSafe, exists, readFile, writeFile, deletePath, listDir)
 - metaPaths.normalizeWebdavPath
 - errorHandler, SERVER_ERROR_CODES
 
-### 2.5 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] createShareLink writes JSON; existing token returns existing link
 - [ ] getShareLink returns link or null (ENOENT → null)
 - [ ] getUserShareLinks filters by createdBy, sorts by createdAt desc
 - [ ] updateShareLink merges updates; 404 when not found
 - [ ] isLinkExpired: no expiresAt → false; past date → true
+- [ ] PostgreSQL: concurrent `incrementDownloadCount` calls preserve all increments

@@ -585,7 +585,8 @@ async function pathExists(path) {
         const parentDir = getParentPath(normalizedPath);
         const filename = getBasename(normalizedPath);
         const items = await client.getDirectoryContents(getRequestPath(parentDir));
-        return items.some(item => item.basename === filename);
+        const resolved = items.some(item => item.basename === filename);
+        return resolved;
       } catch (listError) {
         return false;
       }

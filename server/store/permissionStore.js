@@ -13,6 +13,7 @@ const {
 const { getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 const { ensureDir, exists, readFile, writeFile } = require('./storage');
 const { withLock } = require('./locks');
+const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const userStore = require('./userStore');
 
 function nowIso() {
@@ -196,26 +197,10 @@ async function grant(userId, folderPath, permission, options = {}) {
   const folder = normalizeWebdavPath(folderPath);
   return await withLock(`perm:${uid}`, async () => {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
-    // #region agent log
-    const prefixWithSlashForLog = folder === '/' ? '/' : (folder.endsWith('/') ? folder : folder + '/');
-    const folderLower = folder.toLowerCase();
-    const prefixLower = prefixWithSlashForLog.toLowerCase();
-    const fileKeysUnderPathBefore = Object.keys(doc.file_permissions || {}).filter((k) => {
-      const n = normalizeWebdavPath(k).toLowerCase();
-      return n === folderLower || n.startsWith(prefixLower);
-    });
-    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,E', location: 'permissionStore.js:grant', message: 'grant path before escalate', data: { userId: uid, folderPath: folder, permission, fileKeysUnderPath: fileKeysUnderPathBefore, filePermsBefore: fileKeysUnderPathBefore.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
-    // #endregion
     doc.permissions[folder] = permission;
     escalateFilePermissionsUnderPath(doc, folder, permission);
-    // #region agent log
-    const fileKeysUnderPathAfter = Object.keys(doc.file_permissions || {}).filter((k) => {
-      const n = normalizeWebdavPath(k).toLowerCase();
-      return n === folderLower || n.startsWith(prefixLower);
-    });
-    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,E', location: 'permissionStore.js:grant', message: 'grant path after escalate', data: { userId: uid, folderPath: folder, permission, fileKeysUnderPath: fileKeysUnderPathAfter, filePermsAfter: fileKeysUnderPathAfter.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
-    // #endregion
     await writeUserPermissionsDoc(uid, doc);
+    invalidateExistenceIndexForAclMutation(folder);
     return { id: undefined, userId: Number(uid), folderPath: folderPath, permission };
   });
 }
@@ -229,19 +214,10 @@ async function revoke(userId, folderPath, options = {}) {
   const folder = normalizeWebdavPath(folderPath);
   return await withLock(`perm:${uid}`, async () => {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
-    // #region agent log
-    const prefixWithSlashForLog = folder === '/' ? '/' : (folder.endsWith('/') ? folder : folder + '/');
-    const folderLowerRevoke = folder.toLowerCase();
-    const prefixLowerRevoke = prefixWithSlashForLog.toLowerCase();
-    const fileKeysUnderPath = Object.keys(doc.file_permissions || {}).filter((k) => {
-      const n = normalizeWebdavPath(k).toLowerCase();
-      return n === folderLowerRevoke || n.startsWith(prefixLowerRevoke);
-    });
-    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'A', location: 'permissionStore.js:revoke', message: 'revoke path will remove file_permissions', data: { userId: uid, folderPath: folder, scope, fileKeysRemoved: fileKeysUnderPath, filePerms: fileKeysUnderPath.map((k) => ({ k, p: doc.file_permissions[k] })) }, timestamp: Date.now() }) }).catch(() => {});
-    // #endregion
     delete doc.permissions[folder];
     removeFilePermissionsUnderPrefix(doc, folder);
     await writeUserPermissionsDoc(uid, doc);
+    invalidateExistenceIndexForAclMutation(folder);
     return { success: true };
   });
 }
@@ -253,9 +229,6 @@ async function revokePathOnly(userId, path) {
     const doc = await readUserPermissionsDoc(uid, { bypassCache: true });
     let changed = false;
     if (doc.file_permissions && doc.file_permissions[normalized] !== undefined) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'D', location: 'permissionStore.js:revokePathOnly', message: 'revoke file_permission (file permission)', data: { userId: uid, path: normalized, previousPerm: doc.file_permissions[normalized] }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
       delete doc.file_permissions[normalized];
       changed = true;
     }
@@ -269,6 +242,7 @@ async function revokePathOnly(userId, path) {
     }
     if (changed) {
       await writeUserPermissionsDoc(uid, doc);
+      invalidateExistenceIndexForAclMutation(normalized);
     }
     return { success: true };
   });
@@ -286,7 +260,6 @@ function escalateFilePermissionsUnderPath(doc, folderPath, newPermission) {
   const prefixWithSlash = normalizeWithSlash(folderPath);
   const prefixNoSlashLower = prefixNoSlash.toLowerCase();
   const prefixWithSlashLower = prefixWithSlash.toLowerCase();
-  const updates = [];
   for (const key of Object.keys(doc.file_permissions)) {
     const keyNorm = normalizeWebdavPath(key);
     const keyNormLower = keyNorm.toLowerCase();
@@ -300,14 +273,8 @@ function escalateFilePermissionsUnderPath(doc, folderPath, newPermission) {
     const willUpdate = fileRank < newRank;
     if (willUpdate) {
       doc.file_permissions[key] = newPermission;
-      updates.push({ key, filePerm, newPermission, fileRank, newRank });
     }
   }
-  // #region agent log
-  if (updates.length > 0) {
-    fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'B,C', location: 'permissionStore.js:escalateFilePermissionsUnderPath', message: 'escalate updated file_permissions', data: { folderPath, newPermission, newRank, prefixNoSlash, prefixWithSlash, updates }, timestamp: Date.now() }) }).catch(() => {});
-  }
-  // #endregion
 }
 
 /**
@@ -341,6 +308,7 @@ async function revokeAllUserPermissions(userId) {
     doc.permissions = {};
     doc.file_permissions = {};
     await writeUserPermissionsDoc(uid, doc);
+    invalidateExistenceIndexForAclMutation('/');
     return { success: true, deletedCount, fileDeletedCount };
   });
 }
@@ -355,6 +323,7 @@ async function deleteUserPermissionsFile(userId) {
     }
     // 캐시에서도 제거
     cache.delete(uid);
+    invalidateExistenceIndexForAclMutation('/');
   } catch (error) {
     console.error(`Failed to delete permission file for user ${uid}:`, error);
     // best-effort: 에러가 나도 계속 진행
@@ -552,6 +521,7 @@ async function grantFilePermission(userId, filePath, permission) {
     }
     doc.file_permissions[normalized] = permission;
     await writeUserPermissionsDoc(uid, doc);
+    invalidateExistenceIndexForAclMutation(normalized);
     return { userId: Number(uid), filePath: normalized, permission };
   });
 }
@@ -564,6 +534,7 @@ async function revokeFilePermission(userId, filePath) {
     if (doc.file_permissions && doc.file_permissions[normalized] !== undefined) {
       delete doc.file_permissions[normalized];
       await writeUserPermissionsDoc(uid, doc);
+      invalidateExistenceIndexForAclMutation(normalized);
     }
     return { success: true };
   });
@@ -625,10 +596,6 @@ async function getFolderPermissions(folderPath, filePath) {
     };
     if (normalizedFile != null) {
       item.file_permission = fpKey !== undefined ? fp[fpKey] : null;
-      // #region agent log
-      const fpKeysForFile = Object.keys(fp).filter((k) => normalizeWebdavPath(k) === normalizedFile || k === normalizedFile);
-      fetch('http://127.0.0.1:7243/ingest/d9df67f5-6b20-4fa1-a5ba-adee9381ea78', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypothesisId: 'C', location: 'permissionStore.js:getFolderPermissions', message: 'getFolderPermissions file_permission lookup', data: { folderPath: folder, requestedFilePath: filePath, normalizedFile, resolved: item.file_permission, fpKeysMatching: fpKeysForFile }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
     }
     results.push(item);
   }
@@ -833,6 +800,9 @@ async function rewritePermissionsForAllUsers(
       }
     }
 
+    if (rewrittenKeys > 0) {
+      invalidateExistenceIndexForAclMutation('/');
+    }
     return { success: true, rewrittenUsers, rewrittenKeys };
   });
 }
@@ -916,6 +886,9 @@ async function revokePermissionsPrefixForAllUsers(prefixes = []) {
       }
     }
 
+    if (revokedKeys > 0) {
+      invalidateExistenceIndexForAclMutation('/');
+    }
     return { success: true, revokedUsers, revokedKeys };
   });
 }

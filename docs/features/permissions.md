@@ -79,3 +79,22 @@ When writing or reviewing permission tests, cover at least:
 - **Owner exception:** Owner can read and write their home `/{username}` and all paths under it without explicit grants.
 
 These scenarios should be verified in both middleware/unit tests and API integration tests.
+
+---
+
+## Permissions List Freshness and Reconciliation
+
+- `GET /api/permissions/user/:userId` uses a fast read path that avoids per-item synchronous WebDAV existence checks.
+- User-visible response shape remains backward-compatible.
+- Path visibility is decided from an existence index with asynchronous reconciliation.
+- Stale index entries are refreshed in non-blocking background jobs with bounded concurrency.
+- ACL mutation flows invalidate affected index entries so subsequent reads converge quickly.
+- Conditional requests can return `304 Not Modified` when `If-None-Match` matches current permission/index freshness markers.
+- For full route-level semantics and env knobs, see `docs/spec/server/routes/permissions.md` and `docs/spec/server/utils/webdav.md`.
+
+## Client-side permissions request dedupe
+
+- Multiple UI consumers can request `GET /api/permissions/user/:userId` at nearly the same time.
+- `permissionService` consolidates these calls through in-flight dedupe and short TTL memoization.
+- ACL mutation actions invalidate affected user-permission cache entries so subsequent reads are fresh.
+- For API-level behavior and cache control details (`forceRefresh`, manual clear), see `docs/spec/client/services/permissionService.md`.

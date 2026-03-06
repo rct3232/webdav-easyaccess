@@ -41,6 +41,7 @@
 
 - **imports:** getUserPermissions, normalizePath, isUserOwnFolder, filterOutUserOwnFolders
 - **Reference implementation:** `client/src/components/file-manager/Breadcrumb.js`
+- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
 
 ### 2.5 i18n Keys
 

@@ -43,6 +43,7 @@
 
 - **imports:** BaseFolderTreeItem, SharedFoldersSection, RecentFilesSection, ShareLinkSection, getRecentFiles, onRecentFilesChange (recentFiles), normalizePath (pathUtils), getUserBaseFolder, filterOutUserOwnFolders (userUtils), getUserPermissions (permissionService)
 - **Reference implementation:** `client/src/components/folder-tree/FolderTree.js`
+- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
 
 ### 2.5 i18n Keys
 

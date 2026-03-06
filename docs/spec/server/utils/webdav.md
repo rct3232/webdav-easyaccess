@@ -44,6 +44,18 @@
 - Paths normalized via shared pathUtils
 - Errors via createError
 
+### 2.3.1 `pathExists` Usage Policy
+
+- `pathExists` is retained for correctness-sensitive checks and reconciliation workers.
+- `pathExists` must not be used as an unbounded per-item synchronous operation in `GET /api/permissions/user/:userId`.
+- Bulk existence validation must use bounded concurrency (`asyncLimit`-style control) and run outside latency-critical request handling when possible.
+
+### 2.3.2 Existence Reconciliation Contract
+
+- Reconciliation workers call `pathExists` to refresh existence index entries.
+- Refresh writes `checkedAt` metadata and state (`exists` / `missing`) for later fast-path reads.
+- On transient WebDAV failures, reconciliation should defer hard exclusion and allow route-layer `unknown` semantics.
+
 ### 2.4 Dependencies
 
 - webdav (createClient), asyncUtils, errorHandler
@@ -61,3 +73,6 @@
 - [ ] buildDestinationAbsoluteUrl encoding
 - [ ] pathExists, getFileMetadata
 - [ ] Error handling
+- [ ] `pathExists` fallback behavior (direct exists check + directory-list fallback) remains correct
+- [ ] bounded reconciliation usage avoids unbounded parallel WebDAV calls
+- [ ] reconciliation failures are handled without leaking credentials or blocking permission-list API responses

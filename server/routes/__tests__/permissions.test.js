@@ -19,11 +19,13 @@ jest.mock('../../utils/webdav', () => {
 
 let app;
 let dbCleanup;
+let resetPermissionExistenceIndex;
 
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
   app = require('../../index');
+  ({ __resetForTests: resetPermissionExistenceIndex } = require('../../store/permissionExistenceIndex'));
 });
 
 afterAll(async () => {
@@ -179,5 +181,180 @@ describe('GET /api/permissions/check', () => {
       .query({ path: `/${owner.user.username}/revoke-check/file.txt` });
     expect(afterRes.status).toBe(200);
     expect(afterRes.body.hasRead).toBe(false);
+  });
+});
+
+describe('GET /api/permissions/user/:userId fast path', () => {
+  beforeEach(() => {
+    mockWebdav.pathExists.mockReset();
+    mockWebdav.pathExists.mockResolvedValue(true);
+    resetPermissionExistenceIndex();
+  });
+
+  it('returns permission list even when reconciliation check fails', async () => {
+    const unique = Date.now();
+    const owner = await createAuthenticatedTestUser({
+      username: `perm-fast-owner-${unique}`,
+    });
+    await grantTestPermission(owner.user.id, `/${owner.user.username}/shared`, PERMISSIONS.READ);
+    mockWebdav.pathExists.mockRejectedValueOnce(new Error('webdav unavailable'));
+
+    const res = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          folder_path: `/${owner.user.username}/shared`,
+          permission: PERMISSIONS.READ,
+        }),
+      ])
+    );
+  });
+
+  it('filters path after missing state is reconciled in background', async () => {
+    const unique = Date.now();
+    const owner = await createAuthenticatedTestUser({
+      username: `perm-fast-missing-${unique}`,
+    });
+    await grantTestPermission(owner.user.id, `/${owner.user.username}/missing-target`, PERMISSIONS.READ);
+    mockWebdav.pathExists.mockResolvedValue(false);
+
+    const firstRes = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(firstRes.status).toBe(200);
+    expect(firstRes.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          folder_path: `/${owner.user.username}/missing-target`,
+          permission: PERMISSIONS.READ,
+        }),
+      ])
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const secondRes = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(secondRes.status).toBe(200);
+    expect(secondRes.body).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({
+          folder_path: `/${owner.user.username}/missing-target`,
+        }),
+      ])
+    );
+  });
+
+  it('returns 304 when If-None-Match matches response ETag', async () => {
+    const user = await createAuthenticatedTestUser({
+      username: `perm-fast-etag-${Date.now()}`,
+    });
+
+    const firstRes = await request(app)
+      .get(`/api/permissions/user/${user.user.id}`)
+      .set('Authorization', `Bearer ${user.token}`);
+
+    expect(firstRes.status).toBe(200);
+    expect(firstRes.headers.etag).toBeDefined();
+
+    const secondRes = await request(app)
+      .get(`/api/permissions/user/${user.user.id}`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .set('If-None-Match', firstRes.headers.etag);
+
+    expect(secondRes.status).toBe(304);
+  });
+
+  it('invalidates existence index on ACL mutation and re-shows unknown entries', async () => {
+    const unique = Date.now();
+    const owner = await createAuthenticatedTestUser({
+      username: `perm-fast-invalidate-${unique}`,
+    });
+    const targetPath = `/${owner.user.username}/invalidate-target`;
+    await grantTestPermission(owner.user.id, targetPath, PERMISSIONS.READ);
+    mockWebdav.pathExists.mockResolvedValue(false);
+
+    const firstRes = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(firstRes.status).toBe(200);
+    expect(firstRes.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ folder_path: targetPath }),
+      ])
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const secondRes = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(secondRes.status).toBe(200);
+    expect(secondRes.body).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ folder_path: targetPath }),
+      ])
+    );
+
+    await request(app)
+      .post('/api/permissions/grant')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        userId: owner.user.id,
+        folderPath: targetPath,
+        permission: PERMISSIONS.READ,
+      });
+
+    const thirdRes = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(thirdRes.status).toBe(200);
+    expect(thirdRes.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ folder_path: targetPath }),
+      ])
+    );
+  });
+
+  it('keeps response latency bounded with many permissions and slow pathExists', async () => {
+    const unique = Date.now();
+    const owner = await createAuthenticatedTestUser({
+      username: `perm-fast-perf-${unique}`,
+    });
+
+    const permissionCount = 30;
+    const pathExistsDelayMs = 80;
+    for (let i = 0; i < permissionCount; i++) {
+      await grantTestPermission(
+        owner.user.id,
+        `/${owner.user.username}/perf-target-${i}`,
+        PERMISSIONS.READ
+      );
+    }
+
+    mockWebdav.pathExists.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, pathExistsDelayMs));
+      return true;
+    });
+
+    const legacySequentialEstimateMs = permissionCount * pathExistsDelayMs;
+    const startedAt = Date.now();
+    const res = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    const routeElapsedMs = Date.now() - startedAt;
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(permissionCount);
+    expect(routeElapsedMs).toBeLessThan(1200);
+    expect(routeElapsedMs).toBeLessThan(legacySequentialEstimateMs / 2);
   });
 });

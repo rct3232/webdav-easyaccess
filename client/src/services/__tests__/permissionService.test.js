@@ -15,6 +15,7 @@ jest.mock('../apiClient', () => ({
 
 import {
   getUserPermissions,
+  clearUserPermissionsCache,
   getFolderPermissions,
   grantPermission,
   revokePermission,
@@ -24,6 +25,7 @@ import {
 
 describe('permissionService', () => {
   beforeEach(() => {
+    clearUserPermissionsCache();
     jest.clearAllMocks();
   });
 
@@ -37,6 +39,52 @@ describe('permissionService', () => {
       expect(get).toHaveBeenCalledWith('/permissions/user/user-1');
       expect(result).toEqual(perms);
       expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('dedupes in-flight calls for same userId', async () => {
+      const perms = [{ folderPath: '/shared', permission: 'read' }];
+      let resolveRequest;
+      const pendingRequest = new Promise((resolve) => {
+        resolveRequest = resolve;
+      });
+      get.mockReturnValueOnce(pendingRequest);
+
+      const promiseA = getUserPermissions('user-1');
+      const promiseB = getUserPermissions('user-1');
+
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(get).toHaveBeenCalledWith('/permissions/user/user-1');
+
+      resolveRequest({ data: perms });
+      const [resultA, resultB] = await Promise.all([promiseA, promiseB]);
+      expect(resultA).toEqual(perms);
+      expect(resultB).toEqual(perms);
+    });
+
+    it('returns memoized result within ttl without extra request', async () => {
+      const perms = [{ folderPath: '/docs', permission: 'write' }];
+      get.mockResolvedValueOnce({ data: perms });
+
+      const first = await getUserPermissions('user-1');
+      const second = await getUserPermissions('user-1');
+
+      expect(first).toEqual(perms);
+      expect(second).toEqual(perms);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetches again with forceRefresh even within ttl', async () => {
+      const first = [{ folderPath: '/a', permission: 'read' }];
+      const refreshed = [{ folderPath: '/a', permission: 'admin' }];
+      get.mockResolvedValueOnce({ data: first });
+      get.mockResolvedValueOnce({ data: refreshed });
+
+      const firstResult = await getUserPermissions('user-1');
+      const refreshResult = await getUserPermissions('user-1', { forceRefresh: true });
+
+      expect(firstResult).toEqual(first);
+      expect(refreshResult).toEqual(refreshed);
+      expect(get).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -98,6 +146,24 @@ describe('permissionService', () => {
         target: 'file',
       });
     });
+
+    it('invalidates user cache after successful grant', async () => {
+      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'read' }] });
+      post.mockResolvedValueOnce(undefined);
+      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'admin' }] });
+
+      const beforeGrant = await getUserPermissions('u1');
+      await grantPermission({
+        userId: 'u1',
+        folderPath: '/a',
+        permission: 'admin',
+      });
+      const afterGrant = await getUserPermissions('u1');
+
+      expect(beforeGrant).toEqual([{ folderPath: '/a', permission: 'read' }]);
+      expect(afterGrant).toEqual([{ folderPath: '/a', permission: 'admin' }]);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('revokePermission', () => {
@@ -133,6 +199,24 @@ describe('permissionService', () => {
           scope: 'pathOnly',
         },
       });
+    });
+
+    it('invalidates user cache after successful revoke', async () => {
+      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'admin' }] });
+      del.mockResolvedValueOnce(undefined);
+      get.mockResolvedValueOnce({ data: [] });
+
+      const beforeRevoke = await getUserPermissions('u1');
+      await revokePermission({
+        userId: 'u1',
+        folderPath: '/a',
+        includeSubfolders: false,
+      });
+      const afterRevoke = await getUserPermissions('u1');
+
+      expect(beforeRevoke).toEqual([{ folderPath: '/a', permission: 'admin' }]);
+      expect(afterRevoke).toEqual([]);
+      expect(get).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -14,6 +14,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/routes/permissions.js`
+- **Existence index helper:** `server/store/permissionExistenceIndex.js`
 - **Test file:** `server/routes/__tests__/permissions.test.js`
 
 ### 2.2 Route List
@@ -43,9 +44,51 @@
 
 ### 2.4.1 Validation
 
-- grant: folderPath, userId, permission 필수; 없으면 400
-- check: path 필수; 없으면 400
-- grant 자기 자신: 허용 (no-op에 가깝거나 동일 권한)
+- grant: `folderPath`, `userId`, `permission` are required; otherwise `400`
+- check: `path` is required; otherwise `400`
+- grant to self is allowed (effectively no-op or same-permission update)
+
+### 2.4.2 `GET /user/:userId` Fast-Path Semantics
+
+- Route returns ACL records using a fast path and avoids per-row `pathExists` checks in the request hot path.
+- Existence state is read from index/cache with three states:
+  - `exists`: path confirmed present by fresh evidence
+  - `missing`: path confirmed absent by fresh evidence
+  - `unknown`: state not fresh enough to decide
+- Response rules:
+  - `exists` entries are returned.
+  - `unknown` entries remain visible until reconciliation confirms missing.
+  - `missing` entries are excluded only when evidence freshness is valid.
+- Public response schema remains backward-compatible.
+
+### 2.4.3 Conditional Gate (`If-None-Match` / `304`)
+
+- Route computes ETag using:
+  - permission document `updated_at`
+  - existence-index version marker
+- If `If-None-Match` equals computed ETag, route returns `304 Not Modified` early.
+- Early `304` must happen before expensive permission shaping/reconciliation work.
+
+### 2.4.4 Reconciliation and Invalidation
+
+- Stale or absent index entries schedule non-blocking reconciliation jobs.
+- Reconciliation runs with bounded concurrency and must not block the API response path.
+- Route maintains an in-memory existence index keyed by normalized ACL path:
+  - persisted shape: `{ state: 'exists'|'missing', checkedAt: epochMs }`
+  - `unknown` is a read-time derived state used when entry is missing or stale
+  - freshness window: configured by env (default short TTL), stale entries treated as `unknown`
+- While state is `unknown`, route keeps the ACL row visible and only enqueues refresh.
+- ACL mutation routes invalidate affected paths/prefixes:
+  - `POST /grant`
+  - `DELETE /revoke`
+  - `POST /file/grant`
+  - `DELETE /file/revoke`
+  - `PATCH /file`
+- Invalidation is also wired at ACL-store mutation points so non-route callers keep index consistency.
+- File-system mutation integrations (move/copy/delete flows) can also invalidate affected prefixes.
+- Env knobs:
+  - `PERMISSIONS_EXISTENCE_INDEX_TTL_MS` (freshness window)
+  - `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` (bounded concurrent checks)
 
 ### 2.5 Related Documents
 
@@ -55,6 +98,11 @@
 
 - [ ] Grant/revoke require ownership or admin
 - [ ] Check returns correct hasRead, hasWrite
-- [ ] grant folderPath/userId 누락 → 400
-- [ ] check path 누락 → 400
-- [ ] revoke 직후 check → 권한 즉시 제거
+- [ ] grant missing `folderPath`/`userId` returns `400`
+- [ ] check missing `path` returns `400`
+- [ ] revoke followed by check removes access immediately
+- [ ] `GET /user/:userId` does not perform N-permission synchronous WebDAV checks
+- [ ] stale index entries enqueue reconciliation and still return response quickly
+- [ ] only freshly confirmed missing paths are excluded from user-visible response
+- [ ] matching `If-None-Match` returns `304` before expensive read work
+- [ ] performance regression guard: with many ACL rows and slow mocked `pathExists`, response latency stays near fast-path bound and does not scale linearly with ACL count

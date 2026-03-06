@@ -1,13 +1,57 @@
 import { get, post, del } from './apiClient';
 
+const USER_PERMISSIONS_TTL_MS = 3000;
+const userPermissionsCache = new Map();
+const inFlightUserPermissions = new Map();
+
+const getUserCacheKey = (userId) => String(userId);
+
+export const clearUserPermissionsCache = (userId) => {
+  if (userId == null) {
+    userPermissionsCache.clear();
+    inFlightUserPermissions.clear();
+    return;
+  }
+  const cacheKey = getUserCacheKey(userId);
+  userPermissionsCache.delete(cacheKey);
+  inFlightUserPermissions.delete(cacheKey);
+};
+
 /**
  * 사용자별 폴더 권한 목록 조회 (WebDAV 존재 폴더만 반환)
  * @param {number} userId - 사용자 ID
+ * @param {Object} [options]
+ * @param {boolean} [options.forceRefresh=false] - 캐시 무시 여부
  * @returns {Promise<Array>} 권한 배열
  */
-export const getUserPermissions = async (userId) => {
-  const response = await get(`/permissions/user/${userId}`);
-  return response.data;
+export const getUserPermissions = async (userId, options = {}) => {
+  const { forceRefresh = false } = options;
+  const cacheKey = getUserCacheKey(userId);
+  const cached = userPermissionsCache.get(cacheKey);
+
+  if (!forceRefresh && cached && Date.now() - cached.fetchedAt < USER_PERMISSIONS_TTL_MS) {
+    return cached.data;
+  }
+
+  const existingInFlight = inFlightUserPermissions.get(cacheKey);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const request = get(`/permissions/user/${userId}`)
+    .then((response) => {
+      userPermissionsCache.set(cacheKey, {
+        data: response.data,
+        fetchedAt: Date.now(),
+      });
+      return response.data;
+    })
+    .finally(() => {
+      inFlightUserPermissions.delete(cacheKey);
+    });
+
+  inFlightUserPermissions.set(cacheKey, request);
+  return request;
 };
 
 /**
@@ -32,6 +76,7 @@ export const grantPermission = async ({ userId, folderPath, permission, target }
   const body = { userId, folderPath, permission };
   if (target != null) body.target = target;
   await post('/permissions/grant', body);
+  clearUserPermissionsCache(userId);
 };
 
 /**
@@ -42,6 +87,7 @@ export const revokePermission = async ({ userId, folderPath, includeSubfolders =
   const params = { userId, folderPath, includeSubfolders: includeSubfolders ? 'true' : 'false' };
   if (scope != null) params.scope = scope;
   await del('/permissions/revoke', { params });
+  clearUserPermissionsCache(userId);
 };
 
 /**

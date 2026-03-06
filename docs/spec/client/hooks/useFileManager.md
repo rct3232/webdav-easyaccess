@@ -59,6 +59,7 @@
 - listFiles on currentPath change
 - __recent__: getRecentFiles + getFilesMetadata
 - __shared__: getUserPermissions + listFilePermissions for shared folders, filter top-level
+- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
 - shareToken: listFiles with shareToken
 - Navigate on setCurrentPath (non-share mode)
 

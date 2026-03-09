@@ -38,12 +38,14 @@
 
 ### 2.4 Dependencies
 
-- **imports:** getFileBlob, react-pdf, getFileType, PreviewThumbnailBar, useResponsive
+- **imports:** getFileBlob, react-pdf, getFileType, PreviewThumbnailBar, useResponsive; fileService for download (same policy as list/grid download).
 - **Reference implementation:** `client/src/components/dialogs/FilePreviewDialog/index.js`
+- **Download:** The preview dialog’s download action uses the same single-file download path as the file manager (fileService.downloadFile with file metadata). On iOS + image, this yields the share sheet or inline fallback; no duplicate logic. User guidance (e.g. i18n): when the share sheet is shown, the user can choose “Save Image” (or equivalent) to save to Photos.
 
 ### 2.5 i18n Keys
 
 - preview.*, common.*
+- When using Web Share for image download (iOS), consider a short hint (e.g. tooltip or toast) that the user can choose “Save Image” (or locale equivalent) in the share sheet to save to Photos.
 
 ### 2.6 Conditional Rendering
 
@@ -66,3 +68,4 @@
 - pdf.worker.min.js from public
 - Unsupported file type
 - Header filename may be very long: render a pixel-based middle truncation (via `pixelMiddleTruncate`) so it never overlaps the action buttons (download/close). Do not rely on CSS end-ellipsis for the visible text; the UI should display the `pixelMiddleTruncate` result as-is. When truncated (desktop), show the full filename via Tooltip.
+- **Preview download:** Reuse fileService.downloadFile with file metadata so iOS + image uses share sheet or inline fallback; avoid duplicating download logic (e.g. direct blob URL download) in the dialog.

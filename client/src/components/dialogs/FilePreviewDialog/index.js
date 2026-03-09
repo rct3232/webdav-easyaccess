@@ -8,6 +8,7 @@ import {
   Typography,
   CircularProgress,
   IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -19,6 +20,7 @@ import { getFileBlob } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { pixelMiddleTruncate } from '../../../utils/stringUtils';
 import PreviewThumbnailBar from './PreviewThumbnailBar';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -53,6 +55,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const hideTimerRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const stableWidthRef = useRef(null);
+  const titleRowRef = useRef(null);
+  const actionsRef = useRef(null);
+  const [titleRowWidth, setTitleRowWidth] = useState(0);
+  const [actionsWidth, setActionsWidth] = useState(0);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -118,6 +124,29 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     }
     return () => clearHideTimer();
   }, [open, isGalleryMode, loading, startHideTimer, clearHideTimer]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const updateHeaderSizes = () => {
+      setTitleRowWidth(titleRowRef.current?.clientWidth ?? 0);
+      setActionsWidth(actionsRef.current?.clientWidth ?? 0);
+    };
+
+    updateHeaderSizes();
+
+    const ro = new ResizeObserver(updateHeaderSizes);
+    if (titleRowRef.current) ro.observe(titleRowRef.current);
+    if (actionsRef.current) ro.observe(actionsRef.current);
+
+    window.addEventListener('resize', updateHeaderSizes);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateHeaderSizes);
+    };
+  }, [open, hideCloseButton]);
 
   // Ensure worker is configured when component mounts
   useEffect(() => {
@@ -644,6 +673,19 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     }
   };
 
+  const originalHeaderName = (displayFile || file)?.name || (displayFile || file)?.basename || '';
+  const headerFont = '500 1.25rem Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
+  const headerSafetyPx = 24;
+  const headerFallbackWidthPx = 360;
+  const maxHeaderTitleWidth = titleRowWidth > 0
+    ? Math.max(40, titleRowWidth - actionsWidth - headerSafetyPx)
+    : headerFallbackWidthPx;
+  const truncatedHeaderName = useMemo(
+    () => pixelMiddleTruncate(originalHeaderName, maxHeaderTitleWidth, headerFont),
+    [originalHeaderName, maxHeaderTitleWidth]
+  );
+  const isHeaderTruncated = truncatedHeaderName !== originalHeaderName;
+
   if (!file) return null;
 
   return (
@@ -704,13 +746,45 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
             }),
           }}
         >
-          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2}>
+          <Box
+            ref={titleRowRef}
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            width="100%"
+            gap={2}
+          >
             <Box display="flex" alignItems="center" flex={1} minWidth={0} gap={2}>
-              <Typography variant="h6" component="div" noWrap sx={{ color: 'inherit', flexShrink: 0 }}>
-                {(displayFile || file)?.name || (displayFile || file)?.basename}
-              </Typography>
+              {(() => {
+                const typography = (
+                  <Typography
+                    variant="h6"
+                    component="div"
+                    sx={{
+                      color: 'inherit',
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 1,
+                      textOverflow: 'clip',
+                    }}
+                  >
+                    {truncatedHeaderName}
+                  </Typography>
+                );
+
+                if (!isMobile && isHeaderTruncated) {
+                  return (
+                    <Tooltip title={originalHeaderName} disableInteractive>
+                      {typography}
+                    </Tooltip>
+                  );
+                }
+
+                return typography;
+              })()}
             </Box>
-            <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
+            <Box ref={actionsRef} display="flex" gap={1} sx={{ flexShrink: 0 }}>
               <IconButton onClick={handleDownload} size="small" title={t('actions.download')} sx={{ color: 'inherit' }}>
                 <DownloadIcon />
               </IconButton>

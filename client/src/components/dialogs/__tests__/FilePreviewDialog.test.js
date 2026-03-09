@@ -28,6 +28,25 @@ const defaultProps = {
 };
 
 describe('FilePreviewDialog', () => {
+  let originalGetContext;
+
+  beforeAll(() => {
+    // JSDOM throws for canvas.getContext unless a canvas implementation is installed.
+    // Our string utils fallback when context is null, so force null for stable tests.
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: () => null,
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: originalGetContext,
+    });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.setItem('token', 'test-token');
@@ -69,5 +88,30 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByTitle(/download/i)).toBeInTheDocument();
+  });
+
+  it('truncates long header filename and shows tooltip on hover (desktop)', async () => {
+    const user = userEvent.setup();
+    const longName = 'this-is-a-very-very-very-very-very-long-filename-for-preview-dialog-header.txt';
+
+    renderWithProviders(
+      <FilePreviewDialog
+        {...defaultProps}
+        file={{ ...fileProps, name: longName, basename: longName }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Truncated output should be rendered instead of the full name.
+    expect(screen.queryByText(longName)).not.toBeInTheDocument();
+
+    const truncatedEl = screen.getByText((content) => content.includes('...'));
+    await user.hover(truncatedEl);
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(longName);
   });
 });

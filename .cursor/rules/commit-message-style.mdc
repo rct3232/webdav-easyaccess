@@ -1,5 +1,5 @@
 ---
-description: Enforce checking commit history and following existing commit message style before committing
+description: Enforce commit history checks and detailed commit bodies for non-trivial changes
 alwaysApply: true
 ---
 
@@ -39,7 +39,47 @@ This project uses **Conventional Commits**:
 
 - **Type** in lowercase, followed by colon and space.
 - **Description** in lowercase, imperative mood (e.g. "add", "fix", "update").
-- Keep the first line under ~72 characters; add body for details if needed.
+- Keep the first line under ~72 characters.
+
+## MANDATORY COMMIT BODY POLICY
+
+Except for trivial changes, commit messages **MUST** include a body.
+
+A commit is considered **trivial** only when **all** conditions are met:
+
+1. Changed files are **1 or fewer**.
+2. Total changed lines (`additions + deletions`) are **10 or fewer**.
+3. Commit type is `docs:`, `test:`, `style:`, or `chore:`.
+
+If a commit is **not trivial**, the message body is required and must include:
+
+- **Why** this change is needed.
+- **What** changed (grouped by major area, not file-by-file noise).
+- **Impact / verification notes** (behavior change, migration need, test scope, or risk).
+- **Format rule**: use list format with explicit section labels and bullet items.
+
+### REQUIRED BODY FORMAT (NON-TRIVIAL COMMITS)
+
+For non-trivial commits, the body **MUST** follow this structure:
+
+```
+Why:
+- ...
+
+What:
+- ...
+
+Impact / verification:
+- ...
+```
+
+Requirements:
+
+1. Section labels (`Why:`, `What:`, `Impact / verification:`) must be present.
+2. Each section must contain at least one bullet item starting with `- `.
+3. Plain paragraph-only bodies are invalid for non-trivial commits.
+
+Non-trivial commits without a meaningful body should be treated as invalid and rewritten.
 
 ### Examples (from project history)
 
@@ -57,4 +97,6 @@ test: add unit tests for Breadcrumb component
 
 1. Run `git log --oneline -20` to inspect recent commits.
 2. Choose the appropriate type and wording that fits the project style.
-3. Propose only English commit messages that match this format.
+3. Determine whether the change is trivial using the mandatory policy above.
+4. For non-trivial changes, write a detailed body with why/what/impact.
+5. Propose only English commit messages that match this format.

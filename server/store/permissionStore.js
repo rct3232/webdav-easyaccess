@@ -1,6 +1,6 @@
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { createError } = require('../utils/errorHandler');
+const { createError, mapDatabaseError } = require('../utils/errorHandler');
 const {
   META_ROOT,
   PERMISSIONS_DIR,
@@ -11,10 +11,14 @@ const {
   normalizeWebdavPath,
 } = require('./metaPaths');
 const { getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { ensureDir, exists, readFile, writeFile } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, getBackend, getPgPool, withTransaction } = require('./storage');
 const { withLock } = require('./locks');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const userStore = require('./userStore');
+
+function isPostgresqlBackend() {
+  return getBackend() === 'postgresql';
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -36,15 +40,41 @@ const CACHE_TTL_MS =
     : parseInt(process.env.PERMISSION_CACHE_TTL_MS || '5000', 10) || 5000;
 
 async function ensureDirs() {
+  if (isPostgresqlBackend()) return;
   await ensureDir(META_ROOT);
   await ensureDir(PERMISSIONS_DIR);
   await ensureDir(PERMISSIONS_USERS_DIR);
 }
 
 async function ensureShareDirs() {
+  if (isPostgresqlBackend()) return;
   await ensureDir(META_ROOT);
   await ensureDir(PERMISSIONS_DIR);
   await ensureDir(PERMISSIONS_SHARES_DIR);
+}
+
+async function listPermissionUserIds() {
+  if (!isPostgresqlBackend()) {
+    const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+    return entries
+      .filter((ent) => ent.basename && ent.basename.endsWith('.json'))
+      .map((ent) => ent.basename.replace(/\.json$/, ''));
+  }
+
+  try {
+    const pool = getPgPool();
+    const res = await pool.query(
+      `SELECT DISTINCT user_id::text AS user_id
+         FROM (
+           SELECT user_id FROM permissions_user_paths
+           UNION
+           SELECT user_id FROM permissions_user_files
+         ) AS permission_user_ids`
+    );
+    return res.rows.map((row) => row.user_id);
+  } catch (error) {
+    throw mapDatabaseError(error);
+  }
 }
 
 function containsPathTraversal(p) {
@@ -57,6 +87,29 @@ async function grantSharePermission(token, rootPath, isDirectory) {
   if (containsPathTraversal(root)) {
     throw createError(SERVER_ERROR_CODES.files.invalidPath, 400);
   }
+
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(
+          `INSERT INTO permissions_shares (token, root_path, is_directory, permission, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (token)
+           DO UPDATE
+             SET root_path = EXCLUDED.root_path,
+                 is_directory = EXCLUDED.is_directory,
+                 permission = EXCLUDED.permission,
+                 updated_at = NOW()`,
+          [String(token), root, Boolean(isDirectory), PERMISSIONS.READ]
+        );
+      });
+      shareCache.delete(token);
+      return { token, rootPath: root, isDirectory: Boolean(isDirectory) };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   await ensureShareDirs();
   const doc = {
     rootPath: root,
@@ -74,6 +127,18 @@ async function grantSharePermission(token, rootPath, isDirectory) {
 }
 
 async function revokeSharePermission(token) {
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(`DELETE FROM permissions_shares WHERE token = $1`, [String(token)]);
+      });
+      shareCache.delete(token);
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const p = sharePermissionsPathByToken(token);
   const { deletePath } = require('./storage');
   try {
@@ -94,6 +159,35 @@ async function getSharePermissionDoc(token, { bypassCache = false } = {}) {
       return cached.data;
     }
   }
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT token, root_path, is_directory, permission, updated_at
+           FROM permissions_shares
+          WHERE token = $1
+          LIMIT 1`,
+        [String(token)]
+      );
+      if (res.rows.length === 0) return null;
+      const row = res.rows[0];
+      const normalized = {
+        rootPath: normalizeWebdavPath(row.root_path),
+        isDirectory: Boolean(row.is_directory),
+        permission: PERMISSIONS.isValid(row.permission) ? row.permission : PERMISSIONS.READ,
+        updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at || nowIso()),
+      };
+      if (CACHE_TTL_MS > 0) {
+        shareCache.set(token, { expiresAt: Date.now() + CACHE_TTL_MS, data: normalized });
+      } else {
+        shareCache.delete(token);
+      }
+      return normalized;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const p = sharePermissionsPathByToken(token);
   try {
     const buf = await readFile(p);
@@ -140,6 +234,7 @@ async function checkSharePermission(token, path, requiredPermission) {
 }
 
 async function ensureUserPermissionsFile(userId) {
+  if (isPostgresqlBackend()) return;
   await ensureDirs();
   const p = userPermissionsPathByUserId(userId);
   if (!(await exists(p))) {
@@ -159,6 +254,51 @@ async function readUserPermissionsDoc(userId, { bypassCache = false } = {}) {
       return cached.data;
     }
   }
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const [pathRows, fileRows] = await Promise.all([
+        pool.query(
+          `SELECT folder_path, permission, updated_at
+             FROM permissions_user_paths
+            WHERE user_id = $1`,
+          [Number(uid)]
+        ),
+        pool.query(
+          `SELECT file_path, permission, updated_at
+             FROM permissions_user_files
+            WHERE user_id = $1`,
+          [Number(uid)]
+        ),
+      ]);
+
+      const normalized = { permissions: {}, file_permissions: {}, updated_at: nowIso() };
+      let latestUpdatedAt = normalized.updated_at;
+      for (const row of pathRows.rows) {
+        normalized.permissions[normalizeWebdavPath(row.folder_path)] = row.permission;
+        if (row.updated_at instanceof Date && row.updated_at.toISOString() > latestUpdatedAt) {
+          latestUpdatedAt = row.updated_at.toISOString();
+        }
+      }
+      for (const row of fileRows.rows) {
+        normalized.file_permissions[normalizeWebdavPath(row.file_path)] = row.permission;
+        if (row.updated_at instanceof Date && row.updated_at.toISOString() > latestUpdatedAt) {
+          latestUpdatedAt = row.updated_at.toISOString();
+        }
+      }
+      normalized.updated_at = latestUpdatedAt;
+
+      if (CACHE_TTL_MS > 0) {
+        cache.set(uid, { expiresAt: Date.now() + CACHE_TTL_MS, data: normalized });
+      } else {
+        cache.delete(uid);
+      }
+      return normalized;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   await ensureUserPermissionsFile(uid);
   const buf = await readFile(userPermissionsPathByUserId(uid));
   const text = Buffer.from(buf).toString('utf8');
@@ -176,6 +316,41 @@ async function readUserPermissionsDoc(userId, { bypassCache = false } = {}) {
 
 async function writeUserPermissionsDoc(userId, doc) {
   const uid = String(userId);
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(`DELETE FROM permissions_user_paths WHERE user_id = $1`, [Number(uid)]);
+        await client.query(`DELETE FROM permissions_user_files WHERE user_id = $1`, [Number(uid)]);
+
+        for (const [folderPath, permission] of Object.entries(doc.permissions || {})) {
+          await client.query(
+            `INSERT INTO permissions_user_paths (user_id, folder_path, permission, updated_at)
+             VALUES ($1, $2, $3, NOW())`,
+            [Number(uid), normalizeWebdavPath(folderPath), permission]
+          );
+        }
+
+        for (const [filePath, permission] of Object.entries(doc.file_permissions || {})) {
+          await client.query(
+            `INSERT INTO permissions_user_files (user_id, file_path, permission, updated_at)
+             VALUES ($1, $2, $3, NOW())`,
+            [Number(uid), normalizeWebdavPath(filePath), permission]
+          );
+        }
+      });
+
+      doc.updated_at = nowIso();
+      if (CACHE_TTL_MS > 0) {
+        cache.set(uid, { expiresAt: Date.now() + CACHE_TTL_MS, data: doc });
+      } else {
+        cache.delete(uid);
+      }
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   doc.updated_at = nowIso();
   await writeFile(userPermissionsPathByUserId(uid), JSON.stringify(doc, null, 2), {
     overwrite: true,
@@ -315,6 +490,20 @@ async function revokeAllUserPermissions(userId) {
 
 async function deleteUserPermissionsFile(userId) {
   const uid = String(userId);
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(`DELETE FROM permissions_user_paths WHERE user_id = $1`, [Number(uid)]);
+        await client.query(`DELETE FROM permissions_user_files WHERE user_id = $1`, [Number(uid)]);
+      });
+      cache.delete(uid);
+      invalidateExistenceIndexForAclMutation('/');
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const p = userPermissionsPathByUserId(uid);
   try {
     if (await exists(p)) {
@@ -571,13 +760,11 @@ function checkFilePermissionSync(doc, filePath, requiredPermission) {
 async function getFolderPermissions(folderPath, filePath) {
   await ensureDirs();
   const folder = normalizeWebdavPath(folderPath);
-  const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+  const userIds = await listPermissionUserIds();
   const results = [];
   const normalizedFile = filePath ? normalizeFilePath(filePath) : null;
 
-  for (const ent of entries) {
-    if (!ent.basename || !ent.basename.endsWith('.json')) continue;
-    const userId = ent.basename.replace(/\.json$/, '');
+  for (const userId of userIds) {
     const doc = await readUserPermissionsDoc(userId);
     const perm = doc.permissions?.[folder] ?? null;
     const fp = doc.file_permissions && typeof doc.file_permissions === 'object' ? doc.file_permissions : {};
@@ -609,12 +796,10 @@ async function hasPermissionsInPath(folderPath) {
   const normalizedNoSlash = normalized !== '/' && normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
   const normalizedWithSlash = normalizedNoSlash === '/' ? '/' : `${normalizedNoSlash}/`;
 
-  const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+  const userIds = await listPermissionUserIds();
   const results = [];
 
-  for (const ent of entries) {
-    if (!ent.basename || !ent.basename.endsWith('.json')) continue;
-    const userId = ent.basename.replace(/\.json$/, '');
+  for (const userId of userIds) {
     const doc = await readUserPermissionsDoc(userId);
     const perms = doc.permissions || {};
 
@@ -695,13 +880,11 @@ async function rewritePermissionsForAllUsers(
   }
 
   return await withLock('perm:global', async () => {
-    const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+    const userIds = await listPermissionUserIds();
     let rewrittenUsers = 0;
     let rewrittenKeys = 0;
 
-    for (const ent of entries) {
-      if (!ent.basename || !ent.basename.endsWith('.json')) continue;
-      const userId = ent.basename.replace(/\.json$/, '');
+    for (const userId of userIds) {
 
       const didRewrite = await withLock(`perm:${userId}`, async () => {
         const doc = await readUserPermissionsDoc(userId, { bypassCache: true });
@@ -833,13 +1016,11 @@ async function revokePermissionsPrefixForAllUsers(prefixes = []) {
   }
 
   return await withLock('perm:global', async () => {
-    const entries = await require('./storage').listDir(PERMISSIONS_USERS_DIR);
+    const userIds = await listPermissionUserIds();
     let revokedUsers = 0;
     let revokedKeys = 0;
 
-    for (const ent of entries) {
-      if (!ent.basename || !ent.basename.endsWith('.json')) continue;
-      const userId = ent.basename.replace(/\.json$/, '');
+    for (const userId of userIds) {
 
       const didRevoke = await withLock(`perm:${userId}`, async () => {
         const doc = await readUserPermissionsDoc(userId, { bypassCache: true });

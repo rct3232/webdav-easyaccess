@@ -35,9 +35,7 @@
 ### 2.4 PostgreSQL v2 Table Mapping
 
 - Table: `recent_files(user_id, path, name, type, last_accessed)`
-- Constraints:
-  - unique (`user_id`, `path`)
-  - foreign key (`user_id`) references `users(id)`
+- Constraint/index source of truth: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
 ### 2.5 Transaction Boundaries
 

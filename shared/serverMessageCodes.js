@@ -120,6 +120,10 @@ const SERVER_ERROR_CODES = {
   errorHandler: {
     defaultMessage: P('serverErrors.errorHandler', 'defaultMessage'),
     internalServerError: P('serverErrors.errorHandler', 'internalServerError'),
+    databaseConflict: P('serverErrors.errorHandler', 'databaseConflict'),
+    databaseConstraintViolation: P('serverErrors.errorHandler', 'databaseConstraintViolation'),
+    databaseUnavailable: P('serverErrors.errorHandler', 'databaseUnavailable'),
+    databaseQueryFailed: P('serverErrors.errorHandler', 'databaseQueryFailed'),
   },
   api: {
     webdavTestFailed: P('serverErrors.api', 'webdavTestFailed'),
@@ -161,6 +165,7 @@ const SERVER_ERROR_CODES = {
   },
   storage: {
     invalidPathMapping: P('serverErrors.storage', 'invalidPathMapping'),
+    postgresqlNotConfigured: P('serverErrors.storage', 'postgresqlNotConfigured'),
   },
   users: {
     emailRequired: P('serverErrors.users', 'emailRequired'),

@@ -39,6 +39,13 @@
 | rewritePermissionsForAllUsers | (mappings, opts?) => Promise\<object\> | Rename/move paths |
 | revokePermissionsPrefixForAllUsers | (prefixes) => Promise\<object\> | Revoke by prefix |
 
+Permission enum contract:
+
+- Allowed values: `read`, `write`, `admin`
+- Ordering for effective checks: `read < write < admin`
+- Canonical runtime source: `shared/constants.js` (`PERMISSIONS.ALL`)
+- Canonical DB enforcement: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+
 ### 2.3 Storage Paths
 
 - User: `/.wea/permissions/users/{userId}.json` (permissions, file_permissions)
@@ -47,14 +54,12 @@
 ### 2.4 PostgreSQL v2 Table Mapping
 
 - `permissions_user_paths(user_id, folder_path, permission, updated_at)`
-  - unique (`user_id`, `folder_path`)
-  - permission check (`read|write`)
 - `permissions_user_files(user_id, file_path, permission, updated_at)`
-  - unique (`user_id`, `file_path`)
-  - permission check (`read|write`)
 - `permissions_shares(token, root_path, is_directory, permission, updated_at)`
-  - primary key (`token`)
-  - permission check (`read|write`)
+
+Constraint/index details are canonical in:
+
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
 ### 2.5 Transaction Boundaries
 
@@ -79,3 +84,4 @@
 - [ ] Cache bypass and TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables)
 - [ ] PostgreSQL: duplicate path grant upserts/replaces permission without duplicate rows
 - [ ] PostgreSQL: permission check constraint rejects invalid values
+- [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true

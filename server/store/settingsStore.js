@@ -1,12 +1,18 @@
 const { withLock } = require('./locks');
 const { SETTINGS_PATH, META_ROOT } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool } = require('./storage');
+const { mapDatabaseError } = require('../utils/errorHandler');
 
 function nowIso() {
   return new Date().toISOString();
 }
 
+function isPostgresqlBackend() {
+  return getBackend() === 'postgresql';
+}
+
 async function ensureSettingsFile() {
+  if (isPostgresqlBackend()) return;
   await ensureDir(META_ROOT);
   const ok = await exists(SETTINGS_PATH);
   if (!ok) {
@@ -22,6 +28,20 @@ async function ensureSettingsFile() {
 }
 
 async function readSettings() {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(`SELECT key, value FROM settings`);
+      const out = {};
+      for (const row of res.rows) {
+        out[row.key] = row.value;
+      }
+      return out;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   await ensureSettingsFile();
   const buf = await readFile(SETTINGS_PATH);
   const text = Buffer.from(buf).toString('utf8');
@@ -52,11 +72,47 @@ async function writeSettings(obj) {
 }
 
 async function get(key) {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT value
+           FROM settings
+          WHERE key = $1
+          LIMIT 1`,
+        [String(key)]
+      );
+      if (res.rows.length === 0) return null;
+      return res.rows[0].value;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const s = await readSettings();
   return Object.prototype.hasOwnProperty.call(s, key) ? s[key] : null;
 }
 
 async function set(key, value) {
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(
+          `INSERT INTO settings (key, value, updated_at)
+           VALUES ($1, $2::jsonb, NOW())
+           ON CONFLICT (key)
+           DO UPDATE
+             SET value = EXCLUDED.value,
+                 updated_at = NOW()`,
+          [String(key), JSON.stringify(String(value))]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   await ensureSettingsFile();
   return await withLock('settings', async () => {
     const s = await readSettings();
@@ -67,6 +123,10 @@ async function set(key, value) {
 }
 
 async function getAll() {
+  if (isPostgresqlBackend()) {
+    return await readSettings();
+  }
+
   const s = await readSettings();
   const { updated_at, ...rest } = s;
   return rest;

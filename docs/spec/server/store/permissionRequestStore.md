@@ -40,12 +40,7 @@
 
 - Table: `permission_requests`
 - Key columns: `id`, requester/owner fields, target fields, requested permission, status, message, timestamps, resolver
-- Constraints:
-  - check `target_type in ('folder','file')`
-  - check `requested_permission in ('read','write')`
-  - check `status in ('pending','approved','rejected','cancelled')`
-  - check target consistency: folder requests use `folder_path` only; file requests use `file_path` only
-  - partial unique index for pending dedupe on requester/owner/requested_permission/target
+- Constraint/index source of truth: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
 ### 2.6 Transaction Boundaries
 

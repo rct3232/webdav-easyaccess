@@ -138,6 +138,51 @@ function createError(errorCode, status = HTTP_STATUS.INTERNAL_SERVER_ERROR, para
 }
 
 /**
+ * Map DB vendor errors into standardized API errors.
+ * Preserves existing application errors that already include status+errorCode.
+ * @param {Error} error
+ * @param {Object} [options]
+ * @param {string} [options.fallbackErrorCode]
+ * @returns {Error}
+ */
+function mapDatabaseError(error, options = {}) {
+  if (error?.status && error?.errorCode) {
+    return error;
+  }
+
+  const fallbackErrorCode = options.fallbackErrorCode
+    || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
+
+  const code = error?.code;
+  if (code === '23505') {
+    const mapped = createError(
+      SERVER_ERROR_CODES.errorHandler.databaseConflict,
+      HTTP_STATUS.CONFLICT
+    );
+    if (error?.constraint) mapped.params = { constraint: error.constraint };
+    return mapped;
+  }
+
+  if (code === '23503' || code === '23514' || code === '22P02') {
+    const mapped = createError(
+      SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation,
+      HTTP_STATUS.BAD_REQUEST
+    );
+    if (error?.constraint) mapped.params = { constraint: error.constraint };
+    return mapped;
+  }
+
+  if (code === '57P01' || code === '53300') {
+    return createError(
+      SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
+      HTTP_STATUS.SERVICE_UNAVAILABLE
+    );
+  }
+
+  return createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+}
+
+/**
  * Validation error (400)
  * @param {string} errorCode - i18n error code
  * @param {Object} [params] - Optional params for i18n
@@ -193,6 +238,7 @@ module.exports = {
   formatErrorResponse,
   logError,
   createError,
+  mapDatabaseError,
   validationError,
   unauthorizedError,
   forbiddenError,

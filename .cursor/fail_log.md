@@ -117,6 +117,27 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-06 — admin.test.js — admin route integration run in mixed backend context
+
+- **Case:** B
+- **Root cause:** During the combined regression run, `WEA_STORAGE_BACKEND` resolved to `postgresql`, while `createTestDatabase()` in `test-utils` only prepares fs-backed metadata fixtures (`WEA_FS_DIR`). Admin integration tests then attempted PostgreSQL user writes without DB config and failed with `databaseQueryFailed`.
+- **Action taken:** Stabilized `server/routes/__tests__/admin.test.js` by pinning `process.env.WEA_STORAGE_BACKEND = 'fs'` in `beforeAll` and restoring the previous value in `afterAll`.
+- **Lesson:** Backend-sensitive integration tests must explicitly set storage backend in test setup to avoid environment leakage from other suites.
+
+## 2026-03-06 — shareLinkStore.test.js — backend parity (fs vs postgresql)
+
+- **Case:** B
+- **Root cause:** The new parity assertion compared strict `getUserShareLinks` token order between backends. In the test setup, fs timestamps can tie at millisecond precision, so ordering is not a stable cross-backend invariant for this scenario.
+- **Action taken:** Adjusted the parity assertion to compare backend-equivalent token membership (sorted set) while keeping behavior assertions for create/get/update/increment/delete outcomes.
+- **Lesson:** For parity tests, assert deterministic, contract-level outcomes; avoid brittle ordering checks unless ordering is guaranteed by controlled timestamps.
+
+## 2026-03-06 — storage.test.js — postgres infrastructure helpers (withTransaction)
+
+- **Case:** B
+- **Root cause:** The test's `pg` mocking setup did not reliably intercept module loading, so `withTransaction` attempted a real `pool.connect()` path and produced generic DB failure mapping. The source implementation behavior matched spec; the test harness was wrong.
+- **Action taken:** Updated `server/store/__tests__/storage.test.js` to use `jest.doMock('pg', ...)` with `jest.isolateModules(...)` per test so `server/store/storage.js` loads with the intended mocked `Pool`. Kept behavior assertions on commit/rollback and mapped error outcome.
+- **Lesson:** For backend adapter tests, isolate module loading after applying mocks; otherwise singleton/lazy imports can bypass mocks and hit real infrastructure paths.
+
 ## 2026-03-04 — MyPage.test.js — 7 failures in detectOpenHandles/runInBand run (empty DOM / missing roles)
 
 - **Case:** B

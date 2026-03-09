@@ -1,12 +1,17 @@
 # Admin and Infrastructure
 
-This document describes the admin role and APIs, health and WebDAV diagnostics, the per-route middleware pipeline, metadata store layout, and metadata locking. Use it with [api.md](../api.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
+This feature document focuses on admin-facing behavior and operational intent. For implementation contracts, use:
+
+- route contracts: `docs/spec/server/routes/*.md`
+- middleware/data-flow architecture: `docs/ARCHITECTURE.md`
+- setup/migration/env operations: `docs/SETUP.md`
+- metadata schema constraints: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
 ---
 
 ## Overview
 
-Administrators are users with `is_admin` set. All admin routes require a valid JWT and the `isAdmin` check (middleware that loads the user and verifies `user.is_admin`). Non-admin callers receive 403. Admin capabilities include system settings (e.g. signup enabled), approving or rejecting signups (with optional email notifications), user and permission management, and cleanup of orphaned metadata. Health and WebDAV endpoints are unauthenticated and used for monitoring and UI. The server uses a per-route middleware chain (Auth → User Loader → Path Normalizer → Meta Path Guard) and a distributed lock over the metadata store for concurrency control.
+Administrators are users with `is_admin` set. Admin routes require a valid JWT and admin authorization; non-admin callers receive 403. Admin capabilities include settings management, signup approval/rejection (optionally with email notifications), user lifecycle controls, ACL maintenance, and cleanup operations. Health and WebDAV diagnostic endpoints are unauthenticated and remain available for monitoring/UI checks.
 
 ---
 
@@ -16,6 +21,7 @@ Administrators are users with `is_admin` set. All admin routes require a valid J
 
 - **isAdmin:** Determined by `user.is_admin` (from metadata store). Stored in JWT payload for quick checks; admin routes re-load user and enforce `is_admin`.
 - **Admin middleware:** In `server/routes/admin.js`, `isAdmin` loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
+- **Pipeline boundary:** Full middleware ordering and exclusions are documented in `docs/ARCHITECTURE.md` and are not duplicated here.
 
 ### Admin APIs
 
@@ -36,27 +42,19 @@ See [api.md](../api.md) for exact methods, paths, and bodies.
 - **GET /api/webdav/test** — No auth. Tests WebDAV connectivity.
 - **GET /api/webdav/info** — No auth. Returns WebDAV URL info (e.g. for UI display).
 
-These routes do **not** use the Auth, User Loader, Path Normalizer, or Meta Path Guard middleware (see ARCHITECTURE §1.1).
+These routes bypass the authenticated middleware chain (see `docs/ARCHITECTURE.md`).
 
 ### Per-route middleware pipeline
 
-For routes that require it:
-
-```
-Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader → Path Normalizer → Meta Path Guard] (per route) → Route Handler → Error Handler
-```
-
-- **Auth:** `authenticateToken` validates `Authorization: Bearer <JWT>`, sets `req.user.id`.
-- **User Loader:** `requireUser` loads full user from metadata store into `req.user.full`.
-- **Path Normalizer:** `normalizePathParam` normalizes path-related query/body fields to POSIX style.
-- **Meta Path Guard:** `checkMetaPathAccess` blocks non-admin access to reserved path `/.wea` (and in share context, blocks paths outside share root).
-
-Routes like `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use the auth chain.
+Canonical middleware flow, middleware responsibilities, and route exclusions are documented in `docs/ARCHITECTURE.md`.
 
 ### Metadata store and locking
 
-- **Storage layout:** See ARCHITECTURE §2.1. Under `/.wea/`: users, permissions (users + shares), index/email, locks, share-links, recent-files, permission_requests, settings. Backend selected by `WEA_STORAGE_BACKEND` (`webdav` or `fs`).
-- **Locking:** `server/store/locks.js` provides distributed locks (e.g. `acquireLock(lockName, options)`). Lock files created on WebDAV/FS with `If-None-Match: *`; TTL in lock file for auto-release. Used for metadata updates to prevent concurrent write corruption.
+- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`webdav`, `fs`, `postgresql`) with stable store interfaces across backends.
+- **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
+- **Canonical env/runtime parser:** `server/store/storage.js`.
+- **Locking contract:** `server/store/locks.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes).
+- **Migration workflow:** `server/scripts/migrateMetadataToPostgresql.js` command usage and order are documented in `docs/SETUP.md`.
 
 ---
 
@@ -98,12 +96,13 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 
 ## Testing
 
-When implementing or reviewing tests for admin and infrastructure, cover at least:
+Feature-level verification scope (behavioral outcomes):
 
 - **Non-admin 403:** Authenticated non-admin calling any admin route (e.g. `GET /api/admin/settings`, `POST /api/admin/users/:id/approve`) receives 403 with `errorCode` for admin required.
-- **Approve/reject and email:** Approve sets user to approved, creates home folder/permissions as designed; reject sets status to rejected. If email is configured, sending is stubbed or asserted in tests.
+- **Approve/reject and email:** Approve sets user to approved and prepares expected initial access; reject sets status to rejected. If email is configured, notification side effects are validated.
 - **Cleanup:** Orphan cleanup returns expected shape (e.g. removed count or list); no side effects on valid metadata.
 - **Health and WebDAV:** `GET /api/health` returns 200 and `status: "ok"`; `GET /api/webdav/test` and `GET /api/webdav/info` return expected response format without auth.
-- **Meta path:** Request with path `/.wea` or body containing `/.wea` as source/destination returns 403 for non-admin; admin can access as allowed by route.
+- **Meta path guard:** Requests touching reserved metadata paths are blocked for non-admin callers.
 
-Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for integration vs unit and mocking (e.g. test JWT with `is_admin` for server admin tests).
+Detailed store-level and route-level verification matrices belong in `docs/spec/server/store/*.md`
+and `docs/spec/server/routes/*.md`. Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for test design.

@@ -1,6 +1,6 @@
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { createError } = require('../utils/errorHandler');
+const { createError, mapDatabaseError } = require('../utils/errorHandler');
 const {
   META_ROOT,
   USERS_DIR,
@@ -10,7 +10,7 @@ const {
   emailIndexPathByEmailHash,
   sha256HexLower,
 } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile, deletePath } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, deletePath, getBackend, withTransaction, getPgPool } = require('./storage');
 const { withLock } = require('./locks');
 
 function nowIso() {
@@ -29,7 +29,35 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function isPostgresqlBackend() {
+  return getBackend() === 'postgresql';
+}
+
+function toIsoString(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function mapUserRow(row) {
+  if (!row) return undefined;
+  return {
+    id: Number(row.id),
+    username: row.username,
+    email: row.email,
+    email_hash: row.email_hash,
+    password: row.password,
+    status: row.status,
+    is_admin: row.is_admin ? 1 : 0,
+    token_version: Number.isInteger(row.token_version) ? row.token_version : Number(row.token_version || 0),
+    created_at: toIsoString(row.created_at),
+    updated_at: toIsoString(row.updated_at),
+  };
+}
+
 async function ensureUserIndexFile() {
+  if (isPostgresqlBackend()) return;
   await ensureDir(META_ROOT);
   await ensureDir(USERS_DIR);
   await ensureDir(EMAIL_INDEX_DIR);
@@ -105,10 +133,43 @@ async function writeUserByUsername(username, userObj) {
 }
 
 async function findByUsername(username) {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT *
+           FROM users
+          WHERE username = $1
+          LIMIT 1`,
+        [String(username)]
+      );
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
   return await readUserByUsername(username);
 }
 
 async function findByEmail(email) {
+  if (isPostgresqlBackend()) {
+    const emailNorm = normalizeEmail(email);
+    if (!emailNorm) return undefined;
+    const emailHash = sha256HexLower(emailNorm);
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT *
+           FROM users
+          WHERE email_hash = $1
+          LIMIT 1`,
+        [emailHash]
+      );
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
   const emailNorm = normalizeEmail(email);
   if (!emailNorm) return undefined;
   const emailHash = sha256HexLower(emailNorm);
@@ -121,6 +182,21 @@ async function findByEmail(email) {
 }
 
 async function findById(id) {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT *
+           FROM users
+          WHERE id = $1
+          LIMIT 1`,
+        [Number(id)]
+      );
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
   const index = await readUserIndex();
   const username = index.byId?.[String(id)];
   if (!username) return undefined;
@@ -130,6 +206,60 @@ async function findById(id) {
 async function createUser({ username, email, passwordHash, isAdmin = false }) {
   if (!username || !email || !passwordHash) {
     throw createError(SERVER_ERROR_CODES.admin.createUserRequiredFields, 400);
+  }
+
+  if (isPostgresqlBackend()) {
+    const emailNorm = normalizeEmail(email);
+    const emailHash = sha256HexLower(emailNorm);
+    const createdAt = nowIso();
+    try {
+      return await withTransaction(async (client) => {
+        const dupUsername = await client.query(
+          `SELECT 1 FROM users WHERE username = $1 LIMIT 1`,
+          [String(username)]
+        );
+        if (dupUsername.rows.length > 0) {
+          throw createError(SERVER_ERROR_CODES.admin.usernameTaken, 409);
+        }
+
+        const dupEmail = await client.query(
+          `SELECT 1 FROM users WHERE email_hash = $1 LIMIT 1`,
+          [emailHash]
+        );
+        if (dupEmail.rows.length > 0) {
+          throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO users (
+              username,
+              email,
+              email_hash,
+              password,
+              status,
+              is_admin,
+              token_version,
+              created_at,
+              updated_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+            RETURNING *`,
+          [
+            String(username),
+            emailNorm,
+            emailHash,
+            String(passwordHash),
+            isAdmin ? USER_STATUS.APPROVED : USER_STATUS.PENDING,
+            Boolean(isAdmin),
+            0,
+            createdAt,
+          ]
+        );
+        return mapUserRow(inserted.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
   }
 
   return await withLock('users', async () => {
@@ -187,6 +317,23 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
 }
 
 async function updateStatus(userId, status) {
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE users
+              SET status = $2,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [Number(userId), status]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('users', async () => {
     const user = await findById(userId);
     if (!user) {
@@ -201,6 +348,48 @@ async function updateStatus(userId, status) {
 async function updateEmail(userId, newEmail) {
   const newNorm = normalizeEmail(newEmail);
   if (!newNorm) throw createError(SERVER_ERROR_CODES.users.emailRequired, 400);
+
+  if (isPostgresqlBackend()) {
+    const userIdNum = Number(userId);
+    const newHash = sha256HexLower(newNorm);
+    try {
+      return await withTransaction(async (client) => {
+        const currentUserRes = await client.query(
+          `SELECT *
+             FROM users
+            WHERE id = $1
+            LIMIT 1`,
+          [userIdNum]
+        );
+        if (currentUserRes.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.admin.userNotFound, 404);
+        }
+
+        const dupEmailRes = await client.query(
+          `SELECT id
+             FROM users
+            WHERE email_hash = $1
+            LIMIT 1`,
+          [newHash]
+        );
+        if (dupEmailRes.rows.length > 0 && Number(dupEmailRes.rows[0].id) !== userIdNum) {
+          throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
+        }
+
+        await client.query(
+          `UPDATE users
+              SET email = $2,
+                  email_hash = $3,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [userIdNum, newNorm, newHash]
+        );
+        return { success: true };
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
 
   return await withLock('users', async () => {
     const user = await findById(userId);
@@ -237,6 +426,24 @@ async function updateEmail(userId, newEmail) {
 }
 
 async function updatePassword(userId, passwordHash) {
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE users
+              SET password = $2,
+                  token_version = token_version + 1,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [Number(userId), String(passwordHash)]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('users', async () => {
     const user = await findById(userId);
     if (!user) return { success: true };
@@ -249,6 +456,17 @@ async function updatePassword(userId, passwordHash) {
 }
 
 async function deleteUser(userId) {
+  if (isPostgresqlBackend()) {
+    try {
+      await withTransaction(async (client) => {
+        await client.query(`DELETE FROM users WHERE id = $1`, [Number(userId)]);
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('users', async () => {
     const index = await readUserIndex();
     const username = index.byId?.[String(userId)];
@@ -270,6 +488,20 @@ async function deleteUser(userId) {
 }
 
 async function findAll() {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT *
+           FROM users
+          ORDER BY created_at DESC`
+      );
+      return res.rows.map(mapUserRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   await ensureDir(USERS_DIR);
   const items = await require('./storage').listDir(USERS_DIR);
   const files = items
@@ -298,6 +530,22 @@ function pathBasename(p) {
 }
 
 async function findByStatus(status) {
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const res = await pool.query(
+        `SELECT *
+           FROM users
+          WHERE status = $1
+          ORDER BY created_at DESC`,
+        [status]
+      );
+      return res.rows.map(mapUserRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const all = await findAll();
   return all.filter((u) => u.status === status);
 }

@@ -13,12 +13,15 @@ const {
 } = require('../utils/webdav');
 const { normalizeWebdavPath } = require('./metaPaths');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { createError } = require('../utils/errorHandler');
+const { createError, mapDatabaseError } = require('../utils/errorHandler');
+
+let pgPool = null;
 
 function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
   if (forced === 'fs' || forced === 'filesystem') return 'fs';
   if (forced === 'webdav') return 'webdav';
+  if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (process.env.NODE_ENV === 'test') return 'fs';
   return 'webdav';
 }
@@ -46,6 +49,96 @@ function makeStatusError(status, message) {
   const err = new Error(message);
   err.status = status;
   return err;
+}
+
+function parseBooleanEnv(value) {
+  if (typeof value !== 'string') return false;
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
+function parseNumberEnv(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function resolvePgConfig() {
+  const requiredKeys = [
+    'WEA_PG_HOST',
+    'WEA_PG_PORT',
+    'WEA_PG_DATABASE',
+    'WEA_PG_USER',
+    'WEA_PG_PASSWORD',
+  ];
+  const missing = requiredKeys.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw createError(
+      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+      500,
+      { missing: missing.join(',') }
+    );
+  }
+
+  return {
+    host: process.env.WEA_PG_HOST,
+    port: parseNumberEnv(process.env.WEA_PG_PORT, 5432),
+    database: process.env.WEA_PG_DATABASE,
+    user: process.env.WEA_PG_USER,
+    password: process.env.WEA_PG_PASSWORD,
+    max: parseNumberEnv(process.env.WEA_PG_MAX, 10),
+    idleTimeoutMillis: parseNumberEnv(process.env.WEA_PG_IDLE_TIMEOUT_MS, 30_000),
+    connectionTimeoutMillis: parseNumberEnv(process.env.WEA_PG_CONNECTION_TIMEOUT_MS, 10_000),
+    ssl: parseBooleanEnv(process.env.WEA_PG_SSL) ? { rejectUnauthorized: false } : false,
+  };
+}
+
+function getPgPool() {
+  if (pgPool) return pgPool;
+  let Pool;
+  try {
+    ({ Pool } = require('pg'));
+  } catch (error) {
+    throw createError(
+      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+      500,
+      { reason: 'pg_module_missing' }
+    );
+  }
+
+  pgPool = new Pool(resolvePgConfig());
+  return pgPool;
+}
+
+async function closePgPool() {
+  if (!pgPool) return;
+  const pool = pgPool;
+  pgPool = null;
+  await pool.end();
+}
+
+async function withTransaction(callback) {
+  const pool = getPgPool();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (error) {
+    throw mapDatabaseError(error);
+  }
+
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore rollback errors and surface the original failure
+    }
+    throw mapDatabaseError(error);
+  } finally {
+    client.release();
+  }
 }
 
 async function ensureDir(dirPath) {
@@ -211,6 +304,9 @@ async function listDir(dirPath) {
 module.exports = {
   getBackend,
   getFsBaseDir,
+  getPgPool,
+  withTransaction,
+  closePgPool,
   ensureDir,
   ensureDirSafe,
   exists,

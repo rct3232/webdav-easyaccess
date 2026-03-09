@@ -35,10 +35,7 @@
 ### 2.4 PostgreSQL v2 Table Mapping
 
 - Table: `share_links(token, file_path, created_by, created_at, expires_at, download_count)`
-- Constraints:
-  - primary key (`token`)
-  - foreign key (`created_by`) references `users(id)`
-  - check (`download_count >= 0`)
+- Constraint/index source of truth: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
 ### 2.5 Transaction Boundaries
 
@@ -58,4 +55,5 @@
 - [ ] getUserShareLinks filters by createdBy, sorts by createdAt desc
 - [ ] updateShareLink merges updates; 404 when not found
 - [ ] isLinkExpired: no expiresAt → false; past date → true
+- [ ] backend parity: create/get/update/delete behavior is equivalent for `fs` and `postgresql`
 - [ ] PostgreSQL: concurrent `incrementDownloadCount` calls preserve all increments

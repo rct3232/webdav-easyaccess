@@ -11,6 +11,7 @@ const {
   formatErrorResponse,
   logError,
   createError,
+  mapDatabaseError,
   validationError,
   unauthorizedError,
   forbiddenError,
@@ -165,6 +166,47 @@ describe('errorHandler', () => {
     it('defaults status to 500', () => {
       const err = createError('some.code');
       expect(err.status).toBe(500);
+    });
+  });
+
+  describe('mapDatabaseError', () => {
+    it('returns original app error when status and errorCode exist', () => {
+      const original = createError('custom.error', 418);
+      expect(mapDatabaseError(original)).toBe(original);
+    });
+
+    it('maps unique violation (23505) to conflict', () => {
+      const mapped = mapDatabaseError({ code: '23505', constraint: 'users_email_key' });
+      expect(mapped.status).toBe(HTTP_STATUS.CONFLICT);
+      expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseConflict);
+      expect(mapped.params).toEqual({ constraint: 'users_email_key' });
+    });
+
+    it('maps FK/check/input violations to bad request', () => {
+      const fk = mapDatabaseError({ code: '23503', constraint: 'fk_user_id' });
+      expect(fk.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(fk.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation);
+      expect(fk.params).toEqual({ constraint: 'fk_user_id' });
+
+      const check = mapDatabaseError({ code: '23514' });
+      expect(check.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(check.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation);
+
+      const invalidText = mapDatabaseError({ code: '22P02' });
+      expect(invalidText.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(invalidText.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation);
+    });
+
+    it('maps DB unavailable errors to service unavailable', () => {
+      const mapped = mapDatabaseError({ code: '57P01' });
+      expect(mapped.status).toBe(HTTP_STATUS.SERVICE_UNAVAILABLE);
+      expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
+    });
+
+    it('uses fallback error code for unknown DB errors', () => {
+      const mapped = mapDatabaseError({ code: 'XX000' }, { fallbackErrorCode: 'db.fallback' });
+      expect(mapped.status).toBe(HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      expect(mapped.errorCode).toBe('db.fallback');
     });
   });
 

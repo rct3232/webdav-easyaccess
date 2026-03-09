@@ -24,6 +24,7 @@
 | formatErrorResponse | (error, options?) => object | Standard error body |
 | logError | (error, context?) => void | Log error with context |
 | createError | (errorCode, status?, params?) => Error | Create error with errorCode |
+| mapDatabaseError | (error, options?) => Error | Maps PostgreSQL/DB errors to standardized status + errorCode |
 | validationError | (errorCode, params?) => Error | Validation error (400) |
 | unauthorizedError | (errorCode?, params?) => Error | Unauthorized (401) |
 | forbiddenError | (errorCode?, params?) => Error | Forbidden (403) |
@@ -35,6 +36,14 @@
 - formatErrorResponse: returns { errorCode, params?, details? }
 - details only in development (NODE_ENV !== 'production')
 - error.status or error.statusCode for HTTP status
+- mapDatabaseError:
+  - input: DB error object (`code`, `constraint`, `detail`, `message`)
+  - output: existing Error with normalized `status`, `errorCode`, optional `params`
+  - SQLSTATE mapping baseline:
+    - `23505` -> 409 `errorHandler.databaseConflict`
+    - `23503`, `23514`, `22P02` -> 400 `errorHandler.databaseConstraintViolation`
+    - `57P01`, `53300` -> 503 `errorHandler.databaseUnavailable`
+    - fallback -> 500 `errorHandler.databaseQueryFailed`
 
 ### 2.4 Dependencies
 
@@ -49,4 +58,6 @@
 
 - [ ] asyncHandler catches and forwards
 - [ ] formatErrorResponse: errorCode, params, details (dev only)
+- [ ] mapDatabaseError maps SQLSTATE codes to expected status/errorCode
+- [ ] mapDatabaseError preserves existing app errors with predefined `status` + `errorCode`
 - [ ] createError, validationError, unauthorizedError, forbiddenError, notFoundError, conflictError

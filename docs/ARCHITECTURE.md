@@ -4,6 +4,33 @@
 
 WebDAV EasyAccess is a **self-hosted, multi-user file management platform** built with a React frontend and Express backend. It adds a modern web interface and fine-grained user/permission management on top of an existing WebDAV server.
 
+## Document Responsibility and Canonical Sources
+
+Use this document for system concepts and flow. Use implementation/runtime contracts from the canonical files below.
+
+| Doc type | Primary responsibility | Out of scope |
+|---|---|---|
+| `docs/SETUP.md` | Install, run, env keys, migration steps, operational checks | Store-level method contracts and route behavior details |
+| `docs/ARCHITECTURE.md` (this doc) | Middleware model, ACL model, data-flow, backend strategy | Full DDL/constraint lists, per-store method matrices |
+| `docs/features/*.md` | Product-level behavior and feature intent | Internal table constraints and low-level store internals |
+| `docs/spec/server/store/*.md` | Store public methods, error contracts, testable verification scenarios | Long architecture narratives and operator runbooks |
+
+Canonical contract sources:
+
+- Permission enum: `shared/constants.js` (`PERMISSIONS.ALL`)
+- PostgreSQL constraints/indexes/tables: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+- PostgreSQL env keys/runtime parsing: `server/store/storage.js`
+- Operator-facing env documentation: `.env.example` and `docs/SETUP.md`
+
+Duplication inventory (this document links instead of repeating full content):
+
+| Repeated topic | Canonical source | Treatment here |
+|---|---|---|
+| Permission values and ordering | `shared/constants.js`, DDL `permissions_*` checks | Keep one-line model + links |
+| Full normalized table constraints/indexes | DDL file | Keep table names and purpose only |
+| Migration command sequence | `docs/SETUP.md` | Keep conceptual migration path only |
+| API endpoint lists | `docs/api.md` | Replace detailed route list with reference |
+
 ---
 
 ## 1. Server Architecture
@@ -47,6 +74,7 @@ flowchart TD
 *   **Direct Read**: Read is checked on that folder or the file's direct parent only. No inheritance from ancestor paths.
 *   **Direct Write**: Write permission applies only when explicitly granted on that folder (no inheritance).
 *   **Owner exception**: `/{username}` is treated as the user's home directory and always grants full access.
+*   **Permission enum**: `read < write < admin` (source of truth: `shared/constants.js`; DB enforcement in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`).
 
 ---
 
@@ -60,30 +88,32 @@ Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store A
     *   `webdav` (default): Metadata JSON files under `/.wea` on WebDAV.
     *   `fs`: Metadata JSON files on local server disk.
     *   `postgresql`: Normalized relational schema for metadata and locks.
+*   **Interface parity**:
+    *   Store public interfaces remain stable across backends.
+    *   `userStore`, `permissionStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, and `permissionRequestStore` keep the same exported method contracts while using backend-specific persistence.
 
 #### PostgreSQL Normalized Schema
 
 When `WEA_STORAGE_BACKEND=postgresql`, metadata is persisted in normalized tables:
+`users`, `settings`, `permissions_user_paths`, `permissions_user_files`, `permissions_shares`,
+`share_links`, `recent_files`, `permission_requests`, and `locks`.
 
-*   `users`: identity/auth fields (`username`, `email`, `email_hash`, `status`, `token_version`, ...).
-    *   Constraints: unique (`username`), unique (`email`), unique (`email_hash`), status check (`pending|approved|rejected`).
-*   `settings`: key-value settings table.
-    *   Constraints: primary key (`key`).
-*   `permissions_user_paths`: user folder permissions.
-    *   Constraints: unique (`user_id`, `folder_path`), permission check (`read|write`).
-*   `permissions_user_files`: user file permissions.
-    *   Constraints: unique (`user_id`, `file_path`), permission check (`read|write`).
-*   `permissions_shares`: share-token permission roots.
-    *   Constraints: primary key (`token`), permission check (`read|write`).
-*   `share_links`: share-link metadata.
-    *   Constraints: primary key (`token`), check (`download_count >= 0`), `created_by` FK to `users`.
-*   `recent_files`: per-user recent files.
-    *   Constraints: unique (`user_id`, `path`), `user_id` FK to `users`.
-*   `permission_requests`: folder/file permission request workflow.
-    *   Constraints: target type check (`folder|file`), requested permission check (`read|write`), status check (`pending|approved|rejected|cancelled`), and target consistency check for folder/file columns.
-    *   Includes partial unique index for pending dedupe by requester/owner/permission/target.
-*   `locks`: distributed metadata lock records.
-    *   Constraints: primary key (`lock_name_hash`) with TTL (`expires_at`).
+This document intentionally omits full constraints/indexes. Treat
+`server/store/postgresql/ddl/001_initial_normalized_schema.sql` as the single source of truth.
+
+#### Metadata Migration Path (One-shot)
+
+Legacy file metadata (`webdav`/`fs`) is migrated to normalized PostgreSQL tables through:
+
+- `server/scripts/migrateMetadataToPostgresql.js`
+
+Migration characteristics:
+
+- source backends: `webdav` or `fs` (`/.wea` layout).
+- target backend: PostgreSQL normalized schema.
+- supports `dry-run` mode (no writes) and `apply` mode (single transaction).
+- produces a validation report with source counts, migrated/skipped totals, warnings, and post-write row-count checks.
+- command sequence and operator checks are maintained in `docs/SETUP.md`.
 
 #### Storage Layout (Remote/Local)
 ```
@@ -184,90 +214,12 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 
 ---
 
-## 4. API Guide (Summary)
+## 4. API Reference Boundary
 
-### 4.1 Auth
-*   `POST /api/auth/login`: Login and issue token.
-*   `POST /api/auth/register`: Sign up.
-*   `POST /api/auth/refresh`: Refresh token.
-*   `GET /api/auth/me`: Current user info (requires auth).
+This document does not duplicate endpoint catalogs.
 
-### 4.2 Files and Folders
-*   `GET /api/files/list?path=...`: List folder contents (includes ACL info).
-*   `GET /api/files/download?path=...`: Download single file.
-*   `POST /api/files/upload`: Upload file (checks parent write permission).
-*   `PUT /api/files/rename`: Rename file or folder.
-*   `POST /api/files/batch-move`: Move multiple items (with ACL updates).
-*   `POST /api/files/batch-copy`: Copy multiple items.
-*   `POST /api/files/batch-delete`: Delete multiple items.
-*   `POST /api/files/download-multiple`: ZIP download for multiple files/folders.
-*   `GET /api/files/download-progress/:id`: ZIP download progress.
-*   `GET /api/files/operation-progress/:id`: Bulk operation progress.
-*   `GET /api/files/bulk-operation/:jobId`: Bulk job status.
-*   `POST /api/files/bulk-operation/:jobId/cancel`: Cancel bulk operation.
-*   `GET /api/files/thumbnail/:hash`, `POST /api/files/thumbnails/batch`: Thumbnail requests.
-*   `POST /api/files/check-conflicts`: Check for name conflicts before paste.
-*   `POST /api/files/metadata`: Get file metadata.
-*   `POST /api/folders/create`: Create folder.
-
-### 4.3 Permissions
-*   `POST /api/permissions/grant`: Grant folder permission to another user.
-*   `DELETE /api/permissions/revoke`: Revoke permission.
-*   `GET /api/permissions/user/:userId`: List permissions for a user.
-*   `GET /api/permissions/folder?path=...`: List permissions for a folder.
-*   `GET /api/permissions/check?path=...`: Check current user permission.
-*   `POST /api/permissions/file/grant`, `DELETE /api/permissions/file/revoke`, `PATCH /api/permissions/file`: File-level permission APIs.
-*   `GET /api/permissions/file/check`, `GET /api/permissions/file/list`: File permission checks.
-
-### 4.4 Permission Requests
-*   `POST /api/permission-requests`: Create permission request (user requests access from owner).
-*   `GET /api/permission-requests/inbox`: List incoming requests (for owners).
-*   `GET /api/permission-requests/outbox`: List outgoing requests (for requesters).
-*   `GET /api/permission-requests/check-owner?folderPath=...` or `?filePath=...`: Check if path has an owner for requests.
-*   `POST /api/permission-requests/:id/approve`: Approve request (owner).
-*   `POST /api/permission-requests/:id/reject`: Reject request (owner).
-*   `POST /api/permission-requests/:id/cancel`: Cancel own request (requester).
-
-### 4.5 Share Links (External)
-*   `POST /api/share-links`: Create share link (authenticated).
-*   `GET /api/share-links`: List own share links.
-*   `GET /api/share-links/:token`: Get share link details.
-*   `PUT /api/share-links/:token`: Update (e.g. expiry).
-*   `DELETE /api/share-links/:token`: Delete share link.
-*   `GET /api/share/:token/info`: Public: get share link info (no auth).
-*   `GET /api/share/:token`: Public: download file.
-*   `GET /api/share/:token/preview`: Public: preview file.
-*   `GET /api/share/:token/check-my-permission`: Check if current user has access (auth).
-*   `POST /api/share/:token/add-to-my-permissions`: Add shared item to current user's permissions (auth).
-
-### 4.6 Recent Files
-*   `GET /api/recent-files`: List recent files for current user.
-*   `POST /api/recent-files`: Add file to recent list.
-*   `DELETE /api/recent-files/:filePath(*)`: Remove one path from recent list (path segment may contain slashes).
-*   `DELETE /api/recent-files`: Clear all recent files.
-*   `POST /api/recent-files/apply-moves`: Update paths after bulk move.
-*   `POST /api/recent-files/remove-paths`: Remove paths after delete.
-
-### 4.7 Health and Diagnostics
-*   `GET /api/health`: Health check (returns `{ status: "ok", messageCode }`).
-*   `GET /api/webdav/test`: Test WebDAV connection.
-*   `GET /api/webdav/info`: WebDAV URL info (e.g. for UI).
-
-### 4.8 Admin
-*   `GET /api/admin/settings`, `PUT /api/admin/settings`: System settings.
-*   `GET /api/admin/users/pending`: Pending signup approvals.
-*   `GET /api/admin/users`, `POST /api/admin/users`: List/add users.
-*   `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject`: Approve/reject signups.
-*   `DELETE /api/admin/users/:id`: Delete user.
-*   `GET /api/admin/folders/list`: List folders for admin permission management.
-*   `PUT /api/admin/users/:id/permissions`: Set user folder permissions.
-*   `POST /api/admin/permissions/ensure-home-owner-admin`: Ensure home folder owner has admin.
-*   `POST /api/admin/cleanup/orphaned`: Clean orphaned metadata.
-
-### 4.9 Users and Settings
-*   `GET /api/users`, `GET /api/users/approved`, `GET /api/users/:id`: User listing and profile.
-*   `PUT /api/users/:id/password`, `PUT /api/users/:id/email`: Update own profile. `PUT /api/users/:id/permissions`: Set user folder permissions (admin only).
-*   `GET /api/settings/public`: Public settings (e.g. signup enabled).
+- Canonical route contracts: `docs/api.md`
+- Route-level behavior and error contracts: `docs/spec/server/routes/*.md`
 
 ---
 
@@ -280,3 +232,17 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
 *   **Performance**:
     *   `asyncLimitSettled` limits concurrent WebDAV requests (e.g. 5–10 per operation).
     *   Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).
+
+## 6. Concept Verification Boundary
+
+Use architecture verification for high-level reasoning only:
+
+- middleware chain remains consistent with documented route exclusions
+- ACL model preserves owner exception and explicit permission rank behavior
+- backend swap (`webdav`/`fs`/`postgresql`) preserves route-level contracts
+
+Detailed executable verification belongs in:
+
+- setup/runtime checks: `docs/SETUP.md`
+- store contract scenarios: `docs/spec/server/store/*.md`
+- route behavior scenarios: `docs/spec/server/routes/*.md`

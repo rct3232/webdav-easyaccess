@@ -10,6 +10,7 @@ const {
   USER_STATUS,
 } = require('../../test-utils');
 const Settings = require('../../models/Settings');
+const Permission = require('../../models/Permission');
 
 var mockEmail;
 var mockWebdav;
@@ -26,8 +27,10 @@ jest.mock('../../utils/webdav', () => {
 
 let app;
 let dbCleanup;
+const previousBackend = process.env.WEA_STORAGE_BACKEND;
 
 beforeAll(async () => {
+  process.env.WEA_STORAGE_BACKEND = 'fs';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
   app = require('../../index');
@@ -35,6 +38,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await dbCleanup?.();
+  process.env.WEA_STORAGE_BACKEND = previousBackend;
 });
 
 describe('GET /api/admin/settings', () => {
@@ -132,6 +136,13 @@ describe('POST /api/admin/users/:id/approve', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
+
+    const hasAdmin = await Permission.checkPermission(
+      pendingUser.id,
+      `/${pendingUser.username}`,
+      'admin'
+    );
+    expect(hasAdmin).toBe(true);
   });
 });
 

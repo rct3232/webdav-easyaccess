@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Abstraction over metadata backends. Supports `webdav`, `fs`, and `postgresql` selection while preserving store-layer APIs. Provides ensureDir, exists, readFile, writeFile, deletePath, listDir for file-style backends and backend selection/connection helpers for relational mode. |
+| Role | Abstraction over metadata backends. Supports `webdav`, `fs`, and `postgresql` selection while preserving store-layer APIs. Provides file-style helpers for `webdav`/`fs` and PostgreSQL pool/transaction helpers for relational mode. |
 
 ---
 
@@ -42,24 +42,50 @@
 - utils/webdav (createDirectory, deleteFile, getFileContents, listDirectory, pathExists, putFileContentsAdvanced)
 - pg (Pool), backend-specific SQL helpers
 - metaPaths.normalizeWebdavPath
-- errorHandler, SERVER_ERROR_CODES
+- errorHandler (`createError`, `mapDatabaseError`), SERVER_ERROR_CODES
 
-### 2.5 PostgreSQL v2 Schema Contract
+### 2.5 PostgreSQL Infrastructure Contract
 
-When backend is `postgresql`, storage initialization is responsible for connecting to a schema that includes:
+- Backend selector accepts `WEA_STORAGE_BACKEND=postgresql`.
+- Pool configuration uses environment values:
+  - `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD`
+  - optional `WEA_PG_SSL` (`true`/`false`)
+  - optional `WEA_PG_MAX`, `WEA_PG_IDLE_TIMEOUT_MS`, `WEA_PG_CONNECTION_TIMEOUT_MS`
+- `getPgPool()`:
+  - throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
+  - returns singleton `pg.Pool` instance
+- `withTransaction(callback)`:
+  - runs `BEGIN`/`COMMIT`/`ROLLBACK` around callback
+  - callback receives a query-capable client
+  - SQL errors are converted by shared DB error mapping
+- `closePgPool()` is provided for tests and process shutdown hooks.
 
-- `users`, `settings`, `permissions_user_paths`, `permissions_user_files`, `permissions_shares`, `share_links`, `recent_files`, `permission_requests`, `locks`
-- uniqueness checks (user identity keys and per-user/path keys)
-- check constraints for status/permission enums and request target consistency
-- indexes for inbox/outbox and recent/share listing patterns
+### 2.6 PostgreSQL v2 Schema Contract
 
-Store modules consume this schema through backend selector functions; route-level signatures remain unchanged.
+When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
+`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
 
-### 2.6 Verification Scenarios
+Canonical source for table definitions, constraints, and indexes:
+
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+
+This spec intentionally does not duplicate full DDL text. Store modules consume this schema through
+backend selector functions while keeping route-level contracts unchanged.
+
+Permission contract source of truth for `postgresql` backend:
+
+- Runtime: `shared/constants.js` (`PERMISSIONS.ALL`)
+- Persistence: `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`permissions_*` permission checks include `admin`)
+
+### 2.7 Verification Scenarios
 
 - [ ] getBackend: test env → fs; WEA_STORAGE_BACKEND=fs → fs
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
+- [ ] backend parity: shared store-facing behaviors remain consistent across `fs` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
+- [ ] getPgPool: missing env throws `storage.postgresqlNotConfigured`
+- [ ] getPgPool: returns singleton pool across repeated calls
 - [ ] withTransaction commits on success and rolls back on error
+- [ ] withTransaction maps SQL errors with standardized DB error codes/status
 - [ ] webdavToFsPath: path stays under base; invalid → 400
 - [ ] ensureDir creates dirs; WebDAV MKCOL per segment
 - [ ] writeFile ifNoneMatchStar → 412 when exists
@@ -67,9 +93,11 @@ Store modules consume this schema through backend selector functions; route-leve
 - [ ] writeFile throws on ENOSPC
 - [ ] listDir throws on EACCES
 
-### 2.7 Error Cases
+### 2.8 Error Cases
 
 - writeFile disk full (ENOSPC): throw; upper layer maps to 500
 - WebDAV disconnection: adapter throws; upper layer retries or returns 500
 - listDir permission denied (EACCES): throw; upper layer maps to 403
-- PostgreSQL connection/transaction failure: throw; upper layer maps using shared DB error mapping
+- PostgreSQL unique violation (`23505`): mapped to 409 `errorHandler.databaseConflict`
+- PostgreSQL FK/check violations (`23503`/`23514`): mapped to 400 `errorHandler.databaseConstraintViolation`
+- PostgreSQL unavailable/timeout (`57P01`/`53300`): mapped to 503 `errorHandler.databaseUnavailable`

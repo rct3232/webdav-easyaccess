@@ -3,7 +3,7 @@
 ## 1. Install Dependencies
 
 ```bash
-npm run install-all
+npm install
 ```
 
 *   **Note**: For video thumbnail generation on the server, **FFmpeg** must be installed on the system.

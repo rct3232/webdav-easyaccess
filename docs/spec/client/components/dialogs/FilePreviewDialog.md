@@ -38,7 +38,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** getFileBlob, react-pdf, getFileType, PreviewThumbnailBar, useResponsive; fileService for download (same policy as list/grid download).
+- **imports:** getFileBlob, react-pdf, getFileType, PreviewThumbnailBar, useResponsive, plyr; fileService for download (same policy as list/grid download).
 - **Reference implementation:** `client/src/components/dialogs/FilePreviewDialog/index.js`
 - **Download:** The preview dialog’s download action uses the same single-file download path as the file manager (fileService.downloadFile with file metadata). On iOS + image, this yields the share sheet or inline fallback; no duplicate logic. User guidance (e.g. i18n): when the share sheet is shown, the user can choose “Save Image” (or equivalent) to save to Photos.
 
@@ -51,7 +51,8 @@
 
 - Image: img with blob URL
 - PDF: react-pdf Document/Page
-- Video: video element
+- Video: Plyr player (video element); fills content area (width/height 100%, object-fit contain)
+- Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
 - Auto-hide UI after 2s
@@ -65,7 +66,7 @@
 
 ### 2.8 Content Vertical Layout
 
-- **Image, video:** Centered in available space (flex: 1, center; unchanged).
+- **Image, video:** Centered in available space (flex: 1, center). Video: Plyr wrapper fills container; video element uses object-fit: contain.
 - **Loading, error, canPreview=false, default:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
 - **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
 - **Text:** Center when content fits; when overflow (scroll needed), switch to top align so scroll is downward only. Use ResizeObserver. Scrollbar hidden (same as PDF).

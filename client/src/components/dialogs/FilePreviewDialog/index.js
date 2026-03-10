@@ -19,9 +19,11 @@ import {
 import { getFileBlob, downloadFile } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
-import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes';
 import { pixelMiddleTruncate } from '../../../utils/stringUtils';
 import PreviewThumbnailBar from './PreviewThumbnailBar';
+import PlyrLib from 'plyr';
+import 'plyr/dist/plyr.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -62,6 +64,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const [textOverflows, setTextOverflows] = useState(false);
   const textContainerRef = useRef(null);
   const textPreRef = useRef(null);
+  const audioContainerRef = useRef(null);
+  const audioPlyrRef = useRef(null);
+  const videoContainerRef = useRef(null);
+  const videoPlyrRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -174,6 +180,72 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
     }
   }, []);
+
+  // Plyr for audio: create audio element imperatively so Plyr's DOM mutations don't conflict with React
+  useEffect(() => {
+    const target = displayFile || file;
+    const filename = target?.name || target?.basename;
+    const isAudio = open && previewUrl && getFileType(filename) === 'audio';
+    const container = audioContainerRef.current;
+    if (!isAudio || !container) {
+      if (audioPlyrRef.current) {
+        audioPlyrRef.current.destroy();
+        audioPlyrRef.current = null;
+      }
+      return;
+    }
+    const audioEl = document.createElement('audio');
+    audioEl.className = 'plyr-react plyr';
+    audioEl.controls = true;
+    audioEl.src = previewUrl;
+    audioEl.style.width = '100%';
+    audioEl.style.maxWidth = '500px';
+    container.appendChild(audioEl);
+    audioPlyrRef.current = new PlyrLib(audioEl, { ratio: null });
+    return () => {
+      audioPlyrRef.current?.destroy();
+      audioPlyrRef.current = null;
+      if (audioEl.parentNode === container) {
+        container.removeChild(audioEl);
+      }
+    };
+  }, [open, previewUrl, displayFile, file]);
+
+  // Plyr for video: create video element imperatively so Plyr's DOM mutations don't conflict with React
+  useEffect(() => {
+    const target = displayFile || file;
+    const filename = target?.name || target?.basename;
+    const isVideo = open && previewUrl && getFileType(filename) === 'video';
+    const container = videoContainerRef.current;
+    if (!isVideo || !container) {
+      if (videoPlyrRef.current) {
+        videoPlyrRef.current.destroy();
+        videoPlyrRef.current = null;
+      }
+      return;
+    }
+    // Clear any leftover nodes from previous run (Plyr wrap moves video so removeChild often skips)
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    const videoEl = document.createElement('video');
+    videoEl.controls = false; // Plyr provides controls; native controls would show both UIs
+    videoEl.playsInline = true;
+    const source = document.createElement('source');
+    source.src = previewUrl;
+    source.type = getContentType(filename) || 'video/mp4';
+    videoEl.appendChild(source);
+    container.appendChild(videoEl);
+    videoPlyrRef.current = new PlyrLib(videoEl, { ratio: null });
+    return () => {
+      videoPlyrRef.current?.destroy();
+      videoPlyrRef.current = null;
+      // Clear all children; Plyr wrap moves video so videoEl.parentNode !== container
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+    };
+  }, [open, previewUrl, displayFile, file]);
 
   // PDF 페이지 크기 계산
   const calculatedWidth = useMemo(() => {
@@ -495,7 +567,16 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'video':
         return (
           <Box
-            sx={mediaWrapperSx}
+            sx={{
+              ...mediaWrapperSx,
+              '& .plyr': { width: '100%', height: '100%' },
+              '& .plyr__video-wrapper': { width: '100%', height: '100%' },
+              '& .plyr__video-wrapper video': {
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+              },
+            }}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
@@ -516,17 +597,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 <ChevronLeftIcon />
               </IconButton>
             )}
-            <Box
-              component="video"
-              controls
-              src={previewUrl}
-              sx={{
-                maxWidth: '100%',
-                maxHeight: isMobile ? '100%' : '70vh',
-                height: isMobile ? '100%' : 'auto',
-                width: isMobile ? '100%' : 'auto',
-                margin: 'auto',
-                display: 'block',
+            <div
+              ref={videoContainerRef}
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             />
             {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
@@ -558,14 +637,24 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'center',
+              '& .plyr': {
+                '--plyr-audio-controls-background': 'transparent',
+                '--plyr-audio-control-color': '#ffffff',
+                '--plyr-audio-control-color-hover': '#ffffff',
+                '--plyr-color-main': '#ffffff',
+                '--plyr-audio-progress-buffered-background': 'rgba(255,255,255,0.2)',
+                '--plyr-audio-range-track-background': 'rgba(255,255,255,0.2)',
+                '--plyr-range-thumb-background': '#ffffff',
+                '--plyr-menu-background': 'rgba(0,0,0,0.9)',
+                '--plyr-menu-color': '#ffffff',
+                '--plyr-tooltip-background': 'rgba(0,0,0,0.9)',
+                '--plyr-tooltip-color': '#ffffff',
+                width: '100%',
+                maxWidth: 500,
+              },
             }}
           >
-            <Box
-              component="audio"
-              controls
-              src={previewUrl}
-              sx={{ width: '100%', maxWidth: 500 }}
-            />
+            <div ref={audioContainerRef} style={{ width: '100%', maxWidth: 500 }} />
           </Box>
         );
 

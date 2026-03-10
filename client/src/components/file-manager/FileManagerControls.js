@@ -56,7 +56,8 @@ const FileManagerControls = ({
   const noSelection = selectedFiles.size === 0;
   const moveDeleteDisabled = bulkActionsDisabled || !bulkWritePermission || noSelection;
   const copyDisabled = bulkActionsDisabled || noSelection;
-  const downloadDisabled = bulkActionsDisabled || noSelection;
+  const multiSelectedOnMobile = isMobile && selectedFiles.size > 1;
+  const downloadDisabled = bulkActionsDisabled || noSelection || multiSelectedOnMobile;
 
   const showMobileReadOnlyBanner = isMobile && selectionMode && hasReadOnlyInSelection;
 

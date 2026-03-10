@@ -47,7 +47,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** formatDateOnly, getServerErrorDisplay, shareLinkService
+- **imports:** formatDateOnly, getServerErrorDisplay, shareLinkService, copyToClipboard (clipboard util)
 - **Reference implementation:** `client/src/components/dialogs/ExternalShareSection.js`
 
 ### 2.5 i18n Keys

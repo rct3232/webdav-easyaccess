@@ -632,7 +632,26 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
             ref={mediaTouchRef}
             sx={{
               ...mediaWrapperSx,
-              '& .plyr': { width: '100%', height: '100%' },
+              '& .plyr': {
+                width: '100%',
+                height: '100%',
+                '--plyr-color-main': '#ffffff',
+                '--plyr-video-control-color': '#ffffff',
+                '--plyr-video-control-color-hover': '#ffffff',
+                '--plyr-video-control-background-hover': '#ffffff',
+                '--plyr-video-progress-buffered-background': 'rgba(255,255,255,0.2)',
+                '--plyr-video-range-track-background': 'rgba(255,255,255,0.2)',
+                '--plyr-range-fill-background': '#ffffff',
+                '--plyr-range-thumb-background': '#ffffff',
+                '--plyr-menu-background': 'rgba(0,0,0,0.9)',
+                '--plyr-menu-color': '#ffffff',
+                '--plyr-tooltip-background': 'rgba(0,0,0,0.9)',
+                '--plyr-tooltip-color': '#ffffff',
+              },
+              '& .plyr__control--overlaid': {
+                color: 'rgba(0,0,0,0.5)',
+                '&:hover, &:focus, &:focus-visible': { color: 'rgba(0,0,0,0.5)' },
+              },
               '& .plyr__video-wrapper': { width: '100%', height: '100%' },
               '& .plyr__video-wrapper video': {
                 width: '100%',

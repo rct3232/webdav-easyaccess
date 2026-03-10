@@ -12,6 +12,7 @@ const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileT
 const { authenticateToken } = require('../utils/auth');
 const requireUser = require('../middleware/requireUser');
 const { canGrantPermission } = require('../utils/permissionPolicy');
+const { sendBufferAsChunks } = require('../utils/responseWriter');
 
 /**
  * Collect the share path and all paths under it (recursive). Used for permission check.
@@ -223,6 +224,8 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
 
   // 파일 미리보기 (inline)
   try {
+    // Range-ready hook (phase 2): for now ignore Range and serve 200 full body.
+    // const range = req.headers.range;
     const buffer = await getFileContents(link.filePath);
     const fileName = link.filePath.split('/').pop();
     const fileType = getFileType(fileName);
@@ -230,7 +233,8 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
 
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     res.setHeader('Content-Type', contentType);
-    res.send(buffer);
+    res.setHeader('Content-Length', buffer.length);
+    await sendBufferAsChunks(res, buffer);
   } catch (error) {
     console.error('Failed to preview file:', error);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.share.previewFail });

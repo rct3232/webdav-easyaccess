@@ -16,7 +16,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
-import { getFileBlob, downloadFile } from '../../../services/fileService';
+import { getFileBlob, getVideoPreviewStreamUrl, downloadFile } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes';
@@ -330,9 +330,17 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     setError(null);
 
     try {
-      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken });
       const filename = targetFile.name || targetFile.basename;
       const fileType = getFileType(filename);
+
+      if (fileType === 'video') {
+        const url = await getVideoPreviewStreamUrl(targetFile.path, { shareToken });
+        setPreviewUrl(url);
+        setLoading(false);
+        return;
+      }
+
+      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken });
 
       if (fileType === 'text') {
         const text = await blob.text();
@@ -365,7 +373,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
     } else {
       setPreviewUrl((prevUrl) => {
-        if (prevUrl) {
+        if (prevUrl && String(prevUrl).startsWith('blob:')) {
           URL.revokeObjectURL(prevUrl);
         }
         return null;

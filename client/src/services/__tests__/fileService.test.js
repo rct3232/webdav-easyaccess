@@ -24,6 +24,7 @@ import {
   listFiles,
   getFilesMetadata,
   getFileBlob,
+  getVideoPreviewStreamUrl,
   downloadFile,
   createFolder,
   getFolderStats,
@@ -64,6 +65,37 @@ describe('fileService', () => {
         headers: expect.objectContaining({ 'X-Share-Token': 't' }),
         responseType: 'blob',
       }));
+    });
+  });
+
+  describe('getVideoPreviewStreamUrl', () => {
+    it('requests preview ticket and returns preview-stream URL', async () => {
+      post.mockResolvedValueOnce({ data: { ticket: 'ticket123' } });
+
+      const url = await getVideoPreviewStreamUrl('/v.mp4');
+
+      expect(post).toHaveBeenCalledWith(
+        '/files/preview-ticket',
+        { path: '/v.mp4' },
+        expect.any(Object)
+      );
+      expect(url).toContain('/api/files/preview-stream?');
+      expect(url).toContain('ticket=ticket123');
+      expect(url).toContain('path=%2Fv.mp4');
+    });
+
+    it('passes shareToken in body and headers when provided', async () => {
+      post.mockResolvedValueOnce({ data: { ticket: 't' } });
+
+      await getVideoPreviewStreamUrl('/v.mp4', { shareToken: 'st' });
+
+      expect(post).toHaveBeenCalledWith(
+        '/files/preview-ticket',
+        { path: '/v.mp4', shareToken: 'st' },
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Share-Token': 'st' }),
+        })
+      );
     });
   });
 

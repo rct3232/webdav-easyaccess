@@ -52,7 +52,7 @@
 - Video: video element
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
-- Auto-hide UI after 5s
+- Auto-hide UI after 2s
 
 ### 2.7 Verification Scenarios
 

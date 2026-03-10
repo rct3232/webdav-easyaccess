@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
 }
 
-const HIDE_UI_DELAY_MS = 5000;
+const HIDE_UI_DELAY_MS = 2000;
 
 const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded, hideCloseButton = false }) => {
   const { t } = useTranslation();

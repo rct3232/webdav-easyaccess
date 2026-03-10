@@ -33,12 +33,12 @@
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| handleFileDownload | (file) => Promise | Download file/folder |
+| handleFileDownload | (file) => Promise | Download file/folder; passes file metadata (e.g. name, path, type) to fileService.downloadFile so the service can apply platform-specific behavior (e.g. iOS + image → Web Share or inline fallback) |
 | handleFileRename | (file, newName) => Promise | Rename |
 
 ### 2.4 Dependencies
 
-- fileService (downloadFile, downloadMultipleFiles, renameFile)
+- fileService (downloadFile with optional file-metadata options for single-file downloads, downloadMultipleFiles, renameFile)
 - getErrorMessage, markProcessing, clearProcessing, normalizePath, applyRecentFilesAfterRename
 
 ### 2.5 Side Effects
@@ -61,5 +61,6 @@
 
 ### 2.8 Edge Cases
 
-- Directory download: zip
-- Skipped paths: warning status
+- Directory download: zip (unchanged; no iOS/image share path).
+- Skipped paths: warning status.
+- Single-file download: when file metadata is passed, fileService may use iOS + image policy (Web Share or inline fallback); hook does not branch on platform—it delegates to fileService.

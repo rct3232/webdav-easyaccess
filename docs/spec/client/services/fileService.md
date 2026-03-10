@@ -22,7 +22,7 @@
 | listFiles | (path, options?) | Promise\<Array\> | GET /api/files/list |
 | getFilesMetadata | (paths, options?) | Promise\<Array\> | POST /api/files/metadata |
 | getFileBlob | (filePath, options?) | Promise\<Blob\> | GET /api/files/download |
-| downloadFile | (filePath) | Promise\<void\> | GET /api/files/download (blob, triggers download) |
+| downloadFile | (filePath, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
 | uploadFileWithPath | (file, targetPath, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |
 | uploadMultipleFiles | (files, targetPath, onProgress, onConflict, options?) | Promise\<{ results, errors }\> | POST /api/files/upload (per file) |
 | renameFile | (oldPath, newName) | Promise\<Object\> | PUT /api/files/rename |
@@ -41,9 +41,27 @@
 | getFolderStats | (folderPath) | Promise\<object\> | GET /api/folders/stats (params: path) |
 
 - `shareToken` in options: listFiles, getFilesMetadata, getFileBlob, uploadFileWithPath, uploadMultipleFiles, checkConflicts, downloadMultipleFiles, getDownloadProgress, requestThumbnailsBatch. When set, uses `X-Share-Token` header and query params.
-- `downloadFile` does **not** accept options (authenticated user only; no share token support).
+- `downloadFile` is **authenticated user only** (no share token support). It accepts an optional `options` object for platform- and file-type–specific behavior (see § 2.3).
 
-### 2.3 Error Handling
+### 2.3 Download behavior (single-file)
+
+- **Default (non-iOS):** Fetch blob via GET /api/files/download, then trigger download via `<a download>` (existing behavior). No options required.
+- **iOS + single file (all types):** When the client detects iOS (e.g. UA or capability), use a share-sheet-friendly path for single-file downloads:
+  1. **First:** Create a `File` from the blob, then call `navigator.canShare({ files: [file] })` with the actual `File` instance (file-type support varies; e.g. zip may return `false`). If `canShare` returns true, call `navigator.share({ files: [file], title })` so the system share sheet appears. The user can choose "Save to Files" or similar. On success or `AbortError`, return. No `options` required; the service derives filename/extension from `filePath` or optional `options.fileName` / `options.mimeType`.
+  2. **Fallback:** If `navigator.canShare({ files: [file] })` returns false or `navigator.share` fails with a non-AbortError, use `typedBlob` + `<a download>` + `visibilitychange` revoke (same as existing iOS fallback).
+- **All other cases:** Use the default blob + `<a download>` behavior. Folder and multi-file (zip) downloads are unchanged.
+
+Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` or `canShareFiles` helper; use `navigator.canShare({ files: [file] })` with the actual `File` to check share support per file type.
+
+### 2.4 downloadFile options (optional)
+
+| Option | Type | Description |
+|--------|------|-------------|
+| fileName | string | Display name for the file (e.g. for share sheet). If omitted, derived from `filePath`. |
+| mimeType | string | MIME type for the file (e.g. for creating a `File` for `navigator.share`). If omitted, inferred from extension or response. |
+| isMobile | boolean | Hint that the client is on a mobile device; can be used together with platform detection for iOS + single-file share path. |
+
+### 2.5 Error Handling
 
 - Uses getServerErrorDisplay, errorUtils for client display
 - Upload: CONFLICT (409) returned as duplicate; errors array in uploadMultipleFiles
@@ -53,12 +71,14 @@
 - cancelBulkOperation: 404(존재하지 않는 jobId) 또는 이미 완료된 job → 구현체별 (에러 throw 또는 200)
 - 타임아웃: apiClient 5분; 개별 요청 실패 시 getServerErrorDisplay로 표시
 
-### 2.4 Verification Scenarios
+### 2.6 Verification scenarios
 
 - [ ] listFiles returns array; shareToken passed when provided
 - [ ] getFilesMetadata with empty paths returns []
 - [ ] getFileBlob with inline option; shareToken in options passed
-- [ ] downloadFile does not accept options (auth-only)
+- [ ] downloadFile is auth-only; with no options uses blob + &lt;a download&gt;
+- [ ] On iOS + single file: when `navigator.canShare({ files: [file] })` returns true, share path is used (share sheet); otherwise fallback (typedBlob + &lt;a download&gt;) is used
+- [ ] Non-iOS: download uses default blob + &lt;a download&gt;; folder/multi-file download unchanged
 - [ ] createFolder calls POST /api/folders/create
 - [ ] uploadMultipleFiles calls onProgress, returns results/errors
 - [ ] batchMove/batchCopy return jobId; status polled via getBulkOperationStatus

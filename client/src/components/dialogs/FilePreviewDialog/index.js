@@ -16,7 +16,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
-import { getFileBlob } from '../../../services/fileService';
+import { getFileBlob, downloadFile } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
@@ -352,17 +352,12 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     [isGalleryMode, goPrev, goNext]
   );
 
-  const handleDownload = () => {
+  const handleDownload = useCallback(() => {
     const targetFile = displayFile || file;
-    if (previewUrl && targetFile) {
-      const link = document.createElement('a');
-      link.href = previewUrl;
-      link.download = targetFile.name || targetFile.basename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
+    if (!targetFile) return;
+    const fileName = targetFile.name || targetFile.basename;
+    downloadFile(targetFile.path, { fileName, shareToken });
+  }, [displayFile, file, shareToken]);
 
   const renderPreview = () => {
     const targetFile = displayFile || file;

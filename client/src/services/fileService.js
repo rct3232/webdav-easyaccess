@@ -68,6 +68,27 @@ export const getFileBlob = async (filePath, options = {}) => {
 };
 
 /**
+ * Get a streaming URL for video preview suitable for <video src>.
+ * Uses a short-lived server-issued ticket (no JWT in query params).
+ * @param {string} filePath
+ * @param {object} [options]
+ * @param {string} [options.shareToken]
+ * @returns {Promise<string>} URL path (same-origin) to use as media src
+ */
+export const getVideoPreviewStreamUrl = async (filePath, options = {}) => {
+  const { shareToken } = options;
+  const response = await post(`${API_BASE}/preview-ticket`, { path: filePath, ...(shareToken && { shareToken }) }, {
+    headers: shareTokenHeaders(shareToken),
+  });
+  const ticket = response?.data?.ticket;
+  if (!ticket) {
+    throw new Error('No preview ticket in response');
+  }
+  const params = new URLSearchParams({ path: filePath, ticket });
+  return `/api${API_BASE}/preview-stream?${params.toString()}`;
+};
+
+/**
  * Download a single file. On iOS + image, uses share sheet or inline open so the user can save to Photos.
  * @param {string} filePath - Path of the file.
  * @param {Object} [options] - Optional. fileName, mimeType, isMobile, shareToken.

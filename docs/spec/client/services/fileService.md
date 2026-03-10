@@ -22,6 +22,7 @@
 | listFiles | (path, options?) | Promise\<Array\> | GET /api/files/list |
 | getFilesMetadata | (paths, options?) | Promise\<Array\> | POST /api/files/metadata |
 | getFileBlob | (filePath, options?) | Promise\<Blob\> | GET /api/files/download |
+| getVideoPreviewStreamUrl | (filePath, options?) | Promise\<string\> | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL) |
 | downloadFile | (filePath, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
 | uploadFileWithPath | (file, targetPath, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |
 | uploadMultipleFiles | (files, targetPath, onProgress, onConflict, options?) | Promise\<{ results, errors }\> | POST /api/files/upload (per file) |
@@ -42,6 +43,7 @@
 
 - `shareToken` in options: listFiles, getFilesMetadata, getFileBlob, uploadFileWithPath, uploadMultipleFiles, checkConflicts, downloadMultipleFiles, getDownloadProgress, requestThumbnailsBatch. When set, uses `X-Share-Token` header and query params.
 - `downloadFile` is **authenticated user only** (no share token support). It accepts an optional `options` object for platform- and file-type–specific behavior (see § 2.3).
+- `getVideoPreviewStreamUrl` is used by **video preview only** (FilePreviewDialog). It returns a URL string suitable for `<video src>` without requiring custom headers. It must not embed JWT in query params; it uses a short-lived ticket from the server.
 
 ### 2.3 Download behavior (single-file)
 
@@ -76,6 +78,7 @@ Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` o
 - [ ] listFiles returns array; shareToken passed when provided
 - [ ] getFilesMetadata with empty paths returns []
 - [ ] getFileBlob with inline option; shareToken in options passed
+- [ ] getVideoPreviewStreamUrl returns a URL (not a Blob URL) and includes the server-issued ticket; shareToken is supported when provided
 - [ ] downloadFile is auth-only; with no options uses blob + &lt;a download&gt;
 - [ ] On iOS + single file: when `navigator.canShare({ files: [file] })` returns true, share path is used (share sheet); otherwise fallback (typedBlob + &lt;a download&gt;) is used
 - [ ] Non-iOS: download uses default blob + &lt;a download&gt;; folder/multi-file download unchanged

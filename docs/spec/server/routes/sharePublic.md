@@ -35,9 +35,14 @@
 
 - **GET /:token/info:** 200: `{ filePath, fileName, isDirectory, isExpired?, ... }`; 만료 시 403 또는 404 + isExpired
 - **GET /:token:** streams file blob; 만료 시 403
-- **GET /:token/preview:** streams file (inline); 만료 시 403
+- **GET /:token/preview:** streams file (inline) using chunked response; 만료 시 403
 - **GET /:token/check-my-permission:** 200: `{ hasSufficientPermission, path? }`; 비인증 401
 - **POST /:token/add-to-my-permissions:** 200: `{ message }`
+
+Notes:
+- **Headers must remain stable** for `/preview`: `Content-Disposition: inline` and `Content-Type` derived from filename.
+- Response body bytes are identical to non-streaming behavior; only the server→client transfer uses chunked writes.
+- Range support may be added later by branching on `req.headers.range` and returning `206 Partial Content`.
 
 ### 2.5 Related Documents
 

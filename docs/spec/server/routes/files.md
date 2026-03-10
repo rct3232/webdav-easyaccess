@@ -22,6 +22,8 @@
 |--------|------|------|-------------|
 | GET | `/list` | Token or share | List folder contents. Query: path. |
 | GET | `/download` | Token or share | Download file. Query: path. |
+| POST | `/preview-ticket` | Token or share | Video preview only. Issues short-lived ticket for a streaming URL. Body: { path }. |
+| GET | `/preview-stream` | Ticket | Video preview only. Streams video bytes inline. Query: path, ticket. |
 | POST | `/upload` | Token | Upload file. Multipart: file, path. |
 | PUT | `/rename` | Token | Rename. Body: oldPath, newName. |
 | POST | `/batch-move` | Token | Move items. Body: moves, onConflict. |
@@ -53,6 +55,11 @@
 ### 2.4 Request/Response Spec
 
 - List, download, metadata, download-multiple, thumbnails: support share token (header/query)
+- **preview-ticket / preview-stream (video preview streaming):**
+  - Purpose: allow `<video src>` to load video preview without custom headers (browser cannot set `Authorization` header on `<video src>`).
+  - `POST /preview-ticket`: validates `path` exists, caller has read permission, and file type is `video`. Returns `{ ticket }`.
+  - `GET /preview-stream`: validates `{ path, ticket }` and responds with `Content-Disposition: inline` + `Content-Type` derived from filename.
+  - Tickets are short-lived (e.g. 60–120s) and must not embed JWT in query params.
 - Path params normalized; meta path (/.wea) blocked for non-admin
 - **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
 - Bulk ops: returns jobId; poll via bulk-operation

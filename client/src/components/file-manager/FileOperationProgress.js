@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -56,7 +56,7 @@ const FileOperationProgress = ({
   const prevItemIdsRef = React.useRef(new Set());
   const toastedItemIdsRef = React.useRef(new Set());
 
-  const getStatusTextForItem = (item) => {
+  const getStatusTextForItem = useCallback((item) => {
     if (item.status === 'warning') {
       return item.errorCode ? getServerErrorDisplay(item, t) : (item.error || t('fileManager.statusExcluded'));
     }
@@ -65,7 +65,7 @@ const FileOperationProgress = ({
       return t('fileManager.errorWithMessage', { message: msg });
     }
     return '';
-  };
+  }, [t]);
 
   // Toast on error/warning (once per item)
   useEffect(() => {
@@ -82,7 +82,7 @@ const FileOperationProgress = ({
       }
       toastedItemIdsRef.current.add(item.id);
     });
-  }, [items, showError, showWarning, t]);
+  }, [items, showError, showWarning, getStatusTextForItem]);
 
   // 새 작업 시작 시 접기, 에러/경고 시 해당 항목 펼치고 drawer 오픈
   useEffect(() => {

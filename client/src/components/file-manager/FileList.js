@@ -25,7 +25,6 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     draggedFile,
     dropTarget,
     getFileState,
-    handleFileCheck: handleCheck,
     getDragHandlers,
     getDropHandlers,
   } = useFileViewCommon({
@@ -109,9 +108,7 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
       }}
     >
       {files.map((file, index) => {
-        const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-        const allowContextMenu = isPermissionDisabled && !isProcessing;
-        const canOpenMenu = !isDisabled || allowContextMenu;
+        const { isSelected, isDisabled, isProcessing, processingType } = getFileState(file);
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);

@@ -54,6 +54,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const [controlsVisible, setControlsVisible] = useState(true);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const touchStartX = useRef(null);
+  const touchStartedOnPlyrControls = useRef(false);
   const hideTimerRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const stableWidthRef = useRef(null);
@@ -68,6 +69,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const audioPlyrRef = useRef(null);
   const videoContainerRef = useRef(null);
   const videoPlyrRef = useRef(null);
+  const mediaTouchRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -77,6 +79,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const displayFile = isGalleryMode && mediaFiles[currentMediaIndex]
     ? mediaFiles[currentMediaIndex]
     : file;
+  const currentPreviewFileType = displayFile
+    ? getFileType(displayFile.name || displayFile.basename)
+    : fileType;
 
   useEffect(() => {
     if (file && mediaFiles?.length > 0) {
@@ -236,7 +241,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     source.type = getContentType(filename) || 'video/mp4';
     videoEl.appendChild(source);
     container.appendChild(videoEl);
-    videoPlyrRef.current = new PlyrLib(videoEl, { ratio: null });
+    videoPlyrRef.current = new PlyrLib(videoEl, {
+      ratio: null,
+      hideControls: false, // We sync with headerVisible on mobile; no separate Plyr timer
+    });
     return () => {
       videoPlyrRef.current?.destroy();
       videoPlyrRef.current = null;
@@ -246,6 +254,38 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
     };
   }, [open, previewUrl, displayFile, file]);
+
+  // Sync Plyr controls with headerVisible (mobile) or controlsVisible (desktop) for video preview
+  useEffect(() => {
+    const plyr = videoPlyrRef.current;
+    if (!plyr || currentPreviewFileType !== 'video') return;
+    const visible = isMobile ? headerVisible : controlsVisible;
+    plyr.toggleControls(visible);
+  }, [headerVisible, controlsVisible, isMobile, currentPreviewFileType]);
+
+  // Prevent click synthesis on tap-to-toggle (mobile video) so Plyr play/pause and DialogContent
+  // onClick don't fire. Uses passive: false so preventDefault has effect.
+  // loading in deps: effect must re-run when video Box mounts (loading finishes)
+  // Skip preventDefault when tap is on .plyr__control (play button, etc.) so play/pause still works.
+  useEffect(() => {
+    const el = mediaTouchRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      if (touchStartedOnPlyrControls.current) return;
+      if (touchStartX.current == null) return;
+      const endX = e.changedTouches?.[0]?.clientX;
+      if (endX == null) return;
+      const diff = touchStartX.current - endX;
+      if (isGalleryMode && Math.abs(diff) > 50) return; // swipe, not tap
+      const onPlyrControl = e.target?.closest?.('.plyr__control');
+      if (onPlyrControl) return; // play button, etc. - let click through
+      if (isMobile && currentPreviewFileType === 'video' && Math.abs(diff) < 50) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('touchend', handler, { passive: false, capture: true });
+    return () => el.removeEventListener('touchend', handler, { passive: false, capture: true });
+  }, [loading, isGalleryMode, isMobile, currentPreviewFileType]);
 
   // PDF 페이지 크기 계산
   const calculatedWidth = useMemo(() => {
@@ -405,23 +445,44 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     }
   }, [isGalleryMode, currentMediaIndex, mediaFiles.length]);
 
-  const handleTouchStart = useCallback(
-    (e) => {
-      if (isGalleryMode) touchStartX.current = e.touches[0].clientX;
-    },
-    [isGalleryMode]
-  );
+  const handleTouchStart = useCallback((e) => {
+    const target = e.target;
+    touchStartedOnPlyrControls.current = !!(
+      target?.closest?.('.plyr__controls') || target?.closest?.('.plyr__control')
+    );
+    if (!touchStartedOnPlyrControls.current) {
+      touchStartX.current = e.touches[0].clientX;
+    }
+  }, []);
 
   const handleTouchEnd = useCallback(
     (e) => {
-      if (!isGalleryMode || !touchStartX.current) return;
+      if (touchStartedOnPlyrControls.current) {
+        touchStartedOnPlyrControls.current = false;
+        touchStartX.current = null;
+        return;
+      }
+      if (touchStartX.current == null) return;
       const endX = e.changedTouches[0].clientX;
       const diff = touchStartX.current - endX;
-      if (diff > 50) goNext();
-      else if (diff < -50) goPrev();
+      if (isGalleryMode && Math.abs(diff) > 50) {
+        if (diff > 50) goNext();
+        else goPrev();
+        touchStartX.current = null;
+        return;
+      }
+      // Tap (not swipe): on mobile video, toggle header to sync with Plyr controls
+      if (isMobile && currentPreviewFileType === 'video' && Math.abs(diff) < 50) {
+        e.stopPropagation(); // Prevent DialogContent onClick from double-toggling
+        setHeaderVisible((prev) => {
+          const next = !prev;
+          if (next && isGalleryMode) resetHideTimer();
+          return next;
+        });
+      }
       touchStartX.current = null;
     },
-    [isGalleryMode, goPrev, goNext]
+    [isGalleryMode, isMobile, currentPreviewFileType, goPrev, goNext, resetHideTimer]
   );
 
   const handleDownload = useCallback(() => {
@@ -510,6 +571,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'image':
         return (
           <Box
+            ref={mediaTouchRef}
             sx={mediaWrapperSx}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -567,6 +629,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'video':
         return (
           <Box
+            ref={mediaTouchRef}
             sx={{
               ...mediaWrapperSx,
               '& .plyr': { width: '100%', height: '100%' },
@@ -1000,7 +1063,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
           }}
         >
           {renderPreview()}
-          {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+          {isGalleryMode && currentPreviewFileType !== 'video' && (isMobile ? headerVisible : controlsVisible) && (
             <PreviewThumbnailBar
               files={mediaFiles}
               currentIndex={currentMediaIndex}

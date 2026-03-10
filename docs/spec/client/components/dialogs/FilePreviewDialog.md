@@ -55,6 +55,7 @@
 - Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
+- **Video preview:** PreviewThumbnailBar is hidden (avoids conflict with Plyr controls)
 - Auto-hide UI after 2s
 
 ### 2.7 Verification Scenarios
@@ -78,3 +79,5 @@
 - Unsupported file type
 - Header filename may be very long: render a pixel-based middle truncation (via `pixelMiddleTruncate`) so it never overlaps the action buttons (download/close). Do not rely on CSS end-ellipsis for the visible text; the UI should display the `pixelMiddleTruncate` result as-is. When truncated (desktop), show the full filename via Tooltip.
 - **Preview download:** Reuse fileService.downloadFile with file metadata so iOS + image uses share sheet or inline fallback; avoid duplicating download logic (e.g. direct blob URL download) in the dialog.
+- **Video + touch:** On mobile, when the user touches or swipes on Plyr video controls (progress bar, volume, etc.), horizontal swipe does not change media (prevents accidental navigation while scrubbing).
+- **Video + UI sync:** Header (mobile), left/right chevrons, and Plyr video controls show/hide together. Mobile: tap on video surface toggles all; `headerVisible` drives Plyr. Desktop: mouse move in gallery shows all; after 2s inactivity `controlsVisible` hides all; `controlsVisible` drives Plyr. Plyr play-large follows default behavior (hidden when playing).

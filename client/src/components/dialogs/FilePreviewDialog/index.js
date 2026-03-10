@@ -59,6 +59,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const actionsRef = useRef(null);
   const [titleRowWidth, setTitleRowWidth] = useState(0);
   const [actionsWidth, setActionsWidth] = useState(0);
+  const [textOverflows, setTextOverflows] = useState(false);
+  const textContainerRef = useRef(null);
+  const textPreRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -295,6 +298,28 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     };
   }, [open, previewUrl]);
 
+  // Text overflow detection for vertical layout
+  useEffect(() => {
+    if (!open || !textContent) {
+      setTextOverflows(false);
+      return;
+    }
+    const container = textContainerRef.current;
+    const pre = textPreRef.current;
+    if (!container || !pre) return;
+
+    const check = () => {
+      if (container && pre) {
+        setTextOverflows(pre.scrollHeight > container.clientHeight);
+      }
+    };
+
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(container);
+
+    return () => ro.disconnect();
+  }, [open, textContent]);
 
   const goPrev = useCallback(() => {
     if (isGalleryMode && currentMediaIndex > 0) {
@@ -346,13 +371,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     if (targetFile && targetFile.canPreview === false) {
       return (
         <Box
-          display="flex"
-          flexDirection="column"
-          justifyContent="center"
-          alignItems="center"
-          minHeight={200}
-          gap={2}
-          py={4}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 2,
+          }}
         >
           <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
             {t('preview.notSupported')}
@@ -369,7 +396,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
     if (loading) {
       return (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
           <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
         </Box>
       );
@@ -377,7 +412,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
     if (error) {
       return (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
           <Typography sx={{ color: '#f44336' }}>{error}</Typography>
         </Box>
       );
@@ -513,10 +556,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
       case 'audio':
         return (
-          <Box display="flex" flexDirection="column" alignItems="center" gap={2} py={4}>
-            <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-              {targetFile.name || targetFile.basename}
-            </Typography>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
             <Box
               component="audio"
               controls
@@ -543,6 +591,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               width: '100%',
               height: isMobile ? '100%' : '70vh',
               overflow: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
               px: 2,
               touchAction: 'pan-y pan-x',
               WebkitOverflowScrolling: 'touch',
@@ -563,6 +614,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 flex: 1,
                 width: '100%',
                 overflow: 'auto',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
                 touchAction: 'pan-y pan-x pinch-zoom',
                 WebkitOverflowScrolling: 'touch',
                 position: 'relative',
@@ -655,28 +709,57 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'text':
         return (
           <Box
-            component="pre"
+            ref={textContainerRef}
             sx={{
-              maxHeight: isMobile ? '100%' : '100%',
-              height: isMobile ? '100%' : 'auto',
-              overflow: 'auto',
-              backgroundColor: 'rgba(30, 30, 30, 0.8)',
-              color: 'rgba(255, 255, 255, 0.9)',
-              p: 2,
-              borderRadius: isMobile ? 0 : 1,
-              fontFamily: 'monospace',
-              fontSize: '0.875rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: textOverflows ? 'flex-start' : 'center',
+              alignItems: 'stretch',
             }}
           >
-            {textContent}
+            <Box
+              ref={textPreRef}
+              component="pre"
+              sx={{
+                ...(textOverflows
+                  ? {
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                      '&::-webkit-scrollbar': { display: 'none' },
+                    }
+                  : { overflow: 'visible' }),
+                backgroundColor: 'rgba(30, 30, 30, 0.8)',
+                color: 'rgba(255, 255, 255, 0.9)',
+                p: 2,
+                borderRadius: isMobile ? 0 : 1,
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {textContent}
+            </Box>
           </Box>
         );
 
       default:
         return (
-          <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
               {t('preview.notSupported')}
             </Typography>

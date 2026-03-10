@@ -61,7 +61,15 @@
 - [ ] onClose
 - [ ] Error/loading states
 
-### 2.8 Edge Cases
+### 2.8 Content Vertical Layout
+
+- **Image, video:** Centered in available space (flex: 1, center; unchanged).
+- **Loading, error, canPreview=false, default:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
+- **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
+- **Text:** Center when content fits; when overflow (scroll needed), switch to top align so scroll is downward only. Use ResizeObserver. Scrollbar hidden (same as PDF).
+- **PDF:** Original layout preserved (top-aligned, scrollable). Scrollbar hidden via CSS (scrollbar-width, ::-webkit-scrollbar) while scroll remains functional.
+
+### 2.9 Edge Cases
 
 - pdf.worker.min.js from public
 - Unsupported file type

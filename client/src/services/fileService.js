@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
+import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes';
 import i18n from '../i18n';
 import { normalizePath } from '../utils/pathUtils';
 import { get, post, put } from './apiClient';
@@ -9,6 +10,33 @@ import {
 } from './permissionService';
 
 const API_BASE = '/files';
+
+/** @returns {boolean} True when running on iOS (iPhone/iPad). */
+function isIOS() {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/** @param {string} filename - Basename or path. @returns {boolean} */
+function isImageFileForDownload(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  const name = filename.split('/').pop() || '';
+  return getFileType(name) === 'image';
+}
+
+/**
+ * Whether the Web Share API supports sharing files (e.g. for share sheet "Save Image").
+ * @returns {boolean}
+ */
+function canShareFiles() {
+  if (typeof navigator === 'undefined' || typeof navigator.canShare !== 'function') return false;
+  try {
+    const filesOnly = [new File([''], 'x', { type: 'image/jpeg' })];
+    return navigator.canShare({ files: filesOnly });
+  } catch {
+    return false;
+  }
+}
 
 function shareTokenHeaders(shareToken) {
   if (!shareToken) return {};
@@ -60,21 +88,70 @@ export const getFileBlob = async (filePath, options = {}) => {
   return response.data;
 };
 
-export const downloadFile = async (filePath) => {
-  const response = await get(`${API_BASE}/download`, {
-    params: { path: filePath },
-    responseType: 'blob',
-  });
+/**
+ * Download a single file. On iOS + image, uses share sheet or inline open so the user can save to Photos.
+ * @param {string} filePath - Path of the file.
+ * @param {Object} [options] - Optional. fileName, mimeType, isMobile, shareToken.
+ */
+export const downloadFile = async (filePath, options = {}) => {
+  const fileName = options.fileName ?? filePath.split('/').pop() ?? '';
+  const mimeType = options.mimeType ?? getContentType(fileName);
+  const shareToken = options.shareToken;
+  const ios = isIOS();
+  const isImage = isImageFileForDownload(fileName);
 
-  // Create download link
-  const url = window.URL.createObjectURL(new Blob([response.data]));
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', filePath.split('/').pop());
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
+  const fetchBlob = () =>
+    get(`${API_BASE}/download`, {
+      params: { path: filePath, ...(shareToken && { shareToken }) },
+      responseType: 'blob',
+      headers: shareToken ? { 'X-Share-Token': shareToken } : {},
+    });
+
+  const triggerDefaultDownload = (blob) => {
+    const url = window.URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  if (ios && isImage) {
+    const response = await fetchBlob();
+    const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+    const file = new File([blob], fileName, { type: mimeType });
+    const canShare = canShareFiles();
+
+    if (canShare) {
+      try {
+        await navigator.share({ files: [file] });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        // Fallback to default download
+      }
+    }
+    const typedBlob = blob.type && blob.type !== 'application/octet-stream' ? blob : new Blob([blob], { type: mimeType });
+    const iosUrl = window.URL.createObjectURL(typedBlob);
+    const iosLink = document.createElement('a');
+    iosLink.href = iosUrl;
+    iosLink.setAttribute('download', fileName);
+    document.body.appendChild(iosLink);
+    iosLink.click();
+    iosLink.remove();
+    // iOS Safari shows a "View / Download" confirmation dialog before starting the download.
+    // Revoking the blob URL synchronously (as triggerDefaultDownload does) invalidates the URL
+    // before the user can confirm, causing the download to silently fail.
+    // Defer cleanup: revoke when the page regains visibility after the dialog is dismissed.
+    const revokeIosUrl = () => window.URL.revokeObjectURL(iosUrl);
+    document.addEventListener('visibilitychange', revokeIosUrl, { once: true });
+    return;
+  }
+
+  const response = await fetchBlob();
+  triggerDefaultDownload(response.data);
 };
 
 export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error', signal = null) => {

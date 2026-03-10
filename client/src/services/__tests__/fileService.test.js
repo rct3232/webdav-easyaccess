@@ -108,6 +108,83 @@ describe('fileService', () => {
       expect(callArgs[1].params).not.toHaveProperty('shareToken');
       expect(callArgs[1].headers || {}).not.toHaveProperty('X-Share-Token');
     });
+
+    it('passes shareToken in params and headers when provided', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['x']) });
+
+      await downloadFile('/photo.jpg', { shareToken: 'st' });
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/photo.jpg', shareToken: 'st' },
+        responseType: 'blob',
+        headers: { 'X-Share-Token': 'st' },
+      }));
+    });
+
+    it('passes options.fileName for display; non-image uses default download', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['x']) });
+
+      await downloadFile('/path/to/doc.pdf', { fileName: 'doc.pdf' });
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/path/to/doc.pdf' },
+      }));
+    });
+
+    it('on iOS + image when canShare(files) uses share sheet', async () => {
+      const shareMock = jest.fn().mockResolvedValue(undefined);
+      const origNavigator = global.navigator;
+      Object.defineProperty(global, 'navigator', {
+        value: {
+          ...origNavigator,
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+          platform: 'iPhone',
+          canShare: (arg) => Boolean(arg?.files?.length),
+          share: shareMock,
+        },
+        configurable: true,
+      });
+      get.mockResolvedValueOnce({ data: new Blob(['image']) });
+
+      await downloadFile('/p.jpg');
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/p.jpg' },
+        responseType: 'blob',
+      }));
+      expect(shareMock).toHaveBeenCalledTimes(1);
+      expect(shareMock.mock.calls[0][0]).toMatchObject({
+        title: 'p.jpg',
+        files: [expect.any(File)],
+      });
+      Object.defineProperty(global, 'navigator', { value: origNavigator, configurable: true });
+    });
+
+    it('on iOS + image when share not available opens blob in new tab', async () => {
+      const origNavigator = global.navigator;
+      const origOpen = global.window.open;
+      const openMock = jest.fn();
+      global.window.open = openMock;
+      Object.defineProperty(global, 'navigator', {
+        value: {
+          ...origNavigator,
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+          platform: 'iPhone',
+          canShare: () => false,
+        },
+        configurable: true,
+      });
+      get.mockResolvedValueOnce({ data: new Blob(['image']) });
+
+      await downloadFile('/img.png');
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/img.png' },
+      }));
+      expect(openMock).toHaveBeenCalledWith(expect.any(String), '_blank', 'noopener,noreferrer');
+      global.window.open = origOpen;
+      Object.defineProperty(global, 'navigator', { value: origNavigator, configurable: true });
+    });
   });
 
   describe('listFiles', () => {

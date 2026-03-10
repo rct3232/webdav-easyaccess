@@ -84,7 +84,8 @@ export const useFileOperations = ({
           }, 3000);
         }
       } else {
-        await downloadFile(file.path);
+        const fileName = file.basename ?? file.name ?? file.path?.split('/').pop();
+        await downloadFile(file.path, { fileName });
       }
       
       if (onClose) {

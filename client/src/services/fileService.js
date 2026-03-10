@@ -1,5 +1,5 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes';
+import { getContentType } from '@webdav-easyaccess/shared/fileTypes';
 import i18n from '../i18n';
 import { normalizePath } from '../utils/pathUtils';
 import { get, post, put } from './apiClient';
@@ -15,27 +15,6 @@ const API_BASE = '/files';
 function isIOS() {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-/** @param {string} filename - Basename or path. @returns {boolean} */
-function isImageFileForDownload(filename) {
-  if (!filename || typeof filename !== 'string') return false;
-  const name = filename.split('/').pop() || '';
-  return getFileType(name) === 'image';
-}
-
-/**
- * Whether the Web Share API supports sharing files (e.g. for share sheet "Save Image").
- * @returns {boolean}
- */
-function canShareFiles() {
-  if (typeof navigator === 'undefined' || typeof navigator.canShare !== 'function') return false;
-  try {
-    const filesOnly = [new File([''], 'x', { type: 'image/jpeg' })];
-    return navigator.canShare({ files: filesOnly });
-  } catch {
-    return false;
-  }
 }
 
 function shareTokenHeaders(shareToken) {
@@ -98,7 +77,6 @@ export const downloadFile = async (filePath, options = {}) => {
   const mimeType = options.mimeType ?? getContentType(fileName);
   const shareToken = options.shareToken;
   const ios = isIOS();
-  const isImage = isImageFileForDownload(fileName);
 
   const fetchBlob = () =>
     get(`${API_BASE}/download`, {
@@ -118,11 +96,18 @@ export const downloadFile = async (filePath, options = {}) => {
     window.URL.revokeObjectURL(url);
   };
 
-  if (ios && isImage) {
+  if (ios) {
     const response = await fetchBlob();
     const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
     const file = new File([blob], fileName, { type: mimeType });
-    const canShare = canShareFiles();
+    let canShare = false;
+    if (typeof navigator?.canShare === 'function') {
+      try {
+        canShare = navigator.canShare({ files: [file] });
+      } catch {
+        /* ignore */
+      }
+    }
 
     if (canShare) {
       try {

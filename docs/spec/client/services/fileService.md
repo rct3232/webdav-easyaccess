@@ -45,13 +45,13 @@
 
 ### 2.3 Download behavior (single-file)
 
-- **Default (desktop or non-image):** Fetch blob via GET /api/files/download, then trigger download via `<a download>` (existing behavior). No options required.
-- **iOS + image file:** When the client detects iOS (e.g. UA or capability) and the file is an image (by extension or MIME), use a “photo-save-friendly” path:
-  1. **First:** If `navigator.canShare` and `navigator.canShare({ files: [File] })` (or equivalent) indicate that sharing files is supported, call `navigator.share({ files: [File], title })` so the system share sheet appears. The user can choose “Save Image” (or equivalent) to save to Photos. No `options` are required for this path; the service may derive filename/extension from `filePath` or from optional `options.fileName` / `options.mimeType`.
-  2. **Fallback:** If Web Share with files is not available or fails, open the image with `inline=true` (e.g. via blob URL in a new tab or `Content-Disposition: inline`) so the user can long-press and save from the browser. This avoids forcing save to Files/Chrome only.
+- **Default (non-iOS):** Fetch blob via GET /api/files/download, then trigger download via `<a download>` (existing behavior). No options required.
+- **iOS + single file (all types):** When the client detects iOS (e.g. UA or capability), use a share-sheet-friendly path for single-file downloads:
+  1. **First:** Create a `File` from the blob, then call `navigator.canShare({ files: [file] })` with the actual `File` instance (file-type support varies; e.g. zip may return `false`). If `canShare` returns true, call `navigator.share({ files: [file], title })` so the system share sheet appears. The user can choose "Save to Files" or similar. On success or `AbortError`, return. No `options` required; the service derives filename/extension from `filePath` or optional `options.fileName` / `options.mimeType`.
+  2. **Fallback:** If `navigator.canShare({ files: [file] })` returns false or `navigator.share` fails with a non-AbortError, use `typedBlob` + `<a download>` + `visibilitychange` revoke (same as existing iOS fallback).
 - **All other cases:** Use the default blob + `<a download>` behavior. Folder and multi-file (zip) downloads are unchanged.
 
-Helpers (internal or in a shared util): **isIOS** (platform), **isImageFile** (extension or MIME), **canShareFiles** (e.g. check `navigator.canShare` and a dry-run with a minimal File if needed). These are used only to decide the branch; no change to API contract.
+Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` or `canShareFiles` helper; use `navigator.canShare({ files: [file] })` with the actual `File` to check share support per file type.
 
 ### 2.4 downloadFile options (optional)
 
@@ -59,7 +59,7 @@ Helpers (internal or in a shared util): **isIOS** (platform), **isImageFile** (e
 |--------|------|-------------|
 | fileName | string | Display name for the file (e.g. for share sheet). If omitted, derived from `filePath`. |
 | mimeType | string | MIME type for the file (e.g. for creating a `File` for `navigator.share`). If omitted, inferred from extension or response. |
-| isMobile | boolean | Hint that the client is on a mobile device; can be used together with platform detection for iOS + image path. |
+| isMobile | boolean | Hint that the client is on a mobile device; can be used together with platform detection for iOS + single-file share path. |
 
 ### 2.5 Error Handling
 
@@ -77,8 +77,8 @@ Helpers (internal or in a shared util): **isIOS** (platform), **isImageFile** (e
 - [ ] getFilesMetadata with empty paths returns []
 - [ ] getFileBlob with inline option; shareToken in options passed
 - [ ] downloadFile is auth-only; with no options uses blob + &lt;a download&gt;
-- [ ] On iOS + image: when navigator.canShare(files) is supported, share path is used (share sheet); otherwise fallback (e.g. inline open) is used
-- [ ] Non-iOS or non-image: download uses default blob + &lt;a download&gt;; folder/multi-file download unchanged
+- [ ] On iOS + single file: when `navigator.canShare({ files: [file] })` returns true, share path is used (share sheet); otherwise fallback (typedBlob + &lt;a download&gt;) is used
+- [ ] Non-iOS: download uses default blob + &lt;a download&gt;; folder/multi-file download unchanged
 - [ ] createFolder calls POST /api/folders/create
 - [ ] uploadMultipleFiles calls onProgress, returns results/errors
 - [ ] batchMove/batchCopy return jobId; status polled via getBulkOperationStatus

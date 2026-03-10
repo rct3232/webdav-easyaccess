@@ -134,16 +134,28 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       setActionsWidth(actionsRef.current?.clientWidth ?? 0);
     };
 
-    updateHeaderSizes();
+    let ro = null;
+    let cancelled = false;
 
-    const ro = new ResizeObserver(updateHeaderSizes);
-    if (titleRowRef.current) ro.observe(titleRowRef.current);
-    if (actionsRef.current) ro.observe(actionsRef.current);
+    const setupObserver = () => {
+      if (cancelled) return;
+      updateHeaderSizes();
+      ro = new ResizeObserver(updateHeaderSizes);
+      if (titleRowRef.current) ro.observe(titleRowRef.current);
+      if (actionsRef.current) ro.observe(actionsRef.current);
+    };
+
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setupObserver();
+    });
 
     window.addEventListener('resize', updateHeaderSizes);
 
     return () => {
-      ro.disconnect();
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (ro) ro.disconnect();
       window.removeEventListener('resize', updateHeaderSizes);
     };
   }, [open, hideCloseButton]);
@@ -676,9 +688,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const originalHeaderName = (displayFile || file)?.name || (displayFile || file)?.basename || '';
   const headerFont = '500 1.25rem Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
   const headerSafetyPx = 24;
+  const headerGapPx = 8; // gap={2} on title row
   const headerFallbackWidthPx = 360;
   const maxHeaderTitleWidth = titleRowWidth > 0
-    ? Math.max(40, titleRowWidth - actionsWidth - headerSafetyPx)
+    ? Math.max(40, titleRowWidth - actionsWidth - headerSafetyPx - headerGapPx)
     : headerFallbackWidthPx;
   const truncatedHeaderName = useMemo(
     () => pixelMiddleTruncate(originalHeaderName, maxHeaderTitleWidth, headerFont),

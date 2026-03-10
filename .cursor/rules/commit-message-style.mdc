@@ -29,6 +29,7 @@ This project uses **Conventional Commits**:
 
 | Type       | Use for |
 |-----------|---------|
+| `merge:`  | Merge commits (branch merges) — **mandatory** for merge commits |
 | `feat:`   | New features |
 | `fix:`    | Bug fixes |
 | `docs:`   | Documentation only |
@@ -38,6 +39,7 @@ This project uses **Conventional Commits**:
 ### Rules
 
 - **Type** in lowercase, followed by colon and space.
+- **Merge commits** must use the format `merge: <description>` (e.g. `merge: feature/auth into main`).
 - **Description** in lowercase, imperative mood (e.g. "add", "fix", "update").
 - Keep the first line under ~72 characters.
 
@@ -84,6 +86,7 @@ Non-trivial commits without a meaningful body should be treated as invalid and r
 ### Examples (from project history)
 
 ```
+merge: feature/auth into main
 feat: add comprehensive client-side unit tests and update docs
 fix: refine effect dependencies in FileManager and useThumbnailLazyLoad
 docs: migrate existing tests to comprehensive specification documentation

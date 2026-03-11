@@ -53,7 +53,9 @@
 - Image: img with blob URL
 - PDF: react-pdf Document/Page
 - **Video:** Plyr player (video element) with **streaming URL** (`<video src="/api/files/preview-stream?...">`). Uses a short-lived ticket so the video element can load without custom headers. Fills content area (width/height 100%, object-fit contain).
-- **Video source type hint:** Do not set `<source type="...">` for video preview. Let the browser decide based on response headers/sniffing to avoid prematurely rejecting playable `.mov` content in Chromium-based browsers.
+- **Video source type hint:** Set `<source type="...">` using shared `getContentType(filename)` so the player provides an explicit MIME hint (e.g. `.mov` -> `video/quicktime`).
+- **Video preload:** Set `preload="metadata"` and call `load()` after wiring the source so unsupported formats surface quickly (without requiring the user to press play).
+- **Video play-large button:** Keep Plyr's large play button visible. Background is white; icon color is `rgba(0,0,0,0.5)` (including hover/focus) for readability.
 - Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)

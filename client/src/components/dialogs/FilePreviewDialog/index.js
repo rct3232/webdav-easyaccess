@@ -252,30 +252,40 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     const videoEl = document.createElement('video');
     videoEl.controls = false; // Plyr provides controls; native controls would show both UIs
     videoEl.playsInline = true;
+    videoEl.preload = 'metadata';
+    const setVideoNotPlayableLogged = (next) => setVideoNotPlayable(next);
+
     const onError = () => {
-      setVideoNotPlayable(true);
+      setVideoNotPlayableLogged(true);
     };
     const onCanPlay = () => {
-      setVideoNotPlayable(false);
+      setVideoNotPlayableLogged(false);
     };
     const onWaiting = () => {
       if (videoEl?.networkState === 3 /* NETWORK_NO_SOURCE */) {
-        setVideoNotPlayable(true);
+        setVideoNotPlayableLogged(true);
       }
     };
     const onStalled = () => {
       if (videoEl?.networkState === 3 /* NETWORK_NO_SOURCE */) {
-        setVideoNotPlayable(true);
+        setVideoNotPlayableLogged(true);
       }
+    };
+    const onLoadStart = () => {
+    };
+    const onLoadedMetadata = () => {
     };
     videoEl.addEventListener('error', onError);
     videoEl.addEventListener('canplay', onCanPlay);
     videoEl.addEventListener('waiting', onWaiting);
     videoEl.addEventListener('stalled', onStalled);
+    videoEl.addEventListener('loadstart', onLoadStart);
+    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
     const source = document.createElement('source');
     source.src = previewUrl;
     videoEl.appendChild(source);
     container.appendChild(videoEl);
+    videoEl.load();
     videoPlyrRef.current = new PlyrLib(videoEl, {
       ratio: null,
       hideControls: false, // We sync with headerVisible on mobile; no separate Plyr timer
@@ -287,6 +297,8 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       videoEl.removeEventListener('canplay', onCanPlay);
       videoEl.removeEventListener('waiting', onWaiting);
       videoEl.removeEventListener('stalled', onStalled);
+      videoEl.removeEventListener('loadstart', onLoadStart);
+      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
       // Clear all children; Plyr wrap moves video so videoEl.parentNode !== container
       while (container.firstChild) {
         container.removeChild(container.firstChild);
@@ -696,7 +708,12 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 '--plyr-tooltip-color': '#ffffff',
               },
               '& .plyr__control--overlaid': {
-                display: 'none', // Hide Plyr large-play overlay button for readability with our error overlay
+                background: '#ffffff',
+                color: 'rgba(0,0,0,0.5)',
+                '&:hover, &:focus, &:focus-visible': {
+                  background: '#ffffff',
+                  color: 'rgba(0,0,0,0.5)',
+                },
               },
               '& .plyr__video-wrapper': { width: '100%', height: '100%' },
               '& .plyr__video-wrapper video': {

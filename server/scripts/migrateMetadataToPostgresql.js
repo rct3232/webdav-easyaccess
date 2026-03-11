@@ -21,12 +21,26 @@ const VALID_REQUEST_STATUS = new Set(['pending', 'approved', 'rejected', 'cancel
 const VALID_USER_STATUS = new Set(['pending', 'approved', 'rejected']);
 const VALID_TARGET_TYPES = new Set(['folder', 'file']);
 
+const DDL_PATH = path.join(__dirname, '../store/postgresql/ddl/001_initial_normalized_schema.sql');
+
+async function ensureMetadataSchema(pool) {
+  const res = await pool.query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = 'users'`
+  );
+  if (res.rowCount > 0) return;
+  const ddlSql = await fs.readFile(DDL_PATH, 'utf8');
+  await pool.query(ddlSql);
+  console.log('[metadata-migrator] DDL applied (tables created)');
+}
+
 function parseArgs(argv) {
   const options = {
     sourceBackend: null,
     mode: 'dry-run',
     reportFile: null,
     fsDir: null,
+    fullSync: false,
     help: false,
   };
 
@@ -42,6 +56,10 @@ function parseArgs(argv) {
     }
     if (rawArg === '--apply') {
       options.mode = 'apply';
+      continue;
+    }
+    if (rawArg === '--full-sync') {
+      options.fullSync = true;
       continue;
     }
     if (rawArg.startsWith('--source-backend=')) {
@@ -65,11 +83,12 @@ function parseArgs(argv) {
 function printUsage() {
   console.log(`
 Usage:
-  node scripts/migrateMetadataToPostgresql.js --source-backend=<fs|webdav> [--dry-run|--apply] [--report-file=<path>] [--fs-dir=<path>]
+  node scripts/migrateMetadataToPostgresql.js --source-backend=<fs|webdav> [--dry-run|--apply] [--full-sync] [--report-file=<path>] [--fs-dir=<path>]
 
 Examples:
   node scripts/migrateMetadataToPostgresql.js --source-backend=fs --dry-run --report-file=./migration-report.json
   node scripts/migrateMetadataToPostgresql.js --source-backend=fs --apply --report-file=./migration-report.json
+  node scripts/migrateMetadataToPostgresql.js --source-backend=fs --apply --full-sync
   node scripts/migrateMetadataToPostgresql.js --source-backend=webdav --dry-run
 `.trim());
 }
@@ -520,8 +539,23 @@ async function loadSourceSnapshot() {
   };
 }
 
-async function applySnapshot(snapshot) {
+async function applySnapshot(snapshot, options = {}) {
   await storage.withTransaction(async (client) => {
+    if (options.fullSync) {
+      await client.query(`
+        TRUNCATE
+          permission_requests,
+          recent_files,
+          permissions_user_files,
+          permissions_user_paths,
+          share_links,
+          permissions_shares,
+          settings,
+          users
+        RESTART IDENTITY CASCADE
+      `);
+    }
+
     for (const user of snapshot.users) {
       await client.query(
         `INSERT INTO users (
@@ -884,14 +918,19 @@ async function run() {
       process.env.WEA_FS_DIR = path.resolve(process.cwd(), options.fsDir);
     }
 
-    await storage.getPgPool().query('SELECT 1');
+    const pool = storage.getPgPool();
+    await pool.query('SELECT 1');
+
+    if (options.mode === 'apply') {
+      await ensureMetadataSchema(pool);
+    }
 
     const snapshot = await loadSourceSnapshot();
 
     let targetCounts = null;
     let targetPermissionValueCounts = null;
     if (options.mode === 'apply') {
-      await applySnapshot(snapshot);
+      await applySnapshot(snapshot, { fullSync: options.fullSync });
       targetCounts = await readTargetCounts();
       targetPermissionValueCounts = await readTargetPermissionValueCounts();
     }

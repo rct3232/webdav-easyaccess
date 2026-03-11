@@ -86,7 +86,7 @@ The system supports file-backed metadata and PostgreSQL-backed metadata with the
 
 ### PostgreSQL Initialization (v2)
 
-When enabling `postgresql`, initialize the schema before running the server:
+When enabling `postgresql`, initialize the schema before running the server. The migration script (`--apply`) can create metadata tables automatically if they do not exist (by running `001_initial_normalized_schema.sql`). To create schema manually instead:
 
 1.  Apply the initial normalized DDL:
     ```bash
@@ -136,7 +136,8 @@ Options:
 
 - `--source-backend=fs|webdav` (required): source metadata backend to read from.
 - `--dry-run` (default): analyze source and generate validation report without DB writes.
-- `--apply`: execute migration in a single transaction (upsert-based).
+- `--apply`: execute migration in a single transaction (upsert-based). Creates metadata tables automatically if they do not exist.
+- `--full-sync`: with `--apply`, truncates the migrated metadata tables and re-inserts from the source so the DB exactly matches the source. Use with care; removes any rows not present in the source.
 - `--report-file=<path>`: write JSON validation report to file.
 - `--fs-dir=<path>`: optional metadata root for `fs` source (sets `WEA_FS_DIR` for this run).
 
@@ -164,7 +165,7 @@ Recommended sequence:
 Use this checklist for deployment/runtime validation only:
 
 - [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
-- [ ] Required DDL has been applied (`001`, and `002` only if your instance needs follow-up permission alignment).
+- [ ] Required DDL has been applied (`001`, and `002` only if your instance needs follow-up permission alignment). The migration script creates tables automatically when using `--apply` if they do not exist.
 - [ ] Migration runs `--dry-run` before `--apply`, and report warnings are resolved.
 - [ ] `/api/health` returns healthy status after server start.
 

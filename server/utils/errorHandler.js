@@ -150,6 +150,12 @@ function mapDatabaseError(error, options = {}) {
     return error;
   }
 
+  // 디버깅: 원본 DB 에러를 콘솔에 노출
+  console.error(
+    '[mapDatabaseError] raw DB error:',
+    { code: error?.code, message: error?.message }
+  );
+
   const fallbackErrorCode = options.fallbackErrorCode
     || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
 

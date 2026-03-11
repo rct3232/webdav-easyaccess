@@ -33,6 +33,7 @@ mockWebdav.listDirectory.mockImplementation((path) => {
 mockWebdav.pathExists.mockResolvedValue(true);
 mockWebdav.getFileContents.mockResolvedValue(Buffer.from('content'));
 mockWebdav.getFileMetadata.mockResolvedValue({ size: 7, lastmod: '2024-01-01', mime: 'text/plain' });
+mockWebdav.isVideoFile.mockImplementation((filename) => String(filename).toLowerCase().endsWith('.mp4'));
 
 
 let app;
@@ -57,6 +58,7 @@ beforeEach(() => {
   ]);
   mockWebdav.pathExists.mockResolvedValue(true);
   mockWebdav.getFileContents.mockResolvedValue(Buffer.from('content'));
+  mockWebdav.isVideoFile.mockImplementation((filename) => String(filename).toLowerCase().endsWith('.mp4'));
 });
 
 describe('GET /api/files/list', () => {
@@ -148,6 +150,75 @@ describe('GET /api/files/download', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
+  });
+});
+
+describe('POST /api/files/preview-ticket', () => {
+  it('returns a ticket for video file when user has permission', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `files-preview-ticket-${Date.now()}`,
+    });
+    await grantTestPermission(user.id, `/${user.username}`, 'read');
+
+    const res = await request(app)
+      .post('/api/files/preview-ticket')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ path: `/${user.username}/video.mp4` });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ticket).toBeDefined();
+    expect(typeof res.body.ticket).toBe('string');
+  });
+
+  it('returns 400 when file is not video', async () => {
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `files-preview-ticket-nv-${Date.now()}`,
+    });
+    await grantTestPermission(user.id, `/${user.username}`, 'read');
+
+    const res = await request(app)
+      .post('/api/files/preview-ticket')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ path: `/${user.username}/not-video.txt` });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.previewNotVideo);
+  });
+});
+
+describe('GET /api/files/preview-stream', () => {
+  it('streams video inline with valid ticket', async () => {
+    mockWebdav.getFileContents.mockResolvedValueOnce(Buffer.from('video-content'));
+
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `files-preview-stream-${Date.now()}`,
+    });
+    await grantTestPermission(user.id, `/${user.username}`, 'read');
+
+    const ticketRes = await request(app)
+      .post('/api/files/preview-ticket')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ path: `/${user.username}/video.mp4` });
+
+    expect(ticketRes.status).toBe(200);
+    const ticket = ticketRes.body.ticket;
+
+    const res = await request(app)
+      .get('/api/files/preview-stream')
+      .query({ path: `/${user.username}/video.mp4`, ticket });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('inline');
+    expect(res.headers['content-type']).toContain('video/');
+  });
+
+  it('returns 403 for invalid ticket', async () => {
+    const res = await request(app)
+      .get('/api/files/preview-stream')
+      .query({ path: '/any/video.mp4', ticket: 'nope' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.previewTicketInvalid);
   });
 });
 

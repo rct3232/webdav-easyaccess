@@ -8,6 +8,7 @@ import {
   Collapse,
   Typography,
   List,
+  Tooltip,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -91,6 +92,23 @@ const BaseFolderTreeItem = ({
   const showExpandIcon = hasChildren || isExpanded || hasLoaded;
   const prevTreeUpdateTriggerRef = useRef(treeUpdateTrigger);
   const isDisabled = hasReadPermission === false;
+  const nameTextRef = useRef(null);
+  const [isNameTruncated, setIsNameTruncated] = useState(false);
+
+  const checkNameTruncation = useCallback(() => {
+    const el = nameTextRef.current;
+    if (!el) return;
+    setIsNameTruncated(el.scrollWidth > el.clientWidth);
+  }, []);
+
+  useEffect(() => {
+    checkNameTruncation();
+    const el = nameTextRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(checkNameTruncation);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [name, checkNameTruncation]);
 
   // 드래그앤드롭 핸들러
   const {
@@ -315,18 +333,28 @@ const BaseFolderTreeItem = ({
           </ListItemIcon>
           <ListItemText
             primary={
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: '0.875rem',
-                  fontWeight: isCurrent ? 700 : 400,
-                }}
-              >
-                {name}
-              </Typography>
+              <Tooltip title={isNameTruncated ? (name || '') : ''} disableInteractive enterDelay={300}>
+                <Typography
+                  ref={nameTextRef}
+                  variant="body2"
+                  component="span"
+                  sx={{
+                    fontSize: '0.875rem',
+                    fontWeight: isCurrent ? 700 : 400,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'block',
+                  }}
+                >
+                  {name}
+                </Typography>
+              </Tooltip>
             }
             sx={{
               opacity: (isHidden || (name && name.startsWith('.'))) ? 0.5 : 1,
+              minWidth: 0,
+              overflow: 'hidden',
             }}
           />
         </ListItemButton>

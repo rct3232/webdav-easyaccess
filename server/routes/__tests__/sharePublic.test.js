@@ -118,6 +118,32 @@ describe('GET /api/share/:token (download)', () => {
   });
 });
 
+describe('GET /api/share/:token/preview', () => {
+  it('returns inline preview with correct content-type and body', async () => {
+    const videoBytes = Buffer.from('video-bytes');
+    mockWebdav.getFileContents.mockResolvedValueOnce(videoBytes);
+
+    const { user, token } = await createAuthenticatedTestUser({
+      username: `share-preview-${Date.now()}`,
+    });
+    await grantTestPermission(user.id, '/', 'admin');
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ filePath: `/${user.username}/movie.mp4` });
+
+    const linkToken = createRes.body.token;
+
+    const res = await request(app).get(`/api/share/${linkToken}/preview`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('inline');
+    expect(res.headers['content-type']).toBe('video/mp4');
+    expect(Buffer.from(res.body)).toEqual(videoBytes);
+  });
+});
+
 describe('GET /api/share/:token/check-my-permission', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app).get('/api/share/some-token/check-my-permission');

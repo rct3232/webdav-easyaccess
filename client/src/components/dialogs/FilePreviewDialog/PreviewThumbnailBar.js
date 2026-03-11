@@ -13,6 +13,7 @@ const PreviewThumbnailBar = ({ files, currentIndex, onSelect, onThumbnailsLoaded
   const { isMobile } = useResponsive();
   const scrollRef = useRef(null);
   const thumbRefs = useRef([]);
+  const prevIndexRef = useRef(null);
 
   useThumbnailLazyLoad(files, onThumbnailsLoaded || (() => {}), shareToken ? { shareToken } : {});
 
@@ -23,7 +24,19 @@ const PreviewThumbnailBar = ({ files, currentIndex, onSelect, onThumbnailsLoaded
       const containerWidth = container.clientWidth;
       const thumbLeft = thumb.offsetLeft;
       const thumbWidth = thumb.offsetWidth;
-      container.scrollLeft = thumbLeft - containerWidth / 2 + thumbWidth / 2;
+      const targetLeft = thumbLeft - containerWidth / 2 + thumbWidth / 2;
+      const isFirstRun = prevIndexRef.current === null;
+      const isSameIndex = prevIndexRef.current === currentIndex;
+      prevIndexRef.current = currentIndex;
+      const useInstantScroll = isFirstRun || isSameIndex;
+      if (useInstantScroll) {
+        const prev = container.style.scrollBehavior;
+        container.style.scrollBehavior = 'auto';
+        container.scrollTo({ left: targetLeft, behavior: 'auto' });
+        container.style.scrollBehavior = prev;
+      } else {
+        container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+      }
     }
   }, [currentIndex]);
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const multer = require('multer');
 const archiver = require('archiver');
 const { authenticateToken, authenticateTokenOrShare } = require('../utils/auth');
@@ -48,6 +49,7 @@ const { requireAuth } = require('../middleware/requireUser');
 const { checkMetaPathAccess } = require('../middleware/metaPathGuard');
 const normalizePathParam = require('../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../utils/errorHandler');
+const { sendBufferAsChunks } = require('../utils/responseWriter');
 
 /** Reject Share principal on write routes; Share links are read-only. Use after authenticateTokenOrShare, requireAuth. */
 function requireTokenNotShare(req, res, next) {
@@ -59,6 +61,28 @@ function requireTokenNotShare(req, res, next) {
 
 const downloadProgress = new Map();
 const operationProgress = new Map();
+
+// In-memory ticket store for video preview streaming (server restart invalidates all tickets).
+// ticket -> { principalId, path, expiresAtMs }
+const previewTickets = new Map();
+const PREVIEW_TICKET_TTL_MS = parseInt(process.env.WEA_PREVIEW_TICKET_TTL_MS || '120000', 10) || 120000;
+
+function issuePreviewTicket(principalId, filePath) {
+  const ticket = crypto.randomBytes(32).toString('hex');
+  previewTickets.set(ticket, { principalId, path: filePath, expiresAtMs: Date.now() + PREVIEW_TICKET_TTL_MS });
+  return ticket;
+}
+
+function readPreviewTicket(ticket) {
+  if (!ticket || typeof ticket !== 'string') return null;
+  const entry = previewTickets.get(ticket);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAtMs) {
+    previewTickets.delete(ticket);
+    return { expired: true };
+  }
+  return entry;
+}
 
 async function isDirectoryPath(webdavPath) {
   try {
@@ -818,6 +842,71 @@ router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathPara
   }
   
   res.send(buffer);
+}));
+
+// Video preview: issue short-lived ticket so <video src> can load without custom headers.
+router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const filePath = req.body?.path;
+  if (!filePath) {
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
+  }
+
+  const principalId = req.principalId;
+  const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
+  if (!hasPermission) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
+  }
+
+  const filename = path.basename(filePath);
+  if (!isVideoFile(filename)) {
+    return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.files.previewNotVideo });
+  }
+
+  const ticket = issuePreviewTicket(principalId, filePath);
+  res.json({ ticket });
+}));
+
+// Video preview: stream bytes inline using ticket-based auth.
+router.get('/preview-stream', normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const filePath = req.query.path;
+  const ticket = req.query.ticket;
+
+  if (!filePath) {
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
+  }
+
+  const entry = readPreviewTicket(ticket);
+  if (!entry) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.previewTicketInvalid });
+  }
+  if (entry.expired) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.previewTicketExpired });
+  }
+
+  const normalizedReqPath = normalizePath(filePath);
+  const normalizedTicketPath = normalizePath(entry.path);
+  if (normalizedReqPath !== normalizedTicketPath) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.previewTicketInvalid });
+  }
+
+  // Optional: confirm caller still has access (ACL changes after ticket issuance).
+  const hasPermission = await canReadFile(entry.principalId, normalizedReqPath, PERMISSIONS.READ);
+  if (!hasPermission) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
+  }
+
+  const buffer = await getFileContents(normalizedReqPath);
+  const filename = path.basename(normalizedReqPath);
+  const encodedFilename = encodeURIComponent(filename);
+  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
+
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.setHeader('Content-Disposition', `inline; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
+  res.setHeader('Content-Type', getContentType(filename));
+  res.setHeader('Content-Length', buffer.length);
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  await sendBufferAsChunks(res, buffer);
 }));
 
 router.post('/upload', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {

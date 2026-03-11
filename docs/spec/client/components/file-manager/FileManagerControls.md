@@ -74,7 +74,7 @@
 
 ### 2.6 Conditional Rendering
 
-- **selectionMode:** Hide sort button, sort menu, and view mode. Show: select all, deselect all, selected count (desktop only; hidden on mobile to save space), move, copy, download, delete (single row). downloadOnly hides move, copy, delete. bulkWritePermission disables move/delete. bulkActionsDisabled disables all bulk actions. hasReadOnlyInSelection: on desktop shows inline caption; on mobile shows gray-background banner below the toolbar row.
+- **selectionMode:** Hide sort button, sort menu, and view mode. Show: select all, deselect all, selected count (desktop only; hidden on mobile to save space), move, copy, download, delete (single row). downloadOnly hides move, copy, delete. bulkWritePermission disables move/delete. bulkActionsDisabled disables all bulk actions. hasReadOnlyInSelection: on desktop shows inline caption; on mobile shows gray-background banner below the toolbar row. **Download on mobile:** On mobile, when multiple items are selected (`selectedFiles.size > 1`), the download button is disabled (grayed out); only single-item download is allowed on mobile.
 - **!selectionMode:** Show sort button, sort menu, view mode (direct icon buttons). No select all/deselect all, no bulk action buttons.
 - !isMobile: detail view option; select all/deselect as Button with icon
 - isMobile: select all/deselect as IconButton; no detail view
@@ -94,6 +94,7 @@ Checklist for unit test writing:
 - [ ] Bulk action clicks invoke corresponding callbacks
 - [ ] bulkActionsDisabled disables bulk action buttons
 - [ ] bulkWritePermission=false disables move and delete
+- [ ] On mobile with multiple items selected, download button is disabled
 
 ### 2.8 Edge Cases
 

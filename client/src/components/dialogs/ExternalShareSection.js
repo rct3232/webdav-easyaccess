@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { formatDateOnly } from '../../utils/format';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
+import { copyToClipboard } from '../../utils/clipboard';
 import {
   Link as LinkIcon,
   ContentCopy as ContentCopyIcon,
@@ -161,11 +162,12 @@ const ExternalShareSection = ({
                 size="small"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(getShareLinkUrl(externalShareLink.token));
+                    await copyToClipboard(getShareLinkUrl(externalShareLink.token));
                     setLinkCopied(true);
                     setTimeout(() => setLinkCopied(false), 2000);
                     if (onMessage) {
                       onMessage({
+                        show: true,
                         text: t('share.linkCopied'),
                         type: 'success',
                       });
@@ -174,6 +176,7 @@ const ExternalShareSection = ({
                     console.error('Failed to copy link:', error);
                     if (onMessage) {
                       onMessage({
+                        show: true,
                         text: t('share.linkCopyFail'),
                         type: 'error',
                       });

@@ -24,6 +24,7 @@ import {
   listFiles,
   getFilesMetadata,
   getFileBlob,
+  getVideoPreviewStreamUrl,
   downloadFile,
   createFolder,
   getFolderStats,
@@ -67,6 +68,37 @@ describe('fileService', () => {
     });
   });
 
+  describe('getVideoPreviewStreamUrl', () => {
+    it('requests preview ticket and returns preview-stream URL', async () => {
+      post.mockResolvedValueOnce({ data: { ticket: 'ticket123' } });
+
+      const url = await getVideoPreviewStreamUrl('/v.mp4');
+
+      expect(post).toHaveBeenCalledWith(
+        '/files/preview-ticket',
+        { path: '/v.mp4' },
+        expect.any(Object)
+      );
+      expect(url).toContain('/api/files/preview-stream?');
+      expect(url).toContain('ticket=ticket123');
+      expect(url).toContain('path=%2Fv.mp4');
+    });
+
+    it('passes shareToken in body and headers when provided', async () => {
+      post.mockResolvedValueOnce({ data: { ticket: 't' } });
+
+      await getVideoPreviewStreamUrl('/v.mp4', { shareToken: 'st' });
+
+      expect(post).toHaveBeenCalledWith(
+        '/files/preview-ticket',
+        { path: '/v.mp4', shareToken: 'st' },
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Share-Token': 'st' }),
+        })
+      );
+    });
+  });
+
   describe('createFolder', () => {
     it('calls POST /folders/create', async () => {
       post.mockResolvedValueOnce({ data: { messageCode: 'folderCreated', path: '/foo/bar' } });
@@ -107,6 +139,80 @@ describe('fileService', () => {
       const callArgs = get.mock.calls[0];
       expect(callArgs[1].params).not.toHaveProperty('shareToken');
       expect(callArgs[1].headers || {}).not.toHaveProperty('X-Share-Token');
+    });
+
+    it('passes shareToken in params and headers when provided', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['x']) });
+
+      await downloadFile('/photo.jpg', { shareToken: 'st' });
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/photo.jpg', shareToken: 'st' },
+        responseType: 'blob',
+        headers: { 'X-Share-Token': 'st' },
+      }));
+    });
+
+    it('passes options.fileName for display; non-image uses default download', async () => {
+      get.mockResolvedValueOnce({ data: new Blob(['x']) });
+
+      await downloadFile('/path/to/doc.pdf', { fileName: 'doc.pdf' });
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/path/to/doc.pdf' },
+      }));
+    });
+
+    it('on iOS when canShare({ files }) returns true uses share sheet', async () => {
+      const shareMock = jest.fn().mockResolvedValue(undefined);
+      const canShareMock = jest.fn().mockReturnValue(true);
+      const origNavigator = global.navigator;
+      Object.defineProperty(global, 'navigator', {
+        value: {
+          ...origNavigator,
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+          platform: 'iPhone',
+          canShare: canShareMock,
+          share: shareMock,
+        },
+        configurable: true,
+      });
+      get.mockResolvedValueOnce({ data: new Blob(['content']) });
+
+      await downloadFile('/p.jpg');
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/p.jpg' },
+        responseType: 'blob',
+      }));
+      expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
+      expect(shareMock).toHaveBeenCalledTimes(1);
+      expect(shareMock.mock.calls[0][0]).toMatchObject({ files: [expect.any(File)] });
+      Object.defineProperty(global, 'navigator', { value: origNavigator, configurable: true });
+    });
+
+    it('on iOS when canShare returns false uses fallback download', async () => {
+      const canShareMock = jest.fn().mockReturnValue(false);
+      const origNavigator = global.navigator;
+      Object.defineProperty(global, 'navigator', {
+        value: {
+          ...origNavigator,
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+          platform: 'iPhone',
+          canShare: canShareMock,
+        },
+        configurable: true,
+      });
+      get.mockResolvedValueOnce({ data: new Blob(['content']) });
+
+      await downloadFile('/doc.pdf');
+
+      expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
+        params: { path: '/doc.pdf' },
+        responseType: 'blob',
+      }));
+      expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
+      Object.defineProperty(global, 'navigator', { value: origNavigator, configurable: true });
     });
   });
 

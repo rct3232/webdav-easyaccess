@@ -19,7 +19,7 @@ Do not use this file as a full schema/spec reference. Canonical technical contra
 ## 1. Install Dependencies
 
 ```bash
-npm run install-all
+npm install
 ```
 
 *   **Note**: For video thumbnail generation on the server, **FFmpeg** must be installed on the system.

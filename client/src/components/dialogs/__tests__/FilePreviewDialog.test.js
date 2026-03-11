@@ -10,6 +10,25 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import FilePreviewDialog from '../FilePreviewDialog/index';
 
+const mockGetFileBlob = jest.fn();
+const mockGetVideoPreviewStreamUrl = jest.fn();
+const mockDownloadFile = jest.fn();
+
+jest.mock('../../../services/fileService', () => ({
+  getFileBlob: (...args) => mockGetFileBlob(...args),
+  getVideoPreviewStreamUrl: (...args) => mockGetVideoPreviewStreamUrl(...args),
+  downloadFile: (...args) => mockDownloadFile(...args),
+}));
+
+jest.mock('plyr', () => {
+  return function MockPlyr() {
+    return {
+      destroy: jest.fn(),
+      toggleControls: jest.fn(),
+    };
+  };
+});
+
 jest.mock('../../../hooks/useResponsive', () => ({
   useResponsive: () => ({ isMobile: false }),
 }));
@@ -28,9 +47,30 @@ const defaultProps = {
 };
 
 describe('FilePreviewDialog', () => {
+  let originalGetContext;
+
+  beforeAll(() => {
+    // JSDOM throws for canvas.getContext unless a canvas implementation is installed.
+    // Our string utils fallback when context is null, so force null for stable tests.
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: () => null,
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: originalGetContext,
+    });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.setItem('token', 'test-token');
+    mockGetFileBlob.mockResolvedValue(new Blob(['x']));
+    mockGetVideoPreviewStreamUrl.mockResolvedValue('/api/files/preview-stream?path=%2Fv.mp4&ticket=t');
   });
 
   it('returns null when file is not provided', () => {
@@ -69,5 +109,40 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByTitle(/download/i)).toBeInTheDocument();
+  });
+
+  it('uses streaming URL (not blob) for video preview', async () => {
+    const videoFile = { path: '/v.mp4', basename: 'v.mp4', name: 'v.mp4', type: 'file' };
+    renderWithProviders(<FilePreviewDialog {...defaultProps} file={videoFile} />);
+
+    await waitFor(() => {
+      expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith('/v.mp4', expect.any(Object));
+    });
+    expect(mockGetFileBlob).not.toHaveBeenCalled();
+  });
+
+  it('truncates long header filename and shows tooltip on hover (desktop)', async () => {
+    const user = userEvent.setup();
+    const longName = 'this-is-a-very-very-very-very-very-long-filename-for-preview-dialog-header.txt';
+
+    renderWithProviders(
+      <FilePreviewDialog
+        {...defaultProps}
+        file={{ ...fileProps, name: longName, basename: longName }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Truncated output should be rendered instead of the full name.
+    expect(screen.queryByText(longName)).not.toBeInTheDocument();
+
+    const truncatedEl = screen.getByText((content) => content.includes('...'));
+    await user.hover(truncatedEl);
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(longName);
   });
 });

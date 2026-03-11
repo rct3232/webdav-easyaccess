@@ -41,6 +41,7 @@ import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { formatDate, formatDateOnly } from '../../../utils/format';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 const formatPermissionLabel = (p, t) => {
   if (p === PERMISSIONS.READ) return t('mypage.read');
@@ -143,7 +144,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
   const handleCopyLink = async (token) => {
     try {
       const url = getShareLinkUrl(token);
-      await navigator.clipboard.writeText(url);
+      await copyToClipboard(url);
       setLinkCopied(token);
       setTimeout(() => setLinkCopied(null), 2000);
       setMessage({ type: 'success', text: t('mypage.linkCopied') });

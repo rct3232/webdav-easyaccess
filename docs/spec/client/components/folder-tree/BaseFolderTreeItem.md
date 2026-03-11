@@ -75,7 +75,11 @@
 - [ ] Drop handler
 - [ ] Permission-based disable
 
-### 2.8 Edge Cases
+### 2.8 Display
+
+- Folder name: long names are truncated with CSS ellipsis (`overflow: hidden`, `textOverflow: ellipsis`, `whiteSpace: nowrap`). Tooltip with full name is shown on hover only when the name is truncated (detected via `scrollWidth` > `clientWidth` and ResizeObserver).
+
+### 2.9 Edge Cases
 
 - path/name or node – either required
 - sharedFoldersMap overrides permission

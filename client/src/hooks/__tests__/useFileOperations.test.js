@@ -59,7 +59,7 @@ describe('useFileOperations', () => {
       await result.current.handleFileDownload(file);
     });
 
-    expect(fileService.downloadFile).toHaveBeenCalledWith('/file.txt');
+    expect(fileService.downloadFile).toHaveBeenCalledWith('/file.txt', { fileName: 'file.txt' });
     expect(mockOnClose).toHaveBeenCalled();
   });
 

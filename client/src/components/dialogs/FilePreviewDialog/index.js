@@ -8,6 +8,7 @@ import {
   Typography,
   CircularProgress,
   IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -15,11 +16,14 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
-import { getFileBlob } from '../../../services/fileService';
+import { getFileBlob, getVideoPreviewStreamUrl, downloadFile } from '../../../services/fileService';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
-import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes';
+import { pixelMiddleTruncate } from '../../../utils/stringUtils';
 import PreviewThumbnailBar from './PreviewThumbnailBar';
+import PlyrLib from 'plyr';
+import 'plyr/dist/plyr.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -32,7 +36,7 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
 }
 
-const HIDE_UI_DELAY_MS = 5000;
+const HIDE_UI_DELAY_MS = 2000;
 
 const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, onThumbnailsLoaded, hideCloseButton = false }) => {
   const { t } = useTranslation();
@@ -50,9 +54,23 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const [controlsVisible, setControlsVisible] = useState(true);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const touchStartX = useRef(null);
+  const touchStartedOnPlyrControls = useRef(false);
   const hideTimerRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const stableWidthRef = useRef(null);
+  const titleRowRef = useRef(null);
+  const actionsRef = useRef(null);
+  const [titleRowWidth, setTitleRowWidth] = useState(0);
+  const [actionsWidth, setActionsWidth] = useState(0);
+  const [textOverflows, setTextOverflows] = useState(false);
+  const textContainerRef = useRef(null);
+  const textPreRef = useRef(null);
+  const audioContainerRef = useRef(null);
+  const audioPlyrRef = useRef(null);
+  const videoContainerRef = useRef(null);
+  const videoPlyrRef = useRef(null);
+  const mediaTouchRef = useRef(null);
+  const lastSyncedFilePathRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -62,20 +80,25 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const displayFile = isGalleryMode && mediaFiles[currentMediaIndex]
     ? mediaFiles[currentMediaIndex]
     : file;
+  const currentPreviewFileType = displayFile
+    ? getFileType(displayFile.name || displayFile.basename)
+    : fileType;
 
-  useEffect(() => {
-    if (file && mediaFiles?.length > 0) {
-      const idx = mediaFiles.findIndex((f) => f.path === file.path);
-      setCurrentMediaIndex(idx >= 0 ? idx : 0);
-    }
-    // file.path 변경 시에만 동기화 (썸네일 로드 시 mediaFiles 참조 변경에 따른 리셋 방지)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.path]);
+  // Sync currentMediaIndex from file.path only when the opened file changes (not on arrow nav)
+  // so first paint has correct index and thumbnail bar does not animate scroll on dialog open
+  if (file?.path && mediaFiles?.length > 0 && lastSyncedFilePathRef.current !== file.path) {
+    lastSyncedFilePathRef.current = file.path;
+    const idx = mediaFiles.findIndex((f) => f.path === file.path);
+    const next = idx >= 0 ? idx : 0;
+    setCurrentMediaIndex(next);
+  }
 
   useEffect(() => {
     if (open) {
       setHeaderVisible(true);
       setControlsVisible(true);
+    } else {
+      lastSyncedFilePathRef.current = null;
     }
   }, [open]);
 
@@ -119,6 +142,41 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     return () => clearHideTimer();
   }, [open, isGalleryMode, loading, startHideTimer, clearHideTimer]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const updateHeaderSizes = () => {
+      setTitleRowWidth(titleRowRef.current?.clientWidth ?? 0);
+      setActionsWidth(actionsRef.current?.clientWidth ?? 0);
+    };
+
+    let ro = null;
+    let cancelled = false;
+
+    const setupObserver = () => {
+      if (cancelled) return;
+      updateHeaderSizes();
+      ro = new ResizeObserver(updateHeaderSizes);
+      if (titleRowRef.current) ro.observe(titleRowRef.current);
+      if (actionsRef.current) ro.observe(actionsRef.current);
+    };
+
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setupObserver();
+    });
+
+    window.addEventListener('resize', updateHeaderSizes);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateHeaderSizes);
+    };
+  }, [open, hideCloseButton]);
+
   // Ensure worker is configured when component mounts
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -130,6 +188,107 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
     }
   }, []);
+
+  // Plyr for audio: create audio element imperatively so Plyr's DOM mutations don't conflict with React
+  useEffect(() => {
+    const target = displayFile || file;
+    const filename = target?.name || target?.basename;
+    const isAudio = open && previewUrl && getFileType(filename) === 'audio';
+    const container = audioContainerRef.current;
+    if (!isAudio || !container) {
+      if (audioPlyrRef.current) {
+        audioPlyrRef.current.destroy();
+        audioPlyrRef.current = null;
+      }
+      return;
+    }
+    const audioEl = document.createElement('audio');
+    audioEl.className = 'plyr-react plyr';
+    audioEl.controls = true;
+    audioEl.src = previewUrl;
+    audioEl.style.width = '100%';
+    audioEl.style.maxWidth = '500px';
+    container.appendChild(audioEl);
+    audioPlyrRef.current = new PlyrLib(audioEl, { ratio: null });
+    return () => {
+      audioPlyrRef.current?.destroy();
+      audioPlyrRef.current = null;
+      if (audioEl.parentNode === container) {
+        container.removeChild(audioEl);
+      }
+    };
+  }, [open, previewUrl, displayFile, file]);
+
+  // Plyr for video: create video element imperatively so Plyr's DOM mutations don't conflict with React
+  useEffect(() => {
+    const target = displayFile || file;
+    const filename = target?.name || target?.basename;
+    const isVideo = open && previewUrl && getFileType(filename) === 'video';
+    const container = videoContainerRef.current;
+    if (!isVideo || !container) {
+      if (videoPlyrRef.current) {
+        videoPlyrRef.current.destroy();
+        videoPlyrRef.current = null;
+      }
+      return;
+    }
+    // Clear any leftover nodes from previous run (Plyr wrap moves video so removeChild often skips)
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    const videoEl = document.createElement('video');
+    videoEl.controls = false; // Plyr provides controls; native controls would show both UIs
+    videoEl.playsInline = true;
+    const source = document.createElement('source');
+    source.src = previewUrl;
+    source.type = getContentType(filename) || 'video/mp4';
+    videoEl.appendChild(source);
+    container.appendChild(videoEl);
+    videoPlyrRef.current = new PlyrLib(videoEl, {
+      ratio: null,
+      hideControls: false, // We sync with headerVisible on mobile; no separate Plyr timer
+    });
+    return () => {
+      videoPlyrRef.current?.destroy();
+      videoPlyrRef.current = null;
+      // Clear all children; Plyr wrap moves video so videoEl.parentNode !== container
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+    };
+  }, [open, previewUrl, displayFile, file]);
+
+  // Sync Plyr controls with headerVisible (mobile) or controlsVisible (desktop) for video preview
+  useEffect(() => {
+    const plyr = videoPlyrRef.current;
+    if (!plyr || currentPreviewFileType !== 'video') return;
+    const visible = isMobile ? headerVisible : controlsVisible;
+    plyr.toggleControls(visible);
+  }, [headerVisible, controlsVisible, isMobile, currentPreviewFileType]);
+
+  // Prevent click synthesis on tap-to-toggle (mobile video) so Plyr play/pause and DialogContent
+  // onClick don't fire. Uses passive: false so preventDefault has effect.
+  // loading in deps: effect must re-run when video Box mounts (loading finishes)
+  // Skip preventDefault when tap is on .plyr__control (play button, etc.) so play/pause still works.
+  useEffect(() => {
+    const el = mediaTouchRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      if (touchStartedOnPlyrControls.current) return;
+      if (touchStartX.current == null) return;
+      const endX = e.changedTouches?.[0]?.clientX;
+      if (endX == null) return;
+      const diff = touchStartX.current - endX;
+      if (isGalleryMode && Math.abs(diff) > 50) return; // swipe, not tap
+      const onPlyrControl = e.target?.closest?.('.plyr__control');
+      if (onPlyrControl) return; // play button, etc. - let click through
+      if (isMobile && currentPreviewFileType === 'video' && Math.abs(diff) < 50) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('touchend', handler, { passive: false, capture: true });
+    return () => el.removeEventListener('touchend', handler, { passive: false, capture: true });
+  }, [loading, isGalleryMode, isMobile, currentPreviewFileType]);
 
   // PDF 페이지 크기 계산
   const calculatedWidth = useMemo(() => {
@@ -174,9 +333,17 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     setError(null);
 
     try {
-      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken });
       const filename = targetFile.name || targetFile.basename;
       const fileType = getFileType(filename);
+
+      if (fileType === 'video') {
+        const url = await getVideoPreviewStreamUrl(targetFile.path, { shareToken });
+        setPreviewUrl(url);
+        setLoading(false);
+        return;
+      }
+
+      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken });
 
       if (fileType === 'text') {
         const text = await blob.text();
@@ -209,7 +376,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
     } else {
       setPreviewUrl((prevUrl) => {
-        if (prevUrl) {
+        if (prevUrl && String(prevUrl).startsWith('blob:')) {
           URL.revokeObjectURL(prevUrl);
         }
         return null;
@@ -254,6 +421,28 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     };
   }, [open, previewUrl]);
 
+  // Text overflow detection for vertical layout
+  useEffect(() => {
+    if (!open || !textContent) {
+      setTextOverflows(false);
+      return;
+    }
+    const container = textContainerRef.current;
+    const pre = textPreRef.current;
+    if (!container || !pre) return;
+
+    const check = () => {
+      if (container && pre) {
+        setTextOverflows(pre.scrollHeight > container.clientHeight);
+      }
+    };
+
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(container);
+
+    return () => ro.disconnect();
+  }, [open, textContent]);
 
   const goPrev = useCallback(() => {
     if (isGalleryMode && currentMediaIndex > 0) {
@@ -267,36 +456,52 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     }
   }, [isGalleryMode, currentMediaIndex, mediaFiles.length]);
 
-  const handleTouchStart = useCallback(
-    (e) => {
-      if (isGalleryMode) touchStartX.current = e.touches[0].clientX;
-    },
-    [isGalleryMode]
-  );
+  const handleTouchStart = useCallback((e) => {
+    const target = e.target;
+    touchStartedOnPlyrControls.current = !!(
+      target?.closest?.('.plyr__controls') || target?.closest?.('.plyr__control')
+    );
+    if (!touchStartedOnPlyrControls.current) {
+      touchStartX.current = e.touches[0].clientX;
+    }
+  }, []);
 
   const handleTouchEnd = useCallback(
     (e) => {
-      if (!isGalleryMode || !touchStartX.current) return;
+      if (touchStartedOnPlyrControls.current) {
+        touchStartedOnPlyrControls.current = false;
+        touchStartX.current = null;
+        return;
+      }
+      if (touchStartX.current == null) return;
       const endX = e.changedTouches[0].clientX;
       const diff = touchStartX.current - endX;
-      if (diff > 50) goNext();
-      else if (diff < -50) goPrev();
+      if (isGalleryMode && Math.abs(diff) > 50) {
+        if (diff > 50) goNext();
+        else goPrev();
+        touchStartX.current = null;
+        return;
+      }
+      // Tap (not swipe): on mobile video, toggle header to sync with Plyr controls
+      if (isMobile && currentPreviewFileType === 'video' && Math.abs(diff) < 50) {
+        e.stopPropagation(); // Prevent DialogContent onClick from double-toggling
+        setHeaderVisible((prev) => {
+          const next = !prev;
+          if (next && isGalleryMode) resetHideTimer();
+          return next;
+        });
+      }
       touchStartX.current = null;
     },
-    [isGalleryMode, goPrev, goNext]
+    [isGalleryMode, isMobile, currentPreviewFileType, goPrev, goNext, resetHideTimer]
   );
 
-  const handleDownload = () => {
+  const handleDownload = useCallback(() => {
     const targetFile = displayFile || file;
-    if (previewUrl && targetFile) {
-      const link = document.createElement('a');
-      link.href = previewUrl;
-      link.download = targetFile.name || targetFile.basename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
+    if (!targetFile) return;
+    const fileName = targetFile.name || targetFile.basename;
+    downloadFile(targetFile.path, { fileName, shareToken });
+  }, [displayFile, file, shareToken]);
 
   const renderPreview = () => {
     const targetFile = displayFile || file;
@@ -305,13 +510,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     if (targetFile && targetFile.canPreview === false) {
       return (
         <Box
-          display="flex"
-          flexDirection="column"
-          justifyContent="center"
-          alignItems="center"
-          minHeight={200}
-          gap={2}
-          py={4}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 2,
+          }}
         >
           <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
             {t('preview.notSupported')}
@@ -328,7 +535,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
     if (loading) {
       return (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
           <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.8)' }} />
         </Box>
       );
@@ -336,7 +551,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
     if (error) {
       return (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
           <Typography sx={{ color: '#f44336' }}>{error}</Typography>
         </Box>
       );
@@ -359,6 +582,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'image':
         return (
           <Box
+            ref={mediaTouchRef}
             sx={mediaWrapperSx}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -416,7 +640,36 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'video':
         return (
           <Box
-            sx={mediaWrapperSx}
+            ref={mediaTouchRef}
+            sx={{
+              ...mediaWrapperSx,
+              '& .plyr': {
+                width: '100%',
+                height: '100%',
+                '--plyr-color-main': '#ffffff',
+                '--plyr-video-control-color': '#ffffff',
+                '--plyr-video-control-color-hover': '#ffffff',
+                '--plyr-video-control-background-hover': '#ffffff',
+                '--plyr-video-progress-buffered-background': 'rgba(255,255,255,0.2)',
+                '--plyr-video-range-track-background': 'rgba(255,255,255,0.2)',
+                '--plyr-range-fill-background': '#ffffff',
+                '--plyr-range-thumb-background': '#ffffff',
+                '--plyr-menu-background': 'rgba(0,0,0,0.9)',
+                '--plyr-menu-color': '#ffffff',
+                '--plyr-tooltip-background': 'rgba(0,0,0,0.9)',
+                '--plyr-tooltip-color': '#ffffff',
+              },
+              '& .plyr__control--overlaid': {
+                color: 'rgba(0,0,0,0.5)',
+                '&:hover, &:focus, &:focus-visible': { color: 'rgba(0,0,0,0.5)' },
+              },
+              '& .plyr__video-wrapper': { width: '100%', height: '100%' },
+              '& .plyr__video-wrapper video': {
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+              },
+            }}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
@@ -437,17 +690,15 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 <ChevronLeftIcon />
               </IconButton>
             )}
-            <Box
-              component="video"
-              controls
-              src={previewUrl}
-              sx={{
-                maxWidth: '100%',
-                maxHeight: isMobile ? '100%' : '70vh',
-                height: isMobile ? '100%' : 'auto',
-                width: isMobile ? '100%' : 'auto',
-                margin: 'auto',
-                display: 'block',
+            <div
+              ref={videoContainerRef}
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             />
             {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
@@ -472,16 +723,31 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
 
       case 'audio':
         return (
-          <Box display="flex" flexDirection="column" alignItems="center" gap={2} py={4}>
-            <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-              {targetFile.name || targetFile.basename}
-            </Typography>
-            <Box
-              component="audio"
-              controls
-              src={previewUrl}
-              sx={{ width: '100%', maxWidth: 500 }}
-            />
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              '& .plyr': {
+                '--plyr-audio-controls-background': 'transparent',
+                '--plyr-audio-control-color': '#ffffff',
+                '--plyr-audio-control-color-hover': '#ffffff',
+                '--plyr-color-main': '#ffffff',
+                '--plyr-audio-progress-buffered-background': 'rgba(255,255,255,0.2)',
+                '--plyr-audio-range-track-background': 'rgba(255,255,255,0.2)',
+                '--plyr-range-thumb-background': '#ffffff',
+                '--plyr-menu-background': 'rgba(0,0,0,0.9)',
+                '--plyr-menu-color': '#ffffff',
+                '--plyr-tooltip-background': 'rgba(0,0,0,0.9)',
+                '--plyr-tooltip-color': '#ffffff',
+                width: '100%',
+                maxWidth: 500,
+              },
+            }}
+          >
+            <div ref={audioContainerRef} style={{ width: '100%', maxWidth: 500 }} />
           </Box>
         );
 
@@ -502,6 +768,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               width: '100%',
               height: isMobile ? '100%' : '70vh',
               overflow: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
               px: 2,
               touchAction: 'pan-y pan-x',
               WebkitOverflowScrolling: 'touch',
@@ -522,6 +791,9 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 flex: 1,
                 width: '100%',
                 overflow: 'auto',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
                 touchAction: 'pan-y pan-x pinch-zoom',
                 WebkitOverflowScrolling: 'touch',
                 position: 'relative',
@@ -614,28 +886,57 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       case 'text':
         return (
           <Box
-            component="pre"
+            ref={textContainerRef}
             sx={{
-              maxHeight: isMobile ? '100%' : '100%',
-              height: isMobile ? '100%' : 'auto',
-              overflow: 'auto',
-              backgroundColor: 'rgba(30, 30, 30, 0.8)',
-              color: 'rgba(255, 255, 255, 0.9)',
-              p: 2,
-              borderRadius: isMobile ? 0 : 1,
-              fontFamily: 'monospace',
-              fontSize: '0.875rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: textOverflows ? 'flex-start' : 'center',
+              alignItems: 'stretch',
             }}
           >
-            {textContent}
+            <Box
+              ref={textPreRef}
+              component="pre"
+              sx={{
+                ...(textOverflows
+                  ? {
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                      '&::-webkit-scrollbar': { display: 'none' },
+                    }
+                  : { overflow: 'visible' }),
+                backgroundColor: 'rgba(30, 30, 30, 0.8)',
+                color: 'rgba(255, 255, 255, 0.9)',
+                p: 2,
+                borderRadius: isMobile ? 0 : 1,
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {textContent}
+            </Box>
           </Box>
         );
 
       default:
         return (
-          <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
               {t('preview.notSupported')}
             </Typography>
@@ -643,6 +944,20 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
         );
     }
   };
+
+  const originalHeaderName = (displayFile || file)?.name || (displayFile || file)?.basename || '';
+  const headerFont = '500 1.25rem Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
+  const headerSafetyPx = 24;
+  const headerGapPx = 8; // gap={2} on title row
+  const headerFallbackWidthPx = 360;
+  const maxHeaderTitleWidth = titleRowWidth > 0
+    ? Math.max(40, titleRowWidth - actionsWidth - headerSafetyPx - headerGapPx)
+    : headerFallbackWidthPx;
+  const truncatedHeaderName = useMemo(
+    () => pixelMiddleTruncate(originalHeaderName, maxHeaderTitleWidth, headerFont),
+    [originalHeaderName, maxHeaderTitleWidth]
+  );
+  const isHeaderTruncated = truncatedHeaderName !== originalHeaderName;
 
   if (!file) return null;
 
@@ -704,13 +1019,45 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
             }),
           }}
         >
-          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2}>
+          <Box
+            ref={titleRowRef}
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            width="100%"
+            gap={2}
+          >
             <Box display="flex" alignItems="center" flex={1} minWidth={0} gap={2}>
-              <Typography variant="h6" component="div" noWrap sx={{ color: 'inherit', flexShrink: 0 }}>
-                {(displayFile || file)?.name || (displayFile || file)?.basename}
-              </Typography>
+              {(() => {
+                const typography = (
+                  <Typography
+                    variant="h6"
+                    component="div"
+                    sx={{
+                      color: 'inherit',
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 1,
+                      textOverflow: 'clip',
+                    }}
+                  >
+                    {truncatedHeaderName}
+                  </Typography>
+                );
+
+                if (!isMobile && isHeaderTruncated) {
+                  return (
+                    <Tooltip title={originalHeaderName} disableInteractive>
+                      {typography}
+                    </Tooltip>
+                  );
+                }
+
+                return typography;
+              })()}
             </Box>
-            <Box display="flex" gap={1} sx={{ flexShrink: 0 }}>
+            <Box ref={actionsRef} display="flex" gap={1} sx={{ flexShrink: 0 }}>
               <IconButton onClick={handleDownload} size="small" title={t('actions.download')} sx={{ color: 'inherit' }}>
                 <DownloadIcon />
               </IconButton>
@@ -746,7 +1093,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
           }}
         >
           {renderPreview()}
-          {isGalleryMode && (isMobile ? headerVisible : controlsVisible) && (
+          {isGalleryMode && currentPreviewFileType !== 'video' && (isMobile ? headerVisible : controlsVisible) && (
             <PreviewThumbnailBar
               files={mediaFiles}
               currentIndex={currentMediaIndex}

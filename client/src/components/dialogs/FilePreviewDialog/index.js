@@ -70,6 +70,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const videoContainerRef = useRef(null);
   const videoPlyrRef = useRef(null);
   const mediaTouchRef = useRef(null);
+  const lastSyncedFilePathRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -83,19 +84,21 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     ? getFileType(displayFile.name || displayFile.basename)
     : fileType;
 
-  useEffect(() => {
-    if (file && mediaFiles?.length > 0) {
-      const idx = mediaFiles.findIndex((f) => f.path === file.path);
-      setCurrentMediaIndex(idx >= 0 ? idx : 0);
-    }
-    // file.path 변경 시에만 동기화 (썸네일 로드 시 mediaFiles 참조 변경에 따른 리셋 방지)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.path]);
+  // Sync currentMediaIndex from file.path only when the opened file changes (not on arrow nav)
+  // so first paint has correct index and thumbnail bar does not animate scroll on dialog open
+  if (file?.path && mediaFiles?.length > 0 && lastSyncedFilePathRef.current !== file.path) {
+    lastSyncedFilePathRef.current = file.path;
+    const idx = mediaFiles.findIndex((f) => f.path === file.path);
+    const next = idx >= 0 ? idx : 0;
+    setCurrentMediaIndex(next);
+  }
 
   useEffect(() => {
     if (open) {
       setHeaderVisible(true);
       setControlsVisible(true);
+    } else {
+      lastSyncedFilePathRef.current = null;
     }
   }, [open]);
 

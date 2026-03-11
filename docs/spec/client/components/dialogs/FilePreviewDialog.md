@@ -55,6 +55,7 @@
 - Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
+- **Gallery index:** `currentMediaIndex` is synced from `file.path` during render (adjust state when props change) so the first paint has the correct index and PreviewThumbnailBar does not animate scroll on open.
 - **Video preview:** PreviewThumbnailBar is hidden (avoids conflict with Plyr controls)
 - Auto-hide UI after 2s
 

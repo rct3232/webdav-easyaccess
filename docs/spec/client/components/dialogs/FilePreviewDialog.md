@@ -45,6 +45,7 @@
 ### 2.5 i18n Keys
 
 - preview.*, common.*
+- Video playback failure overlay uses: `preview.videoNotPlayable`
 - When using Web Share for image download (iOS), consider a short hint (e.g. tooltip or toast) that the user can choose “Save Image” (or locale equivalent) in the share sheet to save to Photos.
 
 ### 2.6 Conditional Rendering
@@ -52,10 +53,11 @@
 - Image: img with blob URL
 - PDF: react-pdf Document/Page
 - **Video:** Plyr player (video element) with **streaming URL** (`<video src="/api/files/preview-stream?...">`). Uses a short-lived ticket so the video element can load without custom headers. Fills content area (width/height 100%, object-fit contain).
+- **Video source type hint:** Do not set `<source type="...">` for video preview. Let the browser decide based on response headers/sniffing to avoid prematurely rejecting playable `.mov` content in Chromium-based browsers.
 - Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
-- **Gallery index:** `currentMediaIndex` is synced from `file.path` during render (adjust state when props change) so the first paint has the correct index and PreviewThumbnailBar does not animate scroll on open.
+- **Gallery index:** `currentMediaIndex` is derived from `file.path` and synchronized in an effect (no render-time state updates). The sync must be resilient to delayed `mediaFiles` updates: if the opened file is not found in `mediaFiles` yet, do not lock the index to 0; retry when `mediaFiles` changes. Use a layout effect when necessary so the first paint uses the correct index and PreviewThumbnailBar does not animate scroll on open.
 - **Video preview:** PreviewThumbnailBar is hidden (avoids conflict with Plyr controls)
 - Auto-hide UI after 2s
 

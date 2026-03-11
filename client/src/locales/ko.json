@@ -397,6 +397,7 @@
     "pdfLoadFail": "PDF 파일을 불러올 수 없습니다.",
     "pdfLoadFailWithReason": "PDF 파일을 불러올 수 없습니다: {{reason}}",
     "notSupported": "이 파일 형식은 미리보기를 지원하지 않습니다.",
+    "videoNotPlayable": "재생할 수 없는 형식입니다",
     "downloadHint": "우측 상단의 다운로드 버튼을 클릭하세요",
     "fileTypeLabel": "파일 형식:"
   },

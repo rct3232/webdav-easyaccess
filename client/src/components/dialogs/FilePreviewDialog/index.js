@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -53,6 +53,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
   const [headerVisible, setHeaderVisible] = useState(true);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [videoNotPlayable, setVideoNotPlayable] = useState(false);
   const touchStartX = useRef(null);
   const touchStartedOnPlyrControls = useRef(false);
   const hideTimerRef = useRef(null);
@@ -84,14 +85,25 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     ? getFileType(displayFile.name || displayFile.basename)
     : fileType;
 
-  // Sync currentMediaIndex from file.path only when the opened file changes (not on arrow nav)
-  // so first paint has correct index and thumbnail bar does not animate scroll on dialog open
-  if (file?.path && mediaFiles?.length > 0 && lastSyncedFilePathRef.current !== file.path) {
+  // Sync currentMediaIndex from file.path only when a new file is opened (not on arrow nav).
+  // Must not run during render; use layout effect so the first paint uses the correct index
+  // and PreviewThumbnailBar does not animate scroll on open.
+  useLayoutEffect(() => {
+    if (!open) return;
+    if (!isGalleryMode) return;
+    if (!file?.path) return;
+    if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) return;
+    if (lastSyncedFilePathRef.current === file.path) return;
+
+    const idx = mediaFiles.findIndex((f) => f?.path === file.path);
+    if (idx < 0) {
+      // mediaFiles might be populated asynchronously; do not lock to index 0.
+      return;
+    }
+
     lastSyncedFilePathRef.current = file.path;
-    const idx = mediaFiles.findIndex((f) => f.path === file.path);
-    const next = idx >= 0 ? idx : 0;
-    setCurrentMediaIndex(next);
-  }
+    setCurrentMediaIndex(idx);
+  }, [open, isGalleryMode, file?.path, mediaFiles]);
 
   useEffect(() => {
     if (open) {
@@ -232,6 +244,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
       }
       return;
     }
+    setVideoNotPlayable(false);
     // Clear any leftover nodes from previous run (Plyr wrap moves video so removeChild often skips)
     while (container.firstChild) {
       container.removeChild(container.firstChild);
@@ -239,9 +252,28 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     const videoEl = document.createElement('video');
     videoEl.controls = false; // Plyr provides controls; native controls would show both UIs
     videoEl.playsInline = true;
+    const onError = () => {
+      setVideoNotPlayable(true);
+    };
+    const onCanPlay = () => {
+      setVideoNotPlayable(false);
+    };
+    const onWaiting = () => {
+      if (videoEl?.networkState === 3 /* NETWORK_NO_SOURCE */) {
+        setVideoNotPlayable(true);
+      }
+    };
+    const onStalled = () => {
+      if (videoEl?.networkState === 3 /* NETWORK_NO_SOURCE */) {
+        setVideoNotPlayable(true);
+      }
+    };
+    videoEl.addEventListener('error', onError);
+    videoEl.addEventListener('canplay', onCanPlay);
+    videoEl.addEventListener('waiting', onWaiting);
+    videoEl.addEventListener('stalled', onStalled);
     const source = document.createElement('source');
     source.src = previewUrl;
-    source.type = getContentType(filename) || 'video/mp4';
     videoEl.appendChild(source);
     container.appendChild(videoEl);
     videoPlyrRef.current = new PlyrLib(videoEl, {
@@ -251,6 +283,10 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
     return () => {
       videoPlyrRef.current?.destroy();
       videoPlyrRef.current = null;
+      videoEl.removeEventListener('error', onError);
+      videoEl.removeEventListener('canplay', onCanPlay);
+      videoEl.removeEventListener('waiting', onWaiting);
+      videoEl.removeEventListener('stalled', onStalled);
       // Clear all children; Plyr wrap moves video so videoEl.parentNode !== container
       while (container.firstChild) {
         container.removeChild(container.firstChild);
@@ -660,8 +696,7 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
                 '--plyr-tooltip-color': '#ffffff',
               },
               '& .plyr__control--overlaid': {
-                color: 'rgba(0,0,0,0.5)',
-                '&:hover, &:focus, &:focus-visible': { color: 'rgba(0,0,0,0.5)' },
+                display: 'none', // Hide Plyr large-play overlay button for readability with our error overlay
               },
               '& .plyr__video-wrapper': { width: '100%', height: '100%' },
               '& .plyr__video-wrapper video': {
@@ -689,6 +724,26 @@ const FilePreviewDialog = ({ open, onClose, file, mediaFiles = [], shareToken, o
               >
                 <ChevronLeftIcon />
               </IconButton>
+            )}
+            {videoNotPlayable && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 4, // under header (10) and gallery chevrons (5), above Plyr
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(0,0,0,0.45)',
+                  pointerEvents: 'none',
+                  px: 3,
+                  textAlign: 'center',
+                }}
+              >
+                <Typography sx={{ color: 'rgba(255,255,255,0.92)', fontWeight: 600 }}>
+                  {t('preview.videoNotPlayable')}
+                </Typography>
+              </Box>
             )}
             <div
               ref={videoContainerRef}

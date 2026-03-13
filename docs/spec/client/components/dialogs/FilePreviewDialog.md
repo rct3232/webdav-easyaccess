@@ -104,9 +104,9 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 - **Image, video:** Centered in available space (flex: 1, center). Video: Plyr wrapper fills container; video element uses object-fit: contain.
 - **Loading, error, canPreview=false, default:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
-- **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
+- **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center', `alignItems: 'center'`.
 - **Text:** Center when content fits; when overflow (scroll needed), switch to top align so scroll is downward only. Use ResizeObserver. Scrollbar hidden (same as PDF).
-- **PDF:** Original layout preserved (top-aligned, scrollable). Scrollbar hidden via CSS (scrollbar-width, ::-webkit-scrollbar) while scroll remains functional.
+- **PDF:** Top-aligned and scrollable inside a container that fills the available content area (flex: 1, minHeight: 0). Do not clamp height with a fixed viewport-relative value (e.g. 70vh); instead, let the PDF container inherit height from `DialogContent` so there is no unused vertical gap beneath the preview. Scrollbar hidden via CSS (scrollbar-width, ::-webkit-scrollbar) while scroll remains functional.
 
 ### 2.9 Edge Cases
 

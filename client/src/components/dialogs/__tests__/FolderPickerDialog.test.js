@@ -9,7 +9,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import FolderPickerDialog from '../FolderPickerDialog';
-import { useFolderPicker } from '../../../hooks/useFolderPicker';
+import { useFolderPicker } from '../FolderPickerDialog/hooks/useFolderPicker';
 
 const defaultMockReturn = {
   selectedPath: '/docs',
@@ -30,7 +30,7 @@ const defaultMockReturn = {
   isInvalidDestination: jest.fn().mockReturnValue(false),
 };
 
-jest.mock('../../../hooks/useFolderPicker', () => ({
+jest.mock('../FolderPickerDialog/hooks/useFolderPicker', () => ({
   useFolderPicker: jest.fn(),
 }));
 

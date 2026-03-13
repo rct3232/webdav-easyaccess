@@ -14,8 +14,9 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/file-manager/FileOperationProgress.js`
-- **Test file:** `client/src/components/file-manager/__tests__/FileOperationProgress.test.js`
+- **Source:** `client/src/components/file-manager/FileOperationProgress/FileOperationProgress.js`
+- **Entry point:** `client/src/components/file-manager/FileOperationProgress/index.js`
+- **Test file:** `client/src/components/file-manager/FileOperationProgress/__tests__/FileOperationProgress.test.js`
 
 ### 2.2 Props
 
@@ -46,7 +47,7 @@
 ### 2.4 Dependencies
 
 - **imports:** React, createPortal (react-dom), useTranslation, MUI Drawer/Box/Paper/Typography/LinearProgress/IconButton/Collapse/CircularProgress/Button/List/ListItem/ListItemText, ProgressSummary, getServerErrorDisplay, styles
-- **Reference implementation:** `client/src/components/file-manager/FileOperationProgress.js`
+- **Reference implementation:** `client/src/components/file-manager/FileOperationProgress/FileOperationProgress.js`
 
 ### 2.5 i18n Keys
 

@@ -13,7 +13,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFileManager.js`
+- **Source:** `client/src/pages/FileManager/hooks/useFileManager.js`
 - **Test file:** `client/src/hooks/__tests__/useFileManager.test.js`
 
 ### 2.2 Input Parameters

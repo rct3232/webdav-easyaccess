@@ -21,7 +21,7 @@
 |----------|-------|--------|------------|
 | listFiles | (path, options?) | Promise\<Array\> | GET /api/files/list |
 | getFilesMetadata | (paths, options?) | Promise\<Array\> | POST /api/files/metadata |
-| getFileBlob | (filePath, options?) | Promise\<Blob\> | GET /api/files/download |
+| getFileBlob | (filePath, options?) | Promise\<Blob\> | GET /api/files/download. `options.signal` (AbortSignal) forwarded to request for cancellation. |
 | getVideoPreviewStreamUrl | (filePath, options?) | Promise\<string\> | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL) |
 | downloadFile | (filePath, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
 | uploadFileWithPath | (file, targetPath, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |

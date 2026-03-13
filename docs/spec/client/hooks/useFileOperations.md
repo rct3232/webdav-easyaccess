@@ -13,7 +13,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFileOperations.js`
+- **Source:** `client/src/pages/FileManager/hooks/useFileOperations.js`
 - **Test file:** `client/src/hooks/__tests__/useFileOperations.test.js`
 
 ### 2.2 Input Parameters

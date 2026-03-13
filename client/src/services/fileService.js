@@ -55,7 +55,7 @@ export const getFilesMetadata = async (paths = [], options = {}) => {
  * @returns {Promise<Blob>}
  */
 export const getFileBlob = async (filePath, options = {}) => {
-  const { shareToken, inline } = options;
+  const { shareToken, inline, signal } = options;
   const params = { path: filePath };
   if (inline) params.inline = 'true';
   if (shareToken) params.shareToken = shareToken;
@@ -63,6 +63,7 @@ export const getFileBlob = async (filePath, options = {}) => {
     params,
     responseType: 'blob',
     headers: shareTokenHeaders(shareToken),
+    signal,
   });
   return response.data;
 };

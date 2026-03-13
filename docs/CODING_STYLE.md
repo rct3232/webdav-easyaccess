@@ -48,6 +48,28 @@ import { getFileIcon } from '../../utils/fileIconUtils';
 - **Custom hooks**: Use the `use` prefix. Return a consistent shape—either an object or a tuple like `[value, setValue]`.
 - **Styles**: Define static style objects outside the component to avoid recreating them on every render (see `baseStyles` in `client/src/components/file-manager/FileListItem.js`).
 
+### Hook Placement
+
+Place hooks in the narrowest scope that covers all their consumers. Only widen the scope when a second, unrelated consumer needs the same hook.
+
+| Scope | Location | When to use |
+|-------|----------|-------------|
+| Global | `client/src/hooks/` | Used by 2+ unrelated pages or components, or genuinely cross-cutting (e.g. `useDragAndDrop`, `useMessage`, `usePullToRefresh`, `useInfiniteScroll`) |
+| Page-local | `client/src/pages/[PageName]/hooks/` | Exclusively consumed by a single page and its direct sub-components (e.g. `useFileManager`, `useFileOperations`) |
+| Dialog-local | `client/src/components/dialogs/[DialogName]/hooks/` | Exclusively consumed by one dialog component (e.g. `useShareDialog`, `useFolderPicker`) |
+| Component-family | `client/src/components/[family]/hooks/` | Shared among multiple components in the same folder but not used outside it (e.g. `useFileViewCommon` in `file-manager/hooks/`) |
+
+**Decision rule**: start at the narrowest scope; move outward only when a second unrelated consumer appears.
+
+**Test file placement**: co-locate under `hooks/__tests__/` next to the hook file.
+
+```
+pages/FileManager/hooks/
+  useFileManager.js
+  __tests__/
+    useFileManager.test.js
+```
+
 ---
 
 ## Express Patterns

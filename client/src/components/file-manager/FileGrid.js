@@ -5,7 +5,7 @@ import {
   Box,
   useTheme,
 } from '@mui/material';
-import { useFileViewCommon } from '../../hooks/useFileViewCommon';
+import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';

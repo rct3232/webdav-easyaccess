@@ -13,7 +13,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFileOperationProgress.js`
+- **Source:** `client/src/pages/FileManager/hooks/useFileOperationProgress.js`
 - **Test file:** `client/src/hooks/__tests__/useFileOperationProgress.test.js`
 
 ### 2.2 Input Parameters

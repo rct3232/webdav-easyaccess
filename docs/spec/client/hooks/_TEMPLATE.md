@@ -13,8 +13,17 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/[HookName].js`
-- **Test file:** `client/src/hooks/__tests__/[HookName].test.js`
+Choose the scope according to [CODING_STYLE.md § Hook Placement](../../../../CODING_STYLE.md):
+
+| Scope | Source path | Test path |
+|-------|-------------|-----------|
+| Global | `client/src/hooks/[HookName].js` | `client/src/hooks/__tests__/[HookName].test.js` |
+| Page-local | `client/src/pages/[PageName]/hooks/[HookName].js` | `client/src/pages/[PageName]/hooks/__tests__/[HookName].test.js` |
+| Dialog-local | `client/src/components/dialogs/[DialogName]/hooks/[HookName].js` | `client/src/components/dialogs/[DialogName]/hooks/__tests__/[HookName].test.js` |
+| Component-family | `client/src/components/[family]/hooks/[HookName].js` | `client/src/components/[family]/hooks/__tests__/[HookName].test.js` |
+
+- **Source:** `(fill in the path matching the scope above)`
+- **Test file:** `(fill in the test path matching the scope above)`
 
 ### 2.2 Input Parameters
 

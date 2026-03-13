@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFolderPicker.js`
-- **Test file:** `client/src/hooks/__tests__/useFolderPicker.test.js`
+- **Source:** `client/src/components/dialogs/FolderPickerDialog/hooks/useFolderPicker.js`
+- **Test file:** `client/src/components/dialogs/FolderPickerDialog/hooks/__tests__/useFolderPicker.test.js`
 
 ### 2.2 Input Parameters
 

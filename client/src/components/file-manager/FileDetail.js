@@ -15,7 +15,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
-import { useFileViewCommon } from '../../hooks/useFileViewCommon';
+import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';

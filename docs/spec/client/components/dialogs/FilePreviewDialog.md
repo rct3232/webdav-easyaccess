@@ -14,8 +14,37 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/dialogs/FilePreviewDialog/index.js`
+- **Source:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js`
+- **Entry point (re-export):** `client/src/components/dialogs/FilePreviewDialog/index.js`
 - **Test file:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
+
+### 2.2a Local Hooks
+
+All hooks live under `client/src/components/dialogs/FilePreviewDialog/hooks/`:
+
+| Hook | Responsibility |
+|------|---------------|
+| `usePreviewLoader` | `loading`, `error`, `previewUrl`, `previewBlob`, `textContent`, `loadPreview` callback, blob cleanup effect |
+| `useGalleryNavigation` | `currentMediaIndex`, `goPrev`, `goNext`, `handleTouchStart/End`, gallery index sync `useLayoutEffect`, reset on close |
+| `useUIVisibility` | `headerVisible`, `controlsVisible`, `startHideTimer`, `clearHideTimer`, `resetHideTimer`, hide timer effects |
+| `usePlyrPlayer` | Plyr audio/video DOM effects, `videoNotPlayable` state, controls sync effect, touchend preventDefault effect, `audioContainerRef`, `videoContainerRef`, `mediaTouchRef` |
+| `usePdfLayout` | `pdfContainerRef`, `containerWidth/Height`, `calculatedWidth` (useMemo), `pageArray` (useMemo), `numPages`, `pageInfo`, PDF container ResizeObserver effect |
+| `useHeaderTruncation` | `titleRowRef`, `actionsRef`, `titleRowWidth`, `actionsWidth`, `textOverflows`, `truncatedHeaderName`, `isHeaderTruncated`, header ResizeObserver effect, text overflow detection effect |
+
+Spec files: `docs/spec/client/components/dialogs/FilePreviewDialog/hooks/`
+
+### 2.2b Preview Subcomponents
+
+All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/previews/`:
+
+| Component | Rendered for |
+|-----------|-------------|
+| `ImagePreview` | `fileType === 'image'` — img + gallery chevrons |
+| `VideoPreview` | `fileType === 'video'` — Plyr video container, videoNotPlayable overlay, gallery chevrons |
+| `AudioPreview` | `fileType === 'audio'` — Plyr audio container |
+| `PdfPreview` | `fileType === 'pdf'` — react-pdf Document/Page |
+| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text |
+| `PreviewUnsupported` | `canPreview === false` and unrecognised types |
 
 ### 2.2 Props
 
@@ -59,7 +88,8 @@
 - Audio: Plyr player (audio element); centered, transparent background, white controls/sliders/text
 - Text: pre/code
 - Gallery mode when mediaFiles.length > 1 (image/video)
-- **Gallery index:** `currentMediaIndex` is derived from `file.path` and synchronized in an effect (no render-time state updates). The sync must be resilient to delayed `mediaFiles` updates: if the opened file is not found in `mediaFiles` yet, do not lock the index to 0; retry when `mediaFiles` changes. Use a layout effect when necessary so the first paint uses the correct index and PreviewThumbnailBar does not animate scroll on open.
+- **Gallery index:** `currentMediaIndex` is derived from `file.path` and synchronized in an effect (no render-time state updates). The sync must be resilient to delayed `mediaFiles` updates: if the opened file is not found in `mediaFiles` yet, do not lock the index to 0; retry when `mediaFiles` changes. Use a layout effect when necessary so the first paint uses the correct index and PreviewThumbnailBar does not animate scroll on open. `currentMediaIndex` must be reset to 0 when the dialog closes (open becomes false) to prevent a stale index from causing the wrong file to be displayed transiently on re-open.
+- **Preview race condition prevention:** `loadPreview` must use an `AbortController` signal to cancel stale in-flight requests. When `displayFile` changes (e.g. gallery navigation or `mediaFiles` update), the previous fetch must be aborted before the new one starts. The calling `useEffect` creates an `AbortController`, passes its `signal` to `loadPreview`, and returns `() => controller.abort()` as the cleanup. Inside `loadPreview`, `signal.aborted` is checked after each `await` before calling any `setState`. `AbortError` exceptions are silently swallowed (not treated as preview errors). `getFileBlob` forwards the signal to the underlying `get()` call.
 - **Video preview:** PreviewThumbnailBar is hidden (avoids conflict with Plyr controls)
 - Auto-hide UI after 2s
 

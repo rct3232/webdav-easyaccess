@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/usePermissionManager.js`
-- **Test file:** `client/src/hooks/__tests__/usePermissionManager.test.js`
+- **Source:** `client/src/components/dialogs/ShareDialog/hooks/usePermissionManager.js`
+- **Test file:** `client/src/components/dialogs/ShareDialog/hooks/__tests__/usePermissionManager.test.js`
 
 ### 2.2 Input Parameters
 

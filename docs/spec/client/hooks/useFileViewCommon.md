@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFileViewCommon.js`
-- **Test file:** `client/src/hooks/__tests__/useFileViewCommon.test.js`
+- **Source:** `client/src/components/file-manager/hooks/useFileViewCommon.js`
+- **Test file:** `client/src/components/file-manager/hooks/__tests__/useFileViewCommon.test.js`
 
 ### 2.2 Input Parameters
 

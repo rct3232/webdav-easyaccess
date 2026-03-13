@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/hooks/useFileManagerDialogs.js`
-- **Test file:** `client/src/hooks/__tests__/useFileManagerDialogs.test.js`
+- **Source:** `client/src/pages/FileManager/hooks/useFileManagerDialogs.js`
+- **Test file:** `client/src/pages/FileManager/hooks/__tests__/useFileManagerDialogs.test.js`
 
 ### 2.2 Input Parameters
 

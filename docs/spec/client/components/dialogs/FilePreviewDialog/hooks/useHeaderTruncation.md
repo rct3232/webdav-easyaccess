@@ -30,7 +30,7 @@
 | Key | Type | Meaning |
 |-----|------|---------|
 | titleRowRef | React.Ref | Ref for the title row container |
-| actionsRef | React.Ref | Ref for the actions (download/close) container |
+| actionsRef | React.Ref | Ref for the actions (zoom when applicable, download, close) container |
 | textContainerRef | React.Ref | Ref for the text preview outer container |
 | textPreRef | React.Ref | Ref for the `<pre>` element inside text preview |
 | truncatedHeaderName | string | Pixel-truncated filename (middle truncation) |
@@ -64,3 +64,4 @@
 - Header constants: `headerFont = '500 1.25rem Inter, ...'`, `headerSafetyPx = 24`, `headerGapPx = 8`, `headerFallbackWidthPx = 360`.
 - `maxHeaderTitleWidth = titleRowWidth > 0 ? max(40, titleRowWidth - actionsWidth - safetyPx - gapPx) : fallbackPx`.
 - RAF used before attaching ResizeObserver to avoid measuring before DOM settles.
+- Zoom controls are inside the actions container when preview is PDF/image; no formula change. ResizeObserver picks up the larger actions width so title truncation adapts automatically.

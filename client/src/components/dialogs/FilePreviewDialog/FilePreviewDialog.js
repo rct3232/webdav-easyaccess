@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -9,6 +9,7 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  Popover,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -19,7 +20,7 @@ import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import PreviewThumbnailBar from './PreviewThumbnailBar';
-import PreviewZoomBar from './PreviewZoomBar';
+import HeaderZoomControls, { ZoomControlButtons } from './HeaderZoomControls';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -57,6 +58,8 @@ const FilePreviewDialog = ({
 }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
+  const [floatingZoomOpen, setFloatingZoomOpen] = useState(false);
+  const zoomAnchorRef = useRef(null);
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
@@ -147,6 +150,11 @@ const FilePreviewDialog = ({
     }
     return () => clearHideTimer();
   }, [open, isGalleryMode, needsZoom, loading, startHideTimer, clearHideTimer]);
+
+  // Close floating zoom when header hides or dialog closes (hide together with header)
+  useEffect(() => {
+    if (!headerVisible || !open) setFloatingZoomOpen(false);
+  }, [headerVisible, open]);
 
   // Step 5: Plyr player
   const { videoNotPlayable, audioContainerRef, videoContainerRef, mediaTouchRef } = usePlyrPlayer({
@@ -417,7 +425,19 @@ const FilePreviewDialog = ({
                 return typography;
               })()}
             </Box>
-            <Box ref={actionsRef} display="flex" gap={1} sx={{ flexShrink: 0 }}>
+            <Box ref={actionsRef} display="flex" alignItems="center" gap={1} sx={{ flexShrink: 0 }}>
+              {needsZoom && (
+                <HeaderZoomControls
+                  ref={zoomAnchorRef}
+                  zoom={zoom}
+                  onZoomIn={zoomIn}
+                  onZoomOut={zoomOut}
+                  onReset={resetZoom}
+                  t={t}
+                  isMobile={isMobile}
+                  onOpenFloating={isMobile ? () => { resetHideTimer(); setFloatingZoomOpen((prev) => !prev); } : undefined}
+                />
+              )}
               <IconButton onClick={handleDownload} size="small" title={t('actions.download')} sx={{ color: 'inherit' }}>
                 <DownloadIcon />
               </IconButton>
@@ -429,6 +449,38 @@ const FilePreviewDialog = ({
             </Box>
           </Box>
         </DialogTitle>
+        <Popover
+          open={floatingZoomOpen && headerVisible && isMobile && needsZoom}
+          onClose={() => setFloatingZoomOpen(false)}
+          anchorEl={zoomAnchorRef.current}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+          slotProps={{
+            paper: {
+              sx: {
+                mt: 0.5,
+                borderRadius: 2,
+                backgroundColor: 'rgba(0,0,0,0.85)',
+                color: '#fff',
+                boxShadow: 4,
+              },
+            },
+          }}
+          disableScrollLock
+        >
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, py: 0.5, px: 0.5 }}
+          >
+            <ZoomControlButtons
+              zoom={zoom}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onReset={resetZoom}
+              t={t}
+            />
+          </Box>
+        </Popover>
         <DialogContent
           dividers={false}
           sx={{
@@ -452,20 +504,9 @@ const FilePreviewDialog = ({
             }
           }}
         >
-          {renderContent()}
-          {needsZoom && (
-            <PreviewZoomBar
-              zoom={zoom}
-              onZoomIn={zoomIn}
-              onZoomOut={zoomOut}
-              onReset={resetZoom}
-              visible={isMobile ? headerVisible : controlsVisible}
-              t={t}
-              bottom={
-                isGalleryMode && previewFileType === 'image' ? 88 : 16
-              }
-            />
-          )}
+          <Box sx={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {renderContent()}
+          </Box>
           {isGalleryMode && currentPreviewFileType !== 'video' && (isMobile ? headerVisible : controlsVisible) && (
             <PreviewThumbnailBar
               files={mediaFiles}

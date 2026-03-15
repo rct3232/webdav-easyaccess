@@ -6,7 +6,7 @@
 |------|-------------|
 | Role | Full-screen preview for images, PDFs, text, video. Supports gallery mode for multiple media. Uses getFileBlob (non-video), react-pdf, and a ticket-based streaming URL for video preview. |
 | Used in | FileManager (Preview from context menu) |
-| Related components | PreviewThumbnailBar, getFileBlob, getFileType |
+| Related components | PreviewThumbnailBar, HeaderZoomControls, getFileBlob, getFileType |
 
 ---
 
@@ -49,7 +49,9 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 ### 2.2c Zoom Support
 
 - **Zoomable types:** `pdf`, `image` (text preview does not support zoom).
-- **PreviewZoomBar:** Bottom bar with zoom in/out, percentage display, and reset. Visibility: `isMobile ? headerVisible : controlsVisible` (same as header/controls auto-hide).
+- **HeaderZoomControls:** Zoom controls are integrated in the dialog header. Order in header: zoom controls (when applicable) → download → close.
+  - **Desktop:** Full inline controls (zoom out, percentage/reset, zoom in) in the header.
+  - **Mobile:** Header shows a single compact control (ZoomIn icon when zoom is 1, or e.g. 125% when zoom has changed). A floating bar with full controls (zoom out, %, zoom in) appears and disappears with the header, positioned just below the header; bar width is content-sized (not full width).
 - **Inputs:** Ctrl+wheel zoom (desktop), two-finger pinch zoom (mobile).
 
 ### 2.2 Props
@@ -105,7 +107,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 - [ ] Gallery navigation
 - [ ] onClose
 - [ ] Error/loading states
-- [ ] Zoom bar renders for zoomable types (PDF, image); zoom controls change scale
+- [ ] Zoom controls in header for zoomable types (PDF, image); order: zoom → download → close; zoom controls change scale
 
 ### 2.8 Content Vertical Layout
 
@@ -127,7 +129,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 - pdf.worker.min.js from public
 - Unsupported file type
-- Header filename may be very long: render a pixel-based middle truncation (via `pixelMiddleTruncate`) so it never overlaps the action buttons (download/close). Do not rely on CSS end-ellipsis for the visible text; the UI should display the `pixelMiddleTruncate` result as-is. When truncated (desktop), show the full filename via Tooltip.
+- Header filename may be very long: render a pixel-based middle truncation (via `pixelMiddleTruncate`) so it never overlaps the action buttons (zoom when applicable, download, close). Do not rely on CSS end-ellipsis for the visible text; the UI should display the `pixelMiddleTruncate` result as-is. When truncated (desktop), show the full filename via Tooltip.
 - **Preview download:** Reuse fileService.downloadFile with file metadata so iOS + image uses share sheet or inline fallback; avoid duplicating download logic (e.g. direct blob URL download) in the dialog.
 - **Video preview auth:** Do not use JWT in query params. Use `getVideoPreviewStreamUrl` which obtains a short-lived ticket from the server and returns a streaming URL safe for `<video src>`.
 - **Video + touch:** On mobile, when the user touches or swipes on Plyr video controls (progress bar, volume, etc.), horizontal swipe does not change media (prevents accidental navigation while scrubbing).

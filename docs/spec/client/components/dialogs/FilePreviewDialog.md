@@ -39,12 +39,18 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 | Component | Rendered for |
 |-----------|-------------|
-| `ImagePreview` | `fileType === 'image'` — img + gallery chevrons |
+| `ImagePreview` | `fileType === 'image'` — img + gallery chevrons; supports zoom |
 | `VideoPreview` | `fileType === 'video'` — Plyr video container, videoNotPlayable overlay, gallery chevrons |
 | `AudioPreview` | `fileType === 'audio'` — Plyr audio container |
-| `PdfPreview` | `fileType === 'pdf'` — react-pdf Document/Page |
-| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text |
+| `PdfPreview` | `fileType === 'pdf'` — react-pdf Document/Page; supports zoom |
+| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text; supports zoom |
 | `PreviewUnsupported` | `canPreview === false` and unrecognised types |
+
+### 2.2c Zoom Support
+
+- **Zoomable types:** `pdf`, `image`, `text`.
+- **PreviewZoomBar:** Bottom bar with zoom in/out, percentage display, and reset. Visibility: `isMobile ? headerVisible : controlsVisible` (same as header/controls auto-hide).
+- **Inputs:** Ctrl+wheel zoom (desktop), two-finger pinch zoom (mobile).
 
 ### 2.2 Props
 
@@ -99,10 +105,19 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 - [ ] Gallery navigation
 - [ ] onClose
 - [ ] Error/loading states
+- [ ] Zoom bar renders for zoomable types (PDF, image, text); zoom controls change scale
 
 ### 2.8 Content Vertical Layout
 
 - **Image, video:** Centered in available space (flex: 1, center). Video: Plyr wrapper fills container; video element uses object-fit: contain.
+  - **Image zoom layout:** Use a three-layer structure to correctly support zoom + scroll + fixed chevrons:
+    1. `outerWrapper` — `position: relative`, `overflow: hidden`, `flex: 1`; serves as the chevron positioning context and touch/swipe target (`mediaTouchRef`).
+    2. `scrollBox` — `overflow: auto` inner box filling `outerWrapper`; handles scrolling when image is zoomed.
+    3. `centerBox` — `min-width: 100%`, `min-height: 100%`, `display: flex`, `justify-content/align-items: center`; centers the image when it fits; allows it to overflow (and scroll) when zoomed.
+    - Chevrons (`position: absolute`) are placed in `outerWrapper`, not in `scrollBox`, so they remain fixed on screen regardless of scroll position.
+    - **Do NOT use `transform: scale()` for zoom on images.** Use actual layout dimensions instead: record the image's rendered base size on load (`onLoad` → `imgRef.current.offsetWidth/offsetHeight`), then set explicit `width = baseSize.width * zoom` (with `maxWidth`/`maxHeight` removed when zoom > 1). This ensures the scroll container's scrollable area reflects the true scaled size in all directions (including left/top), preventing the left-side clipping issue caused by CSS transform not affecting layout.
+    - `centerBox` uses `minWidth: zoomed width` and `minHeight: max(100%, zoomed height)`. The `max(100%, ...)` for height is required because block elements automatically fill container width but NOT height — without it, a landscape image shorter than the viewport would sit at the top instead of being vertically centered.
+    - Reset `baseSize` when `previewUrl` changes.
 - **Loading, error, canPreview=false, default:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center'`, `alignItems: 'center'`.
 - **Audio:** Vertical center. Use `flex: 1`, `minHeight: 0`, `justifyContent: 'center', `alignItems: 'center'`.
 - **Text:** Center when content fits; when overflow (scroll needed), switch to top align so scroll is downward only. Use ResizeObserver. Scrollbar hidden (same as PDF).

@@ -82,6 +82,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', messageCode: SERVER_MESSAGE_CODES.api.healthOk });
 });
 
+// #region debug-c5ae3e
+app.post('/api/debug-log', (req, res) => {
+  const entry = JSON.stringify(req.body);
+  const logPath = path.join(__dirname, '../.cursor/debug-c5ae3e.log');
+  fs.appendFileSync(logPath, entry + '\n');
+  res.json({ ok: true });
+});
+// #endregion debug-c5ae3e
+
+
 // Error handler middleware (must be after all routes)
 const { errorHandler } = require('./utils/errorHandler');
 app.use(errorHandler);

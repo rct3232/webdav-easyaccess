@@ -32,7 +32,7 @@
 | containerHeight | number\|null | Measured container height (minus padding) |
 | numPages | number\|null | Total page count from react-pdf `onLoadSuccess` |
 | pageInfo | object\|null | `{ width, height }` from first page `onLoadSuccess` |
-| calculatedWidth | number\|undefined | Computed render width for each `<Page>` |
+| calculatedWidth | number\|undefined | Computed base render width for each `<Page>`; actual render width = calculatedWidth × zoom (zoom from parent usePreviewZoom) |
 | pageArray | number[] | `[1, 2, ..., numPages]` memoized array |
 | setNumPages | function | Setter for numPages (passed to react-pdf Document) |
 | setPageInfo | function | Setter for pageInfo (passed to react-pdf Page) |

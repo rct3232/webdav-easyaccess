@@ -396,6 +396,9 @@
     "expiredOrNotFound": "Link has expired or file could not be found."
   },
   "preview": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomReset": "Reset zoom",
     "loadFail": "Unable to load file.",
     "pdfLoadFail": "Unable to load PDF file.",
     "pdfLoadFailWithReason": "Unable to load PDF file: {{reason}}",

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -19,6 +19,7 @@ import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import PreviewThumbnailBar from './PreviewThumbnailBar';
+import PreviewZoomBar from './PreviewZoomBar';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -28,6 +29,8 @@ import { useGalleryNavigation } from './hooks/useGalleryNavigation';
 import { usePlyrPlayer } from './hooks/usePlyrPlayer';
 import { usePdfLayout } from './hooks/usePdfLayout';
 import { useHeaderTruncation } from './hooks/useHeaderTruncation';
+import { usePreviewZoom } from './hooks/usePreviewZoom';
+import { useZoomInputs } from './hooks/useZoomInputs';
 
 import ImagePreview from './previews/ImagePreview';
 import VideoPreview from './previews/VideoPreview';
@@ -105,8 +108,16 @@ const FilePreviewDialog = ({
   });
 
   const displayFile = currentDisplayFile;
+  const targetForPreview = displayFile ?? file;
+  const previewFileType =
+    targetForPreview && (targetForPreview.name || targetForPreview.basename)
+      ? getFileType(targetForPreview.name || targetForPreview.basename)
+      : null;
 
-  // Step 3: Preview loader
+  const ZOOMABLE_PREVIEW_TYPES = ['pdf', 'image', 'text'];
+  const needsZoom = ZOOMABLE_PREVIEW_TYPES.includes(previewFileType);
+
+  // Step 3: Preview loader (must run before useZoomInputs, which depends on loading)
   const { loading, error, previewUrl, previewBlob, textContent } = usePreviewLoader({
     open,
     displayFile,
@@ -115,13 +126,27 @@ const FilePreviewDialog = ({
     t,
   });
 
-  // Step 4: Start auto-hide timer when loading completes in gallery mode
+  const zoomContainerRef = useRef(null);
+  const { zoom, zoomIn, zoomOut, resetZoom, setZoom } = usePreviewZoom({
+    open,
+    previewFileType: needsZoom ? previewFileType : null,
+    displayFile: needsZoom ? displayFile : null,
+  });
+  useZoomInputs({
+    containerRef: zoomContainerRef,
+    setZoom,
+    isMobile,
+    enabled: needsZoom && !loading,
+    previewFileType: needsZoom ? previewFileType : null,
+  });
+
+  // Step 4: Start auto-hide timer when loading completes (gallery or zoomable previews)
   useEffect(() => {
-    if (open && isGalleryMode && !loading) {
+    if (open && (isGalleryMode || needsZoom) && !loading) {
       startHideTimer();
     }
     return () => clearHideTimer();
-  }, [open, isGalleryMode, loading, startHideTimer, clearHideTimer]);
+  }, [open, isGalleryMode, needsZoom, loading, startHideTimer, clearHideTimer]);
 
   // Step 5: Plyr player
   const { videoNotPlayable, audioContainerRef, videoContainerRef, mediaTouchRef } = usePlyrPlayer({
@@ -177,8 +202,6 @@ const FilePreviewDialog = ({
   if (!file) return null;
 
   const targetFile = displayFile || file;
-  const filename = targetFile?.name || targetFile?.basename;
-  const previewFileType = filename ? getFileType(filename) : null;
 
   const renderContent = () => {
     if (targetFile && targetFile.canPreview === false) {
@@ -233,6 +256,8 @@ const FilePreviewDialog = ({
           handleTouchStart={handleTouchStart}
           handleTouchEnd={handleTouchEnd}
           mediaTouchRef={mediaTouchRef}
+          zoom={zoom}
+          zoomContainerRef={zoomContainerRef}
         />
       );
     }
@@ -268,8 +293,10 @@ const FilePreviewDialog = ({
           previewBlob={previewBlob}
           previewUrl={previewUrl}
           pdfContainerRef={pdfContainerRef}
+          zoomContainerRef={zoomContainerRef}
           pageArray={pageArray}
           calculatedWidth={calculatedWidth}
+          zoom={zoom}
           pageInfo={pageInfo}
           isMobile={isMobile}
           setNumPages={setNumPages}
@@ -287,6 +314,8 @@ const FilePreviewDialog = ({
           textPreRef={textPreRef}
           textOverflows={textOverflows}
           isMobile={isMobile}
+          zoom={zoom}
+          zoomContainerRef={zoomContainerRef}
         />
       );
     }
@@ -330,7 +359,7 @@ const FilePreviewDialog = ({
           height: '100%',
           minHeight: 0,
         }}
-        onMouseMove={() => !isMobile && isGalleryMode && resetHideTimer()}
+        onMouseMove={() => !isMobile && (isGalleryMode || needsZoom) && resetHideTimer()}
       >
         <DialogTitle
           sx={{
@@ -426,6 +455,19 @@ const FilePreviewDialog = ({
           }}
         >
           {renderContent()}
+          {needsZoom && (
+            <PreviewZoomBar
+              zoom={zoom}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onReset={resetZoom}
+              visible={isMobile ? headerVisible : controlsVisible}
+              t={t}
+              bottom={
+                isGalleryMode && previewFileType === 'image' ? 88 : 16
+              }
+            />
+          )}
           {isGalleryMode && currentPreviewFileType !== 'video' && (isMobile ? headerVisible : controlsVisible) && (
             <PreviewThumbnailBar
               files={mediaFiles}

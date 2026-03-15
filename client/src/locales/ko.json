@@ -393,6 +393,9 @@
     "expiredOrNotFound": "링크가 만료되었거나 파일을 찾을 수 없습니다."
   },
   "preview": {
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "zoomReset": "배율 초기화",
     "loadFail": "파일을 불러올 수 없습니다.",
     "pdfLoadFail": "PDF 파일을 불러올 수 없습니다.",
     "pdfLoadFailWithReason": "PDF 파일을 불러올 수 없습니다: {{reason}}",

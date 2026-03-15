@@ -6,8 +6,10 @@ const PdfPreview = ({
   previewBlob,
   previewUrl,
   pdfContainerRef,
+  zoomContainerRef,
   pageArray,
   calculatedWidth,
+  zoom = 1,
   pageInfo,
   isMobile,
   setNumPages,
@@ -47,7 +49,10 @@ const PdfPreview = ({
       }}
     >
       <Box
-        ref={pdfContainerRef}
+        ref={(el) => {
+          pdfContainerRef.current = el;
+          if (zoomContainerRef) zoomContainerRef.current = el;
+        }}
         sx={{
           display: 'flex',
           flexDirection: 'column',
@@ -55,10 +60,11 @@ const PdfPreview = ({
           flex: 1,
           width: '100%',
           overflow: 'auto',
+          zoom,
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
           '&::-webkit-scrollbar': { display: 'none' },
-          touchAction: 'pan-y pan-x pinch-zoom',
+          touchAction: 'pan-x pan-y',
           WebkitOverflowScrolling: 'touch',
           position: 'relative',
           ...(isMobile && {
@@ -68,7 +74,7 @@ const PdfPreview = ({
             overflowX: 'auto',
           }),
           '& .react-pdf__Page': {
-            touchAction: 'pan-y pan-x pinch-zoom',
+            touchAction: 'pan-x pan-y',
             display: 'flex',
             justifyContent: 'center',
             '&:not(:last-child)': {
@@ -80,7 +86,7 @@ const PdfPreview = ({
             },
           },
           '& .react-pdf__Page__canvas': {
-            touchAction: 'pan-y pan-x pinch-zoom',
+            touchAction: 'pan-x pan-y',
             maxWidth: '100%',
             height: 'auto',
           },

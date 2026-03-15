@@ -7,8 +7,6 @@ const TextPreview = ({
   textPreRef,
   textOverflows,
   isMobile,
-  zoom = 1,
-  zoomContainerRef,
 }) => (
   <Box
     ref={textContainerRef}
@@ -26,29 +24,20 @@ const TextPreview = ({
     }}
   >
     <Box
-      ref={zoomContainerRef}
+      ref={textPreRef}
+      component="pre"
       sx={{
-        display: 'inline-block',
-        zoom,
-        touchAction: 'pan-x pan-y',
+        backgroundColor: 'rgba(30, 30, 30, 0.8)',
+        color: 'rgba(255, 255, 255, 0.9)',
+        p: 2,
+        borderRadius: isMobile ? 0 : 1,
+        fontFamily: 'monospace',
+        fontSize: '0.875rem',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
       }}
     >
-      <Box
-        ref={textPreRef}
-        component="pre"
-        sx={{
-          backgroundColor: 'rgba(30, 30, 30, 0.8)',
-          color: 'rgba(255, 255, 255, 0.9)',
-          p: 2,
-          borderRadius: isMobile ? 0 : 1,
-          fontFamily: 'monospace',
-          fontSize: '0.875rem',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-        }}
-      >
-        {textContent}
-      </Box>
+      {textContent}
     </Box>
   </Box>
 );

@@ -114,7 +114,7 @@ const FilePreviewDialog = ({
       ? getFileType(targetForPreview.name || targetForPreview.basename)
       : null;
 
-  const ZOOMABLE_PREVIEW_TYPES = ['pdf', 'image', 'text'];
+  const ZOOMABLE_PREVIEW_TYPES = ['pdf', 'image'];
   const needsZoom = ZOOMABLE_PREVIEW_TYPES.includes(previewFileType);
 
   // Step 3: Preview loader (must run before useZoomInputs, which depends on loading)
@@ -314,8 +314,6 @@ const FilePreviewDialog = ({
           textPreRef={textPreRef}
           textOverflows={textOverflows}
           isMobile={isMobile}
-          zoom={zoom}
-          zoomContainerRef={zoomContainerRef}
         />
       );
     }

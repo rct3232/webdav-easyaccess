@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Bottom zoom bar with zoom in/out, reset, and percentage display for PDF, image, and text previews |
+| Role | Bottom zoom bar with zoom in/out, reset, and percentage display for PDF and image previews |
 | Used in | FilePreviewDialog |
 | Related components | PreviewThumbnailBar (similar bottom positioning) |
 

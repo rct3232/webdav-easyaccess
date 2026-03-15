@@ -43,12 +43,12 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 | `VideoPreview` | `fileType === 'video'` — Plyr video container, videoNotPlayable overlay, gallery chevrons |
 | `AudioPreview` | `fileType === 'audio'` — Plyr audio container |
 | `PdfPreview` | `fileType === 'pdf'` — react-pdf Document/Page; supports zoom |
-| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text; supports zoom |
+| `TextPreview` | `fileType === 'text'` — pre tag with scrollable text (no zoom) |
 | `PreviewUnsupported` | `canPreview === false` and unrecognised types |
 
 ### 2.2c Zoom Support
 
-- **Zoomable types:** `pdf`, `image`, `text`.
+- **Zoomable types:** `pdf`, `image` (text preview does not support zoom).
 - **PreviewZoomBar:** Bottom bar with zoom in/out, percentage display, and reset. Visibility: `isMobile ? headerVisible : controlsVisible` (same as header/controls auto-hide).
 - **Inputs:** Ctrl+wheel zoom (desktop), two-finger pinch zoom (mobile).
 
@@ -105,7 +105,7 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 - [ ] Gallery navigation
 - [ ] onClose
 - [ ] Error/loading states
-- [ ] Zoom bar renders for zoomable types (PDF, image, text); zoom controls change scale
+- [ ] Zoom bar renders for zoomable types (PDF, image); zoom controls change scale
 
 ### 2.8 Content Vertical Layout
 

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Manages zoom state for zoomable preview types (PDF, image, text); provides zoom in/out, reset, and setZoom |
+| Role | Manages zoom state for zoomable preview types (PDF, image); provides zoom in/out, reset, and setZoom |
 | Used by components/pages | FilePreviewDialog |
 
 ---

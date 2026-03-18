@@ -35,26 +35,32 @@
 
 ### 2.4 Dependencies
 
-- **imports:** BaseDialog, useDropzone
+- **imports:** BaseDialog, useDropzone, useResponsive
 - **Reference implementation:** `client/src/components/dialogs/UploadDialog.js`
 
-### 2.5 i18n Keys
+### 2.5 Mobile: single-file picker
+
+- On mobile (`useResponsive().isMobile`), the file picker allows only one file per selection (`multiple: false`).
+- Users can still add many files to the list by opening the picker multiple times; selected files are appended. Upload behavior is unchanged.
+
+### 2.6 i18n Keys
 
 - `dialogs.uploadTitle`, `dialogs.upload`, `common.cancel`, `dialogs.uploadDropzone`, `dialogs.removeFile`
 
-### 2.6 Conditional Rendering
+### 2.7 Conditional Rendering
 
 - Files list with remove per file
 - Upload disabled when files.length === 0
 - Files reset when dialog closes
 
-### 2.7 Verification Scenarios
+### 2.8 Verification Scenarios
 
 - [ ] Dropzone accepts files
 - [ ] Remove file
 - [ ] onUploadStart called with fileList, currentPath
 - [ ] Files cleared on close
+- [ ] Desktop: file input allows multiple (unit test mocks useResponsive as non-mobile)
 
-### 2.8 Edge Cases
+### 2.9 Edge Cases
 
 - onUploadStart called twice: once without args (dismiss), then with (fileList, currentPath)

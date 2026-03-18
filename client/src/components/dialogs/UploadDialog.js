@@ -12,9 +12,11 @@ import {
 import { useDropzone } from 'react-dropzone';
 import { Close as CloseIcon } from '@mui/icons-material';
 import BaseDialog from './BaseDialog';
+import { useResponsive } from '../../hooks/useResponsive';
 
 const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
   const { t } = useTranslation();
+  const { isMobile = false } = useResponsive() || {};
   const [files, setFiles] = useState([]);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -33,7 +35,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: true,
+    multiple: !isMobile,
   });
 
   const handleRemove = (index) => {

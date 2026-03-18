@@ -9,6 +9,10 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import UploadDialog from '../UploadDialog';
 
+jest.mock('../../../hooks/useResponsive', () => ({
+  useResponsive: () => ({ isMobile: false }),
+}));
+
 const defaultProps = {
   open: true,
   onClose: jest.fn(),

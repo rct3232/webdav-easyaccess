@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Table,
@@ -16,6 +16,7 @@ import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
+import { useLongPressSelect } from './hooks/useLongPressSelect';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -27,12 +28,10 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
   const theme = useTheme();
-  const longPressTimersRef = useRef(new Map());
-  const touchMovedRef = useRef(new Map());
   const [nameColWidth, setNameColWidth] = React.useState(200);
   const nameColRef = React.useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!nameColRef.current) return;
 
     const observer = new ResizeObserver((entries) => {
@@ -50,16 +49,6 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
   // Padding/Icon in TableCell: Icon(20px) + gap(6px) + padding(~4px)
   const maxPixelWidth = Math.max(40, nameColWidth - 32);
   const font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
-
-  useEffect(() => {
-    const timers = longPressTimersRef.current;
-    const touchMoved = touchMovedRef.current;
-    return () => {
-      timers.forEach(timer => clearTimeout(timer));
-      timers.clear();
-      touchMoved.clear();
-    };
-  }, []);
 
   const {
     draggedFile,
@@ -80,44 +69,7 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
     isMobile,
   });
 
-  // Long-press handlers: mobile long-press enters selection mode and selects file (not context menu)
-  const getLongPressHandlers = useCallback((file) => {
-    if (!isMobile || selectionMode || !onLongPressSelect) return {};
-
-    const handleTouchStart = () => {
-      touchMovedRef.current.set(file.path, false);
-      const timer = setTimeout(() => {
-        if (!touchMovedRef.current.get(file.path)) {
-          if (navigator.vibrate) navigator.vibrate(50);
-          onLongPressSelect(file);
-        }
-      }, 500);
-      longPressTimersRef.current.set(file.path, timer);
-    };
-
-    const handleTouchEnd = () => {
-      const timer = longPressTimersRef.current.get(file.path);
-      if (timer) {
-        clearTimeout(timer);
-        longPressTimersRef.current.delete(file.path);
-      }
-    };
-
-    const handleTouchMove = () => {
-      touchMovedRef.current.set(file.path, true);
-      const timer = longPressTimersRef.current.get(file.path);
-      if (timer) {
-        clearTimeout(timer);
-        longPressTimersRef.current.delete(file.path);
-      }
-    };
-
-    return {
-      onTouchStart: handleTouchStart,
-      onTouchEnd: handleTouchEnd,
-      onTouchMove: handleTouchMove,
-    };
-  }, [isMobile, selectionMode, onLongPressSelect]);
+  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
 
   return (
     <TableContainer

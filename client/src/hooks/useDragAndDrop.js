@@ -35,19 +35,10 @@ export const useDragAndDrop = (onFileDrop, selectionMode, theme, onDropPermissio
     const canDropOnFolder = file.type === 'directory' && (fromList || fromTree);
     if (canDropOnFolder) {
       e.preventDefault();
-      if (file.hasWritePermission === false) {
-        if (e?.dataTransfer) {
-          e.dataTransfer.dropEffect = 'none';
-        }
-        return;
-      }
+      if (e?.dataTransfer) e.dataTransfer.dropEffect = file.hasWritePermission === false ? 'none' : 'move';
+      if (file.hasWritePermission === false) return;
       // No-op move: target is the parent of the dragged path (item already lives there)
-      if (fromList && getParentPath(draggedFile.path) === file.path) {
-        return;
-      }
-      if (e?.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move';
-      }
+      if (fromList && getParentPath(draggedFile.path) === file.path) return;
       setDropTarget(file.path);
     }
   };

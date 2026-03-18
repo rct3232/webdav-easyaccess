@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Typography,
@@ -6,6 +6,7 @@ import {
   useTheme,
 } from '@mui/material';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
+import { useLongPressSelect } from './hooks/useLongPressSelect';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
@@ -16,12 +17,9 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
   const theme = useTheme();
-  const longPressTimersRef = useRef(new Map());
-  const touchMovedRef = useRef(new Map());
-  
-  // 썸네일 레이지 로딩
+
   useThumbnailLazyLoad(files, onThumbnailsLoaded, shareToken != null ? { shareToken } : {});
-  
+
   const {
     draggedFile,
     dropTarget,
@@ -41,55 +39,7 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     isMobile,
   });
 
-  // Long-press handlers: mobile long-press enters selection mode and selects file (not context menu)
-  const getLongPressHandlers = useCallback((file) => {
-    if (!isMobile || selectionMode || !onLongPressSelect) return {};
-
-    const handleTouchStart = () => {
-      touchMovedRef.current.set(file.path, false);
-      const timer = setTimeout(() => {
-        if (!touchMovedRef.current.get(file.path)) {
-          if (navigator.vibrate) navigator.vibrate(50);
-          onLongPressSelect(file);
-        }
-      }, 500);
-      longPressTimersRef.current.set(file.path, timer);
-    };
-
-    const handleTouchEnd = () => {
-      const timer = longPressTimersRef.current.get(file.path);
-      if (timer) {
-        clearTimeout(timer);
-        longPressTimersRef.current.delete(file.path);
-      }
-    };
-
-    const handleTouchMove = () => {
-      touchMovedRef.current.set(file.path, true);
-      const timer = longPressTimersRef.current.get(file.path);
-      if (timer) {
-        clearTimeout(timer);
-        longPressTimersRef.current.delete(file.path);
-      }
-    };
-
-    return {
-      onTouchStart: handleTouchStart,
-      onTouchEnd: handleTouchEnd,
-      onTouchMove: handleTouchMove,
-    };
-  }, [isMobile, selectionMode, onLongPressSelect]);
-
-  // 컴포넌트 언마운트 시 모든 타이머 정리
-  useEffect(() => {
-    const timers = longPressTimersRef.current;
-    const touchMoved = touchMovedRef.current;
-    return () => {
-      timers.forEach(timer => clearTimeout(timer));
-      timers.clear();
-      touchMoved.clear();
-    };
-  }, []);
+  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
 
   if (loading && files.length === 0) {
     return <FileGridSkeleton selectionMode={selectionMode} />;

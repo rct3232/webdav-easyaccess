@@ -66,6 +66,7 @@ import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
+import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
 import { checkMyPermissionForShare, addShareLinkToMyPermissions } from '../../services/shareLinkService';
 
 const FileManager = ({ shareToken, linkInfo } = {}) => {
@@ -1416,20 +1417,45 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   };
 
-  const handleFileDrop = async (draggedFile, targetFolder) => {
-    if (draggedFile.path === targetFolder.path) return;
-    try {
-      await handleFolderPickerSelect(targetFolder.path, { type: 'move', filePaths: [draggedFile.path] });
-    } catch (error) {
-      // Error is already handled by useBulkOperations
-    }
+  const movePathsToFolder = useCallback(
+    async (filePaths, targetFolderPath) => {
+      if (filePaths.length === 0 || filePaths[0] === targetFolderPath) return;
+      try {
+        await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths });
+      } catch {
+        // Error is already handled by useBulkOperations
+      }
+    },
+    [handleFolderPickerSelect]
+  );
+
+  const handleFileDrop = (draggedFile, targetFolder) => {
+    movePathsToFolder([draggedFile.path], targetFolder.path);
   };
+
+  const handleInternalFileDrop = useCallback(
+    (draggedPath, targetFolderPath) => {
+      movePathsToFolder([draggedPath], targetFolderPath);
+    },
+    [movePathsToFolder]
+  );
 
   const handleDropPermissionDenied = useCallback(
     (destinationPath) => {
       showError(t('fileManager.dropNoWritePermission', { path: destinationPath }));
     },
     [showError, t]
+  );
+
+  const handleViewContextMenu = useCallback(
+    (e, file) => {
+      if (e?.cancelable) e.preventDefault();
+      if (!isMobile) {
+        setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
+        setSelectedFile(file);
+      }
+    },
+    [isMobile, setContextMenu, setSelectedFile]
   );
 
   const handleDragStartFromView = useCallback((path) => {
@@ -1440,18 +1466,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setContentAreaDraggedPath(null);
     setContentAreaDragType(null);
   }, []);
-
-  const handleInternalFileDrop = useCallback(
-    async (draggedPath, targetFolderPath) => {
-      if (draggedPath === targetFolderPath) return;
-      try {
-        await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths: [draggedPath] });
-      } catch (error) {
-        // Error is already handled by useBulkOperations
-      }
-    },
-    [handleFolderPickerSelect]
-  );
 
   const handleExplorerDrop = useCallback(async (filesToUpload, targetPath) => {
     const uploadPath = targetPath || currentPath;
@@ -1493,83 +1507,23 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   }, [currentPath, updateProgress, executeExplorerUpload, t]);
 
-  // Handle drops on the entire file content area
-  const handleContentAreaDragOver = (e) => {
-    if (isMobile || selectionMode || !hasWritePermission) return;
-
-    const types = e.dataTransfer.types || [];
-    const isExternal = types.includes('Files');
-    const isInternalTree = types.includes('text/plain');
-
-    if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
-      return;
-    }
-    // Show dotted drop zone only over empty content area, not over file/folder rows
-    if (e.target.closest('[data-file-path]')) {
-      handleFileAreaDragLeave(e);
-      return;
-    }
-    if (isExternal || isInternalTree) {
-      handleFileAreaDragOver(e);
-    }
-  };
-
-  const handleContentAreaDragEnter = (e) => {
-    if (isMobile || selectionMode || !hasWritePermission) return;
-
-    const types = e.dataTransfer.types || [];
-    const isExternal = types.includes('Files');
-    const isInternalTree = types.includes('text/plain');
-
-    if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
-      return;
-    }
-    // Show dotted drop zone only over empty content area, not over file/folder rows
-    if (e.target.closest('[data-file-path]')) return;
-    if (isExternal || isInternalTree) {
-      setContentAreaDragType(isExternal ? 'external' : 'internal');
-      handleFileAreaDragEnter(e);
-    }
-  };
-
-  const handleContentAreaDragLeave = (e) => {
-    if (isMobile || selectionMode || !hasWritePermission) return;
-
-    const types = e.dataTransfer.types || [];
-    const isExternal = types.includes('Files');
-    const isInternalTree = types.includes('text/plain');
-
-    if (isExternal || isInternalTree) {
-      // Only clear type when actually leaving the content area (not when moving to a child element)
-      if (!e.currentTarget.contains(e.relatedTarget)) {
-        setContentAreaDragType(null);
-      }
-      handleFileAreaDragLeave(e);
-    }
-  };
-
-  const handleContentAreaDrop = (e) => {
-    if (isMobile || selectionMode || !hasWritePermission) return;
-
-    const types = e.dataTransfer.types || [];
-    const isExternal = types.includes('Files');
-    const internalPath = types.includes('text/plain') ? e.dataTransfer?.getData?.('text/plain') : null;
-
-    setContentAreaDraggedPath(null);
-    setContentAreaDragType(null);
-
-    if (internalPath) {
-      e.preventDefault();
-      e.stopPropagation();
-      resetFileAreaDrag?.();
-      handleInternalFileDrop(internalPath, currentPath);
-      return;
-    }
-
-    if (isExternal) {
-      handleFileAreaDrop(e, currentPath, handleExplorerDrop);
-    }
-  };
+  const contentAreaDnD = useContentAreaDragDrop({
+    isMobile,
+    selectionMode,
+    hasWritePermission,
+    isShareLinkMode,
+    currentPath,
+    contentAreaDraggedPath,
+    setContentAreaDraggedPath,
+    setContentAreaDragType,
+    handleInternalFileDrop,
+    handleExplorerDrop,
+    handleFileAreaDragEnter,
+    handleFileAreaDragOver,
+    handleFileAreaDragLeave,
+    handleFileAreaDrop,
+    resetFileAreaDrag,
+  });
 
   // Desktop: click on empty space exits selection mode
   const handleScrollAreaClick = useCallback((e) => {
@@ -1679,10 +1633,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             overflow: 'hidden',
             position: 'relative',
           }}
-          onDragEnter={handleContentAreaDragEnter}
-          onDragOver={handleContentAreaDragOver}
-          onDragLeave={handleContentAreaDragLeave}
-          onDrop={handleContentAreaDrop}
+          onDragEnter={contentAreaDnD.handleContentAreaDragEnter}
+          onDragOver={contentAreaDnD.handleContentAreaDragOver}
+          onDragLeave={contentAreaDnD.handleContentAreaDragLeave}
+          onDrop={contentAreaDnD.handleContentAreaDrop}
         >
           {isFileAreaDraggingOver && hasWritePermission && !isShareLinkMode && (
             <Box
@@ -1878,18 +1832,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onMoreClick={handleMoreClick}
                 showMoreButton={!selectionMode}
                 onLongPressSelect={handleLongPressSelect}
-                onContextMenu={(e, file) => {
-                  if (e?.cancelable) {
-                    e.preventDefault();
-                  }
-                  if (isMobile) {
-                    // Long-press triggers contextmenu on mobile; do not open action sheet.
-                    // Action sheet opens only via More button tap.
-                  } else {
-                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                    setSelectedFile(file);
-                  }
-                }}
+                onContextMenu={handleViewContextMenu}
                 onFileDrop={handleFileDrop}
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}
@@ -1914,18 +1857,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onMoreClick={handleMoreClick}
                 showMoreButton={!selectionMode}
                 onLongPressSelect={handleLongPressSelect}
-                onContextMenu={(e, file) => {
-                  if (e?.cancelable) {
-                    e.preventDefault();
-                  }
-                  if (isMobile) {
-                    // Long-press triggers contextmenu on mobile; do not open action sheet.
-                    // Action sheet opens only via More button tap.
-                  } else {
-                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                    setSelectedFile(file);
-                  }
-                }}
+                onContextMenu={handleViewContextMenu}
                 onFileDrop={handleFileDrop}
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}
@@ -1950,18 +1882,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onMoreClick={handleMoreClick}
                 showMoreButton={!selectionMode}
                 onLongPressSelect={handleLongPressSelect}
-                onContextMenu={(e, file) => {
-                  if (e?.cancelable) {
-                    e.preventDefault();
-                  }
-                  if (isMobile) {
-                    // Long-press triggers contextmenu on mobile; do not open action sheet.
-                    // Action sheet opens only via More button tap.
-                  } else {
-                    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
-                    setSelectedFile(file);
-                  }
-                }}
+                onContextMenu={handleViewContextMenu}
                 onFileDrop={handleFileDrop}
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}

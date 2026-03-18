@@ -38,6 +38,9 @@ const SharedFoldersSection = ({
   const { t } = useTranslation();
   if (user?.is_admin || sharedFolders.length === 0) return null;
 
+  const sharedTree = buildSharedFolderTree();
+  const sharedFoldersMap = new Map(sharedFolders.map(perm => [perm.folder_path, perm]));
+
   return (
     <>
       <ListItem
@@ -110,31 +113,26 @@ const SharedFoldersSection = ({
       </ListItem>
       <Collapse in={sharedExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
-          {(() => {
-            const sharedTree = buildSharedFolderTree();
-            const sharedFoldersMap = new Map(sharedFolders.map(perm => [perm.folder_path, perm]));
-
-            return sharedTree.map((node) => (
-              <BaseFolderTreeItem
-                key={node.path}
-                node={node}
-                level={1}
-                currentPath={currentPath}
-                onPathClick={handleSharedFolderClick}
-                expandedPaths={expandedPaths}
-                onToggleExpand={handleToggleExpand}
-                user={user}
-                treeUpdateTrigger={treeUpdateTrigger}
-                sharedFoldersMap={sharedFoldersMap}
-                onExplorerDrop={onExplorerDrop}
-                onInternalFileDrop={onInternalFileDrop}
-                onInternalDragStart={onInternalDragStart}
-                onInternalDragEnd={onInternalDragEnd}
-                isMobile={isMobile}
-                useHiddenFilesFilter={false}
-              />
-            ));
-          })()}
+          {sharedTree.map((node) => (
+            <BaseFolderTreeItem
+              key={node.path}
+              node={node}
+              level={1}
+              currentPath={currentPath}
+              onPathClick={handleSharedFolderClick}
+              expandedPaths={expandedPaths}
+              onToggleExpand={handleToggleExpand}
+              user={user}
+              treeUpdateTrigger={treeUpdateTrigger}
+              sharedFoldersMap={sharedFoldersMap}
+              onExplorerDrop={onExplorerDrop}
+              onInternalFileDrop={onInternalFileDrop}
+              onInternalDragStart={onInternalDragStart}
+              onInternalDragEnd={onInternalDragEnd}
+              isMobile={isMobile}
+              useHiddenFilesFilter={false}
+            />
+          ))}
         </List>
       </Collapse>
     </>

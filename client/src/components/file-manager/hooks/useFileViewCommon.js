@@ -2,7 +2,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import { useDragAndDrop } from '../../../hooks/useDragAndDrop';
 import { getFileItemState } from '../../../utils/fileViewUtils';
 
-// 빈 핸들러 객체를 미리 정의하여 재사용 (참조 동일성 유지)
+// Reusable empty drag/drop handler objects to preserve reference identity.
 const emptyDragHandlers = {
   draggable: false,
   onDragStart: undefined,

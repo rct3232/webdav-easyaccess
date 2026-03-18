@@ -238,6 +238,8 @@ const BaseFolderTreeItem = ({
   );
 
   // 자식 렌더링 함수
+  const isDropHighlight = (isDropTarget || isDraggingOver) && hasWritePermission;
+
   const renderChildItem = (child, childLevel) => {
     if (renderChild) {
       return renderChild(child, childLevel);
@@ -275,7 +277,7 @@ const BaseFolderTreeItem = ({
         disablePadding
         sx={{
           '&:hover': {
-            backgroundColor: isDisabled ? 'transparent' : ((isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover'),
+            backgroundColor: isDisabled ? 'transparent' : (isDropHighlight ? 'transparent' : 'action.hover'),
           },
         }}
         draggable={!isMobile && !isDisabled}
@@ -295,9 +297,9 @@ const BaseFolderTreeItem = ({
             minHeight: 32,
             pl: level * 2,
             opacity: isDisabled ? 0.4 : 1,
-            backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
+            backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
             transition: 'all 0.2s',
-            ...((isDropTarget || isDraggingOver) && hasWritePermission && {
+            ...(isDropHighlight && {
               color: 'white',
               borderLeft: '3px solid',
               borderLeftColor: 'primary.main',
@@ -305,15 +307,15 @@ const BaseFolderTreeItem = ({
               '& .MuiTypography-root': { color: 'white' },
             }),
             '&.Mui-selected': {
-              backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'transparent',
-              color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
+              backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
+              color: isDropHighlight ? 'white' : 'primary.main',
               borderLeft: '3px solid',
               borderLeftColor: 'primary.main',
               '&:hover': {
-                backgroundColor: (isDropTarget || isDraggingOver) && hasWritePermission ? 'primary.main' : 'action.hover',
+                backgroundColor: isDropHighlight ? 'primary.main' : 'action.hover',
               },
               '& .MuiListItemIcon-root': {
-                color: (isDropTarget || isDraggingOver) && hasWritePermission ? 'white' : 'primary.main',
+                color: isDropHighlight ? 'white' : 'primary.main',
               },
             },
           }}

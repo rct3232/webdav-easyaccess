@@ -4,14 +4,14 @@ import { useState, useCallback } from 'react';
  * Hook for handling drop-to-upload from OS file explorer
  * Supports files and folders with recursive directory structure preservation
  *
- * @param {Object} options - 옵션 객체
- * @param {Function} [options.onUploadComplete] - 업로드 완료 콜백 (메인 영역용)
- * @param {Function} [options.onUploadError] - 업로드 에러 콜백 (메인 영역용)
- * @param {string} [options.path] - 폴더 경로 (폴더 트리 모드용)
- * @param {boolean} [options.isDisabled] - 비활성화 여부 (폴더 트리 모드용)
- * @param {boolean} [options.hasWritePermission] - 쓰기 권한 여부 (폴더 트리 모드용)
- * @param {Function} [options.onExplorerDrop] - 드롭 핸들러 (폴더 트리 모드용)
- * @param {Function} [options.onInternalFileDrop] - 내부 드래그 드롭: (draggedPath, targetFolderPath) when dropped from file manager
+ * @param {Object} options - Options object
+ * @param {Function} [options.onUploadComplete] - Callback when upload completes (main area)
+ * @param {Function} [options.onUploadError] - Callback when upload errors (main area)
+ * @param {string} [options.path] - Folder path (folder tree mode)
+ * @param {boolean} [options.isDisabled] - Whether the drop zone is disabled (folder tree mode)
+ * @param {boolean} [options.hasWritePermission] - Whether the target has write permission (folder tree mode)
+ * @param {Function} [options.onExplorerDrop] - Drop handler (folder tree mode)
+ * @param {Function} [options.onInternalFileDrop] - Internal drag/drop: (draggedPath, targetFolderPath) when dropped from file manager
  */
 export const useDropToUpload = (options = {}) => {
   const {
@@ -25,6 +25,11 @@ export const useDropToUpload = (options = {}) => {
   } = typeof options === 'object' ? options : { onUploadComplete: options };
 
   const isFolderMode = path != null && typeof onExplorerDrop === 'function';
+
+  const getDragTypes = (e) => {
+    const t = e.dataTransfer?.types || [];
+    return { isExternal: t.includes('Files'), isInternal: t.includes('text/plain') };
+  };
 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState([]);
@@ -96,9 +101,7 @@ export const useDropToUpload = (options = {}) => {
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types || [];
-        const isExternal = types.includes('Files');
-        const isInternal = types.includes('text/plain');
+        const { isExternal, isInternal } = getDragTypes(e);
         if (isExternal || (isInternal && onInternalFileDrop)) {
           e.preventDefault();
           e.stopPropagation();
@@ -118,9 +121,7 @@ export const useDropToUpload = (options = {}) => {
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types || [];
-        const isExternal = types.includes('Files');
-        const isInternal = types.includes('text/plain');
+        const { isExternal, isInternal } = getDragTypes(e);
         if (isExternal) {
           e.preventDefault();
           e.stopPropagation();
@@ -145,9 +146,7 @@ export const useDropToUpload = (options = {}) => {
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types || [];
-        const isExternal = types.includes('Files');
-        const isInternal = types.includes('text/plain');
+        const { isExternal, isInternal } = getDragTypes(e);
         if (isExternal || (isInternal && onInternalFileDrop)) {
           e.preventDefault();
           e.stopPropagation();

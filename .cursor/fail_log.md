@@ -117,6 +117,13 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-18 — useShareDialog.test.js — suite fails to run (missing module path)
+
+- **Case:** B
+- **Root cause:** The test imports `../../../../../hooks/usePermissionManager`, but the implementation lives at `src/components/dialogs/ShareDialog/hooks/usePermissionManager.js`. Jest fails module resolution before any assertions run.
+- **Action taken:** Logged as pre-existing test-path issue encountered during full `npm test` run for an unrelated FileManager DnD UI change; no source behavior change required for the DnD scope fix.
+- **Lesson:** When a test suite fails at import-time, verify the file path matches the actual module location (and prefer importing from the module’s real public path, not a guessed shared-hook path).
+
 ## 2026-03-06 — admin.test.js — admin route integration run in mixed backend context
 
 - **Case:** B

@@ -60,6 +60,7 @@
 - **Drag types:** Use `e.dataTransfer?.types || []`; `isExternal = types.includes('Files')`; `isInternalTree = types.includes('text/plain')`.
 - **Same-parent skip:** If `isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath`, return (do not show drop zone when dragging within same folder).
 - **Data-file-path skip:** If `e.target.closest('[data-file-path]')` then: in DragOver call `handleFileAreaDragLeave(e)` and return; in DragEnter return without delegating. So the dotted drop zone appears only over empty content area, not over file/folder rows.
+- **Attachment scope (caller):** The caller should attach these handlers to the **file view content area container** (list/grid/detail region). Do not attach to page-level wrappers that include breadcrumb or toolbar, otherwise the dotted overlay would cover non-file UI.
 - **DragEnter:** When external or internal and not skipped, `setContentAreaDragType(isExternal ? 'external' : 'internal')`, then `handleFileAreaDragEnter(e)`.
 - **DragOver:** When external or internal and not skipped, `handleFileAreaDragOver(e)`.
 - **DragLeave:** When external or internal, if `!e.currentTarget.contains(e.relatedTarget)` then `setContentAreaDragType(null)`; then `handleFileAreaDragLeave(e)`.

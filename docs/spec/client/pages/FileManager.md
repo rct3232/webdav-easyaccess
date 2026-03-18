@@ -57,6 +57,7 @@
 - More button per item: opens FileActionSheet (context actions); visible when not in selection mode
 - Context menu / action sheet: right-click or More button — download, rename, move, copy, share, properties, delete
 - Drag-and-drop: file-to-folder move, external file upload
+  - The content-area drop zone (dotted overlay + “drop here” copy) is **scoped to the file view area** (the list/grid/detail content region), not the whole page. Header/breadcrumb/controls should not be covered by the overlay.
 - Pull-to-refresh (mobile)
 - Create folder, upload files
 - Share link mode: login, add to shared, leave share
@@ -90,3 +91,4 @@
 - Add-to-shared modal when user has share link but lacks permission
 - **Scroll area:** padding-bottom = FloatingSearchBar + FAB height (FLOATING_BOTTOM_HEIGHT_MOBILE / FLOATING_BOTTOM_HEIGHT_DESKTOP from constants/fileManager) + safe-area inset so the last list item can scroll above the fixed bottom area.
 - **Overscroll:** Global `overscroll-behavior: none` (e.g. index.css on html/body) and scroll container `overscrollBehaviorY: 'contain'` to prevent mobile bounce from shifting header and controls.
+- **DnD overlay scope:** When `useDropToUpload().isDraggingOver` is true (and not share-link mode), the dotted overlay is rendered over the file view area only (list/grid/detail container).

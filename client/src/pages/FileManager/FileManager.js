@@ -1639,43 +1639,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             overflow: 'hidden',
             position: 'relative',
           }}
-          onDragEnter={contentAreaDnD.handleContentAreaDragEnter}
-          onDragOver={contentAreaDnD.handleContentAreaDragOver}
-          onDragLeave={contentAreaDnD.handleContentAreaDragLeave}
-          onDrop={contentAreaDnD.handleContentAreaDrop}
         >
-          {isFileAreaDraggingOver && hasWritePermission && !isShareLinkMode && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 10,
-                left: 10,
-                right: 10,
-                bottom: 10,
-                border: '3px dashed',
-                borderColor: 'primary.main',
-                borderRadius: '10px',
-                pointerEvents: 'none',
-                zIndex: 1000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Typography
-                variant="h5"
-                sx={{
-                  color: 'primary.main',
-                  fontWeight: 600,
-                  textAlign: 'center',
-                  px: 3,
-                }}
-              >
-                {contentAreaDragType === 'internal' ? t('fileManager.moveDropHere') : t('dialogs.uploadDropHere')}
-              </Typography>
-            </Box>
-          )}
-
           <Breadcrumb
             currentPath={currentPath}
             onPathClick={handlePathClick}
@@ -1762,151 +1726,191 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           />
 
           <Box
-            ref={scrollContainerRef}
-            onClick={handleScrollAreaClick}
-            sx={{
-              flex: 1,
-              overflow: 'auto',
-              p: 2,
-              minHeight: 0,
-              position: 'relative',
-              // Avoid being hidden behind fixed bottom elements: FloatingSearchBar + FAB
-              pb: `calc(${isMobile ? FLOATING_BOTTOM_HEIGHT_MOBILE : FLOATING_BOTTOM_HEIGHT_DESKTOP}px + env(safe-area-inset-bottom))`,
-              // Enable smooth scrolling and bounce effect on iOS
-              WebkitOverflowScrolling: 'touch',
-              // Optional: contain bounce within this scroll area
-              overscrollBehaviorY: 'contain',
-              // touch-action: 수직 스크롤만 허용하여 pull-to-refresh와 충돌 방지
-              touchAction: 'pan-y',
-            }}
+            sx={{ flex: 1, minHeight: 0, position: 'relative' }}
+            onDragEnter={contentAreaDnD.handleContentAreaDragEnter}
+            onDragOver={contentAreaDnD.handleContentAreaDragOver}
+            onDragLeave={contentAreaDnD.handleContentAreaDragLeave}
+            onDrop={contentAreaDnD.handleContentAreaDrop}
           >
-            {/* Pull-to-refresh 시각적 피드백 - 실제 콘텐츠 영역에 포함 */}
-            {isMobile && (
+            {isFileAreaDraggingOver && hasWritePermission && !isShareLinkMode && (
               <Box
                 sx={{
+                  position: 'absolute',
+                  top: 10,
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  border: '3px dashed',
+                  borderColor: 'primary.main',
+                  borderRadius: '10px',
+                  pointerEvents: 'none',
+                  zIndex: 1000,
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  ...indicatorStyles,
                 }}
               >
-                <Box sx={iconStyles}>
-                  {showRefreshSuccess ? (
-                    <CheckCircleIcon
-                      sx={{
-                        color: 'success.main',
-                        fontSize: 24,
-                        width: 24,
-                        height: 24,
-                      }}
-                    />
-                  ) : (
-                    <CircularProgress
-                      size={24}
-                      thickness={4}
-                      value={isDeterminateProgress ? progress * 100 : undefined}
-                      variant={isDeterminateProgress ? 'determinate' : 'indeterminate'}
-                      sx={{
-                        color: progressColor,
-                        transition: 'color 0.2s ease',
-                      }}
-                    />
-                  )}
-                </Box>
                 <Typography
-                  variant="caption"
+                  variant="h5"
                   sx={{
-                    color: textColor,
-                    fontSize: '0.75rem',
-                    lineHeight: '1.2rem',
-                    height: '1.2rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    visibility: shouldShowIndicator ? 'visible' : 'hidden',
-                    transition: 'color 0.2s ease',
+                    color: 'primary.main',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    px: 3,
                   }}
                 >
-                  {textContent}
+                  {contentAreaDragType === 'internal' ? t('fileManager.moveDropHere') : t('dialogs.uploadDropHere')}
                 </Typography>
               </Box>
             )}
-            {viewMode === VIEW_MODES.LIST ? (
-              <FileList
-                files={displayedFiles}
-                processingMap={processingMap}
-                onFileClick={handleFileClick}
-                onMoreClick={handleMoreClick}
-                showMoreButton={!selectionMode}
-                onLongPressSelect={handleLongPressSelect}
-                onContextMenu={handleViewContextMenu}
-                onFileDrop={handleFileDrop}
-                onDropPermissionDenied={handleDropPermissionDenied}
-                onDragStart={handleDragStartFromView}
-                onDragEnd={handleDragEndFromView}
-                internalDraggedPath={contentAreaDraggedPath}
-                selectionMode={selectionMode}
-                selectedFiles={selectedFiles}
-                onFileCheck={handleFileCheck}
-                hasWritePermission={hasWritePermission}
-                currentPath={currentPath}
-                onPathClick={handlePathClick}
-                loading={loading}
-                onThumbnailsLoaded={handleThumbnailsLoaded}
-                loadMoreRef={loadMoreRef}
-                hasMore={hasMore}
-                shareToken={isShareLinkMode ? shareToken : undefined}
-              />
-            ) : viewMode === VIEW_MODES.GRID ? (
-              <FileGrid
-                files={displayedFiles}
-                processingMap={processingMap}
-                onFileClick={handleFileClick}
-                onMoreClick={handleMoreClick}
-                showMoreButton={!selectionMode}
-                onLongPressSelect={handleLongPressSelect}
-                onContextMenu={handleViewContextMenu}
-                onFileDrop={handleFileDrop}
-                onDropPermissionDenied={handleDropPermissionDenied}
-                onDragStart={handleDragStartFromView}
-                onDragEnd={handleDragEndFromView}
-                internalDraggedPath={contentAreaDraggedPath}
-                selectionMode={selectionMode}
-                selectedFiles={selectedFiles}
-                onFileCheck={handleFileCheck}
-                hasWritePermission={hasWritePermission}
-                currentPath={currentPath}
-                onPathClick={handlePathClick}
-                loading={loading}
-                onThumbnailsLoaded={handleThumbnailsLoaded}
-                loadMoreRef={loadMoreRef}
-                hasMore={hasMore}
-                shareToken={isShareLinkMode ? shareToken : undefined}
-              />
-            ) : (
-              <FileDetail
-                files={displayedFiles}
-                processingMap={processingMap}
-                onFileClick={handleFileClick}
-                onMoreClick={handleMoreClick}
-                showMoreButton={!selectionMode}
-                onLongPressSelect={handleLongPressSelect}
-                onContextMenu={handleViewContextMenu}
-                onFileDrop={handleFileDrop}
-                onDropPermissionDenied={handleDropPermissionDenied}
-                onDragStart={handleDragStartFromView}
-                onDragEnd={handleDragEndFromView}
-                internalDraggedPath={contentAreaDraggedPath}
-                selectionMode={selectionMode}
-                selectedFiles={selectedFiles}
-                onFileCheck={handleFileCheck}
-                hasWritePermission={hasWritePermission}
-                currentPath={currentPath}
-                onPathClick={handlePathClick}
-                loading={loading}
-                shareToken={isShareLinkMode ? shareToken : undefined}
-              />
-            )}
+
+            <Box
+              ref={scrollContainerRef}
+              onClick={handleScrollAreaClick}
+              sx={{
+                flex: 1,
+                overflow: 'auto',
+                p: 2,
+                minHeight: 0,
+                position: 'relative',
+                // Avoid being hidden behind fixed bottom elements: FloatingSearchBar + FAB
+                pb: `calc(${isMobile ? FLOATING_BOTTOM_HEIGHT_MOBILE : FLOATING_BOTTOM_HEIGHT_DESKTOP}px + env(safe-area-inset-bottom))`,
+                // Enable smooth scrolling and bounce effect on iOS
+                WebkitOverflowScrolling: 'touch',
+                // Optional: contain bounce within this scroll area
+                overscrollBehaviorY: 'contain',
+                // touch-action: 수직 스크롤만 허용하여 pull-to-refresh와 충돌 방지
+                touchAction: 'pan-y',
+              }}
+            >
+              {/* Pull-to-refresh 시각적 피드백 - 실제 콘텐츠 영역에 포함 */}
+              {isMobile && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    ...indicatorStyles,
+                  }}
+                >
+                  <Box sx={iconStyles}>
+                    {showRefreshSuccess ? (
+                      <CheckCircleIcon
+                        sx={{
+                          color: 'success.main',
+                          fontSize: 24,
+                          width: 24,
+                          height: 24,
+                        }}
+                      />
+                    ) : (
+                      <CircularProgress
+                        size={24}
+                        thickness={4}
+                        value={isDeterminateProgress ? progress * 100 : undefined}
+                        variant={isDeterminateProgress ? 'determinate' : 'indeterminate'}
+                        sx={{
+                          color: progressColor,
+                          transition: 'color 0.2s ease',
+                        }}
+                      />
+                    )}
+                  </Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: textColor,
+                      fontSize: '0.75rem',
+                      lineHeight: '1.2rem',
+                      height: '1.2rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      visibility: shouldShowIndicator ? 'visible' : 'hidden',
+                      transition: 'color 0.2s ease',
+                    }}
+                  >
+                    {textContent}
+                  </Typography>
+                </Box>
+              )}
+              {viewMode === VIEW_MODES.LIST ? (
+                <FileList
+                  files={displayedFiles}
+                  processingMap={processingMap}
+                  onFileClick={handleFileClick}
+                  onMoreClick={handleMoreClick}
+                  showMoreButton={!selectionMode}
+                  onLongPressSelect={handleLongPressSelect}
+                  onContextMenu={handleViewContextMenu}
+                  onFileDrop={handleFileDrop}
+                  onDropPermissionDenied={handleDropPermissionDenied}
+                  onDragStart={handleDragStartFromView}
+                  onDragEnd={handleDragEndFromView}
+                  internalDraggedPath={contentAreaDraggedPath}
+                  selectionMode={selectionMode}
+                  selectedFiles={selectedFiles}
+                  onFileCheck={handleFileCheck}
+                  hasWritePermission={hasWritePermission}
+                  currentPath={currentPath}
+                  onPathClick={handlePathClick}
+                  loading={loading}
+                  onThumbnailsLoaded={handleThumbnailsLoaded}
+                  loadMoreRef={loadMoreRef}
+                  hasMore={hasMore}
+                  shareToken={isShareLinkMode ? shareToken : undefined}
+                />
+              ) : viewMode === VIEW_MODES.GRID ? (
+                <FileGrid
+                  files={displayedFiles}
+                  processingMap={processingMap}
+                  onFileClick={handleFileClick}
+                  onMoreClick={handleMoreClick}
+                  showMoreButton={!selectionMode}
+                  onLongPressSelect={handleLongPressSelect}
+                  onContextMenu={handleViewContextMenu}
+                  onFileDrop={handleFileDrop}
+                  onDropPermissionDenied={handleDropPermissionDenied}
+                  onDragStart={handleDragStartFromView}
+                  onDragEnd={handleDragEndFromView}
+                  internalDraggedPath={contentAreaDraggedPath}
+                  selectionMode={selectionMode}
+                  selectedFiles={selectedFiles}
+                  onFileCheck={handleFileCheck}
+                  hasWritePermission={hasWritePermission}
+                  currentPath={currentPath}
+                  onPathClick={handlePathClick}
+                  loading={loading}
+                  onThumbnailsLoaded={handleThumbnailsLoaded}
+                  loadMoreRef={loadMoreRef}
+                  hasMore={hasMore}
+                  shareToken={isShareLinkMode ? shareToken : undefined}
+                />
+              ) : (
+                <FileDetail
+                  files={displayedFiles}
+                  processingMap={processingMap}
+                  onFileClick={handleFileClick}
+                  onMoreClick={handleMoreClick}
+                  showMoreButton={!selectionMode}
+                  onLongPressSelect={handleLongPressSelect}
+                  onContextMenu={handleViewContextMenu}
+                  onFileDrop={handleFileDrop}
+                  onDropPermissionDenied={handleDropPermissionDenied}
+                  onDragStart={handleDragStartFromView}
+                  onDragEnd={handleDragEndFromView}
+                  internalDraggedPath={contentAreaDraggedPath}
+                  selectionMode={selectionMode}
+                  selectedFiles={selectedFiles}
+                  onFileCheck={handleFileCheck}
+                  hasWritePermission={hasWritePermission}
+                  currentPath={currentPath}
+                  onPathClick={handlePathClick}
+                  loading={loading}
+                  shareToken={isShareLinkMode ? shareToken : undefined}
+                />
+              )}
+            </Box>
           </Box>
         </Box>
       </Box>

@@ -19,32 +19,46 @@
 
 ### 2.2 Props
 
-This view intentionally aggregates many props during extraction. Over time, props should be grouped into sub-view models, but the view must remain pure.
+This view remains pure, but the page shell should pass grouped sub-view models instead of flattening dozens of individual props. The goal is to keep `FileManager` readable as a composition layer while the view still receives fully prepared data/callbacks.
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| currentPath | string | Y | Current normalized path for display/breadcrumbs. |
-| displayedFiles | Array<object> | Y | View-ready list to render (already filtered/sorted). |
-| viewMode | string | Y | `'list' \| 'grid' \| 'detail'` (as currently implemented). |
-| sortMode | string | Y | Current sort mode (as currently implemented). |
-| searchQuery | string | Y | Current search query. |
-| onSearchQueryChange | (q: string) => void | Y | Update search. |
-| onSortModeChange | (mode: string) => void | Y | Update sort. |
-| onViewModeChange | (mode: string) => void | Y | Update view mode. |
-| selection | object | Y | View model for selection state (count, selected set/ids, selection mode flag) matching current UX. |
-| onFileOpen | (file: object) => void | Y | Open/preview file. |
-| onFolderOpen | (folderPath: string) => void | Y | Open folder (delegates to navigation controller). |
-| onContextAction | (action: string, file?: object) => void | Y | Open action sheet/context menu for file or selection. |
-| folderTree | ReactNode | N | Slot for folder-tree rendering (tree itself remains separate). |
-| progress | object | N | Progress view model (drawer state + items) from `useExplorerProgress`. |
-| overlays | ReactNode | N | Slot for product overlays/dialogs (share dialog, share-link login prompt, etc.). |
-| isLoading | boolean | N | Listing/loading state. |
-| errorState | object \| null | N | Optional error view model if current UI shows page-level errors. |
+| shareContext | object | Y | Share-link mode context (`shareToken`, `isShareLinkMode`, `shareRootPath`, `shareRootName`). |
+| shellContext | object | Y | Shell-only view state such as `user`, `navigate`, `isMobile`, refs, and responsive layout inputs. |
+| overlayState | object | Y | Product overlay and drawer/login/share-link modal state prepared by the shell/controllers. |
+| explorerSession | object | Y | Current explorer session view model. This should be split into sub-objects such as `controlsState` (search/sort/view controls) and `listingState` (displayed files, loading, thumbnails, infinite-scroll state). |
+| selectionState | object | Y | Selection-derived view model. This should be split into sub-objects such as `selectionModel` (selection mode, selected set, item toggle callback) and `bulkState` (select-all/reset callbacks and bulk-action capability flags). |
+| explorerActionState | object | Y | Explorer action-related view state. This should be split into sub-objects such as `capabilityState` (write permission), `treeState` (tree refresh trigger), and `transferState` (drag source path and move/copy in-progress flags). |
+| dialogState | object | Y | Dialog-related view state prepared by controllers. This should be split into sub-objects such as `actionContext`, `pickerState`, `modalDialogs`, and `fileTargets` rather than one flat dialog bag. |
+| messaging | object | Y | Snackbar and drop-message view model. |
+| explorerHandlers | object | Y | Prepared callbacks grouped by responsibility. At minimum, this should be split into sub-objects such as `interaction`, `commands`, `progress`, and `refreshIndicator` rather than one flat callback bag. |
 
 Notes:
 
-- The view does **not** decide share-link restrictions or virtual collection mapping; it receives view-ready data/flags.
+- The view does **not** decide share-link restrictions or virtual collection mapping; it receives view-ready grouped data/flags.
 - If the current UI relies on responsive behavior, the shell or controllers must pass the derived flags (e.g. `isMobile`) rather than the view importing responsive hooks directly (unless those hooks are considered purely presentational and do not break layering rules).
+- These grouped props are organizational only; they do not grant the view ownership of side effects.
+- The view should consume only the grouped values it actually renders. If the shell/controller has extra internal state, keep that state upstream instead of destructuring unused values in the view.
+- Handler grouping should reflect responsibility boundaries. For example:
+  - `interaction`: click/open/context/drag handlers for explorer content.
+  - `commands`: dialog completion and command entry points.
+  - `progress`: retry/cancel callbacks and progress items.
+  - `refreshIndicator`: pull-to-refresh indicator styles and state.
+- Dialog grouping should also reflect responsibility boundaries. For example:
+  - `actionContext`: action sheet, desktop context menu, current file target.
+  - `pickerState`: folder picker and mobile move/copy picker state.
+  - `modalDialogs`: upload/create/preview/rename/share/properties/confirm/conflict dialog state.
+  - `fileTargets`: selected file/media/conflict payloads consumed by dialogs.
+- Explorer-session grouping should reflect responsibility boundaries. For example:
+  - `controlsState`: `currentPath`, `viewMode`, `sortMode`, `searchQuery`, and related menu anchors/setters.
+  - `listingState`: `displayedFiles`, `loading`, `processingMap`, thumbnail callbacks, and infinite-scroll refs/flags.
+- Selection grouping should reflect responsibility boundaries. For example:
+  - `selectionModel`: `selectionMode`, `selectedFiles`, and per-item toggle callbacks.
+  - `bulkState`: select-all/reset callbacks plus bulk capability flags derived from the current selection.
+- Explorer-action grouping should reflect responsibility boundaries. For example:
+  - `capabilityState`: write-permission style capability flags.
+  - `treeState`: tree refresh/update tokens consumed by the folder tree.
+  - `transferState`: internal drag path and bulk move/copy progress state.
 
 ### 2.3 Callback Signatures
 
@@ -57,6 +71,8 @@ Call signatures listed in the props table are the contract; the view must call t
 - **Reference implementation:** extracted from `client/src/pages/FileManager/FileManager.js` during Phase 3.1.
 
 ### 2.5 Verification Scenarios
+
+These scenarios should be covered by a dedicated component test in `client/src/components/file-manager/__tests__/FileManagerView.test.js`. That test may mock lower-level child components and dialogs to verify boundary wiring while layout/details inside those children remain covered by their own tests.
 
 - [ ] Renders list/grid/detail based on `viewMode` without calling IO.
 - [ ] Search, sort, and view-mode controls call the provided callbacks.

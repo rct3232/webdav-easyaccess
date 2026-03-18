@@ -57,6 +57,7 @@ Notes:
 ### 2.5 Dependencies
 
 - Existing progress utilities/hooks may be used as `progressSource` initially, but this controller becomes the single owner of progress-drawer state for FileManager explorer core.
+- Transitional note: this hook may temporarily receive retry/cancel adapters backed by existing command-layer refs or lower-level hooks, but `FileManager` should not keep separate inline progress retry/cancel logic once this controller is introduced.
 
 ### 2.6 Side Effects
 

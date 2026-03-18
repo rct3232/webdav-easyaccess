@@ -47,6 +47,7 @@ These boundaries are intentionally written at the **feature level** (not as a fi
   - Route composition and route-state parsing (including redirects and share-link bootstrapping).
   - Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
   - Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
+  - When explorer interactions or share-link overlays become flow-heavy, page-local controller hooks should own those flows while the shell remains a composition layer.
 
 ### Routing
 

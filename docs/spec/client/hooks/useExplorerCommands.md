@@ -21,6 +21,11 @@
 
 `useExplorerCommands(params)`
 
+Transitional note:
+
+- The current implementation still receives concrete FileManager shell/controller wiring (for example `t`, `currentPathRef`, selection setters, dialog close handlers, and message surfaces) while it reuses `useBulkOperations` and `useFileOperations` internally.
+- Until the extraction fully converges on the narrower gateway/refresh-oriented signature below, dedicated hook tests should target the currently exported public command API and observable orchestration outcomes rather than assuming the future simplified constructor shape.
+
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | gateway | object | Y | Explorer IO gateway matching `docs/spec/client/services/explorerGateway.md`. |
@@ -63,6 +68,8 @@ Notes:
 - `docs/spec/client/services/explorerGateway.md`
 - `docs/spec/client/utils/refreshPolicy.md` (pure utility used to decide refresh)
 - Existing lower-level hooks/services may be reused initially, but this controller is the owner of orchestration (not the view).
+- Upload and conflict-preflight IO should be routed through the gateway boundary even if the gateway is currently a thin facade over existing service functions.
+- Transitional note: while existing lower-level hooks are being reused, command execution state may still be surfaced through those helpers; however, retry/cancel presentation logic should be routed through `useExplorerProgress`, not duplicated in the page shell.
 
 ### 2.6 Side Effects
 
@@ -75,6 +82,8 @@ Notes:
 - Errors must map to the same user-visible outcomes as today (dialogs/snackbars/messages). The hook should use `notify`/`openDialogs` provided by the shell rather than importing UI concerns directly.
 
 ### 2.8 Verification Scenarios
+
+These scenarios should be covered by a dedicated hook unit test in `client/src/pages/FileManager/hooks/__tests__/useExplorerCommands.test.js`, not only by FileManager page regression tests.
 
 - [ ] Upload:
   - [ ] Uploading files triggers progress items and completes/cancels/retries as today.

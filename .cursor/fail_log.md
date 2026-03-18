@@ -117,6 +117,41 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-18 — FileManagerView.test.js — dedicated boundary test harness failed with unstable child mocking
+
+- **Case:** B
+- **Root cause:** The first draft tried to validate `FileManagerView` by mocking its child modules through re-export seams and later by forcing `resetModules()`. In this repository/test runner combination, that approach was brittle: the re-export seam did not reliably intercept all child imports, and `resetModules()` introduced an invalid React hook context (`useContext` on a second React instance).
+- **Action taken:** Replaced the brittle mock-heavy harness with a simpler dedicated boundary test that renders the real `FileManagerView` and verifies observable DOM interactions (file click, search, view-mode, FAB, share-link FAB) using stable mobile-oriented props.
+- **Lesson:** For large presentational composition components, prefer real-child boundary tests when re-export mocking becomes unstable. Avoid `resetModules()` around React component tests unless you intentionally manage React singleton boundaries.
+
+## 2026-03-18 — useExplorerCommands.test.js — command error-surface assertion depended on mock implementation detail
+
+- **Case:** B
+- **Root cause:** The first draft asserted that `props.showError` itself had been called. The spec only requires the command wrapper to route errors through the shared error surface; asserting the final nested callback depended on the local mock implementation of `showErrorFromError`, not the hook contract.
+- **Action taken:** Kept the public failure path assertion (`rejects.toThrow(...)`) and changed the verification to assert that `showErrorFromError` received the thrown error plus the shell-provided message surface.
+- **Lesson:** When a wrapper delegates user messaging to a shared helper, assert that delegation happened with the right public inputs unless the downstream callback invocation is itself the contract under test.
+
+## 2026-03-18 — useExplorerInteraction.test.js — opens preview for the current action-sheet file
+
+- **Case:** B
+- **Root cause:** The test relied on the hoisted `canPreview` mock implementation surviving `jest.clearAllMocks()`. After clearing, the mock returned `undefined`, so the test asserted the wrong preview payload even though the hook behavior matched spec.
+- **Action taken:** Re-applied the `canPreview` mock implementation in `beforeEach` and kept the assertion focused on the observable preview-open outcome.
+- **Lesson:** When a hook test clears mocks globally, re-establish any required helper mock implementations in `beforeEach` before asserting on derived output.
+
+## 2026-03-18 — useShareLinkOverlay.test.js — confirms add-to-shared, keeps loading state, and routes on success
+
+- **Case:** B
+- **Root cause:** The test asserted `addToSharedConfirmLoading` immediately after invoking the async confirm handler, before React had committed the state update. The source behavior matched the spec; the test timing was wrong.
+- **Action taken:** Started the confirm flow, waited for the loading state to become observable with `waitFor`, then resolved the deferred promise and asserted on the final success outcome.
+- **Lesson:** For async hook actions, assert transient loading state only after React has had a chance to flush it; do not assume it is visible synchronously in the same call stack.
+
+## 2026-03-18 — useExplorerSession.test.js — suite fails because test harness used unstable hook inputs
+
+- **Case:** B
+- **Root cause:** The new test harness had two issues: it assumed a hoisted `useInfiniteScroll` mock implementation would persist after mock clearing, and it passed fresh `[]` / `jest.fn()` values on every render. That made the test either return `undefined` from the mocked hook or trigger a maximum-update-depth loop in `useExplorerSession` via changed dependencies. The source implementation matched the spec.
+- **Action taken:** Updated `useExplorerSession.test.js` to re-apply `useInfiniteScroll.mockImplementation(...)` in `beforeEach` and to use stable array/function inputs so the hook is tested against realistic, stable props.
+- **Lesson:** For hook tests, re-establish mock implementations in `beforeEach` and avoid inline arrays/functions in the render callback unless the test intentionally verifies prop-identity changes.
+
 ## 2026-03-18 — useShareDialog.test.js — suite fails to run (missing module path)
 
 - **Case:** B

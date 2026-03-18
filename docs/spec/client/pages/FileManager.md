@@ -45,6 +45,10 @@ Explorer core is the reusable “file explorer” core for browsing and acting o
   - `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
   - `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
   - `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
+  - `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
+  - `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
+- **Product overlay hooks** (planned):
+  - `docs/spec/client/hooks/useShareLinkOverlay.md` (share-link add-to-my-permissions and leave-share confirmation flows)
 - **Pure view(s)** (planned):
   - `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
 - **Gateways/adapters** (planned):
@@ -117,6 +121,13 @@ As extraction proceeds, the page shell should retain only *composition* responsi
 - **Feature wiring**:
   - Pass view-ready state + callbacks into the view.
   - Decide which dialogs/overlays render for this page context.
+  - Inject product policy into explorer interaction/navigation controllers instead of keeping large inline flow handlers in the page body.
+  - Prefer grouped sub-view models when passing data into `FileManagerView` rather than flattening dozens of shell/controller outputs into one wide prop surface.
+  - Prefer grouped handler bundles as well: item interaction, command flows, progress affordances, and refresh-indicator presentation should not be merged into one flat callback object.
+  - Apply the same grouping rule to dialog state: action/context targets, picker state, modal visibility, and dialog file payloads should be separated instead of merged into one flat object.
+  - Apply the same grouping rule to explorer session state: control inputs (search/sort/view/menu state) should be distinct from listing/render state (displayed files, thumbnails, infinite scroll, loading).
+  - Apply the same grouping rule to selection and action state: selection-model data, bulk capability flags, explorer capabilities, tree refresh state, and transfer/drag state should not be merged into one flat bag.
+  - When the shell memoizes grouped handler bundles for the view, callback identities should remain stable unless the observable behavior actually changes. Avoid recreating command callbacks on every render when they are passed through memoized grouped props.
 
 ### 4.2 Explorer core responsibilities (owned by extracted modules)
 

@@ -24,6 +24,7 @@ This gateway should be kept minimal for the current use cases. Prefer adding fun
 | Function | Input | Return | Notes |
 |----------|-------|--------|------|
 | listDirectory | ({ path, options? }) | Promise<{ files: Array<object>, meta?: object }> | Wraps current directory listing behavior. Must preserve hidden-file filtering and permission shaping as currently implemented (owned by callers or via options). |
+| checkConflicts | ({ operations, options? }) | Promise<Array<object>> | Preflight conflict detection for uploads/move/copy flows. Must preserve the same conflict identification behavior and limits used today. |
 | uploadToPath | ({ targetPath, files, options? }) | Promise<object> | Upload files to a path. Must preserve conflict behavior and progress integration hooks used today. |
 | renamePath | ({ path, newName, options? }) | Promise<object> | Rename operation for file/folder. |
 | movePaths | ({ paths, targetPath, options? }) | Promise<object> | Move operation (bulk-capable). |
@@ -51,6 +52,7 @@ Notes:
 Verify observable IO behavior from the caller perspective:
 
 - [ ] `listDirectory` returns the same entries as the current listing behavior for a given path (including permission flags and hidden-file behavior as currently implemented).
+- [ ] `checkConflicts` returns the same conflict entries as the current preflight conflict check for the same operations list.
 - [ ] `uploadToPath` triggers the same conflict behavior and supports the same progress integration points as today.
 - [ ] `renamePath`, `movePaths`, `copyPaths`, `deletePaths`, `downloadPaths` produce the same success/error outcomes as current service calls.
 

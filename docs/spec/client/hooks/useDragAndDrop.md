@@ -60,6 +60,7 @@
 - [ ] When target has write permission, handleDragOver sets dropEffect to `'move'` and sets drop target; handleDrop calls `onFileDrop`.
 - [ ] Tree-origin drop: when `dataTransfer` has `text/plain` and no in-view draggedFile, handleDragOver accepts folder as drop target (with write); handleDrop calls `onFileDrop({ path: droppedPath }, targetFolder)`. Same permission rules apply (no-write target → forbidden, onDropPermissionDenied).
 - [ ] When target folder is the parent of the dragged path (no-op move), handleDragOver does not set drop target (no highlight).
+- [ ] Tree-origin no-op: when target is parent of tree path or tree path equals target, handleDragOver does not set drop target; handleDrop does not call onFileDrop.
 
 ### 2.8 Edge Cases
 
@@ -67,3 +68,4 @@
 - Missing `e.dataTransfer` in tests: code guards with `e?.dataTransfer`.
 - Same path (drag file onto itself): not treated as valid drop target (existing check).
 - **No-op move (target is parent of source):** When the drop target folder is the parent of the dragged path (moving into the folder where the item already lives), the drop target is not set—no highlight and no effective move. This avoids showing "drop here" for a no-op.
+- **handleDrop no-op:** handleDrop must not call onFileDrop when the target is the parent of the dragged path (list or tree) or when path === target (drop on self).

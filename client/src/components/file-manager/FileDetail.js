@@ -23,7 +23,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { FileDetailSkeleton } from './FileSkeletons';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 
-const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
@@ -61,6 +61,7 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
     onDropPermissionDenied,
     onDragStart,
     onDragEnd,
+    internalDraggedPath,
     selectionMode,
     selectedFiles,
     onFileCheck,

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getParentPath } from '../utils/pathUtils';
 
 /**
  * Hook for handling drop-to-upload from OS file explorer
@@ -22,6 +23,7 @@ export const useDropToUpload = (options = {}) => {
     hasWritePermission = true,
     onExplorerDrop,
     onInternalFileDrop,
+    internalDraggedPath,
   } = typeof options === 'object' ? options : { onUploadComplete: options };
 
   const isFolderMode = path != null && typeof onExplorerDrop === 'function';
@@ -102,11 +104,24 @@ export const useDropToUpload = (options = {}) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
         const { isExternal, isInternal } = getDragTypes(e);
-        if (isExternal || (isInternal && onInternalFileDrop)) {
+        if (isExternal) {
           e.preventDefault();
           e.stopPropagation();
           setIsDraggingOver(true);
           setIsDropTarget(true);
+        } else if (isInternal && onInternalFileDrop) {
+          e.preventDefault();
+          e.stopPropagation();
+          const internalPath = e?.dataTransfer?.getData?.('text/plain');
+          const effectiveInternalPath = internalPath || internalDraggedPath;
+          const noOp =
+            effectiveInternalPath && (getParentPath(effectiveInternalPath) === path || effectiveInternalPath === path);
+          if (noOp) {
+            // No-op: same folder or drop on self — do not highlight
+          } else {
+            setIsDraggingOver(true);
+            setIsDropTarget(true);
+          }
         }
       } else {
         e.preventDefault();
@@ -114,7 +129,7 @@ export const useDropToUpload = (options = {}) => {
         setIsDraggingOver(true);
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path]
   );
 
   const handleDragOver = useCallback(
@@ -131,7 +146,15 @@ export const useDropToUpload = (options = {}) => {
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = 'move';
-          setIsDropTarget(true);
+          const internalPath = e?.dataTransfer?.getData?.('text/plain');
+          const effectiveInternalPath = internalPath || internalDraggedPath;
+          const noOp =
+            effectiveInternalPath && (getParentPath(effectiveInternalPath) === path || effectiveInternalPath === path);
+          if (noOp) {
+            // No-op: same folder or drop on self — do not highlight
+          } else {
+            setIsDropTarget(true);
+          }
         }
       } else {
         e.preventDefault();
@@ -139,7 +162,7 @@ export const useDropToUpload = (options = {}) => {
         e.dataTransfer.dropEffect = 'copy';
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path]
   );
 
   const handleDragLeave = useCallback(
@@ -178,6 +201,9 @@ export const useDropToUpload = (options = {}) => {
       const internalPath = dataTransfer?.getData?.('text/plain');
 
       if (isFolderMode && internalPath && onInternalFileDrop) {
+        if (getParentPath(internalPath) === targetPath || internalPath === targetPath) {
+          return;
+        }
         onInternalFileDrop(internalPath, targetPath);
         return;
       }

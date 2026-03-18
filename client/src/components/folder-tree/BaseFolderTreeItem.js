@@ -48,6 +48,7 @@ const BaseFolderTreeItem = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
+  internalDraggedPath,
   isMobile = false,
   icon,
   openIcon,
@@ -127,6 +128,7 @@ const BaseFolderTreeItem = ({
     hasWritePermission,
     onExplorerDrop,
     onInternalFileDrop,
+    internalDraggedPath,
   });
 
   const loadChildren = useCallback(async (force = false) => {
@@ -260,6 +262,7 @@ const BaseFolderTreeItem = ({
         onInternalFileDrop={onInternalFileDrop}
         onInternalDragStart={onInternalDragStart}
         onInternalDragEnd={onInternalDragEnd}
+        internalDraggedPath={internalDraggedPath}
         isMobile={isMobile}
         treeUpdateTrigger={treeUpdateTrigger}
         isHidden={child.isHidden}

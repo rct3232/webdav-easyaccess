@@ -1419,9 +1419,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const movePathsToFolder = useCallback(
     async (filePaths, targetFolderPath) => {
-      if (filePaths.length === 0 || filePaths[0] === targetFolderPath) return;
+      const paths = Array.isArray(filePaths) ? filePaths.filter(Boolean) : [];
+      if (!targetFolderPath || paths.length === 0) return;
+
+      // No-op: dropping onto itself or into its current parent folder
+      if (paths.some((p) => p === targetFolderPath)) return;
+      if (paths.every((p) => getParentPath(p) === targetFolderPath)) return;
       try {
-        await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths });
+        await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths: paths });
       } catch {
         // Error is already handled by useBulkOperations
       }
@@ -1612,6 +1617,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onInternalFileDrop={handleInternalFileDrop}
                 onInternalDragStart={handleDragStartFromView}
                 onInternalDragEnd={handleDragEndFromView}
+                internalDraggedPath={contentAreaDraggedPath}
                 isMobile={false}
                 shareLinkSection={isShareLinkMode ? {
                   shareRootPath,
@@ -1712,6 +1718,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   onInternalFileDrop={handleInternalFileDrop}
                   onInternalDragStart={handleDragStartFromView}
                   onInternalDragEnd={handleDragEndFromView}
+                  internalDraggedPath={contentAreaDraggedPath}
                   isMobile
                   shareLinkSection={isShareLinkMode ? {
                     shareRootPath,
@@ -1837,6 +1844,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}
                 onDragEnd={handleDragEndFromView}
+                internalDraggedPath={contentAreaDraggedPath}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
@@ -1862,6 +1870,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}
                 onDragEnd={handleDragEndFromView}
+                internalDraggedPath={contentAreaDraggedPath}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
@@ -1887,6 +1896,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 onDropPermissionDenied={handleDropPermissionDenied}
                 onDragStart={handleDragStartFromView}
                 onDragEnd={handleDragEndFromView}
+                internalDraggedPath={contentAreaDraggedPath}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}

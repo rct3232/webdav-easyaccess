@@ -22,6 +22,7 @@ const FolderTree = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
+  internalDraggedPath,
   isMobile = false,
   shareLinkSection,
 }) => {
@@ -239,6 +240,7 @@ const FolderTree = ({
                 onInternalFileDrop={onInternalFileDrop}
                 onInternalDragStart={onInternalDragStart}
                 onInternalDragEnd={onInternalDragEnd}
+                internalDraggedPath={internalDraggedPath}
                 isMobile={isMobile}
                 icon={<HomeIcon fontSize="small" />}
               />
@@ -259,6 +261,7 @@ const FolderTree = ({
                 onInternalFileDrop={onInternalFileDrop}
                 onInternalDragStart={onInternalDragStart}
                 onInternalDragEnd={onInternalDragEnd}
+                internalDraggedPath={internalDraggedPath}
                 isMobile={isMobile}
               />
 

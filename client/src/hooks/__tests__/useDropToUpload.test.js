@@ -259,6 +259,81 @@ describe('useDropToUpload', () => {
     );
   });
 
+  it('folder mode internal drop no-op when target is parent of dragged path', async () => {
+    const onExplorerDrop = jest.fn().mockResolvedValue();
+    const onInternalFileDrop = jest.fn();
+
+    const dataTransfer = {
+      types: ['text/plain'],
+      items: [],
+      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs/a.txt' : '')),
+    };
+
+    const { result } = renderHook(() =>
+      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+    );
+
+    await act(async () => {
+      await result.current.handleFolderDrop({
+        preventDefault: jest.fn(),
+        stopPropagation: jest.fn(),
+        dataTransfer,
+      });
+    });
+
+    expect(onInternalFileDrop).not.toHaveBeenCalled();
+    expect(onExplorerDrop).not.toHaveBeenCalled();
+  });
+
+  it('folder mode internal drop no-op when dropping a folder onto itself', async () => {
+    const onExplorerDrop = jest.fn().mockResolvedValue();
+    const onInternalFileDrop = jest.fn();
+
+    const dataTransfer = {
+      types: ['text/plain'],
+      items: [],
+      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs' : '')),
+    };
+
+    const { result } = renderHook(() =>
+      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+    );
+
+    await act(async () => {
+      await result.current.handleFolderDrop({
+        preventDefault: jest.fn(),
+        stopPropagation: jest.fn(),
+        dataTransfer,
+      });
+    });
+
+    expect(onInternalFileDrop).not.toHaveBeenCalled();
+    expect(onExplorerDrop).not.toHaveBeenCalled();
+  });
+
+  it('folder mode internal drag over same-folder/self does not set drop target', () => {
+    const onExplorerDrop = jest.fn().mockResolvedValue();
+    const onInternalFileDrop = jest.fn();
+
+    const { result } = renderHook(() =>
+      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+    );
+
+    act(() => {
+      result.current.handleFolderDragEnter({
+        preventDefault: jest.fn(),
+        stopPropagation: jest.fn(),
+        dataTransfer: {
+          types: ['text/plain'],
+          getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs/a.txt' : '')),
+        },
+      });
+    });
+
+    expect(result.current.isDropTarget).toBe(false);
+    expect(result.current.isDraggingOver).toBe(false);
+  });
+
   it('reset clears isDraggingOver and uploadProgress', () => {
     const { result } = renderHook(() => useDropToUpload({}));
 

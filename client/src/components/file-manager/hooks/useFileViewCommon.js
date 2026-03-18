@@ -37,6 +37,7 @@ export const useFileViewCommon = ({
   onDropPermissionDenied,
   onDragStart,
   onDragEnd,
+  internalDraggedPath,
   selectionMode,
   selectedFiles,
   onFileCheck,
@@ -56,7 +57,15 @@ export const useFileViewCommon = ({
     isMobileRef.current = isMobile;
   }, [isMobile]);
   
-  const dragAndDrop = useDragAndDrop(onFileDrop, selectionMode, theme, onDropPermissionDenied, onDragStart, onDragEnd);
+  const dragAndDrop = useDragAndDrop(
+    onFileDrop,
+    selectionMode,
+    theme,
+    onDropPermissionDenied,
+    onDragStart,
+    onDragEnd,
+    internalDraggedPath
+  );
   
   /**
    * Get file state for rendering

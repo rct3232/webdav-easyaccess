@@ -33,6 +33,7 @@ const SharedFoldersSection = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
+  internalDraggedPath,
   isMobile,
 }) => {
   const { t } = useTranslation();
@@ -129,6 +130,7 @@ const SharedFoldersSection = ({
               onInternalFileDrop={onInternalFileDrop}
               onInternalDragStart={onInternalDragStart}
               onInternalDragEnd={onInternalDragEnd}
+              internalDraggedPath={internalDraggedPath}
               isMobile={isMobile}
               useHiddenFilesFilter={false}
             />

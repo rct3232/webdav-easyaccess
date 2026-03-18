@@ -63,7 +63,7 @@
 - **DragEnter:** When external or internal and not skipped, `setContentAreaDragType(isExternal ? 'external' : 'internal')`, then `handleFileAreaDragEnter(e)`.
 - **DragOver:** When external or internal and not skipped, `handleFileAreaDragOver(e)`.
 - **DragLeave:** When external or internal, if `!e.currentTarget.contains(e.relatedTarget)` then `setContentAreaDragType(null)`; then `handleFileAreaDragLeave(e)`.
-- **Drop:** Clear state: `setContentAreaDraggedPath(null)`, `setContentAreaDragType(null)`. If internal (`text/plain` data): `e.preventDefault()`, `e.stopPropagation()`, `resetFileAreaDrag?.()`, `handleInternalFileDrop(internalPath, currentPath)`. If external: `handleFileAreaDrop(e, currentPath, handleExplorerDrop)`.
+- **Drop:** Clear state: `setContentAreaDraggedPath(null)`, `setContentAreaDragType(null)`. If internal (`text/plain` data): `e.preventDefault()`, `e.stopPropagation()`, `resetFileAreaDrag?.()`. When internal drop: if `getParentPath(internalPath) === currentPath` (same folder), do not call handleInternalFileDrop; otherwise call `handleInternalFileDrop(internalPath, currentPath)`. If external: `handleFileAreaDrop(e, currentPath, handleExplorerDrop)`.
 
 ### 2.6 Error Handling
 
@@ -76,6 +76,7 @@
 - [ ] When event target is inside `[data-file-path]`, DragEnter/DragOver do not show content-area drop (data-file-path skip); DragOver calls handleFileAreaDragLeave.
 - [ ] When guards false and external drag: DragEnter sets type and calls handleFileAreaDragEnter; DragOver calls handleFileAreaDragOver; Drop calls handleFileAreaDrop(e, currentPath, handleExplorerDrop).
 - [ ] When guards false and internal drag (text/plain): Drop calls handleInternalFileDrop(internalPath, currentPath) and resetFileAreaDrag; handleFileAreaDrop not called for internal.
+- [ ] When internal drop and getParentPath(internalPath) === currentPath (same folder), handleInternalFileDrop is not called.
 - [ ] Assert on observable behavior: which callbacks were called with what arguments (not implementation internals).
 
 ### 2.8 Edge Cases

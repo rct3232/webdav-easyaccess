@@ -53,7 +53,8 @@ export function useContentAreaDragDrop(options) {
       if (isMobile || selectionMode || !hasWritePermission) return;
 
       const { isExternal, isInternalTree } = getDragTypes(e);
-      if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
+      const sameParentSkip = isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath;
+      if (sameParentSkip) {
         return;
       }
       if (e.target.closest('[data-file-path]')) return;
@@ -79,7 +80,8 @@ export function useContentAreaDragDrop(options) {
       if (isMobile || selectionMode || !hasWritePermission) return;
 
       const { isExternal, isInternalTree } = getDragTypes(e);
-      if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
+      const sameParentSkip = isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath;
+      if (sameParentSkip) {
         return;
       }
       if (e.target.closest('[data-file-path]')) {
@@ -139,6 +141,7 @@ export function useContentAreaDragDrop(options) {
         e.preventDefault();
         e.stopPropagation();
         resetFileAreaDrag?.();
+        if (getParentPath(internalPath) === currentPath) return;
         handleInternalFileDrop(internalPath, currentPath);
         return;
       }

@@ -46,7 +46,7 @@
 
 ### 2.5.1 Internal drag (folder mode)
 
-When `dataTransfer.types` includes `'text/plain'`, the drag is treated as internal (e.g. from file manager). handleDragEnter and handleDragOver accept it only when the tree node has write permission (same as external drops: isDisabled or !hasWritePermission → no drop target). When accepted: preventDefault, set drop effect (e.g. `'move'`), set isDropTarget so the tree node is highlighted. handleDrop: when `dataTransfer.getData('text/plain')` is present, call `onInternalFileDrop(draggedPath, targetFolderPath)` with targetFolderPath = path (the tree node’s path). If onInternalFileDrop is not provided, internal drop is no-op (no upload). **Permission consistency:** Tree nodes with no write permission do not show as drop targets for internal (or external) drags.
+When `dataTransfer.types` includes `'text/plain'`, the drag is treated as internal (e.g. from file manager). handleDragEnter and handleDragOver accept it only when the tree node has write permission (same as external drops: isDisabled or !hasWritePermission → no drop target). When accepted: preventDefault, set drop effect (e.g. `'move'`), set isDropTarget so the tree node is highlighted. handleDrop: when `dataTransfer.getData('text/plain')` is present, call `onInternalFileDrop(draggedPath, targetFolderPath)` with targetFolderPath = path (the tree node’s path). If onInternalFileDrop is not provided, internal drop is no-op (no upload). **Permission consistency:** Tree nodes with no write permission do not show as drop targets for internal (or external) drags. **No-op:** When target path is the parent of draggedPath or equals draggedPath (drop on self), do not set isDropTarget/isDraggingOver and do not call onInternalFileDrop on drop.
 
 ### 2.6 Error Handling
 
@@ -59,6 +59,7 @@ When `dataTransfer.types` includes `'text/plain'`, the drag is treated as intern
 - [ ] uploadProgress updates
 - [ ] Folder mode: onExplorerDrop
 - [ ] Folder mode: internal drag (text/plain): drag over shows drop target; on drop, onInternalFileDrop(draggedPath, targetFolderPath) called; no upload when onInternalFileDrop provided
+- [ ] Folder mode: internal drop onto same folder or self does not call onInternalFileDrop
 - [ ] Main mode: uploadFiles, onUploadComplete
 
 ### 2.8 Edge Cases

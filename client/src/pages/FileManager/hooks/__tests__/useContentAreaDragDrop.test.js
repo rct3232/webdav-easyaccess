@@ -234,6 +234,30 @@ describe('useContentAreaDragDrop', () => {
       expect(opts.handleFileAreaDrop).not.toHaveBeenCalled();
     });
 
+    it('does not call handleInternalFileDrop when internal drop is within the same folder (same-parent)', () => {
+      const opts = createDefaultOptions({ currentPath: '/folder' });
+      const { result } = renderHook(() => useContentAreaDragDrop(opts));
+      const internalPath = '/folder/file.txt';
+      const e = createMockEvent({
+        dataTransfer: {
+          types: ['text/plain'],
+          getData: (t) => (t === 'text/plain' ? internalPath : ''),
+        },
+      });
+
+      act(() => {
+        result.current.handleContentAreaDrop(e);
+      });
+
+      expect(opts.setContentAreaDraggedPath).toHaveBeenCalledWith(null);
+      expect(opts.setContentAreaDragType).toHaveBeenCalledWith(null);
+      expect(e.preventDefault).toHaveBeenCalled();
+      expect(e.stopPropagation).toHaveBeenCalled();
+      expect(opts.resetFileAreaDrag).toHaveBeenCalled();
+      expect(opts.handleInternalFileDrop).not.toHaveBeenCalled();
+      expect(opts.handleFileAreaDrop).not.toHaveBeenCalled();
+    });
+
     it('Drop works when resetFileAreaDrag is omitted', () => {
       const opts = createDefaultOptions();
       delete opts.resetFileAreaDrag;

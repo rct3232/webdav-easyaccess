@@ -4,8 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | FolderPickerDialog state: selectedPath, folders, loading, hasWritePermission, breadcrumbs. Loads folders for path or __shared__. Home/shared toggle. |
+| Role | FolderPicker dialog controller state: manages `selectedPath`, folder list for the current picker path, loading state, write-permission flag, and breadcrumb model for rendering. |
 | Used by components/pages | FolderPickerDialog |
+| Ownership note | This hook is product UI/controller logic for the picker dialog. It should not be treated as part of reusable explorer core. IO concerns should be isolated behind gateways/adapters over time (see refactor plan Phase 4). |
 
 ---
 
@@ -47,8 +48,9 @@
 
 ### 2.4 Dependencies
 
-- getUserPermissions, listFiles, checkPermission
-- filterOutUserOwnFolders, getUserBaseFolder
+- Current implementation may use existing services (listing + permission checks).
+- Target contract: picker IO should be routed through a gateway (future: `folderPickerGateway`) so the hook does not permanently mix service imports and domain rules.
+- Pure folder-selection rules (breadcrumbs building, invalid destination validation) should be extractable into pure utilities over time.
 
 ### 2.5 Side Effects
 

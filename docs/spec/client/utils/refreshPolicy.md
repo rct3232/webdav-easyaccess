@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Decide whether to refresh the file list after an async operation completes, to avoid stale-closure refreshes after user navigates elsewhere. Supports move/copy (refresh if on target) and other ops (refresh only if still on started path). |
+| Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either started path or target path; other ops refresh only when still on the started path. |
 
 ---
 

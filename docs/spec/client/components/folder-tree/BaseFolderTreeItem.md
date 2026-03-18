@@ -4,9 +4,10 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Unified folder tree item: expand/collapse, path click, drop (OS + internal). Optional drag source (draggable when not mobile/disabled). Supports path/name or node. Used for home tree and shared folders. |
+| Role | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`. |
 | Used in | FolderTree, SharedFoldersSection |
-| Related components | listFiles, useDropToUpload, FileTreeSkeleton |
+| Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton` |
+| Ownership note | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, and DnD policy are expected to move toward a controller/gateway split in later phases (per refactor plan Phase 4), without changing observable behavior. |
 
 ---
 
@@ -60,7 +61,8 @@
 
 ### 2.4 Dependencies
 
-- **imports:** listFiles, useDropToUpload, FileTreeSkeleton, getShowHiddenFiles
+- **Allowed imports:** presentational components, pure utilities, DnD wiring utilities that do not embed product IO rules.
+- **Avoid (target contract):** direct file listing/service calls inside the view. If child-loading is required, it should be driven by a controller (future: `useFolderTreeItemController`) and/or a gateway.
 - **Reference implementation:** `client/src/components/folder-tree/BaseFolderTreeItem.js`
 
 ### 2.5 i18n Keys

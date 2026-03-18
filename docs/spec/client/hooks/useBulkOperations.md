@@ -4,8 +4,8 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Bulk move, copy, delete, download. Folder picker state, conflict check, progress polling. Uses useFileOperationProgress, fileService batch APIs. |
-| Used by components/pages | FileManager |
+| Role | Transitional bulk-operation helper for FileManager. It currently encapsulates bulk move/copy/delete/download mechanics, conflict checks, folder-picker state, and polling, but in the target architecture it serves as an internal dependency that can be wrapped by `useExplorerCommands` rather than remaining the top-level owner of explorer command orchestration. |
+| Used by components/pages | FileManager (current implementation); target usage may be via `useExplorerCommands` |
 
 ---
 
@@ -14,7 +14,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/pages/FileManager/hooks/useBulkOperations.js`
-- **Test file:** `client/src/hooks/__tests__/useBulkOperations.test.js`
+- **Test file:** `client/src/pages/FileManager/hooks/__tests__/useBulkOperations.test.js`
 
 ### 2.2 Input Parameters
 
@@ -52,31 +52,45 @@
 | progressItems | array | Progress items |
 | updateProgress | function | Update progress |
 
-### 2.4 Dependencies
+### 2.4 Boundaries
+
+- **Currently owns**
+  - Bulk move/copy/delete/download execution details
+  - Folder picker coordination for bulk move/copy
+  - Bulk conflict-check flow and retry/cancel mechanics for existing batch jobs
+- **Does not own in target architecture**
+  - Top-level explorer command ownership for FileManager page shell
+  - Search/sort/view session state
+  - Path navigation orchestration
+  - Progress drawer/list ownership as an explorer-core concern
+  - Product overlay policies such as share-link restrictions
+
+### 2.5 Dependencies
 
 - fileService (batchMove, batchCopy, batchDelete, downloadMultipleFiles, checkConflicts, getBulkOperationStatus, cancelBulkOperation)
 - useFileOperationProgress, recentFiles utils
 
-### 2.5 Side Effects
+### 2.6 Side Effects
 
 - API calls for bulk ops
 - Polling for batch job status (POLL_INTERVAL_MS)
 - dismissFailedItems before new op
 
-### 2.6 Error Handling
+### 2.7 Error Handling
 
 - Conflict check -> bulkConflictData
 - Progress updates for error/warning
 
-### 2.7 Verification Scenarios
+### 2.8 Verification Scenarios
 
 - [ ] handleBulkMove, handleBulkCopy open picker
 - [ ] handleBulkDelete with/without retry
 - [ ] handleBulkDownload
 - [ ] handleFolderPickerSelect triggers move/copy
 - [ ] Conflict flow
+- [ ] The hook remains behavior-compatible while being documented as a lower-level dependency that can sit behind `useExplorerCommands`
 
-### 2.8 Edge Cases
+### 2.9 Edge Cases
 
 - retryData for retry
 - Polling cleanup

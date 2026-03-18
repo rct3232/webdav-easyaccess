@@ -14,7 +14,7 @@
 ### 2.1 File Path
 
 - **Source:** `client/src/pages/FileManager/hooks/useRecentFile.js`
-- **Test file:** `client/src/hooks/__tests__/useRecentFile.test.js`
+- **Test file:** `client/src/pages/FileManager/hooks/__tests__/useRecentFile.test.js`
 
 ### 2.2 Input Parameters
 

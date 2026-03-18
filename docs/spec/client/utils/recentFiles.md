@@ -4,7 +4,8 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Recent-files tracking: get/add/remove via API, subscribe to changes (onRecentFilesChange), update on folder move/rename/delete, apply bulk operations (applyRecentFilesAfterBulkDelete, applyRecentFilesAfterBulkMove). |
+| Role | Recent-files tracking utility: fetch/update recent entries via API, publish change notifications to subscribers, and provide helpers to keep recent paths consistent across rename/move/delete and bulk operations. |
+| Boundary note | This is a **product utility**, not part of reusable explorer core. Explorer core must not own virtual collections such as `__recent__` (those remain product overlays in the FileManager shell), but the product may use this utility to build a “recent” section. |
 
 ---
 

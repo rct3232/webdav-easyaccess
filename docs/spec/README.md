@@ -30,6 +30,34 @@ This directory contains design documentation and implementation/unit-test specif
 
 ---
 
+## Responsibility Splits (Mandatory Specs)
+
+When you split a module into multiple responsibilities (for example: page shell + controller hook + gateway + pure helpers + pure view), you **must** update and/or add specs **before** editing source code.
+
+### What is mandatory when splitting
+
+- **Update the original spec**: Narrow the existing spec to the role it will own after the split (and remove claims that move elsewhere).
+- **Add one spec per new role**: Each new file or module role introduced by the split must have its own spec using the closest matching template.
+- **Keep roles non-overlapping**: If two specs claim ownership of the same behavior, the split is incomplete.
+
+### Role definitions (client)
+
+- **Page shell (page spec)**: Composes features and route state; wires controller hooks into views; owns product-specific overlays for that page.
+- **Controller hook (hook spec)**: Orchestrates a user flow and prepares view-ready state; may coordinate multiple helpers/gateways; should not become a new "god hook".
+- **Gateway / adapter (service spec)**: Isolates API/storage/browser IO behind replaceable functions; owns request/response mapping and low-level side effects.
+- **Pure helper (util spec)**: Pure domain rules and derived state; no network, storage, router, or browser globals.
+- **Pure view (component spec)**: Renders from props only; no service imports and no direct IO.
+
+### Minimum content to include in each new spec
+
+- **Role + boundaries**: What it owns and what it explicitly does *not* own.
+- **Public interface**: Props/signatures/return values and error/result shapes.
+- **Dependencies**: Which other roles it may call (and which it must not).
+- **Side effects**: Only if applicable (typically gateways and some controllers).
+- **Verification scenarios**: Observable outcomes to validate behavior ("what", not "how").
+
+---
+
 ## Related Documents
 
 | Document | Purpose |

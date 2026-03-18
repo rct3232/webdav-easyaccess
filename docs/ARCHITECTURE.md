@@ -246,3 +246,81 @@ Detailed executable verification belongs in:
 - setup/runtime checks: `docs/SETUP.md`
 - store contract scenarios: `docs/spec/server/store/*.md`
 - route behavior scenarios: `docs/spec/server/routes/*.md`
+
+---
+
+## 7. Client Architecture (Layering and Boundaries)
+
+This section defines high-level client layering to keep responsibilities explicit and replaceable. Detailed contracts live in client spec docs and feature docs (see references below).
+
+### 7.1 Layers
+
+The client follows a five-layer model:
+
+1. Page shell
+   - Owns route composition and product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`).
+   - Composes controller hooks and passes prepared props into views.
+   - No direct data-access logic beyond orchestration allowed here.
+
+2. Controller hooks
+   - Orchestrate user flows and UI state transitions for a feature area (navigation, commands, progress, dialogs).
+   - Coordinate gateways and helpers; expose callbacks and view models to views.
+   - Must not import browser globals or services directly; all IO via gateways/adapters.
+
+3. Gateways / adapters
+   - Isolate IO: HTTP/API calls, storage access, and browser APIs.
+   - Provide narrow, testable interfaces consumed by controller hooks.
+   - Are the only layer allowed to depend on transport, token storage, or Web APIs.
+
+4. Pure helpers
+   - Pure functions that hold domain rules and derived state logic.
+   - No side effects, no IO, no React state.
+
+5. Pure views
+   - React components that render strictly from props.
+   - No service, storage, router, or browser API imports.
+   - May receive callbacks and prepared data from controller hooks only.
+
+High-level flow:
+
+```mermaid
+flowchart LR
+  pageShell[PageShell] --> controller[ControllerHooks]
+  controller --> gateway[Gateways/Adapters]
+  controller --> helpers[PureHelpers]
+  pageShell --> view[PureViews]
+  controller --> view
+  gateway --> externalIo[API/Storage/Browser]
+```
+
+### 7.2 Feature boundaries
+
+- Explorer core vs product overlays
+  - Explorer core handles listing, selection, navigation, commands, and progress.
+  - Product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`, admin-only visibility) live in page shells or dedicated controllers outside explorer core.
+
+- Tree and picker ecosystem
+  - Tree/picker views are pure; expansion rules, lazy loading, and target validation live in controllers and helpers.
+  - Data access (listing folders, shared folders) goes through folder gateways.
+
+- Auth/session
+  - Transport, token storage, and auth navigation policy are separated behind dedicated adapters.
+  - UI pages (Login/Register/MyPage) are page shells that compose controller hooks and views.
+
+### 7.3 Hard constraints
+
+- Pure views do not import services, storage utilities, router hooks, or browser globals.
+- Browser APIs and storage access are hidden behind adapters (gateways), never called directly from views/controllers without going through the gateway boundary.
+- Controller hooks own orchestration, not low-level IO; they depend on gateways and helpers.
+- Do not merge product-specific rules into reusable explorer core modules.
+- Structural refactors must update the corresponding client specs before source changes.
+
+### 7.4 Canonical references
+
+Use these docs for client contracts and feature intent (do not duplicate details here):
+
+- Client specs: `docs/spec/client/**/*` (pages, hooks, services, components, utils)
+- Feature docs: `docs/features/*.md` (product behavior and overlays)
+- Coding style and layering rules: `docs/CODING_STYLE.md`
+
+The architecture document establishes boundaries and points to canonical specs to avoid drift and duplication.

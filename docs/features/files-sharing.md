@@ -1,16 +1,45 @@
 # Files, Folders, Sharing, and Recent Files
 
-This document describes file and folder operations (CRUD, rename, batch move/copy/delete), thumbnails and preview, permission requests, share links, and recent files. It references [api.md](../api.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [permissions.md](permissions.md).
+This document describes the product behavior around browsing and operating on files/folders, sharing, permission requests, and recent files. It references [api.md](../api.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [permissions.md](permissions.md).
 
 ---
 
 ## Overview
 
-Users manage files and folders through the API with path-based access. The server enforces ACL (direct read/direct write) on every request; list and read require permission on the folder or the file's parent, and write operations require write (or admin) on the target folder. Batch operations (move, copy, delete) use selective transfer/delete logic: the server traverses trees, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Thumbnails are generated server-side (images via Sharp, video frames via FFmpeg) and cached. Permission requests let users ask folder/file owners for access; share links provide time-limited public access to a file or folder. Recent files are stored per user and updated via apply-moves and remove-paths after bulk operations.
+Users manage files and folders through a path-based API. The server enforces ACL (direct read/direct write) on every request; list/read require permission on the folder (or the file’s parent), and write operations require write (or admin) on the target folder. Batch operations (move/copy/delete) use selective transfer/delete logic: the server traverses trees, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Thumbnails are generated server-side and cached. Sharing features provide time-limited public access to a file or folder (share links) and controlled access via permissions. Recent files are stored per user and updated after bulk operations.
 
 ---
 
-## Specification
+## Responsibility boundaries (client)
+
+This project is refactoring the client so responsibilities are explicit and replaceable. For files and sharing, the important boundary is **explorer core vs product overlays**:
+
+- **Explorer core (file browsing & operations)**
+  - Presents folder contents, sorting/searching, selection, and progress UI.
+  - Orchestrates file operations (upload/rename/move/copy/delete/download) against authenticated APIs.
+  - Does **not** own sharing policy, permission-request workflows, or recent-files persistence. It can *signal* that an operation occurred (e.g., “paths moved”) so overlays can react.
+
+- **Sharing overlay (share dialog, permission management, share links)**
+  - Handles user-facing sharing flows: granting/revoking access, reviewing existing permissions, and creating/updating share links.
+  - Owns product rules such as “who can share what”, and admin/review mode branching.
+  - Uses explorer UI state (current path / selection) as inputs, but remains a distinct feature module.
+
+- **Permission requests (request/approve/reject/cancel)**
+  - Handles the request lifecycle between requester and owner.
+  - Is separate from direct permission grant/revoke actions: request flows are user-to-user and stateful, while grant/revoke are immediate permission mutations.
+
+- **Recent files (persistence & synchronization)**
+  - Records a per-user list of recently accessed items and keeps it consistent after rename/move/delete.
+  - Is not a UI-only concern: it has server-backed persistence and dedicated update endpoints.
+  - Explorer and sharing features should treat “recent files” as a separate capability they notify, not embed.
+
+These boundaries are about **who owns product rules and side effects**; they are not a server contract change.
+
+---
+
+## Server-facing capabilities (reference)
+
+This section is a reference summary of the existing endpoints that back the above behaviors. Detailed contracts live in [api.md](../api.md) and related server specs.
 
 ### Files and Folders
 
@@ -48,7 +77,7 @@ All path parameters are normalized by middleware; `path`, `sourcePath`, `destina
 - Check owner: `GET /api/permission-requests/check-owner?folderPath=...` or `?filePath=...`.
 - Actions: `POST /api/permission-requests/:id/approve`, `POST /api/permission-requests/:id/reject`, `POST /api/permission-requests/:id/cancel`.
 
-### Share Links (authenticated)
+### Share links (authenticated)
 
 - Create: `POST /api/share-links` — Body: e.g. `filePath`, `expiresInDays`.
 - List/Get/Update/Delete: `GET /api/share-links`, `GET /api/share-links/:token`, `PUT /api/share-links/:token`, `DELETE /api/share-links/:token`.
@@ -108,8 +137,8 @@ sequenceDiagram
 
 1. Client sends `POST /api/files/batch-move` with `moves` (or sourcePaths + destinationPath).
 2. Server runs selective transfer: traverse source trees, check current user ACL at each path, move only allowed items; update `/.wea/permissions/...` for moved paths.
-3. Client then calls `POST /api/recent-files/apply-moves` with the same move mapping so recent-file list stays in sync.
-4. On batch delete, client calls `POST /api/recent-files/remove-paths` with `filePaths` and `folderPaths` to remove deleted items from recent list.
+3. Recent-files synchronization runs separately from the move itself: call `POST /api/recent-files/apply-moves` with the same move mapping so the recent list stays consistent.
+4. On batch delete, call `POST /api/recent-files/remove-paths` with `filePaths` and `folderPaths` to remove deleted items from the recent list.
 
 ### Share link (public)
 

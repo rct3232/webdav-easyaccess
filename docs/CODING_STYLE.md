@@ -72,6 +72,72 @@ pages/FileManager/hooks/
 
 ---
 
+## Client Layering Rules (Mandatory)
+
+The client is organized into explicit layers. Each layer has strict boundaries. Do not cross them.
+
+### Layers and responsibilities
+
+- **Page shell**
+  - Composes controller hooks and views.
+  - Holds route state and product-specific overlays (e.g. share-link mode, virtual collections like `__recent__`, `__shared__`).
+  - Passes prepared props to views; does not render business logic inline.
+
+- **Controller hooks**
+  - Orchestrate user flows for a feature (navigation, commands, progress, dialogs).
+  - Coordinate gateways/adapters and pure helpers.
+  - May own UI-facing state but must not directly access browser globals or storage; use adapters instead.
+  - Keep one primary responsibility per hook (split if a hook starts owning unrelated concerns).
+
+- **Gateways / adapters**
+  - Isolate IO: HTTP/API clients, WebDAV, storage (localStorage/sessionStorage/IndexedDB), and browser APIs (Clipboard, Filesystem, Navigator, etc.).
+  - Provide a narrow interface consumed by controllers and helpers.
+  - Are the only layer allowed to touch browser globals or network details.
+
+- **Pure helpers (domain utilities)**
+  - Pure, deterministic logic: deriving state, building view models, validating inputs, composing messages.
+  - No side effects, no IO, no time, no randomness.
+  - Easily unit-testable.
+
+- **Pure views (presentational components)**
+  - Render from props only; no service or gateway imports.
+  - No router, storage, or browser-global access.
+  - May call local event callbacks provided via props.
+
+### Hard constraints
+
+- Pure views MUST NOT import:
+  - Services, gateways/adapters, storage utilities, router hooks, or browser globals.
+- Controller hooks MUST route all IO through gateways/adapters; never call `fetch`, `localStorage`, `window.*`, or WebDAV SDKs directly.
+- Gateways/adapters MUST NOT import React or UI modules.
+- Pure helpers MUST be side-effect-free; no `Date.now()`, `Math.random()`, or IO.
+- Do not let a single controller hook accumulate unrelated responsibilities (e.g., navigation + permissions + storage). Split instead.
+
+### Adapter guidelines
+
+- Hide browser specifics behind small, replaceable modules (e.g., `authTokenStore`, `httpClient`, `clipboardAdapter`).
+- Keep interfaces stable and easy to mock in tests.
+- Surface errors as typed results or normalized exceptions expected by controllers.
+
+### Anti-patterns (disallowed)
+
+- Importing services/gateways in pure view components.
+- Mixing router hooks, storage access, and network calls inside a single controller without an adapter.
+- Embedding long domain rules or permission trees inside views or dialogs.
+- Redesigning behavior while extracting structure without first updating specs.
+
+### Verification checklist for PRs touching client code
+
+- Does each file clearly belong to one layer (shell, controller, gateway/adapter, helper, view)?
+- Do views only receive prepared props and callbacks (no service/router/storage imports)?
+- Do controllers delegate IO to adapters and heavy logic to pure helpers?
+- Are browser APIs and storage calls confined to adapters?
+- Do specs in `docs/spec/client/**` reflect any new or changed responsibilities?
+
+Refer to feature and spec documents for module-level contracts before implementation.
+
+---
+
 ## Express Patterns
 
 - **API JSON response field names**: Use `snake_case` (e.g. `requester_id`, `owner_id`, `created_at`, `is_admin`) for consistency with store/DB schema. Error response fields `errorCode`, `params`, `details` remain unchanged per [shared-contracts.md](shared-contracts.md).

@@ -6,7 +6,16 @@ This document describes authentication (register, login, refresh, me), user mana
 
 ## Overview
 
-The application uses JWT-based authentication. Users sign up (when registration is enabled), wait for admin approval, then log in to receive an access token (and optional refresh token). Tokens are stored in **sessionStorage** so that closing the browser logs the user out. The `/api/auth/me` endpoint provides the current user; user APIs allow listing users (e.g. for share dialogs), changing one's own password/email, and managing one's own permissions. Public settings (e.g. signup enabled) are exposed without authentication for the login/register UI.
+The application uses JWT-based authentication. Users sign up (when registration is enabled), may wait for admin approval, then log in to receive an access token (and optional refresh token).
+
+This feature deliberately separates responsibilities:
+
+- **Auth/session policy**: what the client considers a session, when it retries refresh, and what it does on 401/403.
+- **Transport**: how HTTP requests are performed (headers, retries) without owning product navigation decisions.
+- **Storage**: where tokens live (session-scoped) and how token changes are persisted.
+- **Page UI**: how login/register screens present errors and use public settings, without implementing refresh or storage rules.
+
+The `/api/auth/me` endpoint provides the current user. User APIs support listing users (e.g. for share dialogs), updating one’s own profile fields (password/email), and managing permissions. Public settings (e.g. whether signup is enabled) are exposed without authentication for the login/register UI.
 
 ---
 
@@ -32,9 +41,57 @@ The application uses JWT-based authentication. Users sign up (when registration 
 - Env: `LOGIN_RATE_LIMIT_WINDOW_MS` (default 15m), `LOGIN_RATE_LIMIT_MAX` (default 20).
 - When exceeded: 429 with `errorCode` (e.g. `serverErrors.auth.loginRateLimit`), `Retry-After` header.
 
-**Session storage:**
+---
 
-- Client stores `token` (and optionally `refreshToken`) in **sessionStorage** only. No localStorage for auth (legacy cleanup removes it). 401: 인증 실패 → refresh 시도 후 실패 시 logout, `/login` 리다이렉트. 403: 인가 실패 → URL 이동 직후(list, admin 등)는 `history.back()` 또는 `/`, 그 외는 리다이렉트 없음 (에러 전파).
+## Client responsibility boundaries (auth/session vs transport vs storage vs UI)
+
+### Auth/session policy (behavioral rules)
+
+The client treats a "session" as valid only while an access token exists and is accepted by the server.
+
+- **Token lifetime and refresh**:
+  - On an authenticated request returning **401**, the client may attempt **one** refresh flow (when a refresh token is available) and then retry the original request.
+  - If refresh fails (refresh endpoint returns 401, is missing a refresh token, or refresh cannot be performed), the client clears auth session state and routes the user to login.
+- **401 handling**:
+  - Interpreted as "authentication failed" (missing/invalid/expired token).
+  - Results in refresh-once behavior as above, then logout + login navigation on failure.
+- **403 handling**:
+  - Interpreted as "authorization denied" for the current user.
+  - Navigation behavior is a **policy**, not a transport concern:
+    - For failures that happen immediately after a deliberate route transition to a protected page (e.g. admin-only pages, user list), the client may navigate back (`history.back()`) or route to a safe default (e.g. `/`).
+    - For failures in-place (e.g. a forbidden action within an already-open page), the client should not automatically redirect; the error is surfaced to the caller/UI.
+- **Logout**:
+  - Clearing the session is the single source of truth for "logged out".
+  - Closing the browser should effectively log the user out because tokens are stored in session-scoped storage.
+
+### Transport (HTTP request mechanics)
+
+Transport is responsible for making HTTP requests and attaching auth headers, but it does not define product navigation or storage rules.
+
+- **Attach auth header**: authenticated requests include `Authorization: Bearer <token>`.
+- **Retry orchestration hook**: transport may expose a way for auth/session policy to retry the original request after refresh succeeds.
+- **Rate limit surface**: 429 responses should be surfaced with `Retry-After` so the UI can render an actionable message.
+
+### Storage (token persistence)
+
+Storage is responsible for persisting and retrieving tokens. It must not decide when to refresh or how to route.
+
+- **Session-scoped storage**: client stores `token` (and optionally `refreshToken`) in **sessionStorage** only.
+- **No localStorage for auth**: the app should not persist auth tokens across browser restarts.
+- **Token update semantics**: updating tokens is atomic from the perspective of request orchestration (e.g. after refresh, subsequent requests use the new token).
+
+### Page UI (login/register/settings screens)
+
+Pages and UI components present states and trigger actions; they should not implement transport or storage details.
+
+- **Login UI**:
+  - Collects credentials and calls login.
+  - Renders errors based on `errorCode` (e.g. invalid credentials, pending approval, rejected, rate limit).
+- **Register UI**:
+  - Calls public settings to determine whether signup is enabled.
+  - Submits registration, then renders either "pending approval" success or immediate login success if auto-approved.
+- **Public settings usage**:
+  - `GET /api/settings/public` is used to conditionally render registration affordances (and related messaging) without requiring an auth token.
 
 ### User APIs
 
@@ -110,8 +167,8 @@ flowchart TD
 
 ### 401/403 and logout
 
-- **401:** 인증 실패 (토큰 없음/무효/만료). refresh 1회 시도 후 실패 시 logout, `/login` 리다이렉트.
-- **403:** 인가 실패. URL 이동 직후(list, admin 등)는 `history.back()` 또는 `/` 리다이렉트. 그 외는 리다이렉트 없음 (에러 전파).
+- **401**: authentication failed (missing/invalid/expired token). Attempt refresh once; on failure, clear session and route to `/login`.
+- **403**: authorization denied. For protected-route transitions, navigate back or route to a safe default; otherwise surface the error without forced redirect.
 
 ---
 

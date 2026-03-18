@@ -1,16 +1,52 @@
 # Client UI
 
-This document describes the React client’s routing, protected routes, file manager (view modes, sort, search, selection, toolbar, drag-and-drop, context menu, dialogs), share link screen, responsive behavior, and i18n. Reference: [client/src/App.js](../../client/src/App.js), [client/src/pages/FileManager.js](../../client/src/pages/FileManager.js), and related components.
+This document describes **product-level** behavior of the React client UI: routing and protected routes, file browsing and operations, share-link access, responsive behavior, and i18n.
+
+It also defines **high-level feature boundaries** for the client refactor:
+
+- **Explorer core**: reusable browsing/selection/navigation/command/progress behavior.
+- **Product overlays**: share-link mode, virtual collections (e.g. `__recent__`, `__shared__`), and other product-specific rules.
+- **Page shells**: route composition, overlay wiring, and orchestrating controllers into views.
+
+Detailed implementation contracts live in `docs/spec/client/**/*`. Client layering rules are defined in `docs/CODING_STYLE.md` and summarized in `docs/ARCHITECTURE.md` (Client Architecture).
 
 ---
 
 ## Overview
 
-The app is a single-page React application using React Router. Public routes include login and register; authenticated routes (files, mypage; /admin redirects to /mypage) are wrapped in `PrivateRoute`, which redirects to `/login` when the user is not authenticated. The main file management UI supports list/grid/detail views, sort by name/date, search, multi-selection, and toolbar actions (move, copy, download, delete) with progress and cancellation. Dialogs handle rename, create folder, upload, share, folder picker, conflict resolution, and preview. Share link access is handled by `/share/:token`, which loads link info then renders either the file manager (folder) or a single-file preview. A FAB (on all viewports) and action sheet (on mobile) provide touch-friendly actions. UI text is localized (i18n) with English and Korean.
+The app is a single-page React application using React Router.
+
+- **Public access**: login/register and share-link access.
+- **Authenticated access**: file browsing and MyPage.
+- **File browsing UI**: list/grid/detail views, sort, search, selection, bulk actions, dialogs, and progress/cancellation for long-running operations.
+- **Share links**: `/share/:token` can render a folder browsing experience or a single-file preview/download experience, without requiring authentication.
+- **Responsive design**: supports mobile- and touch-friendly patterns (FAB, action sheet, drawer navigation on MyPage).
+- **Localization**: UI strings are localized (English and Korean).
 
 ---
 
 ## Specification
+
+### Feature boundaries (client responsibilities)
+
+These boundaries are intentionally written at the **feature level** (not as a file-level spec).
+
+- **Explorer core owns**
+  - Browsing and navigation within a folder tree (current path, breadcrumb navigation).
+  - List/grid/detail presentation modes and basic state like view mode, sort mode, and search query.
+  - Selection rules and bulk action affordances.
+  - File commands and progress UI (upload, rename, move/copy, delete, download; progress and cancellation).
+  - Presentation-neutral rules that should remain consistent across product contexts.
+
+- **Product overlays own**
+  - Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
+  - Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
+  - Admin-only UI visibility and product policies that are not reusable across contexts.
+
+- **Page shells own**
+  - Route composition and route-state parsing (including redirects and share-link bootstrapping).
+  - Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
+  - Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
 
 ### Routing
 
@@ -34,14 +70,14 @@ The app is a single-page React application using React Router. Public routes inc
 - If not authenticated, render `<Navigate to="/login" replace />`.
 - Otherwise render `children`.
 
-### File manager (FileManager.js and components)
+### File browsing (Explorer core + overlays)
 
 - **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted in localStorage (e.g. `getViewMode`, `setViewMode`).
 - **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted (e.g. `setSortMode`, `saveSortMode`). Applied via `sortFiles()` before render.
 - **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
 - **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. `useSelection` holds selected set; clear selection after successful operation or on path change. File rows/cards do not require checkbox widgets for this flow.
 - **Toolbar (bulk actions):** When one or more items selected, FileManagerControls shows bulk action buttons (Move, Copy, Download, Delete) inline in the same row, replacing sort and view mode. No manual selection mode toggle button; entry/exit driven by file interactions and selected count. Uses icon buttons. Same layout on desktop and mobile. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API. **Mobile multi-download restriction:** On mobile, when multiple items are selected, the Download button is disabled (grayed out); only single-item download is allowed on mobile. This is a client-side UI restriction only.
-- **Progress UI (FileOperationProgress):** Shrink state: compact chip in AppBar. Click opens right-side Drawer. Collapsed: all operation headers with "펼치기" button above each body. Expanded: single item fills drawer with "접기" at bottom. Auto-collapse on new preparing; on error/warning, expand that item when drawer is opened (no auto-open).
+- **Progress UI (FileOperationProgress):** Shrink state: compact chip in AppBar. Click opens right-side Drawer. Collapsed: all operation headers with an "Expand" button above each body. Expanded: single item fills drawer with "Collapse" at bottom. Auto-collapse on new preparing; on error/warning, expand that item when drawer is opened (no auto-open).
 - **Rename dialog:** Single item rename; `PUT /api/files/rename` with `oldPath`, `newName`. On success, refresh list and recent files if needed.
 - **Drag and drop:** Drop on folder tree or list to upload (to current or dropped folder) or to move/copy; `useDropToUpload` and paste/move/copy handlers. Conflict check before paste via `checkConflicts`; conflict resolve dialog when needed.
 - **Content-area drop overlay scope:** The dotted “drop here” overlay is shown only over the file view content region (list/grid/detail area). It must not cover breadcrumb or toolbar/controls.
@@ -99,7 +135,7 @@ flowchart LR
     G -->|No| E
 ```
 
-- On load, `AuthProvider` checks sessionStorage for token; if present, sets axios header and calls `GET /api/auth/me`. 401만 global logout/redirect 처리; 403은 apiClient에서 별도 정책에 따라 처리 (URL 이동 직후: history.back() 또는 '/', 그 외: 리다이렉트 없음).
+- On load, the client initializes auth state from session-based storage and validates the session via `GET /api/auth/me`. Authentication errors follow the existing user-visible policy: unauthorized sessions redirect to login; forbidden responses follow the established navigation policy for the current page context.
 
 ### File manager: multi-select and batch
 

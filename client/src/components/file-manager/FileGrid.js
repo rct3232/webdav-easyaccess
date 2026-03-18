@@ -11,7 +11,7 @@ import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileGridItem from './FileGridItem';
 
-const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
@@ -30,6 +30,9 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     getDropHandlers,
   } = useFileViewCommon({
     onFileDrop,
+    onDropPermissionDenied,
+    onDragStart,
+    onDragEnd,
     selectionMode,
     selectedFiles,
     onFileCheck,

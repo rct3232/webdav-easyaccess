@@ -45,6 +45,9 @@ const BaseFolderTreeItem = ({
   hasReadPermission: hasReadPermissionProp = true,
   hasWritePermission: hasWritePermissionProp = true,
   onExplorerDrop,
+  onInternalFileDrop,
+  onInternalDragStart,
+  onInternalDragEnd,
   isMobile = false,
   icon,
   openIcon,
@@ -123,6 +126,7 @@ const BaseFolderTreeItem = ({
     isDisabled,
     hasWritePermission,
     onExplorerDrop,
+    onInternalFileDrop,
   });
 
   const loadChildren = useCallback(async (force = false) => {
@@ -213,6 +217,26 @@ const BaseFolderTreeItem = ({
     }
   };
 
+  const handleDragStart = useCallback(
+    (e) => {
+      if (isMobile || isDisabled) return;
+      e.stopPropagation();
+      onInternalDragStart?.(path);
+      if (e?.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', path);
+      }
+    },
+    [path, isMobile, isDisabled, onInternalDragStart]
+  );
+
+  const handleDragEnd = useCallback(
+    () => {
+      onInternalDragEnd?.();
+    },
+    [onInternalDragEnd]
+  );
+
   // 자식 렌더링 함수
   const renderChildItem = (child, childLevel) => {
     if (renderChild) {
@@ -231,6 +255,9 @@ const BaseFolderTreeItem = ({
         hasReadPermission={child.hasReadPermission}
         hasWritePermission={child.hasWritePermission}
         onExplorerDrop={onExplorerDrop}
+        onInternalFileDrop={onInternalFileDrop}
+        onInternalDragStart={onInternalDragStart}
+        onInternalDragEnd={onInternalDragEnd}
         isMobile={isMobile}
         treeUpdateTrigger={treeUpdateTrigger}
         isHidden={child.isHidden}
@@ -251,6 +278,9 @@ const BaseFolderTreeItem = ({
             backgroundColor: isDisabled ? 'transparent' : ((isDropTarget || isDraggingOver) && hasWritePermission ? 'transparent' : 'action.hover'),
           },
         }}
+        draggable={!isMobile && !isDisabled}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onDragEnter={isMobile ? undefined : handleFolderDragEnter}
         onDragOver={isMobile ? undefined : handleFolderDragOver}
         onDragLeave={isMobile ? undefined : handleFolderDragLeave}

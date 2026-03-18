@@ -27,7 +27,8 @@
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
 | hasWritePermission | boolean | N | - | Write permission |
-| onExplorerDrop | function | N | - | Drop handler |
+| onExplorerDrop | function | N | - | Drop handler (OS files) |
+| onInternalFileDrop | function | N | - | Internal drag: (draggedPath, targetFolderPath) when dropped from file manager |
 | isMobile | boolean | N | false | Mobile |
 | shareLinkSection | ReactNode | N | - | Share link section |
 
@@ -37,7 +38,8 @@
 |----------|--------------|-----------|
 | onPathClick | Folder click | (path) |
 | onFileClick | Recent file click | (file) |
-| onExplorerDrop | Drop | - |
+| onExplorerDrop | Drop (OS files) | - |
+| onInternalFileDrop | Internal drop (file manager) | (draggedPath, targetFolderPath) |
 
 ### 2.4 Dependencies
 

@@ -155,6 +155,23 @@ describe('useFileViewCommon', () => {
     expect(handlers.draggable).toBe(false);
   });
 
+  it('getDragHandlers returns empty when file.hasWritePermission is false', () => {
+    const file = { path: '/f.txt', type: 'file', hasWritePermission: false };
+    const { result } = renderHook(() =>
+      useFileViewCommon({
+        selectionMode: false,
+        selectedFiles: new Set(),
+        theme,
+      })
+    );
+
+    const handlers = result.current.getDragHandlers(file, false);
+
+    expect(handlers.draggable).toBe(false);
+    expect(handlers.onDragStart).toBeUndefined();
+    expect(handlers.onDragEnd).toBeUndefined();
+  });
+
   it('getDragHandlers returns draggable handlers when not selection mode and not disabled', () => {
     const file = { path: '/f.txt', type: 'file' };
     const { result } = renderHook(() =>

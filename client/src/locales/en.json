@@ -101,6 +101,8 @@
     "pullRefreshRelease": "Release to refresh",
     "pullRefreshPull": "Pull to refresh",
     "uploadNoPermission": "You do not have permission to upload",
+    "dropNoWritePermission": "You do not have write permission for \"{{path}}\".",
+    "moveDropHere": "Move here",
     "uploadPreparing": "Preparing...",
     "uploadFailCount": "{{count}} failed",
     "uploadCompletePartial": "Done (some failed)",

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Unified folder tree item: expand/collapse, path click, drop. Supports path/name or node. Used for home tree and shared folders. |
+| Role | Unified folder tree item: expand/collapse, path click, drop (OS + internal). Optional drag source (draggable when not mobile/disabled). Supports path/name or node. Used for home tree and shared folders. |
 | Used in | FolderTree, SharedFoldersSection |
 | Related components | listFiles, useDropToUpload, FileTreeSkeleton |
 
@@ -31,7 +31,10 @@
 | onToggleExpand | function | Y | - | Toggle expand |
 | hasReadPermission | boolean | N | true | Read permission |
 | hasWritePermission | boolean | N | true | Write permission |
-| onExplorerDrop | function | N | - | Drop handler |
+| onExplorerDrop | function | N | - | Drop handler (OS files) |
+| onInternalFileDrop | function | N | - | Internal drag drop: (draggedPath, targetFolderPath) when file/folder dropped from file manager |
+| onInternalDragStart | function | N | - | Called when drag starts: (path) => void. Lets host know dragged path (e.g. to hide content-area overlay when drop would be no-op). |
+| onInternalDragEnd | function | N | - | Called when drag ends: () => void. Clears host state tied to tree drag. |
 | isMobile | boolean | N | false | Mobile |
 | icon | ReactNode | N | - | Custom icon |
 | openIcon | ReactNode | N | - | Open icon |
@@ -52,7 +55,8 @@
 |----------|--------------|-----------|
 | onPathClick | Folder click | (path) |
 | onToggleExpand | Expand/collapse | (path) |
-| onExplorerDrop | Drop | - |
+| onExplorerDrop | Drop (OS files) | - |
+| onInternalFileDrop | Internal drop (file manager) | (draggedPath, targetFolderPath) |
 
 ### 2.4 Dependencies
 
@@ -68,6 +72,7 @@
 - Recursive children when expanded
 - Permission from node or sharedFoldersMap
 - Loading: FileTreeSkeleton
+- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and `onDragStart` sets `e.dataTransfer.setData('text/plain', path)` (and optionally a custom type) so the file manager can accept drops from the tree.
 
 ### 2.7 Verification Scenarios
 
@@ -83,3 +88,4 @@
 
 - path/name or node – either required
 - sharedFoldersMap overrides permission
+- **Permission (cross-DnD):** When used as drop target, hasWritePermission is already enforced by useDropToUpload (no-write nodes are not highlighted, no onInternalFileDrop). When used as drag source, draggable is off when isDisabled (no read).

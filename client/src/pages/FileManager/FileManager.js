@@ -85,6 +85,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const addToSharedRequestIdRef = useRef(0);
   const [leaveShareConfirmOpen, setLeaveShareConfirmOpen] = useState(false);
   const [leaveShareConfirmTargetPath, setLeaveShareConfirmTargetPath] = useState(null);
+  const [contentAreaDraggedPath, setContentAreaDraggedPath] = useState(null);
+  const [contentAreaDragType, setContentAreaDragType] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -525,6 +527,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleDragOver: handleFileAreaDragOver,
     handleDragLeave: handleFileAreaDragLeave,
     handleDrop: handleFileAreaDrop,
+    reset: resetFileAreaDrag,
   } = useDropToUpload();
 
   // Pull-to-refresh hook (모바일에서만 활성화)
@@ -1422,6 +1425,34 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
   };
 
+  const handleDropPermissionDenied = useCallback(
+    (destinationPath) => {
+      showError(t('fileManager.dropNoWritePermission', { path: destinationPath }));
+    },
+    [showError, t]
+  );
+
+  const handleDragStartFromView = useCallback((path) => {
+    setContentAreaDraggedPath(path);
+  }, []);
+
+  const handleDragEndFromView = useCallback(() => {
+    setContentAreaDraggedPath(null);
+    setContentAreaDragType(null);
+  }, []);
+
+  const handleInternalFileDrop = useCallback(
+    async (draggedPath, targetFolderPath) => {
+      if (draggedPath === targetFolderPath) return;
+      try {
+        await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths: [draggedPath] });
+      } catch (error) {
+        // Error is already handled by useBulkOperations
+      }
+    },
+    [handleFolderPickerSelect]
+  );
+
   const handleExplorerDrop = useCallback(async (filesToUpload, targetPath) => {
     const uploadPath = targetPath || currentPath;
 
@@ -1466,10 +1497,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const handleContentAreaDragOver = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
 
-    const types = e.dataTransfer.types;
-    const isExternal = types && types.includes('Files');
+    const types = e.dataTransfer.types || [];
+    const isExternal = types.includes('Files');
+    const isInternalTree = types.includes('text/plain');
 
-    if (isExternal) {
+    if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
+      return;
+    }
+    // Show dotted drop zone only over empty content area, not over file/folder rows
+    if (e.target.closest('[data-file-path]')) {
+      handleFileAreaDragLeave(e);
+      return;
+    }
+    if (isExternal || isInternalTree) {
       handleFileAreaDragOver(e);
     }
   };
@@ -1477,10 +1517,17 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const handleContentAreaDragEnter = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
 
-    const types = e.dataTransfer.types;
-    const isExternal = types && types.includes('Files');
+    const types = e.dataTransfer.types || [];
+    const isExternal = types.includes('Files');
+    const isInternalTree = types.includes('text/plain');
 
-    if (isExternal) {
+    if (isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath) {
+      return;
+    }
+    // Show dotted drop zone only over empty content area, not over file/folder rows
+    if (e.target.closest('[data-file-path]')) return;
+    if (isExternal || isInternalTree) {
+      setContentAreaDragType(isExternal ? 'external' : 'internal');
       handleFileAreaDragEnter(e);
     }
   };
@@ -1488,10 +1535,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const handleContentAreaDragLeave = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
 
-    const types = e.dataTransfer.types;
-    const isExternal = types && types.includes('Files');
+    const types = e.dataTransfer.types || [];
+    const isExternal = types.includes('Files');
+    const isInternalTree = types.includes('text/plain');
 
-    if (isExternal) {
+    if (isExternal || isInternalTree) {
+      // Only clear type when actually leaving the content area (not when moving to a child element)
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        setContentAreaDragType(null);
+      }
       handleFileAreaDragLeave(e);
     }
   };
@@ -1499,8 +1551,20 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const handleContentAreaDrop = (e) => {
     if (isMobile || selectionMode || !hasWritePermission) return;
 
-    const types = e.dataTransfer.types;
-    const isExternal = types && types.includes('Files');
+    const types = e.dataTransfer.types || [];
+    const isExternal = types.includes('Files');
+    const internalPath = types.includes('text/plain') ? e.dataTransfer?.getData?.('text/plain') : null;
+
+    setContentAreaDraggedPath(null);
+    setContentAreaDragType(null);
+
+    if (internalPath) {
+      e.preventDefault();
+      e.stopPropagation();
+      resetFileAreaDrag?.();
+      handleInternalFileDrop(internalPath, currentPath);
+      return;
+    }
 
     if (isExternal) {
       handleFileAreaDrop(e, currentPath, handleExplorerDrop);
@@ -1591,6 +1655,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                 treeUpdateTrigger={treeUpdateTrigger}
                 hasWritePermission={hasWritePermission}
                 onExplorerDrop={handleExplorerDrop}
+                onInternalFileDrop={handleInternalFileDrop}
+                onInternalDragStart={handleDragStartFromView}
+                onInternalDragEnd={handleDragEndFromView}
                 isMobile={false}
                 shareLinkSection={isShareLinkMode ? {
                   shareRootPath,
@@ -1644,7 +1711,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   px: 3,
                 }}
               >
-                {t('dialogs.uploadDropHere')}
+                {contentAreaDragType === 'internal' ? t('fileManager.moveDropHere') : t('dialogs.uploadDropHere')}
               </Typography>
             </Box>
           )}
@@ -1688,6 +1755,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   treeUpdateTrigger={treeUpdateTrigger}
                   hasWritePermission={hasWritePermission}
                   onExplorerDrop={handleExplorerDrop}
+                  onInternalFileDrop={handleInternalFileDrop}
+                  onInternalDragStart={handleDragStartFromView}
+                  onInternalDragEnd={handleDragEndFromView}
                   isMobile
                   shareLinkSection={isShareLinkMode ? {
                     shareRootPath,
@@ -1821,6 +1891,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   }
                 }}
                 onFileDrop={handleFileDrop}
+                onDropPermissionDenied={handleDropPermissionDenied}
+                onDragStart={handleDragStartFromView}
+                onDragEnd={handleDragEndFromView}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
@@ -1854,6 +1927,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   }
                 }}
                 onFileDrop={handleFileDrop}
+                onDropPermissionDenied={handleDropPermissionDenied}
+                onDragStart={handleDragStartFromView}
+                onDragEnd={handleDragEndFromView}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}
@@ -1887,6 +1963,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
                   }
                 }}
                 onFileDrop={handleFileDrop}
+                onDropPermissionDenied={handleDropPermissionDenied}
+                onDragStart={handleDragStartFromView}
+                onDragEnd={handleDragEndFromView}
                 selectionMode={selectionMode}
                 selectedFiles={selectedFiles}
                 onFileCheck={handleFileCheck}

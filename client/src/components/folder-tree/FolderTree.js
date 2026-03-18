@@ -19,6 +19,9 @@ const FolderTree = ({
   treeUpdateTrigger,
   hasWritePermission,
   onExplorerDrop,
+  onInternalFileDrop,
+  onInternalDragStart,
+  onInternalDragEnd,
   isMobile = false,
   shareLinkSection,
 }) => {
@@ -233,6 +236,9 @@ const FolderTree = ({
                 treeUpdateTrigger={treeUpdateTrigger}
                 hasWritePermission={true}
                 onExplorerDrop={onExplorerDrop}
+                onInternalFileDrop={onInternalFileDrop}
+                onInternalDragStart={onInternalDragStart}
+                onInternalDragEnd={onInternalDragEnd}
                 isMobile={isMobile}
                 icon={<HomeIcon fontSize="small" />}
               />
@@ -250,6 +256,9 @@ const FolderTree = ({
                 user={user}
                 treeUpdateTrigger={treeUpdateTrigger}
                 onExplorerDrop={onExplorerDrop}
+                onInternalFileDrop={onInternalFileDrop}
+                onInternalDragStart={onInternalDragStart}
+                onInternalDragEnd={onInternalDragEnd}
                 isMobile={isMobile}
               />
 

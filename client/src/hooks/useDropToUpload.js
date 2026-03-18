@@ -11,6 +11,7 @@ import { useState, useCallback } from 'react';
  * @param {boolean} [options.isDisabled] - 비활성화 여부 (폴더 트리 모드용)
  * @param {boolean} [options.hasWritePermission] - 쓰기 권한 여부 (폴더 트리 모드용)
  * @param {Function} [options.onExplorerDrop] - 드롭 핸들러 (폴더 트리 모드용)
+ * @param {Function} [options.onInternalFileDrop] - 내부 드래그 드롭: (draggedPath, targetFolderPath) when dropped from file manager
  */
 export const useDropToUpload = (options = {}) => {
   const {
@@ -20,6 +21,7 @@ export const useDropToUpload = (options = {}) => {
     isDisabled = false,
     hasWritePermission = true,
     onExplorerDrop,
+    onInternalFileDrop,
   } = typeof options === 'object' ? options : { onUploadComplete: options };
 
   const isFolderMode = path != null && typeof onExplorerDrop === 'function';
@@ -94,8 +96,10 @@ export const useDropToUpload = (options = {}) => {
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types;
-        if (types && types.includes('Files')) {
+        const types = e.dataTransfer?.types || [];
+        const isExternal = types.includes('Files');
+        const isInternal = types.includes('text/plain');
+        if (isExternal || (isInternal && onInternalFileDrop)) {
           e.preventDefault();
           e.stopPropagation();
           setIsDraggingOver(true);
@@ -107,18 +111,25 @@ export const useDropToUpload = (options = {}) => {
         setIsDraggingOver(true);
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop]
   );
 
   const handleDragOver = useCallback(
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types;
-        if (types && types.includes('Files')) {
+        const types = e.dataTransfer?.types || [];
+        const isExternal = types.includes('Files');
+        const isInternal = types.includes('text/plain');
+        if (isExternal) {
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = 'copy';
+          setIsDropTarget(true);
+        } else if (isInternal && onInternalFileDrop) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
           setIsDropTarget(true);
         }
       } else {
@@ -127,15 +138,17 @@ export const useDropToUpload = (options = {}) => {
         e.dataTransfer.dropEffect = 'copy';
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop]
   );
 
   const handleDragLeave = useCallback(
     (e) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       if (isFolderMode) {
-        const types = e.dataTransfer?.types;
-        if (types && types.includes('Files')) {
+        const types = e.dataTransfer?.types || [];
+        const isExternal = types.includes('Files');
+        const isInternal = types.includes('text/plain');
+        if (isExternal || (isInternal && onInternalFileDrop)) {
           e.preventDefault();
           e.stopPropagation();
           if (!e.currentTarget.contains(e.relatedTarget)) {
@@ -151,30 +164,32 @@ export const useDropToUpload = (options = {}) => {
         }
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop]
   );
 
   const handleDrop = useCallback(
     async (e, targetPath, uploadCallback) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
-      if (isFolderMode) {
-        const types = e.dataTransfer?.types;
-        if (!(types && types.includes('Files') && onExplorerDrop)) return;
-        setIsDropTarget(false);
-      }
-
       e.preventDefault();
       e.stopPropagation();
       setIsDraggingOver(false);
+      setIsDropTarget(false);
+
+      const dataTransfer = e.dataTransfer;
+      const internalPath = dataTransfer?.getData?.('text/plain');
+
+      if (isFolderMode && internalPath && onInternalFileDrop) {
+        onInternalFileDrop(internalPath, targetPath);
+        return;
+      }
+
+      if (isFolderMode) {
+        const types = dataTransfer?.types;
+        if (!(types && types.includes('Files') && onExplorerDrop)) return;
+      }
 
       try {
-        const dataTransfer = e.dataTransfer;
         if (!dataTransfer || !dataTransfer.items || dataTransfer.items.length === 0) {
-          return;
-        }
-
-        const internalDrag = dataTransfer.getData('text/plain');
-        if (internalDrag) {
           return;
         }
 
@@ -221,6 +236,7 @@ export const useDropToUpload = (options = {}) => {
       isDisabled,
       hasWritePermission,
       onExplorerDrop,
+      onInternalFileDrop,
     ]
   );
 

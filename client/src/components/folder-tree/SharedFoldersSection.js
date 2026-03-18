@@ -30,6 +30,9 @@ const SharedFoldersSection = ({
   user,
   treeUpdateTrigger,
   onExplorerDrop,
+  onInternalFileDrop,
+  onInternalDragStart,
+  onInternalDragEnd,
   isMobile,
 }) => {
   const { t } = useTranslation();
@@ -124,6 +127,9 @@ const SharedFoldersSection = ({
                 treeUpdateTrigger={treeUpdateTrigger}
                 sharedFoldersMap={sharedFoldersMap}
                 onExplorerDrop={onExplorerDrop}
+                onInternalFileDrop={onInternalFileDrop}
+                onInternalDragStart={onInternalDragStart}
+                onInternalDragEnd={onInternalDragEnd}
                 isMobile={isMobile}
                 useHiddenFilesFilter={false}
               />

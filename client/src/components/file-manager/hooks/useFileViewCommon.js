@@ -21,6 +21,9 @@ const emptyDropHandlers = {
  * 
  * @param {Object} options - Hook options
  * @param {Function} options.onFileDrop - Callback for file drop
+ * @param {Function} options.onDropPermissionDenied - Callback when drop target has no write permission (destinationPath) => void
+ * @param {Function} options.onDragStart - Callback when drag starts (path) => void
+ * @param {Function} options.onDragEnd - Callback when drag ends () => void
  * @param {boolean} options.selectionMode - Whether selection mode is active
  * @param {Set} options.selectedFiles - Set of selected file paths
  * @param {Function} options.onFileCheck - Callback for file check
@@ -31,6 +34,9 @@ const emptyDropHandlers = {
  */
 export const useFileViewCommon = ({
   onFileDrop,
+  onDropPermissionDenied,
+  onDragStart,
+  onDragEnd,
   selectionMode,
   selectedFiles,
   onFileCheck,
@@ -50,7 +56,7 @@ export const useFileViewCommon = ({
     isMobileRef.current = isMobile;
   }, [isMobile]);
   
-  const dragAndDrop = useDragAndDrop(onFileDrop, selectionMode, theme);
+  const dragAndDrop = useDragAndDrop(onFileDrop, selectionMode, theme, onDropPermissionDenied, onDragStart, onDragEnd);
   
   /**
    * Get file state for rendering
@@ -81,10 +87,10 @@ export const useFileViewCommon = ({
    * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
    */
   const getDragHandlers = useCallback((file, isDisabled) => {
-    if (isMobileRef.current || selectionModeRef.current || isDisabled) {
+    if (isMobileRef.current || selectionModeRef.current || isDisabled || file.hasWritePermission === false) {
       return emptyDragHandlers;
     }
-    
+
     return {
       draggable: true,
       onDragStart: (e) => dragAndDrop.handleDragStart(e, file),

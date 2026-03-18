@@ -100,6 +100,8 @@
     "pullRefreshRelease": "놓으면 새로고침",
     "pullRefreshPull": "당겨서 새로고침",
     "uploadNoPermission": "업로드 권한이 없습니다",
+    "dropNoWritePermission": "{{path}} 경로에 대한 쓰기 권한이 없습니다.",
+    "moveDropHere": "여기로 이동",
     "uploadPreparing": "준비 중...",
     "uploadFailCount": "{{count}}개 실패",
     "uploadCompletePartial": "완료 (일부 실패)",

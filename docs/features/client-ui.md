@@ -60,6 +60,31 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 - **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage). `/admin` redirects to `/mypage` with `state: { category: 'admin' }` for admin users. Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
 - **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.
 
+#### Routing contracts (migration-sensitive)
+
+These are stable user-visible contracts that must remain true during router upgrades (including React Router v6 → v7 migration work):
+
+- **Explorer route remains the splat owner:** `/files/*` is the only route that owns the explorer “current folder” path derived from a splat param. The explorer path is represented as an absolute path string starting with `/` (e.g. `/`, `/Documents`, `/a/b`).
+- **Splat path is owned by FileManager listing/navigation seams:** the FileManager shell wires route params into `useFileManager` (and/or the navigation seam). It must not duplicate splat parsing in multiple places.
+- **Redirect behavior is stable:**
+  - `/` redirects to `/files` (authenticated users see FileManager; unauthenticated users end up at `/login` via PrivateRoute).
+  - Unauthenticated access to `/files/*` and `/mypage` redirects to `/login`.
+  - `/admin` redirects to `/mypage` with `location.state.category` set so MyPage opens the Admin category (see MyPage spec for normalization rules).
+
+#### Router upgrade flags and consistency
+
+When adopting router future flags in v6 (to surface v7 behavior changes early), ensure the same flags are enabled in:
+
+- **Runtime router setup** (the app router).
+- **Test router setup** (Jest helpers using `createMemoryRouter` / `RouterProvider`).
+
+At minimum, enable:
+
+- `v7_startTransition`
+- `v7_relativeSplatPath`
+
+Once the client is upgraded to React Router v7, these behaviors are treated as the baseline and **tests must continue to exercise routing via the same router APIs** (`createBrowserRouter`/`createMemoryRouter` + `RouterProvider`) so `/files/*` splat parsing and nested layout behavior remain consistent with runtime.
+
 ### MyPage (Chrome-style layout)
 
 - **Layout:** Chrome Settings–style layout. PC: fixed left category sidebar (no divider between sidebar and content), content area on the right. Mobile: category list in SwipeableDrawer; Menu button opens drawer; selecting a category closes drawer.
@@ -178,6 +203,11 @@ When implementing or reviewing client tests, cover at least:
 - **Errors:** API error responses surface as snackbar or inline message using `t(errorCode, params)` (see [errorUtils](../../client/src/utils/errorUtils.js) and shared-contracts).
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.
+
+### Router-test guidance (React Router v6 future flags)
+
+- Prefer `createMemoryRouter` + `RouterProvider` for route-level tests that exercise splats, redirects, nested layouts, and `Outlet`.
+- If the runtime router enables future flags (see above), test helpers must enable the same flags to avoid “works in app, fails in tests” splat/relative-navigation drift.
 
 ### Mock policy for client tests
 

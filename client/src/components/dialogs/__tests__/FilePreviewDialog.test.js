@@ -87,6 +87,8 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByText('readme.txt')).toBeInTheDocument();
+    // Wait for async preview loader to settle to avoid act warnings.
+    await screen.findByText('x');
   });
 
   it('calls onClose when Escape pressed', async () => {
@@ -95,13 +97,15 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    await screen.findByText('x');
     await user.keyboard('{Escape}');
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
     renderWithProviders(<FilePreviewDialog {...defaultProps} />);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await screen.findByText('x');
   });
 
   it('shows download button', async () => {
@@ -110,6 +114,7 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByTitle(/download/i)).toBeInTheDocument();
+    await screen.findByText('x');
   });
 
   it('uses streaming URL (not blob) for video preview', async () => {

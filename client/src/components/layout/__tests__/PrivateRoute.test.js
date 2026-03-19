@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import PrivateRoute from '../PrivateRoute';
 import { AuthProvider } from '../../../contexts/AuthContext';
 import * as authService from '../../../services/authService';
@@ -16,22 +16,41 @@ jest.mock('../../../services/authService', () => ({
 }));
 
 function renderPrivateRoute(initialEntries = ['/protected']) {
-  return render(
+  const rootEl = (
     <AuthProvider>
-      <MemoryRouter initialEntries={initialEntries}>
-        <Routes>
-          <Route
-            path="/protected"
-            element={
+      <Outlet />
+    </AuthProvider>
+  );
+
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: rootEl,
+        children: [
+          {
+            path: 'protected',
+            element: (
               <PrivateRoute>
                 <span>Protected content</span>
               </PrivateRoute>
-            }
-          />
-          <Route path="/login" element={<span>Login page</span>} />
-        </Routes>
-      </MemoryRouter>
-    </AuthProvider>
+            ),
+          },
+          { path: 'login', element: <span>Login page</span> },
+        ],
+      },
+    ],
+    {
+      initialEntries,
+      future: { v7_relativeSplatPath: true },
+    }
+  );
+
+  return render(
+    <RouterProvider
+      router={router}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    />
   );
 }
 

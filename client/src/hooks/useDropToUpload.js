@@ -129,7 +129,7 @@ export const useDropToUpload = (options = {}) => {
         setIsDraggingOver(true);
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path, internalDraggedPath]
   );
 
   const handleDragOver = useCallback(
@@ -162,7 +162,7 @@ export const useDropToUpload = (options = {}) => {
         e.dataTransfer.dropEffect = 'copy';
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path, internalDraggedPath]
   );
 
   const handleDragLeave = useCallback(

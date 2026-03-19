@@ -158,7 +158,7 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [currentPath, user, shareToken, linkInfo]);
+  }, [currentPath, user, shareToken]);
 
   useEffect(() => {
     if (shareToken && linkInfo) return;

@@ -14,6 +14,14 @@ It intentionally documents *who owns what*, not file-by-file implementation deta
 | Role | FileManager page shell: route-level composition for the main file browser UI plus product overlays around the explorer core. |
 | Also used by | `ShareLinkLoader` to render shared directory browsing (share-link mode / limited operations). |
 
+### 1.1 Route-param and path ownership contract
+
+- `/files/*` is the **single route-level owner** of the explorer location expressed in the URL.
+- The splat param (`*`) represents the explorer path under `/files/` and is interpreted as an absolute explorer path string:
+  - empty/undefined splat → `/`
+  - `a/b` splat → `/a/b`
+- The page shell must wire this contract through the listing/navigation seams (for example `useFileManager` for path/listing) and must not duplicate splat parsing logic in multiple places.
+
 ---
 
 ## 2. Boundaries (Shell vs Core vs Overlays)

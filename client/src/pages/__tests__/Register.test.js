@@ -8,7 +8,7 @@ import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { server } from '../../setupTests';
@@ -19,18 +19,37 @@ import '../../i18n';
 const theme = createTheme({ palette: { primary: { main: '#4167ba' } } });
 
 function renderRegister(initialEntries = ['/register']) {
-  return (
+  const rootEl = (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <MemoryRouter initialEntries={initialEntries}>
-          <Routes>
-            <Route path="/register" element={<Register />} />
-            <Route path="/files" element={<div data-testid="files-page">Files</div>} />
-          </Routes>
-        </MemoryRouter>
+        <Outlet />
       </AuthProvider>
     </ThemeProvider>
+  );
+
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: rootEl,
+        children: [
+          { path: 'register', element: <Register /> },
+          { path: 'files', element: <div data-testid="files-page">Files</div> },
+        ],
+      },
+    ],
+    {
+      initialEntries,
+      future: { v7_relativeSplatPath: true },
+    }
+  );
+
+  return (
+    <RouterProvider
+      router={router}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    />
   );
 }
 

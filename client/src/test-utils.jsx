@@ -6,7 +6,7 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { MemoryRouter } from 'react-router-dom';
+import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import './i18n';
 
@@ -30,13 +30,33 @@ function ThemeAndAuthProviders({ children }) {
 }
 
 function AllTheProviders({ children, initialEntries = ['/'], initialIndex = 0 }) {
+  const router = createMemoryRouter(
+    [
+      {
+        path: '*',
+        element: children,
+      },
+    ],
+    {
+      initialEntries,
+      initialIndex,
+      future: {
+        v7_relativeSplatPath: true,
+      },
+    }
+  );
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
-          {children}
-        </MemoryRouter>
+        <RouterProvider
+          router={router}
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        />
       </AuthProvider>
     </ThemeProvider>
   );

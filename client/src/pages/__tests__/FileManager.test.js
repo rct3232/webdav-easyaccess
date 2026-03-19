@@ -280,10 +280,24 @@ describe('FileManager', () => {
       [
         { path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] },
       ],
-      { initialEntries: ['/files/__recent__'], initialIndex: 0 }
+      {
+        initialEntries: ['/files/__recent__'],
+        initialIndex: 0,
+        future: {
+          v7_relativeSplatPath: true,
+        },
+      }
     );
 
-    await renderAct(<RouterProvider router={router} />);
+    await renderAct(
+      <RouterProvider
+        router={router}
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      />
+    );
 
     await waitFor(() => {
       expect(document.body.textContent).toMatch(/no recent items|no files/i);
@@ -342,8 +356,19 @@ describe('FileManager', () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/files/testuser'],
       initialIndex: 0,
+      future: {
+        v7_relativeSplatPath: true,
+      },
     });
-    await renderAct(<RouterProvider router={router} />);
+    await renderAct(
+      <RouterProvider
+        router={router}
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      />
+    );
     expect(screen.getByTestId('params').textContent).toBe('{"*":"testuser"}');
   });
 
@@ -371,9 +396,23 @@ describe('FileManager', () => {
       [
         { path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] },
       ],
-      { initialEntries: ['/files/testuser'], initialIndex: 0 }
+      {
+        initialEntries: ['/files/testuser'],
+        initialIndex: 0,
+        future: {
+          v7_relativeSplatPath: true,
+        },
+      }
     );
-    await renderAct(<RouterProvider router={router} />);
+    await renderAct(
+      <RouterProvider
+        router={router}
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      />
+    );
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

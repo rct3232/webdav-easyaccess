@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
@@ -62,40 +62,46 @@ const theme = createTheme({
 });
 
 function App() {
+  const router = createBrowserRouter(
+    [
+      { path: '/login', element: <Login /> },
+      { path: '/register', element: <Register /> },
+      {
+        element: <MainLayout />,
+        children: [
+          {
+            path: '/files/*',
+            element: (
+              <PrivateRoute>
+                <FileManager />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: '/mypage',
+            element: (
+              <PrivateRoute>
+                <MyPage />
+              </PrivateRoute>
+            ),
+          },
+          {
+            path: '/admin',
+            element: <Navigate to="/mypage" state={{ category: 'admin' }} replace />,
+          },
+          { path: '/share/:token', element: <ShareLinkLoader /> },
+        ],
+      },
+      { path: '/', element: <Navigate to="/files" replace /> },
+    ],
+    {}
+  );
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route element={<MainLayout />}>
-              <Route
-                path="/files/*"
-                element={
-                  <PrivateRoute>
-                    <FileManager />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/mypage"
-                element={
-                  <PrivateRoute>
-                    <MyPage />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={<Navigate to="/mypage" state={{ category: 'admin' }} replace />}
-              />
-              <Route path="/share/:token" element={<ShareLinkLoader />} />
-            </Route>
-            <Route path="/" element={<Navigate to="/files" replace />} />
-          </Routes>
-        </Router>
+        <RouterProvider router={router} />
       </AuthProvider>
     </ThemeProvider>
   );

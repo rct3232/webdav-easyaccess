@@ -55,6 +55,13 @@
 ### 2.5 Dependencies
 
 - **May use directly:** router/path inputs (`useParams`, `useNavigate`) and pure path helpers.
+- **Route-param contract (`/files/*`)**:
+  - The explorer route uses a splat param (`*`) to represent the explorer location under `/files/`.
+  - `useFileManager` owns translating the splat into a normalized absolute explorer path string:
+    - When the splat is empty/undefined → `currentPath === '/'`
+    - When the splat is `a/b` → `currentPath === '/a/b'`
+  - `setCurrentPath(nextPath)` must navigate by emitting `/files/${nextPathWithoutLeadingSlash}` (or equivalent), keeping `/files/*` as the only route-level owner of explorer location.
+  - Router upgrades that change relative splat resolution (React Router v6 `future.v7_relativeSplatPath`, and React Router v7 baseline behavior) must not change the user-visible path contract above.
 - **Must route explorer IO through:** `explorerGateway` (directory listing, path access checks, recent-file load/remove subscription helpers, metadata enrichment, and shared-entry loading when special collections need them).
 - **Must not use directly in the final target:** file service modules, permission service modules, recent-files repositories/notifiers, or browser storage helpers.
 - Transitional compatibility may still exist while the extraction is incomplete, but the spec target is the non-overlapping end state above.

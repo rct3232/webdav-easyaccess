@@ -4,10 +4,35 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
+
+jest.mock('../../../services/permissionService', () => ({
+  getUserPermissions: jest.fn(),
+}));
+
+jest.mock('../../../services/folderTreeGateway', () => ({
+  __esModule: true,
+  default: {
+    getUserSharedFolderPermissions: jest.fn(),
+    listFolderChildren: jest.fn(),
+  },
+}));
+
+jest.mock('../../../services/recentFilesRepository', () => ({
+  getRecentFiles: jest.fn(),
+}));
+
+jest.mock('../../../services/recentFilesNotifier', () => ({
+  onRecentFilesChange: jest.fn(),
+}));
+
+import { getUserPermissions } from '../../../services/permissionService';
+import folderTreeGateway from '../../../services/folderTreeGateway';
+import { getRecentFiles } from '../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 function createProps(overrides = {}) {
   const baseProps = {
@@ -227,13 +252,23 @@ function createProps(overrides = {}) {
 describe('FileManagerView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getUserPermissions.mockResolvedValue([]);
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    folderTreeGateway.listFolderChildren.mockResolvedValue([]);
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockReturnValue(() => {});
   });
 
-  it('renders the visible file list and forwards file click interactions', () => {
+  it('renders the visible file list and forwards file click interactions', async () => {
     const props = createProps();
     renderWithProviders(<FileManagerView {...props} />);
 
-    const fileName = screen.getByText('a.txt');
+    await waitFor(() => {
+      expect(getUserPermissions).toHaveBeenCalled();
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    const fileName = await screen.findByText('a.txt');
     expect(fileName).toBeInTheDocument();
 
     fireEvent.click(fileName);
@@ -245,9 +280,14 @@ describe('FileManagerView', () => {
     );
   });
 
-  it('forwards search input and view-mode interactions through grouped props', () => {
+  it('forwards search input and view-mode interactions through grouped props', async () => {
     const props = createProps();
     renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(getUserPermissions).toHaveBeenCalled();
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'needle' } });
     fireEvent.click(screen.getByTitle(/grid/i));
@@ -256,9 +296,14 @@ describe('FileManagerView', () => {
     expect(props.explorerSession.controlsState.setViewMode).toHaveBeenCalledWith('grid');
   });
 
-  it('forwards fab upload and create-folder actions', () => {
+  it('forwards fab upload and create-folder actions', async () => {
     const props = createProps();
     renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(getUserPermissions).toHaveBeenCalled();
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /upload file/i }));
@@ -269,7 +314,7 @@ describe('FileManagerView', () => {
     expect(props.explorerHandlers.commands.openCreateFolderDialog).toHaveBeenCalled();
   });
 
-  it('uses share-link fab actions for login and add-to-shared states', () => {
+  it('uses share-link fab actions for login and add-to-shared states', async () => {
     const loginProps = createProps({
       shareContext: {
         ...createProps().shareContext,
@@ -288,10 +333,15 @@ describe('FileManagerView', () => {
     });
 
     const { rerender } = renderWithProviders(<FileManagerView {...loginProps} />);
+    // Ensure initial render/effects settle before interactions.
+    await screen.findByText('a.txt');
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
     expect(loginProps.overlayState.setLoginModalOpen).toHaveBeenCalledWith(true);
 
     rerender(<FileManagerView {...addProps} />);
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
     fireEvent.click(screen.getByRole('button', { name: /add to shared/i }));
     expect(addProps.overlayState.openAddToSharedModal).toHaveBeenCalled();
   });

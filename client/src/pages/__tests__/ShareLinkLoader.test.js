@@ -100,6 +100,24 @@ describe('ShareLinkLoader', () => {
     expect(screen.queryByTestId('share-link-single-file-view')).not.toBeInTheDocument();
   });
 
+  it('shows the same error experience when the share link is expired (410)', async () => {
+    server.use(
+      http.get('/api/share/:token/info', () =>
+        HttpResponse.json({ errorCode: 'serverErrors.share.shareLinkExpired' }, { status: 410 })
+      )
+    );
+    renderShareLinkLoader(['/share/expired-token']);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('heading', { name: /expired/i })).toBeInTheDocument();
+    expect(screen.getByText(/Link has expired or file could not be found/)).toBeInTheDocument();
+    expect(screen.queryByTestId('file-manager')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('share-link-single-file-view')).not.toBeInTheDocument();
+  });
+
   it('renders FileManager for directory link', async () => {
     server.use(
       http.get('/api/share/:token/info', ({ params }) =>

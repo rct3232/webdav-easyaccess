@@ -12,10 +12,23 @@ import { renderWithProviders } from '../../../test-utils';
 import MyPageSidebar from '../MyPageSidebar';
 
 describe('MyPageSidebar', () => {
+  const baseCategories = [
+    { id: 'account', icon: () => null, labelKey: 'mypage.accountInfo' },
+    { id: 'sharing', icon: () => null, labelKey: 'mypage.shareManage' },
+    { id: 'preferences', icon: () => null, labelKey: 'mypage.preferences' },
+  ];
+
+  const adminCategories = [
+    { id: 'account', icon: () => null, labelKey: 'mypage.accountInfo' },
+    { id: 'admin-users', icon: () => null, labelKey: 'admin.users' },
+    { id: 'admin-settings', icon: () => null, labelKey: 'admin.systemSettings' },
+    { id: 'preferences', icon: () => null, labelKey: 'mypage.preferences' },
+  ];
+
   const defaultProps = {
+    categories: baseCategories,
     selectedCategory: 'account',
     onSelectCategory: jest.fn(),
-    user: { is_admin: false },
     isMobile: false,
   };
 
@@ -25,7 +38,7 @@ describe('MyPageSidebar', () => {
 
   it('renders category list (Account, Preferences)', () => {
     renderWithProviders(
-      <MyPageSidebar {...defaultProps} user={{ is_admin: false }} />
+      <MyPageSidebar {...defaultProps} />
     );
     expect(screen.getByText(/account info/i)).toBeInTheDocument();
     expect(screen.getByText(/preferences/i)).toBeInTheDocument();
@@ -38,32 +51,32 @@ describe('MyPageSidebar', () => {
     expect(logo).toHaveAttribute('src', '/logo.png');
   });
 
-  it('shows admin categories (User Management, System Settings) when user is admin', () => {
+  it('renders the prepared admin categories when provided', () => {
     renderWithProviders(
-      <MyPageSidebar {...defaultProps} user={{ is_admin: true }} />
+      <MyPageSidebar {...defaultProps} categories={adminCategories} />
     );
     expect(screen.getByText(/users/i)).toBeInTheDocument();
     expect(screen.getByText(/system settings/i)).toBeInTheDocument();
   });
 
-  it('hides admin categories when user is not admin', () => {
+  it('does not render categories that were not provided', () => {
     renderWithProviders(
-      <MyPageSidebar {...defaultProps} user={{ is_admin: false }} />
+      <MyPageSidebar {...defaultProps} />
     );
     expect(screen.queryByText(/system settings/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^users$/i)).not.toBeInTheDocument();
   });
 
-  it('shows Sharing category when user is not admin', () => {
+  it('renders the provided Sharing category', () => {
     renderWithProviders(
-      <MyPageSidebar {...defaultProps} user={{ is_admin: false }} />
+      <MyPageSidebar {...defaultProps} />
     );
     expect(screen.getByText(/share management/i)).toBeInTheDocument();
   });
 
-  it('hides Sharing category when user is admin', () => {
+  it('omits Sharing when it is not included in categories', () => {
     renderWithProviders(
-      <MyPageSidebar {...defaultProps} user={{ is_admin: true }} />
+      <MyPageSidebar {...defaultProps} categories={adminCategories} />
     );
     expect(screen.queryByText(/share management/i)).not.toBeInTheDocument();
   });
@@ -75,7 +88,6 @@ describe('MyPageSidebar', () => {
       <MyPageSidebar
         {...defaultProps}
         onSelectCategory={onSelectCategory}
-        user={{ is_admin: false }}
       />
     );
     await user.click(screen.getByText(/preferences/i));
@@ -89,7 +101,6 @@ describe('MyPageSidebar', () => {
       <MyPageSidebar
         {...defaultProps}
         onSelectCategory={onSelectCategory}
-        user={{ is_admin: false }}
       />
     );
     await user.click(screen.getByText(/share management/i));

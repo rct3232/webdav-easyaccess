@@ -43,10 +43,8 @@
 
 ### 3.2 Hooks Used
 
-- useAuth (user, logout)
-- useNavigate
+- useMyPageController (selected state + navigation callbacks)
 - useTranslation
-- useLocation (for `location.state?.category` when navigating from admin icon)
 - useResponsive (isMobile)
 
 ### 3.3 Main Child Components
@@ -56,15 +54,18 @@
 - **Content:** AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent
 - **Dialogs:** ShareDialog (mode share, mode review), AccountEditDialog
 
-### 3.4 State
+### 3.4 Controller-provided State
 
 | State               | Purpose                                                   |
 |---------------------|-----------------------------------------------------------|
 | selectedCategory    | Current category. Reset selectedContentItem when changed. |
 | selectedContentItem | For multi-item categories: null = list view, non-null = detail view. |
 | categoryDrawerOpen  | Mobile sidebar drawer visibility.                         |
+| sidebarItems        | Prepared category items already filtered for the current role. |
 
 Initial `selectedCategory` may come from `location.state?.category` (e.g. `navigate('/mypage', { state: { category: 'admin-users' } })`). Legacy `admin` maps to `admin-users`.
+
+This normalization is handled by `useMyPageController`.
 
 ### 3.5 Categories and Content Flow
 
@@ -83,6 +84,11 @@ Initial `selectedCategory` may come from `location.state?.category` (e.g. `navig
 3. Back → return to list. When category changes, reset to list view.
 
 **Single-item (Account, Preferences):** Direct content, no list.
+
+Boundary notes:
+
+- `MyPageSidebar` is a pure view fed with prepared category items; it must not derive admin visibility from `user`.
+- `MyPageContentArea` delegates category-to-content resolution to the MyPage registry/helper layer rather than owning inline category dispatch branches.
 
 ### 3.6 Route Protection
 

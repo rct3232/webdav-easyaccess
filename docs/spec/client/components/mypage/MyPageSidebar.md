@@ -21,9 +21,9 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
+| categories | array | Y | - | Prepared visible category items, already filtered for the current user role. Each item contains `id`, `icon`, and `labelKey`. |
 | selectedCategory | string | Y | - | Currently selected category id (e.g. 'account', 'sharing', 'admin-users', 'admin-settings', 'preferences') |
 | onSelectCategory | function | Y | - | Handler when a category is clicked |
-| user | object | N | - | Current user; used for `user?.is_admin` to show/hide Admin and Sharing |
 | isMobile | boolean | N | false | Whether in mobile layout (affects styling if needed) |
 
 ### 2.3 Callback Signatures
@@ -36,6 +36,7 @@
 
 - **imports:** useTranslation, MUI (List, ListItemButton, ListItemText, ListItemIcon, etc.)
 - **Reference implementation:** `client/src/components/mypage/MyPageSidebar.js`
+- **Must not own:** admin-role checks or visibility filtering logic
 
 ### 2.5 i18n Keys
 
@@ -47,21 +48,19 @@
 
 ### 2.6 Conditional Rendering
 
-- **Admin categories (admin-users, admin-settings):** Visible only when `user?.is_admin` is true.
-- **Sharing category:** Hidden when `user?.is_admin` is true.
+- The parent/controller decides which categories are included in `categories`.
 - **Selected state:** Highlight the list item for `selectedCategory`.
-- Categories shown: Account (always), Sharing (non-admin only), User Management (admin only), System Settings (admin only), Preferences (always).
+- Categories shown depend on the prepared `categories` prop.
 
 ### 2.7 Verification Scenarios
 
 - [ ] Renders category list (Account, Preferences)
-- [ ] When `isMobile` is true, renders logo at top (same as AppBar)
-- [ ] Admin categories (User Management, System Settings) shown when `user?.is_admin`, hidden otherwise
-- [ ] Sharing category shown when not admin, hidden when admin
+- [ ] When `isMobile` is true, renders the drawer logo at top
+- [ ] Renders only the prepared category items it receives
 - [ ] Clicking a category calls `onSelectCategory(categoryId)`
 - [ ] Selected category is visually highlighted
 
 ### 2.8 Edge Cases
 
-- `user` is null/undefined – assume non-admin (hide Admin categories, show Sharing).
-- Unknown `selectedCategory` – no item highlighted; still render all visible categories.
+- Empty `categories` array – render no category items without crashing
+- Unknown `selectedCategory` – no item highlighted; still render all provided categories

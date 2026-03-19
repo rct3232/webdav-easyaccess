@@ -35,8 +35,9 @@
 
 ### 2.4 Dependencies
 
-- **imports:** MyPageContentPanel, AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent
+- **imports:** MyPageContentPanel and MyPage registry helpers/constants (category icons, multi-category ids, and content render-model helpers)
 - **Reference implementation:** `client/src/components/mypage/MyPageContentArea.js`
+- **Must not own:** inline category-to-content dispatch trees
 
 ### 2.5 Header Content
 
@@ -59,6 +60,8 @@ Mapping:
 - `sharing` + 'inbox'|'outbox'|'links' → SharingContent detail
 - `admin-users` → UserManagementContent (direct)
 - `admin-settings` → SystemSettingsContent (direct)
+
+The above mapping is produced by the MyPage registry/helper layer and consumed by the view. `MyPageContentArea` should render the prepared descriptor rather than embedding category `if` chains.
 
 ### 2.8 Verification Scenarios
 

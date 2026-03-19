@@ -67,10 +67,13 @@ describe('useFormState', () => {
     );
 
     await act(async () => {
-      result.current.handleSubmit();
+      await result.current.handleSubmit();
     });
 
     expect(onSubmit).toHaveBeenCalledWith({ name: 'valid' });
+    await waitFor(() => {
+      expect(result.current.isSubmitting).toBe(false);
+    });
   });
 
   it('handleSubmit does not call onSubmit when invalid', async () => {
@@ -81,10 +84,11 @@ describe('useFormState', () => {
     );
 
     await act(async () => {
-      result.current.handleSubmit();
+      await result.current.handleSubmit();
     });
 
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(result.current.isSubmitting).toBe(false);
   });
 
   it('isSubmitting true during submit', async () => {
@@ -95,16 +99,14 @@ describe('useFormState', () => {
     );
 
     let submitPromise;
-    act(() => {
+    await act(async () => {
       submitPromise = result.current.handleSubmit();
     });
 
     expect(result.current.isSubmitting).toBe(true);
 
-    act(() => {
-      resolveSubmit();
-    });
     await act(async () => {
+      resolveSubmit();
       await submitPromise;
     });
 
@@ -151,7 +153,7 @@ describe('useFormState', () => {
     expect(result.current.getFieldError('x')).toBe('custom validator error');
   });
 
-  it('works with empty validators', () => {
+  it('works with empty validators', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useFormState({ a: 1 }, {}, { onSubmit })
@@ -162,10 +164,13 @@ describe('useFormState', () => {
     });
     expect(result.current.values.a).toBe(2);
 
-    act(() => {
-      result.current.handleSubmit();
+    await act(async () => {
+      await result.current.handleSubmit();
     });
     expect(onSubmit).toHaveBeenCalledWith({ a: 2 });
+    await waitFor(() => {
+      expect(result.current.isSubmitting).toBe(false);
+    });
   });
 
   it('setValues updates multiple fields and clears their errors', () => {

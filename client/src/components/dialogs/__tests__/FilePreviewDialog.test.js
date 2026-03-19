@@ -124,6 +124,9 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith('/v.mp4', expect.any(Object));
     });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
     expect(mockGetFileBlob).not.toHaveBeenCalled();
   });
 
@@ -146,6 +149,9 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
     });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
   });
 
   it('does not lock gallery index to 0 when mediaFiles arrives after open', async () => {
@@ -167,6 +173,9 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
     });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
 
     mockGetFileBlob.mockClear();
 
@@ -180,6 +189,9 @@ describe('FilePreviewDialog', () => {
 
     await waitFor(() => {
       expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
   });
 
@@ -197,6 +209,7 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    await screen.findByText('x');
 
     // Truncated output should be rendered instead of the full name.
     expect(screen.queryByText(longName)).not.toBeInTheDocument();

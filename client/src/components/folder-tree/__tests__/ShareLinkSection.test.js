@@ -1,7 +1,6 @@
 /**
  * ShareLinkSection tests.
  * Verifies observable outcomes per spec: path click, expand when currentPath in tree, root children loaded.
- * Uses MSW for API (TESTING_STRATEGY: prefer network-layer mock for integration tests).
  * @see docs/spec/client/components/folder-tree/ShareLinkSection.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -10,9 +9,14 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import ShareLinkSection from '../ShareLinkSection';
 
-jest.mock('../../../utils/localStorage', () => ({
-  getShowHiddenFiles: () => false,
+jest.mock('../../../services/folderTreeGateway', () => ({
+  __esModule: true,
+  default: {
+    listFolderChildren: jest.fn(),
+  },
 }));
+
+import folderTreeGateway from '../../../services/folderTreeGateway';
 
 const defaultProps = {
   shareRootPath: '/share-root',
@@ -25,6 +29,14 @@ const defaultProps = {
 describe('ShareLinkSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    folderTreeGateway.listFolderChildren.mockResolvedValue([
+      {
+        path: '/share-root/docs',
+        name: 'docs',
+        hasReadPermission: true,
+        hasWritePermission: false,
+      },
+    ]);
   });
 
   it('returns null when no shareRootPath and no shareToken', () => {
@@ -51,6 +63,11 @@ describe('ShareLinkSection', () => {
     renderWithProviders(<ShareLinkSection {...defaultProps} />);
     await waitFor(() => {
       expect(screen.getByText('docs')).toBeInTheDocument();
+    });
+    expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith({
+      path: '/share-root',
+      listFilesOptions: { shareToken: 'token-123' },
+      useHiddenFilesFilter: true,
     });
   });
 

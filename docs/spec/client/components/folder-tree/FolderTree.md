@@ -27,7 +27,7 @@
 | onFileClick | function | N | - | File click (recent) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
-| hasWritePermission | boolean | N | - | Write permission |
+| hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
 | onInternalFileDrop | function | N | - | Internal drag: (draggedPath, targetFolderPath) when dropped from file manager |
 | isMobile | boolean | N | false | Mobile |
@@ -44,8 +44,8 @@
 
 ### 2.4 Dependencies
 
-- **Allowed imports:** presentational components, pure utilities (path normalization, formatting), and section views.
-- **Avoid (target contract):** direct service/IO imports inside the tree view component. Data loading for shared/recent sections is expected to move behind a gateway/controller split in later phases (see refactor plan Phase 4).
+- **Allowed imports:** presentational components, section views, and controller hooks that prepare section state/handlers for the view.
+- **Avoid (target contract):** direct service/IO imports inside the tree view component. Shared/recent section coordination belongs to `useFolderTreeController`; share-link section loading must go through `folderTreeGateway`.
 - **Reference implementation:** `client/src/components/folder-tree/FolderTree.js`
 - **Related specs:**
   - `docs/spec/client/components/folder-tree/BaseFolderTreeItem.md`

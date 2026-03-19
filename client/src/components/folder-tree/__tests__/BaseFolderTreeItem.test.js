@@ -8,11 +8,15 @@ import React from 'react';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import BaseFolderTreeItem from '../BaseFolderTreeItem';
-import * as fileService from '../../../services/fileService';
 
-jest.mock('../../../services/fileService', () => ({
-  listFiles: jest.fn(),
+jest.mock('../../../services/folderTreeGateway', () => ({
+  __esModule: true,
+  default: {
+    listFolderChildren: jest.fn(),
+  },
 }));
+
+import folderTreeGateway from '../../../services/folderTreeGateway';
 
 jest.mock('../../../hooks/useDropToUpload', () => ({
   useDropToUpload: () => ({
@@ -41,7 +45,7 @@ const defaultProps = {
 describe('BaseFolderTreeItem', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    fileService.listFiles.mockResolvedValue([]);
+    folderTreeGateway.listFolderChildren.mockResolvedValue([]);
   });
 
   it('renders folder name', () => {
@@ -56,29 +60,27 @@ describe('BaseFolderTreeItem', () => {
   });
 
   it('calls onToggleExpand when expand icon clicked', () => {
-    fileService.listFiles.mockResolvedValue([
-      { path: '/testuser/docs', basename: 'docs', type: 'directory', hasReadPermission: true, hasWritePermission: true, isHidden: false },
-    ]);
-    renderWithProviders(<BaseFolderTreeItem {...defaultProps} />);
-    const expandTarget = screen.getAllByRole('button').find(el => el.closest('[class*="ListItemButton"]'));
-    if (!expandTarget) {
-      const chevron = document.querySelector('[class*="ChevronRight"]');
-      if (chevron) fireEvent.click(chevron.closest('span'));
-    } else {
-      fireEvent.click(expandTarget);
-    }
-    const expandBox = screen.getAllByRole('button')[0]?.parentElement?.querySelector('span[style*="cursor: pointer"]') || document.querySelector('span[style*="cursor: pointer"]');
-    if (expandBox) {
-      fireEvent.click(expandBox);
-      expect(defaultProps.onToggleExpand).toHaveBeenCalledWith('/testuser');
-    }
+    renderWithProviders(
+      <BaseFolderTreeItem
+        {...defaultProps}
+        children={[{ path: '/testuser/docs', name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false }]}
+      />
+    );
+
+    const button = screen.getByRole('button', { name: /testuser/i });
+    const svgs = button.querySelectorAll('svg');
+    expect(svgs.length).toBeGreaterThan(0);
+    // First SVG corresponds to the expand/collapse chevron icon.
+    fireEvent.click(svgs[0]);
+
+    expect(defaultProps.onToggleExpand).toHaveBeenCalledWith('/testuser');
   });
 
   it('loads children and shows them when expanded', async () => {
     const children = [
-      { path: '/testuser/docs', basename: 'docs', type: 'directory', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { path: '/testuser/docs', name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
-    fileService.listFiles.mockResolvedValue(children);
+    folderTreeGateway.listFolderChildren.mockResolvedValue(children);
     renderWithProviders(
       <BaseFolderTreeItem
         {...defaultProps}
@@ -87,7 +89,9 @@ describe('BaseFolderTreeItem', () => {
       />
     );
     await waitFor(() => {
-      expect(fileService.listFiles).toHaveBeenCalledWith('/testuser', expect.any(Object));
+      expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '/testuser' })
+      );
     });
     await waitFor(() => {
       expect(screen.getByText('docs')).toBeInTheDocument();

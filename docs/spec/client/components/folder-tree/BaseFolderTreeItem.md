@@ -7,7 +7,7 @@
 | Role | Folder tree item view: renders a folder row with expand/collapse affordance, highlights current path, and wires drop/drag callbacks provided by the host. Supports `path`/`name` or `node`. |
 | Used in | FolderTree, SharedFoldersSection |
 | Related components | `FolderTree`, `SharedFoldersSection`, `FileTreeSkeleton` |
-| Ownership note | This component is primarily a **view** + interaction wiring. Child loading, permission derivation, and DnD policy are expected to move toward a controller/gateway split in later phases (per refactor plan Phase 4), without changing observable behavior. |
+| Ownership note | This component is primarily a **view** + interaction wiring. In Phase 4, child loading, permission derivation, tree-update reconciliation, and DnD policy are delegated to `useFolderTreeItemController`, without changing observable behavior. |
 
 ---
 
@@ -36,6 +36,7 @@
 | onInternalFileDrop | function | N | - | Internal drag drop: (draggedPath, targetFolderPath) when file/folder dropped from file manager |
 | onInternalDragStart | function | N | - | Called when drag starts: (path) => void. Lets host know dragged path (e.g. to hide content-area overlay when drop would be no-op). |
 | onInternalDragEnd | function | N | - | Called when drag ends: () => void. Clears host state tied to tree drag. |
+| internalDraggedPath | string | N | - | Internal drag source path used by drop no-op logic |
 | isMobile | boolean | N | false | Mobile |
 | icon | ReactNode | N | - | Custom icon |
 | openIcon | ReactNode | N | - | Open icon |
@@ -48,7 +49,7 @@
 | user | object | N | - | Current user |
 | useHiddenFilesFilter | boolean | N | true | Filter hidden |
 | listFilesOptions | object | N | - | listFiles options |
-| filterChildNames | function | N | - | Filter child names |
+| filterChildNames | string[] | N | - | Child-name denylist forwarded to the controller/gateway |
 
 ### 2.3 Callback Signatures
 
@@ -61,8 +62,8 @@
 
 ### 2.4 Dependencies
 
-- **Allowed imports:** presentational components, pure utilities, DnD wiring utilities that do not embed product IO rules.
-- **Avoid (target contract):** direct file listing/service calls inside the view. If child-loading is required, it should be driven by a controller (future: `useFolderTreeItemController`) and/or a gateway.
+- **Allowed imports:** presentational components, pure utilities, and the controller hook `useFolderTreeItemController`.
+- **Avoid (target contract):** direct file listing/service calls and direct DnD wiring (`useDropToUpload`) inside the view. Child-loading, drop-to-upload wiring, and reconciliation are owned by `useFolderTreeItemController`.
 - **Reference implementation:** `client/src/components/folder-tree/BaseFolderTreeItem.js`
 
 ### 2.5 i18n Keys
@@ -74,7 +75,7 @@
 - Recursive children when expanded
 - Permission from node or sharedFoldersMap
 - Loading: FileTreeSkeleton
-- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and `onDragStart` sets `e.dataTransfer.setData('text/plain', path)` (and optionally a custom type) so the file manager can accept drops from the tree.
+- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and the controller-provided `onDragStart` sets `e.dataTransfer.setData('text/plain', path)` (and optionally a custom type) so the file manager can accept drops from the tree.
 
 ### 2.7 Verification Scenarios
 
@@ -90,4 +91,4 @@
 
 - path/name or node – either required
 - sharedFoldersMap overrides permission
-- **Permission (cross-DnD):** When used as drop target, hasWritePermission is already enforced by useDropToUpload (no-write nodes are not highlighted, no onInternalFileDrop). When used as drag source, draggable is off when isDisabled (no read).
+- **Permission (cross-DnD):** When used as drop target, hasWritePermission is already enforced by `useDropToUpload` inside `useFolderTreeItemController` (no-write nodes are not highlighted, no onInternalFileDrop). When used as drag source, draggable is off when isDisabled (no read).

@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Section for share link root (like __shared__/__recent__). Shows share link root and children via BaseFolderTreeItem. Loads children from listFiles. |
+| Role | Section for share link root (like `__shared__`/`__recent__`). Shows the share link root and its children via `BaseFolderTreeItem`. Loads root children through `folderTreeGateway.listFolderChildren`. |
 | Used in | FolderTree (share link view) |
-| Related components | BaseFolderTreeItem, listFiles |
+| Related components | BaseFolderTreeItem, folderTreeGateway |
 
 ---
 
@@ -36,7 +36,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** BaseFolderTreeItem, listFiles, getShowHiddenFiles
+- **imports:** BaseFolderTreeItem, `folderTreeGateway`, `normalizePath`
 - **Reference implementation:** `client/src/components/folder-tree/ShareLinkSection.js`
 
 ### 2.5 i18n Keys
@@ -46,13 +46,14 @@
 ### 2.6 Conditional Rendering
 
 - Expands parent paths when currentPath under root
-- Loading root children from listFiles with shareToken
+- Loads root children through `folderTreeGateway.listFolderChildren({ path, listFilesOptions: { shareToken } })`
 
 ### 2.7 Verification Scenarios
 
 - [ ] Path click
 - [ ] Expand when currentPath in tree
 - [ ] Root children loaded
+- [ ] Root children request is routed through `folderTreeGateway` with the provided `shareToken`
 
 ### 2.8 Edge Cases
 

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getUserPermissions } from '../../../../services/permissionService';
-import { listFiles, checkPermission } from '../../../../services/fileService';
+import folderPickerGateway from '../../../../services/folderPickerGateway';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath, getParentPath } from '../../../../utils/pathUtils';
-import { getUserBaseFolder, filterOutUserOwnFolders } from '../../../../utils/userUtils';
+import { normalizePath } from '../../../../utils/pathUtils';
+import { getUserBaseFolder } from '../../../../utils/userUtils';
+import { buildFolderPickerBreadcrumbs } from './helpers/buildFolderPickerBreadcrumbs';
+import { isInvalidFolderPickerDestination } from './helpers/isInvalidFolderPickerDestination';
 
 /**
  * FolderPickerDialog state and logic: folder list, selected path, permissions, breadcrumbs.
@@ -33,7 +34,7 @@ export function useFolderPicker({
         setHasWritePermission(true);
         return;
       }
-      const permission = await checkPermission(path);
+      const permission = await folderPickerGateway.checkWritePermission({ path });
       setHasWritePermission(permission.hasWrite);
     } catch (error) {
       console.error('Failed to check permission:', error);
@@ -49,8 +50,7 @@ export function useFolderPicker({
     setLoading(true);
     try {
       if (path === '/__shared__') {
-        const data = await getUserPermissions(user?.id);
-        const sharedFoldersData = filterOutUserOwnFolders(data || [], user);
+        const sharedFoldersData = await folderPickerGateway.getUserSharedFolderPermissions({ user });
         const permissionPaths = new Map();
         sharedFoldersData.forEach(perm => {
           permissionPaths.set(normalizePath(perm.folder_path), perm);
@@ -79,7 +79,7 @@ export function useFolderPicker({
         });
         setFolders(sharedFolderList);
       } else {
-        const data = await listFiles(path);
+        const data = await folderPickerGateway.listFolderContents({ path });
         const directories = Array.isArray(data) ? data.filter(item => item.type === 'directory') : [];
         setFolders(directories);
       }
@@ -94,9 +94,7 @@ export function useFolderPicker({
   const loadSharedFolders = useCallback(async () => {
     if (!user?.id || user.is_admin) return;
     try {
-      const data = await getUserPermissions(user.id);
-      const arr = Array.isArray(data) ? data : [];
-      const filtered = filterOutUserOwnFolders(arr, user);
+      const filtered = await folderPickerGateway.getUserSharedFolderPermissions({ user });
       const permissionPaths = new Map();
       filtered.forEach(perm => permissionPaths.set(normalizePath(perm.folder_path), perm));
       setSharedPermissionPaths(new Set(permissionPaths.keys()));
@@ -160,14 +158,11 @@ export function useFolderPicker({
   }, [action, loadFolders, checkWritePermission]);
 
   const isInvalidDestination = useCallback(() => {
-    if (action !== 'copy' && action !== 'move') return false;
-    const normalizedSelectedPath = normalizePath(selectedPath);
-    const sourcePaths = sourceFilePath ? [sourceFilePath] : (sourceFilePaths || []);
-    return sourcePaths.some(path => {
-      const normalizedSourcePath = normalizePath(path);
-      if (getParentPath(normalizedSourcePath) === normalizedSelectedPath) return true;
-      if (normalizedSelectedPath === normalizedSourcePath || normalizedSelectedPath.startsWith(normalizedSourcePath + '/')) return true;
-      return false;
+    return isInvalidFolderPickerDestination({
+      action,
+      selectedPath,
+      sourceFilePath,
+      sourceFilePaths,
     });
   }, [action, selectedPath, sourceFilePath, sourceFilePaths]);
 
@@ -268,48 +263,14 @@ export function useFolderPicker({
 
   const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
   const homeLabel = user?.is_admin ? t('nav.root') : t('nav.home');
-  const isHomePath = user?.is_admin
-    ? (selectedPath?.startsWith('/') && selectedPath !== '/__shared__')
-    : (selectedPath === homePath || selectedPath.startsWith(homePath + '/'));
-
-  let breadcrumbs = [];
-  if (selectedPath === '/__shared__') {
-    breadcrumbs = [{ name: t('nav.shared'), path: '/__shared__' }];
-  } else if (isHomePath) {
-    const pathParts = selectedPath.split('/').filter(Boolean);
-    breadcrumbs = [
-      { name: homeLabel, path: homePath },
-      ...pathParts.map((part, index) => ({ name: part, path: '/' + pathParts.slice(0, index + 1).join('/') })),
-    ].filter((crumb, index) => {
-      if (!user?.is_admin && index === 1 && crumb.name === user?.username) return false;
-      return true;
-    });
-  } else {
-    const normalizedSelectedPath = normalizePath(selectedPath);
-    const pathParts = normalizedSelectedPath.split('/').filter(Boolean);
-    let startIndex = -1;
-    for (let i = 0; i < pathParts.length; i++) {
-      const testPath = '/' + pathParts.slice(0, i + 1).join('/');
-      if (sharedPermissionPaths.has(testPath)) {
-        startIndex = i;
-        break;
-      }
-    }
-    if (startIndex >= 0) {
-      breadcrumbs = [
-        { name: t('nav.shared'), path: '/__shared__' },
-        ...pathParts.slice(startIndex).map((part, index) => ({
-          name: part,
-          path: '/' + pathParts.slice(0, startIndex + index + 1).join('/'),
-        })),
-      ];
-    } else {
-      breadcrumbs = [
-        { name: t('nav.shared'), path: '/__shared__' },
-        ...pathParts.map((part, index) => ({ name: part, path: '/' + pathParts.slice(0, index + 1).join('/') })),
-      ];
-    }
-  }
+  const breadcrumbs = buildFolderPickerBreadcrumbs({
+    selectedPath,
+    user,
+    homePath,
+    homeLabel,
+    sharedPermissionPaths,
+    sharedLabel: t('nav.shared'),
+  });
 
   return {
     selectedPath,

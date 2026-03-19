@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | FolderPicker dialog controller state: manages `selectedPath`, folder list for the current picker path, loading state, write-permission flag, and breadcrumb model for rendering. |
+| Role | FolderPicker dialog controller state: manages `selectedPath`, folder list for the current picker path, loading state, write-permission flag, home/shared toggle routing, and the breadcrumb model consumed by the dialog view. |
 | Used by components/pages | FolderPickerDialog |
-| Ownership note | This hook is product UI/controller logic for the picker dialog. It should not be treated as part of reusable explorer core. IO concerns should be isolated behind gateways/adapters over time (see refactor plan Phase 4). |
+| Ownership note | This hook is product UI/controller logic for the picker dialog. It should not be treated as part of reusable explorer core. For Phase 4, it owns state and orchestration only: IO must go through `folderPickerGateway`, and pure derivation must go through dedicated helper utilities. |
 
 ---
 
@@ -48,30 +48,56 @@
 
 ### 2.4 Dependencies
 
-- Current implementation may use existing services (listing + permission checks).
-- Target contract: picker IO should be routed through a gateway (future: `folderPickerGateway`) so the hook does not permanently mix service imports and domain rules.
-- Pure folder-selection rules (breadcrumbs building, invalid destination validation) should be extractable into pure utilities over time.
+- IO boundary:
+  - `client/src/services/folderPickerGateway`
+- Pure helper utilities:
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
+- Pure path/user utilities:
+  - `normalizePath`
+  - `getUserBaseFolder`
+
+#### 2.4.1 Pure Helper Utilities
+- Breadcrumb builder: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
+  - Responsibility: derive the `breadcrumbs` model purely from `selectedPath`, `user`, `homePath`, `homeLabel`, `sharedPermissionPaths`, and translated labels (no gateways/services/hooks).
+- Invalid-destination validator: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
+  - Responsibility: return whether a copy/move destination is invalid based on `selectedPath` and the provided `sourceFilePath`/`sourceFilePaths` (no React state, no translations, no side effects).
 
 ### 2.5 Side Effects
 
-- loadFolders on path/open
-- checkWritePermission on selectedPath
-- __shared__: getUserPermissions for shared folders
+- On open transition (`closed -> open`):
+  - resets `selectedPath` to `currentPath || '/'`
+  - loads folders for the initial path
+  - checks write permission for copy/move flows
+  - preloads shared permission paths for non-admin copy/move flows
+- On folder or breadcrumb navigation:
+  - loads folders for the newly selected path
+  - updates write-permission state for copy/move flows
+- For `__shared__`:
+  - loads shared-folder permissions through `folderPickerGateway.getUserSharedFolderPermissions`
+  - derives top-level shared roots and `sharedPermissionPaths` for breadcrumbs/toggle logic
 
 ### 2.6 Error Handling
 
-- setFolders([]) on error
-- Admin: hasWritePermission true
+- Directory/shared loading failure:
+  - log error
+  - set `folders` to `[]`
+- Write-permission failure:
+  - admins fall back to `hasWritePermission = true`
+  - non-admins fall back to whether the selected path is under the user's home path
 
 ### 2.7 Verification Scenarios
 
 - [ ] Folders load for path
 - [ ] __shared__ loads shared folders
-- [ ] Breadcrumbs, path click
-- [ ] Home/shared toggle
-- [ ] isInvalidDestination (source = dest)
+- [ ] Breadcrumb contents match home/shared path rules, including the non-admin hidden username crumb rule
+- [ ] Path click updates `selectedPath` and reloads the requested path
+- [ ] Home/shared toggle routes to the expected landing path for home-origin and shared-origin moves/copies
+- [ ] `isInvalidDestination` returns `true` for source path, parent path, and descendant path targets
+- [ ] Multi-source copy/move is invalid when any selected source would land in an invalid destination
 
 ### 2.8 Edge Cases
 
-- sourceFilePath/sourceFilePaths for invalid dest
-- prevOpenRef for open change
+- `sourceFilePath` and `sourceFilePaths` are both supported by the invalid-destination helper
+- `prevOpenRef` ensures initialization only runs when the dialog transitions from closed to open
+- Shared breadcrumbs start at the first path segment covered by `sharedPermissionPaths`; otherwise they fall back to `__shared__` + full path segments

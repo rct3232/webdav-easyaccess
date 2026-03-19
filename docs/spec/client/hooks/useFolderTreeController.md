@@ -46,7 +46,8 @@
 ### 2.4 Dependencies
 
 - Services called / IO boundaries:
-  - `getRecentFiles`, `onRecentFilesChange` from `client/src/utils/recentFiles`
+  - `getRecentFiles` from `client/src/services/recentFilesRepository`
+  - `onRecentFilesChange` from `client/src/services/recentFilesNotifier`
   - `folderTreeGateway.getUserSharedFolderPermissions` from `client/src/services/folderTreeGateway`
 - Pure utilities:
   - `normalizePath` for shared-tree building
@@ -71,7 +72,8 @@
 ### 2.6 Error Handling
 
 - Recent-files loading errors:
-  - Log and set `recentFilesList` to `[]`
+  - The controller expects `recentFilesRepository.getRecentFiles()` to resolve to a contract-safe array (`[]` on ordinary IO failure).
+  - The local `try/catch` remains a defensive guard for unexpected exceptions and still falls back to `[]`.
 - Shared-folder loading errors:
   - Log and set `sharedFolders` to `[]`
 
@@ -82,8 +84,9 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 - Initial `recentFilesList` loads for a non-null `user`.
 - When `user` becomes falsy, `recentFilesList` becomes `[]`.
 - `onRecentFilesChange` triggers a reload of recent files.
+- The notifier subscription returns a callable cleanup function that the controller can invoke safely on unmount.
 - Shared folders load for non-admin users, and do not load for admin users.
-- Recent-file load failure falls back to `[]`.
+- Repository-provided empty recent results still keep `recentFilesList` array-safe.
 - Shared-folder load failure falls back to `[]`.
 - `expandedPaths` includes `homePath` and each prefix segment of `currentPath` when `currentPath` is set.
 - Falsy `currentPath` leaves `expandedPaths` with only `homePath`.

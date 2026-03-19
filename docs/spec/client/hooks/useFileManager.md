@@ -55,7 +55,8 @@
 ### 2.5 Dependencies
 
 - listFiles, getWebDAVInfo, checkPermission, listFilePermissions, getFilesMetadata
-- getRecentFiles, getUserPermissions, getShowHiddenFiles, getSortMode (localStorage)
+- recentFilesRepository (`getRecentFiles`)
+- getUserPermissions, getShowHiddenFiles, getSortMode (localStorage)
 - normalizePath, getParentPath, getBasename (pathUtils)
 - filterOutUserOwnFolders (userUtils)
 - HTTP_STATUS (shared constants)
@@ -72,10 +73,12 @@
 
 - listFiles on currentPath change
 - __recent__: getRecentFiles + getFilesMetadata
+- In the `__recent__` view, repository entries may include `lastAccessed`; the hook maps that field into the listing model when present.
 - __shared__: getUserPermissions + listFilePermissions for shared folders, filter top-level
 - For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
 - shareToken: listFiles with shareToken
 - Navigate on setCurrentPath (non-share mode)
+- FileManager shell may subscribe to `recentFilesNotifier` while `currentPath === '/__recent__'` and call `loadFiles()` when recent-file change events are published.
 
 ### 2.7 Error Handling
 
@@ -86,6 +89,7 @@
 
 - [ ] Load files on path change
 - [ ] __recent__ flow
+- [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through the shell integration.
 - [ ] __shared__ flow (shared folders, file-only permissions) remains stable until overlay extraction
 - [ ] Share mode path handling remains stable until overlay extraction
 - [ ] setCurrentPath navigates

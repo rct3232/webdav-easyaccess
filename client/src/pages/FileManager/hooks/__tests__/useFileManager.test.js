@@ -29,14 +29,14 @@ jest.mock('../../../../utils/localStorage', () => {
     getSortMode: () => 'name',
   });
 });
-jest.mock('../../../../utils/recentFiles', () => {
-  const { createRecentFilesMock } = require('../../../../testing/mocks/serviceMocks');
-  return createRecentFilesMock();
+jest.mock('../../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
 });
 
 import * as fileService from '../../../../services/fileService';
 import * as permissionService from '../../../../services/permissionService';
-import * as recentFiles from '../../../../utils/recentFiles';
+import * as recentFiles from '../../../../services/recentFilesRepository';
 
 const mockUser = { id: '1', username: 'testuser', is_admin: false };
 

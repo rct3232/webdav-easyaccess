@@ -5,8 +5,11 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import useFolderTreeController from '../useFolderTreeController';
 
-jest.mock('../../../../utils/recentFiles', () => ({
+jest.mock('../../../../services/recentFilesRepository', () => ({
   getRecentFiles: jest.fn(),
+}));
+
+jest.mock('../../../../services/recentFilesNotifier', () => ({
   onRecentFilesChange: jest.fn(),
 }));
 
@@ -17,7 +20,8 @@ jest.mock('../../../../services/folderTreeGateway', () => ({
   },
 }));
 
-import { getRecentFiles, onRecentFilesChange } from '../../../../utils/recentFiles';
+import { getRecentFiles } from '../../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../../services/folderTreeGateway';
 
 const renderControllerHook = (initialProps) =>
@@ -136,9 +140,9 @@ describe('useFolderTreeController', () => {
     expect(folderTreeGateway.getUserSharedFolderPermissions).not.toHaveBeenCalled();
   });
 
-  it('falls back to empty recent/shared state when loading fails', async () => {
+  it('keeps empty recent state from repository fallback and clears shared state on shared-load failure', async () => {
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    getRecentFiles.mockRejectedValue(new Error('recent failed'));
+    getRecentFiles.mockResolvedValue([]);
     folderTreeGateway.getUserSharedFolderPermissions.mockRejectedValue(new Error('shared failed'));
 
     const { result } = renderControllerHook({

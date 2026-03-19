@@ -5,6 +5,40 @@
  * @see docs/spec/client/pages/FileManager.md 2.6
  */
 jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
+jest.mock('../../components/file-manager', () => {
+  const React = require('react');
+  const actual = jest.requireActual('../../components/file-manager');
+
+  const MockFAB = ({ onUpload, onCreateFolder, hasWritePermission = true, shareLinkMode }) => {
+    if (shareLinkMode) {
+      const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
+      const isLoggedIn = Boolean(user);
+      const label = isLoggedIn ? 'add to shared' : 'login';
+      return (
+        <button type="button" aria-label={label} onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}>
+          {label}
+        </button>
+      );
+    }
+
+    if (!hasWritePermission) {
+      return null;
+    }
+
+    return (
+      <div data-testid="mock-fab">
+        <button type="button" aria-label="file actions">file actions</button>
+        <button type="button" onClick={onCreateFolder}>create folder</button>
+        <button type="button" onClick={onUpload}>upload file</button>
+      </div>
+    );
+  };
+
+  return {
+    ...actual,
+    FAB: MockFAB,
+  };
+});
 
 import React from 'react';
 import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
@@ -14,6 +48,7 @@ import { http, HttpResponse } from 'msw';
 import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import FileManager from '../FileManager';
+import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
 
 function ParamsReporter() {
   const params = useParams();
@@ -41,6 +76,24 @@ function FileManagerWithRoutes() {
   );
 }
 
+const renderWithProvidersAct = async (ui, options = {}) => {
+  let renderResult;
+  await act(async () => {
+    renderResult = renderWithProviders(ui, options);
+    await Promise.resolve();
+  });
+  return renderResult;
+};
+
+const renderAct = async (ui) => {
+  let renderResult;
+  await act(async () => {
+    renderResult = render(ui);
+    await Promise.resolve();
+  });
+  return renderResult;
+};
+
 const selectTwoItemsDesktop = async (user, firstItemElement, secondItemElement) => {
   await user.click(firstItemElement);
   fireEvent.click(secondItemElement, { ctrlKey: true, metaKey: true });
@@ -54,7 +107,7 @@ describe('FileManager', () => {
   });
 
   it('renders file manager when authenticated', async () => {
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
@@ -62,7 +115,7 @@ describe('FileManager', () => {
   });
 
   it('renders without share link by default', async () => {
-    renderWithProviders(
+    await renderWithProvidersAct(
       <FileManagerWithRoutes />,
       { initialEntries: ['/files/testuser'] }
     );
@@ -72,7 +125,43 @@ describe('FileManager', () => {
     expect(document.body).toBeInTheDocument();
   });
 
-  it('path navigation: useParams sees splat when using createMemoryRouter', () => {
+  it('reloads the __recent__ view when recent-file notifications fire', async () => {
+    let recentEntries = [
+      { path: '/testuser/old.txt', type: 'file', lastAccessed: '2024-01-01T00:00:00.000Z' },
+    ];
+
+    server.use(
+      http.get('/api/recent-files', () => HttpResponse.json(recentEntries)),
+      http.post('/api/files/metadata', async ({ request }) => {
+        const body = await request.json().catch(() => ({}));
+        const paths = body.paths || [];
+        return HttpResponse.json(
+          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+        );
+      })
+    );
+
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/__recent__'] });
+
+    await waitFor(() => {
+      expect(screen.getByText('old.txt')).toBeInTheDocument();
+    });
+
+    recentEntries = [
+      { path: '/testuser/new.txt', type: 'file', lastAccessed: '2024-01-02T00:00:00.000Z' },
+    ];
+
+    await act(async () => {
+      notifyRecentFilesChange();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('new.txt')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('old.txt')).not.toBeInTheDocument();
+  });
+
+  it('path navigation: useParams sees splat when using createMemoryRouter', async () => {
     const routes = [
       {
         path: '/',
@@ -88,7 +177,7 @@ describe('FileManager', () => {
       initialEntries: ['/files/testuser'],
       initialIndex: 0,
     });
-    render(<RouterProvider router={router} />);
+    await renderAct(<RouterProvider router={router} />);
     expect(screen.getByTestId('params').textContent).toBe('{"*":"testuser"}');
   });
 
@@ -118,7 +207,7 @@ describe('FileManager', () => {
       ],
       { initialEntries: ['/files/testuser'], initialIndex: 0 }
     );
-    render(<RouterProvider router={router} />);
+    await renderAct(<RouterProvider router={router} />);
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -143,6 +232,8 @@ describe('FileManager', () => {
     );
     await act(async () => {
       await user.dblClick(folderRow);
+      await Promise.resolve();
+      await Promise.resolve();
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -163,7 +254,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -206,7 +297,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -269,7 +360,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -339,7 +430,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -386,7 +477,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -436,7 +527,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -482,16 +573,14 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
-    await user.click(fab);
-    const createFolderBtn = screen.getByRole('menuitem', { name: /create folder/i });
-    fireEvent.click(createFolderBtn);
+    const createFolderBtn = await screen.findByRole('button', { name: /create folder/i }, { timeout: 5000 });
+    await user.click(createFolderBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
     const nameInput = within(dialog).getByLabelText(/folder name/i);
@@ -529,16 +618,14 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
-    await user.click(fab);
-    const uploadBtn = screen.getByRole('menuitem', { name: /upload file/i });
-    fireEvent.click(uploadBtn);
+    const uploadBtn = await screen.findByRole('button', { name: /upload file/i }, { timeout: 5000 });
+    await user.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
     const fileInput = dialog.querySelector('input[type="file"]');
@@ -591,16 +678,14 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 8000 });
 
-    const fab = await screen.findByRole('button', { name: /file actions|파일 작업/i }, { timeout: 5000 });
-    await user.click(fab);
-    const uploadBtn = screen.getByRole('menuitem', { name: /upload file/i });
-    fireEvent.click(uploadBtn);
+    const uploadBtn = await screen.findByRole('button', { name: /upload file/i }, { timeout: 5000 });
+    await user.click(uploadBtn);
 
     const dialog = await screen.findByRole('dialog', {}, { timeout: 5000 });
     const fileInput = dialog.querySelector('input[type="file"]');
@@ -644,7 +729,7 @@ describe('FileManager', () => {
 
     localStorage.setItem('viewMode', 'list');
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -690,7 +775,7 @@ describe('FileManager', () => {
 
     localStorage.setItem('viewMode', 'list');
     const user = userEvent.setup({ delay: null });
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -763,7 +848,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -815,7 +900,7 @@ describe('FileManager', () => {
     }
 
     const user = userEvent.setup();
-    renderWithProviders(
+    await renderWithProvidersAct(
       <Routes>
         <Route path="/share-view" element={<ShareLinkFileManager />} />
       </Routes>,

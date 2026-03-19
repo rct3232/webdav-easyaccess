@@ -49,12 +49,16 @@
 ### 2.5 Dependencies
 
 - fileService (downloadFile with optional file-metadata options for single-file downloads, downloadMultipleFiles, renameFile)
-- getErrorMessage, markProcessing, clearProcessing, normalizePath, applyRecentFilesAfterRename
+- getErrorMessage, markProcessing, clearProcessing, normalizePath
+- recentFilesRepository (`applyRecentFilesAfterRename`)
 
 ### 2.6 Side Effects
 
 - API calls: download, rename
 - onProgress, setProcessingMap, onProcessingStart/End updates
+- On successful rename, delegates recent-entry path repair to `recentFilesRepository.applyRecentFilesAfterRename(...)`.
+- Under the current repository contract, ordinary recent-files IO failures are absorbed inside `recentFilesRepository`.
+- The hook still tolerates unexpected repository exceptions after a successful rename by logging and preserving the visible rename success path.
 
 ### 2.7 Error Handling
 
@@ -68,6 +72,8 @@
 - [ ] Progress updates
 - [ ] onClose on success
 - [ ] On API failure: onClose not called; dialog stays open; error shown
+- [ ] Successful rename delegates to `applyRecentFilesAfterRename`.
+- [ ] A successful rename still completes even if `applyRecentFilesAfterRename` unexpectedly throws.
 - [ ] The hook remains reusable as a lower-level operation helper under `useExplorerCommands`
 
 ### 2.9 Edge Cases

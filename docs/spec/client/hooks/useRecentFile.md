@@ -48,7 +48,8 @@
 
 ### 2.4 Dependencies
 
-- getRecentFiles, removeRecentFile, listFiles
+- recentFilesRepository (`getRecentFiles`, `removeRecentFile`)
+- listFiles
 - determineErrorType, getErrorMessageByType, canPreview
 
 ### 2.5 Side Effects

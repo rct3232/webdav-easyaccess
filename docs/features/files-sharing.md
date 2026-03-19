@@ -34,6 +34,8 @@ This project is refactoring the client so responsibilities are explicit and repl
   - Records a per-user list of recently accessed items and keeps it consistent after rename/move/delete.
   - Is not a UI-only concern: it has server-backed persistence and dedicated update endpoints.
   - Explorer and sharing features should treat “recent files” as a separate capability they notify, not embed.
+  - Client callers should route server-backed recent-file mutations through `recentFilesRepository`, subscribe through `recentFilesNotifier`, and keep path-mutation planning inside the pure `recentFiles` helpers.
+  - UI refresh for `/__recent__` should be driven by notifier-triggered reloads after successful observable recent-file mutations, not by ad-hoc cross-feature state pokes.
 
 These boundaries are about **who owns product rules and side effects**; they are not a server contract change.
 
@@ -190,5 +192,6 @@ When implementing or reviewing tests for files and sharing, cover at least:
 - **Recent files:** apply-moves after bulk move; remove-paths after bulk delete (FileManager delete flow).
 - **Share link expiry:** Expired share link → 410 on info/download/preview.
 - **Permission request states:** Create → pending; owner approve → approved; owner reject → rejected; requester cancel → cancelled. Inbox/outbox and check-owner behave as specified.
+- **Page-test seams:** When a FileManager page test is not validating floating action button or sidebar tree mechanics themselves, it may isolate those shell-only UI surfaces behind lighter equivalents so the scenario continues to verify explorer behavior without unrelated UI-library timing noise.
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) and [api.md](../api.md) for contract and mocking guidance.

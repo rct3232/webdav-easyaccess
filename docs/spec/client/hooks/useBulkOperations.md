@@ -68,13 +68,15 @@
 ### 2.5 Dependencies
 
 - fileService (batchMove, batchCopy, batchDelete, downloadMultipleFiles, checkConflicts, getBulkOperationStatus, cancelBulkOperation)
-- useFileOperationProgress, recentFiles utils
+- useFileOperationProgress
+- recentFilesRepository (`applyRecentFilesAfterBulkDelete({ filePaths, folderPaths })`, `applyRecentFilesAfterBulkMove(moves)`)
 
 ### 2.6 Side Effects
 
 - API calls for bulk ops
 - Polling for batch job status (POLL_INTERVAL_MS)
 - dismissFailedItems before new op
+- For bulk move success paths, recent-file synchronization may be delegated to `recentFilesRepository.applyRecentFilesAfterBulkMove(moves)` using only the subset of moves that actually succeeded.
 
 ### 2.7 Error Handling
 
@@ -88,9 +90,11 @@
 - [ ] handleBulkDownload
 - [ ] handleFolderPickerSelect triggers move/copy
 - [ ] Conflict flow
+- [ ] When a bulk move partially succeeds, recent-file synchronization still runs for the successfully moved subset and does not depend on all items succeeding.
 - [ ] The hook remains behavior-compatible while being documented as a lower-level dependency that can sit behind `useExplorerCommands`
 
 ### 2.9 Edge Cases
 
 - retryData for retry
 - Polling cleanup
+- Partial success with skipped items: success-side follow-up work (including recent-file sync) must use only the succeeded items and must not invent updates for skipped items.

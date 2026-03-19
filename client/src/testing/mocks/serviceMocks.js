@@ -34,12 +34,23 @@ export function createPermissionRequestServiceMock(overrides = {}) {
   };
 }
 
-export function createRecentFilesMock(overrides = {}) {
+export function createRecentFilesRepositoryMock(overrides = {}) {
   return {
-    getRecentFiles: jest.fn(),
-    removeRecentFile: jest.fn(),
-    applyRecentFilesAfterRename: jest.fn(),
-    onRecentFilesChange: jest.fn(() => () => {}),
+    getRecentFiles: jest.fn().mockResolvedValue([]),
+    addRecentFile: jest.fn().mockResolvedValue([]),
+    removeRecentFile: jest.fn().mockResolvedValue([]),
+    clearRecentFiles: jest.fn().mockResolvedValue(undefined),
+    applyRecentFilesAfterRename: jest.fn().mockResolvedValue([]),
+    applyRecentFilesAfterBulkDelete: jest.fn().mockResolvedValue([]),
+    applyRecentFilesAfterBulkMove: jest.fn().mockResolvedValue([]),
+    ...overrides,
+  };
+}
+
+export function createRecentFilesNotifierMock(overrides = {}) {
+  return {
+    onRecentFilesChange: jest.fn(() => jest.fn()),
+    notifyRecentFilesChange: jest.fn(),
     ...overrides,
   };
 }

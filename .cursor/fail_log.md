@@ -117,6 +117,20 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-19 — FolderTree.test.js — recent-files notifier cleanup after Phase 8 split
+
+- **Case:** B
+- **Root cause:** After the recent-files split, `useFolderTreeController` now subscribes through `recentFilesNotifier.onRecentFilesChange()` and unconditionally calls the returned unsubscribe in cleanup. The integration test fixture did not reliably match the notifier contract, so cleanup hit `TypeError: unsubscribe is not a function` even though the spec requires a callable unsubscribe function.
+- **Action taken:** Logged the incident before remediation; next step is to align docs and test fixtures with the extracted repository/notifier boundary, then re-run the targeted tree verification.
+- **Lesson:** When extracting pub-sub responsibilities into a notifier module, integration tests must mock the notifier API shape exactly, especially cleanup-return contracts.
+
+## 2026-03-19 — recentFiles.test.js / recentFilesRepository.test.js — recentFiles helper split parse failure
+
+- **Case:** A
+- **Root cause:** `client/src/utils/recentFiles.js` retained repeated helper blocks plus legacy repository/notifier code after the Phase 8 split, so Babel hit duplicate `import { normalizePath ... }` declarations before tests could run.
+- **Action taken:** Replaced `client/src/utils/recentFiles.js` with a single pure-helper module, kept IO in `client/src/services/recentFilesRepository.js`, kept pub-sub in `client/src/services/recentFilesNotifier.js`, and aligned the bulk-delete caller to the repository's object-parameter contract.
+- **Lesson:** When splitting one utility into helper/repository/notifier roles, verify the original file is fully reduced to its new single responsibility rather than appending the extracted code alongside legacy content.
+
 ## 2026-03-19 — useAuthSession.test.js — returns a failure result when token storage cannot be persisted
 
 - **Case:** B

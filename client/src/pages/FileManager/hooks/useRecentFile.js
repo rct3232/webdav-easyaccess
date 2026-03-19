@@ -2,7 +2,7 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../../utils/pathUtils';
-import { getRecentFiles, removeRecentFile } from '../../../utils/recentFiles';
+import { getRecentFiles, removeRecentFile } from '../../../services/recentFilesRepository';
 import { listFiles } from '../../../services/fileService';
 import { determineErrorType, getErrorMessageByType } from '../../../utils/errorUtils';
 import { canPreview } from '../../../utils/fileUtils';

@@ -16,11 +16,12 @@ jest.mock('../../../../services/fileService', () => ({
   renameFile: jest.fn(),
 }));
 
-jest.mock('../../../../utils/recentFiles', () => ({
+jest.mock('../../../../services/recentFilesRepository', () => ({
   applyRecentFilesAfterRename: jest.fn(),
 }));
 
 import * as fileService from '../../../../services/fileService';
+import * as recentFilesRepository from '../../../../services/recentFilesRepository';
 
 const mockOnProgress = jest.fn();
 const mockOnClose = jest.fn();
@@ -123,6 +124,11 @@ describe('useFileOperations', () => {
     });
 
     expect(fileService.renameFile).toHaveBeenCalledWith('/doc.pdf', 'new.pdf');
+    expect(recentFilesRepository.applyRecentFilesAfterRename).toHaveBeenCalledWith(
+      '/doc.pdf',
+      '/new.pdf',
+      expect.objectContaining({ name: 'new.pdf', basename: 'new.pdf' })
+    );
     expect(mockOnClose).toHaveBeenCalled();
   });
 
@@ -211,5 +217,29 @@ describe('useFileOperations', () => {
 
     expect(fileService.renameFile).toHaveBeenCalledWith('/doc.pdf', 'new.pdf');
     expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it('handleFileRename keeps success UX when recent-file sync unexpectedly throws', async () => {
+    recentFilesRepository.applyRecentFilesAfterRename.mockImplementationOnce(() => {
+      throw new Error('unexpected recent sync failure');
+    });
+    const file = { path: '/doc.pdf', basename: 'doc.pdf', type: 'file' };
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() =>
+      useFileOperations({ onClose: mockOnClose, onActionComplete: mockOnActionComplete })
+    );
+
+    await act(async () => {
+      await result.current.handleFileRename(file, 'new.pdf', { startedPath: '/folder' });
+    });
+
+    expect(fileService.renameFile).toHaveBeenCalledWith('/doc.pdf', 'new.pdf');
+    expect(mockOnClose).toHaveBeenCalled();
+    expect(mockOnActionComplete).toHaveBeenCalledWith({
+      opType: 'rename',
+      startedPath: '/folder',
+    });
+
+    consoleErrorSpy.mockRestore();
   });
 });

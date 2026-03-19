@@ -9,9 +9,9 @@ jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
 });
-jest.mock('../../../../utils/recentFiles', () => {
-  const { createRecentFilesMock } = require('../../../../testing/mocks/serviceMocks');
-  return createRecentFilesMock();
+jest.mock('../../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
 });
 jest.mock('../../../../services/fileService', () => {
   const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
@@ -25,7 +25,7 @@ jest.mock('../../../../utils/fileUtils', () => {
   return createFileUtilsMock();
 });
 
-import * as recentFiles from '../../../../utils/recentFiles';
+import * as recentFiles from '../../../../services/recentFilesRepository';
 import * as fileService from '../../../../services/fileService';
 
 const mockSetCurrentPath = jest.fn();

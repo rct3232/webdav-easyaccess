@@ -6,16 +6,19 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FolderTree from '../FolderTree';
-jest.mock('../../../utils/recentFiles', () => {
-  const { createRecentFilesMock } = require('../../../testing/mocks/serviceMocks');
-  return createRecentFilesMock({
-    getRecentFiles: jest.fn().mockResolvedValue([]),
-    onRecentFilesChange: () => () => {},
-  });
-});
+import { getRecentFiles } from '../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
+jest.mock('../../../services/recentFilesRepository', () => ({
+  getRecentFiles: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../../../services/recentFilesNotifier', () => ({
+  onRecentFilesChange: jest.fn(() => () => {}),
+  notifyRecentFilesChange: jest.fn(),
+}));
 jest.mock('../../../services/permissionService', () => {
   const { createPermissionServiceMock } = require('../../../testing/mocks/serviceMocks');
   return createPermissionServiceMock({
@@ -49,6 +52,7 @@ const defaultProps = {
 describe('FolderTree', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    onRecentFilesChange.mockImplementation(() => jest.fn());
   });
 
   it('renders home item for non-admin user', async () => {
@@ -77,6 +81,32 @@ describe('FolderTree', () => {
     });
     fireEvent.click(screen.getByText('testuser'));
     expect(defaultProps.onPathClick).toHaveBeenCalledWith('/testuser');
+  });
+
+  it('reloads recent section entries when recent-file notifications fire', async () => {
+    let notifyRecentChange;
+    onRecentFilesChange.mockImplementationOnce((callback) => {
+      notifyRecentChange = callback;
+      return jest.fn();
+    });
+    getRecentFiles
+      .mockResolvedValueOnce([{ path: '/testuser/old.txt', name: 'old.txt', type: 'file' }])
+      .mockResolvedValueOnce([{ path: '/testuser/new.txt', name: 'new.txt', type: 'file' }]);
+
+    renderWithProviders(<FolderTree {...defaultProps} currentPath="/__recent__" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('old.txt')).toBeInTheDocument();
+    });
+
+    expect(typeof notifyRecentChange).toBe('function');
+    act(() => {
+      notifyRecentChange();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('new.txt')).toBeInTheDocument();
+    });
   });
 
 });

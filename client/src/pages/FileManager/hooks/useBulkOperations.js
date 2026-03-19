@@ -13,7 +13,7 @@ import { useFileOperationProgress } from './useFileOperationProgress';
 import {
   applyRecentFilesAfterBulkDelete,
   applyRecentFilesAfterBulkMove,
-} from '../../../utils/recentFiles';
+} from '../../../services/recentFilesRepository';
 
 const POLL_INTERVAL_MS = 400;
 
@@ -178,7 +178,10 @@ export const useBulkOperations = (
 
           if (successCount > 0) {
             try {
-              await applyRecentFilesAfterBulkDelete(succeeded, deletedFolders);
+              await applyRecentFilesAfterBulkDelete({
+                filePaths: succeeded,
+                folderPaths: deletedFolders,
+              });
             } catch (err) {
               console.error('Failed to clean up recent files after bulk delete:', err);
             }
@@ -380,12 +383,12 @@ export const useBulkOperations = (
           if (successCount > 0) {
             if (action === 'move') {
               try {
-                if (!hasAnySkipped) {
-                  const moves = succeeded.map(({ sourcePath, destinationPath: destPath }) => {
-                    const file = files.find(f => f.path === sourcePath);
-                    const fileName = sourcePath.split('/').pop();
-                    return { oldPath: sourcePath, newPath: destPath, file: file || { type: 'file', name: fileName, basename: fileName } };
-                  });
+                const moves = succeeded.map(({ sourcePath, destinationPath: destPath }) => {
+                  const file = files.find(f => f.path === sourcePath);
+                  const fileName = sourcePath.split('/').pop();
+                  return { oldPath: sourcePath, newPath: destPath, file: file || { type: 'file', name: fileName, basename: fileName } };
+                });
+                if (moves.length > 0) {
                   await applyRecentFilesAfterBulkMove(moves);
                 }
               } catch (err) {

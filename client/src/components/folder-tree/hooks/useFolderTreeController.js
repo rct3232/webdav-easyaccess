@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getRecentFiles, onRecentFilesChange } from '../../../utils/recentFiles';
+import { getRecentFiles } from '../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 import { normalizePath } from '../../../utils/pathUtils';
 import { getUserBaseFolder } from '../../../utils/userUtils';
 import folderTreeGateway from '../../../services/folderTreeGateway';

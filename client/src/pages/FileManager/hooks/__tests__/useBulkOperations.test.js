@@ -20,12 +20,13 @@ jest.mock('../../../../services/fileService', () => ({
   cancelBulkOperation: jest.fn(),
 }));
 
-jest.mock('../../../../utils/recentFiles', () => ({
+jest.mock('../../../../services/recentFilesRepository', () => ({
   applyRecentFilesAfterBulkDelete: jest.fn(),
   applyRecentFilesAfterBulkMove: jest.fn(),
 }));
 
 import * as fileService from '../../../../services/fileService';
+import * as recentFilesRepository from '../../../../services/recentFilesRepository';
 
 const mockSetTreeUpdateTrigger = jest.fn();
 const mockOnOperationComplete = jest.fn();
@@ -135,6 +136,10 @@ describe('useBulkOperations', () => {
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
       expect.objectContaining({ opType: 'delete' })
     );
+    expect(recentFilesRepository.applyRecentFilesAfterBulkDelete).toHaveBeenCalledWith({
+      filePaths: ['/file1.txt', '/file2.txt'],
+      folderPaths: [],
+    });
   });
 
   it('handleBulkDelete with onConfirm calls onConfirm without starting delete', async () => {
@@ -190,6 +195,50 @@ describe('useBulkOperations', () => {
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
       expect.objectContaining({ opType: 'move', targetPath: '/dest' })
     );
+    expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
+      expect.objectContaining({ oldPath: '/file1.txt', newPath: '/dest/file1.txt' }),
+      expect.objectContaining({ oldPath: '/file2.txt', newPath: '/dest/file2.txt' }),
+    ]);
+  });
+
+  it('bulk move syncs recent files for only the succeeded subset when other items are skipped', async () => {
+    fileService.getBulkOperationStatus.mockResolvedValue({
+      status: 'completed',
+      progress: 2,
+      total: 2,
+      results: [
+        {
+          path: '/file1.txt',
+          sourcePath: '/file1.txt',
+          destinationPath: '/dest/file1.txt',
+          status: 'succeeded',
+        },
+        {
+          path: '/file2.txt',
+          sourcePath: '/file2.txt',
+          destinationPath: '/dest/file2.txt',
+          status: 'skippedByPermission',
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+    act(() => {
+      result.current.handleBulkMove();
+    });
+
+    await act(async () => {
+      await result.current.handleFolderPickerSelect('/dest');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
+      expect.objectContaining({ oldPath: '/file1.txt', newPath: '/dest/file1.txt' }),
+    ]);
   });
 
   it('handleFolderPickerSelect with conflicts sets bulkConflictData', async () => {

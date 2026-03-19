@@ -17,7 +17,8 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useMessage } from '../../hooks/useMessage';
 import { shouldRefreshAfterOperation } from '../../utils/refreshPolicy';
 import { checkPermission } from '../../services/fileService';
-import { addRecentFile, onRecentFilesChange } from '../../utils/recentFiles';
+import { addRecentFile } from '../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../services/recentFilesNotifier';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 

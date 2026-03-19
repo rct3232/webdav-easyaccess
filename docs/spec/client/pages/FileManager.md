@@ -198,6 +198,12 @@ This section captures observable behavior that must remain unchanged as responsi
 
 These scenarios should stay true throughout extraction steps (verify “what”, not “how”).
 
+### 6.1 Page-test seam guidance
+
+- Page-level `FileManager` tests should prioritize observable explorer outcomes such as listing, navigation, selection, progress, and dialog flows.
+- When a scenario is not specifically verifying floating action button or sidebar tree behavior, tests may replace heavy MUI chrome such as `FAB` / `SpeedDial` or shell-only tree composition with lighter test doubles so shell-level scenarios do not inherit unrelated ref/focus/transition noise.
+- Scenarios that do verify create/upload/share-link entry points may still use that lighter seam, as long as the user-visible trigger names and resulting dialogs/outcomes remain equivalent.
+
 - [ ] Initial render shows loading state, then resolves into the correct view once files load.
 - [ ] Path navigation updates the visible list/grid/detail content and breadcrumb correctly.
 - [ ] Search filters by file name as before (same matching behavior).

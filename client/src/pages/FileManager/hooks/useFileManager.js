@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { listFiles, getWebDAVInfo, checkPermission, listFilePermissions, getFilesMetadata } from '../../../services/fileService';
 import { getShowHiddenFiles, getSortMode } from '../../../utils/localStorage';
-import { getRecentFiles } from '../../../utils/recentFiles';
+import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath, getParentPath, getBasename } from '../../../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../../../utils/userUtils';

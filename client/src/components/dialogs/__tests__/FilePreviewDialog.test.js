@@ -47,18 +47,9 @@ const defaultProps = {
 };
 
 describe('FilePreviewDialog', () => {
-  let originalGetContext;
   let originalScrollTo;
 
   beforeAll(() => {
-    // JSDOM throws for canvas.getContext unless a canvas implementation is installed.
-    // Our string utils fallback when context is null, so force null for stable tests.
-    originalGetContext = HTMLCanvasElement.prototype.getContext;
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      configurable: true,
-      value: () => null,
-    });
-
     // JSDOM does not implement scrollTo on elements; PreviewThumbnailBar uses it.
     originalScrollTo = Element.prototype.scrollTo;
     // eslint-disable-next-line no-extend-native
@@ -66,11 +57,6 @@ describe('FilePreviewDialog', () => {
   });
 
   afterAll(() => {
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      configurable: true,
-      value: originalGetContext,
-    });
-
     // eslint-disable-next-line no-extend-native
     Element.prototype.scrollTo = originalScrollTo;
   });

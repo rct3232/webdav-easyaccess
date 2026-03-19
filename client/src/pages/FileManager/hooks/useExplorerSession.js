@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { VIEW_MODES } from '../../../constants/fileManager';
 import { sortFiles } from '../../../utils/fileUtils';
-import { getViewMode, setViewMode as saveViewMode, setSortMode as saveSortMode } from '../../../utils/localStorage';
+import {
+  getSortMode,
+  getViewMode,
+  setViewMode as saveViewMode,
+  setSortMode as saveSortMode,
+} from '../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
 export const useExplorerSession = ({
   currentPath,
   files: filesFromListing,
-  sortMode,
-  setSortMode,
   initialSearchQuery = '',
   isMobile = false,
 } = {}) => {
@@ -16,6 +19,7 @@ export const useExplorerSession = ({
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [sortMode, setSortMode] = useState(() => getSortMode());
 
   // Keep a local file list so we can apply in-place view updates (e.g. thumbnails)
   const [files, setFiles] = useState([]);
@@ -29,7 +33,6 @@ export const useExplorerSession = ({
   }, [viewMode]);
 
   useEffect(() => {
-    if (typeof sortMode === 'undefined') return;
     saveSortMode(sortMode);
   }, [sortMode]);
 

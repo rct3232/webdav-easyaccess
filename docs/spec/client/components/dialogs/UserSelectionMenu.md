@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Menu view for the share-dialog folder tree. Renders prepared manage/add-user state and forwards user actions through callbacks. |
+| Role | Menu view for the share-dialog folder tree. Renders manage/select-user menu states and forwards user actions through callbacks. The target boundary is view-lean rendering from prepared props, with only minimal local branching. |
 | Used in | ShareDialog |
 | Related components | ShareFolderTree |
 
@@ -54,8 +54,14 @@
 
 ### 2.4 Dependencies
 
-- **imports:** `PERMISSIONS`
+- **imports:** `PERMISSIONS`, `deriveShareFolderAccessView`
 - **Reference implementation:** `client/src/components/dialogs/UserSelectionMenu.js`
+
+### 2.4.1 Boundary notes
+
+- Prepared display-user models should come from upstream helpers/controllers where practical.
+- `deriveShareFolderAccessView` should prepare both rendered access chips and select-user candidates for this menu while staying side-effect-free and UI-neutral.
+- Policy-heavy filtering such as addable-user selection and review-request special casing should stay in helpers/controllers rather than accumulating inline branches here.
 
 ### 2.5 i18n Keys
 
@@ -65,7 +71,7 @@
 
 - Returns null when !folderMenuPath
 - Manage view: list prepared users with toggle/remove actions
-- Select-user view: list prepared addable users or review requester entry
+- Select-user view: list prepared addable users or a helper-prepared review-request requester entry
 - Any filtering or display-user shaping should be prepared upstream where practical; this component should not become a policy-heavy controller
 
 ### 2.7 Verification Scenarios
@@ -74,6 +80,7 @@
 - [ ] Toggle, remove, add user
 - [ ] Review mode shows requester-only add option when applicable
 - [ ] onClose
+- [ ] Prepared user lists render the same visible menu options after filtering/derivation is moved upstream
 
 ### 2.8 Edge Cases
 

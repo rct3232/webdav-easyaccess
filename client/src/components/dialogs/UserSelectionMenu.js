@@ -42,7 +42,9 @@ const UserSelectionMenu = ({
 
   const {
     displayUsers,
+    availableUsers,
     currentIsUserBaseFolder,
+    reviewRequesterOption,
   } = deriveShareFolderAccessView({
     folderPath: folderMenuPath,
     folderPermissions,
@@ -53,6 +55,8 @@ const UserSelectionMenu = ({
     userInfoMap,
     users,
     getUserName,
+    isReviewMode,
+    permissionRequest,
   });
 
   const renderManageView = () => (
@@ -152,11 +156,11 @@ const UserSelectionMenu = ({
   );
 
   const renderSelectUserView = () => {
-    if (isReviewMode && permissionRequest) {
-      const requesterId = permissionRequest.requester_id;
-      const folderUserPerms = folderPermissions.get(folderMenuPath);
-      const isAlreadyAdded = folderUserPerms && folderUserPerms.has(requesterId);
-      
+    if (reviewRequesterOption) {
+      const requesterName =
+        reviewRequesterOption.userName
+        || t('dialogs.userIdFallback', { id: reviewRequesterOption.userId });
+
       return (
         <>
           <MenuItem
@@ -172,18 +176,18 @@ const UserSelectionMenu = ({
             <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
           </MenuItem>
           
-          {!isAlreadyAdded ? (
+          {!reviewRequesterOption.alreadyAdded ? (
             <MenuItem
               onClick={(e) => {
                 e.stopPropagation();
                 handleUserSelect(
-                  requesterId, 
-                  permissionRequest.requester_username || t('dialogs.userIdFallback', { id: requesterId })
+                  reviewRequesterOption.userId,
+                  requesterName
                 );
               }}
             >
               <ListItemText 
-                primary={permissionRequest.requester_username || t('dialogs.userIdFallback', { id: requesterId })}
+                primary={requesterName}
                 secondary={t('dialogs.applicant')}
               />
             </MenuItem>
@@ -195,15 +199,7 @@ const UserSelectionMenu = ({
         </>
       );
     }
-    
-    const availableUsers = users.filter(u => {
-      const folderUserPerms = folderPermissions.get(folderMenuPath);
-      if (folderUserPerms && folderUserPerms.has(u.id)) return false;
-      if (user && u.id === user.id) return false;
-      if (u.is_admin) return false;
-      return true;
-    });
-    
+
     return (
       <>
         <MenuItem
@@ -224,17 +220,17 @@ const UserSelectionMenu = ({
             <ListItemText primary={t('dialogs.noUsersToAdd')} />
           </MenuItem>
         ) : (
-          availableUsers.map(u => (
+          availableUsers.map((targetUser) => (
             <MenuItem
-              key={u.id}
+              key={targetUser.id}
               onClick={(e) => {
                 e.stopPropagation();
-                handleUserSelect(u.id, u.username);
+                handleUserSelect(targetUser.id, targetUser.username);
               }}
             >
               <ListItemText 
-                primary={u.username}
-                secondary={u.email}
+                primary={targetUser.username}
+                secondary={targetUser.email}
               />
             </MenuItem>
           ))

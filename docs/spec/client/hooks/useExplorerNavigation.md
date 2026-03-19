@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Explorer navigation controller: owns path transitions (folder navigation, breadcrumb navigation, open-folder from list/grid/detail) and any optimistic/rollback behavior required to preserve current UX. |
+| Role | Explorer navigation controller: owns explorer path transitions (folder navigation, breadcrumb navigation, open-folder from list/grid/detail) and any optimistic/rollback behavior required to preserve current UX. It coordinates navigation decisions, but it does not own listing or product-overlay policy. |
 | Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Does not own | Search/sort/view session derivation (`useExplorerSession`), command orchestration (`useExplorerCommands`), progress orchestration (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`). |
+| Does not own | Search/sort/view session derivation (`useExplorerSession`), directory listing state (`useFileManager` or equivalent listing seam), command orchestration (`useExplorerCommands`), progress orchestration (`useExplorerProgress`), product overlays (share-link policy, `__recent__`, `__shared__`). |
 
 ---
 
@@ -28,12 +28,13 @@
 | setCurrentPath | (path: string) => void | Y | Shell-owned path setter (or equivalent routing setter) used to transition explorer location. |
 | onAfterNavigate | (nextPath: string) => void | N | Hook for the shell to run follow-up behavior after navigation (e.g. close drawer, selection reset timing) while preserving current UX. |
 | onTrackPathHistory | (nextPath: string, previousPath: string) => void | N | Optional callback to record optimistic navigation history used by existing rollback/error flows (e.g. recent-file navigation). |
-| canNavigateToPath | (path: string) => boolean \| Promise<boolean> | N | Optional guard for permission/availability checks used to preserve current “permission denied” rollback behavior. When it returns false, navigation must roll back and reject with a forbidden-shaped error. |
+| canNavigateToPath | (path: string) => boolean \| Promise<boolean> | N | Optional guard for permission/availability checks used to preserve current “permission denied” rollback behavior. In FileManager this should normally be provided by `explorerGateway` (or a narrow adapter over it) rather than a shell-owned direct service import. When it returns false, navigation must roll back and reject with a forbidden-shaped error. |
 
 Notes:
 
 - This hook should not directly talk to the router; it should operate on paths and delegate route updates to the shell (or a narrow adapter passed in).
 - Share-link mode and virtual collections may impose product rules; those rules remain in the shell, which may bypass this hook entirely for those cases.
+- This hook may ask the gateway whether a path is navigable, but it must not turn product concepts such as `__recent__` or `__shared__` into hard-coded explorer-core policy.
 
 ### 2.3 Return Value / State
 
@@ -51,6 +52,7 @@ Notes:
   - Any optimistic updates and rollbacks related to navigation (e.g. permission-denied rollback), if such behavior exists today.
   - Normalization and equality comparisons for paths for navigation decisions (as a pure concern).
 - **Does not own**
+  - Fetching the directory contents for the destination path (listing seam + gateway).
   - Deriving filtered/sorted display lists (`useExplorerSession`).
   - Orchestrating upload/rename/move/copy/delete/download (`useExplorerCommands`).
   - Progress UI state and retry/cancel (`useExplorerProgress`).
@@ -60,6 +62,7 @@ Notes:
 
 - **May use:** pure path utilities (normalize/compare).
 - **Must not use:** service modules for listing/permissions directly; if permission checks are needed, they must be provided via `canNavigateToPath` or a narrow gateway adapter passed in by the shell.
+- The page shell may wire `explorerGateway.canNavigateToPath` into this hook, but should not keep a dedicated `fileService.checkPermission` import for explorer navigation.
 
 ### 2.6 Side Effects
 

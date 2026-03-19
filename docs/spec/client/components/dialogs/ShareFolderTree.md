@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Recursive view for the share dialog folder tree. Renders expand/collapse state, folder labels, and prepared menu-button state for each node. |
+| Role | Recursive view for the share dialog folder tree. Renders expand/collapse state, folder labels, and prepared menu-button state for each node. Hover label animation must stay within prepared CSS/handler seams rather than direct document writes. |
 | Used in | ShareDialog |
 | Related components | `FileTreeSkeleton`, `PERMISSIONS` |
 
@@ -50,8 +50,9 @@
 
 ### 2.4 Dependencies
 
-- **imports:** `FileTreeSkeleton`, `PERMISSIONS`
+- **imports:** `FileTreeSkeleton`, `deriveShareFolderAccessView`
 - **Reference implementation:** `client/src/components/dialogs/ShareFolderTree.js`
+- **Boundary:** The component must not create/remove global style tags or call `document.*`. Any hover-scroll behavior should use prepared CSS variables/handlers only.
 
 ### 2.5 i18n Keys
 
@@ -63,6 +64,7 @@
 - Menu button reflects prepared permission-count / changed-state information
 - Loading state renders skeleton/progress affordances
 - User filtering and menu-button policy should be prepared upstream where possible; this component should stay primarily presentational
+- Folder-name overflow animation may derive scroll distance from the hovered node, but keyframes/style ownership must remain outside `document` mutation paths
 
 ### 2.7 Verification Scenarios
 
@@ -71,6 +73,7 @@
 - [ ] Owner-locked button behavior in admin mode
 - [ ] Changed-state badge rendering
 - [ ] Menu open
+- [ ] Overflowing folder labels animate on hover without requiring direct `document` access in the component
 
 ### 2.8 Edge Cases
 

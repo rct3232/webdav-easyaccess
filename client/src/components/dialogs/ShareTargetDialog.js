@@ -22,6 +22,7 @@ import {
 import { useResponsive } from '../../hooks/useResponsive';
 import { getApprovedUsers } from '../../services/userService';
 import sharePermissionGateway from '../../services/sharePermissionGateway';
+import { openUrlInNewTab } from '../../services/browserNavigation';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { getPermissionLabels } from '../../constants/permissions';
 import { normalizePath } from '../../utils/pathUtils';
@@ -32,6 +33,11 @@ import { useSharedManage } from '../../hooks/useSharedManage';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import SharedManageBody from './SharedManageBody';
 import { shareTargetPermissionSaveUseCase } from '../../services/shareTargetPermissionSaveUseCase';
+import {
+  buildShareTargetAccessList,
+  filterShareTargetUsers,
+  sortShareTargetAccessList,
+} from '../../utils/deriveShareTargetAdminView';
 
 const getPermissionOptions = (t) => [
   { value: PERMISSIONS.WRITE, label: t('dialogs.editor') },
@@ -184,28 +190,7 @@ const ShareTargetDialog = ({
       const pathToQuery = isDirectory ? targetPath : getParentPath(targetPath);
       const filePathParam = isDirectory ? undefined : targetPath;
       const data = await sharePermissionGateway.getFolderPermissions(pathToQuery, false, filePathParam);
-      const list = (data || [])
-        .filter((p) => !p.is_admin)
-        .map((p) => {
-          if (isDirectory) {
-            return {
-              id: p.id,
-              username: p.username || '',
-              email: p.email || '',
-              permission: p.permission || PERMISSIONS.READ,
-            };
-          }
-          const pathPermission = p.permission ?? null;
-          const filePermission = p.file_permission ?? null;
-          return {
-            id: p.id,
-            username: p.username || '',
-            email: p.email || '',
-            pathPermission,
-            filePermission,
-            permission: filePermission ?? pathPermission ?? PERMISSIONS.READ,
-          };
-        });
+      const list = buildShareTargetAccessList({ permissions: data, isDirectory });
       setAccessList(list);
       setInitialAccessList(list.map((u) => ({ ...u })));
     } catch (err) {
@@ -235,14 +220,15 @@ const ShareTargetDialog = ({
     }
   }, [open, targetPath, hasAdmin, loadUsers, loadPermissions]);
 
-  const filteredUsers = users.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.trim().toLowerCase();
-    return (
-      (u.username && u.username.toLowerCase().includes(q)) ||
-      (u.email && u.email.toLowerCase().includes(q))
-    );
-  });
+  const filteredUsers = React.useMemo(
+    () => filterShareTargetUsers({ users, searchQuery }),
+    [searchQuery, users]
+  );
+
+  const sortedAccessList = React.useMemo(
+    () => sortShareTargetAccessList(accessList),
+    [accessList]
+  );
 
   const addUser = useCallback((u) => {
     setAccessList((prev) => {
@@ -387,13 +373,7 @@ const ShareTargetDialog = ({
                 </Box>
               ) : (
                 <List dense>
-                  {[...accessList]
-                    .sort((a, b) => {
-                      if (a.permission === PERMISSIONS.ADMIN && b.permission !== PERMISSIONS.ADMIN) return -1;
-                      if (a.permission !== PERMISSIONS.ADMIN && b.permission === PERMISSIONS.ADMIN) return 1;
-                      return 0;
-                    })
-                    .map((u) => (
+                  {sortedAccessList.map((u) => (
                     <ListItem
                       key={u.id}
                       sx={{
@@ -501,6 +481,7 @@ const ShareTargetDialog = ({
               setLinkCopied={setLinkCopied}
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
+              onOpenShareLink={openUrlInNewTab}
               filePath={targetPath}
               fileName={displayName}
               onMessage={onMessage}

@@ -11,6 +11,8 @@ export function deriveShareFolderAccessView({
   users = [],
   getUserName,
   hasPermissionChanged = () => false,
+  isReviewMode = false,
+  permissionRequest = null,
 } = {}) {
   const currentFolderUserPerms = folderPermissions?.get(folderPath) || new Map();
   const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
@@ -33,6 +35,28 @@ export function deriveShareFolderAccessView({
     }))
     .filter((entry) => entry.userName && entry.userName.trim() !== '');
 
+  const availableUsers = users.filter((candidate) => {
+    if (!candidate || currentFolderUserPerms.has(candidate.id)) {
+      return false;
+    }
+    if (user && candidate.id === user.id) {
+      return false;
+    }
+    if (candidate.is_admin) {
+      return false;
+    }
+    return true;
+  });
+
+  const requesterId = permissionRequest?.requester_id;
+  const reviewRequesterOption = isReviewMode && requesterId
+    ? {
+        userId: requesterId,
+        userName: permissionRequest.requester_username || getUserName(requesterId) || '',
+        alreadyAdded: currentFolderUserPerms.has(requesterId),
+      }
+    : null;
+
   const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
   const currentIsUserBaseFolder = isAdminMode && folderPath === currentUserBaseFolder;
   const isFolderWithAdminPermission =
@@ -41,6 +65,8 @@ export function deriveShareFolderAccessView({
   return {
     currentFolderUserPerms,
     displayUsers,
+    availableUsers,
+    reviewRequesterOption,
     userCount: displayUsers.length,
     currentIsUserBaseFolder,
     isFolderWithAdminPermission,

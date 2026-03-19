@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -31,16 +31,10 @@ const FileManagerControls = ({
   handleSelectAll,
   handleDeselectAll,
   selectedFiles,
-  setSortMenuAnchor,
-  sortMenuAnchor,
   sortMode,
   setSortMode,
-  saveSortMode,
-  setViewModeMenuAnchor,
-  viewModeMenuAnchor,
   viewMode,
   setViewMode,
-  saveViewMode,
   selectionActionsDisabled = false,
   handleBulkMove,
   handleBulkCopy,
@@ -52,6 +46,7 @@ const FileManagerControls = ({
   downloadOnly = false,
 }) => {
   const { t } = useTranslation();
+  const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
 
   const noSelection = selectedFiles.size === 0;
   const moveDeleteDisabled = bulkActionsDisabled || !bulkWritePermission || noSelection;
@@ -176,7 +171,6 @@ const FileManagerControls = ({
               color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
               onClick={() => {
                 setViewMode(VIEW_MODES.LIST);
-                if (saveViewMode) saveViewMode(VIEW_MODES.LIST);
               }}
               title={t('fileManager.listViewTitle')}
             >
@@ -186,7 +180,6 @@ const FileManagerControls = ({
               color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
               onClick={() => {
                 setViewMode(VIEW_MODES.GRID);
-                if (saveViewMode) saveViewMode(VIEW_MODES.GRID);
               }}
               title={t('fileManager.gridViewTitle')}
             >
@@ -197,7 +190,6 @@ const FileManagerControls = ({
                 color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
                 onClick={() => {
                   setViewMode(VIEW_MODES.DETAIL);
-                  if (saveViewMode) saveViewMode(VIEW_MODES.DETAIL);
                 }}
                 title={t('fileManager.detailViewTitle')}
               >
@@ -232,7 +224,6 @@ const FileManagerControls = ({
               onChange={(e) => {
                 const newMode = e.target.value;
                 setSortMode(newMode);
-                if (saveSortMode) saveSortMode(newMode);
                 setSortMenuAnchor(null);
               }}
             >
@@ -258,7 +249,6 @@ const FileManagerControls = ({
               onChange={(e) => {
                 const newMode = e.target.value;
                 setSortMode(newMode);
-                if (saveSortMode) saveSortMode(newMode);
                 setSortMenuAnchor(null);
               }}
             >

@@ -1,12 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { listFiles, getWebDAVInfo, checkPermission, listFilePermissions, getFilesMetadata } from '../../../services/fileService';
-import { getShowHiddenFiles, getSortMode } from '../../../utils/localStorage';
-import { getRecentFiles } from '../../../services/recentFilesRepository';
+import explorerGateway from '../../../services/explorerGateway';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath, getParentPath, getBasename } from '../../../utils/pathUtils';
-import { filterOutUserOwnFolders } from '../../../utils/userUtils';
-import { getUserPermissions } from '../../../services/permissionService';
+import { normalizePath } from '../../../utils/pathUtils';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
@@ -54,8 +50,6 @@ export const useFileManager = (user, options = {}) => {
   const [files, setFiles] = useState([]);
   // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
   const [loading, setLoading] = useState(true);
-  const [sortMode, setSortMode] = useState(() => getSortMode());
-  const [webdavUrl, setWebdavUrl] = useState('');
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const requestIdRef = useRef(0);
   const prevPathRef = useRef(currentPath);
@@ -72,18 +66,9 @@ export const useFileManager = (user, options = {}) => {
     setLoading(true);
     const targetPath = currentPath;
     try {
-      // 공유 링크 모드: listFiles with shareToken only
-      if (shareToken && linkInfo) {
-        const data = await listFiles(targetPath, { shareToken });
-        if (requestId === requestIdRef.current) {
-          setFiles(data);
-        }
-        return;
-      }
-
       // 최근 파일 뷰인 경우 특별 처리
       if (targetPath === '/__recent__') {
-        const recentFilesList = await getRecentFiles();
+        const recentFilesList = await explorerGateway.loadRecentFiles();
         // 최근 파일을 파일 목록 형식으로 변환
         const recentFilesAsList = recentFilesList.map((recentFile) => {
           const fileName = recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1);
@@ -100,10 +85,10 @@ export const useFileManager = (user, options = {}) => {
             isRecentFile: true, // 최근 파일임을 표시
           };
         });
-        const recentFilePaths = recentFilesAsList.filter((e) => e.type === 'file').map((e) => e.path);
-        if (recentFilePaths.length > 0) {
+        const fileEntries = recentFilesAsList.filter((entry) => entry.type === 'file');
+        if (fileEntries.length > 0) {
           try {
-            const metaList = await getFilesMetadata(recentFilePaths);
+            const metaList = await explorerGateway.getEntriesMetadata({ entries: fileEntries });
             const metaByPath = new Map(metaList.map((m) => [m.path, m]));
             recentFilesAsList.forEach((entry) => {
               if (entry.type !== 'file') return;
@@ -122,126 +107,19 @@ export const useFileManager = (user, options = {}) => {
           setFiles(recentFilesAsList);
         }
       } else if (targetPath === '/__shared__') {
-        // 공유된 폴더 목록을 가져옴
-        const data = await getUserPermissions(user?.id);
-        const sharedFolders = filterOutUserOwnFolders(data || [], user);
-        
-        // 권한이 직접 부여된 경로를 정규화된 경로로 저장
-        const permissionPaths = new Map();
-        sharedFolders.forEach(perm => {
-          const normalized = normalizePath(perm.folder_path);
-          permissionPaths.set(normalized, perm);
-        });
-        
-        // 최상위 디렉토리만 필터링 (부모 경로가 permissionPaths에 없으면 최상위)
-        const topLevelFolders = Array.from(permissionPaths.entries()).filter(([normalizedPath, perm]) => {
-          const pathParts = normalizedPath.split('/').filter(Boolean);
-          // 부모 경로들을 확인
-          for (let i = pathParts.length - 1; i > 0; i--) {
-            const parentPath = '/' + pathParts.slice(0, i).join('/');
-            if (permissionPaths.has(parentPath)) {
-              return false; // 부모 경로가 있으면 최상위가 아님
-            }
-          }
-          return true; // 부모 경로가 없으면 최상위
-        });
-        
-        // 최상위 폴더들만 표시 (각 폴더의 실제 내용은 클릭했을 때 표시)
-        const folderEntries = topLevelFolders.map(([normalizedPath, perm]) => {
-          const pathParts = normalizedPath.split('/').filter(Boolean);
-          const name = pathParts[pathParts.length - 1] || normalizedPath;
-          return {
-            path: normalizedPath,
-            basename: name,
-            name: name,
-            type: 'directory',
-            size: 0,
-            lastmodified: null,
-            hasReadPermission: true,
-            hasWritePermission: perm.permission === 'write' || perm.permission === 'admin',
-            hasAdminPermission: perm.permission === 'admin'
-          };
-        });
-
-        // 경로에는 권한이 없고(noauth) 해당 파일에만 독립 권한이 있는 파일을 공유됨에 노출
-        let fileOnlyEntries = [];
-        try {
-          const filePermList = await listFilePermissions();
-          if (Array.isArray(filePermList) && filePermList.length > 0) {
-            fileOnlyEntries = filePermList
-              .filter(({ filePath }) => {
-                const normalized = normalizePath(filePath);
-                const parentPath = getParentPath(normalized);
-                return parentPath !== undefined && parentPath !== null && !permissionPaths.has(parentPath);
-              })
-              .map(({ filePath, permission }) => {
-                const normalized = normalizePath(filePath);
-                const name = getBasename(normalized) || normalized;
-                return {
-                  path: normalized,
-                  basename: name,
-                  name: name,
-                  type: 'file',
-                  size: 0,
-                  lastmodified: null,
-                  hasReadPermission: true,
-                  hasWritePermission: permission === 'write' || permission === 'admin',
-                  hasAdminPermission: permission === 'admin'
-                };
-              });
-          }
-        } catch (err) {
-          console.error('[useFileManager] Failed to load file-only permissions for __shared__:', err);
-        }
-
-        const filePaths = fileOnlyEntries.map((e) => e.path);
-        if (filePaths.length > 0) {
-          try {
-            const metaList = await getFilesMetadata(filePaths);
-            const metaByPath = new Map(metaList.map((m) => [m.path, m]));
-            fileOnlyEntries.forEach((entry) => {
-              const meta = metaByPath.get(entry.path);
-              if (meta) {
-                entry.size = meta.size != null ? meta.size : 0;
-                entry.lastmod = meta.lastmod ?? null;
-                entry.mime = meta.mime ?? null;
-              }
-            });
-          } catch (metaErr) {
-            console.error('[useFileManager] Failed to load metadata for __shared__ file-only entries:', metaErr);
-          }
-        }
-
-        const sharedFiles = [...folderEntries, ...fileOnlyEntries];
-
+        const sharedFiles = await explorerGateway.loadSharedEntries({ user });
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }
       } else {
         try {
-          const data = await listFiles(targetPath);
-          // 숨김 파일 필터링 (옵션이 꺼져있으면 isHidden === true인 항목 제외)
-          const showHiddenFiles = getShowHiddenFiles();
-          let filteredData = showHiddenFiles 
-            ? data 
-            : data.filter(item => !item.isHidden);
-          // 비관리자: 폴더/파일 공통 hasAdminPermission 보강 (공유 버튼 표시용 - admin 권한이 있을 때만)
-          if (user && !user.is_admin && filteredData.length > 0) {
-            try {
-              const perms = await getUserPermissions(user.id);
-              const adminPrefixes = (perms || [])
-                .filter(p => p.permission === 'admin')
-                .map(p => normalizePath(p.folder_path));
-              filteredData = filteredData.map(item => {
-                if (!item.path) return item;
-                const np = normalizePath(item.path);
-                const hasAdmin = adminPrefixes.some(ap => np === ap || np.startsWith(ap + '/'));
-                return { ...item, hasAdminPermission: hasAdmin };
-              });
-            } catch (permErr) {
-              console.error('[useFileManager] Failed to load permissions for hasAdminPermission:', permErr);
-            }
-          }
+          const filteredData = await explorerGateway.listDirectory({
+            path: targetPath,
+            options: {
+              shareToken,
+              user,
+            },
+          });
           // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
           if (requestId === requestIdRef.current) {
             setFiles(filteredData);
@@ -324,10 +202,10 @@ export const useFileManager = (user, options = {}) => {
         const loadPermission = async () => {
           const permId = ++permRequestIdRef.current;
           try {
-            const permission = await checkPermission(currentPath);
+            const permission = await explorerGateway.getPathAccess({ path: currentPath });
             // Ignore stale results: when redirecting / -> /username, older loadPermission('/') can complete after loadPermission('/username')
             if (permId !== permRequestIdRef.current) return;
-            setHasWritePermission(permission.hasWrite);
+            setHasWritePermission(permission.canWrite);
           } catch (error) {
             console.error('Failed to check permission:', error);
             if (permId !== permRequestIdRef.current) return;
@@ -348,26 +226,18 @@ export const useFileManager = (user, options = {}) => {
   }, [currentPath, loadFiles, user]);
 
   useEffect(() => {
-    if (shareToken && linkInfo) return;
-    const loadWebDAVUrl = async () => {
-      try {
-        const info = await getWebDAVInfo();
-        setWebdavUrl(info.url || '');
-      } catch (error) {
-        console.error('Failed to load WebDAV URL:', error);
-      }
-    };
-    loadWebDAVUrl();
-  }, [shareToken, linkInfo]);
+    if (currentPath !== '/__recent__') return undefined;
+
+    return explorerGateway.subscribeToRecentFiles(() => {
+      loadFiles();
+    });
+  }, [currentPath, loadFiles]);
 
   return {
     currentPath,
     setCurrentPath,
     files,
     loading,
-    sortMode,
-    setSortMode,
-    webdavUrl,
     loadFiles,
     hasWritePermission,
     onLoadErrorRef, // 외부에서 onLoadError를 업데이트하기 위해 반환

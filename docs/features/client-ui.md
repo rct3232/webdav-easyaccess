@@ -36,10 +36,12 @@ These boundaries are intentionally written at the **feature level** (not as a fi
   - List/grid/detail presentation modes and basic state like view mode, sort mode, and search query.
   - Selection rules and bulk action affordances.
   - File commands and progress UI (upload, rename, move/copy, delete, download; progress and cancellation).
+  - Explorer-specific IO through explorer gateways/adapters rather than page-shell direct service/storage/repository imports.
   - Presentation-neutral rules that should remain consistent across product contexts.
 
 - **Product overlays own**
   - Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
+  - Share-link-specific login, leave-share, and add-to-my-permissions flows.
   - Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
   - Admin-only UI visibility and product policies that are not reusable across contexts.
 
@@ -47,7 +49,9 @@ These boundaries are intentionally written at the **feature level** (not as a fi
   - Route composition and route-state parsing (including redirects and share-link bootstrapping).
   - Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
   - Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
+  - Selection-reset seams that react to explorer session-boundary changes without pushing that side effect into pure session derivation hooks.
   - When explorer interactions or share-link overlays become flow-heavy, page-local controller hooks should own those flows while the shell remains a composition layer.
+  - Page shells should not keep explorer-specific storage helpers, direct permission-service calls, recent-file repository/notifier wiring, metadata enrichment calls, or refresh-policy orchestration inline; those belong to explorer hooks/gateways.
 
 ### Routing
 
@@ -73,10 +77,12 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 ### File browsing (Explorer core + overlays)
 
-- **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted in localStorage (e.g. `getViewMode`, `setViewMode`).
-- **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted (e.g. `setSortMode`, `saveSortMode`). Applied via `sortFiles()` before render.
+- **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted through the existing client preference-storage policy/helper boundary.
+- **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted through the same preference-storage policy boundary and applied before render.
+- **Explorer ownership split:** `useExplorerSession` is the single owner of search/sort/view-mode session state and preference persistence. `useFileManager` is the narrow path/listing seam for the active explorer location. Listing, shared-entry loading, capability checks, recent-files persistence, metadata enrichment, and parent-folder verification belong to explorer gateways plus the narrow controller/listing seams that call them. `FileManager` remains the page shell that selects product overlays such as share-link mode and virtual collections, while control-only chrome state such as an open sort menu stays local to the rendered control seam instead of the page shell.
+- **Recent-file recovery boundary:** When a recent target must be verified, reopened for preview, or removed as stale, the recent-file controller uses explorer gateway seams for parent-folder checks and recent-entry cleanup instead of importing repository or file-service modules directly. Rollback and toast behavior stay unchanged from the user perspective.
 - **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
-- **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. `useSelection` holds selected set; clear selection after successful operation or on path change. File rows/cards do not require checkbox widgets for this flow.
+- **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. The selection controller owns the selected set; route/path changes clear selection through the page-shell/session-boundary seam. File rows/cards do not require checkbox widgets for this flow.
 - **Toolbar (bulk actions):** When one or more items selected, FileManagerControls shows bulk action buttons (Move, Copy, Download, Delete) inline in the same row, replacing sort and view mode. No manual selection mode toggle button; entry/exit driven by file interactions and selected count. Uses icon buttons. Same layout on desktop and mobile. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API. **Mobile multi-download restriction:** On mobile, when multiple items are selected, the Download button is disabled (grayed out); only single-item download is allowed on mobile. This is a client-side UI restriction only.
 - **Progress UI (FileOperationProgress):** Shrink state: compact chip in AppBar. Click opens right-side Drawer. Collapsed: all operation headers with an "Expand" button above each body. Expanded: single item fills drawer with "Collapse" at bottom. Auto-collapse on new preparing; on error/warning, expand that item when drawer is opened (no auto-open).
 - **Rename dialog:** Single item rename; `PUT /api/files/rename` with `oldPath`, `newName`. On success, refresh list and recent files if needed.
@@ -91,6 +97,7 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 - **Filename truncation:** All file items (list, grid, detail, and recent files) use middle ellipsis (`pixelMiddleTruncate`) for long filenames, ensuring the file extension remains visible. A `Tooltip` displays the full filename on hover if it is truncated.
 - **Action sheet (mobile):** More button or right-click triggers bottom action sheet (`FileActionSheet`) with same actions as context menu. Long-press no longer opens context menu; it enters selection mode (see Selection above).
 - **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties, Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
+- **Browser-boundary rule for touched views:** Presentational/file-tree/share views must not call `window`, `document`, or `ResizeObserver` directly. Link opening, element observation, and similar browser work must flow through a prepared callback, hook, or adapter boundary.
 - **File preview zoom:** PDF and image previews support zoom. Bottom bar (zoom in/out, percentage, reset); Ctrl+wheel on desktop; two-finger pinch on mobile.
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
 
@@ -115,8 +122,8 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 ### i18n
 
 - **Library:** react-i18next; resources from `client/src/locales/en.json`, `ko.json`.
-- **Initial language:** From `navigator.language` (e.g. `ko` → Korean, else English); fallback `en`.
-- **Usage:** `useTranslation()` → `t(key, params)` for all user-facing strings. Server errors displayed via `t(errorCode, params)` (see [shared-contracts.md](../shared-contracts.md)). Language can be switched in UI (e.g. settings or header); preference may be stored in localStorage.
+- **Initial language:** Derived through the existing language/browser-preference policy (for example browser locale detection), with fallback `en`.
+- **Usage:** `useTranslation()` → `t(key, params)` for all user-facing strings. Server errors displayed via `t(errorCode, params)` (see [shared-contracts.md](../shared-contracts.md)). Language can be switched in UI (e.g. settings or header); persisted preferences must remain behind a dedicated storage/policy boundary rather than direct view-layer storage access.
 
 ---
 
@@ -136,7 +143,7 @@ flowchart LR
     G -->|No| E
 ```
 
-- On load, the client initializes auth state from session-based storage and validates the session via `GET /api/auth/me`. Authentication errors follow the existing user-visible policy: unauthorized sessions redirect to login; forbidden responses follow the established navigation policy for the current page context.
+- On load, the client initializes auth state from the existing session-storage adapter/policy and validates the session via `GET /api/auth/me`. Authentication errors follow the existing user-visible policy: unauthorized sessions redirect to login; forbidden responses follow the established navigation policy for the current page context.
 
 ### File manager: multi-select and batch
 
@@ -154,7 +161,7 @@ flowchart LR
 
 ### Language switch
 
-- User changes language in UI (if provided). App calls `i18n.changeLanguage(lang)`; all `t()` strings update. Optionally persist language in localStorage and set as `i18n.language` on next load.
+- User changes language in UI (if provided). App calls `i18n.changeLanguage(lang)`; all `t()` strings update. Persisted language preferences, when enabled, flow through the existing preference-storage boundary rather than direct component storage calls.
 
 ---
 

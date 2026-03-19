@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Transitional FileManager listing/path hook: owns currentPath, files, loading, hasWritePermission, and current listing-related state while the monolith is being split. It is a legacy integration point, not the long-term owner of explorer session, commands, progress, or product overlays. |
+| Role | Transitional listing/path seam for FileManager. Its final target is narrow: own the current explorer path plus gateway-backed listing reload state, while staying out of explorer session, commands, progress, and product-overlay policy. |
 | Used by components/pages | FileManager page shell (current implementation) |
 
 ---
@@ -31,54 +31,50 @@
 | setCurrentPath | (path) => void | Set path (navigate or share state) |
 | files | array | File list |
 | loading | boolean | Loading |
-| sortMode | string | Legacy transitional output. Target ownership moves to `useExplorerSession`. |
-| setSortMode | function | Legacy transitional setter. Target ownership moves to `useExplorerSession`. |
 | hasWritePermission | boolean | Write permission |
-| webdavUrl | string | WebDAV URL |
 | loadFiles | () => Promise | Reload files |
 | onLoadErrorRef | ref | Ref for onLoadError callback (for external updates) |
 
 ### 2.4 Boundaries
 
-- **Currently owns**
-  - Path source of truth for FileManager (`currentPath`, `setCurrentPath`)
-  - File listing state (`files`, `loading`, `loadFiles`)
-  - Write-permission state for the current path
-  - Transitional special-path handling that still exists in the current monolith
-- **Does not own in target architecture**
+- **Final target owns**
+  - Path source of truth for the active explorer location (`currentPath`, `setCurrentPath`) until navigation ownership is fully isolated behind `useExplorerNavigation`.
+  - Listing reload state (`files`, `loading`, `loadFiles`) for the current explorer location.
+  - Gateway-backed access facts needed to render the current listing (for example current-path write capability).
+  - Coordination between route/share-path inputs and the listing seam so the rest of explorer core can consume normalized listing data.
+- **Explicitly does not own**
   - Search/sort/view-mode derived explorer session state (`useExplorerSession`)
   - Navigation orchestration and optimistic rollback (`useExplorerNavigation`)
   - Operation orchestration (`useExplorerCommands`)
   - Progress drawer/retry/cancel coordination (`useExplorerProgress`)
-  - Long-term ownership of product overlays such as share-link policy and virtual collections
+  - Recent-file verification/removal flows (`useRecentFile`)
+  - Product overlays such as share-link policy and virtual collections
+  - Browser-preference storage concerns such as persisted sort/view state
+  - Ancillary service lookups that are not required for path/listing coordination (for example WebDAV info)
 
 ### 2.5 Dependencies
 
-- listFiles, getWebDAVInfo, checkPermission, listFilePermissions, getFilesMetadata
-- recentFilesRepository (`getRecentFiles`)
-- getUserPermissions, getShowHiddenFiles, getSortMode (localStorage)
-- normalizePath, getParentPath, getBasename (pathUtils)
-- filterOutUserOwnFolders (userUtils)
-- HTTP_STATUS (shared constants)
-- useParams, useNavigate
+- **May use directly:** router/path inputs (`useParams`, `useNavigate`) and pure path helpers.
+- **Must route explorer IO through:** `explorerGateway` (directory listing, path access checks, recent-file load/remove subscription helpers, metadata enrichment, and shared-entry loading when special collections need them).
+- **Must not use directly in the final target:** file service modules, permission service modules, recent-files repositories/notifiers, or browser storage helpers.
+- Transitional compatibility may still exist while the extraction is incomplete, but the spec target is the non-overlapping end state above.
 
 ### 2.5.1 Test Mock Strategy
 
-- Use shared client test mock helpers for repeated dependencies (fileService, permissionService, recentFiles, router navigate).
+- Prefer mocking `explorerGateway` and router/path seams rather than low-level file/permission/recent repository modules.
 - Keep `useFileManager` tests focused on observable state transitions (`currentPath`, `files`, `loading`, permission flags) and navigation effects.
-- Prefer per-test override of service responses instead of redefining whole mock modules in each test file.
+- Prefer per-test override of gateway responses instead of redefining whole mock modules in each test file.
 - If migrating portions to MSW, keep router and local UI helper mocks at module level and use MSW only for stable API interactions.
 
 ### 2.6 Side Effects
 
-- listFiles on currentPath change
-- __recent__: getRecentFiles + getFilesMetadata
-- In the `__recent__` view, repository entries may include `lastAccessed`; the hook maps that field into the listing model when present.
-- __shared__: getUserPermissions + listFilePermissions for shared folders, filter top-level
-- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
-- shareToken: listFiles with shareToken
-- Navigate on setCurrentPath (non-share mode)
-- FileManager shell may subscribe to `recentFilesNotifier` while `currentPath === '/__recent__'` and call `loadFiles()` when recent-file change events are published.
+- Reload listing when the current path or share context changes.
+- In the normal path flow, request the current directory listing and current-path access facts through `explorerGateway`.
+- In the `__recent__` view, request recent entries and any needed metadata through `explorerGateway`, preserving `lastAccessed` and current derived-list behavior.
+- In the `__shared__` view, request shared-root listing/capability data through gateway-backed seams while the shell still owns the product decision to activate that collection.
+- Navigate on `setCurrentPath` in non-share mode (or coordinate with the navigation seam during the transition).
+- While `currentPath === '/__recent__'`, subscribe to recent-file change notifications through `explorerGateway` so listing reloads remain localized to the listing seam.
+- Forward explorer session ownership upward: callers such as `FileManager` obtain sort/view/search state from `useExplorerSession`, not from this hook.
 
 ### 2.7 Error Handling
 
@@ -88,12 +84,13 @@
 ### 2.8 Verification Scenarios
 
 - [ ] Load files on path change
-- [ ] __recent__ flow
-- [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through the shell integration.
-- [ ] __shared__ flow (shared folders, file-only permissions) remains stable until overlay extraction
+- [ ] Normal-path listing and current-path write capability are loaded through `explorerGateway`, not direct service imports.
+- [ ] `__recent__` flow continues to render the same recent-file entries and metadata while all repository/notifier access flows through `explorerGateway`.
+- [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through this hook without extra page-shell wiring.
+- [ ] `__shared__` flow (shared folders, file-only permissions) remains stable until overlay extraction.
 - [ ] Share mode path handling remains stable until overlay extraction
 - [ ] setCurrentPath navigates
-- [ ] The hook is treated as a transitional listing/path hook, not the owner of search/sort/view derived state
+- [ ] The hook is treated as a listing/path seam, not the owner of search/sort/view derived state, browser-preference storage, or recent-file recovery logic.
 
 ### 2.9 Edge Cases
 

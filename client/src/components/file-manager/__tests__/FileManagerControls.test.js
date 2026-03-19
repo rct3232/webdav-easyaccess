@@ -15,12 +15,8 @@ const defaultProps = {
   handleSelectAll: jest.fn(),
   handleDeselectAll: jest.fn(),
   selectedFiles: new Set(),
-  setSortMenuAnchor: jest.fn(),
-  sortMenuAnchor: null,
   sortMode: SORT_MODES.NAME_ASC,
   setSortMode: jest.fn(),
-  setViewModeMenuAnchor: jest.fn(),
-  viewModeMenuAnchor: null,
   viewMode: VIEW_MODES.LIST,
   setViewMode: jest.fn(),
 };
@@ -44,6 +40,15 @@ describe('FileManagerControls', () => {
   it('renders sort button', () => {
     renderWithProviders(<FileManagerControls {...defaultProps} />);
     expect(screen.getByTitle(/sort/i)).toBeInTheDocument();
+  });
+
+  it('opens the sort menu from local control state', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} />);
+
+    fireEvent.click(screen.getByTitle(/sort/i));
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
   });
 
   it('shows select all and deselect all when selectionMode', () => {

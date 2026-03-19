@@ -15,28 +15,14 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-jest.mock('../../../../services/fileService', () => {
-  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
-  return createFileServiceMock();
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return {
+    __esModule: true,
+    default: createExplorerGatewayMock(),
+  };
 });
-jest.mock('../../../../services/permissionService', () => {
-  const { createPermissionServiceMock } = require('../../../../testing/mocks/serviceMocks');
-  return createPermissionServiceMock();
-});
-jest.mock('../../../../utils/localStorage', () => {
-  const { createLocalStorageUiMock } = require('../../../../testing/mocks/serviceMocks');
-  return createLocalStorageUiMock({
-    getSortMode: () => 'name',
-  });
-});
-jest.mock('../../../../services/recentFilesRepository', () => {
-  const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
-  return createRecentFilesRepositoryMock();
-});
-
-import * as fileService from '../../../../services/fileService';
-import * as permissionService from '../../../../services/permissionService';
-import * as recentFiles from '../../../../services/recentFilesRepository';
+import explorerGateway from '../../../../services/explorerGateway';
 
 const mockUser = { id: '1', username: 'testuser', is_admin: false };
 
@@ -62,12 +48,15 @@ describe('useFileManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockNavigate.mockClear();
-    fileService.listFiles.mockResolvedValue([
+    explorerGateway.listDirectory.mockResolvedValue([
       { path: '/a.txt', basename: 'a.txt', type: 'file', hasReadPermission: true, hasWritePermission: true },
       { path: '/folder', basename: 'folder', type: 'directory', hasReadPermission: true, hasWritePermission: true },
     ]);
-    fileService.getWebDAVInfo.mockResolvedValue({ url: 'https://webdav.example.com' });
-    fileService.checkPermission.mockResolvedValue({ hasWrite: true });
+    explorerGateway.getPathAccess.mockResolvedValue({ canRead: true, canWrite: true, raw: {} });
+    explorerGateway.loadRecentFiles.mockResolvedValue([]);
+    explorerGateway.getEntriesMetadata.mockResolvedValue([]);
+    explorerGateway.loadSharedEntries.mockResolvedValue([]);
+    explorerGateway.subscribeToRecentFiles.mockReturnValue(jest.fn());
   });
 
   it('returns currentPath, files, loading, and other state', async () => {
@@ -87,14 +76,19 @@ describe('useFileManager', () => {
     expect(result.current.hasWritePermission).toBe(true);
   });
 
-  it('loads files via listFiles for normal path', async () => {
+  it('loads files via explorerGateway for normal path', async () => {
     const { result } = renderWithPath();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(fileService.listFiles).toHaveBeenCalledWith('/');
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      path: '/',
+      options: expect.objectContaining({
+        user: mockUser,
+      }),
+    });
   });
 
   it('setCurrentPath navigates when not in share mode', async () => {
@@ -122,10 +116,10 @@ describe('useFileManager', () => {
   });
 
   it('__recent__ path loads recent files', async () => {
-    recentFiles.getRecentFiles.mockResolvedValue([
+    explorerGateway.loadRecentFiles.mockResolvedValue([
       { path: '/recent/file.txt', type: 'file', lastAccessed: '2024-01-01' },
     ]);
-    fileService.getFilesMetadata.mockResolvedValue([{ path: '/recent/file.txt', size: 100, lastmod: null, mime: null }]);
+    explorerGateway.getEntriesMetadata.mockResolvedValue([{ path: '/recent/file.txt', size: 100, lastmod: null, mime: null }]);
 
     const { result } = renderWithPath('__recent__');
 
@@ -133,15 +127,14 @@ describe('useFileManager', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(recentFiles.getRecentFiles).toHaveBeenCalled();
+    expect(explorerGateway.loadRecentFiles).toHaveBeenCalled();
     expect(result.current.files.some((f) => f.isRecentFile)).toBe(true);
   });
 
-  it('__shared__ path loads shared folders from getUserPermissions', async () => {
-    permissionService.getUserPermissions.mockResolvedValue([
-      { folder_path: '/other/dir', permission: 'read', owner_id: '2' },
+  it('__shared__ path loads shared folders through explorerGateway', async () => {
+    explorerGateway.loadSharedEntries.mockResolvedValue([
+      { path: '/other/dir', basename: 'dir', type: 'directory', hasReadPermission: true },
     ]);
-    fileService.listFilePermissions.mockResolvedValue([]);
 
     const { result } = renderWithPath('__shared__');
 
@@ -149,9 +142,10 @@ describe('useFileManager', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(permissionService.getUserPermissions).toHaveBeenCalledWith(mockUser.id);
-    expect(result.current.files).toBeDefined();
-    expect(Array.isArray(result.current.files)).toBe(true);
+    expect(explorerGateway.loadSharedEntries).toHaveBeenCalledWith({ user: mockUser });
+    expect(result.current.files).toEqual([
+      expect.objectContaining({ path: '/other/dir', type: 'directory' }),
+    ]);
   });
 
   it('calls onLoadComplete when load completes', async () => {

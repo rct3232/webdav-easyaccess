@@ -10,6 +10,7 @@ jest.mock('../../../../utils/fileUtils', () => ({
 }));
 
 jest.mock('../../../../utils/localStorage', () => ({
+  getSortMode: jest.fn(() => 'name_desc'),
   getViewMode: jest.fn(() => 'detail'),
   setViewMode: jest.fn(),
   setSortMode: jest.fn(),
@@ -20,18 +21,16 @@ jest.mock('../../../../hooks/useInfiniteScroll', () => ({
 }));
 
 import { sortFiles } from '../../../../utils/fileUtils';
-import { getViewMode, setViewMode, setSortMode } from '../../../../utils/localStorage';
+import { getSortMode, getViewMode, setViewMode, setSortMode } from '../../../../utils/localStorage';
 import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
 import { useExplorerSession } from '../useExplorerSession';
 
 const EMPTY_FILES = [];
 
 describe('useExplorerSession', () => {
-  let setSortModeMock;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    setSortModeMock = jest.fn();
+    getSortMode.mockReturnValue('name_desc');
     getViewMode.mockReturnValue('detail');
     sortFiles.mockImplementation((files) => files);
     useInfiniteScroll.mockImplementation((files) => ({
@@ -50,8 +49,6 @@ describe('useExplorerSession', () => {
     const { result } = renderHook(() => useExplorerSession({
       currentPath: '/docs',
       files,
-      sortMode: 'name',
-      setSortMode: setSortModeMock,
       isMobile: false,
     }));
 
@@ -69,8 +66,6 @@ describe('useExplorerSession', () => {
       ({ currentPath }) => useExplorerSession({
         currentPath,
         files: EMPTY_FILES,
-        sortMode: 'name',
-        setSortMode: setSortModeMock,
         isMobile: false,
       }),
       { initialProps: { currentPath: '/docs' } }
@@ -87,8 +82,6 @@ describe('useExplorerSession', () => {
     const { result } = renderHook(() => useExplorerSession({
       currentPath: '/docs',
       files: EMPTY_FILES,
-      sortMode: 'name',
-      setSortMode: setSortModeMock,
       isMobile: true,
     }));
 
@@ -99,13 +92,28 @@ describe('useExplorerSession', () => {
     renderHook(() => useExplorerSession({
       currentPath: '/docs',
       files: EMPTY_FILES,
-      sortMode: 'modified',
-      setSortMode: setSortModeMock,
       isMobile: false,
     }));
 
     expect(setViewMode).toHaveBeenCalledWith('detail');
-    expect(setSortMode).toHaveBeenCalledWith('modified');
+    expect(setSortMode).toHaveBeenCalledWith('name_desc');
     expect(sortFiles).toHaveBeenCalled();
+  });
+
+  it('owns sort mode internally without external injection', () => {
+    const { result } = renderHook(() => useExplorerSession({
+      currentPath: '/docs',
+      files: EMPTY_FILES,
+      isMobile: false,
+    }));
+
+    expect(result.current.sortMode).toBe('name_desc');
+
+    act(() => {
+      result.current.setSortMode('modified');
+    });
+
+    expect(result.current.sortMode).toBe('modified');
+    expect(setSortMode).toHaveBeenLastCalledWith('modified');
   });
 });

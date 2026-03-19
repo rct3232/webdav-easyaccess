@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | FolderPicker dialog controller state: manages `selectedPath`, folder list for the current picker path, loading state, write-permission flag, home/shared toggle routing, and the breadcrumb model consumed by the dialog view. |
+| Role | FolderPicker dialog controller: manages open-state lifecycle, `selectedPath`, current folder list, write-permission status, and callback wiring for the picker dialog. |
 | Used by components/pages | FolderPickerDialog |
-| Ownership note | This hook is product UI/controller logic for the picker dialog. It should not be treated as part of reusable explorer core. For Phase 4, it owns state and orchestration only: IO must go through `folderPickerGateway`, and pure derivation must go through dedicated helper utilities. |
+| Ownership note | This hook is product UI/controller logic for the picker dialog. It is not reusable explorer core. Its target boundary is state/orchestration only: IO must go through `folderPickerGateway`, while breadcrumb shaping, invalid-destination rules, shared-root resolution, and home/shared toggle landing decisions belong in pure helper utilities. |
 
 ---
 
@@ -53,6 +53,9 @@
 - Pure helper utilities:
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
+- Additional pure helper utilities for shared-state and toggle derivation:
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
 - Pure path/user utilities:
   - `normalizePath`
   - `getUserBaseFolder`
@@ -62,6 +65,10 @@
   - Responsibility: derive the `breadcrumbs` model purely from `selectedPath`, `user`, `homePath`, `homeLabel`, `sharedPermissionPaths`, and translated labels (no gateways/services/hooks).
 - Invalid-destination validator: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
   - Responsibility: return whether a copy/move destination is invalid based on `selectedPath` and the provided `sourceFilePath`/`sourceFilePaths` (no React state, no translations, no side effects).
+- Shared-state derivation: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
+  - Responsibility: normalize shared-permission results into top-level shared-folder lists plus shared-permission path context for the picker (no React state, no gateways, no side effects).
+- Toggle-target resolver: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
+  - Responsibility: determine the landing path for home/shared toggle changes, including source-home detection and shared-root fallback, without mutating React state or calling IO.
 
 ### 2.5 Side Effects
 
@@ -75,7 +82,7 @@
   - updates write-permission state for copy/move flows
 - For `__shared__`:
   - loads shared-folder permissions through `folderPickerGateway.getUserSharedFolderPermissions`
-  - derives top-level shared roots and `sharedPermissionPaths` for breadcrumbs/toggle logic
+  - stores raw permission-path inputs needed by helper-driven breadcrumb/toggle derivation
 
 ### 2.6 Error Handling
 
@@ -93,6 +100,7 @@
 - [ ] Breadcrumb contents match home/shared path rules, including the non-admin hidden username crumb rule
 - [ ] Path click updates `selectedPath` and reloads the requested path
 - [ ] Home/shared toggle routes to the expected landing path for home-origin and shared-origin moves/copies
+- [ ] Shared top-level folder shaping and shared-root resolution preserve the same visible destinations after helper extraction
 - [ ] `isInvalidDestination` returns `true` for source path, parent path, and descendant path targets
 - [ ] Multi-source copy/move is invalid when any selected source would land in an invalid destination
 

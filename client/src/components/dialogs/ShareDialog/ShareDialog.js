@@ -8,6 +8,7 @@ import {
   Button,
 } from '@mui/material';
 import { useResponsive } from '../../../hooks/useResponsive';
+import { openUrlInNewTab } from '../../../services/browserNavigation';
 import { createShareLink, getShareLinkUrl } from '../../../services/shareLinkService';
 
 import { usePermissionManager } from './hooks/usePermissionManager';
@@ -151,15 +152,6 @@ const ShareDialog = ({
 
   return (
     <>
-      <style>
-        {`
-          @keyframes scrollText {
-            0% { transform: translateX(0); }
-            87.5% { transform: translateX(calc(-1 * var(--scroll-distance, 0px))); }
-            100% { transform: translateX(calc(-1 * var(--scroll-distance, 0px))); }
-          }
-        `}
-      </style>
       <Dialog
         open={open}
         onClose={handleClose}
@@ -192,6 +184,7 @@ const ShareDialog = ({
               setLinkCopied={setLinkCopied}
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
+              onOpenShareLink={openUrlInNewTab}
               filePath={filePath}
               fileName={fileName}
               onMessage={onMessage}

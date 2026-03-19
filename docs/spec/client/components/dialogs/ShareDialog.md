@@ -49,7 +49,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** `usePermissionManager`, `useShareDialog`, `ShareFolderTree`, `UserSelectionMenu`, `ExternalShareSection`, `FolderShareSection`, `useResponsive`, `createShareLink`, `getShareLinkUrl`
+- **imports:** `usePermissionManager`, `useShareDialog`, `ShareFolderTree`, `UserSelectionMenu`, `ExternalShareSection`, `FolderShareSection`, `useResponsive`, `createShareLink`, `getShareLinkUrl`, browser-opening adapter callbacks
 - **Reference implementation:** `client/src/components/dialogs/ShareDialog/ShareDialog.js`
 
 ### 2.5 i18n Keys
@@ -69,6 +69,7 @@
 - `enableExternalShare` hides folder-permission content and shows only `ExternalShareSection`
 - Full-screen behavior is responsive-only; no sharing logic should depend on viewport
 - This shell may compose child views and callback wiring, but it should not derive sharing rules inline
+- Browser-specific side effects needed by child views (for example opening an external share link) should be provided as adapter-backed callbacks instead of letting the child view call `window.*`
 
 ### 2.7 Verification Scenarios
 

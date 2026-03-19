@@ -171,9 +171,21 @@ describe('useSharedManage', () => {
       folderPath: '/shared/folder',
       permission: PERMISSIONS.READ,
     });
-    expect(mockOnMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ show: true, type: 'success' })
-    );
+    expect(mockOnMessage).toHaveBeenCalledWith({
+      show: true,
+      text: 'sharedManage.requestSentSuccess',
+      type: 'success',
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    expect(mockOnMessage).toHaveBeenLastCalledWith({
+      show: false,
+      text: '',
+      type: 'success',
+    });
   });
 
   it('handleRevokePermission calls revokePermission and onClose on success', async () => {
@@ -219,9 +231,21 @@ describe('useSharedManage', () => {
     });
 
     expect(mockOnClose).not.toHaveBeenCalled();
-    expect(mockOnMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'error' })
-    );
+    expect(mockOnMessage).toHaveBeenCalledWith({
+      show: true,
+      text: 'errors.unknown',
+      type: 'error',
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    expect(mockOnMessage).toHaveBeenLastCalledWith({
+      show: false,
+      text: '',
+      type: 'success',
+    });
   });
 
   it('handleCancelPendingRequest calls cancelPermissionRequest when pending request exists', async () => {

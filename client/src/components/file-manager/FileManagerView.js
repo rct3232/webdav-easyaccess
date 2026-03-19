@@ -94,14 +94,8 @@ const FileManagerView = ({
     setViewMode,
     sortMode,
     setSortMode,
-    saveSortMode,
-    viewModeMenuAnchor,
-    setViewModeMenuAnchor,
-    sortMenuAnchor,
-    setSortMenuAnchor,
     searchQuery,
     setSearchQuery,
-    saveViewMode,
   } = controlsState;
   const {
     displayedFiles,
@@ -439,16 +433,10 @@ const FileManagerView = ({
             handleSelectAll={handleSelectAll}
             handleDeselectAll={handleDeselectAll}
             selectedFiles={selectedFiles}
-            setSortMenuAnchor={setSortMenuAnchor}
-            sortMenuAnchor={sortMenuAnchor}
             sortMode={sortMode}
             setSortMode={setSortMode}
-            saveSortMode={saveSortMode}
-            setViewModeMenuAnchor={setViewModeMenuAnchor}
-            viewModeMenuAnchor={viewModeMenuAnchor}
             viewMode={viewMode}
             setViewMode={setViewMode}
-            saveViewMode={saveViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
             handleBulkMove={handleBulkMove}
             handleBulkCopy={handleBulkCopy}

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Collapsible section for recent files. Header selects /__recent__. Children: recent file list with file icon, click navigates to parent folder or opens file. |
+| Role | Collapsible section for recent files. Header selects /__recent__. Children: recent file list with file icon, click navigates to parent folder or opens file. Width-sensitive truncation must be sourced from a hook/adapter boundary rather than direct `ResizeObserver` usage in the component. |
 | Used in | FolderTree |
 | Related components | getFileIcon |
 
@@ -40,8 +40,9 @@
 
 ### 2.4 Dependencies
 
-- **imports:** getFileIcon
+- **imports:** `getFileIcon`, `pixelMiddleTruncate`, a width-observation hook for prepared container width
 - **Reference implementation:** `client/src/components/folder-tree/RecentFilesSection.js`
+- **Boundary:** This component must not instantiate `ResizeObserver` directly. Width measurement belongs to a reusable hook/adapter seam that exposes the current container width as render-ready state.
 
 ### 2.5 i18n Keys
 
@@ -68,3 +69,4 @@
 - **Dynamic Width:** Truncation should adapt to the component's width and consider character widths (e.g., CJK).
 - **Tooltip:** Full filename should be visible via tooltip on hover.
 - **A11y/testing note:** Tooltip content may be exposed via ARIA attributes; tests should verify user-observable full-name access and should not require a static `title` attribute on the text node.
+- **Observation boundary:** Width changes should stay observable after the refactor, but tests should assert truncation outcomes rather than `ResizeObserver` implementation details.

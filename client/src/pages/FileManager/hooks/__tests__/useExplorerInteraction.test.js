@@ -9,7 +9,15 @@ jest.mock('../../../../utils/fileUtils', () => ({
   canPreview: jest.fn(() => true),
 }));
 
+jest.mock('../../../../services/explorerGateway', () => ({
+  __esModule: true,
+  default: {
+    addRecentFile: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
 import { canPreview } from '../../../../utils/fileUtils';
+import explorerGateway from '../../../../services/explorerGateway';
 import { useExplorerInteraction } from '../useExplorerInteraction';
 
 function createDefaultProps(overrides = {}) {
@@ -41,7 +49,6 @@ function createDefaultProps(overrides = {}) {
       setRecentFileToPreview: jest.fn(),
     },
     handleProductPathClick: jest.fn().mockResolvedValue(false),
-    onAddRecentFile: jest.fn(),
     ...overrides,
   };
 }
@@ -102,6 +109,24 @@ describe('useExplorerInteraction', () => {
     expect(props.openExplorerFolder).toHaveBeenCalledWith('/docs/photos');
 
     timeSpy.mockRestore();
+  });
+
+  it('opens a normal file preview and records it in recent files through the gateway', async () => {
+    const props = createDefaultProps();
+    const file = props.displayedFiles[0];
+    const { result } = renderHook(() => useExplorerInteraction(props));
+
+    await act(async () => {
+      await result.current.handleFileClick(file);
+    });
+
+    expect(props.setSelectedFile).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/docs/report.txt',
+      name: 'report.txt',
+      canPreview: true,
+    }));
+    expect(props.openPreviewDialog).toHaveBeenCalled();
+    expect(explorerGateway.addRecentFile).toHaveBeenCalledWith(file);
   });
 
   it('enters selection mode and selects only the pressed file on long press', () => {

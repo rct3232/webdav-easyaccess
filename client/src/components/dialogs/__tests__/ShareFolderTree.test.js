@@ -86,4 +86,27 @@ describe('ShareFolderTree', () => {
     fireEvent.click(permBtn);
     expect(defaultProps.setFolderMenuPath).toHaveBeenCalledWith('/docs');
   });
+
+  it('animates overflowing labels on hover and resets on leave', () => {
+    renderWithProviders(<ShareFolderTree {...defaultProps} />);
+
+    const label = screen.getByText('docs');
+    const labelContainer = label.parentElement;
+
+    Object.defineProperty(labelContainer, 'clientWidth', {
+      configurable: true,
+      value: 40,
+    });
+    Object.defineProperty(label, 'scrollWidth', {
+      configurable: true,
+      value: 140,
+    });
+
+    fireEvent.mouseEnter(labelContainer);
+    expect(label.style.animation).toContain('shareFolderTreeLabelScroll');
+
+    fireEvent.mouseLeave(labelContainer);
+    expect(label.style.animation).toBe('none');
+    expect(label.style.transform).toBe('translateX(0)');
+  });
 });

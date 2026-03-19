@@ -6,6 +6,7 @@ import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../utils/validationMessage';
 import { getParentPath } from '../../../utils/pathUtils';
+import { shouldRefreshAfterOperation } from '../../../utils/refreshPolicy';
 import { useBulkOperations } from './useBulkOperations';
 import { useFileOperations } from './useFileOperations';
 
@@ -17,11 +18,12 @@ export function useExplorerCommands({
   shareToken,
   currentPath,
   currentPathRef,
+  refreshNow,
+  getCurrentPathNow,
   hasWritePermission,
   selectedFiles,
   sortedFiles,
   dismissFailedItems,
-  handleOperationComplete,
   setTreeUpdateTrigger,
   setDropMessage,
   setSelectedFiles,
@@ -50,6 +52,51 @@ export function useExplorerCommands({
 
   const [processingMap, setProcessingMap] = useState(new Map());
   const { markProcessing, clearProcessing } = createProcessingUpdater(setProcessingMap);
+
+  const handleOperationComplete = useCallback((info = {}) => {
+    const payload = typeof info === 'string'
+      ? { opType: 'delete', deletedFolderPath: info }
+      : (info || {});
+
+    const opType = payload.opType || payload.type || 'refresh';
+    const startedPath = payload.startedPath;
+    const targetPath = payload.targetPath;
+    const currentPathNow = typeof getCurrentPathNow === 'function'
+      ? getCurrentPathNow()
+      : currentPathRef.current;
+
+    const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
+      ? payload.deletedFolderPaths
+      : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
+
+    deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
+      setTreeUpdateTrigger({
+        type: 'deleted',
+        folderPath,
+        timestamp: Date.now(),
+      });
+    });
+
+    const shouldRefresh = shouldRefreshAfterOperation({
+      opType,
+      startedPath: startedPath ?? currentPathNow,
+      currentPathNow,
+      targetPath,
+    });
+
+    if (shouldRefresh && typeof refreshNow === 'function') {
+      refreshNow();
+    }
+
+    if (deletedFolderPaths.length > 0) {
+      setTimeout(() => {
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }, 500);
+    }
+  }, [currentPathRef, getCurrentPathNow, refreshNow, setTreeUpdateTrigger]);
 
   const {
     folderPickerOpen,
@@ -582,6 +629,7 @@ export function useExplorerCommands({
 
     // confirm flows
     handleBulkDeleteConfirm,
+    handleOperationComplete,
 
     // command-style API (for future wiring)
     uploadFiles: (files, targetPath) => runWithErrorSurface(() => uploadFiles(files, targetPath)),
@@ -628,6 +676,7 @@ export function useExplorerCommands({
     handleInternalFileDrop,
     handleDropPermissionDenied,
     handleBulkDeleteConfirm,
+    handleOperationComplete,
     runWithErrorSurface,
     uploadFiles,
     renameEntry,

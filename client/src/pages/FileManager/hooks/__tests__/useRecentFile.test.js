@@ -9,13 +9,12 @@ jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
 });
-jest.mock('../../../../services/recentFilesRepository', () => {
-  const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
-  return createRecentFilesRepositoryMock();
-});
-jest.mock('../../../../services/fileService', () => {
-  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
-  return createFileServiceMock();
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return {
+    __esModule: true,
+    default: createExplorerGatewayMock(),
+  };
 });
 
 // Use real errorUtils; determineErrorType/getErrorMessageByType are pure and map status to i18n keys
@@ -25,8 +24,7 @@ jest.mock('../../../../utils/fileUtils', () => {
   return createFileUtilsMock();
 });
 
-import * as recentFiles from '../../../../services/recentFilesRepository';
-import * as fileService from '../../../../services/fileService';
+import explorerGateway from '../../../../services/explorerGateway';
 
 const mockSetCurrentPath = jest.fn();
 const mockShowError = jest.fn();
@@ -50,6 +48,9 @@ describe('useRecentFile', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     defaultProps.currentPathRef.current = '/';
+    explorerGateway.listDirectory.mockResolvedValue([]);
+    explorerGateway.loadRecentFiles.mockResolvedValue([]);
+    explorerGateway.removeRecentFile.mockResolvedValue([]);
   });
 
   it('returns trackRecentFileClick, trackPathHistory, clearTracking, clearAllTracking, clearPathHistory', () => {
@@ -137,8 +138,8 @@ describe('useRecentFile', () => {
   });
 
   it('handleRecentFileError on 404 with recent file calls removeRecentFile and showError when file not in parent', async () => {
-    recentFiles.getRecentFiles.mockResolvedValue([{ path: '/folder/missing.txt' }]);
-    fileService.listFiles.mockResolvedValue([]);
+    explorerGateway.loadRecentFiles.mockResolvedValue([{ path: '/folder/missing.txt' }]);
+    explorerGateway.listDirectory.mockResolvedValue([]);
 
     const { result } = renderHook(() => useRecentFile(defaultProps));
 
@@ -154,9 +155,37 @@ describe('useRecentFile', () => {
     });
 
     await waitFor(() => {
-      expect(recentFiles.removeRecentFile).toHaveBeenCalledWith('/folder/missing.txt');
-      expect(mockShowError).toHaveBeenCalled();
+      expect(explorerGateway.removeRecentFile).toHaveBeenCalledWith('/folder/missing.txt');
+      expect(mockShowError).toHaveBeenCalledTimes(1);
+      expect(mockShowError).toHaveBeenCalledWith('errors.recentRemovedFromList');
     });
+  });
+
+  it('handleRecentFileError uses the provided recentGateway seam for verification and stale removal', async () => {
+    const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+    const recentGateway = createExplorerGatewayMock({
+      listDirectory: jest.fn().mockResolvedValue([]),
+      loadRecentFiles: jest.fn().mockResolvedValue([{ path: '/folder/missing.txt' }]),
+      removeRecentFile: jest.fn().mockResolvedValue([]),
+    });
+
+    const { result } = renderHook(() => useRecentFile({ ...defaultProps, recentGateway }));
+
+    act(() => {
+      result.current.trackRecentFileClick('/folder/missing.txt', '/folder');
+    });
+
+    await act(async () => {
+      await result.current.handleRecentFileError(
+        { response: { status: 404 } },
+        '/folder/missing.txt'
+      );
+    });
+
+    expect(recentGateway.listDirectory).toHaveBeenCalledWith({ path: '/folder' });
+    expect(recentGateway.loadRecentFiles).toHaveBeenCalled();
+    expect(recentGateway.removeRecentFile).toHaveBeenCalledWith('/folder/missing.txt');
+    expect(mockShowError).toHaveBeenCalledWith('errors.recentRemovedFromList');
   });
 
   it('handleRecentFileError on 404 navigates to previousPath when available', async () => {
@@ -244,6 +273,36 @@ describe('useRecentFile', () => {
       expect(mockSetSelectedFile).toHaveBeenCalledWith(
         expect.objectContaining({ path: '/folder/img.jpg', name: 'img.jpg' })
       );
+    });
+  });
+
+  it('setRecentFileToPreview verifies through explorerGateway when file is not in local files', async () => {
+    const { canPreview } = require('../../../../utils/fileUtils');
+    canPreview.mockReturnValue(true);
+    explorerGateway.listDirectory.mockResolvedValue([
+      { path: '/folder/img.jpg', basename: 'img.jpg', type: 'file', mime: 'image/jpeg' },
+    ]);
+
+    const props = {
+      ...defaultProps,
+      files: [],
+      currentPath: '/folder',
+      loading: false,
+    };
+
+    const { result } = renderHook(() => useRecentFile(props));
+
+    act(() => {
+      result.current.setRecentFileToPreview({
+        filePath: '/folder/img.jpg',
+        fileName: 'img.jpg',
+        parentPath: '/folder',
+      });
+    });
+
+    await waitFor(() => {
+      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({ path: '/folder' });
+      expect(mockSetPreviewDialogOpen).toHaveBeenCalledWith(true);
     });
   });
 });

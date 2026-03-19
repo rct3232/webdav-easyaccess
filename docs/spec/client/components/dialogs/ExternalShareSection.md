@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Section for external share link: create link, expiry options, copy link. Uses createShareLink, getShareLinkUrl. |
+| Role | Pure view section for external share link: create link, expiry options, display/copy/open link through prepared callbacks. |
 | Used in | ShareDialog, ShareTargetDialog |
 | Related components | formatDateOnly, getServerErrorDisplay |
 
@@ -33,6 +33,7 @@
 | setLinkCopied | function | Y | - | Set copied |
 | createShareLink | function | Y | - | Create link API |
 | getShareLinkUrl | function | Y | - | Get URL |
+| onOpenShareLink | function | N | - | Opens a prepared share URL through an upstream browser adapter/callback |
 | filePath | string | N | - | File path |
 | fileName | string | N | - | File name |
 | onMessage | function | N | - | Message handler |
@@ -43,12 +44,14 @@
 |----------|--------------|-----------|
 | createShareLink | Create button | - |
 | setLinkCopied | Copy click | (boolean) |
+| onOpenShareLink | Link text click | (url) |
 | onMessage | Error/success | - |
 
 ### 2.4 Dependencies
 
-- **imports:** formatDateOnly, getServerErrorDisplay, shareLinkService, copyToClipboard (clipboard util)
+- **imports:** `formatDateOnly`, `getServerErrorDisplay`, `copyToClipboard`
 - **Reference implementation:** `client/src/components/dialogs/ExternalShareSection.js`
+- **Boundary:** This component must not call `window.open` or other browser globals directly. Upstream shells/controllers provide browser-opening behavior through `onOpenShareLink`.
 
 ### 2.5 i18n Keys
 
@@ -57,11 +60,12 @@
 ### 2.6 Conditional Rendering
 
 - No link: expiry options, create button
-- Has link: copy button, expiry display
+- Has link: copy button, open-link affordance, expiry display
 
 ### 2.7 Verification Scenarios
 
 - [ ] Create link, copy link
+- [ ] Clicking the rendered link delegates to `onOpenShareLink` with the prepared URL
 - [ ] Expiry options (unlimited, days)
 - [ ] Error handling
 

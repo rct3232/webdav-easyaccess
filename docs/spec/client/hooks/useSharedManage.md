@@ -6,7 +6,7 @@
 |------|-------------|
 | Role | Controller hook for shared-item management dialogs. Loads raw permission/request state, derives UI-ready access fields, and exposes public actions for request, cancel, and revoke flows. |
 | Used by components/pages | `SharedManageDialog`, non-admin branch inside `ShareTargetDialog` |
-| Does not own | JSX rendering, pure access derivation rules, or low-level permission/request transport |
+| Does not own | JSX rendering, pure access derivation rules, low-level permission/request transport, or reusable transient-message timing/composition policy |
 
 ---
 
@@ -54,8 +54,8 @@
 - `sharePermissionGateway` for permission checks, owner checks, outbox request reads, and request/revoke mutations
 - `deriveSharedAccessState` for pure derivation of `hasReadPermission`, `hasWritePermission`, `pathPermission`, and `filePermissionLevel`
 - `buildPendingRequestState` for mapping outbox request results into `pendingRequest` state
+- `shareManageMessageUtils` for reusable success/error message composition and hide-duration policy
 - `getParentPath`, `normalizePath`
-- `getServerErrorDisplay`
 
 ### 2.5 Side Effects
 
@@ -64,7 +64,7 @@
 - On open, loads `ownerExists` via `sharePermissionGateway.checkOwnerExists`
 - On open, loads pending outbox requests via `sharePermissionGateway.listOutboxPermissionRequests`
 - Sends create/cancel/revoke mutations through `sharePermissionGateway`
-- May dispatch transient success/error messages via `onMessage`, but must keep message timing logic reusable and non-duplicated
+- May dispatch transient success/error messages via `onMessage`, but message text shaping and hide-after timing must stay behind the shared `shareManageMessageUtils` helper rather than hook-local branching
 
 ### 2.6 Error Handling
 
@@ -82,6 +82,7 @@
 - [ ] Cancel success clears the matching pending request and shows success feedback
 - [ ] Revoke success calls `onActionComplete`, closes, and shows success feedback
 - [ ] Any action failure keeps the dialog open and shows an error message
+- [ ] Success and error messages keep the same observable text/type/timing after reusable message-helper extraction
 
 ### 2.8 Edge Cases
 

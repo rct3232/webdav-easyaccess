@@ -50,8 +50,10 @@ Notes:
   - `modalDialogs`: upload/create/preview/rename/share/properties/confirm/conflict dialog state.
   - `fileTargets`: selected file/media/conflict payloads consumed by dialogs.
 - Explorer-session grouping should reflect responsibility boundaries. For example:
-  - `controlsState`: `currentPath`, `viewMode`, `sortMode`, `searchQuery`, and related menu anchors/setters.
+  - `controlsState`: `currentPath`, `viewMode`, `sortMode`, `searchQuery`, and other true explorer-session inputs owned by the session controller.
   - `listingState`: `displayedFiles`, `loading`, `processingMap`, thumbnail callbacks, and infinite-scroll refs/flags.
+- Preference persistence for sort/view mode stays upstream in the explorer session controller; this pure view should not require dedicated `saveSortMode` / `saveViewMode` props.
+- Pure control-chrome state that is only needed inside a child control component (for example a local sort-menu anchor) should stay local to that child instead of being hoisted through `FileManager` and this view.
 - Selection grouping should reflect responsibility boundaries. For example:
   - `selectionModel`: `selectionMode`, `selectedFiles`, and per-item toggle callbacks.
   - `bulkState`: select-all/reset callbacks plus bulk capability flags derived from the current selection.

@@ -84,11 +84,12 @@ function createProps(overrides = {}) {
     shareToken: null,
     currentPath: '/docs',
     currentPathRef: { current: '/docs' },
+    refreshNow: jest.fn(),
+    getCurrentPathNow: jest.fn(() => '/docs'),
     hasWritePermission: true,
     selectedFiles: new Set(['/docs/a.txt']),
     sortedFiles: [],
     dismissFailedItems: jest.fn(),
-    handleOperationComplete: jest.fn(),
     setTreeUpdateTrigger: jest.fn(),
     setDropMessage: jest.fn(),
     setSelectedFiles: jest.fn(),
@@ -179,10 +180,7 @@ describe('useExplorerCommands', () => {
       targetPath: '/docs',
       onConflict: 'skip',
     }));
-    expect(props.handleOperationComplete).toHaveBeenCalledWith({
-      opType: 'upload',
-      startedPath: '/docs',
-    });
+    expect(props.refreshNow).toHaveBeenCalled();
     expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(expect.objectContaining({ type: 'refresh' }));
     expect(result.current.uploadConflictData).toBe(null);
   });
@@ -276,5 +274,31 @@ describe('useExplorerCommands', () => {
     const { result } = renderHook(() => useExplorerCommands(createProps()));
 
     expect(result.current.folderPickerMoveCopyInProgress).toBe(true);
+  });
+
+  it('exposes an operation completion handler that refreshes only affected paths', () => {
+    const props = createProps({
+      getCurrentPathNow: jest.fn(() => '/docs'),
+    });
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    act(() => {
+      result.current.handleOperationComplete({
+        opType: 'rename',
+        startedPath: '/other',
+      });
+    });
+
+    expect(props.refreshNow).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.handleOperationComplete({
+        opType: 'rename',
+        startedPath: '/docs',
+      });
+    });
+
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
   });
 });

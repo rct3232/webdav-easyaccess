@@ -4,7 +4,23 @@
  * @see docs/TESTING_STRATEGY.md
  * @see docs/spec/client/pages/FileManager.md 2.6
  */
-jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
+jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
+  __esModule: true,
+  default: function MockFilePreviewDialog({ open, file, onClose }) {
+    if (!open || !file) {
+      return null;
+    }
+
+    return (
+      <div role="dialog" aria-label="file preview">
+        <div>{file.name || file.basename}</div>
+        <button type="button" onClick={onClose}>
+          close preview
+        </button>
+      </div>
+    );
+  },
+}));
 jest.mock('../../components/file-manager', () => {
   const React = require('react');
   const actual = jest.requireActual('../../components/file-manager');
@@ -160,6 +176,100 @@ describe('FileManager', () => {
     });
     expect(screen.queryByText('old.txt')).not.toBeInTheDocument();
   });
+
+  it('preview flow adds the opened file to the recent view', async () => {
+    let recentEntries = [];
+
+    server.use(
+      http.get('/api/files/list', ({ request }) => {
+        const url = new URL(request.url);
+        const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
+        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        return HttpResponse.json(rootFilesForUser(base));
+      }),
+      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
+      http.get('/api/recent-files', () => HttpResponse.json(recentEntries)),
+      http.post('/api/recent-files', async ({ request }) => {
+        const body = await request.json().catch(() => ({}));
+        recentEntries = [
+          {
+            path: body.path,
+            name: body.name || body.basename || 'test.txt',
+            basename: body.basename || body.name || 'test.txt',
+            type: body.type || 'file',
+            lastAccessed: '2024-01-02T00:00:00.000Z',
+          },
+        ];
+
+        return HttpResponse.json({});
+      }),
+      http.post('/api/files/metadata', async ({ request }) => {
+        const body = await request.json().catch(() => ({}));
+        const paths = body.paths || [];
+
+        return HttpResponse.json(
+          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+        );
+      })
+    );
+
+    const user = userEvent.setup();
+    const rootEl = (
+      <ThemeAndAuthProviders>
+        <Outlet />
+      </ThemeAndAuthProviders>
+    );
+    const router = createMemoryRouter(
+      [
+        { path: '/', element: rootEl, children: [{ path: 'files/*', element: <FileManager /> }] },
+      ],
+      { initialEntries: ['/files/__recent__'], initialIndex: 0 }
+    );
+
+    await renderAct(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/no recent items/i)).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      await router.navigate('/files/testuser');
+    });
+
+    const fileRow = await waitFor(
+      () => {
+        const row = document.querySelector('[data-file-path="/testuser/test.txt"]');
+        if (!row) throw new Error('File row not found');
+        return row;
+      },
+      { timeout: 5000 }
+    );
+
+    await act(async () => {
+      await user.dblClick(fileRow);
+    });
+
+    const previewDialog = await screen.findByRole('dialog', { name: /file preview/i });
+    expect(previewDialog).toHaveTextContent('test.txt');
+
+    await user.click(within(previewDialog).getByRole('button', { name: /close preview/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /file preview/i })).not.toBeInTheDocument();
+    });
+
+    await act(async () => {
+      await router.navigate('/files/__recent__');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/no recent items/i)).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText('test.txt').length).toBeGreaterThan(0);
+    });
+  }, 20000);
 
   it('path navigation: useParams sees splat when using createMemoryRouter', async () => {
     const routes = [

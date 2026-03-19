@@ -55,6 +55,23 @@ export function createRecentFilesNotifierMock(overrides = {}) {
   };
 }
 
+export function createExplorerGatewayMock(overrides = {}) {
+  return {
+    addRecentFile: jest.fn().mockResolvedValue([]),
+    canNavigateToPath: jest.fn().mockResolvedValue(true),
+    checkConflicts: jest.fn().mockResolvedValue([]),
+    getEntriesMetadata: jest.fn().mockResolvedValue([]),
+    getPathAccess: jest.fn().mockResolvedValue({ canRead: true, canWrite: true, raw: {} }),
+    listDirectory: jest.fn().mockResolvedValue([]),
+    loadRecentFiles: jest.fn().mockResolvedValue([]),
+    loadSharedEntries: jest.fn().mockResolvedValue([]),
+    removeRecentFile: jest.fn().mockResolvedValue([]),
+    subscribeToRecentFiles: jest.fn(() => jest.fn()),
+    uploadToPath: jest.fn().mockResolvedValue({ errors: [] }),
+    ...overrides,
+  };
+}
+
 export function createLocalStorageUiMock(overrides = {}) {
   return {
     getShowHiddenFiles: () => false,

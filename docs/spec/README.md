@@ -64,7 +64,7 @@ When you split a module into multiple responsibilities (for example: page shell 
 |----------|---------|
 | [api.md](../api.md) | REST API endpoint reference |
 | [shared-contracts.md](../shared-contracts.md) | Error format, validation return values, constants |
-| [ARCHITECTURE.md](../ARCHITECTURE.md) | Server architecture, middleware pipeline, storage structure |
+| [ARCHITECTURE.md](../ARCHITECTURE.md) | System architecture and cross-stack layering boundaries (server flow plus client layering) |
 | [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) | Unit vs integration, mocking, checklist for new code |
 
 ---

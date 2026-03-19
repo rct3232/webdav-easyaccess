@@ -40,6 +40,7 @@ Transitional note:
 
 | Key | Type | Meaning |
 |-----|------|---------|
+| handleOperationComplete | `(info?: object | string) => void` | Explorer-owned completion handler that applies refresh policy and tree refresh coordination for operation outcomes. The shell may reuse this callback for adjacent explorer flows (for example create-folder completion) rather than duplicating refresh logic inline. |
 | uploadFiles | (files: FileList \| File[], targetPath?: string) => Promise<void> | Upload entry point (drop/select). |
 | renameEntry | (file: object) => Promise<void> | Rename orchestration, including validation and dialog lifecycle as today. |
 | moveEntries | (paths: string[], targetPath: string) => Promise<void> | Move orchestration (single/bulk). |
@@ -56,6 +57,7 @@ Notes:
 - **Owns**
   - Operation orchestration and required branching to preserve current behavior (including conflict-resolution entry points and any confirm flows already present today).
   - Choosing when to trigger a list refresh after operations complete using `refreshPolicy` (or equivalent), so operations do not refresh an unrelated folder if the user navigated away.
+  - Producing the explorer-facing operation completion callback that progress flows and nearby explorer actions can reuse instead of the page shell duplicating refresh-policy logic.
   - Delegating IO to `explorerGateway` (not directly importing low-level services).
 - **Does not own**
   - Progress list/drawer state, retry/cancel routing (belongs to `useExplorerProgress`).
@@ -76,6 +78,7 @@ Notes:
 - Invokes gateway operations.
 - Triggers progress creation through whichever progress mechanism is used today (may be wired via `useExplorerProgress` in the shell).
 - Calls `refreshNow` conditionally based on refresh policy and current vs started/target paths.
+- May trigger explorer tree refresh/update notifications tied to operation outcomes.
 
 ### 2.7 Error Handling
 
@@ -93,6 +96,7 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - [ ] Move/copy/delete:
   - [ ] Bulk operations produce the same success/error outcomes as today.
   - [ ] Refresh behavior does not incorrectly refresh a folder the user navigated away from (same as today).
+- [ ] `handleOperationComplete` refreshes the active explorer only when the refresh policy says the current path is affected, while still emitting tree-refresh updates for deleted folders.
 - [ ] Share-link mode policy:
   - [ ] Restricted commands remain unavailable and cannot be executed (policy remains shell-owned).
 

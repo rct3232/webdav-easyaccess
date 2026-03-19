@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Dialog shell for item-level sharing. Admin users can edit direct access and external share state; non-admin users see shared-manage actions through `useSharedManage`. |
+| Role | Dialog shell for item-level sharing. Admin users can edit direct access and external share state through gateway/use-case-backed flows; non-admin users see shared-manage actions through `useSharedManage`. |
 | Used in | FileManager (share action) |
 | Related components | `SharedManageBody`, `ExternalShareSection`, `useSharedManage`, `sharePermissionGateway`, sharing save use-cases, `shareLinkService` |
 
@@ -38,8 +38,15 @@
 
 ### 2.4 Dependencies
 
-- **imports:** `useSharedManage`, `SharedManageBody`, `ExternalShareSection`, `sharePermissionGateway`, `shareTargetPermissionSaveUseCase`, `getApprovedUsers`, `shareLinkService`
+- **imports:** `useSharedManage`, `SharedManageBody`, `ExternalShareSection`, `sharePermissionGateway`, `shareTargetPermissionSaveUseCase`, `deriveShareTargetAdminView`, `getApprovedUsers`, `shareLinkService`
 - **Reference implementation:** `client/src/components/dialogs/ShareTargetDialog.js`
+
+### 2.4.1 Boundary notes
+
+- Admin-side permission reads/mutations must stay behind `sharePermissionGateway` and `shareTargetPermissionSaveUseCase`.
+- User filtering and gateway-response shaping for the admin branch must stay behind prepared helper/use-case seams such as `deriveShareTargetAdminView`; this dialog should remain a shell/controller composition layer rather than a policy-heavy rules container.
+- Non-admin request/cancel/revoke ownership remains in `useSharedManage`; this dialog only wires that branch into dialog chrome.
+- Browser-specific side effects required by `ExternalShareSection` must be passed in as adapter-backed callbacks rather than implemented through direct `window` access in the child view.
 
 ### 2.5 i18n Keys
 
@@ -54,6 +61,7 @@
 - Non-admin users see `SharedManageBody` driven by `useSharedManage`
 - Permission-option rendering depends on prepared permission state for files vs directories
 - This component may remain a shell plus controller wiring, but low-level permission IO must go through `sharePermissionGateway` and dedicated save orchestration
+- File targets render the external-share section; directories do not
 
 ### 2.7 Data/Workflow Boundaries
 

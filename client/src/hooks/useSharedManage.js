@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import {
@@ -12,7 +12,12 @@ import {
 import { deriveSharedAccessState } from '../utils/deriveSharedAccessState';
 import { buildPendingRequestState } from '../utils/buildPendingRequestState';
 import { getParentPath, normalizePath } from '../utils/pathUtils';
-import { getServerErrorDisplay } from '../utils/errorUtils';
+import {
+  buildShareManageErrorMessage,
+  buildShareManageSuccessMessage,
+  getShareManageHideDuration,
+  HIDDEN_SHARE_MANAGE_MESSAGE,
+} from '../utils/shareManageMessageUtils';
 
 export function useSharedManage({
   open,
@@ -36,12 +41,30 @@ export function useSharedManage({
     write: { pending: false, id: null },
   });
   const [ownerExists, setOwnerExists] = useState(null);
+  const hideMessageTimerRef = useRef(null);
 
-  const emitTransientMessage = useCallback((message, hideAfterMs = 3000) => {
-    if (!onMessage) return;
+  const clearScheduledMessageHide = useCallback(() => {
+    if (hideMessageTimerRef.current) {
+      clearTimeout(hideMessageTimerRef.current);
+      hideMessageTimerRef.current = null;
+    }
+  }, []);
+
+  const emitTransientMessage = useCallback((message) => {
+    if (!onMessage) {
+      return;
+    }
+
+    clearScheduledMessageHide();
     onMessage(message);
-    setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), hideAfterMs);
-  }, [onMessage]);
+
+    hideMessageTimerRef.current = setTimeout(() => {
+      onMessage(HIDDEN_SHARE_MANAGE_MESSAGE);
+      hideMessageTimerRef.current = null;
+    }, getShareManageHideDuration(message.type));
+  }, [clearScheduledMessageHide, onMessage]);
+
+  useEffect(() => clearScheduledMessageHide, [clearScheduledMessageHide]);
 
   useEffect(() => {
     if (!open || !targetPath || !user) {
@@ -167,15 +190,18 @@ export function useSharedManage({
           ...prev,
           [permissionToCancel]: { pending: false, id: null },
         }));
-        emitTransientMessage({
-          show: true,
-          text: t('sharedManage.requestCancelledSuccess', { permission: permissionToCancel === PERMISSIONS.READ ? t('mypage.read') : t('mypage.write') }),
-          type: 'success',
-        });
+        emitTransientMessage(buildShareManageSuccessMessage({
+          kind: 'requestCancelled',
+          permission: permissionToCancel,
+          t,
+        }));
       } catch (error) {
         console.error('Failed to cancel permission request:', error);
-        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.cancelRequestFail');
-        emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
+        emitTransientMessage(buildShareManageErrorMessage({
+          error,
+          fallbackKey: 'sharedManage.cancelRequestFail',
+          t,
+        }));
       } finally {
         setLoading(false);
       }
@@ -205,17 +231,18 @@ export function useSharedManage({
           ...prev,
           [requestedPermission]: { pending: true, id: created?.id ?? prev[requestedPermission]?.id ?? null },
         }));
-        emitTransientMessage({
-          show: true,
-          text: t('sharedManage.requestSentSuccess', {
-            permission: requestedPermission === 'read' ? t('mypage.read') : t('mypage.write'),
-          }),
-          type: 'success',
-        });
+        emitTransientMessage(buildShareManageSuccessMessage({
+          kind: 'requestSent',
+          permission: requestedPermission,
+          t,
+        }));
       } catch (error) {
         console.error('Failed to create permission request:', error);
-        const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.requestSentFail');
-        emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
+        emitTransientMessage(buildShareManageErrorMessage({
+          error,
+          fallbackKey: 'sharedManage.requestSentFail',
+          t,
+        }));
       } finally {
         setLoading(false);
       }
@@ -229,30 +256,30 @@ export function useSharedManage({
     try {
       if (isDirectory) {
         await revokePermission({ userId: user.id, folderPath: targetPath, includeSubfolders: true });
-        emitTransientMessage({
-          show: true,
-          text: t('sharedManage.revokeFolderSuccess', { name: displayName }),
-          type: 'success',
-        });
       } else {
         await revokePermission({ userId: user.id, folderPath: targetPath, scope: 'pathOnly' });
-        emitTransientMessage({
-          show: true,
-          text: t('sharedManage.revokeFileSuccess', { name: displayName || targetPath }),
-          type: 'success',
-        });
       }
+      emitTransientMessage(buildShareManageSuccessMessage({
+        kind: 'revoke',
+        displayName,
+        isDirectory,
+        targetPath,
+        t,
+      }));
       if (onActionComplete) onActionComplete();
       onClose();
     } catch (error) {
       console.error('Failed to revoke permission:', error);
-      const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.revokeFail');
-      emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
+      emitTransientMessage(buildShareManageErrorMessage({
+        error,
+        fallbackKey: 'sharedManage.revokeFail',
+        t,
+      }));
     } finally {
       setLoading(false);
       setConfirmDialogOpen(false);
     }
-  }, [user, targetPath, displayName, isDirectory, emitTransientMessage, onActionComplete, onClose, t]);
+  }, [displayName, emitTransientMessage, isDirectory, onActionComplete, onClose, t, targetPath, user]);
 
   return {
     loading,

@@ -19,6 +19,7 @@ import {
 import { Tooltip } from '@mui/material';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
+import useObservedElementWidth from './hooks/useObservedElementWidth';
 
 const RecentFilesSection = ({
   recentExpanded,
@@ -30,23 +31,7 @@ const RecentFilesSection = ({
   onFileClick,
 }) => {
   const { t } = useTranslation();
-  const [containerWidth, setContainerWidth] = React.useState(200);
-  const containerRef = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!containerRef.current) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.contentRect) {
-          setContainerWidth(entry.contentRect.width);
-        }
-      }
-    });
-
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const { setObservedElement, width: containerWidth } = useObservedElementWidth(200);
 
   // Padding/Margins total: ListItemButton pl:3(24px) + Icon(24px) + Icon mr:0.5(4px) + default right padding(~16px) = ~68px
   // We use 72px for a bit more safety margin.
@@ -124,7 +109,7 @@ const RecentFilesSection = ({
         </ListItemButton>
       </ListItem>
       <Collapse in={recentExpanded} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding ref={containerRef}>
+        <List component="div" disablePadding ref={setObservedElement}>
           {(recentFilesList ?? []).length === 0 ? (
             <ListItem disablePadding>
               <Box sx={{ pl: 3, py: 1 }}>

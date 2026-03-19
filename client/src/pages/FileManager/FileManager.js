@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { setViewMode as saveViewMode, setSortMode as saveSortMode } from '../../utils/localStorage';
+import explorerGateway from '../../services/explorerGateway';
 import { useFileManager } from './hooks/useFileManager';
 import { useExplorerInteraction } from './hooks/useExplorerInteraction';
 import { useExplorerRefreshIndicator } from './hooks/useExplorerRefreshIndicator';
@@ -15,10 +15,6 @@ import { useSelection } from './hooks/useSelection';
 import { useDropToUpload } from '../../hooks/useDropToUpload';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useMessage } from '../../hooks/useMessage';
-import { shouldRefreshAfterOperation } from '../../utils/refreshPolicy';
-import { checkPermission } from '../../services/fileService';
-import { addRecentFile } from '../../services/recentFilesRepository';
-import { onRecentFilesChange } from '../../services/recentFilesNotifier';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 
@@ -88,8 +84,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setCurrentPath,
     files: filesFromHook,
     loading,
-    sortMode,
-    setSortMode,
     loadFiles,
     hasWritePermission,
     onLoadErrorRef,
@@ -112,6 +106,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     files,
     searchQuery,
     setSearchQuery,
+    sortMode,
+    setSortMode,
     viewMode,
     setViewMode,
     sortedFiles,
@@ -122,8 +118,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   } = useExplorerSession({
     currentPath,
     files: filesFromHook,
-    sortMode,
-    setSortMode,
     isMobile,
   });
 
@@ -243,10 +237,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   }, [handleRecentFileError, onLoadErrorRef]);
 
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
-  const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
-  const [viewModeMenuAnchor, setViewModeMenuAnchor] = useState(null);
-  const loadFilesRef = useRef(loadFiles);
-
   // 파일 로드 성공 시 경로 히스토리 정리
   useEffect(() => {
     if (!loading && files.length >= 0 && currentPath) {
@@ -255,72 +245,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       clearPathHistory(currentPath);
     }
   }, [loading, files, currentPath, clearPathHistory]);
-
-  useEffect(() => {
-    loadFilesRef.current = loadFiles;
-  }, [loadFiles]);
-
-  // /__recent__ 경로일 때 최근항목 변경 이벤트 리스너 등록
-  useEffect(() => {
-    if (currentPath === '/__recent__') {
-      const unsubscribe = onRecentFilesChange(() => {
-        loadFiles();
-      });
-
-      return () => {
-        unsubscribe();
-      };
-    }
-  }, [currentPath, loadFiles]);
-
-  // Operation completion handler (stable; uses refs to avoid stale-closure refresh)
-  const handleOperationComplete = useCallback((info = {}) => {
-    // Backward compatibility: allow legacy signature (deletedFolderPath string)
-    const payload = typeof info === 'string'
-      ? { opType: 'delete', deletedFolderPath: info }
-      : (info || {});
-
-    const opType = payload.opType || payload.type || 'refresh';
-    const startedPath = payload.startedPath;
-    const targetPath = payload.targetPath;
-    const currentPathNow = currentPathRef.current;
-
-    const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
-      ? payload.deletedFolderPaths
-      : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
-
-    // Keep folder tree consistent (safe even if we skip list refresh)
-    deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
-      setTreeUpdateTrigger({
-        type: 'deleted',
-        folderPath,
-        timestamp: Date.now(),
-      });
-    });
-
-    const shouldRefresh = shouldRefreshAfterOperation({
-      opType,
-      startedPath: startedPath ?? currentPathNow,
-      currentPathNow,
-      targetPath,
-    });
-
-    if (shouldRefresh) {
-      const fn = loadFilesRef.current;
-      if (typeof fn === 'function') {
-        fn();
-      }
-    }
-
-    if (deletedFolderPaths.length > 0) {
-      setTimeout(() => {
-        setTreeUpdateTrigger({
-          type: 'refresh',
-          timestamp: Date.now(),
-        });
-      }, 500);
-    }
-  }, [setTreeUpdateTrigger]);
 
   // Explorer drag and drop hook for the entire file content area
   const {
@@ -387,6 +311,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleInternalFileDrop,
     handleDropPermissionDenied,
     handleBulkDeleteConfirm,
+    handleOperationComplete,
   } = useExplorerCommands({
     t,
     user,
@@ -395,10 +320,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     shareToken,
     currentPath,
     currentPathRef,
+    refreshNow: loadFiles,
+    getCurrentPathNow: () => currentPathRef.current,
     hasWritePermission,
     selectedFiles,
     sortedFiles,
-    handleOperationComplete,
     setTreeUpdateTrigger,
     setDropMessage,
     setSelectedFiles,
@@ -447,11 +373,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     getPreviousPath: () => currentPathRef.current,
     setCurrentPath,
     onTrackPathHistory: trackPathHistory,
-    canNavigateToPath: async (path) => {
-      if (user?.is_admin) return true;
-      const permission = await checkPermission(path);
-      return permission?.hasRead === true;
-    },
+    canNavigateToPath: user?.is_admin ? async () => true : explorerGateway.canNavigateToPath,
   });
   const handleProductPathClick = useCallback(async (path) => {
     if (!path) return false;
@@ -470,8 +392,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
     return false;
   }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen]);
-
-  const handleAddRecentFile = useCallback((file) => addRecentFile(file), []);
 
   const {
     handlePathClick,
@@ -504,7 +424,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       setRecentFileToPreview,
     },
     handleProductPathClick,
-    onAddRecentFile: handleAddRecentFile,
   });
 
   const handleCreateFolderComplete = useCallback((folderPath, folderName) => {
@@ -637,24 +556,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setViewMode,
     sortMode,
     setSortMode,
-    saveSortMode,
-    viewModeMenuAnchor,
-    setViewModeMenuAnchor,
-    sortMenuAnchor,
-    setSortMenuAnchor,
     searchQuery,
     setSearchQuery,
-    saveViewMode,
   }), [
     currentPath,
     viewMode,
     setViewMode,
     sortMode,
     setSortMode,
-    viewModeMenuAnchor,
-    setViewModeMenuAnchor,
-    sortMenuAnchor,
-    setSortMenuAnchor,
     searchQuery,
     setSearchQuery,
   ]);

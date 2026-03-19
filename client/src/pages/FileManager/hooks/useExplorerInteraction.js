@@ -10,6 +10,7 @@ import {
   showErrorFromError,
   ERROR_TYPES,
 } from '../../../utils/errorUtils';
+import explorerGateway from '../../../services/explorerGateway';
 
 function openPreviewForFile(file, setSelectedFile, openPreviewDialog) {
   const filename = file.basename || file.name;
@@ -38,7 +39,6 @@ export function useExplorerInteraction({
   t,
   recentFileApi,
   handleProductPathClick,
-  onAddRecentFile,
 }) {
   const lastClickRef = useRef({ filePath: null, time: 0 });
   const handleFileClickInternalRef = useRef(null);
@@ -153,7 +153,7 @@ export function useExplorerInteraction({
     }
 
     openPreviewForFile(file, setSelectedFile, openPreviewDialog);
-    await onAddRecentFile?.(file);
+    await explorerGateway.addRecentFile(file);
   }, [
     selectionMode,
     recentFileApi,
@@ -165,7 +165,6 @@ export function useExplorerInteraction({
     t,
     showError,
     openExplorerFolder,
-    onAddRecentFile,
   ]);
 
   useEffect(() => {

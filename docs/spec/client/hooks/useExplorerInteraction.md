@@ -42,7 +42,6 @@
 | t | function | Y | Translation function. |
 | recentFileApi | object | N | Recent-file-specific callbacks (`trackRecentFileClick`, `clearTracking`, `handleRecentFileError`, `setRecentFileToPreview`). |
 | handleProductPathClick | (path: string) => Promise<boolean> \| boolean | N | Product-policy hook used to intercept path clicks before generic explorer navigation. |
-| onAddRecentFile | (file: object) => Promise<void> \| void | N | Callback used when a normal file preview should also be added to recent files. |
 
 ### 2.3 Return Value / State
 
@@ -69,12 +68,13 @@
 ### 2.5 Dependencies
 
 - Pure helpers: `canPreview`, `normalizePath`, file-type/path helpers
+- Explorer gateway for recent-file persistence when a normal file preview should be recorded
 - Error utilities for preserving current user-visible error mapping
 - Shell-/controller-owned callbacks for recent-file behavior and product navigation policy
 
 ### 2.6 Side Effects
 
-- May add files to recent-files persistence via injected callback.
+- May add files to recent-files persistence through the explorer gateway.
 - May set preview/dialog/context state through injected setters.
 - May call navigation callbacks and surface translated errors.
 

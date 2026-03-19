@@ -11,7 +11,7 @@ It intentionally documents *who owns what*, not file-by-file implementation deta
 | Item | Description |
 |------|-------------|
 | Route path | `/files/*` |
-| Role | Main file browser UI for listing and managing files/folders: CRUD, bulk operations, drag-and-drop upload, sharing overlays, and progress UI. |
+| Role | FileManager page shell: route-level composition for the main file browser UI plus product overlays around the explorer core. |
 | Also used by | `ShareLinkLoader` to render shared directory browsing (share-link mode / limited operations). |
 
 ---
@@ -35,26 +35,25 @@ The page shell does **not** own:
 - Command orchestration (upload/rename/move/copy/delete/download).
 - Navigation orchestration (path changes, optimistic updates/rollback).
 - Progress state coordination and retry/cancel orchestration.
+- Explorer IO concerns such as directory listing, permission/capability checks, recent-file repository access, notifier subscriptions, metadata enrichment, or browser-preference storage access.
 
 ### 2.2 Explorer core (composed by the shell)
 
 Explorer core is the reusable “file explorer” core for browsing and acting on a directory. It is composed of:
 
 - **Controller hooks** (planned):
-  - `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/selection-derived state)
+  - `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/listing derivation plus session-boundary tokens)
   - `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
   - `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
   - `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
   - `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
   - `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
-- **Product overlay hooks** (planned):
-  - `docs/spec/client/hooks/useShareLinkOverlay.md` (share-link add-to-my-permissions and leave-share confirmation flows)
 - **Pure view(s)** (planned):
   - `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
 - **Gateways/adapters** (planned):
   - `docs/spec/client/services/explorerGateway.md` (IO boundary for listing, operations, and related IO concerns)
 
-Explorer core explicitly does **not** own product overlays such as share-link policy, “virtual collections”, or feature-specific modal flows.
+Explorer core explicitly does **not** own product overlays such as share-link policy, “virtual collections”, or feature-specific modal flows. That includes `useShareLinkOverlay`, which is a page/product overlay controller, not part of reusable explorer core.
 
 ### 2.3 Product-specific overlays (remain in the shell)
 
@@ -63,9 +62,11 @@ The FileManager page shell must continue to own these overlays and policies (unt
 - **Share-link mode policy**:
   - Limited operations (e.g. no upload/create; download-only bulk operations).
   - Optional login prompt / “add to my permissions” flows when applicable.
+  - Composition of product overlay controllers such as `useShareLinkOverlay`.
 - **Virtual collections and product routing state**:
   - Special paths/collections such as `__recent__` and `__shared__` (product-defined).
-  - Rules for mapping those collections into explorer inputs and view models.
+  - Rules for deciding *when* those collections are active and which explorer flow they should invoke.
+  - The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
 - **Product dialogs / feature flows** not part of generic explorer:
   - Share dialogs and permission-request flows.
   - Any “add-to-shared” / permission-denied UX that is product-defined.
@@ -81,11 +82,12 @@ The FileManager page shell must continue to own these overlays and policies (unt
 
 ### 3.2 Target composition (no UX change)
 
-The end-state after Phase 3 is a small page shell that:
+The end-state after the acceptance closure is a small page shell that:
 
 - Derives route context (auth vs share-link mode) and page-level overlay state.
 - Calls explorer controller hooks and product overlay hooks in the correct order.
 - Renders a pure view (`FileManagerView`) plus product-only dialogs/overlays.
+- Keeps explorer-specific IO/storage/repository details out of the page module.
 
 Conceptually:
 
@@ -106,7 +108,7 @@ While the current implementation is still monolithic, it uses (directly or indir
 - Dialog orchestration: `useFileManagerDialogs`
 - UX + utilities: `useDropToUpload`, `usePullToRefresh`, `useResponsive`, `useInfiniteScroll`, `useMessage`, `useRecentFile`
 
-As extraction proceeds, the page shell should retain only *composition* responsibility; orchestration and derived state move to the relevant explorer controller hooks.
+As extraction proceeds, the page shell should retain only *composition* responsibility; orchestration and derived state move to the relevant explorer controller hooks. The page may still pass product context into those hooks, but it should not remain the owner of explorer storage/service/notifier wiring.
 
 ---
 
@@ -122,6 +124,10 @@ As extraction proceeds, the page shell should retain only *composition* responsi
   - Pass view-ready state + callbacks into the view.
   - Decide which dialogs/overlays render for this page context.
   - Inject product policy into explorer interaction/navigation controllers instead of keeping large inline flow handlers in the page body.
+  - Reset or re-key selection state when the explorer session boundary changes. `useExplorerSession` may expose a boundary token such as `sessionKey`, but the page shell / selection seam owns the actual selection reset behavior.
+  - Delegate explorer-specific permission checks, recent-file persistence/listener wiring, metadata enrichment, and operation-refresh decisions to explorer hooks/gateways instead of importing storage/service/notifier helpers directly in the page shell.
+  - Compose `useFileManager` as the path/listing seam only. Search/sort/view-mode session state and preference persistence come from `useExplorerSession`, not from `useFileManager`.
+  - Avoid keeping explorer-control chrome state in the page shell when a lower view/controller seam can own it locally. For example, sort-menu open/close state belongs in the control/view seam rather than `FileManager`.
   - Prefer grouped sub-view models when passing data into `FileManagerView` rather than flattening dozens of shell/controller outputs into one wide prop surface.
   - Prefer grouped handler bundles as well: item interaction, command flows, progress affordances, and refresh-indicator presentation should not be merged into one flat callback object.
   - Apply the same grouping rule to dialog state: action/context targets, picker state, modal visibility, and dialog file payloads should be separated instead of merged into one flat object.
@@ -134,14 +140,20 @@ As extraction proceeds, the page shell should retain only *composition* responsi
 - **Navigation**:
   - Browse folders via path click, breadcrumb navigation, and back navigation.
   - Transition rules when opening folders from list/grid/detail.
+  - Permission-check IO for explorer navigation through `useExplorerNavigation` + `explorerGateway`, rather than shell-owned `fileService` imports.
 - **Session**:
   - Search (client-side filter by name).
   - Sort (name, date, size, type).
-  - View mode toggle (list, grid, detail).
-  - Selection-derived state that the view consumes.
+  - View mode toggle (list, grid, detail) using the existing preference-storage policy rather than shell-owned browser storage access.
+  - Session boundary tokens and local derived listing state that downstream selection/view layers consume.
+  - Preference-backed explorer session state ownership for search/sort/view so that page and listing seams do not duplicate or externally inject those responsibilities.
 - **Commands**:
   - Upload, rename, move, copy, delete, download.
   - Conflict resolution entry points for uploads/operations.
+  - Operation-completion refresh decisions and tree refresh coordination for explorer operations so the page shell does not keep inline refresh-policy logic.
+- **Listing / recent-file integration**:
+  - Directory listing, shared-entry loading, metadata enrichment, current-path access checks, and recent-files repository/notifier access through `useFileManager`, `useRecentFile`, and `explorerGateway`.
+  - Recent-file recovery flows that preserve the current UX without the page shell or recent-file controller importing repositories or low-level file services directly.
 - **Progress**:
   - Progress list/drawer state.
   - Retry/cancel entry points and user-visible notifications.

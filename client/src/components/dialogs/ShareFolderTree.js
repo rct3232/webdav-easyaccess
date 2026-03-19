@@ -17,6 +17,9 @@ import {
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
 import { deriveShareFolderAccessView } from '../../utils/deriveShareFolderAccessView';
 
+const HOVER_SCROLL_ANIMATION_NAME = 'shareFolderTreeLabelScroll';
+const HOVER_SCROLL_HOLD_RATIO = 0.875;
+
 const ShareFolderTree = ({
   rootPath,
   folderTree,
@@ -40,6 +43,35 @@ const ShareFolderTree = ({
   const { t } = useTranslation();
   const node = folderTree.get(rootPath);
   if (!node) return null;
+
+  const startLabelScroll = isMobile ? undefined : (event) => {
+    const container = event.currentTarget;
+    const text = container.querySelector('span');
+
+    if (!text || text.scrollWidth <= container.clientWidth) {
+      return;
+    }
+
+    const scrollDistance = text.scrollWidth - container.clientWidth;
+    const scrollSpeed = 50;
+    const scrollTime = scrollDistance / scrollSpeed;
+    const animationDuration = scrollTime + 0.5;
+    container.style.setProperty('--scroll-distance', `${scrollDistance}px`);
+    text.style.animation = 'none';
+    text.style.transform = 'translateX(0)';
+    void text.offsetWidth;
+    text.style.animation = `${HOVER_SCROLL_ANIMATION_NAME} ${animationDuration}s linear infinite`;
+  };
+
+  const stopLabelScroll = isMobile ? undefined : (event) => {
+    const text = event.currentTarget.querySelector('span');
+    if (!text) {
+      return;
+    }
+
+    text.style.animation = 'none';
+    text.style.transform = 'translateX(0)';
+  };
   
   const isExpanded = expandedPaths.has(node.path);
   const isLoading = loadingPaths.has(node.path);
@@ -47,6 +79,17 @@ const ShareFolderTree = ({
 
   return (
     <Box key={node.path} sx={{ width: '100%', overflow: 'visible' }}>
+      {level === 0 && (
+        <style>
+          {`
+            @keyframes ${HOVER_SCROLL_ANIMATION_NAME} {
+              0% { transform: translateX(0); }
+              ${HOVER_SCROLL_HOLD_RATIO * 100}% { transform: translateX(calc(-1 * var(--scroll-distance, 0px))); }
+              100% { transform: translateX(calc(-1 * var(--scroll-distance, 0px))); }
+            }
+          `}
+        </style>
+      )}
       <Box 
         sx={{ 
           display: 'flex', 
@@ -83,53 +126,8 @@ const ShareFolderTree = ({
               overflow: 'hidden',
               position: 'relative',
             }}
-            onMouseEnter={isMobile ? undefined : (e) => {
-              const container = e.currentTarget;
-              const text = container.querySelector('span');
-              if (text) {
-                const isOverflowing = text.scrollWidth > container.clientWidth;
-                if (isOverflowing) {
-                  const scrollDistance = text.scrollWidth - container.clientWidth;
-                  container.style.setProperty('--scroll-distance', `${scrollDistance}px`);
-                  
-                  const scrollSpeed = 50;
-                  const scrollTime = scrollDistance / scrollSpeed;
-                  const animationDuration = scrollTime + 0.5;
-                  const scrollPercentage = (scrollTime / animationDuration) * 100;
-                  
-                  const animationName = `scrollText-${node.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
-                  const keyframes = `
-                    @keyframes ${animationName} {
-                      0% { transform: translateX(0); }
-                      ${scrollPercentage}% { transform: translateX(calc(-1 * ${scrollDistance}px)); }
-                      100% { transform: translateX(calc(-1 * ${scrollDistance}px)); }
-                    }
-                  `;
-                  
-                  const styleId = `style-${animationName}`;
-                  let styleElement = document.getElementById(styleId);
-                  if (!styleElement) {
-                    styleElement = document.createElement('style');
-                    styleElement.id = styleId;
-                    document.head.appendChild(styleElement);
-                  }
-                  styleElement.textContent = keyframes;
-                  
-                  text.style.animation = 'none';
-                  text.style.transform = 'translateX(0)';
-                  setTimeout(() => {
-                    text.style.animation = `${animationName} ${animationDuration}s linear infinite`;
-                  }, 10);
-                }
-              }
-            }}
-            onMouseLeave={isMobile ? undefined : (e) => {
-              const text = e.currentTarget.querySelector('span');
-              if (text) {
-                text.style.animation = 'none';
-                text.style.transform = 'translateX(0)';
-              }
-            }}
+            onMouseEnter={startLabelScroll}
+            onMouseLeave={stopLabelScroll}
           >
             <Typography
               variant="body2"

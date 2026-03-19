@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Pure helper that derives view-ready sharing state for `ShareFolderTree` and `UserSelectionMenu` from raw folder permission maps and user metadata. |
+| Role | Pure helper that derives view-ready sharing state for `ShareFolderTree` and `UserSelectionMenu` from raw folder permission maps, review-request data, and user metadata. |
 
 ---
 
@@ -35,11 +35,15 @@
 | users | array | Y | Approved-user list |
 | getUserName | function | Y | Display-name resolver |
 | hasPermissionChanged | function | N | Path changed-state predicate |
+| isReviewMode | boolean | N | Whether the menu is showing permission-review affordances |
+| permissionRequest | object | N | Pending request used to derive requester-only add behavior |
 
 ### 2.4 Output
 
 - `currentFolderUserPerms`
 - `displayUsers` (view-ready user entries with `userId`, `permission`, `userName`)
+- `availableUsers` (view-ready add-user candidates)
+- `reviewRequesterOption` (`null` or `{ userId, userName, alreadyAdded }`)
 - `userCount`
 - `currentIsUserBaseFolder`
 - `isFolderWithAdminPermission`
@@ -54,5 +58,7 @@
 - [ ] Admin mode includes only the target user
 - [ ] Non-admin mode excludes the current user and admin users
 - [ ] Empty display names are filtered from `displayUsers`
+- [ ] Available-user candidates exclude already-added users, the current user, and admin users
+- [ ] Review mode derives a requester-only add option with the correct already-added state
 - [ ] User-count reflects only rendered users
 - [ ] Admin root path is marked as owner-locked when the target user has admin permission there

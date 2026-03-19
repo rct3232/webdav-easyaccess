@@ -117,6 +117,27 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-19 — FileManager.test.js — FileManager page suite after sort ownership shift
+
+- **Case:** A
+- **Root cause:** `client/src/pages/FileManager/FileManager.js` now destructures `sortMode` and `setSortMode` from `useExplorerSession`, but the same identifiers are still passed into `useExplorerSession(...)` during that destructuring expression. That creates a render-time TDZ crash (`ReferenceError: Cannot access 'sortMode' before initialization`) before the page shell can render.
+- **Action taken:** Removed the stale `sortMode` / `setSortMode` arguments from the `useExplorerSession(...)` call in `FileManager` so the page shell now consumes session-owned sort state instead of referencing it before initialization, then re-ran the affected page and hook/service tests.
+- **Lesson:** When moving state ownership from one hook to another, remove the old prop threading in the same edit; otherwise the shell can accidentally reference the new outputs before they exist.
+
+## 2026-03-19 — ExternalShareSection.test.js — delegates link opening through onOpenShareLink
+
+- **Case:** B
+- **Root cause:** The new boundary test depended on the shared `defaultProps.getShareLinkUrl` mock retaining an explicit rendered URL across the suite. The component behavior matched the spec, but the fixture did not provide a deterministic visible link value for the click assertion.
+- **Action taken:** Updated the test to pass an explicit `getShareLinkUrl` implementation and a local `onOpenShareLink` spy for the observable click outcome.
+- **Lesson:** For rendered-link assertions, prefer test-local URL fixtures over shared mutable mock objects so the visible target is deterministic.
+
+## 2026-03-19 — useSharedManage.test.js — handleRevokePermission on API failure does not call onClose
+
+- **Case:** B
+- **Root cause:** The updated test expected the hook to fall back to `sharedManage.revokeFail`, but the documented behavior routes errors through the shared error-display helper. For a plain `Error` without server payload, that helper returns the generic `errors.unknown` message, so the test had drifted from the contract.
+- **Action taken:** Recorded the RCA, then aligned the test to the shared helper outcome while keeping the observable assertions that the dialog stays open and an error message is surfaced.
+- **Lesson:** When a controller delegates user-visible error text to a shared helper, assert the public outcome from that helper rather than a hook-local fallback string unless the spec explicitly fixes the exact key.
+
 ## 2026-03-19 — FolderTree.test.js — recent-files notifier cleanup after Phase 8 split
 
 - **Case:** B
@@ -599,3 +620,17 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 - **Root cause:** auth spec said "401 when no/invalid token" but authenticateToken returns 403 for invalid/expired JWT (server/utils/auth.js).
 - **Action taken:** Updated docs/spec/server/utils/auth.md 2.3: 401 when no token; 403 when invalid or expired. Test accepts 401 or 403.
 - **Lesson:** Middleware error status codes must match spec; distinguish no-token vs invalid-token in documentation.
+
+## 2026-03-19 — FileManager.test.js — handleOperationComplete reference after shell refactor
+
+- **Case:** A
+- **Root cause:** The FileManager shell moved operation-refresh ownership into `useExplorerCommands`, but `FileManager.js` still referenced `handleOperationComplete` without destructuring it from the hook return. This broke page render before any scenarios could execute.
+- **Action taken:** Rewire `FileManager` to consume the command-owned `handleOperationComplete` callback and rerun focused FileManager tests.
+- **Lesson:** When moving ownership from the page shell into a controller hook, update both the input wiring and the returned seam consumed by adjacent flows before running page tests.
+
+## 2026-03-19 — `client/src/components/file-manager/__tests__/FileManagerControls.test.js` — `opens the sort menu from local control state`
+
+- **Case:** B
+- **Root cause:** The control now owns its local sort-menu state, but the new test asserted on a specific heading string inside the portaled MUI menu. The spec only requires that the sort menu open and expose sort choices, not that a particular text node be matched.
+- **Action taken:** Changed the assertion to verify that a `menu` appears and exposes radio options after clicking Sort.
+- **Lesson:** For MUI menus, prefer role-based assertions on the opened menu and selectable controls over brittle text matches inside the portal.

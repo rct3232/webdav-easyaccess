@@ -214,7 +214,9 @@ These scenarios should stay true throughout extraction steps (verify “what”,
 
 - Page-level `FileManager` tests should prioritize observable explorer outcomes such as listing, navigation, selection, progress, and dialog flows.
 - When a scenario is not specifically verifying floating action button or sidebar tree behavior, tests may replace heavy MUI chrome such as `FAB` / `SpeedDial` or shell-only tree composition with lighter test doubles so shell-level scenarios do not inherit unrelated ref/focus/transition noise.
+- Apply the same rule to shell-owned async chrome: when a scenario is not about sidebar recent/shared loading, tests may stub those seams so background subscriptions and initial async loads do not create unrelated React `act(...)` warnings.
 - Scenarios that do verify create/upload/share-link entry points may still use that lighter seam, as long as the user-visible trigger names and resulting dialogs/outcomes remain equivalent.
+- After router navigation, notifier dispatch, or double-click open flows, wait for the final user-visible anchor (`findBy*`, `waitFor`, `waitForElementToBeRemoved`) instead of assuming one render tick is enough.
 
 - [ ] Initial render shows loading state, then resolves into the correct view once files load.
 - [ ] Path navigation updates the visible list/grid/detail content and breadcrumb correctly.

@@ -184,5 +184,7 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Li
 - Integration-style component/page tests should prefer MSW handlers (`client/src/mocks/handlers.js`) for API behavior.
 - Unit-oriented hook/util/service tests may use module mocks when this keeps tests deterministic and focused on public outcomes.
 - For mixed tests, keep UI environment mocks (router/i18n/responsive) at module level and use MSW only for network behavior that is stable in the current test runtime.
+- When a page scenario is not about shell-only chrome such as the sidebar tree or background recent-file subscriptions, those seams may be replaced with lighter doubles so the test stays focused on the explorer outcome and avoids unrelated async `act(...)` noise.
 - When migrating from module mocks to MSW, consult `.cursor/fail_log.md` first and avoid known unstable patterns (for example, request body parsing that depends on `request.formData()` in jsdom-based runs).
 - Test runtime polyfills in `client/src/jest-polyfills.js` must not create persistent `MessageChannel` instances during module initialization. Prefer minimal runtime wiring (e.g. `MessagePort` only when sufficient) to avoid open-handle leaks (`MESSAGEPORT`) at Jest shutdown.
+- For render-time async hooks, prefer waiting for a stable user-visible anchor after render or interaction rather than relying on one microtask turn. If a hook test needs tighter control, resolve gateway mocks from a deferred promise inside `act`.

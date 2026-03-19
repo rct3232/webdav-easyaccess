@@ -64,6 +64,7 @@
 - Prefer mocking `explorerGateway` and router/path seams rather than low-level file/permission/recent repository modules.
 - Keep `useFileManager` tests focused on observable state transitions (`currentPath`, `files`, `loading`, permission flags) and navigation effects.
 - Prefer per-test override of gateway responses instead of redefining whole mock modules in each test file.
+- When the hook loads asynchronously on mount, prefer deferred promises (or an equivalent test-owned async seam) over instantly resolved mocks so the test can resolve listing/access requests inside an `act` boundary and then wait for the final observable state.
 - If migrating portions to MSW, keep router and local UI helper mocks at module level and use MSW only for stable API interactions.
 
 ### 2.6 Side Effects

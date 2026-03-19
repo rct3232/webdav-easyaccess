@@ -150,6 +150,14 @@ describe('shareLinkService', () => {
       expect(result).toHaveProperty('hasSufficientPermission');
       expect(result.hasSufficientPermission).toBe(true);
     });
+
+    it('forwards null when auth policy skips excluded 401 handling', async () => {
+      get.mockResolvedValueOnce(null);
+
+      const result = await checkMyPermissionForShare('t1');
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('addShareLinkToMyPermissions', () => {

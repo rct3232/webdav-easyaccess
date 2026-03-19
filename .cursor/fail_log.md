@@ -117,6 +117,20 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-19 — useAuthSession.test.js — returns a failure result when token storage cannot be persisted
+
+- **Case:** B
+- **Root cause:** The new test replaced `sessionStorage.setItem` directly, but that did not reliably intercept the Storage prototype path used by the runtime. The hook behavior matched the spec; the failure was in the test harness for simulating storage write failure.
+- **Action taken:** Updated the test to mock `Storage.prototype.setItem` for the sessionStorage path and kept the assertion on the observable failure result `{ success: false, error: 'storage_failed' }`.
+- **Lesson:** For browser storage failure simulation in jsdom, mock the Storage prototype rather than assigning directly to `sessionStorage.setItem`.
+
+## 2026-03-19 — httpClient.test.js — retries 5xx responses and preserves the last error.response
+
+- **Case:** B
+- **Root cause:** The first draft used fake timers but did not flush the retry/backoff promise chain completely, so the test timed out before the second attempt finished. The transport implementation matched the spec.
+- **Action taken:** Reworked the test to shortcut only the retry backoff timer while leaving request timeout timers intact, then asserted on the final rejected error shape and retry count.
+- **Lesson:** When a module uses both abort timers and retry timers, do not blanket-fast-forward all timers; isolate the timer that belongs to the contract under test.
+
 ## 2026-03-18 — FileManagerView.test.js — dedicated boundary test harness failed with unstable child mocking
 
 - **Case:** B

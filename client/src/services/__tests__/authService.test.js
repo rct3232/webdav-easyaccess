@@ -49,6 +49,14 @@ describe('authService', () => {
 
       await expect(login('baduser', 'wrongpass')).rejects.toThrow();
     });
+
+    it('forwards null when apiClient skips excluded 401 handling', async () => {
+      post.mockResolvedValueOnce(null);
+
+      const result = await login('baduser', 'wrongpass');
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('register', () => {
@@ -81,6 +89,14 @@ describe('authService', () => {
       post.mockRejectedValueOnce(new Error('Request failed'));
 
       await expect(register('user', 'user@example.com', 'password')).rejects.toThrow();
+    });
+
+    it('forwards null when apiClient skips excluded 401 handling', async () => {
+      post.mockResolvedValueOnce(null);
+
+      const result = await register('user', 'user@example.com', 'password');
+
+      expect(result).toBeNull();
     });
   });
 

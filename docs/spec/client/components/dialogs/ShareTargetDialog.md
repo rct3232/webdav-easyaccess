@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Dialog for selecting share target (user or external link). Integrates user selection, folder permissions, external share section. Uses useSharedManage. |
+| Role | Dialog shell for item-level sharing. Admin users can edit direct access and external share state; non-admin users see shared-manage actions through `useSharedManage`. |
 | Used in | FileManager (share action) |
-| Related components | SharedManageBody, ExternalShareSection, useSharedManage, getApprovedUsers, permissionService, shareLinkService |
+| Related components | `SharedManageBody`, `ExternalShareSection`, `useSharedManage`, `sharePermissionGateway`, sharing save use-cases, `shareLinkService` |
 
 ---
 
@@ -23,13 +23,10 @@
 |------|------|----------|---------|-------------|
 | open | boolean | Y | - | Dialog open |
 | onClose | function | Y | - | Close handler |
-| targetPath | string | Y | - | Path to share |
-| displayName | string | Y | - | Display name |
-| isDirectory | boolean | Y | - | Whether target is directory |
+| file | object | Y | - | Selected item to share; includes `path`, `basename`/`name`, `type`, and caller-known permission flags |
 | user | object | Y | - | Current user |
-| directHasReadPermission | boolean | N | - | Direct read permission |
 | onMessage | function | N | - | Message handler |
-| onActionComplete | function | N | - | Action complete handler |
+| onSave | function | N | - | Success callback after admin-side save flows |
 
 ### 2.3 Callback Signatures
 
@@ -37,33 +34,50 @@
 |----------|--------------|-----------|
 | onClose | Dialog close | - |
 | onMessage | Show message | - |
-| onActionComplete | Permission/share action done | - |
+| onSave | Admin permission/share action completed successfully | - |
 
 ### 2.4 Dependencies
 
-- **imports:** useSharedManage, SharedManageBody, ExternalShareSection, permissionService, shareLinkService, getApprovedUsers
+- **imports:** `useSharedManage`, `SharedManageBody`, `ExternalShareSection`, `sharePermissionGateway`, `shareTargetPermissionSaveUseCase`, `getApprovedUsers`, `shareLinkService`
 - **Reference implementation:** `client/src/components/dialogs/ShareTargetDialog.js`
 
 ### 2.5 i18n Keys
 
-- dialogs.*, permissions.*
+- `dialogs.*`, `permissions.*`, `common.*`
 
 ### 2.6 Conditional Rendering
 
-- User dropdown, folder permission options, external share
-- Permission options based on pathPermission, filePermissionLevel
+- Admin users see:
+  - user search / access list editing UI
+  - folder/file permission options
+  - external share section for file targets
+- Non-admin users see `SharedManageBody` driven by `useSharedManage`
+- Permission-option rendering depends on prepared permission state for files vs directories
+- This component may remain a shell plus controller wiring, but low-level permission IO must go through `sharePermissionGateway` and dedicated save orchestration
 
-### 2.7 Verification Scenarios
+### 2.7 Data/Workflow Boundaries
 
-- [ ] User selection, permission change, external link creation
-- [ ] onClose, onMessage, onActionComplete
+- Admin save flows must not implement raw revoke/grant loops directly in the component once the refactor is complete
+- File/folder access reads and mutations must go through `sharePermissionGateway`
+- Request/cancel/revoke for non-admin users remain owned by `useSharedManage`
 
-### 2.8 Edge Cases
+### 2.8 Verification Scenarios
+
+- [ ] Admin mode shows search, editable access list, and save/cancel actions
+- [ ] Non-admin mode renders shared-manage actions and close-only footer
+- [ ] File targets render external-share controls; folders do not
+- [ ] Successful admin save calls `onSave` and closes
+- [ ] Failed admin save keeps the dialog open and shows an error
+- [ ] File and folder save flows preserve their current visible outcomes
+
+### 2.9 Edge Cases
 
 - pathPermission ADMIN – limited options
 - hasSameLevelFilePermission – revoke/same-as-path options
+- Missing `file` should prevent actionable save behavior
+- Direct read/admin flags on `file` are caller-provided hints, not a replacement for gateway-backed reads in admin flows
 
-### 2.9 API Error Behavior
+### 2.10 API Error Behavior
 
-- **On API success (permission grant, revoke, share link):** onActionComplete called; parent may close dialog.
-- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onMessage. User can retry or close. Same pattern as RenameDialog, ShareDialog, useSharedManage.
+- **On API success (permission grant/revoke/save):** `onSave` is called and the dialog closes.
+- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error is shown via `onMessage`. Partial failures must not be silently treated as success.

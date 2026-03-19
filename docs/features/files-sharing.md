@@ -23,6 +23,7 @@ This project is refactoring the client so responsibilities are explicit and repl
   - Handles user-facing sharing flows: granting/revoking access, reviewing existing permissions, and creating/updating share links.
   - Owns product rules such as “who can share what”, and admin/review mode branching.
   - Uses explorer UI state (current path / selection) as inputs, but remains a distinct feature module.
+  - Controller hooks may orchestrate dialog state, but permission persistence and request-side IO should flow through sharing gateways/use-cases rather than raw service loops inside views.
   - Share-link-specific add-to-my-permissions and leave-share confirmation flows should live in a dedicated product-overlay controller, not inline inside the FileManager page shell.
 
 - **Permission requests (request/approve/reject/cancel)**

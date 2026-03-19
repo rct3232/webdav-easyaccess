@@ -13,6 +13,7 @@ import {
   Edit as EditIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
+import { deriveShareFolderAccessView } from '../../utils/deriveShareFolderAccessView';
 
 const UserSelectionMenu = ({
   folderMenuAnchor,
@@ -39,32 +40,24 @@ const UserSelectionMenu = ({
   const { t } = useTranslation();
   if (!folderMenuPath) return null;
 
-  const currentFolderUserPerms = folderPermissions.get(folderMenuPath) || new Map();
-  const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
-  
-  const currentDisplayUsers = isAdminMode 
-    ? currentFolderUsers.filter(([uid]) => uid === userId)
-    : currentFolderUsers.filter(([targetUserId]) => {
-        if (user && targetUserId === user.id) return false;
-        const userInfo = userInfoMap.get(targetUserId);
-        if (userInfo && userInfo.is_admin) return false;
-        const fullUser = users.find(u => u.id === targetUserId);
-        if (fullUser && fullUser.is_admin) return false;
-        return true;
-      });
-  
-  const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
-  const currentIsUserBaseFolder = isAdminMode && folderMenuPath === currentUserBaseFolder;
+  const {
+    displayUsers,
+    currentIsUserBaseFolder,
+  } = deriveShareFolderAccessView({
+    folderPath: folderMenuPath,
+    folderPermissions,
+    isAdminMode,
+    userId,
+    username,
+    user,
+    userInfoMap,
+    users,
+    getUserName,
+  });
 
   const renderManageView = () => (
     <>
-      {currentDisplayUsers
-        .filter(([targetUserId]) => {
-          const userName = getUserName(targetUserId);
-          return userName && userName.trim() !== '';
-        })
-        .map(([targetUserId, permission]) => {
-          const userName = getUserName(targetUserId);
+      {displayUsers.map(({ userId: targetUserId, permission, userName }) => {
           const canEdit = !currentIsUserBaseFolder || targetUserId !== userId;
           const isWrite = permission === PERMISSIONS.WRITE;
           
@@ -127,10 +120,7 @@ const UserSelectionMenu = ({
           );
         })}
       
-      {currentDisplayUsers.filter(([targetUserId]) => {
-        const userName = getUserName(targetUserId);
-        return userName && userName.trim() !== '';
-      }).length > 0 && (
+      {displayUsers.length > 0 && (
         <MenuItem disabled sx={{ py: 0 }}>
           <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
         </MenuItem>

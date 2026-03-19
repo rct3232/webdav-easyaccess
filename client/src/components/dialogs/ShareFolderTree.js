@@ -14,8 +14,8 @@ import {
   GroupAdd as GroupAddIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
-import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
+import { deriveShareFolderAccessView } from '../../utils/deriveShareFolderAccessView';
 
 const ShareFolderTree = ({
   rootPath,
@@ -148,28 +148,22 @@ const ShareFolderTree = ({
         
         {/* 오른쪽: 드롭다운 메뉴 버튼 */}
         {(() => {
-          const currentFolderUserPerms = folderPermissions.get(node.path) || new Map();
-          const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
-          
-          const currentDisplayUsers = isAdminMode 
-            ? currentFolderUsers.filter(([uid]) => uid === userId)
-            : currentFolderUsers.filter(([targetUserId]) => {
-                if (user && targetUserId === user.id) return false;
-                const userInfo = userInfoMap.get(targetUserId);
-                if (userInfo && userInfo.is_admin) return false;
-                const fullUser = users.find(u => u.id === targetUserId);
-                if (fullUser && fullUser.is_admin) return false;
-                return true;
-              });
-          
-          const userCount = currentDisplayUsers.filter(([targetUserId]) => {
-            const userName = getUserName(targetUserId);
-            return userName && userName.trim() !== '';
-          }).length;
-          
-          const isChanged = hasPermissionChanged(node.path);
-          const isFolderWithAdminPermission = isAdminMode && (currentFolderUserPerms.get(userId) === PERMISSIONS.ADMIN);
-          
+          const {
+            userCount,
+            isChanged,
+            isFolderWithAdminPermission,
+          } = deriveShareFolderAccessView({
+            folderPath: node.path,
+            folderPermissions,
+            isAdminMode,
+            userId,
+            user,
+            userInfoMap,
+            users,
+            getUserName,
+            hasPermissionChanged,
+          });
+
           return (
             <Box
               component="button"

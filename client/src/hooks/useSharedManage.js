@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { revokePermission, checkPermission } from '../services/permissionService';
 import {
-  cancelPermissionRequest,
-  createPermissionRequest,
-  listOutboxPermissionRequests,
+  checkPermission,
   checkOwnerExists,
-} from '../services/permissionRequestService';
+  listOutboxPermissionRequests,
+  createPermissionRequest,
+  cancelPermissionRequest,
+  revokePermission,
+} from '../services/sharePermissionGateway';
+import { deriveSharedAccessState } from '../utils/deriveSharedAccessState';
+import { buildPendingRequestState } from '../utils/buildPendingRequestState';
 import { getParentPath, normalizePath } from '../utils/pathUtils';
 import { getServerErrorDisplay } from '../utils/errorUtils';
 
@@ -26,26 +29,33 @@ export function useSharedManage({
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [permissionInfo, setPermissionInfo] = useState(
-    isDirectory ? { hasRead: false, hasWrite: false } : { hasRead: false, hasWrite: false, source: 'path' }
-  );
-  const [pathPermission, setPathPermission] = useState('none');
+  const [permissionCheck, setPermissionCheck] = useState(null);
+  const [parentPermissionCheck, setParentPermissionCheck] = useState(null);
   const [pendingRequest, setPendingRequest] = useState({
     read: { pending: false, id: null },
     write: { pending: false, id: null },
   });
   const [ownerExists, setOwnerExists] = useState(null);
 
+  const emitTransientMessage = useCallback((message, hideAfterMs = 3000) => {
+    if (!onMessage) return;
+    onMessage(message);
+    setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), hideAfterMs);
+  }, [onMessage]);
+
   useEffect(() => {
     if (!open || !targetPath || !user) {
       setInitialLoading(false);
+      setPermissionCheck(null);
+      setParentPermissionCheck(null);
       return;
     }
     if (user.is_admin) {
-      setPermissionInfo(
-        isDirectory ? { hasRead: true, hasWrite: true } : { hasRead: true, hasWrite: true, source: 'path' }
-      );
-      if (!isDirectory) setPathPermission('write');
+      // For admin: skip API, but still synthesize enough data for consistent derivation.
+      setPermissionCheck(isDirectory
+        ? { hasRead: true, hasWrite: true }
+        : { hasRead: true, hasWrite: true, source: 'path' });
+      setParentPermissionCheck(isDirectory ? null : { hasRead: true, hasWrite: true });
       setInitialLoading(false);
       return;
     }
@@ -54,35 +64,36 @@ export function useSharedManage({
       try {
         if (isDirectory) {
           const permission = await checkPermission(targetPath);
-          setPermissionInfo({ hasRead: Boolean(permission.hasRead), hasWrite: Boolean(permission.hasWrite) });
+          setPermissionCheck({ hasRead: Boolean(permission.hasRead), hasWrite: Boolean(permission.hasWrite) });
+          setParentPermissionCheck(null);
         } else {
           const fileResult = await checkPermission(targetPath);
           const hasRead = Boolean(fileResult?.hasRead);
           const hasWrite = Boolean(fileResult?.hasWrite);
           const source = fileResult?.source === 'file' ? 'file' : 'path';
-          setPermissionInfo({ hasRead, hasWrite, source });
+          setPermissionCheck({ hasRead, hasWrite, source });
 
           const parentPath = getParentPath(targetPath);
-          let pathPerm = 'none';
           if (parentPath) {
             try {
               const pathResult = await checkPermission(parentPath);
-              const pHasRead = Boolean(pathResult?.hasRead);
-              const pHasWrite = Boolean(pathResult?.hasWrite);
-              if (pHasWrite) pathPerm = 'write';
-              else if (pHasRead) pathPerm = 'read';
+              setParentPermissionCheck({
+                hasRead: Boolean(pathResult?.hasRead),
+                hasWrite: Boolean(pathResult?.hasWrite),
+              });
             } catch {
-              pathPerm = 'none';
+              setParentPermissionCheck(null);
             }
+          } else {
+            setParentPermissionCheck(null);
           }
-          setPathPermission(pathPerm);
         }
       } catch (error) {
         console.error('Failed to check permission:', error);
-        setPermissionInfo(
+        setPermissionCheck(
           isDirectory ? { hasRead: false, hasWrite: false } : { hasRead: false, hasWrite: false, source: 'path' }
         );
-        if (!isDirectory) setPathPermission('none');
+        setParentPermissionCheck(null);
       } finally {
         setInitialLoading(false);
       }
@@ -124,23 +135,11 @@ export function useSharedManage({
     const loadPendingRequests = async () => {
       try {
         const outbox = await listOutboxPermissionRequests({ status: 'pending' });
-        const normalizedTarget = normalizePath(targetPath);
-        const list = Array.isArray(outbox) ? outbox : [];
-        const findPending = (perm) =>
-          isDirectory
-            ? list.find(
-                (r) => normalizePath(r.folder_path) === normalizedTarget && r.requested_permission === perm
-              )
-            : list.find(
-                (r) =>
-                  normalizePath(r.file_path || '') === normalizedTarget && r.requested_permission === perm
-              );
-        const pendingRead = findPending(PERMISSIONS.READ);
-        const pendingWrite = findPending(PERMISSIONS.WRITE);
-        setPendingRequest({
-          read: { pending: Boolean(pendingRead), id: pendingRead?.id ?? null },
-          write: { pending: Boolean(pendingWrite), id: pendingWrite?.id ?? null },
-        });
+        setPendingRequest(buildPendingRequestState({
+          requests: outbox,
+          targetPath: normalizePath(targetPath),
+          isDirectory,
+        }));
       } catch (error) {
         setPendingRequest({ read: { pending: false, id: null }, write: { pending: false, id: null } });
       }
@@ -148,9 +147,14 @@ export function useSharedManage({
     loadPendingRequests();
   }, [open, targetPath, user, isDirectory]);
 
-  const hasReadPermission =
-    typeof directHasReadPermission === 'boolean' ? directHasReadPermission : permissionInfo.hasRead;
-  const hasWritePermission = permissionInfo.hasWrite;
+  const { hasReadPermission, hasWritePermission, pathPermission, filePermissionLevel } = deriveSharedAccessState({
+    isDirectory,
+    permissionCheck,
+    parentPermissionCheck,
+    directHasReadPermission,
+    pendingRequest,
+    ownerExists,
+  });
 
   const handleCancelPendingRequest = useCallback(
     async (permissionToCancel) => {
@@ -163,26 +167,20 @@ export function useSharedManage({
           ...prev,
           [permissionToCancel]: { pending: false, id: null },
         }));
-        if (onMessage) {
-          onMessage({
-            show: true,
-            text: t('sharedManage.requestCancelledSuccess', { permission: permissionToCancel === PERMISSIONS.READ ? t('mypage.read') : t('mypage.write') }),
-            type: 'success',
-          });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
-        }
+        emitTransientMessage({
+          show: true,
+          text: t('sharedManage.requestCancelledSuccess', { permission: permissionToCancel === PERMISSIONS.READ ? t('mypage.read') : t('mypage.write') }),
+          type: 'success',
+        });
       } catch (error) {
         console.error('Failed to cancel permission request:', error);
         const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.cancelRequestFail');
-        if (onMessage) {
-          onMessage({ show: true, text: errorMsg, type: 'error' });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
-        }
+        emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
       } finally {
         setLoading(false);
       }
     },
-    [pendingRequest, onMessage, t]
+    [pendingRequest, emitTransientMessage, t]
   );
 
   const handlePermissionRequest = useCallback(
@@ -207,28 +205,22 @@ export function useSharedManage({
           ...prev,
           [requestedPermission]: { pending: true, id: created?.id ?? prev[requestedPermission]?.id ?? null },
         }));
-        if (onMessage) {
-          onMessage({
-            show: true,
-            text: t('sharedManage.requestSentSuccess', {
-              permission: requestedPermission === 'read' ? t('mypage.read') : t('mypage.write'),
-            }),
-            type: 'success',
-          });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
-        }
+        emitTransientMessage({
+          show: true,
+          text: t('sharedManage.requestSentSuccess', {
+            permission: requestedPermission === 'read' ? t('mypage.read') : t('mypage.write'),
+          }),
+          type: 'success',
+        });
       } catch (error) {
         console.error('Failed to create permission request:', error);
         const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.requestSentFail');
-        if (onMessage) {
-          onMessage({ show: true, text: errorMsg, type: 'error' });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
-        }
+        emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
       } finally {
         setLoading(false);
       }
     },
-    [targetPath, user, isDirectory, hasReadPermission, pendingRequest, onMessage, t]
+    [targetPath, user, isDirectory, hasReadPermission, pendingRequest, emitTransientMessage, t]
   );
 
   const handleRevokePermission = useCallback(async () => {
@@ -237,51 +229,36 @@ export function useSharedManage({
     try {
       if (isDirectory) {
         await revokePermission({ userId: user.id, folderPath: targetPath, includeSubfolders: true });
-        if (onMessage) {
-          onMessage({
-            show: true,
-            text: t('sharedManage.revokeFolderSuccess', { name: displayName }),
-            type: 'success',
-          });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
-        }
+        emitTransientMessage({
+          show: true,
+          text: t('sharedManage.revokeFolderSuccess', { name: displayName }),
+          type: 'success',
+        });
       } else {
         await revokePermission({ userId: user.id, folderPath: targetPath, scope: 'pathOnly' });
-        if (onMessage) {
-          onMessage({
-            show: true,
-            text: t('sharedManage.revokeFileSuccess', { name: displayName || targetPath }),
-            type: 'success',
-          });
-          setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 3000);
-        }
+        emitTransientMessage({
+          show: true,
+          text: t('sharedManage.revokeFileSuccess', { name: displayName || targetPath }),
+          type: 'success',
+        });
       }
       if (onActionComplete) onActionComplete();
       onClose();
     } catch (error) {
       console.error('Failed to revoke permission:', error);
       const errorMsg = getServerErrorDisplay(error?.response?.data, t) || t('sharedManage.revokeFail');
-      if (onMessage) {
-        onMessage({ show: true, text: errorMsg, type: 'error' });
-        setTimeout(() => onMessage({ show: false, text: '', type: 'success' }), 5000);
-      }
+      emitTransientMessage({ show: true, text: errorMsg, type: 'error' }, 5000);
     } finally {
       setLoading(false);
       setConfirmDialogOpen(false);
     }
-  }, [user, targetPath, displayName, isDirectory, onMessage, onActionComplete, onClose, t]);
-
-  const hasFileLevelPermission = !isDirectory && permissionInfo.source === 'file';
-  const filePermissionLevel = hasFileLevelPermission
-    ? (permissionInfo.hasWrite ? 'write' : 'read')
-    : null;
+  }, [user, targetPath, displayName, isDirectory, emitTransientMessage, onActionComplete, onClose, t]);
 
   return {
     loading,
     initialLoading,
     confirmDialogOpen,
     setConfirmDialogOpen,
-    permissionInfo,
     pathPermission,
     filePermissionLevel,
     hasReadPermission,

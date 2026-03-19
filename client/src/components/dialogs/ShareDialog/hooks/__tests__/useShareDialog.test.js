@@ -6,7 +6,7 @@
 import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShareDialog } from '../useShareDialog';
-import { usePermissionManager } from '../../../../../hooks/usePermissionManager';
+import { usePermissionManager } from '../usePermissionManager';
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -31,16 +31,41 @@ jest.mock('../../../../../utils/errorUtils', () => {
   const { createErrorUtilsMock } = require('../../../../../testing/mocks/serviceMocks');
   return createErrorUtilsMock();
 });
+jest.mock('../../../../../services/sharePermissionSaveUseCase', () => ({
+  sharePermissionSaveUseCase: jest.fn(),
+}));
+jest.mock('../../../../../services/adminPermissionSaveUseCase', () => ({
+  adminPermissionSaveUseCase: jest.fn(),
+}));
+jest.mock('../../../../../services/shareReviewUseCase', () => ({
+  shareReviewUseCase: jest.fn(),
+}));
 
 import * as userService from '../../../../../services/userService';
 import * as permissionService from '../../../../../services/permissionService';
 import * as fileService from '../../../../../services/fileService';
 import * as permissionRequestService from '../../../../../services/permissionRequestService';
+import { sharePermissionSaveUseCase } from '../../../../../services/sharePermissionSaveUseCase';
+import { adminPermissionSaveUseCase } from '../../../../../services/adminPermissionSaveUseCase';
+import { shareReviewUseCase } from '../../../../../services/shareReviewUseCase';
 
 const mockOnMessage = jest.fn();
 const mockOnSave = jest.fn();
 const mockOnApprove = jest.fn();
 const mockOnClose = jest.fn();
+
+async function renderOpenUseShareDialog(props) {
+  const rendered = renderHook(
+    (hookProps) => useShareDialogWithPermissionManager(hookProps),
+    { initialProps: { ...props, open: false } }
+  );
+  await act(async () => {
+    rendered.rerender(props);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return rendered;
+}
 
 function useShareDialogWithPermissionManager(props) {
   const pm = usePermissionManager({
@@ -71,8 +96,12 @@ function useShareDialogWithPermissionManager(props) {
 }
 
 describe('useShareDialog', () => {
+  let consoleErrorSpy;
+
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     userService.getApprovedUsers.mockResolvedValue([{ id: '1', username: 'user1' }]);
     permissionService.getFolderPermissions.mockResolvedValue([]);
     permissionService.getUserPermissions.mockResolvedValue([]);
@@ -81,6 +110,17 @@ describe('useShareDialog', () => {
     permissionService.grantPermission.mockResolvedValue();
     permissionService.revokePermission.mockResolvedValue();
     permissionRequestService.approvePermissionRequest.mockResolvedValue();
+    sharePermissionSaveUseCase.mockResolvedValue();
+    adminPermissionSaveUseCase.mockResolvedValue();
+    shareReviewUseCase.mockResolvedValue();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    consoleErrorSpy.mockRestore();
+    jest.useRealTimers();
   });
 
   it('returns rootPath, users, folderTree, expandedPaths, handlers', () => {
@@ -155,8 +195,7 @@ describe('useShareDialog', () => {
   });
 
   it('rootPath from mode admin with startFromUserHome uses getUserBaseFolder', async () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'admin',
         userId: '1',
@@ -165,23 +204,20 @@ describe('useShareDialog', () => {
         folderPath: '/',
         folderName: 'Root',
         onClose: mockOnClose,
-      })
-    );
+      });
 
     expect(result.current.rootPath).toBe('/alice');
     expect(result.current.isAdminMode).toBe(true);
   });
 
   it('loads users when open and mode is share', async () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         onClose: mockOnClose,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(userService.getApprovedUsers).toHaveBeenCalled();
@@ -193,15 +229,13 @@ describe('useShareDialog', () => {
   });
 
   it('loads folder tree when open', async () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         onClose: mockOnClose,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(fileService.listFiles).toHaveBeenCalled();
@@ -254,17 +288,15 @@ describe('useShareDialog', () => {
     });
   });
 
-  it('handleSave in share mode calls grantPermission and onClose on success', async () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+  it('handleSave in share mode calls sharePermissionSaveUseCase and onClose on success', async () => {
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         onClose: mockOnClose,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -282,22 +314,23 @@ describe('useShareDialog', () => {
       await result.current.handleSave();
     });
 
-    expect(permissionService.grantPermission).toHaveBeenCalled();
+    expect(sharePermissionSaveUseCase).toHaveBeenCalledWith({
+      initialFolderPermissions: expect.any(Map),
+      folderPermissions: expect.any(Map),
+    });
     expect(mockOnClose).toHaveBeenCalled();
   });
 
   it('handleSave in share mode on API failure does not call onClose', async () => {
-    permissionService.grantPermission.mockRejectedValue(new Error('Grant failed'));
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    sharePermissionSaveUseCase.mockRejectedValue(new Error('Grant failed'));
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         onClose: mockOnClose,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -321,9 +354,8 @@ describe('useShareDialog', () => {
     );
   });
 
-  it('handleSave in admin mode calls updateUserPermissions and onClose on success', async () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+  it('handleSave in admin mode calls adminPermissionSaveUseCase and onClose on success', async () => {
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'admin',
         userId: '1',
@@ -331,8 +363,7 @@ describe('useShareDialog', () => {
         startFromUserHome: false,
         onClose: mockOnClose,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -350,25 +381,24 @@ describe('useShareDialog', () => {
       await result.current.handleSave();
     });
 
-    expect(userService.updateUserPermissions).toHaveBeenCalledWith(
-      '1',
-      expect.any(Array)
-    );
+    expect(adminPermissionSaveUseCase).toHaveBeenCalledWith({
+      userId: '1',
+      username: 'alice',
+      folderPermissions: expect.any(Map),
+    });
     expect(mockOnClose).toHaveBeenCalled();
   });
 
   it('handleSave in admin mode on API failure does not call onClose', async () => {
-    userService.updateUserPermissions.mockRejectedValue(new Error('Update failed'));
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    adminPermissionSaveUseCase.mockRejectedValue(new Error('Update failed'));
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'admin',
         userId: '1',
         username: 'alice',
         onClose: mockOnClose,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -423,15 +453,13 @@ describe('useShareDialog', () => {
       return Promise.resolve([]);
     });
 
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         onClose: mockOnClose,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -453,7 +481,7 @@ describe('useShareDialog', () => {
     expect(fileService.listFiles).toHaveBeenCalledWith('/docs/sub');
   });
 
-  it('handleSave in review mode calls approvePermissionRequest and onApprove on success', async () => {
+  it('handleSave in review mode calls shareReviewUseCase and onApprove on success', async () => {
     const permissionRequest = {
       id: 'req-1',
       requester_id: '2',
@@ -466,8 +494,7 @@ describe('useShareDialog', () => {
     ]);
     fileService.listFiles.mockResolvedValue([]);
 
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'review',
         folderPath: '/docs',
@@ -476,8 +503,7 @@ describe('useShareDialog', () => {
         onClose: mockOnClose,
         onApprove: mockOnApprove,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -487,9 +513,11 @@ describe('useShareDialog', () => {
       await result.current.handleSave();
     });
 
-    expect(permissionRequestService.approvePermissionRequest).toHaveBeenCalledWith(
-      'req-1'
-    );
+    expect(shareReviewUseCase).toHaveBeenCalledWith({
+      permissionRequestId: 'req-1',
+      initialFolderPermissions: expect.any(Map),
+      folderPermissions: expect.any(Map),
+    });
     expect(mockOnApprove).toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
   });
@@ -505,13 +533,12 @@ describe('useShareDialog', () => {
     permissionService.getUserPermissions.mockResolvedValue([
       { folder_path: '/docs', permission: 'read', id: '2' },
     ]);
-    permissionRequestService.approvePermissionRequest.mockRejectedValue(
+    shareReviewUseCase.mockRejectedValue(
       new Error('Approve failed')
     );
     fileService.listFiles.mockResolvedValue([]);
 
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'review',
         folderPath: '/docs',
@@ -520,8 +547,7 @@ describe('useShareDialog', () => {
         onClose: mockOnClose,
         onApprove: mockOnApprove,
         onMessage: mockOnMessage,
-      })
-    );
+      });
 
     await waitFor(() => {
       expect(result.current.loadingAllFolders).toBe(false);
@@ -537,17 +563,15 @@ describe('useShareDialog', () => {
     );
   });
 
-  it('returns externalShare state when enableExternalShare', () => {
-    const { result } = renderHook(() =>
-      useShareDialogWithPermissionManager({
+  it('returns externalShare state when enableExternalShare', async () => {
+    const { result } = await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',
         folderName: 'docs',
         enableExternalShare: true,
         onClose: mockOnClose,
-      })
-    );
+      });
 
     expect(typeof result.current.externalShareLoading).toBe('boolean');
     expect(result.current.externalShareLink).toBeNull();

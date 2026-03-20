@@ -102,6 +102,18 @@ function createExampleMock(overrides = {}) {
 - Mobile flow: the same CRUD happy paths.
 - Treat create/upload as shared FAB-driven outcomes when the user path matches across platforms, and split only the interaction helpers that genuinely differ, such as desktop item actions/context menu versus the mobile action sheet for rename/delete.
 
+Detailed browser-flow inventory, rollout order, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
+
+### Feature-doc responsibility for E2E guidance
+
+- Put exhaustive scenario inventory, priority, ownership, and status in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- Keep `docs/features/*.md` focused on product behavior and **feature-specific testing anchors** only.
+- Add E2E guidance to a feature doc only when that feature has rules that are easier to understand at the feature boundary than in the global plan, for example:
+  - selector rules unique to that feature
+  - platform-specific interaction ownership (desktop vs mobile)
+  - feature-only flow-structure constraints
+- Do not copy full scenario matrices, rollout order, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
+
 ---
 
 ## Checklist for New Code

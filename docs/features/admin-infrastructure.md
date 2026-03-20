@@ -98,6 +98,8 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 
 Feature-level verification scope (behavioral outcomes):
 
+For the complete browser-flow inventory and rollout plan for admin-facing UI coverage, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on behavior and operational intent rather than a full E2E checklist.
+
 - **Non-admin 403:** Authenticated non-admin calling any admin route (e.g. `GET /api/admin/settings`, `POST /api/admin/users/:id/approve`) receives 403 with `errorCode` for admin required.
 - **Approve/reject and email:** Approve sets user to approved and prepares expected initial access; reject sets status to rejected. If email is configured, notification side effects are validated.
 - **Cleanup:** Orphan cleanup returns expected shape (e.g. removed count or list); no side effects on valid metadata.

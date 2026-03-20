@@ -170,6 +170,8 @@ flowchart TD
 
 When implementing or reviewing tests for files and sharing, cover at least:
 
+For the full browser-flow inventory, rollout order, and Playwright ownership map, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on product behavior and representative verification anchors rather than the exhaustive E2E checklist.
+
 ### E2E selector policy
 
 - Prefer semantic selectors first:
@@ -197,28 +199,12 @@ When implementing or reviewing tests for files and sharing, cover at least:
   - mobile uses the action sheet
 - When desktop and mobile verify the same outcome, document the shared outcome once and only call out the interaction surface where the platforms genuinely differ.
 
-**Scenario locations:**
+### Representative verification anchors
 
-| Scenario | Server test location | Client test location |
-|----------|---------------------|---------------------|
-| Create folder | folders.test.js | FileManager (create folder flow) |
-| Upload | files.test.js | FileManager (upload flow) |
-| Move (batch) | files.test.js | FileManager (bulk move) |
-| Copy (batch) | files.test.js | FileManager (bulk copy) |
-| Delete (batch) | files.test.js | FileManager (delete flow) |
-| Rename | files.test.js | FileManager (rename flow) |
-| Download (single) | files.test.js | FileManager (download) |
-| Download multiple (ZIP) | files.test.js | FileManager (bulk download) |
-
-**Coverage checklist:**
-- **Direct read/write:** User without read on a folder gets 403 on list/download for that folder (or file under it). User without write on a folder gets 403 on upload/rename/move/copy/delete there. No inheritance from parent path (see [permissions.md](permissions.md)).
-- **Reserved path:** Requests involving `/.wea` for non-admin → 403.
-- **Batch operations:** After batch-move or batch-copy, only allowed items are moved/copied; ACL metadata updated. After batch-delete, permissions cleaned and recent-files remove-paths/apply-moves called where applicable.
-- **check-conflicts:** Before paste, POST /api/files/check-conflicts returns conflicts array (files.test.js).
-- **Bulk operation progress/cancel:** GET bulk-operation/:jobId, POST cancel (files.test.js).
-- **Recent files:** apply-moves after bulk move; remove-paths after bulk delete (FileManager delete flow).
-- **Share link expiry:** Expired share link → 410 on info/download/preview.
-- **Permission request states:** Create → pending; owner approve → approved; owner reject → rejected; requester cancel → cancelled. Inbox/outbox and check-owner behave as specified.
+- **Explorer CRUD happy paths:** Desktop and mobile both keep create folder, upload, rename, and delete in browser-visible coverage. The detailed scenario inventory and spec ownership live in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
+- **Batch operations and conflicts:** Move/copy/delete, conflict resolution, bulk progress, and recent-files synchronization remain important coverage targets, but the exhaustive browser-vs-integration split is tracked in the canonical E2E plan.
+- **Share and permission-request outcomes:** Shared-link expiry, add-to-my-permissions, and permission-request lifecycle should remain represented in test coverage, with browser coverage focused on user-visible outcomes and route integration covering deeper state matrices.
+- **Permission and meta-path boundaries:** Direct read/write rules, reserved-path protection, and broader ACL allow/deny matrices should stay primarily in middleware and route integration coverage, with browser E2E limited to user-visible denial flows.
 - **Page-test seams:** When a FileManager page test is not validating floating action button or sidebar tree mechanics themselves, it may isolate those shell-only UI surfaces behind lighter equivalents so the scenario continues to verify explorer behavior without unrelated UI-library timing noise.
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) and [api.md](../api.md) for contract and mocking guidance.

@@ -194,6 +194,8 @@ flowchart LR
 
 When implementing or reviewing client tests, cover at least:
 
+For the full browser-flow inventory and planned Playwright spec ownership across routing, responsive behavior, explorer flows, and share-link flows, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on user-visible UI behavior and representative testing anchors.
+
 - **Routing and PrivateRoute:** Unauthenticated access to `/files`, `/mypage` redirects to `/login`. Authenticated access renders the correct page. `/admin` redirects to `/mypage` with Admin category selected. Loading state shows spinner.
 - **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.
 - **Selection tests:** Prefer interaction-based assertions (`click`, `Ctrl`/`Meta`+click, `Shift`+click, long-press) and outcome checks. Do not assume file rows expose `role="checkbox"`.

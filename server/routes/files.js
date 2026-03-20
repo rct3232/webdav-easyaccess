@@ -816,31 +816,31 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
 router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const filePath = req.query.path;
   const inline = req.query.inline === 'true';
-  
+
   if (!filePath) {
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
   const principalId = req.principalId;
   const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
-    if (!hasPermission) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
-    }
-
-    const buffer = await getFileContents(filePath);
-    const filename = path.basename(filePath);
-    const encodedFilename = encodeURIComponent(filename);
-    const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
-    const disposition = inline ? 'inline' : 'attachment';
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-    res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
-    
-    if (inline) {
-      res.setHeader('Content-Type', getContentType(filename));
-    } else {
-      res.setHeader('Content-Type', 'application/octet-stream');
+  if (!hasPermission) {
+    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
-  
+
+  const buffer = await getFileContents(filePath);
+  const filename = path.basename(filePath);
+  const encodedFilename = encodeURIComponent(filename);
+  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
+  const disposition = inline ? 'inline' : 'attachment';
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
+
+  if (inline) {
+    res.setHeader('Content-Type', getContentType(filename));
+  } else {
+    res.setHeader('Content-Type', 'application/octet-stream');
+  }
+
   res.send(buffer);
 }));
 

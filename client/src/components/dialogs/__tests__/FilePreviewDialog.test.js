@@ -177,8 +177,6 @@ describe('FilePreviewDialog', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
 
-    mockGetFileBlob.mockClear();
-
     rerender(
       <FilePreviewDialog
         {...defaultProps}
@@ -188,11 +186,11 @@ describe('FilePreviewDialog', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
-    });
-    await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
+    // Must have loaded b.jpg (opened file), never a.jpg (index 0)
+    expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+    expect(mockGetFileBlob).not.toHaveBeenCalledWith('/a.jpg', expect.any(Object));
   });
 
   it('truncates long header filename and shows tooltip on hover (desktop)', async () => {

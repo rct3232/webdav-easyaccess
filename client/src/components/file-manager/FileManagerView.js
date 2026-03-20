@@ -449,7 +449,7 @@ const FileManagerView = ({
           />
 
           <Box
-            sx={{ flex: 1, minHeight: 0, position: 'relative' }}
+            sx={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}
             onDragEnter={contentAreaDnD.handleContentAreaDragEnter}
             onDragOver={contentAreaDnD.handleContentAreaDragOver}
             onDragLeave={contentAreaDnD.handleContentAreaDragLeave}

@@ -176,6 +176,14 @@ flowchart TD
 
 When implementing or reviewing tests for auth and users, cover at least:
 
+For the full browser-flow inventory and rollout order for login, register, protected routing, and MyPage-adjacent auth outcomes, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on behavior and contract anchors.
+
+Browser-flow anchors for shared Playwright auth helpers:
+
+- Reuse the login form selectors documented in `docs/spec/client/components/auth/LoginFormView.md` for username, password, and submit interactions.
+- Shared auth helpers may cover both seeded admin login and approved standard-user login when the user fixture is available or provisioned through E2E setup.
+- Protected-route redirect scenarios for anonymous users must begin from a browser state with no auth session, typically by starting from a fresh browser context or by clearing cookies and storage before visiting the protected route.
+
 - **Duplicate username/email:** Register with existing username or email → 400 with appropriate `errorCode`.
 - **Pending/rejected login:** User with status `pending` or `rejected` → 403 with corresponding `errorCode`; no token returned.
 - **Rate limit:** Excessive login attempts from same IP → 429 with `errorCode` for rate limit and `Retry-After` header; after successful login, failures for that key are cleared.

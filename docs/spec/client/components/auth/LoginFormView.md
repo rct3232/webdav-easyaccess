@@ -59,7 +59,14 @@
 - Show the register affordance only when `registrationEnabled` is true
 - Render error and warning alerts when non-empty strings are provided
 
-### 2.7 Verification Scenarios
+### 2.7 E2E Selector Contract
+
+- Keep the username field addressable by `input[name="username"]`.
+- Keep the password field addressable by `input[name="password"]`.
+- Keep the submit action reachable through the login form submit button (`form button[type="submit"]`).
+- Shared Playwright auth helpers may rely on these selectors for admin login, approved-user login, and anonymous-route setup checks.
+
+### 2.8 Verification Scenarios
 
 - [ ] Renders username/password fields and submit button
 - [ ] Shows spinner while `settingsLoading`
@@ -67,7 +74,7 @@
 - [ ] Shows register affordance only when `registrationEnabled`
 - [ ] Uses `registerPath` without importing router modules directly
 
-### 2.8 Edge Cases
+### 2.9 Edge Cases
 
 - Empty `error`/`warning` strings: no alert rendered
 - `registrationEnabled=false`: no secondary navigation affordance

@@ -58,6 +58,10 @@
 - Cancel and Confirm disabled when loading
 - Error cleared on onChange when onClearError provided
 - Enter key triggers onConfirm when not loading
+- E2E selector contract:
+  - the rename input exposes a stable `data-testid`
+  - the confirm button exposes a stable `data-testid`
+  - rename flow tests should not depend on localized button text
 
 ### 2.7 Verification Scenarios
 

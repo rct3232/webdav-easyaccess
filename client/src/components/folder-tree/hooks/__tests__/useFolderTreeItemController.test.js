@@ -1,0 +1,324 @@
+/**
+ * useFolderTreeItemController tests.
+ * @see docs/spec/client/hooks/useFolderTreeItemController.md
+ * @see docs/TESTING_STRATEGY.md
+ */
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
+import useFolderTreeItemController from '../useFolderTreeItemController';
+
+jest.mock('../../../../services/folderTreeGateway', () => ({
+  __esModule: true,
+  default: {
+    listFolderChildren: jest.fn(),
+  },
+}));
+
+jest.mock('../../../../hooks/useDropToUpload', () => ({
+  useDropToUpload: jest.fn(),
+}));
+
+import folderTreeGateway from '../../../../services/folderTreeGateway';
+import { useDropToUpload } from '../../../../hooks/useDropToUpload';
+
+const createProps = (overrides = {}) => ({
+  path: '/root',
+  name: 'root',
+  currentPath: '/',
+  expandedPaths: new Set(),
+  onPathClick: jest.fn(),
+  onToggleExpand: jest.fn(),
+  hasReadPermission: true,
+  hasWritePermission: true,
+  children: [],
+  ...overrides,
+});
+
+describe('useFolderTreeItemController', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    folderTreeGateway.listFolderChildren.mockResolvedValue([]);
+    useDropToUpload.mockReturnValue({
+      isDropTarget: false,
+      isDraggingOver: false,
+      handleFolderDragOver: jest.fn(),
+      handleFolderDragEnter: jest.fn(),
+      handleFolderDragLeave: jest.fn(),
+      handleFolderDrop: jest.fn(),
+    });
+  });
+
+  it('lazy loads children when expanded and not yet loaded', async () => {
+    folderTreeGateway.listFolderChildren.mockResolvedValue([
+      { path: '/root/docs', name: 'docs', hasReadPermission: true, hasWritePermission: true },
+    ]);
+
+    const { result } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          expandedPaths: new Set(['/root']),
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '/root' })
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.children).toEqual([
+        { path: '/root/docs', name: 'docs', hasReadPermission: true, hasWritePermission: true },
+      ]);
+      expect(result.current.hasLoaded).toBe(true);
+      expect(result.current.loading).toBe(false);
+    });
+  });
+
+  it('adds a created child once and requests expansion when the parent is collapsed', async () => {
+    const props = createProps();
+    const { result, rerender } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
+      initialProps: props,
+    });
+
+    act(() => {
+      rerender({
+        ...props,
+        treeUpdateTrigger: {
+          type: 'created',
+          folderPath: '/root/docs',
+          folderName: 'docs',
+          parentPath: '/root',
+        },
+      });
+    });
+
+    expect(result.current.children).toEqual([{ path: '/root/docs', name: 'docs' }]);
+    expect(props.onToggleExpand).toHaveBeenCalledWith('/root');
+
+    act(() => {
+      rerender({
+        ...props,
+        treeUpdateTrigger: {
+          type: 'created',
+          folderPath: '/root/docs',
+          folderName: 'docs',
+          parentPath: '/root',
+        },
+      });
+    });
+
+    expect(result.current.children).toEqual([{ path: '/root/docs', name: 'docs' }]);
+  });
+
+  it('removes the matching child on deleted updates', () => {
+    const props = createProps({
+      children: [
+        { path: '/root/docs', name: 'docs' },
+        { path: '/root/photos', name: 'photos' },
+      ],
+    });
+
+    const { result, rerender } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
+      initialProps: props,
+    });
+
+    act(() => {
+      rerender({
+        ...props,
+        treeUpdateTrigger: {
+          type: 'deleted',
+          folderPath: '/root/docs',
+        },
+      });
+    });
+
+    expect(result.current.children).toEqual([{ path: '/root/photos', name: 'photos' }]);
+  });
+
+  it('reloads on refresh updates only when expanded or home', async () => {
+    const expandedProps = createProps({
+      expandedPaths: new Set(['/root']),
+      children: [{ path: '/root/existing', name: 'existing' }],
+    });
+    const { rerender: rerenderExpanded } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
+      initialProps: expandedProps,
+    });
+
+    act(() => {
+      rerenderExpanded({
+        ...expandedProps,
+        treeUpdateTrigger: { type: 'refresh' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledTimes(1);
+    });
+
+    folderTreeGateway.listFolderChildren.mockClear();
+
+    const homeProps = createProps({
+      isHome: true,
+      children: [{ path: '/root/existing', name: 'existing' }],
+    });
+    const { rerender: rerenderHome } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
+      initialProps: homeProps,
+    });
+
+    act(() => {
+      rerenderHome({
+        ...homeProps,
+        treeUpdateTrigger: { type: 'refresh' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledTimes(1);
+    });
+
+    folderTreeGateway.listFolderChildren.mockClear();
+
+    const collapsedProps = createProps({
+      children: [{ path: '/root/existing', name: 'existing' }],
+    });
+    const { rerender: rerenderCollapsed } = renderHook((hookProps) => useFolderTreeItemController(hookProps), {
+      initialProps: collapsedProps,
+    });
+
+    act(() => {
+      rerenderCollapsed({
+        ...collapsedProps,
+        treeUpdateTrigger: { type: 'refresh' },
+      });
+    });
+
+    expect(folderTreeGateway.listFolderChildren).not.toHaveBeenCalled();
+  });
+
+  it('prefers explicit node permissions over sharedFoldersMap fallback', () => {
+    const sharedFoldersMap = new Map([
+      ['/shared', { permission: PERMISSIONS.WRITE }],
+    ]);
+
+    const { result } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          path: undefined,
+          name: undefined,
+          node: {
+            path: '/shared',
+            name: 'shared',
+            hasReadPermission: false,
+            hasWritePermission: false,
+          },
+          sharedFoldersMap,
+        })
+      )
+    );
+
+    expect(result.current.hasReadPermission).toBe(false);
+    expect(result.current.hasWritePermission).toBe(false);
+    expect(result.current.isDisabled).toBe(true);
+  });
+
+  it('derives permissions from sharedFoldersMap when explicit node permissions are absent', () => {
+    const sharedFoldersMap = new Map([
+      ['/shared', { permission: PERMISSIONS.WRITE }],
+    ]);
+
+    const { result } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          path: '/shared',
+          name: 'shared',
+          hasReadPermission: false,
+          hasWritePermission: false,
+          sharedFoldersMap,
+        })
+      )
+    );
+
+    expect(result.current.hasReadPermission).toBe(true);
+    expect(result.current.hasWritePermission).toBe(true);
+    expect(result.current.isDisabled).toBe(false);
+  });
+
+  it('publishes drag start and drag end only for enabled desktop items', () => {
+    const onInternalDragStart = jest.fn();
+    const onInternalDragEnd = jest.fn();
+    const { result } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          onInternalDragStart,
+          onInternalDragEnd,
+        })
+      )
+    );
+
+    const event = {
+      stopPropagation: jest.fn(),
+      dataTransfer: {
+        effectAllowed: '',
+        setData: jest.fn(),
+      },
+    };
+
+    act(() => {
+      result.current.handleDragStart(event);
+    });
+
+    expect(onInternalDragStart).toHaveBeenCalledWith('/root');
+    expect(event.dataTransfer.effectAllowed).toBe('move');
+    expect(event.dataTransfer.setData).toHaveBeenCalledWith('text/plain', '/root');
+
+    act(() => {
+      result.current.handleDragEnd();
+    });
+
+    expect(onInternalDragEnd).toHaveBeenCalled();
+  });
+
+  it('does not start drag for disabled or mobile items', () => {
+    const onInternalDragStart = jest.fn();
+    const event = {
+      stopPropagation: jest.fn(),
+      dataTransfer: {
+        effectAllowed: '',
+        setData: jest.fn(),
+      },
+    };
+
+    const { result: disabledResult } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          hasReadPermission: false,
+          onInternalDragStart,
+        })
+      )
+    );
+
+    act(() => {
+      disabledResult.current.handleDragStart(event);
+    });
+
+    expect(onInternalDragStart).not.toHaveBeenCalled();
+    expect(event.dataTransfer.setData).not.toHaveBeenCalled();
+
+    const { result: mobileResult } = renderHook(() =>
+      useFolderTreeItemController(
+        createProps({
+          isMobile: true,
+          onInternalDragStart,
+        })
+      )
+    );
+
+    act(() => {
+      mobileResult.current.handleDragStart(event);
+    });
+
+    expect(onInternalDragStart).not.toHaveBeenCalled();
+  });
+});

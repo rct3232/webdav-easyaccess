@@ -21,6 +21,17 @@ import { handlers } from './mocks/handlers';
 
 export const server = setupServer(...handlers);
 
+// React 18 expects this flag in custom Jest/jsdom setups so async updates can
+// be tracked through act-aware helpers from React Testing Library.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+global.IS_REACT_ACT_ENVIRONMENT = true;
+if (typeof window !== 'undefined') {
+  window.IS_REACT_ACT_ENVIRONMENT = true;
+}
+if (typeof self !== 'undefined') {
+  self.IS_REACT_ACT_ENVIRONMENT = true;
+}
+
 // IntersectionObserver mock for hooks that use it (e.g. useInfiniteScroll)
 global.IntersectionObserver = class MockIntersectionObserver {
   constructor(callback) {
@@ -37,6 +48,16 @@ global.ResizeObserver = class ResizeObserver {
   unobserve() { }
   disconnect() { }
 };
+
+// JSDOM does not implement canvas.getContext(). Return null so string-width
+// helpers use their existing no-canvas fallback without noisy warnings.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    writable: true,
+    value: jest.fn(() => null),
+  });
+}
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => server.resetHandlers());

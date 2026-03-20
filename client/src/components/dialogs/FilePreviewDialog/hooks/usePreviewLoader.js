@@ -46,7 +46,9 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
 
       setLoading(false);
     } catch (err) {
-      if (err?.name === 'AbortError') return;
+      // Treat abort (user navigated away or effect re-ran) as non-fatal.
+      // httpClient converts AbortError to Error with code ECONNABORTED.
+      if (err?.name === 'AbortError' || err?.code === 'ECONNABORTED') return;
       console.error('Preview load error:', err);
       setError(t('preview.loadFail'));
       setLoading(false);

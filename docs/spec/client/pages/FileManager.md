@@ -1,94 +1,244 @@
-# FileManager Spec
+# FileManager Page Spec
+
+This spec defines the **FileManager page shell** responsibilities and how it composes the **explorer core** (controller hooks + views) together with **product-specific overlays** (share-link mode, virtual collections, and related policies).
+
+It intentionally documents *who owns what*, not file-by-file implementation details for submodules. Detailed contracts belong in the referenced component/hook/service specs.
+
+---
 
 ## 1. Overview
 
 | Item | Description |
 |------|-------------|
 | Route path | `/files/*` |
-| Role | Main file browser: lists files/folders, supports CRUD, bulk operations, drag-and-drop upload, share link mode. Used as the primary file management UI and also rendered inside ShareLinkLoader for shared directories. |
+| Role | FileManager page shell: route-level composition for the main file browser UI plus product overlays around the explorer core. |
+| Also used by | `ShareLinkLoader` to render shared directory browsing (share-link mode / limited operations). |
+
+### 1.1 Route-param and path ownership contract
+
+- `/files/*` is the **single route-level owner** of the explorer location expressed in the URL.
+- The splat param (`*`) represents the explorer path under `/files/` and is interpreted as an absolute explorer path string:
+  - empty/undefined splat → `/`
+  - `a/b` splat → `/a/b`
+- The page shell must wire this contract through the listing/navigation seams (for example `useFileManager` for path/listing) and must not duplicate splat parsing logic in multiple places.
 
 ---
 
-## 2. Implementation Spec
+## 2. Boundaries (Shell vs Core vs Overlays)
 
-### 2.1 File Path
+This page is being refactored into explicit layers per `docs/CODING_STYLE.md` ("Client Layering Rules").
 
-- **Source:** `client/src/pages/FileManager.js`
-- **Test file:** `client/src/pages/__tests__/FileManager.test.js`
+### 2.1 Page shell (this spec owns)
 
-### 2.2 Hooks Used
+The FileManager **page shell** owns:
 
-- useAuth, useNavigate, useTranslation
-- useFileManager (path, files, loading, sort, loadFiles, hasWritePermission)
-- useSelection (selectionMode, selectedFiles, handlers)
-- useBulkOperations
-- useFileOperations
-- useFileManagerDialogs
-- useDropToUpload, usePullToRefresh (mobile)
-- useResponsive (isMobile)
-- useInfiniteScroll
-- useMessage (toast/error·warning for progress and dialogs), useRecentFile
+- Route-level composition and wiring (auth-protected route vs share-link embedding).
+- Composing explorer controller hooks and passing prepared props into the FileManager view(s).
+- Product-specific overlays for this page (see 2.3).
+- Keeping user-visible behavior stable while structure is extracted.
 
-### 2.3 Main Child Components
+The page shell does **not** own:
 
-- FileManagerHeader, Breadcrumb, FileManagerControls (includes bulk actions when selection mode), FAB, FloatingSearchBar
-- FileList, FileGrid, FileDetail (view-mode-dependent)
-- FileContextMenu, FileActionSheet
-- FolderTree
-- FileOperationProgress
-- UploadDialog, CreateFolderDialog, FilePreviewDialog, FolderPickerDialog
-- ShareDialog, ShareTargetDialog, LoginDialog, ConfirmDialog
-- ConflictResolveDialog, RenameDialog, FilePropertiesDialog
+- Large derived explorer state (search/sort/display list/view mode) beyond wiring outputs into views.
+- Command orchestration (upload/rename/move/copy/delete/download).
+- Navigation orchestration (path changes, optimistic updates/rollback).
+- Progress state coordination and retry/cancel orchestration.
+- Explorer IO concerns such as directory listing, permission/capability checks, recent-file repository access, notifier subscriptions, metadata enrichment, or browser-preference storage access.
 
-### 2.4 Route Protection
+### 2.2 Explorer core (composed by the shell)
 
-- Wrapped by PrivateRoute when rendered from `/files/*` (auth required)
-- When rendered by ShareLinkLoader (share link mode): no auth required; optional login modal for “add to my permissions”
+Explorer core is the reusable “file explorer” core for browsing and acting on a directory. It is composed of:
 
-### 2.5 Main User Flows
+- **Controller hooks** (planned):
+  - `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/listing derivation plus session-boundary tokens)
+  - `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
+  - `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
+  - `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
+  - `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
+  - `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
+- **Pure view(s)** (planned):
+  - `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
+- **Gateways/adapters** (planned):
+  - `docs/spec/client/services/explorerGateway.md` (IO boundary for listing, operations, and related IO concerns)
 
-- Browse folders (path click, breadcrumb, back)
-- Search (client-side filter by name)
-- Sort (name, date, size, type)
-- View mode toggle (list, grid, detail)
-- Selection mode: entry via desktop single click or mobile long-press; exit when `selectedFiles.size === 0` (auto-exit) or when desktop user clicks empty space; no manual toggle button; bulk move, copy, download, delete
-- No row/card checkbox controls are required for selection UX. Selection is interaction-driven (click/modifier/long-press) and visual state is shown by row/card highlighting.
-- File click: desktop — single click = enter selection mode + select; double click = open folder/preview; Ctrl+click = add/remove from selection; Shift+click = range select. Mobile — touch = open folder/preview; long-press = enter selection mode + select; in selection mode, tap = toggle selection
-- More button per item: opens FileActionSheet (context actions); visible when not in selection mode
-- Context menu / action sheet: right-click or More button — download, rename, move, copy, share, properties, delete
-- Drag-and-drop: file-to-folder move, external file upload
-  - The content-area drop zone (dotted overlay + “drop here” copy) is **scoped to the file view area** (the list/grid/detail content region), not the whole page. Header/breadcrumb/controls should not be covered by the overlay.
-- Pull-to-refresh (mobile)
-- Create folder, upload files
-- Share link mode: login, add to shared, leave share
+Explorer core explicitly does **not** own product overlays such as share-link policy, “virtual collections”, or feature-specific modal flows. That includes `useShareLinkOverlay`, which is a page/product overlay controller, not part of reusable explorer core.
 
-### 2.6 handleFileClick Semantics
+### 2.3 Product-specific overlays (remain in the shell)
 
-- **Signature:** `handleFileClick(file, event)` — receives file and synthetic event for modifier/key detection.
-- **Desktop:** Single click → enter selection mode + select only this (clear others); double click → open folder or preview; Ctrl+click → add/remove from selection; Shift+click → range select from last anchor to current. Uses `handleFileClickSelection` from `useSelection` for selection logic.
-- **Mobile:** Touch → open folder or preview (same as before). Long-press handled via `onLongPressSelect` (separate handler).
-- **Auto-exit:** When `selectedFiles.size === 0`, selection mode exits automatically (via `useSelection` or effect in FileManager).
+The FileManager page shell must continue to own these overlays and policies (until separately specified and extracted):
 
-### 2.7 Integration Test Scenarios
+- **Share-link mode policy**:
+  - Limited operations (e.g. no upload/create; download-only bulk operations).
+  - Optional login prompt / “add to my permissions” flows when applicable.
+  - Composition of product overlay controllers such as `useShareLinkOverlay`.
+- **Virtual collections and product routing state**:
+  - Special paths/collections such as `__recent__` and `__shared__` (product-defined).
+  - Rules for deciding *when* those collections are active and which explorer flow they should invoke.
+  - The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
+- **Product dialogs / feature flows** not part of generic explorer:
+  - Share dialogs and permission-request flows.
+  - Any “add-to-shared” / permission-denied UX that is product-defined.
 
-- [ ] Initial render with loading state
-- [ ] File list loads and displays after load
-- [ ] Path navigation updates list
-- [ ] Search filters files
-- [ ] Selection mode: select all, bulk actions
-- [ ] Selection interactions use click / Ctrl(or Meta)+click / Shift+click / long-press; tests should avoid `getByRole('checkbox')` for file rows
-- [ ] Context menu opens and actions call correct handlers
-- [ ] Upload flow (conflict check, progress, completion)
-- [ ] Share link mode: unauthenticated vs authenticated behavior
-- [ ] Permission request from ShareTargetDialog: open Share on folder (no permission) → Request read permission → UI shows requested state (plan 3.2, MyPage 2.6)
+---
 
-### 2.8 Conditional Rendering
+## 3. Implementation Spec (Current + Target Shape)
 
-- Loading: spinner while loading files
-- Share link mode: simplified header, no upload/create, download-only bulk actions
-- Breadcrumb, FAB: shown on all viewports
-- Mobile: collapsible FolderTree, FileActionSheet
-- Add-to-shared modal when user has share link but lacks permission
-- **Scroll area:** padding-bottom = FloatingSearchBar + FAB height (FLOATING_BOTTOM_HEIGHT_MOBILE / FLOATING_BOTTOM_HEIGHT_DESKTOP from constants/fileManager) + safe-area inset so the last list item can scroll above the fixed bottom area.
-- **Overscroll:** Global `overscroll-behavior: none` (e.g. index.css on html/body) and scroll container `overscrollBehaviorY: 'contain'` to prevent mobile bounce from shifting header and controls.
-- **DnD overlay scope:** When `useDropToUpload().isDraggingOver` is true (and not share-link mode), the dotted overlay is rendered over the file view area only (list/grid/detail container).
+### 3.1 File paths
+
+- **Source (current)**: `client/src/pages/FileManager/FileManager.js`
+- **Test file (current)**: `client/src/pages/__tests__/FileManager.test.js`
+
+### 3.2 Target composition (no UX change)
+
+The end-state after the acceptance closure is a small page shell that:
+
+- Derives route context (auth vs share-link mode) and page-level overlay state.
+- Calls explorer controller hooks and product overlay hooks in the correct order.
+- Renders a pure view (`FileManagerView`) plus product-only dialogs/overlays.
+- Keeps explorer-specific IO/storage/repository details out of the page module.
+
+Conceptually:
+
+```
+FileManager (page shell)
+  -> explorer controllers (session/navigation/commands/progress)
+  -> FileManagerView (pure view)
+  -> product overlays (share-link mode, virtual collections, share dialogs, etc.)
+```
+
+### 3.3 Current dependencies (to be re-homed)
+
+While the current implementation is still monolithic, it uses (directly or indirectly) these roles:
+
+- Auth + routing: `useAuth`, `useNavigate`, route wrappers (e.g. `PrivateRoute` at the router level)
+- Explorer/session-ish state: `useFileManager`, `useSelection`
+- Commands: `useBulkOperations`, `useFileOperations`
+- Dialog orchestration: `useFileManagerDialogs`
+- UX + utilities: `useDropToUpload`, `usePullToRefresh`, `useResponsive`, `useInfiniteScroll`, `useMessage`, `useRecentFile`
+
+As extraction proceeds, the page shell should retain only *composition* responsibility; orchestration and derived state move to the relevant explorer controller hooks. The page may still pass product context into those hooks, but it should not remain the owner of explorer storage/service/notifier wiring.
+
+---
+
+## 4. Page Responsibilities (Explicit Allocation)
+
+### 4.1 Shell-owned responsibilities
+
+- **Route context**:
+  - Rendering as `/files/*` (auth-required route composition).
+  - Rendering inside share-link flows (no auth required; limited operations policy).
+- **Product overlays** (see 2.3).
+- **Feature wiring**:
+  - Pass view-ready state + callbacks into the view.
+  - Decide which dialogs/overlays render for this page context.
+  - Inject product policy into explorer interaction/navigation controllers instead of keeping large inline flow handlers in the page body.
+  - Reset or re-key selection state when the explorer session boundary changes. `useExplorerSession` may expose a boundary token such as `sessionKey`, but the page shell / selection seam owns the actual selection reset behavior.
+  - Delegate explorer-specific permission checks, recent-file persistence/listener wiring, metadata enrichment, and operation-refresh decisions to explorer hooks/gateways instead of importing storage/service/notifier helpers directly in the page shell.
+  - Compose `useFileManager` as the path/listing seam only. Search/sort/view-mode session state and preference persistence come from `useExplorerSession`, not from `useFileManager`.
+  - Avoid keeping explorer-control chrome state in the page shell when a lower view/controller seam can own it locally. For example, sort-menu open/close state belongs in the control/view seam rather than `FileManager`.
+  - Prefer grouped sub-view models when passing data into `FileManagerView` rather than flattening dozens of shell/controller outputs into one wide prop surface.
+  - Prefer grouped handler bundles as well: item interaction, command flows, progress affordances, and refresh-indicator presentation should not be merged into one flat callback object.
+  - Apply the same grouping rule to dialog state: action/context targets, picker state, modal visibility, and dialog file payloads should be separated instead of merged into one flat object.
+  - Apply the same grouping rule to explorer session state: control inputs (search/sort/view/menu state) should be distinct from listing/render state (displayed files, thumbnails, infinite scroll, loading).
+  - Apply the same grouping rule to selection and action state: selection-model data, bulk capability flags, explorer capabilities, tree refresh state, and transfer/drag state should not be merged into one flat bag.
+  - When the shell memoizes grouped handler bundles for the view, callback identities should remain stable unless the observable behavior actually changes. Avoid recreating command callbacks on every render when they are passed through memoized grouped props.
+
+### 4.2 Explorer core responsibilities (owned by extracted modules)
+
+- **Navigation**:
+  - Browse folders via path click, breadcrumb navigation, and back navigation.
+  - Transition rules when opening folders from list/grid/detail.
+  - Permission-check IO for explorer navigation through `useExplorerNavigation` + `explorerGateway`, rather than shell-owned `fileService` imports.
+- **Session**:
+  - Search (client-side filter by name).
+  - Sort (name, date, size, type).
+  - View mode toggle (list, grid, detail) using the existing preference-storage policy rather than shell-owned browser storage access.
+  - Session boundary tokens and local derived listing state that downstream selection/view layers consume.
+  - Preference-backed explorer session state ownership for search/sort/view so that page and listing seams do not duplicate or externally inject those responsibilities.
+- **Commands**:
+  - Upload, rename, move, copy, delete, download.
+  - Conflict resolution entry points for uploads/operations.
+  - Operation-completion refresh decisions and tree refresh coordination for explorer operations so the page shell does not keep inline refresh-policy logic.
+- **Listing / recent-file integration**:
+  - Directory listing, shared-entry loading, metadata enrichment, current-path access checks, and recent-files repository/notifier access through `useFileManager`, `useRecentFile`, and `explorerGateway`.
+  - Recent-file recovery flows that preserve the current UX without the page shell or recent-file controller importing repositories or low-level file services directly.
+- **Progress**:
+  - Progress list/drawer state.
+  - Retry/cancel entry points and user-visible notifications.
+
+---
+
+## 5. User-Visible Behavior (Contract)
+
+This section captures observable behavior that must remain unchanged as responsibilities are extracted.
+
+### 5.1 Selection behavior
+
+- **Entry/exit**
+  - Desktop: single click enters selection mode + selects.
+  - Mobile: long-press enters selection mode + selects.
+  - Auto-exit when `selectedFiles.size === 0`.
+  - Desktop exit can occur when clicking empty space (as implemented today).
+- **No checkbox UX requirement**
+  - File rows/cards do not require dedicated checkboxes. Selection is interaction-driven and indicated visually.
+- **Click semantics**
+  - Desktop: single click selects; double click opens folder/preview; Ctrl(or Meta)+click toggles; Shift+click range-selects.
+  - Mobile: tap opens folder/preview when not in selection; tap toggles selection when in selection; long-press enters selection.
+
+### 5.2 Context actions
+
+- Per-item “More” opens an action sheet (or context menu) when not in selection mode.
+- Context actions include: download, rename, move, copy, share, properties, delete (availability varies by mode/permission).
+
+### 5.3 Drag and drop
+
+- Supports:
+  - File-to-folder move (internal DnD).
+  - External file upload (drop to upload).
+- **DnD overlay scope**
+  - When dragging over for upload, the dotted overlay is scoped to the file-view area (list/grid/detail region), not the entire page (header/breadcrumb/controls must remain uncovered).
+
+### 5.4 Share-link mode policy (overlay)
+
+- When in share-link mode:
+  - Header and available actions are simplified per current behavior.
+  - Upload/create flows are not available.
+  - Bulk actions are restricted (download-only).
+  - Optional login modal for “add to my permissions” flows remains available as today.
+
+### 5.5 Scroll/overscroll behavior (mobile)
+
+- **Scroll area padding** includes space for fixed-bottom UI (FloatingSearchBar + FAB) plus safe-area inset so the last list item can scroll above fixed UI.
+- **Overscroll containment** prevents mobile bounce from shifting header/controls:
+  - global `overscroll-behavior: none` and scroll container `overscrollBehaviorY: 'contain'` (as currently implemented).
+
+---
+
+## 6. Verification Scenarios (Observable Outcomes)
+
+These scenarios should stay true throughout extraction steps (verify “what”, not “how”).
+
+### 6.1 Page-test seam guidance
+
+- Page-level `FileManager` tests should prioritize observable explorer outcomes such as listing, navigation, selection, progress, and dialog flows.
+- When a scenario is not specifically verifying floating action button or sidebar tree behavior, tests may replace heavy MUI chrome such as `FAB` / `SpeedDial` or shell-only tree composition with lighter test doubles so shell-level scenarios do not inherit unrelated ref/focus/transition noise.
+- Apply the same rule to shell-owned async chrome: when a scenario is not about sidebar recent/shared loading, tests may stub those seams so background subscriptions and initial async loads do not create unrelated React `act(...)` warnings.
+- Scenarios that do verify create/upload/share-link entry points may still use that lighter seam, as long as the user-visible trigger names and resulting dialogs/outcomes remain equivalent.
+- After router navigation, notifier dispatch, or double-click open flows, wait for the final user-visible anchor (`findBy*`, `waitFor`, `waitForElementToBeRemoved`) instead of assuming one render tick is enough.
+
+- [ ] Initial render shows loading state, then resolves into the correct view once files load.
+- [ ] Path navigation updates the visible list/grid/detail content and breadcrumb correctly.
+- [ ] Search filters by file name as before (same matching behavior).
+- [ ] Sort order matches current behavior for each sort mode.
+- [ ] Selection interactions:
+  - [ ] Desktop: click / Ctrl(or Meta)+click / Shift+click / double click
+  - [ ] Mobile: tap / long-press with correct toggling behavior
+  - [ ] Auto-exit on empty selection
+  - [ ] Tests do not assume checkboxes for file-row selection UI
+- [ ] Context menu/action sheet opens and actions produce the same user-visible outcomes.
+- [ ] Upload flow:
+  - [ ] Conflict prompt appears when expected
+  - [ ] Progress items render and complete/cancel/retry behave the same
+- [ ] Share-link mode:
+  - [ ] Unauthenticated vs authenticated behaviors match current UX
+  - [ ] Restricted operations remain restricted

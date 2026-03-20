@@ -25,6 +25,9 @@ stryker-tmp/
 # Test results (테스트 결과 파일 - 선택적)
 test-results/
 *.xml
+playwright-report/
+e2e-data/
+.env.e2e
 
 # FFmpeg binary
 ffmpeg.exe

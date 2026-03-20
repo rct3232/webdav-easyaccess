@@ -18,19 +18,6 @@ const defaultProps = {
   onFileClick: jest.fn(),
 };
 
-// Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
-  constructor(callback) {
-    this.callback = callback;
-  }
-  observe(element) {
-    // Initial call to simulate observer trigger
-    this.callback([{ contentRect: { width: 200 } }]);
-  }
-  unobserve() { }
-  disconnect() { }
-};
-
 describe('RecentFilesSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();

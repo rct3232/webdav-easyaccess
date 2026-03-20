@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Manages gallery index state and navigation: syncs index from file.path on open, provides goPrev/goNext, handles touch swipe gestures for navigation |
+| Role | Manages gallery index state and navigation: derives opened index from file.path, provides goPrev/goNext, handles touch swipe gestures for navigation |
 | Used by components/pages | FilePreviewDialog |
 
 ---
@@ -40,12 +40,14 @@
 ### 2.4 Dependencies
 
 - Other hooks: none
-- Refs (internal): `touchStartX`, `touchStartedOnPlyrControls`, `lastSyncedFilePathRef`
+- Refs (internal): `touchStartX`, `touchStartedOnPlyrControls`
 
 ### 2.5 Side Effects
 
-- `useLayoutEffect`: syncs `currentMediaIndex` from `file.path` when dialog opens or `mediaFiles` changes; does not lock to 0 if file not found (resilient to async mediaFiles population). Uses `lastSyncedFilePathRef` to prevent re-sync on gallery arrow navigation.
-- `useEffect`: resets `currentMediaIndex` to 0 and clears `lastSyncedFilePathRef` when `open` becomes false.
+- `openedIndex` is derived during render via `mediaFiles.findIndex(f => f.path === file.path)`. No sync effect needed; PreviewThumbnailBar receives the correct index on first paint, avoiding scroll animation on open.
+- `navigationOffset` (state) tracks user prev/next navigation from the opened index.
+- `currentMediaIndex = clamp(openedIndex + navigationOffset, 0, mediaFiles.length - 1)`; falls back to 0 when `openedIndex < 0`.
+- `useEffect`: resets `navigationOffset` to 0 when `open` becomes false or when `file?.path` changes.
 
 ### 2.6 Error Handling
 
@@ -53,16 +55,16 @@
 
 ### 2.7 Verification Scenarios
 
-- [ ] Initial `currentMediaIndex` is 0
+- [ ] Initial `currentMediaIndex` matches `file.path` in mediaFiles (derived from openedIndex)
 - [ ] `goPrev` decrements index; disabled at 0
 - [ ] `goNext` increments index; disabled at last item
 - [ ] Swipe left calls `goNext`; swipe right calls `goPrev`
-- [ ] `currentMediaIndex` resets to 0 when dialog closes
-- [ ] Index syncs correctly to matching file in mediaFiles on open
-- [ ] If file not in mediaFiles on open, index is not set to 0
+- [ ] `currentMediaIndex` resets to match opened file when dialog closes
+- [ ] Index is derived correctly from matching file in mediaFiles on open
+- [ ] If file not in mediaFiles on open, openedIndex is -1 and display falls back to file
 
 ### 2.8 Edge Cases
 
 - Touch started on Plyr controls: swipe/tap navigation suppressed.
 - Horizontal swipe threshold: >50px diff triggers navigation, not tap.
-- `lastSyncedFilePathRef` prevents re-sync on user-initiated gallery navigation.
+- `navigationOffset` isolates user prev/next from the derived opened index; no re-sync on arrow navigation.

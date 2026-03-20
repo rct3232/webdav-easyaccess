@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Recursive folder tree for share dialog. Shows expand/collapse, permissions, add/edit actions. Uses folderTree Map. |
+| Role | Recursive view for the share dialog folder tree. Renders expand/collapse state, folder labels, and prepared menu-button state for each node. Hover label animation must stay within prepared CSS/handler seams rather than direct document writes. |
 | Used in | ShareDialog |
-| Related components | FileTreeSkeleton, PERMISSIONS |
+| Related components | `FileTreeSkeleton`, `PERMISSIONS` |
 
 ---
 
@@ -26,7 +26,7 @@
 | expandedPaths | Set | Y | - | Expanded paths |
 | loadingPaths | Set | Y | - | Loading paths |
 | toggleExpand | function | Y | - | Toggle expand |
-| folderPermissions | object | Y | - | Folder permissions |
+| folderPermissions | object | Y | - | Folder permissions map keyed by path |
 | isAdminMode | boolean | Y | - | Admin mode |
 | userId | string | N | - | Target user ID |
 | user | object | N | - | User |
@@ -50,25 +50,32 @@
 
 ### 2.4 Dependencies
 
-- **imports:** FileTreeSkeleton, PERMISSIONS
+- **imports:** `FileTreeSkeleton`, `deriveShareFolderAccessView`
 - **Reference implementation:** `client/src/components/dialogs/ShareFolderTree.js`
+- **Boundary:** The component must not create/remove global style tags or call `document.*`. Any hover-scroll behavior should use prepared CSS variables/handlers only.
 
 ### 2.5 i18n Keys
 
-- dialogs.*, permissions.*
+- `dialogs.*`, `permissions.*`
 
 ### 2.6 Conditional Rendering
 
 - Recursive children when expanded
-- GroupAdd/Edit icons for permissions
-- isLoading: skeleton
+- Menu button reflects prepared permission-count / changed-state information
+- Loading state renders skeleton/progress affordances
+- User filtering and menu-button policy should be prepared upstream where possible; this component should stay primarily presentational
+- Folder-name overflow animation may derive scroll distance from the hovered node, but keyframes/style ownership must remain outside `document` mutation paths
 
 ### 2.7 Verification Scenarios
 
 - [ ] Expand/collapse
-- [ ] Permission display
+- [ ] Permission-count/menu button display
+- [ ] Owner-locked button behavior in admin mode
+- [ ] Changed-state badge rendering
 - [ ] Menu open
+- [ ] Overflowing folder labels animate on hover without requiring direct `document` access in the component
 
 ### 2.8 Edge Cases
 
 - node null – return null
+- Loading node without children should render a tree skeleton row

@@ -4,8 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Shared item management: load permission info, request permission, cancel request, revoke. For SharedManageDialog, ShareTargetDialog. |
-| Used by components/pages | SharedManageDialog, ShareTargetDialog |
+| Role | Controller hook for shared-item management dialogs. Loads raw permission/request state, derives UI-ready access fields, and exposes public actions for request, cancel, and revoke flows. |
+| Used by components/pages | `SharedManageDialog`, non-admin branch inside `ShareTargetDialog` |
+| Does not own | JSX rendering, pure access derivation rules, low-level permission/request transport, or reusable transient-message timing/composition policy |
 
 ---
 
@@ -20,58 +21,72 @@
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| open | boolean | Y | Dialog open |
-| targetPath | string | Y | Target path |
-| displayName | string | Y | Display name |
-| isDirectory | boolean | Y | Is directory |
-| user | object | Y | User |
-| directHasReadPermission | boolean | N | Direct read |
-| onMessage | function | N | Message |
-| onActionComplete | function | N | Action complete |
-| onClose | function | N | Close |
+| open | boolean | Y | Dialog open state |
+| targetPath | string | Y | Target file/folder path |
+| displayName | string | Y | Display name used in success messaging |
+| isDirectory | boolean | Y | Whether the target is a directory |
+| user | object | Y | Current user |
+| directHasReadPermission | boolean | N | Optional caller-known read override |
+| onMessage | function | N | User-visible message dispatcher |
+| onActionComplete | function | N | Success callback after revoke |
+| onClose | function | N | Close callback |
 
 ### 2.3 Return Value / State
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| loading | boolean | Loading |
-| initialLoading | boolean | Initial load |
-| confirmDialogOpen | boolean | Revoke confirm |
-| setConfirmDialogOpen | function | Set confirm |
-| hasReadPermission | boolean | Read |
-| hasWritePermission | boolean | Write |
-| pathPermission | string | Path permission (file) |
-| filePermissionLevel | string | File level |
-| pendingRequest | object | Pending request |
-| ownerExists | boolean | Owner exists |
-| handlePermissionRequest | function | Request |
-| handleCancelPendingRequest | function | Cancel |
-| handleRevokePermission | function | Revoke |
+| loading | boolean | Action-in-progress state |
+| initialLoading | boolean | Initial permission/request load state |
+| confirmDialogOpen | boolean | Revoke-confirm dialog state |
+| setConfirmDialogOpen | function | Confirm-dialog setter |
+| hasReadPermission | boolean | Effective read access |
+| hasWritePermission | boolean | Effective write access |
+| pathPermission | `'none' \| 'read' \| 'write' \| null` | Parent-path permission state for file targets |
+| filePermissionLevel | `'read' \| 'write' \| null` | Direct file-level permission state |
+| pendingRequest | object | Pending request view state keyed by permission level |
+| ownerExists | boolean \| null | Whether a share owner still exists |
+| handlePermissionRequest | `(permission) => Promise<void>` | Request read/write access |
+| handleCancelPendingRequest | `(permission) => Promise<void>` | Cancel a pending request |
+| handleRevokePermission | `() => Promise<void>` | Revoke existing access |
 
 ### 2.4 Dependencies
 
-- checkPermission, revokePermission
-- cancelPermissionRequest, createPermissionRequest, listOutboxPermissionRequests, checkOwnerExists
+- `sharePermissionGateway` for permission checks, owner checks, outbox request reads, and request/revoke mutations
+- `deriveSharedAccessState` for pure derivation of `hasReadPermission`, `hasWritePermission`, `pathPermission`, and `filePermissionLevel`
+- `buildPendingRequestState` for mapping outbox request results into `pendingRequest` state
+- `shareManageMessageUtils` for reusable success/error message composition and hide-duration policy
+- `getParentPath`, `normalizePath`
 
 ### 2.5 Side Effects
 
-- checkPermission on open
-- checkOwnerExists
-- API calls for request, cancel, revoke
+- On open, loads raw permission state via `sharePermissionGateway.checkPermission`
+- For file targets, also loads parent-path permission state
+- On open, loads `ownerExists` via `sharePermissionGateway.checkOwnerExists`
+- On open, loads pending outbox requests via `sharePermissionGateway.listOutboxPermissionRequests`
+- Sends create/cancel/revoke mutations through `sharePermissionGateway`
+- May dispatch transient success/error messages via `onMessage`, but message text shaping and hide-after timing must stay behind the shared `shareManageMessageUtils` helper rather than hook-local branching
 
 ### 2.6 Error Handling
 
-- getServerErrorDisplay, onMessage
-- **On API failure (request, cancel, revoke – 4xx/5xx, network error):** Do **not** call onClose. Dialog stays open; error shown via onMessage. User can retry or close. Same pattern as useFileOperations §2.6, useShareDialog.
+- Uses `getServerErrorDisplay` for server-originated messages
+- **On request/cancel/revoke failure:** do **not** call `onClose`; keep the dialog open and surface an error
+- Owner-check and pending-request read failures fall back to safe UI state rather than throwing
 
 ### 2.7 Verification Scenarios
 
-- [ ] Load permission info
-- [ ] Admin: hasRead/hasWrite true
-- [ ] Request, cancel, revoke
-- [ ] ownerExists
+- [ ] Admin user skips API reads and gets read/write access immediately
+- [ ] Directory target derives read/write access with `pathPermission === null`
+- [ ] File target derives `pathPermission` from the parent path and `filePermissionLevel` from file-level access
+- [ ] `directHasReadPermission` overrides computed read access, including explicit `false`
+- [ ] Request success updates `pendingRequest` and shows success feedback
+- [ ] Cancel success clears the matching pending request and shows success feedback
+- [ ] Revoke success calls `onActionComplete`, closes, and shows success feedback
+- [ ] Any action failure keeps the dialog open and shows an error message
+- [ ] Success and error messages keep the same observable text/type/timing after reusable message-helper extraction
 
 ### 2.8 Edge Cases
 
-- isDirectory vs file: pathPermission, filePermissionLevel
-- Admin skips API
+- `permissionCheck` or `parentPermissionCheck` missing fields should degrade to no access
+- Admin user should not issue unnecessary permission/request reads
+- File targets with no parent permission should expose `pathPermission: 'none'`
+- Missing/invalid outbox data should map to an empty `pendingRequest` state

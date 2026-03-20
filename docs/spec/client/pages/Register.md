@@ -12,20 +12,21 @@
 ## 2. Implementation Spec
 
 ### 2.1 File Path
-
-- **Source:** `client/src/pages/Register.js`
+- **Source (page shell):** `client/src/pages/Register.js`
 - **Test file:** `client/src/pages/__tests__/Register.test.js`
 
 ### 2.2 Hooks Used
-
-- useAuth (register)
-- useNavigate
-- useTranslation
+- `useRegisterForm` (controller hook)
+  - useAuth (register)
+  - useNavigate
+  - useTranslation
+- (View) does not call hooks and does not import router modules
 
 ### 2.3 Main Child Components
-
-- Paper, TextField, Button, Alert
-- EmailNotificationMessage (when email_enabled)
+- `RegisterFormView` (pure view)
+  - See `docs/spec/client/components/auth/RegisterFormView.md`
+- Paper, TextField, Button, Alert (rendered by view)
+- EmailNotificationMessage (when email_enabled, rendered by view)
 
 ### 2.4 Route Protection
 
@@ -37,6 +38,8 @@
 - Validation: required, username format, email format, password strength, match
 - Submit: register via authService
 - Success: pending → show success + EmailNotificationMessage if enabled; otherwise navigate to /files
+- Link to Login
+  - Route target is prepared by the shell/controller layer and passed into the pure view as props
 
 ### 2.6 Integration Test Scenarios
 

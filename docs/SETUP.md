@@ -179,6 +179,12 @@ npm run dev
 ```
 *   Access: `http://localhost:3000` (frontend dev server)
 
+### E2E WebDAV readiness
+
+For local Playwright E2E runs that use `docker-compose.e2e.yml`, treat the WebDAV container as ready only after an authenticated directory-list style probe succeeds. A plain unauthenticated `GET /` can become reachable before authenticated `PROPFIND /` requests are accepted, which can lead to flaky explorer startup failures even though the container looks "up".
+
+On Apple Silicon hosts, prefer a multi-architecture WebDAV image for the E2E compose stack. Running an amd64-only WebDAV image under emulation can introduce intermittent connection failures during longer repeat runs.
+
 ### Production Mode
 1.  **Build frontend**:
     ```bash

@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { Box, Typography, CircularProgress } from '@mui/material';
-import { getPublicShareLinkInfo } from '../services/shareLinkService';
-import { getServerErrorDisplay } from '../utils/errorUtils';
 import FileManager from './FileManager';
 import ShareLinkSingleFileView from './ShareLinkSingleFileView';
+import { useShareLinkInfo } from './ShareLinkLoader/hooks/useShareLinkInfo';
 
 /**
  * 공유 링크 라우트 `/share/:token` 로더
@@ -16,46 +15,7 @@ import ShareLinkSingleFileView from './ShareLinkSingleFileView';
 const ShareLinkLoader = () => {
   const { t } = useTranslation();
   const { token } = useParams();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [linkInfo, setLinkInfo] = useState(null);
-
-  useEffect(() => {
-    if (!token) {
-      setError(t('shareLink.invalidLink'));
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const info = await getPublicShareLinkInfo(token);
-        if (!cancelled) {
-          setLinkInfo(info);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error('Share link load error:', err);
-          const data = err?.response?.data;
-          const msg = data ? getServerErrorDisplay(data, t) : t('shareLink.loadFail');
-          setError(msg);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, t]);
+  const { loading, error, linkInfo } = useShareLinkInfo(token);
 
   if (loading) {
     return (

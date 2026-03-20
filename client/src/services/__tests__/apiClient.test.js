@@ -136,7 +136,7 @@ describe('apiClient', () => {
       expect(callCount).toBe(2);
     });
 
-    it('401 refresh failure: removes tokens, redirects to /login', async () => {
+    it('401 refresh failure: removes tokens, redirects to /login, returns null', async () => {
       sessionStorage.setItem('token', 'expired-jwt');
       sessionStorage.setItem('refreshToken', 'bad-refresh');
 
@@ -153,20 +153,16 @@ describe('apiClient', () => {
         )
       );
 
-      try {
-        await get('/test-401-fail');
-        throw new Error('Expected reject');
-      } catch (err) {
-        expect(err.response?.status).toBe(401);
-      }
+      const result = await get('/test-401-fail');
 
+      expect(result).toBeNull();
       expect(sessionStorage.getItem('token')).toBeNull();
       expect(sessionStorage.getItem('refreshToken')).toBeNull();
       expect(window.location.href).toBe('/login');
       window.location = origLocation;
     });
 
-    it('401 on login: does not redirect to /login', async () => {
+    it('401 on login: returns null and does not redirect to /login', async () => {
       const origLocation = window.location;
       delete window.location;
       window.location = { href: origLocation.href };
@@ -177,18 +173,14 @@ describe('apiClient', () => {
         )
       );
 
-      try {
-        await post('/auth/login', { username: 'u', password: 'p' });
-        throw new Error('Expected reject');
-      } catch (err) {
-        expect(err.response?.status).toBe(401);
-        expect(window.location.href).not.toBe('/login');
-      } finally {
-        window.location = origLocation;
-      }
+      const result = await post('/auth/login', { username: 'u', password: 'p' });
+
+      expect(result).toBeNull();
+      expect(window.location.href).not.toBe('/login');
+      window.location = origLocation;
     });
 
-    it('401 on share check-my-permission: does not redirect to /login', async () => {
+    it('401 on share check-my-permission: returns null and does not redirect to /login', async () => {
       sessionStorage.setItem('token', 'expired');
       sessionStorage.setItem('refreshToken', 'bad');
 
@@ -205,16 +197,12 @@ describe('apiClient', () => {
         )
       );
 
-      try {
-        await get('/share/abc/check-my-permission');
-        throw new Error('Expected reject');
-      } catch (err) {
-        expect(err.response?.status).toBe(401);
-        expect(window.location.href).not.toBe('/login');
-      } finally {
-        window.location = origLocation;
-        sessionStorage.clear();
-      }
+      const result = await get('/share/abc/check-my-permission');
+
+      expect(result).toBeNull();
+      expect(window.location.href).not.toBe('/login');
+      window.location = origLocation;
+      sessionStorage.clear();
     });
   });
 

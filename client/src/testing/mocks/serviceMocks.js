@@ -34,12 +34,40 @@ export function createPermissionRequestServiceMock(overrides = {}) {
   };
 }
 
-export function createRecentFilesMock(overrides = {}) {
+export function createRecentFilesRepositoryMock(overrides = {}) {
   return {
-    getRecentFiles: jest.fn(),
-    removeRecentFile: jest.fn(),
-    applyRecentFilesAfterRename: jest.fn(),
-    onRecentFilesChange: jest.fn(() => () => {}),
+    getRecentFiles: jest.fn().mockResolvedValue([]),
+    addRecentFile: jest.fn().mockResolvedValue([]),
+    removeRecentFile: jest.fn().mockResolvedValue([]),
+    clearRecentFiles: jest.fn().mockResolvedValue(undefined),
+    applyRecentFilesAfterRename: jest.fn().mockResolvedValue([]),
+    applyRecentFilesAfterBulkDelete: jest.fn().mockResolvedValue([]),
+    applyRecentFilesAfterBulkMove: jest.fn().mockResolvedValue([]),
+    ...overrides,
+  };
+}
+
+export function createRecentFilesNotifierMock(overrides = {}) {
+  return {
+    onRecentFilesChange: jest.fn(() => jest.fn()),
+    notifyRecentFilesChange: jest.fn(),
+    ...overrides,
+  };
+}
+
+export function createExplorerGatewayMock(overrides = {}) {
+  return {
+    addRecentFile: jest.fn().mockResolvedValue([]),
+    canNavigateToPath: jest.fn().mockResolvedValue(true),
+    checkConflicts: jest.fn().mockResolvedValue([]),
+    getEntriesMetadata: jest.fn().mockResolvedValue([]),
+    getPathAccess: jest.fn().mockResolvedValue({ canRead: true, canWrite: true, raw: {} }),
+    listDirectory: jest.fn().mockResolvedValue([]),
+    loadRecentFiles: jest.fn().mockResolvedValue([]),
+    loadSharedEntries: jest.fn().mockResolvedValue([]),
+    removeRecentFile: jest.fn().mockResolvedValue([]),
+    subscribeToRecentFiles: jest.fn(() => jest.fn()),
+    uploadToPath: jest.fn().mockResolvedValue({ errors: [] }),
     ...overrides,
   };
 }

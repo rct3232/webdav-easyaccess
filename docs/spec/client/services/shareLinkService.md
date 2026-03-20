@@ -26,13 +26,14 @@
 | deleteShareLink | (token) | Promise\<void\> | DELETE /api/share-links/:token |
 | getShareLinkUrl | (token) | string | Client-side URL: origin + /share/:token |
 | getPublicShareLinkInfo | (token) | Promise\<Object\> | GET /api/share/:token/info (fetch, no auth) |
-| checkMyPermissionForShare | (token) | Promise\<{ hasSufficientPermission }> | GET /api/share/:token/check-my-permission |
+| checkMyPermissionForShare | (token) | Promise\<{ hasSufficientPermission } \| null\> | GET /api/share/:token/check-my-permission |
 | addShareLinkToMyPermissions | (token) | Promise\<{ message }> | POST /api/share/:token/add-to-my-permissions |
 
 ### 2.3 Error Handling
 
 - getPublicShareLinkInfo uses fetch; throws with err.response.data for errorCode
 - Other methods via apiClient; errors propagated for getServerErrorDisplay
+- `checkMyPermissionForShare` may resolve `null` when the underlying excluded `401` request is skipped by auth policy.
 
 ### 2.4 Verification Scenarios
 
@@ -40,3 +41,4 @@
 - [ ] getShareLinkUrl returns correct URL
 - [ ] getPublicShareLinkInfo works without auth
 - [ ] checkMyPermissionForShare, addShareLinkToMyPermissions require auth
+- [ ] checkMyPermissionForShare forwards `null` when auth policy skips the excluded `401` request

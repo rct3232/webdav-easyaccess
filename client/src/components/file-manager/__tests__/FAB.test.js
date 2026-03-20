@@ -110,4 +110,23 @@ describe('FAB', () => {
     const fab = screen.getByRole('button', { name: /file actions/i });
     expect(fab).toBeDisabled();
   });
+
+  it('opens the SpeedDial from trigger click on mobile', () => {
+    renderWithProviders(
+      <FAB
+        onCreateFolder={jest.fn()}
+        onUpload={jest.fn()}
+        isMobile={true}
+      />
+    );
+
+    const fab = screen.getByRole('button', { name: /file actions/i });
+    expect(fab).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(fab);
+
+    expect(fab).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: /create folder/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /upload file/i })).toBeInTheDocument();
+  });
 });

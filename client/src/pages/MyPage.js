@@ -1,65 +1,35 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, AppBar, Toolbar, IconButton, SwipeableDrawer } from '@mui/material';
 import { Menu as MenuIcon, Close as CloseIcon } from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import MyPageSidebar from '../components/mypage/MyPageSidebar';
 import MyPageContentArea from '../components/mypage/MyPageContentArea';
-
-const DEFAULT_CATEGORY = 'account';
+import { useMyPageController } from './MyPage/hooks/useMyPageController';
 
 const MyPage = () => {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
   const { isMobile } = useResponsive();
-
-  const resolveCategory = useCallback(
-    (cat) => {
-      if (!cat) return DEFAULT_CATEGORY;
-      if (cat === 'admin' && user?.is_admin) return 'admin-users';
-      if (cat === 'admin' && !user?.is_admin) return DEFAULT_CATEGORY;
-      if (cat === 'admin-users' || cat === 'admin-settings') return user?.is_admin ? cat : DEFAULT_CATEGORY;
-      if (cat === 'sharing' && user?.is_admin) return DEFAULT_CATEGORY;
-      return cat;
-    },
-    [user?.is_admin]
-  );
-  const initCategory = resolveCategory(location.state?.category ?? DEFAULT_CATEGORY);
-  const [selectedCategory, setSelectedCategory] = useState(initCategory);
-  const [selectedContentItem, setSelectedContentItem] = useState(null);
-  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
-
-  useEffect(() => {
-    const cat = resolveCategory(location.state?.category);
-    if (cat) {
-      setSelectedCategory(cat);
-      setSelectedContentItem(null);
-    }
-  }, [location.state?.category, resolveCategory]);
-
-  const handleSelectCategory = (categoryId) => {
-    setSelectedCategory(categoryId);
-    setSelectedContentItem(null);
-    if (isMobile) setCategoryDrawerOpen(false);
-  };
-
-  const handleClose = () => navigate('/');
-
-  const handleSelectContentItem = (itemId) => {
-    setSelectedContentItem(itemId);
-  };
+  const {
+    user,
+    selectedCategory,
+    selectedContentItem,
+    categoryDrawerOpen,
+    sidebarItems,
+    onSelectCategory,
+    onSelectContentItem,
+    onOpenCategoryDrawer,
+    onCloseCategoryDrawer,
+    onCloseMyPage,
+  } = useMyPageController({ isMobile });
 
   if (!user) return null;
 
   const sidebarContent = (
     <MyPageSidebar
+      categories={sidebarItems}
       selectedCategory={selectedCategory}
-      onSelectCategory={handleSelectCategory}
-      user={user}
+      onSelectCategory={onSelectCategory}
       isMobile={isMobile}
     />
   );
@@ -89,7 +59,7 @@ const MyPage = () => {
             <IconButton
               edge="start"
               color="inherit"
-              onClick={() => setCategoryDrawerOpen(true)}
+              onClick={onOpenCategoryDrawer}
               sx={{ mr: 2 }}
               aria-label={t('nav.mypage')}
             >
@@ -108,7 +78,7 @@ const MyPage = () => {
             />
           )}
           <Box sx={{ flexGrow: 1 }} />
-          <IconButton color="inherit" onClick={handleClose} aria-label={t('common.close')}>
+          <IconButton color="inherit" onClick={onCloseMyPage} aria-label={t('common.close')}>
             <CloseIcon />
           </IconButton>
         </Toolbar>
@@ -119,8 +89,8 @@ const MyPage = () => {
           <SwipeableDrawer
             anchor="left"
             open={categoryDrawerOpen}
-            onClose={() => setCategoryDrawerOpen(false)}
-            onOpen={() => setCategoryDrawerOpen(true)}
+            onClose={onCloseCategoryDrawer}
+            onOpen={onOpenCategoryDrawer}
             PaperProps={{ sx: { width: 280 } }}
           >
             {sidebarContent}
@@ -141,7 +111,7 @@ const MyPage = () => {
           <MyPageContentArea
             selectedCategory={selectedCategory}
             selectedContentItem={selectedContentItem}
-            onSelectContentItem={handleSelectContentItem}
+            onSelectContentItem={onSelectContentItem}
             user={user}
           />
         </Box>

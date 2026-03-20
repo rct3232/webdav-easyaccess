@@ -1,16 +1,58 @@
 # Client UI
 
-This document describes the React client’s routing, protected routes, file manager (view modes, sort, search, selection, toolbar, drag-and-drop, context menu, dialogs), share link screen, responsive behavior, and i18n. Reference: [client/src/App.js](../../client/src/App.js), [client/src/pages/FileManager.js](../../client/src/pages/FileManager.js), and related components.
+This document describes **product-level** behavior of the React client UI: routing and protected routes, file browsing and operations, share-link access, responsive behavior, and i18n.
+
+It also defines **high-level feature boundaries** for the client refactor:
+
+- **Explorer core**: reusable browsing/selection/navigation/command/progress behavior.
+- **Product overlays**: share-link mode, virtual collections (e.g. `__recent__`, `__shared__`), and other product-specific rules.
+- **Page shells**: route composition, overlay wiring, and orchestrating controllers into views.
+
+Detailed implementation contracts live in `docs/spec/client/**/*`. Client layering rules are defined in `docs/CODING_STYLE.md` and summarized in `docs/ARCHITECTURE.md` (Client Architecture).
 
 ---
 
 ## Overview
 
-The app is a single-page React application using React Router. Public routes include login and register; authenticated routes (files, mypage; /admin redirects to /mypage) are wrapped in `PrivateRoute`, which redirects to `/login` when the user is not authenticated. The main file management UI supports list/grid/detail views, sort by name/date, search, multi-selection, and toolbar actions (move, copy, download, delete) with progress and cancellation. Dialogs handle rename, create folder, upload, share, folder picker, conflict resolution, and preview. Share link access is handled by `/share/:token`, which loads link info then renders either the file manager (folder) or a single-file preview. A FAB (on all viewports) and action sheet (on mobile) provide touch-friendly actions. UI text is localized (i18n) with English and Korean.
+The app is a single-page React application using React Router.
+
+- **Public access**: login/register and share-link access.
+- **Authenticated access**: file browsing and MyPage.
+- **File browsing UI**: list/grid/detail views, sort, search, selection, bulk actions, dialogs, and progress/cancellation for long-running operations.
+- **Share links**: `/share/:token` can render a folder browsing experience or a single-file preview/download experience, without requiring authentication.
+- **Responsive design**: supports mobile- and touch-friendly patterns (FAB, action sheet, drawer navigation on MyPage).
+- **Localization**: UI strings are localized (English and Korean).
 
 ---
 
 ## Specification
+
+### Feature boundaries (client responsibilities)
+
+These boundaries are intentionally written at the **feature level** (not as a file-level spec).
+
+- **Explorer core owns**
+  - Browsing and navigation within a folder tree (current path, breadcrumb navigation).
+  - List/grid/detail presentation modes and basic state like view mode, sort mode, and search query.
+  - Selection rules and bulk action affordances.
+  - File commands and progress UI (upload, rename, move/copy, delete, download; progress and cancellation).
+  - Explorer-specific IO through explorer gateways/adapters rather than page-shell direct service/storage/repository imports.
+  - Presentation-neutral rules that should remain consistent across product contexts.
+
+- **Product overlays own**
+  - Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
+  - Share-link-specific login, leave-share, and add-to-my-permissions flows for directory shares reached from `/share/:token`.
+  - Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
+  - The distinction between public share-link flows and authenticated internal-sharing flows such as request outcomes and granted-content access under `__shared__`.
+  - Admin-only UI visibility and product policies that are not reusable across contexts.
+
+- **Page shells own**
+  - Route composition and route-state parsing (including redirects and share-link bootstrapping).
+  - Choosing which overlay is active (normal browsing vs share-link browsing, etc.).
+  - Wiring controller outputs into pure views (prepared state + callbacks), without embedding domain rules into views.
+  - Selection-reset seams that react to explorer session-boundary changes without pushing that side effect into pure session derivation hooks.
+  - When explorer interactions or share-link overlays become flow-heavy, page-local controller hooks should own those flows while the shell remains a composition layer.
+  - Page shells should not keep explorer-specific storage helpers, direct permission-service calls, recent-file repository/notifier wiring, metadata enrichment calls, or refresh-policy orchestration inline; those belong to explorer hooks/gateways.
 
 ### Routing
 
@@ -18,6 +60,31 @@ The app is a single-page React application using React Router. Public routes inc
 - **Default:** `/` redirects to `/files`.
 - **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage). `/admin` redirects to `/mypage` with `state: { category: 'admin' }` for admin users. Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
 - **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.
+
+#### Routing contracts (migration-sensitive)
+
+These are stable user-visible contracts that must remain true during router upgrades (including React Router v6 → v7 migration work):
+
+- **Explorer route remains the splat owner:** `/files/*` is the only route that owns the explorer “current folder” path derived from a splat param. The explorer path is represented as an absolute path string starting with `/` (e.g. `/`, `/Documents`, `/a/b`).
+- **Splat path is owned by FileManager listing/navigation seams:** the FileManager shell wires route params into `useFileManager` (and/or the navigation seam). It must not duplicate splat parsing in multiple places.
+- **Redirect behavior is stable:**
+  - `/` redirects to `/files` (authenticated users see FileManager; unauthenticated users end up at `/login` via PrivateRoute).
+  - Unauthenticated access to `/files/*` and `/mypage` redirects to `/login`.
+  - `/admin` redirects to `/mypage` with `location.state.category` set so MyPage opens the Admin category (see MyPage spec for normalization rules).
+
+#### Router upgrade flags and consistency
+
+When adopting router future flags in v6 (to surface v7 behavior changes early), ensure the same flags are enabled in:
+
+- **Runtime router setup** (the app router).
+- **Test router setup** (Jest helpers using `createMemoryRouter` / `RouterProvider`).
+
+At minimum, enable:
+
+- `v7_startTransition`
+- `v7_relativeSplatPath`
+
+Once the client is upgraded to React Router v7, these behaviors are treated as the baseline and **tests must continue to exercise routing via the same router APIs** (`createBrowserRouter`/`createMemoryRouter` + `RouterProvider`) so `/files/*` splat parsing and nested layout behavior remain consistent with runtime.
 
 ### MyPage (Chrome-style layout)
 
@@ -34,14 +101,17 @@ The app is a single-page React application using React Router. Public routes inc
 - If not authenticated, render `<Navigate to="/login" replace />`.
 - Otherwise render `children`.
 
-### File manager (FileManager.js and components)
+### File browsing (Explorer core + overlays)
 
-- **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted in localStorage (e.g. `getViewMode`, `setViewMode`).
-- **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted (e.g. `setSortMode`, `saveSortMode`). Applied via `sortFiles()` before render.
+- **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted through the existing client preference-storage policy/helper boundary.
+- **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted through the same preference-storage policy boundary and applied before render.
+- **Explorer ownership split:** `useExplorerSession` is the single owner of search/sort/view-mode session state and preference persistence. `useFileManager` is the narrow path/listing seam for the active explorer location. Listing, shared-entry loading, capability checks, recent-files persistence, metadata enrichment, and parent-folder verification belong to explorer gateways plus the narrow controller/listing seams that call them. `FileManager` remains the page shell that selects product overlays such as share-link mode and virtual collections, while control-only chrome state such as an open sort menu stays local to the rendered control seam instead of the page shell.
+- **Virtual collections as overlays:** `__shared__` and `__recent__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
+- **Recent-file recovery boundary:** When a recent target must be verified, reopened for preview, or removed as stale, the recent-file controller uses explorer gateway seams for parent-folder checks and recent-entry cleanup instead of importing repository or file-service modules directly. Rollback and toast behavior stay unchanged from the user perspective.
 - **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
-- **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. `useSelection` holds selected set; clear selection after successful operation or on path change. File rows/cards do not require checkbox widgets for this flow.
+- **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. The selection controller owns the selected set; route/path changes clear selection through the page-shell/session-boundary seam. File rows/cards do not require checkbox widgets for this flow.
 - **Toolbar (bulk actions):** When one or more items selected, FileManagerControls shows bulk action buttons (Move, Copy, Download, Delete) inline in the same row, replacing sort and view mode. No manual selection mode toggle button; entry/exit driven by file interactions and selected count. Uses icon buttons. Same layout on desktop and mobile. Actions open folder picker (move/copy) or confirm dialog (delete). Progress shown via `FileOperationProgress`; cancel via bulk operation cancel API. **Mobile multi-download restriction:** On mobile, when multiple items are selected, the Download button is disabled (grayed out); only single-item download is allowed on mobile. This is a client-side UI restriction only.
-- **Progress UI (FileOperationProgress):** Shrink state: compact chip in AppBar. Click opens right-side Drawer. Collapsed: all operation headers with "펼치기" button above each body. Expanded: single item fills drawer with "접기" at bottom. Auto-collapse on new preparing; on error/warning, expand that item when drawer is opened (no auto-open).
+- **Progress UI (FileOperationProgress):** Shrink state: compact chip in AppBar. Click opens right-side Drawer. Collapsed: all operation headers with an "Expand" button above each body. Expanded: single item fills drawer with "Collapse" at bottom. Auto-collapse on new preparing; on error/warning, expand that item when drawer is opened (no auto-open).
 - **Rename dialog:** Single item rename; `PUT /api/files/rename` with `oldPath`, `newName`. On success, refresh list and recent files if needed.
 - **Drag and drop:** Drop on folder tree or list to upload (to current or dropped folder) or to move/copy; `useDropToUpload` and paste/move/copy handlers. Conflict check before paste via `checkConflicts`; conflict resolve dialog when needed.
 - **Content-area drop overlay scope:** The dotted “drop here” overlay is shown only over the file view content region (list/grid/detail area). It must not cover breadcrumb or toolbar/controls.
@@ -54,8 +124,10 @@ The app is a single-page React application using React Router. Public routes inc
 - **Filename truncation:** All file items (list, grid, detail, and recent files) use middle ellipsis (`pixelMiddleTruncate`) for long filenames, ensuring the file extension remains visible. A `Tooltip` displays the full filename on hover if it is truncated.
 - **Action sheet (mobile):** More button or right-click triggers bottom action sheet (`FileActionSheet`) with same actions as context menu. Long-press no longer opens context menu; it enters selection mode (see Selection above).
 - **Dialogs:** Upload, CreateFolder, FilePreview, FolderPicker, Share, ShareTarget, FileProperties, Confirm, ConflictResolve, Rename, Login (for share link when not logged in). Dialog state managed in `useFileManagerDialogs` or similar; list refreshes after successful close.
+- **Browser-boundary rule for touched views:** Presentational/file-tree/share views must not call `window`, `document`, or `ResizeObserver` directly. Link opening, element observation, and similar browser work must flow through a prepared callback, hook, or adapter boundary.
 - **File preview zoom:** PDF and image previews support zoom. Bottom bar (zoom in/out, percentage, reset); Ctrl+wheel on desktop; two-finger pinch on mobile.
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
+- **Internal sharing outcomes:** Internal sharing does not route through `/share/:token`. When access is granted through permissions or approved requests, the browser-visible entry point is the authenticated explorer, especially `__shared__`, with the main observable distinction being read-only versus write-capable actions.
 
 - **Single-file download (iOS + single file):** On iOS (e.g. iPhone Chrome), downloading a single file (any type) uses a share-sheet–friendly path so the user can save to Files or Photos. **Policy:** (1) The app creates a `File` from the blob and calls `navigator.canShare({ files: [file] })` with the actual file; if true, it uses the Web Share API so the system share sheet appears; the user chooses "Save to Files" or similar. (2) If `canShare` returns false or share fails (non-AbortError), the app falls back to blob + `<a download>` + `visibilitychange` revoke. (3) All other cases (desktop, folder download, multi-file zip) keep the existing blob + `<a download>` behavior. **User guidance:** When the share sheet is shown, the UI may show a short hint (e.g. tooltip or toast) that the user can save the file. See `docs/spec/client/services/fileService.md` (§ 2.3) for the service-level spec.
 
@@ -64,7 +136,7 @@ The app is a single-page React application using React Router. Public routes inc
 - **ShareLinkLoader:** Reads `token` from route params; calls `getPublicShareLinkInfo(token)`. While loading, shows spinner and “Loading” text. On error (e.g. 404, 410), shows error message. On success:
   - If `linkInfo` indicates directory: render `FileManager` with `shareToken` and `linkInfo` (browse shared folder).
   - If single file: render `ShareLinkSingleFileView` (full-screen preview/download).
-- **ShareLinkSingleFileView:** Preview or download for the shared file; optional “Login” or “Add to my permissions” when user is logged in.
+- **ShareLinkSingleFileView:** Preview or download for the shared file. Unlike directory-share mode, this single-file screen does not expose share-directory overlay actions such as Login, Leave share, or Add to my permissions unless product behavior explicitly changes and the page spec is updated.
 
 ### Responsive and mobile
 
@@ -78,8 +150,8 @@ The app is a single-page React application using React Router. Public routes inc
 ### i18n
 
 - **Library:** react-i18next; resources from `client/src/locales/en.json`, `ko.json`.
-- **Initial language:** From `navigator.language` (e.g. `ko` → Korean, else English); fallback `en`.
-- **Usage:** `useTranslation()` → `t(key, params)` for all user-facing strings. Server errors displayed via `t(errorCode, params)` (see [shared-contracts.md](../shared-contracts.md)). Language can be switched in UI (e.g. settings or header); preference may be stored in localStorage.
+- **Initial language:** Derived through the existing language/browser-preference policy (for example browser locale detection), with fallback `en`.
+- **Usage:** `useTranslation()` → `t(key, params)` for all user-facing strings. Server errors displayed via `t(errorCode, params)` (see [shared-contracts.md](../shared-contracts.md)). Language can be switched in UI (e.g. settings or header); persisted preferences must remain behind a dedicated storage/policy boundary rather than direct view-layer storage access.
 
 ---
 
@@ -99,7 +171,7 @@ flowchart LR
     G -->|No| E
 ```
 
-- On load, `AuthProvider` checks sessionStorage for token; if present, sets axios header and calls `GET /api/auth/me`. 401만 global logout/redirect 처리; 403은 apiClient에서 별도 정책에 따라 처리 (URL 이동 직후: history.back() 또는 '/', 그 외: 리다이렉트 없음).
+- On load, the client initializes auth state from the existing session-storage adapter/policy and validates the session via `GET /api/auth/me`. Authentication errors follow the existing user-visible policy: unauthorized sessions redirect to login; forbidden responses follow the established navigation policy for the current page context.
 
 ### File manager: multi-select and batch
 
@@ -117,7 +189,7 @@ flowchart LR
 
 ### Language switch
 
-- User changes language in UI (if provided). App calls `i18n.changeLanguage(lang)`; all `t()` strings update. Optionally persist language in localStorage and set as `i18n.language` on next load.
+- User changes language in UI (if provided). App calls `i18n.changeLanguage(lang)`; all `t()` strings update. Persisted language preferences, when enabled, flow through the existing preference-storage boundary rather than direct component storage calls.
 
 ---
 
@@ -125,20 +197,45 @@ flowchart LR
 
 When implementing or reviewing client tests, cover at least:
 
+For the full browser-flow inventory and planned Playwright spec ownership across routing, responsive behavior, explorer flows, and share-link flows, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on user-visible UI behavior and representative testing anchors.
+
+Browser-versus-lower-layer split:
+
+- Playwright should own representative browser-visible flows:
+  - protected-route redirects and login outcomes
+  - normal explorer CRUD/navigation
+  - public directory-share browsing and directory-share overlay actions
+  - authenticated `__shared__` and `__recent__` entry/navigation flows
+  - MyPage mobile drawer interaction and visible category switching
+- RTL/MSW, supertest, and unit tests should own broader or less stable branches:
+  - full ACL and permission matrices
+  - recent-files synchronization internals
+  - share-token edge-case permutations without distinct browser value
+  - drag-and-drop cursor/gesture nuance beyond representative denied/no-op smoke
+
 - **Routing and PrivateRoute:** Unauthenticated access to `/files`, `/mypage` redirects to `/login`. Authenticated access renders the correct page. `/admin` redirects to `/mypage` with Admin category selected. Loading state shows spinner.
 - **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.
 - **Selection tests:** Prefer interaction-based assertions (`click`, `Ctrl`/`Meta`+click, `Shift`+click, long-press) and outcome checks. Do not assume file rows expose `role="checkbox"`.
 - **Drag-drop and dialogs:** Drop triggers upload or move/copy; conflict dialog appears when name conflicts; rename dialog calls rename API and refreshes list. Assert on API calls and list state.
-- **Share link:** `/share/:token` loads; with MSW returning directory vs file, correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message.
+- **Share link and overlay split:** `/share/:token` loads; with MSW returning directory vs file, the correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message. Keep single-file share assertions focused on preview/download rendering unless the product later adds explicit authenticated actions there.
+- **Virtual collections:** `__shared__` and `__recent__` tests should assert on visible list/preview/denial outcomes rather than repository notifier internals or page-shell wiring.
 - **Mobile:** FAB shown on all viewports; action sheet on mobile (small viewport). Assertions can be based on visibility or role/label.
+- **MyPage mobile shell:** The menu button opens the category drawer, selecting a category closes it, and visible content updates without relying on internal drawer state.
 - **Errors:** API error responses surface as snackbar or inline message using `t(errorCode, params)` (see [errorUtils](../../client/src/utils/errorUtils.js) and shared-contracts).
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.
+
+### Router-test guidance (React Router v6 future flags)
+
+- Prefer `createMemoryRouter` + `RouterProvider` for route-level tests that exercise splats, redirects, nested layouts, and `Outlet`.
+- If the runtime router enables future flags (see above), test helpers must enable the same flags to avoid “works in app, fails in tests” splat/relative-navigation drift.
 
 ### Mock policy for client tests
 
 - Integration-style component/page tests should prefer MSW handlers (`client/src/mocks/handlers.js`) for API behavior.
 - Unit-oriented hook/util/service tests may use module mocks when this keeps tests deterministic and focused on public outcomes.
 - For mixed tests, keep UI environment mocks (router/i18n/responsive) at module level and use MSW only for network behavior that is stable in the current test runtime.
+- When a page scenario is not about shell-only chrome such as the sidebar tree or background recent-file subscriptions, those seams may be replaced with lighter doubles so the test stays focused on the explorer outcome and avoids unrelated async `act(...)` noise.
 - When migrating from module mocks to MSW, consult `.cursor/fail_log.md` first and avoid known unstable patterns (for example, request body parsing that depends on `request.formData()` in jsdom-based runs).
 - Test runtime polyfills in `client/src/jest-polyfills.js` must not create persistent `MessageChannel` instances during module initialization. Prefer minimal runtime wiring (e.g. `MessagePort` only when sufficient) to avoid open-handle leaks (`MESSAGEPORT`) at Jest shutdown.
+- For render-time async hooks, prefer waiting for a stable user-visible anchor after render or interaction rather than relying on one microtask turn. If a hook test needs tighter control, resolve gateway mocks from a deferred promise inside `act`.

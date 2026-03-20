@@ -4,8 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | FolderPickerDialog state: selectedPath, folders, loading, hasWritePermission, breadcrumbs. Loads folders for path or __shared__. Home/shared toggle. |
+| Role | FolderPicker dialog controller: manages open-state lifecycle, `selectedPath`, current folder list, write-permission status, and callback wiring for the picker dialog. |
 | Used by components/pages | FolderPickerDialog |
+| Ownership note | This hook is product UI/controller logic for the picker dialog. It is not reusable explorer core. Its target boundary is state/orchestration only: IO must go through `folderPickerGateway`, while breadcrumb shaping, invalid-destination rules, shared-root resolution, and home/shared toggle landing decisions belong in pure helper utilities. |
 
 ---
 
@@ -47,29 +48,64 @@
 
 ### 2.4 Dependencies
 
-- getUserPermissions, listFiles, checkPermission
-- filterOutUserOwnFolders, getUserBaseFolder
+- IO boundary:
+  - `client/src/services/folderPickerGateway`
+- Pure helper utilities:
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
+- Additional pure helper utilities for shared-state and toggle derivation:
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
+  - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
+- Pure path/user utilities:
+  - `normalizePath`
+  - `getUserBaseFolder`
+
+#### 2.4.1 Pure Helper Utilities
+- Breadcrumb builder: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
+  - Responsibility: derive the `breadcrumbs` model purely from `selectedPath`, `user`, `homePath`, `homeLabel`, `sharedPermissionPaths`, and translated labels (no gateways/services/hooks).
+- Invalid-destination validator: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
+  - Responsibility: return whether a copy/move destination is invalid based on `selectedPath` and the provided `sourceFilePath`/`sourceFilePaths` (no React state, no translations, no side effects).
+- Shared-state derivation: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
+  - Responsibility: normalize shared-permission results into top-level shared-folder lists plus shared-permission path context for the picker (no React state, no gateways, no side effects).
+- Toggle-target resolver: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
+  - Responsibility: determine the landing path for home/shared toggle changes, including source-home detection and shared-root fallback, without mutating React state or calling IO.
 
 ### 2.5 Side Effects
 
-- loadFolders on path/open
-- checkWritePermission on selectedPath
-- __shared__: getUserPermissions for shared folders
+- On open transition (`closed -> open`):
+  - resets `selectedPath` to `currentPath || '/'`
+  - loads folders for the initial path
+  - checks write permission for copy/move flows
+  - preloads shared permission paths for non-admin copy/move flows
+- On folder or breadcrumb navigation:
+  - loads folders for the newly selected path
+  - updates write-permission state for copy/move flows
+- For `__shared__`:
+  - loads shared-folder permissions through `folderPickerGateway.getUserSharedFolderPermissions`
+  - stores raw permission-path inputs needed by helper-driven breadcrumb/toggle derivation
 
 ### 2.6 Error Handling
 
-- setFolders([]) on error
-- Admin: hasWritePermission true
+- Directory/shared loading failure:
+  - log error
+  - set `folders` to `[]`
+- Write-permission failure:
+  - admins fall back to `hasWritePermission = true`
+  - non-admins fall back to whether the selected path is under the user's home path
 
 ### 2.7 Verification Scenarios
 
 - [ ] Folders load for path
 - [ ] __shared__ loads shared folders
-- [ ] Breadcrumbs, path click
-- [ ] Home/shared toggle
-- [ ] isInvalidDestination (source = dest)
+- [ ] Breadcrumb contents match home/shared path rules, including the non-admin hidden username crumb rule
+- [ ] Path click updates `selectedPath` and reloads the requested path
+- [ ] Home/shared toggle routes to the expected landing path for home-origin and shared-origin moves/copies
+- [ ] Shared top-level folder shaping and shared-root resolution preserve the same visible destinations after helper extraction
+- [ ] `isInvalidDestination` returns `true` for source path, parent path, and descendant path targets
+- [ ] Multi-source copy/move is invalid when any selected source would land in an invalid destination
 
 ### 2.8 Edge Cases
 
-- sourceFilePath/sourceFilePaths for invalid dest
-- prevOpenRef for open change
+- `sourceFilePath` and `sourceFilePaths` are both supported by the invalid-destination helper
+- `prevOpenRef` ensures initialization only runs when the dialog transitions from closed to open
+- Shared breadcrumbs start at the first path segment covered by `sharedPermissionPaths`; otherwise they fall back to `__shared__` + full path segments

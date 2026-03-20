@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Share/manage permissions dialog. Uses usePermissionManager and useShareDialog. Contains ShareFolderTree, UserSelectionMenu, ExternalShareSection, FolderShareSection. |
+| Role | Dialog shell for share/admin/review flows. Composes `usePermissionManager` and `useShareDialog`, then renders prepared state through child view components. |
 | Used in | FileManager, MyPage |
-| Related components | ShareFolderTree, UserSelectionMenu, ExternalShareSection, FolderShareSection, useShareDialog, usePermissionManager |
+| Related components | `ShareFolderTree`, `UserSelectionMenu`, `ExternalShareSection`, `FolderShareSection`, `useShareDialog`, `usePermissionManager` |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/dialogs/ShareDialog.js`
+- **Source:** `client/src/components/dialogs/ShareDialog/ShareDialog.js`
 - **Test file:** `client/src/components/dialogs/__tests__/ShareDialog.test.js`
 
 ### 2.2 Props
@@ -49,8 +49,8 @@
 
 ### 2.4 Dependencies
 
-- **imports:** usePermissionManager, useShareDialog, ShareFolderTree, UserSelectionMenu, ExternalShareSection, FolderShareSection, useResponsive, createShareLink, getShareLinkUrl (shareLinkService)
-- **Reference implementation:** `client/src/components/dialogs/ShareDialog.js`
+- **imports:** `usePermissionManager`, `useShareDialog`, `ShareFolderTree`, `UserSelectionMenu`, `ExternalShareSection`, `FolderShareSection`, `useResponsive`, `createShareLink`, `getShareLinkUrl`, browser-opening adapter callbacks
+- **Reference implementation:** `client/src/components/dialogs/ShareDialog/ShareDialog.js`
 
 ### 2.5 i18n Keys
 
@@ -65,24 +65,29 @@
 
 ### 2.6 Conditional Rendering
 
-- mode, isAdminMode, isShareMode, isReviewMode control layout
-- enableExternalShare shows ExternalShareSection
-- fullScreen on mobile
+- `mode`, `isAdminMode`, `isShareMode`, and `isReviewMode` determine title and save behavior
+- `enableExternalShare` hides folder-permission content and shows only `ExternalShareSection`
+- Full-screen behavior is responsive-only; no sharing logic should depend on viewport
+- This shell may compose child views and callback wiring, but it should not derive sharing rules inline
+- Browser-specific side effects needed by child views (for example opening an external share link) should be provided as adapter-backed callbacks instead of letting the child view call `window.*`
 
 ### 2.7 Verification Scenarios
 
-- [ ] Renders folder tree, user selection, external share when enabled
-- [ ] onSave, onClose, onApprove invoked
-- [ ] Mode-specific content
+- [ ] Renders folder-permission content in admin/share/review modes
+- [ ] Renders only external-share content when `enableExternalShare` is true
+- [ ] Admin mode title includes the target username
+- [ ] Review mode title includes the selected folder name
+- [ ] Save success closes through hook/controller behavior; save failure keeps the dialog open
+- [ ] Review approval success calls `onApprove`
 
 ### 2.8 Edge Cases
 
 - permissionRequest for review mode
 - filePath/fileName for single file share
-- mode='review'이고 permissionRequest null: 정의되지 않음; parent가 null 전달하지 않도록 보장
-- filePath 있음, fileName null: basename(filePath)로 fallback 또는 parent가 항상 전달
+- `mode='review'` with missing `permissionRequest` is undefined; parent flow should not open the dialog in that state
+- `filePath` present with missing `fileName` should rely on the upstream fallback or caller guarantee
 
 ### 2.9 API Error Behavior
 
-- **On API success (save, approve):** Parent calls onClose; dialog closes.
-- **On API failure (4xx/5xx, network error):** Dialog **stays open**. Error shown via onMessage. User can correct and retry, or close. Same pattern as RenameDialog, CreateFolderDialog, useFileOperations.
+- **On API success (save, approve):** The controller hook dispatches success callbacks and closes the dialog.
+- **On API failure (4xx/5xx, network error):** The dialog **stays open**. Error is shown via `onMessage`. User can retry or close manually.

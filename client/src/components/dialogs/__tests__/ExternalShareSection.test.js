@@ -21,6 +21,7 @@ const defaultProps = {
   setLinkCopied: jest.fn(),
   createShareLink: jest.fn(),
   getShareLinkUrl: jest.fn((token) => `https://example.com/share/${token}`),
+  onOpenShareLink: jest.fn(),
   filePath: '/docs/file.pdf',
   fileName: 'file.pdf',
   onMessage: jest.fn(),
@@ -102,5 +103,22 @@ describe('ExternalShareSection', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /new link/i }));
     expect(defaultProps.setExternalShareLink).toHaveBeenCalledWith(null);
+  });
+
+  it('delegates link opening through onOpenShareLink', () => {
+    const onOpenShareLink = jest.fn();
+
+    renderWithProviders(
+      <ExternalShareSection
+        {...defaultProps}
+        externalShareLink={{ token: 'sl_123', expiresAt: null }}
+        getShareLinkUrl={() => 'https://example.com/share/sl_123'}
+        onOpenShareLink={onOpenShareLink}
+      />
+    );
+
+    fireEvent.click(screen.getByText('https://example.com/share/sl_123'));
+
+    expect(onOpenShareLink).toHaveBeenCalledWith('https://example.com/share/sl_123');
   });
 });

@@ -48,12 +48,30 @@ const FAB = ({
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
 
+  const handleSpeedDialOpen = () => {
+    if (isMobile) return;
+    setOpen(true);
+  };
+
+  const handleSpeedDialClose = (_event, reason) => {
+    // Mobile/WebKit can emit a toggle-close immediately after the first tap.
+    // Drive mobile opening from the trigger click path instead.
+    if (isMobile && reason === 'toggle') return;
+    setOpen(false);
+  };
+
+  const handleFabTriggerClick = () => {
+    if (!isMobile) return;
+    setOpen(prevOpen => !prevOpen);
+  };
+
   const offset = isMobile ? 16 : 48; // PC: 3x more inward (16 * 3)
   if (shareLinkMode) {
     const { user, onLoginClick, onAddToSharedClick } = shareLinkMode;
     const isLoggedIn = !!user;
     return (
       <Fab
+        data-testid="share-link-fab"
         color="primary"
         aria-label={isLoggedIn ? t('nav.addToShared') : t('nav.login')}
         onClick={isLoggedIn ? onAddToSharedClick : onLoginClick}
@@ -73,12 +91,14 @@ const FAB = ({
 
   const actions = [
     {
+      testId: 'file-actions-create-folder',
       icon: <CreateNewFolderIcon />,
       name: t('fileManager.createFolder'),
       onClick: onCreateFolder,
       show: hasWritePermission,
     },
     {
+      testId: 'file-actions-upload',
       icon: <UploadIcon />,
       name: t('fileManager.uploadFile'),
       onClick: onUpload,
@@ -98,6 +118,7 @@ const FAB = ({
 
   return (
     <SpeedDial
+      data-testid="file-actions-speed-dial"
       ariaLabel={t('fileManager.fileActions')}
       sx={{
         position: 'fixed',
@@ -111,16 +132,19 @@ const FAB = ({
       }}
       icon={<SpeedDialIcon />}
       open={open}
-      onClose={() => setOpen(false)}
-      onOpen={() => setOpen(true)}
+      onClose={handleSpeedDialClose}
+      onOpen={handleSpeedDialOpen}
       FabProps={{
+        'data-testid': 'file-actions-fab',
         disabled: disabled,
+        onClick: handleFabTriggerClick,
         tabIndex: -1, // 포커스를 받지 않도록 설정하여 Dialog 닫힘 후 포커스 이동 시 onOpen이 호출되는 것을 방지
       }}
     >
       {actions.map((action) => (
         <SpeedDialAction
           key={action.name}
+          data-testid={action.testId}
           icon={action.icon}
           tooltipTitle={action.name}
           onClick={() => handleActionClick(action.onClick)}

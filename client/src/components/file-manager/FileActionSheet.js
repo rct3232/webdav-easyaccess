@@ -104,6 +104,7 @@ const FileActionSheet = ({
         <List sx={{ py: 0 }}>
           {canPreview && onPreview && (
             <ListItem
+              data-testid="file-action-preview"
               button
               onClick={() => handleAction(onPreview)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -117,6 +118,7 @@ const FileActionSheet = ({
 
           {onProperties && (
             <ListItem
+              data-testid="file-action-properties"
               button
               onClick={() => handleAction(onProperties)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -130,6 +132,7 @@ const FileActionSheet = ({
 
           {onDownload && (
             <ListItem
+              data-testid="file-action-download"
               button
               onClick={() => handleAction(onDownload)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -143,6 +146,7 @@ const FileActionSheet = ({
 
           {fileWritePermission && onRename && (
             <ListItem
+              data-testid="file-action-rename"
               button
               onClick={() => handleAction(onRename)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -156,6 +160,7 @@ const FileActionSheet = ({
 
           {fileWritePermission && onMove && (
             <ListItem
+              data-testid="file-action-move"
               button
               onClick={() => handleAction(onMove)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -169,6 +174,7 @@ const FileActionSheet = ({
 
           {onCopy && (
             <ListItem
+              data-testid="file-action-copy"
               button
               onClick={() => handleAction(onCopy)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -182,6 +188,7 @@ const FileActionSheet = ({
 
           {onShare && (
             <ListItem
+              data-testid="file-action-share"
               button
               onClick={() => handleAction(onShare)}
               sx={{ minHeight: 56, borderRadius: 1 }}
@@ -197,6 +204,7 @@ const FileActionSheet = ({
             <>
               <Divider sx={{ my: 1 }} />
               <ListItem
+                data-testid="file-action-delete"
                 button
                 onClick={() => handleAction(onDelete)}
                 sx={{

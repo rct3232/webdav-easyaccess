@@ -4,9 +4,10 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Main folder tree: home, shared, recent, share links. Uses BaseFolderTreeItem, SharedFoldersSection, RecentFilesSection, ShareLinkSection. Loads shared folders, recent files. |
-| Used in | FileManager |
-| Related components | BaseFolderTreeItem, SharedFoldersSection, RecentFilesSection, ShareLinkSection, listFiles, getUserPermissions |
+| Role | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. |
+| Used in | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable. |
+| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection` |
+| Ownership note | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core. |
 
 ---
 
@@ -26,7 +27,7 @@
 | onFileClick | function | N | - | File click (recent) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
-| hasWritePermission | boolean | N | - | Write permission |
+| hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
 | onInternalFileDrop | function | N | - | Internal drag: (draggedPath, targetFolderPath) when dropped from file manager |
 | isMobile | boolean | N | false | Mobile |
@@ -43,9 +44,12 @@
 
 ### 2.4 Dependencies
 
-- **imports:** BaseFolderTreeItem, SharedFoldersSection, RecentFilesSection, ShareLinkSection, getRecentFiles, onRecentFilesChange (recentFiles), normalizePath (pathUtils), getUserBaseFolder, filterOutUserOwnFolders (userUtils), getUserPermissions (permissionService)
+- **Allowed imports:** presentational components, section views, and controller hooks that prepare section state/handlers for the view.
+- **Avoid (target contract):** direct service/IO imports inside the tree view component. Shared/recent section coordination belongs to `useFolderTreeController`; share-link section loading must go through `folderTreeGateway`.
 - **Reference implementation:** `client/src/components/folder-tree/FolderTree.js`
-- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
+- **Related specs:**
+  - `docs/spec/client/components/folder-tree/BaseFolderTreeItem.md`
+  - `docs/spec/client/utils/recentFiles.md`
 
 ### 2.5 i18n Keys
 
@@ -60,10 +64,11 @@
 
 ### 2.7 Verification Scenarios
 
-- [ ] Path click, file click
-- [ ] Create folder, upload
-- [ ] Shared/recent sections
-- [ ] Drop handler
+- [ ] Clicking a folder calls `onPathClick(path)` with the clicked folder’s path.
+- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section.
+- [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
+- [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).
+- [ ] Internal DnD drop calls `onInternalFileDrop(draggedPath, targetFolderPath)` only for valid targets (permission/no-op rules remain unchanged).
 
 ### 2.8 Edge Cases
 

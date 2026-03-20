@@ -50,6 +50,10 @@
 - shareLinkMode: single Fab (Login or AddLink icon)
 - Default: SpeedDial with create folder, upload (filtered by hasWritePermission)
 - Returns null when !hasWritePermission or actions.length === 0
+- E2E selector contract:
+  - the SpeedDial root exposes a stable `data-testid` for opening file actions without relying on localized tooltip text
+  - once the SpeedDial is open, flow tests may target the visible create-folder and upload entries through their rendered `menuitem` accessible names when that surface is stable
+  - any action-root `data-testid` values are a secondary seam and should not replace `data-file-path` for file items
 
 ### 2.7 Verification Scenarios
 
@@ -61,4 +65,5 @@
 ### 2.8 Edge Cases
 
 - Safe area inset for iOS
+- mobile trigger taps must open the controlled SpeedDial through the trigger click path; do not rely on hover/focus-only transitions
 - tabIndex=-1 on Fab

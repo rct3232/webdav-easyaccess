@@ -91,4 +91,18 @@ describe('UserSelectionMenu', () => {
     renderWithAnchor({ folderMenuView: 'selectUser' });
     expect(screen.getByText('user2')).toBeInTheDocument();
   });
+
+  it('shows the requester-only option in review mode', () => {
+    renderWithAnchor({
+      folderMenuView: 'selectUser',
+      isReviewMode: true,
+      permissionRequest: {
+        requester_id: 'u3',
+        requester_username: 'requester',
+      },
+    });
+
+    expect(screen.getByText('requester')).toBeInTheDocument();
+    expect(screen.getByText(/applicant/i)).toBeInTheDocument();
+  });
 });

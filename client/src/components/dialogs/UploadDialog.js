@@ -78,7 +78,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
           <Button onClick={handleClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleUpload} variant="contained" disabled={files.length === 0}>
+          <Button data-testid="upload-dialog-submit" onClick={handleUpload} variant="contained" disabled={files.length === 0}>
             {t('dialogs.upload')}
           </Button>
         </>
@@ -86,6 +86,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
     >
       <Box
         {...getRootProps()}
+        data-testid="upload-dialog-dropzone"
         sx={{
           border: '2px dashed',
           borderColor: isDragActive ? 'primary.main' : 'grey.300',
@@ -97,7 +98,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
           mb: 2,
         }}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps({ 'data-testid': 'upload-dialog-file-input' })} />
         <Typography variant="body1">
           {isDragActive ? t('dialogs.uploadDropHere') : t('dialogs.uploadDropOrClick')}
         </Typography>

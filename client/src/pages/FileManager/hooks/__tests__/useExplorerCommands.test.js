@@ -1,0 +1,304 @@
+/**
+ * useExplorerCommands tests.
+ * @see docs/spec/client/hooks/useExplorerCommands.md
+ * @see docs/TESTING_STRATEGY.md
+ */
+import { renderHook, act, waitFor } from '@testing-library/react';
+
+jest.mock('../../../../services/explorerGateway', () => ({
+  __esModule: true,
+  default: {
+    uploadToPath: jest.fn(),
+    checkConflicts: jest.fn(),
+  },
+}));
+
+jest.mock('../useBulkOperations', () => ({
+  useBulkOperations: jest.fn(),
+}));
+
+jest.mock('../useFileOperations', () => ({
+  useFileOperations: jest.fn(),
+}));
+
+jest.mock('../../../../utils/errorUtils', () => ({
+  getServerErrorDisplay: jest.fn(() => 'server error'),
+  showErrorFromError: jest.fn((error, showError) => {
+    showError(error?.message || 'errors.unknown');
+  }),
+}));
+
+jest.mock('@webdav-easyaccess/shared/validation', () => ({
+  validateFileName: jest.fn(() => null),
+}));
+
+jest.mock('../../../../utils/validationMessage', () => ({
+  getValidationMessage: jest.fn((error) => `validation:${error}`),
+}));
+
+import explorerGateway from '../../../../services/explorerGateway';
+import { useBulkOperations } from '../useBulkOperations';
+import { useFileOperations } from '../useFileOperations';
+import { showErrorFromError } from '../../../../utils/errorUtils';
+import { validateFileName } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../../../../utils/validationMessage';
+import { useExplorerCommands } from '../useExplorerCommands';
+
+function createBulkState(overrides = {}) {
+  return {
+    folderPickerOpen: false,
+    folderPickerAction: null,
+    progressItems: [],
+    updateProgress: jest.fn(),
+    handleBulkMove: jest.fn(),
+    handleBulkCopy: jest.fn(),
+    handleBulkDelete: jest.fn(),
+    handleBulkDownload: jest.fn(),
+    handleFolderPickerSelect: jest.fn(),
+    handleRetry: jest.fn(),
+    handleCancelBulkOperation: jest.fn(),
+    dismissFailedItems: jest.fn(),
+    setFolderPickerOpen: jest.fn(),
+    setFolderPickerAction: jest.fn(),
+    bulkConflictData: null,
+    resolveBulkConflict: jest.fn(),
+    setBulkConflictData: jest.fn(),
+    ...overrides,
+  };
+}
+
+function createFileOperationsState(overrides = {}) {
+  return {
+    handleFileDownload: jest.fn().mockResolvedValue(undefined),
+    handleFileRename: jest.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+function createProps(overrides = {}) {
+  return {
+    t: (key) => key,
+    user: null,
+    isMobile: false,
+    isShareLinkMode: false,
+    shareToken: null,
+    currentPath: '/docs',
+    currentPathRef: { current: '/docs' },
+    refreshNow: jest.fn(),
+    getCurrentPathNow: jest.fn(() => '/docs'),
+    hasWritePermission: true,
+    selectedFiles: new Set(['/docs/a.txt']),
+    sortedFiles: [],
+    dismissFailedItems: jest.fn(),
+    setTreeUpdateTrigger: jest.fn(),
+    setDropMessage: jest.fn(),
+    setSelectedFiles: jest.fn(),
+    setSelectionMode: jest.fn(),
+    showError: jest.fn(),
+    closeUploadDialog: jest.fn(),
+    closeBulkDeleteDialog: jest.fn(),
+    closeRenameDialog: jest.fn(),
+    closeActionSheet: jest.fn(),
+    setActionSheetOpen: jest.fn(),
+    setActionSheetFile: jest.fn(),
+    actionSheetFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+    mobileRenameFile: null,
+    renameNewName: 'renamed.txt',
+    setRenameError: jest.fn(),
+    bulkDeleteFilePaths: ['/docs/a.txt'],
+    ...overrides,
+  };
+}
+
+describe('useExplorerCommands', () => {
+  let bulkState;
+  let fileOperationsState;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+
+    bulkState = createBulkState();
+    fileOperationsState = createFileOperationsState();
+
+    useBulkOperations.mockImplementation(() => bulkState);
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    explorerGateway.checkConflicts.mockResolvedValue([]);
+    explorerGateway.uploadToPath.mockResolvedValue({ errors: [] });
+    validateFileName.mockReturnValue(null);
+    getValidationMessage.mockImplementation((error) => `validation:${error}`);
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('stores upload conflict data when conflict preflight finds duplicates', async () => {
+    explorerGateway.checkConflicts.mockResolvedValue([
+      { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' },
+    ]);
+    const props = createProps();
+    const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    await act(async () => {
+      await result.current.handleUploadStart([file], '/docs');
+    });
+
+    expect(props.closeUploadDialog).toHaveBeenCalled();
+    expect(explorerGateway.checkConflicts).toHaveBeenCalledWith({
+      operations: [
+        { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt', type: 'upload' },
+      ],
+    });
+    expect(result.current.uploadConflictData).toEqual(expect.objectContaining({
+      targetPath: '/docs',
+      conflicts: [{ sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' }],
+    }));
+    expect(bulkState.updateProgress).toHaveBeenCalledWith(expect.objectContaining({ remove: true }));
+  });
+
+  it('replays conflicted upload with the chosen resolution and refresh completion wiring', async () => {
+    explorerGateway.checkConflicts.mockResolvedValue([
+      { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' },
+    ]);
+    const props = createProps();
+    const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    await act(async () => {
+      await result.current.handleUploadStart([file], '/docs');
+    });
+
+    await act(async () => {
+      await result.current.resolveUploadConflict('skip');
+    });
+
+    expect(explorerGateway.uploadToPath).toHaveBeenCalledWith(expect.objectContaining({
+      targetPath: '/docs',
+      onConflict: 'skip',
+    }));
+    expect(props.refreshNow).toHaveBeenCalled();
+    expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(expect.objectContaining({ type: 'refresh' }));
+    expect(result.current.uploadConflictData).toBe(null);
+  });
+
+  it('reports rename validation errors without calling file rename operations', async () => {
+    const props = createProps({
+      mobileRenameFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      renameNewName: '   ',
+    });
+    validateFileName.mockReturnValue('empty');
+    getValidationMessage.mockReturnValue('name is invalid');
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    await act(async () => {
+      await result.current.handleRename();
+    });
+
+    expect(props.setRenameError).toHaveBeenCalledWith('name is invalid');
+    expect(fileOperationsState.handleFileRename).not.toHaveBeenCalled();
+  });
+
+  it('completes rename flow by clearing errors and closing rename surfaces', async () => {
+    const props = createProps({
+      actionSheetFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      renameNewName: 'renamed.txt',
+    });
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    await act(async () => {
+      await result.current.handleRename();
+    });
+
+    expect(props.setRenameError).toHaveBeenCalledWith('');
+    expect(fileOperationsState.handleFileRename).toHaveBeenCalledWith(
+      { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      'renamed.txt',
+      { startedPath: '/docs' }
+    );
+    expect(props.closeRenameDialog).toHaveBeenCalled();
+    expect(props.closeActionSheet).toHaveBeenCalled();
+    expect(result.current.renameLoading).toBe(false);
+  });
+
+  it('confirms bulk delete by clearing selection and delegating the delete command', () => {
+    const props = createProps({
+      bulkDeleteFilePaths: ['/docs/a.txt', '/docs/b.txt'],
+    });
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    act(() => {
+      result.current.handleBulkDeleteConfirm();
+    });
+
+    expect(props.closeBulkDeleteDialog).toHaveBeenCalled();
+    expect(props.setSelectedFiles).toHaveBeenCalledWith(new Set());
+    expect(props.setSelectionMode).toHaveBeenCalledWith(false);
+    expect(bulkState.handleBulkDelete).toHaveBeenCalledWith({
+      filePaths: ['/docs/a.txt', '/docs/b.txt'],
+    }, null);
+  });
+
+  it('surfaces command-style validation failures through the shared error surface and rethrows', async () => {
+    const props = createProps();
+    const file = { path: '/docs/a.txt', basename: 'a.txt', type: 'file' };
+    validateFileName.mockReturnValue('invalid');
+    getValidationMessage.mockReturnValue('rename failed');
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    await expect(result.current.renameEntry(file, '???')).rejects.toThrow('rename failed');
+
+    expect(showErrorFromError).toHaveBeenCalled();
+    expect(showErrorFromError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'rename failed' }),
+      props.showError,
+      props.t
+    );
+  });
+
+  it('derives move/copy in-progress state from picker or active bulk progress items', () => {
+    bulkState = createBulkState({
+      progressItems: [
+        { type: 'move', status: 'processing' },
+      ],
+    });
+    useBulkOperations.mockImplementation(() => bulkState);
+
+    const { result } = renderHook(() => useExplorerCommands(createProps()));
+
+    expect(result.current.folderPickerMoveCopyInProgress).toBe(true);
+  });
+
+  it('exposes an operation completion handler that refreshes only affected paths', () => {
+    const props = createProps({
+      getCurrentPathNow: jest.fn(() => '/docs'),
+    });
+
+    const { result } = renderHook(() => useExplorerCommands(props));
+
+    act(() => {
+      result.current.handleOperationComplete({
+        opType: 'rename',
+        startedPath: '/other',
+      });
+    });
+
+    expect(props.refreshNow).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.handleOperationComplete({
+        opType: 'rename',
+        startedPath: '/docs',
+      });
+    });
+
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
+  });
+});

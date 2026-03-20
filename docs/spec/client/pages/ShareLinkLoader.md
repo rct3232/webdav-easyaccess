@@ -5,7 +5,7 @@
 | Item | Description |
 |------|-------------|
 | Route path | `/share/:token` |
-| Role | Loader for share links. Fetches public share link info; if directory renders FileManager; if file renders ShareLinkSingleFileView. |
+| Role | Route shell for share links. Uses `useShareLinkInfo` to fetch public share link info; if directory renders FileManager; if file renders ShareLinkSingleFileView. |
 
 ---
 
@@ -17,9 +17,14 @@
 - **Test file:** `client/src/pages/__tests__/ShareLinkLoader.test.js`
 
 ### 2.2 Hooks Used
-
 - useParams (token)
-- useTranslation
+- useShareLinkInfo (token)
+- useTranslation (loading/error view text)
+
+Boundary note:
+
+- Route-param lookup stays in the page shell.
+- `useShareLinkInfo` owns fetch lifecycle and error normalization for the resolved token.
 
 ### 2.3 Main Child Components
 
@@ -32,8 +37,7 @@
 - No PrivateRoute; public route. Token in URL; auth optional for “add to shared” flow.
 
 ### 2.5 Main User Flows
-
-- Load: call getPublicShareLinkInfo(token)
+- Load: `useShareLinkInfo(token)` calls `getPublicShareLinkInfo(token)`
 - Loading: show spinner
 - Error: show error message
 - Directory: render FileManager with shareToken and linkInfo
@@ -41,8 +45,8 @@
 
 ### 2.5.1 Error Handling
 
-- 잘못된 token 형식(빈 문자열, URL 인코딩 오류 등): getPublicShareLinkInfo 호출 → 404/400 등; Error state 표시
-- 404: 링크 없음; 403: 접근 불가; 5xx/network: 서버/네트워크 오류. 모두 동일하게 error message + hint 표시 (메시지 키는 공통 가능)
+- Invalid token format (empty string, URL encoding errors, etc.): `getPublicShareLinkInfo(token)` → 404/400, etc.; show error state
+- 404: link not found; 403: access not allowed; 410: expired link; 5xx/network: server/network failure. All map to the same error experience, with the main message normalized by the hook and the hint text rendered by the page shell
 
 ### 2.6 Integration Test Scenarios
 
@@ -50,8 +54,8 @@
 - [ ] Error state when fetch fails or token invalid
 - [ ] Directory link renders FileManager with shareToken/linkInfo
 - [ ] Single file link renders ShareLinkSingleFileView
-- [ ] Invalid token 형식 → Error state
-- [ ] 404 vs 403 vs 5xx 구분 표시(선택: 공통 메시지여도 OK)
+- [ ] Invalid token format → error state
+- [ ] 404 vs 403 vs 5xx differentiation is shown (optional: common message is OK)
 
 ### 2.7 Conditional Rendering
 

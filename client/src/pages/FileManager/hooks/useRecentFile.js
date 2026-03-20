@@ -2,10 +2,22 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../../utils/pathUtils';
-import { getRecentFiles, removeRecentFile } from '../../../utils/recentFiles';
-import { listFiles } from '../../../services/fileService';
+import explorerGateway from '../../../services/explorerGateway';
 import { determineErrorType, getErrorMessageByType } from '../../../utils/errorUtils';
 import { canPreview } from '../../../utils/fileUtils';
+
+const isMissingRecentVerificationError = (error) => {
+  const status = error?.response?.status;
+  return status === HTTP_STATUS.NOT_FOUND || status === HTTP_STATUS.FORBIDDEN;
+};
+
+const findEntryByPath = (entries, targetPath) => {
+  const normalizedTargetPath = normalizePath(targetPath);
+  if (!Array.isArray(entries)) {
+    return null;
+  }
+  return entries.find((entry) => normalizePath(entry?.path) === normalizedTargetPath) || null;
+};
 
 /**
  * 최근 파일 관련 통합 훅
@@ -32,12 +44,51 @@ export const useRecentFile = ({
   files,
   loading,
   currentPath,
+  recentGateway = explorerGateway,
 }) => {
   const { t } = useTranslation();
   // --- useRecentFileNavigation 로직 ---
   const recentFilePathsRef = useRef(new Map());
   const pathHistoryRef = useRef(new Map());
   const processingErrorRef = useRef(new Set());
+
+  const removeRecentEntry = useCallback(
+    async (filePath) => {
+      const normalizedFilePath = normalizePath(filePath);
+      const recentFiles = await recentGateway.loadRecentFiles();
+      const recentFile = findEntryByPath(recentFiles, normalizedFilePath);
+
+      if (!recentFile?.path) {
+        return false;
+      }
+
+      await recentGateway.removeRecentFile(recentFile.path);
+      return true;
+    },
+    [recentGateway]
+  );
+
+  const verifyRecentEntry = useCallback(
+    async (filePath, parentPath) => {
+      const normalizedParentPath = normalizePath(parentPath);
+      const parentFiles = await recentGateway.listDirectory({ path: normalizedParentPath });
+      return findEntryByPath(parentFiles, filePath);
+    },
+    [recentGateway]
+  );
+
+  const showMissingRecentFileOutcome = useCallback(
+    async (filePath, logContext) => {
+      try {
+        const removed = await removeRecentEntry(filePath);
+        showError(t(removed ? 'errors.recentRemovedFromList' : 'errors.fileNotFound'));
+      } catch (error) {
+        console.error(logContext, error);
+        showError(t('errors.fileNotFound'));
+      }
+    },
+    [removeRecentEntry, showError, t]
+  );
 
   const trackRecentFileClick = useCallback((filePath, parentPath = null) => {
     const normalizedFilePath = normalizePath(filePath);
@@ -106,61 +157,31 @@ export const useRecentFile = ({
         const parentPath =
           normalizedFilePath.substring(0, normalizedFilePath.lastIndexOf('/')) || '/';
         const normalizedParentPath = normalizePath(parentPath);
+        let handledRecentOutcome = false;
 
         try {
-          const parentFiles = await listFiles(normalizedParentPath);
-          const fileExists = parentFiles.some((f) => {
-            const fPath = normalizePath(f.path);
-            return fPath === normalizedFilePath;
-          });
+          const existingFile = await verifyRecentEntry(normalizedFilePath, normalizedParentPath);
 
-          if (!fileExists) {
-            try {
-              const recentFiles = await getRecentFiles();
-              const foundRecentFile = recentFiles.find((rf) => {
-                const rfNormalized = normalizePath(rf.path);
-                return rfNormalized === normalizedFilePath;
-              });
-
-              if (foundRecentFile) {
-                await removeRecentFile(foundRecentFile.path);
-                showError(t('errors.recentRemovedFromList'));
-              } else {
-                showError(t('errors.fileNotFound'));
-              }
-            } catch (err) {
-              console.error('Failed to remove from recent files on 404:', err);
-              showError(t('errors.fileNotFound'));
-            }
+          if (!existingFile) {
+            await showMissingRecentFileOutcome(
+              normalizedFilePath,
+              'Failed to remove from recent files on 404:'
+            );
           } else {
             showError(t('errors.folderAccessDenied'));
           }
+          handledRecentOutcome = true;
         } catch (verifyError) {
           console.error('Failed to verify file existence on 404:', verifyError);
-          if (
-            verifyError.response?.status === HTTP_STATUS.NOT_FOUND ||
-            verifyError.response?.status === HTTP_STATUS.FORBIDDEN
-          ) {
-            try {
-              const recentFiles = await getRecentFiles();
-              const foundRecentFile = recentFiles.find((rf) => {
-                const rfNormalized = normalizePath(rf.path);
-                return rfNormalized === normalizedFilePath;
-              });
-
-              if (foundRecentFile) {
-                await removeRecentFile(foundRecentFile.path);
-                showError(t('errors.recentRemovedFromList'));
-              } else {
-                showError(t('errors.fileNotFound'));
-              }
-            } catch (err) {
-              console.error('Failed to remove from recent files on verify error:', err);
-              showError(t('errors.fileNotFound'));
-            }
+          if (isMissingRecentVerificationError(verifyError)) {
+            await showMissingRecentFileOutcome(
+              normalizedFilePath,
+              'Failed to remove from recent files on verify error:'
+            );
           } else {
             showError(t('errors.fileCheckError'));
           }
+          handledRecentOutcome = true;
         }
 
         recentFilePathsRef.current.delete(normalizedPath);
@@ -168,6 +189,31 @@ export const useRecentFile = ({
         if (actualFilePath !== normalizedPath && actualFilePath !== path) {
           recentFilePathsRef.current.delete(normalizePath(actualFilePath));
           recentFilePathsRef.current.delete(actualFilePath);
+        }
+
+        if (handledRecentOutcome) {
+          const currentPathNow = currentPathRef.current;
+          const currentNormalized = normalizePath(currentPathNow);
+
+          let previousPath = pathHistoryRef.current.get(normalizedPath);
+          if (!previousPath) previousPath = pathHistoryRef.current.get(path);
+          if (!previousPath) previousPath = pathHistoryRef.current.get(currentPathNow);
+          if (!previousPath) previousPath = pathHistoryRef.current.get(currentNormalized);
+
+          if (previousPath) {
+            setCurrentPath(previousPath);
+            pathHistoryRef.current.delete(normalizedPath);
+            pathHistoryRef.current.delete(path);
+            pathHistoryRef.current.delete(currentPathNow);
+            pathHistoryRef.current.delete(currentNormalized);
+          } else {
+            const defaultPath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+            setCurrentPath(defaultPath);
+          }
+
+          processingErrorRef.current.delete(path);
+          processingErrorRef.current.delete(normalizedPath);
+          return;
         }
       }
 
@@ -214,7 +260,9 @@ export const useRecentFile = ({
       showError,
       user,
       currentPathRef,
+      showMissingRecentFileOutcome,
       t,
+      verifyRecentEntry,
     ]
   );
 
@@ -246,11 +294,7 @@ export const useRecentFile = ({
       } else {
         (async () => {
           try {
-            const parentFiles = await listFiles(normalizedParentPath);
-            const serverFoundFile = parentFiles.find((f) => {
-              const fPath = normalizePath(f.path);
-              return fPath === normalizedFilePath;
-            });
+            const serverFoundFile = await verifyRecentEntry(normalizedFilePath, normalizedParentPath);
 
             if (
               serverFoundFile &&
@@ -267,7 +311,7 @@ export const useRecentFile = ({
               clearTracking(normalizedParentPath);
               clearTracking(parentPath);
             } else {
-              handleRecentFileError(
+              await handleRecentFileError(
                 { response: { status: HTTP_STATUS.NOT_FOUND }, message: t('errors.fileNotFound') },
                 filePath
               );
@@ -277,8 +321,8 @@ export const useRecentFile = ({
             }
           } catch (error) {
             console.error('Failed to verify file existence:', error);
-            if (error.response?.status === HTTP_STATUS.NOT_FOUND || error.response?.status === HTTP_STATUS.FORBIDDEN) {
-              handleRecentFileError(
+            if (isMissingRecentVerificationError(error)) {
+              await handleRecentFileError(
                 { response: { status: HTTP_STATUS.NOT_FOUND }, message: t('errors.fileNotFound') },
                 filePath
               );
@@ -303,6 +347,7 @@ export const useRecentFile = ({
     clearTracking,
     setSelectedFile,
     setPreviewDialogOpen,
+    verifyRecentEntry,
   ]);
 
   return {

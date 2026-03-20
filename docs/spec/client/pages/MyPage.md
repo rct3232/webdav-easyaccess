@@ -22,6 +22,7 @@
 - **Drawer closed:** AppBar with Menu (left, opens drawer), Close (right). Content area fills screen.
 - **Drawer open:** Category list slides in from left with dimmed overlay. Selecting a category closes the drawer.
 - **AppBar:** Menu (left), Close (right).
+- **Browser-visible mobile contract:** Opening the drawer must not replace or clear the current content panel until the user selects a category or dismisses the drawer.
 
 ### 2.3 Summary
 
@@ -43,10 +44,8 @@
 
 ### 3.2 Hooks Used
 
-- useAuth (user, logout)
-- useNavigate
+- useMyPageController (selected state + navigation callbacks)
 - useTranslation
-- useLocation (for `location.state?.category` when navigating from admin icon)
 - useResponsive (isMobile)
 
 ### 3.3 Main Child Components
@@ -56,15 +55,18 @@
 - **Content:** AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent
 - **Dialogs:** ShareDialog (mode share, mode review), AccountEditDialog
 
-### 3.4 State
+### 3.4 Controller-provided State
 
 | State               | Purpose                                                   |
 |---------------------|-----------------------------------------------------------|
 | selectedCategory    | Current category. Reset selectedContentItem when changed. |
 | selectedContentItem | For multi-item categories: null = list view, non-null = detail view. |
 | categoryDrawerOpen  | Mobile sidebar drawer visibility.                         |
+| sidebarItems        | Prepared category items already filtered for the current role. |
 
 Initial `selectedCategory` may come from `location.state?.category` (e.g. `navigate('/mypage', { state: { category: 'admin-users' } })`). Legacy `admin` maps to `admin-users`.
+
+This normalization is handled by `useMyPageController`.
 
 ### 3.5 Categories and Content Flow
 
@@ -84,11 +86,25 @@ Initial `selectedCategory` may come from `location.state?.category` (e.g. `navig
 
 **Single-item (Account, Preferences):** Direct content, no list.
 
-### 3.6 Route Protection
+Boundary notes:
+
+- `MyPageSidebar` is a pure view fed with prepared category items; it must not derive admin visibility from `user`.
+- `MyPageContentArea` delegates category-to-content resolution to the MyPage registry/helper layer rather than owning inline category dispatch branches.
+
+### 3.6 Mobile drawer contract
+
+- Mobile-only:
+  - The Menu button opens the category drawer.
+  - Closing the drawer without choosing a category leaves the current category/content unchanged.
+  - Selecting a category closes the drawer and switches the visible content to that category.
+- Desktop:
+  - The category list stays persistently visible and does not use drawer state.
+
+### 3.7 Route Protection
 
 - Wrapped by PrivateRoute; auth required.
 
-### 3.7 Main User Flows
+### 3.8 Main User Flows
 
 - View account info (username, email, status, permission)
 - Edit account (email, password) via AccountEditDialog
@@ -96,14 +112,17 @@ Initial `selectedCategory` may come from `location.state?.category` (e.g. `navig
 - Sharing: Inbox (approve/reject), Outbox (cancel), Share links (list, copy, extend, delete). Hidden for admin.
 - User Management (approve, reject, delete, create), System Settings (registration, show hidden files, cleanup). Admin only.
 - Preferences: Language switch (moved from AppBar)
-- Close (X) → navigate to `/`
+- Mobile: open drawer, select category, and close drawer while preserving expected content
+- Close (X) → return to the file area (`/files` or the normal protected file route outcome), not to an unrelated public landing screen
 
-### 3.8 Integration Test Scenarios
+### 3.9 Integration Test Scenarios
 
 - [ ] PC: Logo visible on AppBar left (same as FileManager)
 - [ ] Category selection updates content; when category changes, reset to list view if multi-item
 - [ ] Menu button visible only on mobile; toggles category drawer
-- [ ] Close navigates to `/`
+- [ ] Mobile: opening the drawer leaves the current content visible until a category is selected or the drawer is dismissed
+- [ ] Mobile: selecting a category closes the drawer and updates the visible content
+- [ ] Close returns the user to the protected file area
 - [ ] Account info displays for current user
 - [ ] Account edit: email/password update, password change logs out
 - [ ] Logout at bottom of Account content
@@ -113,7 +132,7 @@ Initial `selectedCategory` may come from `location.state?.category` (e.g. `navig
 - [ ] Share links, inbox/outbox flows work as before
 - [ ] Tests must wait until authenticated user-driven layout is rendered before querying category controls or content headings (e.g. wait for AppBar Close button or visible category button). Avoid immediate synchronous `getBy*` right after render when AuthProvider still resolves `auth/me`.
 
-### 3.9 Conditional Rendering
+### 3.10 Conditional Rendering
 
 - Admin category visible only when `user.is_admin`
 - Sharing category hidden when `user.is_admin`

@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { render, screen, renderHook, act } from '@testing-library/react';
+import { render, screen, renderHook, act, waitFor } from '@testing-library/react';
 import { usePullToRefresh } from '../usePullToRefresh';
 
 function TestComponent({ onRefresh, options = {} }) {
@@ -45,12 +45,14 @@ function triggerTouchEvent(element, type, { clientY = 0, clientX = 0 }) {
 }
 
 describe('usePullToRefresh', () => {
-  it('returns pullDistance, isPulling, isRefreshing, canPull, resetPull', () => {
+  it('returns pullDistance, isPulling, isRefreshing, canPull, resetPull', async () => {
     const mockOnRefresh = jest.fn();
     render(<TestComponent onRefresh={mockOnRefresh} />);
 
+    await waitFor(() => {
+      expect(screen.getByTestId('can-pull').textContent).toBe('true');
+    });
     expect(screen.getByTestId('pull-distance').textContent).toBe('0');
-    expect(screen.getByTestId('can-pull').textContent).toBe('true');
     expect(screen.getByTestId('is-pulling').textContent).toBe('false');
     expect(screen.getByTestId('is-refreshing').textContent).toBe('false');
     expect(screen.getByTestId('reset-pull')).toBeInTheDocument();
@@ -112,10 +114,9 @@ describe('usePullToRefresh', () => {
       triggerTouchEvent(container, 'touchend', { clientY: 200, clientX: 50 });
     });
 
-    await act(async () => {
-      await mockOnRefresh;
-    });
-
     expect(mockOnRefresh).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByTestId('is-refreshing').textContent).toBe('false');
+    });
   });
 });

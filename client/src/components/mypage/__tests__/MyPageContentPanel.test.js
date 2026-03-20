@@ -5,7 +5,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React, { useEffect } from 'react';
-import { screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import MyPageContentPanel from '../MyPageContentPanel';
@@ -100,8 +100,10 @@ describe('MyPageContentPanel', () => {
       usePageHeader();
       return null;
     }
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => {
-      renderWithProviders(<ComponentThatCallsUsePageHeader />);
+      render(<ComponentThatCallsUsePageHeader />);
     }).toThrow('usePageHeader must be used within a PageHeaderContext.Provider');
+    consoleError.mockRestore();
   });
 });

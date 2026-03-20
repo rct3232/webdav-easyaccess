@@ -6,11 +6,13 @@ const fs = require('fs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-const envPath = path.join(__dirname, '../.env');
+const envPath = process.env.DOTENV_CONFIG_PATH
+  ? path.resolve(__dirname, process.env.DOTENV_CONFIG_PATH)
+  : path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 } else {
-  console.warn('Warning: .env file not found. Using default environment variables.');
+  console.warn(`Warning: env file not found at ${envPath}. Using default environment variables.`);
   dotenv.config();
 }
 

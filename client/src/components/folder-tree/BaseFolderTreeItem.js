@@ -16,11 +16,8 @@ import {
   ChevronRight as ChevronRightIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { listFiles } from '../../services/fileService';
-import { useDropToUpload } from '../../hooks/useDropToUpload';
-import { getShowHiddenFiles } from '../../utils/localStorage';
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
+import useFolderTreeItemController from './hooks/useFolderTreeItemController';
 
 /**
  * 통합된 폴더 트리 아이템 컴포넌트
@@ -64,38 +61,64 @@ const BaseFolderTreeItem = ({
   listFilesOptions,
   filterChildNames,
 }) => {
-  // path/name 또는 node에서 값 추출
-  const path = pathProp || node?.path;
-  const name = nameProp || node?.name;
-  const isHidden = isHiddenProp || node?.isHidden || false;
+  const {
+    name,
+    isHidden,
+    hasWritePermission,
+    children,
+    loading,
+    isExpanded,
+    isCurrent,
+    hasChildren,
+    showExpandIcon,
+    isDisabled,
+    isDropTarget,
+    isDraggingOver,
+    handleFolderDragOver,
+    handleFolderDragEnter,
+    handleFolderDragLeave,
+    handleFolderDrop,
+    handleClick,
+    handleToggle,
+    handleDragStart,
+    handleDragEnd,
+  } = useFolderTreeItemController({
+    // path/name or node
+    path: pathProp,
+    name: nameProp,
+    node,
 
-  // 권한 계산 - sharedFoldersMap이 있으면 그것을 사용
-  let hasReadPermission = hasReadPermissionProp;
-  let hasWritePermission = hasWritePermissionProp;
+    // display + navigation
+    currentPath,
+    expandedPaths,
+    onPathClick,
+    onToggleExpand,
 
-  if (node?.hasReadPermission !== undefined) {
-    hasReadPermission = node.hasReadPermission === true;
-  } else if (sharedFoldersMap) {
-    hasReadPermission = sharedFoldersMap.has(path) || sharedFoldersMap.has(path + '/');
-  }
+    // permissions
+    hasReadPermission: hasReadPermissionProp,
+    hasWritePermission: hasWritePermissionProp,
+    sharedFoldersMap,
 
-  if (node?.hasWritePermission !== undefined) {
-    hasWritePermission = node.hasWritePermission === true;
-  } else if (sharedFoldersMap) {
-    const perm = sharedFoldersMap.get(path) || sharedFoldersMap.get(path + '/');
-    hasWritePermission = perm && perm.permission === PERMISSIONS.WRITE;
-  }
+    // DnD / drop mode
+    onExplorerDrop,
+    onInternalFileDrop,
+    onInternalDragStart,
+    onInternalDragEnd,
+    internalDraggedPath,
+    isMobile,
 
-  const nodeChildren = node?.children || initialChildren;
-  const [children, setChildren] = useState(nodeChildren);
-  const [loading, setLoading] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(nodeChildren.length > 0);
-  const isExpanded = expandedPaths.has(path);
-  const isCurrent = currentPath === path;
-  const hasChildren = children.length > 0;
-  const showExpandIcon = hasChildren || isExpanded || hasLoaded;
-  const prevTreeUpdateTriggerRef = useRef(treeUpdateTrigger);
-  const isDisabled = hasReadPermission === false;
+    // children + reload behavior
+    children: initialChildren,
+    treeUpdateTrigger,
+    isHome,
+    isHidden: isHiddenProp,
+
+    // compatibility + filtering
+    user,
+    useHiddenFilesFilter,
+    listFilesOptions,
+    filterChildNames,
+  });
   const nameTextRef = useRef(null);
   const [isNameTruncated, setIsNameTruncated] = useState(false);
 
@@ -113,131 +136,6 @@ const BaseFolderTreeItem = ({
     ro.observe(el);
     return () => ro.disconnect();
   }, [name, checkNameTruncation]);
-
-  // 드래그앤드롭 핸들러
-  const {
-    isDropTarget,
-    isDraggingOver,
-    handleFolderDragOver,
-    handleFolderDragEnter,
-    handleFolderDragLeave,
-    handleFolderDrop,
-  } = useDropToUpload({
-    path,
-    isDisabled,
-    hasWritePermission,
-    onExplorerDrop,
-    onInternalFileDrop,
-    internalDraggedPath,
-  });
-
-  const loadChildren = useCallback(async (force = false) => {
-    if (loading && !force) return;
-    setLoading(true);
-    try {
-      const data = await listFiles(path, listFilesOptions || {});
-      const showHiddenFiles = useHiddenFilesFilter ? getShowHiddenFiles() : true;
-      let folders = data
-        .filter(item => item.type === 'directory')
-        .filter(item => showHiddenFiles || !item.isHidden)
-        .map(item => ({
-          path: item.path,
-          name: item.basename || item.name,
-          hasReadPermission: item.hasReadPermission,
-          hasWritePermission: item.hasWritePermission,
-          isHidden: item.isHidden,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-      if (filterChildNames && filterChildNames.length > 0) {
-        const set = new Set(filterChildNames);
-        folders = folders.filter(f => !set.has(f.name));
-      }
-      setChildren(folders);
-      setHasLoaded(true);
-    } catch (error) {
-      console.error('Failed to load folder children:', error);
-      setChildren([]);
-      setHasLoaded(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [path, loading, useHiddenFilesFilter, listFilesOptions, filterChildNames]);
-
-  useEffect(() => {
-    if (isExpanded && !hasLoaded && !loading) {
-      loadChildren();
-    }
-  }, [isExpanded, hasLoaded, loading, loadChildren]);
-
-  useEffect(() => {
-    if (currentPath && currentPath.startsWith(path + '/') && path !== currentPath) {
-      if (!isExpanded) {
-        onToggleExpand(path);
-      }
-    }
-  }, [currentPath, path, isExpanded, onToggleExpand]);
-
-  useEffect(() => {
-    if (treeUpdateTrigger && treeUpdateTrigger !== prevTreeUpdateTriggerRef.current) {
-      prevTreeUpdateTriggerRef.current = treeUpdateTrigger;
-
-      if (treeUpdateTrigger.type === 'created') {
-        const { folderPath, folderName, parentPath } = treeUpdateTrigger;
-        if (parentPath === path) {
-          setChildren(prev => {
-            const exists = prev.some(child => child.path === folderPath);
-            if (exists) return prev;
-            const newChild = { path: folderPath, name: folderName };
-            return [...prev, newChild].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-          });
-          if (!isExpanded) {
-            onToggleExpand(path);
-          }
-          setHasLoaded(true);
-        }
-      } else if (treeUpdateTrigger.type === 'deleted') {
-        const { folderPath } = treeUpdateTrigger;
-        setChildren(prev => prev.filter(child => child.path !== folderPath));
-      } else if (treeUpdateTrigger.type === 'refresh') {
-        if (isExpanded || isHome) {
-          loadChildren(true);
-        }
-      }
-    }
-  }, [treeUpdateTrigger, path, isExpanded, isHome, onToggleExpand, loadChildren]);
-
-  const handleClick = () => {
-    if (isDisabled) return;
-    onPathClick(path);
-  };
-
-  const handleToggle = (e) => {
-    e.stopPropagation();
-    onToggleExpand(path);
-    if (!isExpanded && children.length === 0) {
-      loadChildren();
-    }
-  };
-
-  const handleDragStart = useCallback(
-    (e) => {
-      if (isMobile || isDisabled) return;
-      e.stopPropagation();
-      onInternalDragStart?.(path);
-      if (e?.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', path);
-      }
-    },
-    [path, isMobile, isDisabled, onInternalDragStart]
-  );
-
-  const handleDragEnd = useCallback(
-    () => {
-      onInternalDragEnd?.();
-    },
-    [onInternalDragEnd]
-  );
 
   // 자식 렌더링 함수
   const isDropHighlight = (isDropTarget || isDraggingOver) && hasWritePermission;

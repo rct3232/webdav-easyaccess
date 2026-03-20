@@ -32,6 +32,7 @@ const RenameDialog = ({
           fullWidth
           variant="outlined"
           value={value}
+          inputProps={{ 'data-testid': 'rename-name-input' }}
           onChange={(e) => {
             onChange(e.target.value);
             if (error && onClearError) onClearError();
@@ -50,6 +51,7 @@ const RenameDialog = ({
           {t('common.cancel')}
         </Button>
         <Button
+          data-testid="rename-submit"
           onClick={onConfirm}
           variant="contained"
           disabled={loading || !(value || '').trim()}

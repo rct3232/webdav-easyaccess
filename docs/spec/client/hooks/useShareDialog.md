@@ -4,8 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | ShareDialog state: users, folderTree, expandedPaths, folder menu, external share. Loads users, folder children. Integrates usePermissionManager. |
-| Used by components/pages | ShareDialog |
+| Role | Controller hook for `ShareDialog`. Owns dialog orchestration, tree expansion state, menu state, and mode-specific callback flow. It prepares view-ready state for the dialog shell and delegates permission persistence to gateway-backed use-cases. |
+| Used by components/pages | `ShareDialog` |
+| Does not own | JSX rendering, low-level permission mutation loops, or pure permission-diff rules |
 
 ---
 
@@ -20,75 +21,85 @@
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| open | boolean | Y | Dialog open |
-| mode | string | Y | 'admin' \| 'share' \| 'manage' \| 'review' |
-| userId | string | N | Target user |
-| username | string | N | Username |
-| startFromUserHome | boolean | N | Admin start |
-| folderPath | string | N | Folder path |
-| folderName | string | N | Folder name |
-| permissionRequest | object | N | Review request |
-| enableExternalShare | boolean | N | External share |
-| onMessage | function | N | Message |
-| onSave | function | N | Save |
-| onApprove | function | N | Approve |
-| onClose | function | N | Close |
-| folderPermissions, setFolderPermissions, ... | from usePermissionManager | Y | Permission state |
+| open | boolean | Y | Dialog open state |
+| mode | string | Y | `'admin' \| 'share' \| 'manage' \| 'review'` |
+| userId | string | N | Target user id in admin mode |
+| username | string | N | Target username in admin mode |
+| startFromUserHome | boolean | N | Whether admin mode should anchor at the user's home folder |
+| folderPath | string | N | Root folder for share/review flows |
+| folderName | string | N | Display name for the selected folder |
+| permissionRequest | object | N | Request under review in review mode |
+| enableExternalShare | boolean | N | External share-only mode |
+| onMessage | function | N | User-visible message dispatcher |
+| onSave | function | N | Success callback for admin/share save flows |
+| onApprove | function | N | Success callback for review approval |
+| onClose | function | Y | Dialog close callback |
+| folderPermissions, setFolderPermissions, initialFolderPermissions, setInitialFolderPermissions, userInfoMap, setUserInfoMap, setSaving, setLoadingPermissions, handleAddUserPermission, handleRemoveUserPermission, handleToggleUserPermission, hasPermissionChanged | mixed | Y | Permission-manager state and actions injected from `usePermissionManager` |
 
 ### 2.3 Return Value / State
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| rootPath | string | Root path |
-| users | array | Users list |
-| folderTree | Map | Folder tree |
-| expandedPaths | Set | Expanded |
-| loadingPaths | Set | Loading paths |
-| loadingAllFolders | boolean | Loading |
-| folderMenuAnchor | element | Menu anchor |
-| folderMenuPath | string | Menu path |
-| folderMenuView | string | 'manage' \| 'add' |
-| externalShare* | state | External share state |
-| toggleExpand | (path) => void | Toggle |
-| handleSave | () => Promise | Save |
-| ... | | Other handlers |
+| rootPath | string | Effective root path for the current mode |
+| isAdminMode / isShareMode / isReviewMode | boolean | Mode flags for the dialog shell |
+| users | array | Approved-user list for add-user flows |
+| folderTree | `Map<string, object>` | Loaded folder tree nodes keyed by path |
+| expandedPaths | `Set<string>` | Expanded tree paths |
+| loadingPaths | `Set<string>` | Paths currently being loaded |
+| loadingAllFolders | boolean | Full dialog tree initialization/loading state |
+| folderMenuAnchor | element \| null | Menu anchor element |
+| folderMenuPath | string \| null | Path whose menu is currently open |
+| folderMenuView | string | `'manage' \| 'selectUser'` |
+| externalShareLoading / externalShareLink / externalShareExpiresInDays / externalShareUnlimited / linkCopied | mixed | External-share section state |
+| loadFolderChildren | `(path) => Promise<Array>` | Lazy folder load function with in-flight deduplication |
+| toggleExpand | `(path) => Promise<void>` | Expand/collapse handler |
+| getAllSubfolderPaths | `(path) => string[]` | Helper for recursive permission application |
+| getUserName | `(userId) => string` | Display-name resolver for tree/menu views |
+| handleAddUser / handleUserSelect / handleRemoveUser / handleTogglePermission | function | Menu-driven permission editing actions |
+| handleSave | `() => Promise<void>` | Mode-specific save/approve entry point |
+| handleClose | `() => void` | Local reset + close handler |
 
 ### 2.4 Dependencies
 
-- getApprovedUsers, updateUserPermissions (userService)
-- getUserPermissions, getFolderPermissions, grantPermission, revokePermission (permissionService)
-- listFiles (fileService)
-- approvePermissionRequest (permissionRequestService)
-- normalizePath, getUserBaseFolder (pathUtils, userUtils)
-- getServerErrorDisplay (errorUtils)
-
-### 2.4.1 Test Mock Strategy
-
-- Consolidate repeated service mocks (userService, permissionService, fileService, permissionRequestService, errorUtils) into shared test mock helpers.
-- Keep i18n mock simple (`t(key) => key`) unless translation formatting itself is under test.
-- Favor outcome-driven assertions (state updates, callbacks, message behavior) over internal mock wiring details.
-- Use per-test overrides for permission/request edge cases; avoid embedding branching logic in mock factories.
+- `getApprovedUsers` (`userService`) for share/review add-user choices
+- `listFiles` (`fileService`) for folder-tree loading
+- `sharePermissionGateway` for permission/request reads
+- `shareReviewUseCase` for review-mode approval persistence
+- `sharePermissionSaveUseCase` for share-mode permission persistence
+- `adminPermissionSaveUseCase` for admin-mode user-permission persistence
+- `buildPermissionDiff` only through save-oriented use-cases, not inline in the controller hook
+- `normalizePath`, `getUserBaseFolder`
+- `getServerErrorDisplay`
 
 ### 2.5 Side Effects
 
-- loadUsers, loadFolderChildren on open
-- API calls for save, approve
-- `loadFolderChildren(path)` de-duplicates concurrent requests for the same path by reusing a single in-flight Promise. It must not poll React state (`loadingPaths`) via `setInterval` to wait for completion, because stale closures can leave unresolved waits in Jest and runtime edge cases.
+- Loads users on open for share/review flows
+- Initializes folder tree and permission state on open
+- Loads child folders lazily and de-duplicates concurrent requests per path by reusing one in-flight Promise
+- Calls the appropriate save use-case based on mode:
+  - admin mode -> `adminPermissionSaveUseCase`
+  - share mode -> `sharePermissionSaveUseCase`
+  - review mode -> `shareReviewUseCase`
 
 ### 2.6 Error Handling
 
-- onMessage for errors
-- **On API failure (save, approve – 4xx/5xx, network error):** Do **not** call onClose. Dialog stays open; error shown via onMessage. User can retry or close. Same pattern as useFileOperations §2.6, useSharedManage.
+- All API/use-case failures are surfaced via `onMessage`
+- **On save/approve failure:** do **not** call `onClose`; keep the dialog open so the user can retry or cancel manually
+- Child-folder load `404` is treated as an empty folder
 
 ### 2.7 Verification Scenarios
 
-- [ ] Load users, folder tree
-- [ ] Expand, folder menu
-- [ ] Save, approve
-- [ ] External share
+- [ ] Opening in share/review mode loads users and the initial folder tree
+- [ ] Concurrent `loadFolderChildren(path)` calls reuse one request and resolve all callers
+- [ ] Admin save success calls `onSave`, shows success message, and closes
+- [ ] Share save success calls the share save use-case, shows success message, and closes
+- [ ] Review save success calls the review use-case, shows success message, calls `onApprove`, and closes
+- [ ] Any save/approve failure keeps the dialog open and shows an error message
+- [ ] External-share mode exposes only external-share state/actions
 
 ### 2.8 Edge Cases
 
-- isAdminMode, isShareMode, isReviewMode
-- rootPath from mode
-- Concurrent `loadFolderChildren` calls for the same `path` resolve from one request and all callers complete without hanging.
+- `rootPath` depends on mode and `startFromUserHome`
+- Review mode may need to inject the requester into the loaded permission state even when not already present
+- Folder menu state must reset back to `'manage'` on close
+- Concurrent folder loads must not poll `loadingPaths` or wait via timers for completion

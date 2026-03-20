@@ -31,11 +31,11 @@ export const usePreviewZoom = ({
 
   const zoomIn = useCallback(() => {
     setZoom((prev) => clamp(prev + step, minZoom, maxZoom));
-  }, [minZoom, maxZoom, step]);
+  }, [setZoom, minZoom, maxZoom, step]);
 
   const zoomOut = useCallback(() => {
     setZoom((prev) => clamp(prev - step, minZoom, maxZoom));
-  }, [minZoom, maxZoom, step]);
+  }, [setZoom, minZoom, maxZoom, step]);
 
   const resetZoom = useCallback(() => {
     setZoomState(1);

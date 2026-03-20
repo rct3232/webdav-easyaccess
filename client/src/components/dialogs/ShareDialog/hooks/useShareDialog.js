@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getApprovedUsers, updateUserPermissions } from '../../../../services/userService';
-import { getUserPermissions, getFolderPermissions, grantPermission, revokePermission } from '../../../../services/permissionService';
 import { listFiles } from '../../../../services/fileService';
 import { PERMISSIONS, HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../../../utils/pathUtils';
 import { getUserBaseFolder } from '../../../../utils/userUtils';
-import { approvePermissionRequest } from '../../../../services/permissionRequestService';
 import { getServerErrorDisplay } from '../../../../utils/errorUtils';
+import { getApprovedUsers } from '../../../../services/userService';
+import sharePermissionGateway from '../../../../services/sharePermissionGateway';
+import { shareReviewUseCase } from '../../../../services/shareReviewUseCase';
+import { sharePermissionSaveUseCase } from '../../../../services/sharePermissionSaveUseCase';
+import { adminPermissionSaveUseCase } from '../../../../services/adminPermissionSaveUseCase';
 
 /**
  * ShareDialog 상태 및 API 로직 훅.
@@ -173,7 +175,7 @@ export function useShareDialog({
 
         if (userId) {
           setLoadingPermissions(true);
-          const permData = await getUserPermissions(userId);
+          const permData = await sharePermissionGateway.getUserPermissions(userId);
           const newFolderPermissions = new Map();
           (permData || []).forEach(perm => {
             const normalizedPath = normalizePath(perm.folder_path);
@@ -215,7 +217,7 @@ export function useShareDialog({
           const newUserInfoMap = new Map();
 
           try {
-            const permData = await getFolderPermissions(rootPath, true);
+            const permData = await sharePermissionGateway.getFolderPermissions(rootPath, true);
             (permData || []).forEach(perm => {
               const normalizedPath = normalizePath(perm.folder_path);
               if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
@@ -277,7 +279,7 @@ export function useShareDialog({
 
         setLoadingPermissions(true);
         try {
-          const permData = await getFolderPermissions(rootPath, true);
+          const permData = await sharePermissionGateway.getFolderPermissions(rootPath, true);
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
           (permData || []).forEach(perm => {
@@ -424,19 +426,11 @@ export function useShareDialog({
   const handleSave = useCallback(async () => {
     if (isAdminMode) {
       try {
-        const userBaseFolder = getUserBaseFolder({ username });
-        const permissions = [];
-        folderPermissions.forEach((userPermMap, fp) => {
-          userPermMap.forEach((permission, targetUserId) => {
-            if (targetUserId === userId) {
-              permissions.push({
-                folderPath: fp,
-                permission: fp === userBaseFolder ? 'write' : permission,
-              });
-            }
-          });
+        await adminPermissionSaveUseCase({
+          userId,
+          username,
+          folderPermissions,
         });
-        await updateUserPermissions(userId, permissions);
         if (onSave) onSave();
         if (onMessage) onMessage({ text: t('dialogs.permissionSaveSuccess'), type: 'success' });
         onClose();
@@ -451,29 +445,11 @@ export function useShareDialog({
       }
       setSaving(true);
       try {
-        const permissionsToRevoke = [];
-        for (const [fp, initialUserPermMap] of initialFolderPermissions.entries()) {
-          const currentUserPermMap = folderPermissions.get(fp);
-          for (const [targetUserId] of initialUserPermMap.entries()) {
-            if (!currentUserPermMap || !currentUserPermMap.has(targetUserId)) {
-              permissionsToRevoke.push({ userId: targetUserId, folderPath: normalizePath(fp) });
-            }
-          }
-        }
-        for (const { userId: uid, folderPath: fp } of permissionsToRevoke) {
-          try {
-            await revokePermission({ userId: uid, folderPath: fp, includeSubfolders: true });
-          } catch (e) {
-            console.error(`Failed to revoke permission for ${fp}:`, e);
-          }
-        }
-        for (const [fp, userPermMap] of folderPermissions.entries()) {
-          const normalizedPath = normalizePath(fp);
-          for (const [targetUserId, permission] of userPermMap.entries()) {
-            await grantPermission({ userId: targetUserId, folderPath: normalizedPath, permission });
-          }
-        }
-        await approvePermissionRequest(permissionRequest.id);
+        await shareReviewUseCase({
+          permissionRequestId: permissionRequest.id,
+          initialFolderPermissions,
+          folderPermissions,
+        });
         if (onMessage) onMessage({ text: t('dialogs.permissionRequestApproved'), type: 'success' });
         if (onApprove) onApprove();
         onClose();
@@ -491,28 +467,10 @@ export function useShareDialog({
       }
       setSaving(true);
       try {
-        const permissionsToRevoke = [];
-        for (const [fp, initialUserPermMap] of initialFolderPermissions.entries()) {
-          const currentUserPermMap = folderPermissions.get(fp);
-          for (const [targetUserId] of initialUserPermMap.entries()) {
-            if (!currentUserPermMap || !currentUserPermMap.has(targetUserId)) {
-              permissionsToRevoke.push({ userId: targetUserId, folderPath: normalizePath(fp) });
-            }
-          }
-        }
-        for (const { userId: uid, folderPath: fp } of permissionsToRevoke) {
-          try {
-            await revokePermission({ userId: uid, folderPath: fp, includeSubfolders: true });
-          } catch (e) {
-            console.error(`Failed to revoke permission for ${fp}:`, e);
-          }
-        }
-        for (const [fp, userPermMap] of folderPermissions.entries()) {
-          const normalizedPath = normalizePath(fp);
-          for (const [targetUserId, permission] of userPermMap.entries()) {
-            await grantPermission({ userId: targetUserId, folderPath: normalizedPath, permission });
-          }
-        }
+        await sharePermissionSaveUseCase({
+          initialFolderPermissions,
+          folderPermissions,
+        });
         if (onMessage) onMessage({ text: t('dialogs.folderShareSuccess'), type: 'success' });
         onClose();
       } catch (error) {

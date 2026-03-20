@@ -47,18 +47,9 @@ const defaultProps = {
 };
 
 describe('FilePreviewDialog', () => {
-  let originalGetContext;
   let originalScrollTo;
 
   beforeAll(() => {
-    // JSDOM throws for canvas.getContext unless a canvas implementation is installed.
-    // Our string utils fallback when context is null, so force null for stable tests.
-    originalGetContext = HTMLCanvasElement.prototype.getContext;
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      configurable: true,
-      value: () => null,
-    });
-
     // JSDOM does not implement scrollTo on elements; PreviewThumbnailBar uses it.
     originalScrollTo = Element.prototype.scrollTo;
     // eslint-disable-next-line no-extend-native
@@ -66,11 +57,6 @@ describe('FilePreviewDialog', () => {
   });
 
   afterAll(() => {
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      configurable: true,
-      value: originalGetContext,
-    });
-
     // eslint-disable-next-line no-extend-native
     Element.prototype.scrollTo = originalScrollTo;
   });
@@ -101,6 +87,8 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByText('readme.txt')).toBeInTheDocument();
+    // Wait for async preview loader to settle to avoid act warnings.
+    await screen.findByText('x');
   });
 
   it('calls onClose when Escape pressed', async () => {
@@ -109,13 +97,15 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    await screen.findByText('x');
     await user.keyboard('{Escape}');
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
     renderWithProviders(<FilePreviewDialog {...defaultProps} />);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await screen.findByText('x');
   });
 
   it('shows download button', async () => {
@@ -124,6 +114,7 @@ describe('FilePreviewDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByTitle(/download/i)).toBeInTheDocument();
+    await screen.findByText('x');
   });
 
   it('uses streaming URL (not blob) for video preview', async () => {
@@ -132,6 +123,9 @@ describe('FilePreviewDialog', () => {
 
     await waitFor(() => {
       expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith('/v.mp4', expect.any(Object));
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
     expect(mockGetFileBlob).not.toHaveBeenCalled();
   });
@@ -155,6 +149,9 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
     });
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
   });
 
   it('does not lock gallery index to 0 when mediaFiles arrives after open', async () => {
@@ -176,8 +173,9 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
     });
-
-    mockGetFileBlob.mockClear();
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
 
     rerender(
       <FilePreviewDialog
@@ -188,8 +186,11 @@ describe('FilePreviewDialog', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
+    // Must have loaded b.jpg (opened file), never a.jpg (index 0)
+    expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+    expect(mockGetFileBlob).not.toHaveBeenCalledWith('/a.jpg', expect.any(Object));
   });
 
   it('truncates long header filename and shows tooltip on hover (desktop)', async () => {
@@ -206,6 +207,7 @@ describe('FilePreviewDialog', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    await screen.findByText('x');
 
     // Truncated output should be rendered instead of the full name.
     expect(screen.queryByText(longName)).not.toBeInTheDocument();

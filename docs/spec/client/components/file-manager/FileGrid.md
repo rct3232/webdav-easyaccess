@@ -75,6 +75,9 @@ Uses CSS Grid (breakpoint-based `repeat(N, 1fr)`), not MUI Grid:
 - loading && files.length === 0: FileGridSkeleton
 - files.length === 0: empty message
 - Long-press (onLongPressSelect) on mobile when !selectionMode — enters selection mode and selects file. onMoreClick and showMoreButton (!selectionMode) passed to FileGridItem.
+- E2E selector contract:
+  - each rendered card container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder across view modes
+  - no per-card `data-testid` is required when `data-file-path` is present
 
 ### 2.8 Verification Scenarios
 

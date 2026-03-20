@@ -30,6 +30,7 @@ const ExternalShareSection = ({
   setLinkCopied,
   createShareLink,
   getShareLinkUrl,
+  onOpenShareLink,
   filePath,
   fileName,
   onMessage,
@@ -141,7 +142,7 @@ const ExternalShareSection = ({
                 component="span"
                 onClick={() => {
                   const url = getShareLinkUrl(externalShareLink.token);
-                  window.open(url, '_blank', 'noopener,noreferrer');
+                  onOpenShareLink?.(url);
                 }}
                 sx={{
                   flex: 1,

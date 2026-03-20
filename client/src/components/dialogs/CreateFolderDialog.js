@@ -101,7 +101,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
           <Button onClick={handleClose} disabled={isSubmitting}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={isSubmitting}>
+          <Button data-testid="create-folder-submit" onClick={handleSubmit} variant="contained" disabled={isSubmitting}>
             {t('dialogs.create')}
           </Button>
         </>
@@ -114,6 +114,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
           fullWidth
           variant="outlined"
           value={values.folderName}
+          inputProps={{ 'data-testid': 'create-folder-name-input' }}
           onChange={(e) => handleChange('folderName', e.target.value)}
           error={!!getFieldError('folderName')}
           helperText={getValidationMessage(getFieldError('folderName'), t)}

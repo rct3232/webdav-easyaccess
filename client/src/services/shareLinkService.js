@@ -90,7 +90,7 @@ export const getPublicShareLinkInfo = async (token) => {
  */
 export const checkMyPermissionForShare = async (token) => {
   const response = await get(`/share/${token}/check-my-permission`);
-  return response.data;
+  return response?.data ?? null;
 };
 
 /**

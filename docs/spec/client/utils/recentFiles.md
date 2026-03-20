@@ -4,7 +4,8 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Recent-files tracking: get/add/remove via API, subscribe to changes (onRecentFilesChange), update on folder move/rename/delete, apply bulk operations (applyRecentFilesAfterBulkDelete, applyRecentFilesAfterBulkMove). |
+| Role | Pure path-mutation helpers for recent entries: given a list of recent entries and a path change (rename/move/delete), derive which recent paths should be removed and which updated entries should be added. |
+| Boundary note | This is a **product utility**, not part of reusable explorer core. Explorer core must not own virtual collections such as `__recent__` (those remain product overlays in the FileManager shell), but the product may use these pure helpers inside the `recentFilesRepository` implementation. |
 
 ---
 
@@ -15,52 +16,35 @@
 - **Source:** `client/src/utils/recentFiles.js`
 - **Test file:** `client/src/utils/__tests__/recentFiles.test.js`
 
-### 2.2 Function Signatures
+### 2.2 Function Signatures (pure contracts)
 
-| Function | (input) => return |
-|----------|-------------------|
-| onRecentFilesChange | (callback) => unsubscribeFn |
-| getRecentFiles | () => Promise<Array> |
-| addRecentFile | (file, options?) => Promise<Array> |
-| removeRecentFile | (filePath, options?) => Promise<Array> |
-| clearRecentFiles | () => Promise<void> |
-| updateSubPathsOnPathChange | (oldPath, newPath, options?) => Promise<Array> |
-| removeSubPathsOnFolderDelete | (folderPath) => Promise<Array> |
-| removeMultiplePaths | (filePaths) => Promise<Array> |
-| applyRecentFilesAfterRename | (oldPath, newPath, file) => Promise<Array> |
-| applyRecentFilesAfterBulkDelete | (filePaths, folderPaths) => Promise<Array> |
-| applyRecentFilesAfterBulkMove | (moves) => Promise<Array> |
+Recent entry shape:
+
+- `RecentEntry = { path: string, name?: string, type?: 'file'|'directory', basename?: string }`
+
+Return shape:
+
+- `RecentMutationPlan = { removedPaths: string[], addedEntries: RecentEntry[] }`
+
+| Function | Input => Return |
+|----------|------------------|
+| updateSubPathsOnPathChange | `(recentEntries, oldPath, newPath) => RecentMutationPlan` |
+| removeSubPathsOnFolderDelete | `(recentEntries, folderPath) => { removedPaths: string[] }` |
+| removeMultiplePaths | `(recentEntries, filePaths) => { removedPaths: string[] }` |
 
 ### 2.3 Dependencies
 
-- apiClient (get, post, del)
-- pathUtils.normalizePath
-- notifyRecentFilesChange (internal, calls listeners)
+- pathUtils.normalizePath (used only to compare and compute derived relative paths)
 
-### 2.4 API Endpoints
+### 2.4 Verification Scenarios
 
-- GET /recent-files
-- POST /recent-files
-- DELETE /recent-files
-- DELETE /recent-files/:encodedPath
-- POST /recent-files/remove-paths
-- POST /recent-files/apply-moves
+- [ ] `updateSubPathsOnPathChange` produces removed paths under `oldPath` and (for non-directory recent entries) adds updated entries under `newPath`.
+- [ ] `updateSubPathsOnPathChange` does not re-add `type === 'directory'` recent entries.
+- [ ] `removeSubPathsOnFolderDelete` removes any recent entry whose normalized path is `folderPath` or has `folderPath + '/'` prefix.
+- [ ] `removeMultiplePaths` removes only exact path matches after normalization.
 
-### 2.5 Options
+### 2.5 Edge Cases
 
-- `{ silent: true }` – skip getRecentFiles and notify (for bulk updates)
-
-### 2.6 Verification Scenarios
-
-- [ ] getRecentFiles returns array; on error returns []
-- [ ] addRecentFile/removeRecentFile call notifyRecentFilesChange unless silent
-- [ ] onRecentFilesChange returns unsubscribe that removes listener
-- [ ] updateSubPathsOnPathChange moves sub-paths from oldPath to newPath
-- [ ] removeSubPathsOnFolderDelete removes entries under folderPath
-- [ ] applyRecentFilesAfterBulkDelete/applyRecentFilesAfterBulkMove use batch APIs
-
-### 2.7 Edge Cases
-
-- API errors → return [] or [] on fallback
-- Empty filePaths/folderPaths → getRecentFiles() for bulk delete
-- Empty moves → getRecentFiles() for bulk move
+- Empty `recentEntries` returns empty removals/additions.
+- `oldPath === newPath` produces an empty mutation plan.
+- Empty `filePaths` for `removeMultiplePaths` produces `{ removedPaths: [] }`.

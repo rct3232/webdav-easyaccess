@@ -52,6 +52,9 @@
 - Files list with remove per file
 - Upload disabled when files.length === 0
 - Files reset when dialog closes
+- E2E selector contract:
+  - the dropzone surface and underlying file input expose stable `data-testid` values for flow upload tests
+  - the primary upload button exposes a stable `data-testid`
 
 ### 2.8 Verification Scenarios
 

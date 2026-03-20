@@ -14,8 +14,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `client/src/components/dialogs/FolderPickerDialog.js`
-- **Test file:** `client/src/components/dialogs/__tests__/FolderPickerDialog.test.js`
+- **Source:** `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
+- **Test file:** `client/src/components/dialogs/FolderPickerDialog/__tests__/FolderPickerDialog.test.js`
 
 ### 2.2 Props
 
@@ -41,7 +41,7 @@
 ### 2.4 Dependencies
 
 - **imports:** React, useTranslation, useFolderPicker, useResponsive, MUI Dialog/List/Breadcrumbs/Box/Typography/CircularProgress/IconButton/Tooltip, folder/home/share icons
-- **Reference implementation:** `client/src/components/dialogs/FolderPickerDialog.js`
+- **Reference implementation:** `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
 
 ### 2.5 i18n Keys
 

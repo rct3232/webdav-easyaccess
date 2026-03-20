@@ -26,16 +26,10 @@
 | handleSelectAll | function | Y | - | Select all |
 | handleDeselectAll | function | Y | - | Deselect all |
 | selectedFiles | Set | Y | - | Selected count |
-| setSortMenuAnchor | function | Y | - | Open/close sort menu |
-| sortMenuAnchor | element | Y | - | Sort menu anchor |
 | sortMode | string | Y | - | SORT_MODES value |
 | setSortMode | function | Y | - | Set sort mode |
-| saveSortMode | function | N | - | Persist sort mode |
-| setViewModeMenuAnchor | function | Y | - | View mode menu anchor setter |
-| viewModeMenuAnchor | element | Y | - | View mode menu anchor |
 | viewMode | string | Y | - | VIEW_MODES value |
 | setViewMode | function | Y | - | Set view mode |
-| saveViewMode | function | N | - | Persist view mode |
 | selectionActionsDisabled | boolean | N | false | Disable selection actions |
 | handleBulkMove | function | N | - | Bulk move handler (when selectionMode) |
 | handleBulkCopy | function | N | - | Bulk copy handler (when selectionMode) |
@@ -52,8 +46,8 @@
 |----------|--------------|-----------|
 | handleSelectAll | Select all click | - |
 | handleDeselectAll | Deselect all click | - |
-| setSortMode / saveSortMode | Sort option selected | (mode) |
-| setViewMode / saveViewMode | View option selected | (mode) |
+| setSortMode | Sort option selected | (mode) |
+| setViewMode | View option selected | (mode) |
 | handleBulkMove | Move button click | - |
 | handleBulkCopy | Copy button click | - |
 | handleBulkDownload | Download button click | - |
@@ -63,6 +57,10 @@
 
 - **imports:** React, useTranslation, MUI Box/IconButton/Button/Menu/MenuItem/Radio/RadioGroup/FormControlLabel/Divider/Typography, VIEW_MODES, SORT_MODES, Move/Copy/Download/Delete icons from @mui/icons-material
 - **Reference implementation:** `client/src/components/file-manager/FileManagerControls.js`
+
+Notes:
+
+- The control should keep its own transient menu-open state (such as the sort menu anchor) instead of pushing that shell-chrome state up into `FileManager`.
 
 ### 2.5 i18n Keys
 
@@ -83,7 +81,7 @@
 
 Checklist for unit test writing:
 
-- [ ] Sort menu opens, sort options change sortMode and call saveSortMode
+- [ ] Sort menu opens from the control itself and sort options change `sortMode`
 - [ ] Select all, deselect all (no selection mode toggle)
 - [ ] View mode buttons/menu (when !selectionMode)
 - [ ] selectionActionsDisabled disables selection actions
@@ -98,5 +96,4 @@ Checklist for unit test writing:
 
 ### 2.8 Edge Cases
 
-- saveSortMode/saveViewMode optional
 - Detail view only on desktop

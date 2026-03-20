@@ -74,6 +74,8 @@ flowchart TD
 
 When writing or reviewing permission tests, cover at least:
 
+For user-facing negative browser flows that intersect with permissions, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep the full ACL allow/deny matrix primarily in middleware, route integration, and related lower-level tests.
+
 - **Direct read:** User needs read on that folder (or file's parent) to list/read; no parent inheritance.
 - **Direct write:** User with write only on a parent cannot write to a child path without explicit write there.
 - **Owner exception:** Owner can read and write their home `/{username}` and all paths under it without explicit grants.

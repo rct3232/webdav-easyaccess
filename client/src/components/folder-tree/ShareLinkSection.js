@@ -16,8 +16,7 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import { normalizePath } from '../../utils/pathUtils';
-import { listFiles } from '../../services/fileService';
-import { getShowHiddenFiles } from '../../utils/localStorage';
+import folderTreeGateway from '../../services/folderTreeGateway';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 
 /**
@@ -70,22 +69,14 @@ const ShareLinkSection = ({
     if (!shareLinkExpanded || !rootPath || !shareToken) return;
     let cancelled = false;
     setLoadingRoot(true);
-    listFiles(rootPath, { shareToken })
+    folderTreeGateway.listFolderChildren({
+      path: rootPath,
+      listFilesOptions: { shareToken },
+      useHiddenFilesFilter: true,
+    })
       .then((data) => {
         if (cancelled) return;
-        const showHidden = getShowHiddenFiles();
-        const dirs = (data || [])
-          .filter((item) => item.type === 'directory')
-          .filter((item) => showHidden || !item.isHidden)
-          .map((item) => ({
-            path: item.path,
-            name: item.basename || item.name,
-            hasReadPermission: item.hasReadPermission,
-            hasWritePermission: item.hasWritePermission,
-            isHidden: item.isHidden,
-          }))
-          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        setRootChildren(dirs);
+        setRootChildren(data || []);
       })
       .catch(() => {
         if (!cancelled) setRootChildren([]);

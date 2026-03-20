@@ -6,11 +6,15 @@
  * @see docs/spec/client/pages/MyPage.md
  */
 jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
+jest.mock('../../hooks/useResponsive', () => ({
+  useResponsive: jest.fn(),
+}));
 
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { useResponsive } from '../../hooks/useResponsive';
 import { renderWithProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import MyPage from '../MyPage';
@@ -68,6 +72,12 @@ describe('MyPage', () => {
     sessionStorage.clear();
     sessionStorage.setItem('token', 'test-token');
     sessionStorage.setItem('refreshToken', 'refresh-token');
+    useResponsive.mockReturnValue({
+      isMobile: false,
+      isTablet: false,
+      isDesktop: true,
+      isSmallMobile: false,
+    });
   });
 
   it('renders without crashing and shows main content', async () => {
@@ -245,6 +255,35 @@ describe('MyPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/cancelled|success/i);
     });
   });
+
+  it('mobile: opens the category drawer and closes it after selecting a category', async () => {
+    useResponsive.mockReturnValue({
+      isMobile: true,
+      isTablet: false,
+      isDesktop: false,
+      isSmallMobile: false,
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
+
+    await waitForMyPageReady();
+
+    expect(screen.queryByRole('button', { name: /preferences/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /my page|mypage/i }));
+
+    const preferencesButton = await screen.findByRole('button', { name: /preferences/i });
+    await user.click(preferencesButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /preferences/i })).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /share management/i })).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe('MyPage Admin categories (User Management, System Settings)', () => {
@@ -263,6 +302,12 @@ describe('MyPage Admin categories (User Management, System Settings)', () => {
     sessionStorage.clear();
     sessionStorage.setItem('token', 'admin-token');
     sessionStorage.setItem('refreshToken', 'refresh');
+    useResponsive.mockReturnValue({
+      isMobile: false,
+      isTablet: false,
+      isDesktop: true,
+      isSmallMobile: false,
+    });
   });
 
   it('admin: shows User Management when admin category (legacy) selected', async () => {

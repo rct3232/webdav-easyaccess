@@ -10,44 +10,66 @@ jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
 });
-jest.mock('../../../../../services/permissionService', () => {
-  const { createPermissionServiceMock } = require('../../../../../testing/mocks/serviceMocks');
-  return createPermissionServiceMock();
-});
-jest.mock('../../../../../services/fileService', () => {
-  const { createFileServiceMock } = require('../../../../../testing/mocks/serviceMocks');
-  return createFileServiceMock();
-});
+jest.mock('../../../../../services/folderPickerGateway', () => ({
+  __esModule: true,
+  default: {
+    listFolderContents: jest.fn(),
+    checkWritePermission: jest.fn(),
+    getUserSharedFolderPermissions: jest.fn(),
+  },
+}));
 
-jest.mock('../../../../../utils/userUtils', () => {
-  const actual = jest.requireActual('../../../../../utils/userUtils');
-  return {
-    ...actual,
-    filterOutUserOwnFolders: jest.fn((arr) => (Array.isArray(arr) ? arr.filter(() => true) : [])),
-  };
-});
-
-import * as permissionService from '../../../../../services/permissionService';
-import * as fileService from '../../../../../services/fileService';
+import folderPickerGateway from '../../../../../services/folderPickerGateway';
 
 const mockUser = { id: '1', username: 'user1', is_admin: false };
 const mockAdminUser = { id: 'admin', username: 'admin', is_admin: true };
 
+const renderFolderPickerHook = (overrides = {}) => {
+  const initialProps = {
+    open: false,
+    currentPath: '/',
+    user: mockUser,
+    ...overrides,
+  };
+
+  const utils = renderHook((props) => useFolderPicker(props), {
+    initialProps,
+  });
+
+  const openPicker = async (nextOverrides = {}) => {
+    const nextProps = {
+      ...initialProps,
+      ...nextOverrides,
+      open: true,
+    };
+
+    await act(async () => {
+      utils.rerender(nextProps);
+    });
+
+    return nextProps;
+  };
+
+  return {
+    ...utils,
+    initialProps,
+    openPicker,
+  };
+};
+
 describe('useFolderPicker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    fileService.listFiles.mockResolvedValue([
+    folderPickerGateway.listFolderContents.mockResolvedValue([
       { path: '/folder1', basename: 'folder1', type: 'directory' },
       { path: '/folder2', basename: 'folder2', type: 'directory' },
     ]);
-    fileService.checkPermission.mockResolvedValue({ hasWrite: true });
-    permissionService.getUserPermissions.mockResolvedValue([]);
+    folderPickerGateway.checkWritePermission.mockResolvedValue({ hasWrite: true });
+    folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
   });
 
   it('returns selectedPath, folders, loading, breadcrumbs, handlers', () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/', user: mockUser })
-    );
+    const { result } = renderFolderPickerHook();
 
     expect(typeof result.current.selectedPath).toBe('string');
     expect(Array.isArray(result.current.folders)).toBe(true);
@@ -62,9 +84,9 @@ describe('useFolderPicker', () => {
   });
 
   it('loads folders for path when open', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/', user: mockUser })
-    );
+    const { result, openPicker } = renderFolderPickerHook();
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -72,42 +94,43 @@ describe('useFolderPicker', () => {
 
     expect(result.current.folders).toHaveLength(2);
     expect(result.current.folders[0]).toMatchObject({ path: '/folder1', basename: 'folder1', type: 'directory' });
-    expect(fileService.listFiles).toHaveBeenCalledWith('/');
+    expect(folderPickerGateway.listFolderContents).toHaveBeenCalledWith({ path: '/' });
   });
 
   it('loads shared folders when path is __shared__', async () => {
-    permissionService.getUserPermissions.mockResolvedValue([
+    folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
       { folder_path: '/other/shared', permission: 'read', owner_id: '2' },
     ]);
 
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/__shared__', user: mockUser })
-    );
+    const { result, openPicker } = renderFolderPickerHook({ currentPath: '/__shared__' });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(permissionService.getUserPermissions).toHaveBeenCalledWith(mockUser.id);
-    expect(result.current.folders).toBeDefined();
-    expect(Array.isArray(result.current.folders)).toBe(true);
+    expect(folderPickerGateway.getUserSharedFolderPermissions).toHaveBeenCalledWith({ user: mockUser });
+    expect(result.current.folders).toEqual([
+      expect.objectContaining({ path: '/other/shared', basename: 'shared', type: 'directory' }),
+    ]);
   });
 
   it('handleFolderClick updates selectedPath and loads subfolders', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/', user: mockUser })
-    );
+    const { result, openPicker } = renderFolderPickerHook();
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     const folder = { path: '/folder1', basename: 'folder1', type: 'directory', hasReadPermission: true };
-    fileService.listFiles.mockResolvedValue([
+    folderPickerGateway.listFolderContents.mockResolvedValue([
       { path: '/folder1/sub', basename: 'sub', type: 'directory' },
     ]);
 
-    act(() => {
+    await act(async () => {
       result.current.handleFolderClick(folder);
     });
 
@@ -115,19 +138,19 @@ describe('useFolderPicker', () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(fileService.listFiles).toHaveBeenCalledWith('/folder1');
+    expect(folderPickerGateway.listFolderContents).toHaveBeenCalledWith({ path: '/folder1' });
   });
 
   it('handlePathClick updates selectedPath and loads path', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/folder1', user: mockUser })
-    );
+    const { result, openPicker } = renderFolderPickerHook({ currentPath: '/folder1' });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    act(() => {
+    await act(async () => {
       result.current.handlePathClick('/');
     });
 
@@ -135,19 +158,55 @@ describe('useFolderPicker', () => {
       expect(result.current.loading).toBe(false);
     });
     expect(result.current.selectedPath).toBe('/');
-    expect(fileService.listFiles).toHaveBeenCalledWith('/');
+    expect(folderPickerGateway.listFolderContents).toHaveBeenCalledWith({ path: '/' });
   });
 
-  it('isInvalidDestination returns true when selectedPath is source or parent of source', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({
-        open: true,
-        currentPath: '/',
-        user: mockUser,
-        action: 'move',
-        sourceFilePath: '/folder1/file.txt',
-      })
-    );
+  it('returns home breadcrumbs without repeating the username segment', async () => {
+    const { result, openPicker } = renderFolderPickerHook({ currentPath: '/user1/docs' });
+
+    await openPicker();
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.breadcrumbs).toEqual([
+      { name: 'nav.home', path: '/user1' },
+      { name: 'docs', path: '/user1/docs' },
+    ]);
+  });
+
+  it('returns shared breadcrumbs starting at the first matching permission path', async () => {
+    folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { folder_path: '/shared/root', permission: 'write' },
+    ]);
+
+    const { result, openPicker } = renderFolderPickerHook({
+      currentPath: '/shared/root/child',
+      action: 'move',
+      sourceFilePath: '/user1/file.txt',
+    });
+
+    await openPicker();
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.breadcrumbs).toEqual([
+      { name: 'nav.shared', path: '/__shared__' },
+      { name: 'root', path: '/shared/root' },
+      { name: 'child', path: '/shared/root/child' },
+    ]);
+  });
+
+  it('marks invalid destinations for source parent, source path, descendant, and multi-source input', async () => {
+    const { result, openPicker } = renderFolderPickerHook({
+      action: 'move',
+      sourceFilePath: '/folder1/file.txt',
+    });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -156,19 +215,36 @@ describe('useFolderPicker', () => {
     act(() => {
       result.current.setSelectedPath('/folder1');
     });
-
     expect(result.current.isInvalidDestination()).toBe(true);
+
+    act(() => {
+      result.current.setSelectedPath('/folder1/file.txt');
+    });
+    expect(result.current.isInvalidDestination()).toBe(true);
+
+    act(() => {
+      result.current.setSelectedPath('/folder1/file.txt/subdir');
+    });
+    expect(result.current.isInvalidDestination()).toBe(true);
+
+    const multiSource = renderFolderPickerHook({
+      action: 'move',
+      sourceFilePaths: ['/folder1/file-a.txt', '/folder2/file-b.txt'],
+    });
+    await multiSource.openPicker();
+
+    act(() => {
+      multiSource.result.current.setSelectedPath('/folder1');
+    });
+    expect(multiSource.result.current.isInvalidDestination()).toBe(true);
   });
 
-  it('isInvalidDestination returns false when action is not copy or move', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({
-        open: true,
-        currentPath: '/',
-        user: mockUser,
-        sourceFilePath: '/folder1',
-      })
-    );
+  it('returns false for invalid-destination checks outside copy/move flows', async () => {
+    const { result, openPicker } = renderFolderPickerHook({
+      sourceFilePath: '/folder1/file.txt',
+    });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -181,10 +257,13 @@ describe('useFolderPicker', () => {
     expect(result.current.isInvalidDestination()).toBe(false);
   });
 
-  it('admin user has hasWritePermission true', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/', user: mockAdminUser, action: 'move' })
-    );
+  it('admin user keeps hasWritePermission true for move flows', async () => {
+    const { result, openPicker } = renderFolderPickerHook({
+      user: mockAdminUser,
+      action: 'move',
+    });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -193,10 +272,10 @@ describe('useFolderPicker', () => {
     expect(result.current.hasWritePermission).toBe(true);
   });
 
-  it('getCurrentPathType returns home when selectedPath is user base folder', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/user1', user: mockUser })
-    );
+  it('getCurrentPathType returns home for user home paths', async () => {
+    const { result, openPicker } = renderFolderPickerHook({ currentPath: '/user1' });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -209,10 +288,10 @@ describe('useFolderPicker', () => {
     expect(result.current.getCurrentPathType()).toBe('home');
   });
 
-  it('getCurrentPathType returns shared for __shared__ path', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({ open: true, currentPath: '/__shared__', user: mockUser })
-    );
+  it('getCurrentPathType returns shared for __shared__ paths', async () => {
+    const { result, openPicker } = renderFolderPickerHook({ currentPath: '/__shared__' });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -221,37 +300,29 @@ describe('useFolderPicker', () => {
     expect(result.current.getCurrentPathType()).toBe('shared');
   });
 
-  it('checkWritePermission sets hasWritePermission false when user lacks write', async () => {
-    fileService.checkPermission.mockResolvedValue({ hasWrite: false });
+  it('checkWritePermission updates write access for non-admin users', async () => {
+    folderPickerGateway.checkWritePermission.mockResolvedValue({ hasWrite: false });
 
-    const { result } = renderHook(() =>
-      useFolderPicker({
-        open: true,
-        currentPath: '/user1',
-        user: mockUser,
-        action: 'move',
-      })
-    );
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    const { result, openPicker } = renderFolderPickerHook({
+      currentPath: '/user1',
+      action: 'move',
     });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.hasWritePermission).toBe(false);
     });
   });
 
-  it('handleTogglePath(home) switches to home path and getCurrentPathType is home', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({
-        open: true,
-        currentPath: '/user1',
-        user: mockUser,
-        action: 'move',
-        sourceFilePath: '/user1/doc.txt',
-      })
-    );
+  it('handleTogglePath switches between home and shared routes for home-origin moves', async () => {
+    const { result, openPicker } = renderFolderPickerHook({
+      currentPath: '/user1',
+      action: 'move',
+      sourceFilePath: '/user1/doc.txt',
+    });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -260,39 +331,46 @@ describe('useFolderPicker', () => {
     await act(async () => {
       result.current.handleTogglePath({}, 'shared');
     });
+
     await waitFor(() => {
       expect(result.current.selectedPath).toBe('/__shared__');
+      expect(result.current.getCurrentPathType()).toBe('shared');
     });
 
-    act(() => {
+    await act(async () => {
       result.current.handleTogglePath({}, 'home');
     });
 
-    expect(result.current.selectedPath).toBe('/user1');
-    expect(result.current.getCurrentPathType()).toBe('home');
+    await waitFor(() => {
+      expect(result.current.selectedPath).toBe('/user1');
+      expect(result.current.getCurrentPathType()).toBe('home');
+    });
   });
 
-  it('handleTogglePath(shared) switches to shared path and getCurrentPathType is shared', async () => {
-    const { result } = renderHook(() =>
-      useFolderPicker({
-        open: true,
-        currentPath: '/user1',
-        user: mockUser,
-        action: 'move',
-        sourceFilePath: '/user1/doc.txt',
-      })
-    );
+  it('handleTogglePath(shared) lands on the best matching shared root for shared-origin moves', async () => {
+    folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { folder_path: '/shared', permission: 'read' },
+      { folder_path: '/shared/root', permission: 'write' },
+    ]);
+
+    const { result, openPicker } = renderFolderPickerHook({
+      currentPath: '/shared/root/subdir',
+      action: 'move',
+      sourceFilePath: '/shared/root/subdir/file.txt',
+    });
+
+    await openPicker();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    act(() => {
+    await act(async () => {
       result.current.handleTogglePath({}, 'shared');
     });
 
     await waitFor(() => {
-      expect(result.current.selectedPath).toBe('/__shared__');
+      expect(result.current.selectedPath).toBe('/shared/root/subdir');
       expect(result.current.getCurrentPathType()).toBe('shared');
     });
   });

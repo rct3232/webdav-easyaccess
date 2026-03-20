@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | AuthProvider: manages authentication state (user, token), login, register, logout. Session-only auth (sessionStorage). 401/403 상세 처리는 apiClient가 담당; AuthContext는 getMe 실패 등 일부 흐름만 처리. Listens for token-refreshed event. |
-| Used in | App root, PrivateRoute, Login, Register, FileManager, etc. |
-| Related | authService, apiClient, axios |
+| Role | `AuthProvider`: exposes authentication/session state and public auth actions (`login`, `register`, `logout`) through React context. Session-only auth is backed by `sessionStorage`. |
+| Used by | App root and any component needing `useAuth()` (e.g. `PrivateRoute`, login/register pages, `FileManager`). |
+| Depends on (split target) | `useAuthSession` (session state + actions). Auth error handling (`401`/`403`) remains the responsibility of `apiClient`. |
 
 ---
 
@@ -21,51 +21,71 @@
 
 | Key | Type | Description |
 |-----|------|-------------|
-| user | object \| null | Current user (username, email, is_admin, etc.) |
-| loading | boolean | Initial/auth check in progress |
-| login | (username, password) => Promise<{ success, user?, error?, status?, message? }> | Login |
-| register | (username, email, password) => Promise<{ success, status?, error? }> | Register |
-| logout | () => void | Clear token and user |
-| isAuthenticated | boolean | !!user |
+| `user` | `object | null` | Current user object (includes `is_admin`). |
+| `loading` | `boolean` | Initial auth check in progress. |
+| `login` | `(username, password) => Promise<{ success: boolean, user?: object, error?: string, status?: string, message?: string }>` | Logs in and populates session. |
+| `register` | `(username, email, password) => Promise<{ success: boolean, status?: string, error?: string }>` | Registers a new user; may return a pending status. |
+| `logout` | `() => void` | Clears session tokens and resets user. |
+| `isAuthenticated` | `boolean` | `true` when `user` is non-null. |
 
-### 2.3 useAuth Hook
+### 2.3 `useAuth` Hook
 
-- `useAuth()` – returns context value; throws if used outside AuthProvider
+- `useAuth()` returns the context value; throws if used outside an `AuthProvider`.
 
 ### 2.4 Dependencies
 
-- React (createContext, useState, useContext, useEffect, useCallback)
-- axios (defaults.headers, interceptors)
-- authService (getMe, login, register)
-- HTTP_STATUS from shared/constants
+- React (`createContext`, `useState`, `useContext`, `useEffect`, `useCallback`)
+- `useAuthSession` (split target)
 
 ### 2.5 Behavior
 
-- Token: sessionStorage ('token', 'refreshToken'); legacy localStorage cleaned on init
-- On token: set Authorization header, fetch user via getMe
-- apiClient에서 401/403 처리 (401: refresh 후 /login 리다이렉트; 403: URL 이동 직후 history.back() 또는 '/', 그 외 리다이렉트 없음). AuthContext는 getMe 실패 시 logout 등
-- token-refreshed custom event: update token and header
-- login/register: store token, set user; on error return { success: false, ...errorData }
-- register status 'pending' → return { success: true, status: 'pending' } (no token/user)
-- token-refreshed 이벤트 수신 시 새 토큰 적용 실패 → header만 갱신 시도; 실패 시 로그, 사용자 영향 없음 (다음 요청 시 401으로 처리)
-- 동시 refresh 요청(다중 탭 등): 첫 요청만 refresh 시도; 나머지는 대기 후 새 토큰 사용. 경쟁 상태는 허용.
+Session storage and initialization:
+- Tokens live in `sessionStorage`:
+  - `token` (access token)
+  - `refreshToken` (refresh token, if present)
+- Legacy cleanup: on initialization, `localStorage.token` is removed.
+
+Fetching user:
+- If `token` exists, `loading` stays `true` until `authService.getMe()` resolves.
+- On `getMe` failure: `logout()` is called and `loading` becomes `false`.
+
+Token refresh events:
+- `useAuthSession` listens to the `token-refreshed` custom event.
+- When receiving `token-refreshed` with `{ token }`:
+  - update the stored token state,
+  - do not refetch the user if it is already present (observable behavior keeps the user authenticated).
+
+Login/register:
+- `login(username, password)`:
+  - calls `authService.login`,
+  - delegates token persistence to `useAuthSession` and `authTokenStore`,
+  - sets `user` and `loading=false`,
+  - returns `{ success: true, user }` on success.
+  - on error: returns `{ success:false, ...errorData }` (caller receives a result; the component does not crash).
+- `register(username, email, password)`:
+  - calls `authService.register`,
+  - if the server returns `status: 'pending'`, returns `{ success:true, status:'pending' }` and does not set token/user.
+  - otherwise: persists tokens through `useAuthSession` and sets token/user from the response.
+
+Logout:
+- `logout()` clears `token` and `refreshToken` from `sessionStorage` and also removes legacy `token`/`refreshToken` from `localStorage` when possible.
+
+401/403 navigation:
+- `apiClient` owns all `401`/`403` behavior (refresh + redirect/back). `AuthContext` only reacts to `getMe` failures by calling `logout()`.
 
 ### 2.6 Verification Scenarios
 
-- [ ] Unauthenticated: user null, isAuthenticated false, loading false after init
-- [ ] Authenticated: user set, isAuthenticated true after fetchUser
-- [ ] Loading: loading true while token present and user not yet fetched
-- [ ] login success: token stored, user set, Authorization header set
-- [ ] login failure: returns { success: false, error, status, message }
-- [ ] register returns { success: true, status: 'pending' } when status pending (no token/user)
-- [ ] getMe failure triggers logout, loading false
-- [ ] useAuth outside AuthProvider throws
-- [ ] 401/403: apiClient에서 처리; AuthContext는 getMe 실패 시 logout
-- [ ] token-refreshed: updates token and header
-- [ ] token-refreshed 수신 후 token 적용 실패 시 fallback 동작
+These scenarios should be validated by unit tests through observable outcomes:
+- [ ] Unauthenticated: `user` is `null`, `isAuthenticated` is `false`, and `loading` becomes `false` after init.
+- [ ] Authenticated: when `sessionStorage.token` is present and `getMe` resolves, `user` is set and `isAuthenticated` becomes `true`.
+- [ ] Loading: when token exists and `getMe` is pending, `loading` remains `true`.
+- [ ] `login` success: tokens stored, `user` becomes defined, and `isAuthenticated` is `true`.
+- [ ] `login` failure: `login()` resolves to `{ success:false }` (no crash; caller gets a result).
+- [ ] `register` pending: returns `{ success:true, status:'pending' }` and does not set token/user.
+- [ ] `getMe` failure: `logout()` occurs (user cleared) and `loading` becomes `false`.
+- [ ] `useAuth` outside provider throws.
+- [ ] `token-refreshed`: user remains authenticated and no crash occurs.
 
 ### 2.7 Edge Cases
 
-- useAuth outside provider throws
-- getMe fails → logout, loading false
-- 동시 refresh 요청 시 한 번만 refresh 시도
+- Storage write failures during `login()` should be handled defensively so the app does not crash; `login()` returns a failure result.

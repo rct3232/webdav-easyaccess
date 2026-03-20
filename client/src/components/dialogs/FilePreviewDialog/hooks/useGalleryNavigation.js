@@ -1,4 +1,4 @@
-import { useState, useCallback, useLayoutEffect, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 
 export const useGalleryNavigation = ({
@@ -10,10 +10,19 @@ export const useGalleryNavigation = ({
   setHeaderVisible,
   resetHideTimer,
 }) => {
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [navigationOffset, setNavigationOffset] = useState(0);
   const touchStartX = useRef(null);
   const touchStartedOnPlyrControls = useRef(false);
-  const lastSyncedFilePathRef = useRef(null);
+
+  const openedIndex =
+    isGalleryMode && file?.path && Array.isArray(mediaFiles) && mediaFiles.length > 0
+      ? mediaFiles.findIndex((f) => f?.path === file.path)
+      : -1;
+
+  const currentMediaIndex =
+    openedIndex >= 0
+      ? Math.max(0, Math.min(openedIndex + navigationOffset, mediaFiles.length - 1))
+      : 0;
 
   const currentDisplayFile = isGalleryMode && mediaFiles[currentMediaIndex]
     ? mediaFiles[currentMediaIndex]
@@ -22,42 +31,33 @@ export const useGalleryNavigation = ({
     ? getFileType(currentDisplayFile.name || currentDisplayFile.basename)
     : null;
 
-  // Sync currentMediaIndex from file.path only when a new file is opened (not on arrow nav).
-  // Must not run during render; use layout effect so the first paint uses the correct index
-  // and PreviewThumbnailBar does not animate scroll on open.
-  useLayoutEffect(() => {
-    if (!open) return;
-    if (!isGalleryMode) return;
-    if (!file?.path) return;
-    if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) return;
-    if (lastSyncedFilePathRef.current === file.path) return;
-
-    const idx = mediaFiles.findIndex((f) => f?.path === file.path);
-    if (idx < 0) {
-      // mediaFiles might be populated asynchronously; do not lock to index 0.
-      return;
-    }
-
-    lastSyncedFilePathRef.current = file.path;
-    setCurrentMediaIndex(idx);
-  }, [open, isGalleryMode, file?.path, mediaFiles]);
-
   useEffect(() => {
     if (!open) {
-      lastSyncedFilePathRef.current = null;
-      setCurrentMediaIndex(0);
+      setNavigationOffset(0);
     }
   }, [open]);
 
+  useEffect(() => {
+    setNavigationOffset(0);
+  }, [file?.path]);
+
+  const setCurrentMediaIndex = useCallback(
+    (index) => {
+      const idx = Math.max(0, Math.min(index, mediaFiles.length - 1));
+      setNavigationOffset(idx - (openedIndex >= 0 ? openedIndex : 0));
+    },
+    [openedIndex, mediaFiles.length]
+  );
+
   const goPrev = useCallback(() => {
     if (isGalleryMode && currentMediaIndex > 0) {
-      setCurrentMediaIndex((i) => i - 1);
+      setNavigationOffset((prev) => prev - 1);
     }
   }, [isGalleryMode, currentMediaIndex]);
 
   const goNext = useCallback(() => {
     if (isGalleryMode && currentMediaIndex < mediaFiles.length - 1) {
-      setCurrentMediaIndex((i) => i + 1);
+      setNavigationOffset((prev) => prev + 1);
     }
   }, [isGalleryMode, currentMediaIndex, mediaFiles.length]);
 

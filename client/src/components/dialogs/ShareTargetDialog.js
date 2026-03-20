@@ -21,17 +21,23 @@ import {
 } from '@mui/material';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getApprovedUsers } from '../../services/userService';
-import { getFolderPermissions, grantPermission, revokePermission } from '../../services/permissionService';
+import sharePermissionGateway from '../../services/sharePermissionGateway';
+import { openUrlInNewTab } from '../../services/browserNavigation';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { getPermissionLabels } from '../../constants/permissions';
 import { normalizePath } from '../../utils/pathUtils';
 import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
-import { collectSubfolderPaths } from '../../utils/folderUtils';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import SharedManageBody from './SharedManageBody';
+import { shareTargetPermissionSaveUseCase } from '../../services/shareTargetPermissionSaveUseCase';
+import {
+  buildShareTargetAccessList,
+  filterShareTargetUsers,
+  sortShareTargetAccessList,
+} from '../../utils/deriveShareTargetAdminView';
 
 const getPermissionOptions = (t) => [
   { value: PERMISSIONS.WRITE, label: t('dialogs.editor') },
@@ -183,29 +189,8 @@ const ShareTargetDialog = ({
     try {
       const pathToQuery = isDirectory ? targetPath : getParentPath(targetPath);
       const filePathParam = isDirectory ? undefined : targetPath;
-      const data = await getFolderPermissions(pathToQuery, false, filePathParam);
-      const list = (data || [])
-        .filter((p) => !p.is_admin)
-        .map((p) => {
-          if (isDirectory) {
-            return {
-              id: p.id,
-              username: p.username || '',
-              email: p.email || '',
-              permission: p.permission || PERMISSIONS.READ,
-            };
-          }
-          const pathPermission = p.permission ?? null;
-          const filePermission = p.file_permission ?? null;
-          return {
-            id: p.id,
-            username: p.username || '',
-            email: p.email || '',
-            pathPermission,
-            filePermission,
-            permission: filePermission ?? pathPermission ?? PERMISSIONS.READ,
-          };
-        });
+      const data = await sharePermissionGateway.getFolderPermissions(pathToQuery, false, filePathParam);
+      const list = buildShareTargetAccessList({ permissions: data, isDirectory });
       setAccessList(list);
       setInitialAccessList(list.map((u) => ({ ...u })));
     } catch (err) {
@@ -235,14 +220,15 @@ const ShareTargetDialog = ({
     }
   }, [open, targetPath, hasAdmin, loadUsers, loadPermissions]);
 
-  const filteredUsers = users.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.trim().toLowerCase();
-    return (
-      (u.username && u.username.toLowerCase().includes(q)) ||
-      (u.email && u.email.toLowerCase().includes(q))
-    );
-  });
+  const filteredUsers = React.useMemo(
+    () => filterShareTargetUsers({ users, searchQuery }),
+    [searchQuery, users]
+  );
+
+  const sortedAccessList = React.useMemo(
+    () => sortShareTargetAccessList(accessList),
+    [accessList]
+  );
 
   const addUser = useCallback((u) => {
     setAccessList((prev) => {
@@ -277,72 +263,12 @@ const ShareTargetDialog = ({
     if (!targetPath) return;
     setSaving(true);
     try {
-      const initialIds = new Set(initialAccessList.map((u) => u.id));
-      const currentMap = new Map(accessList.map((u) => [u.id, u]));
-
-      if (isDirectory) {
-        const pathsToGrant = await collectSubfolderPaths(targetPath);
-        for (const uid of initialIds) {
-          if (!currentMap.has(uid)) {
-            try {
-              await revokePermission({ userId: uid, folderPath: targetPath, includeSubfolders: true });
-            } catch (e) {
-              console.error('Revoke failed:', e);
-            }
-          }
-        }
-        for (const u of accessList) {
-          const perm = u.permission;
-          for (const path of pathsToGrant) {
-            try {
-              await grantPermission({ userId: u.id, folderPath: path, permission: perm });
-            } catch (e) {
-              console.error('Grant failed:', path, e);
-            }
-          }
-        }
-      } else {
-        const currentIds = new Set(accessList.map((u) => u.id));
-        for (const initial of initialAccessList) {
-          if (!currentIds.has(initial.id)) {
-            try {
-              await revokePermission({ userId: initial.id, folderPath: targetPath, scope: 'pathOnly' });
-            } catch (e) {
-              console.error('Revoke file failed:', e);
-            }
-          }
-        }
-        for (const u of accessList) {
-          if (u.permission === 'revoke') {
-            try {
-              await revokePermission({ userId: u.id, folderPath: targetPath, scope: 'pathOnly' });
-            } catch (e) {
-              console.error('Revoke file failed:', e);
-            }
-            continue;
-          }
-          const initial = initialAccessList.find((x) => x.id === u.id);
-          const pathDefault = u.pathPermission ?? PERMISSIONS.READ;
-          const skipCond1 = u.permission === pathDefault && initial?.filePermission == null;
-          const skipCond2 = u.permission === pathDefault && initial?.filePermission != null;
-          if (u.pathPermission != null && skipCond1) {
-            continue;
-          }
-          if (skipCond2) {
-            try {
-              await revokePermission({ userId: u.id, folderPath: targetPath, scope: 'pathOnly' });
-            } catch (e) {
-              console.error('Revoke file failed:', e);
-            }
-            continue;
-          }
-          try {
-            await grantPermission({ userId: u.id, folderPath: targetPath, permission: u.permission, target: 'file' });
-          } catch (e) {
-            console.error('Grant/update file failed:', e);
-          }
-        }
-      }
+      await shareTargetPermissionSaveUseCase({
+        targetPath,
+        isDirectory,
+        initialAccessList,
+        accessList,
+      });
 
       if (onMessage) onMessage({ show: true, text: isDirectory ? t('dialogs.folderShareSuccess') : t('dialogs.permissionSaveSuccess'), type: 'success' });
       if (onSave) onSave();
@@ -447,13 +373,7 @@ const ShareTargetDialog = ({
                 </Box>
               ) : (
                 <List dense>
-                  {[...accessList]
-                    .sort((a, b) => {
-                      if (a.permission === PERMISSIONS.ADMIN && b.permission !== PERMISSIONS.ADMIN) return -1;
-                      if (a.permission !== PERMISSIONS.ADMIN && b.permission === PERMISSIONS.ADMIN) return 1;
-                      return 0;
-                    })
-                    .map((u) => (
+                  {sortedAccessList.map((u) => (
                     <ListItem
                       key={u.id}
                       sx={{
@@ -561,6 +481,7 @@ const ShareTargetDialog = ({
               setLinkCopied={setLinkCopied}
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
+              onOpenShareLink={openUrlInNewTab}
               filePath={targetPath}
               fileName={displayName}
               onMessage={onMessage}

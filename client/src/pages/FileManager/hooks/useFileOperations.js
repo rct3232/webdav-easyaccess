@@ -4,7 +4,7 @@ import { downloadFile, downloadMultipleFiles, renameFile } from '../../../servic
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../../../utils/processingUtils';
 import { normalizePath } from '../../../utils/pathUtils';
-import { applyRecentFilesAfterRename } from '../../../utils/recentFiles';
+import { applyRecentFilesAfterRename } from '../../../services/recentFilesRepository';
 
 /**
  * Common file operations hook

@@ -12,19 +12,20 @@
 ## 2. Implementation Spec
 
 ### 2.1 File Path
-
-- **Source:** `client/src/pages/Login.js`
+- **Source (page shell):** `client/src/pages/Login.js`
 - **Test file:** `client/src/pages/__tests__/Login.test.js`
 
 ### 2.2 Hooks Used
-
-- useAuth (login)
-- useNavigate
-- useTranslation
+- `useLoginForm` (controller hook)
+  - useAuth (login)
+  - useNavigate
+  - useTranslation
+- (View) `LoginFormView` does not call hooks and does not import router modules
 
 ### 2.3 Main Child Components
-
-- LoginForm (from same file, exported)
+- `LoginForm` (controller wrapper, exported from `client/src/pages/Login.js`)
+- `LoginFormView` (pure view)
+  - See `docs/spec/client/components/auth/LoginFormView.md`
 
 ### 2.4 Route Protection
 
@@ -36,6 +37,7 @@
 - Success: redirect to `/files` or user home
 - Failure: show error (rejected, failed) or warning (pending approval)
 - Link to Register if registration_enabled
+  - Route target is prepared by the shell/controller layer and passed into the pure view as props
 
 ### 2.6 Integration Test Scenarios
 

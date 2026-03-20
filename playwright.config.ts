@@ -1,49 +1,38 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
+
+const desktopSpecMatch = /(?:auth|share-public|desktop-core-flow)\.spec\.ts$/;
+const mobileSpecMatch = /(?:auth|share-public|mobile-core-flow)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',
-  maxFailures: 1,
-  fullyParallel: false,
-  forbidOnly: !!process.env.CI,
+  testMatch: /.*\.spec\.ts$/,
+  fullyParallel: true,
+  forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
-  outputDir: 'test-results',
-  reporter: [
-    ['list'],
-    ['html', { open: 'never' }],
-  ],
+  globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: 'http://127.0.0.1:3000',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    baseURL: 'http://localhost:3000',
+    trace: 'retain-on-failure',
   },
   projects: [
     {
-      name: 'chromium',
-      testMatch: /.*desktop-flow\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'] },
+      name: 'desktop',
+      testMatch: desktopSpecMatch,
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 1280, height: 720 },
+      },
     },
     {
       name: 'mobile',
-      testMatch: /.*mobile-flow\.spec\.ts/,
-      use: { ...devices['iPhone 13'] },
-    },
-  ],
-  globalSetup: require.resolve('./e2e/global-setup'),
-  globalTeardown: require.resolve('./e2e/global-teardown'),
-  webServer: [
-    {
-      command: 'npm run e2e:server',
-      url: 'http://127.0.0.1:5002/api/health',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
-    },
-    {
-      command: 'npm run e2e:client',
-      url: 'http://127.0.0.1:3000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      testMatch: mobileSpecMatch,
+      use: {
+        browserName: 'webkit',
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+      },
     },
   ],
 });

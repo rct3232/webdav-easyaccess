@@ -18,6 +18,7 @@
 ✓ server/services/__tests__/**/*.test.js
 ✓ server/store/__tests__/**/*.test.js
 ✓ server/utils/__tests__/**/*.test.js
+✓ e2e/**/*.spec.ts
 ```
 
 **Reason**: Tests are part of the codebase; other developers need to run and modify them.
@@ -30,6 +31,9 @@
 ✓ server/test-utils.js
 ✓ client/src/test-utils/ (or test-utils/index.js)
 ✓ setupTests.js (client)
+✓ playwright.config.ts
+✓ e2e/global-setup.ts
+✓ e2e/global-teardown.ts
 ```
 
 **Reason**: Needed to keep the test environment consistent.
@@ -41,6 +45,8 @@
 ✓ client/src/mocks/server.js
 ✓ client/src/test-utils/index.js
 ✓ server/test-utils.js
+✓ e2e/helpers/**/*.ts
+✓ e2e/fixtures/**/*
 ```
 
 **Reason**: Common utilities needed for writing tests.
@@ -50,6 +56,7 @@
 ```
 ✓ TEST_SUMMARY.md (client/server)
 ✓ docs/TEST_GIT_GUIDE.md
+✓ docs/E2E_COVERAGE_PLAN.md
 ✓ README.md (testing section)
 ```
 
@@ -96,6 +103,33 @@
 ```
 
 **Reason**: Report files produced by CI/CD.
+
+## Playwright E2E Prerequisites
+
+Before running `npm run test:e2e`, make sure the browser-level environment is ready:
+
+```bash
+# 1. Install Playwright browsers when needed
+npm run test:e2e:install
+
+# 2. Start the E2E API/server process
+npm run e2e:server
+
+# 3. In a separate terminal, start the E2E client
+npm run e2e:client
+
+# 4. Run the Playwright suite from the repo root
+npm run test:e2e
+```
+
+Required assumptions:
+
+- Docker-backed local dependencies used by `.env.e2e` must be available before starting `npm run e2e:server`.
+- `npm run e2e:server` serves the API on port `5002`.
+- `npm run e2e:client` serves the UI on port `3000`.
+- `playwright.config.ts` uses `baseURL` `http://localhost:3000` and runs `e2e/global-setup.ts` / `e2e/global-teardown.ts` around the suite.
+- The root Playwright config defines separate desktop and mobile projects, so `npm run test:e2e` executes both project assignments unless filtered.
+- If `playwright.config.ts` is configured with `webServer`, Playwright can manage these startup steps automatically; otherwise keep the client and server running manually before `npm run test:e2e`.
 
 ## Recommended Git Workflow
 
@@ -347,6 +381,6 @@ npm test
 
 ---
 
-**Last updated**: 2026-02-18  
+**Last updated**: 2026-03-20  
 **Project**: WebDAV EasyAccess  
-**Test frameworks**: Jest, React Testing Library
+**Test frameworks**: Jest, React Testing Library, Playwright

@@ -25,6 +25,7 @@ This project is refactoring the client so responsibilities are explicit and repl
   - Uses explorer UI state (current path / selection) as inputs, but remains a distinct feature module.
   - Controller hooks may orchestrate dialog state, but permission persistence and request-side IO should flow through sharing gateways/use-cases rather than raw service loops inside views.
   - Share-link-specific add-to-my-permissions and leave-share confirmation flows should live in a dedicated product-overlay controller, not inline inside the FileManager page shell.
+  - Public share-link browsing and internal user-to-user sharing are distinct product surfaces: share-link mode starts from `/share/:token`, while internal sharing starts from authenticated explorer/MyPage flows and surfaces granted content under `__shared__`.
 
 - **Permission requests (request/approve/reject/cancel)**
   - Handles the request lifecycle between requester and owner.
@@ -36,6 +37,7 @@ This project is refactoring the client so responsibilities are explicit and repl
   - Explorer and sharing features should treat “recent files” as a separate capability they notify, not embed.
   - Client callers should route server-backed recent-file mutations through `recentFilesRepository`, subscribe through `recentFilesNotifier`, and keep path-mutation planning inside the pure `recentFiles` helpers.
   - UI refresh for `/__recent__` should be driven by notifier-triggered reloads after successful observable recent-file mutations, not by ad-hoc cross-feature state pokes.
+  - `__recent__` is a browser-visible virtual collection layered on top of explorer behavior; its deeper synchronization rules still belong to repository/notifier and lower-layer tests.
 
 These boundaries are about **who owns product rules and side effects**; they are not a server contract change.
 
@@ -164,6 +166,12 @@ flowchart TD
 - Requester: `GET /api/permission-requests/outbox` → see status; `POST .../cancel` to cancel pending.
 - State transitions: pending → approved | rejected | cancelled (see [shared-contracts.md](../shared-contracts.md) for `PERMISSION_REQUEST_STATUS`).
 
+### User-facing collection overlays
+
+- `__shared__` is the authenticated browser entry for internal sharing outcomes. It is where a non-admin user discovers content that became accessible through direct permissions or approved requests.
+- `__recent__` is the authenticated browser entry for previously accessed content. It may reopen previews or remove/recover stale entries, but it does not redefine explorer core navigation rules.
+- These overlays are product-visible behaviors and therefore belong in browser-flow planning when the user can navigate into them and observe list/preview/denial outcomes.
+
 ---
 
 ## Testing
@@ -188,6 +196,7 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
 
 - Keep flow coverage split by platform responsibility instead of branching inside a shared test body.
 - Shared helpers may hold only platform-agnostic seams such as auth, deterministic naming, fixture loading, and common file-item locators.
+- Shared explorer helpers may also own the common entry seams for opening the FAB menu and an item's shared "More actions" button, but the follow-up desktop context-menu and mobile action-sheet behavior must remain spec-owned.
 - Desktop and mobile flow specs both verify the same CRUD outcomes:
   - login
   - create folder through the FAB flow
@@ -199,11 +208,29 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
   - mobile uses the action sheet
 - When desktop and mobile verify the same outcome, document the shared outcome once and only call out the interaction surface where the platforms genuinely differ.
 
+### Browser coverage boundary for sharing-related flows
+
+- Keep the canonical inventory, priorities, and spec ownership in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
+- Playwright should cover representative user-visible journeys:
+  - public share-link error/success states
+  - add-to-my-permissions and leave-share outcomes for directory shares
+  - internal permission-request lifecycle anchors such as request, approve/reject, and resulting `__shared__` access
+  - `__recent__` and `__shared__` entry/navigation flows that a user can observe in the browser
+  - visible read-only versus write-capable outcomes for granted shared content
+- Lower layers should continue to own broader matrices and infra-sensitive branches:
+  - ACL inheritance and non-inheritance combinations
+  - full permission allow/deny combinations beyond one representative visible denial
+  - recent-files synchronization internals after move/delete
+  - drag-and-drop cursor/gesture subtleties unless a stable browser-visible smoke is explicitly promoted
+
 ### Representative verification anchors
 
 - **Explorer CRUD happy paths:** Desktop and mobile both keep create folder, upload, rename, and delete in browser-visible coverage. The detailed scenario inventory and spec ownership live in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
+- **Explorer navigation anchors:** Browser coverage should keep direct `/files/<path>` entry and breadcrumb chip navigation focused on visible folder changes, using route results and `data-file-path` item visibility rather than internal router state.
+- **Preview flows:** For previewable files, browser coverage should assert the platform-owned preview entry seam and the visible full-screen preview dialog, without coupling to preview-loader internals.
 - **Batch operations and conflicts:** Move/copy/delete, conflict resolution, bulk progress, and recent-files synchronization remain important coverage targets, but the exhaustive browser-vs-integration split is tracked in the canonical E2E plan.
-- **Share and permission-request outcomes:** Shared-link expiry, add-to-my-permissions, and permission-request lifecycle should remain represented in test coverage, with browser coverage focused on user-visible outcomes and route integration covering deeper state matrices.
+- **Share and permission-request outcomes:** Distinguish public share-link browsing from authenticated internal sharing. Shared-link expiry, add-to-my-permissions, and leave-share remain browser-visible public-share anchors; permission-request request/approve/reject/cancel and resulting `__shared__` access remain browser-visible internal-sharing anchors. Route integration still owns deeper state matrices.
+- **Virtual collection overlays:** `__shared__` and `__recent__` should keep representative browser coverage for entry, navigation, preview/recovery, and visible stale-entry handling, while lower layers own synchronization internals and derived data edge cases.
 - **Permission and meta-path boundaries:** Direct read/write rules, reserved-path protection, and broader ACL allow/deny matrices should stay primarily in middleware and route integration coverage, with browser E2E limited to user-visible denial flows.
 - **Page-test seams:** When a FileManager page test is not validating floating action button or sidebar tree mechanics themselves, it may isolate those shell-only UI surfaces behind lighter equivalents so the scenario continues to verify explorer behavior without unrelated UI-library timing noise.
 

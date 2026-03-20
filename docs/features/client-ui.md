@@ -41,8 +41,9 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 - **Product overlays own**
   - Share-link mode: what is visible and which actions are enabled/disabled when browsing a shared scope.
-  - Share-link-specific login, leave-share, and add-to-my-permissions flows.
+  - Share-link-specific login, leave-share, and add-to-my-permissions flows for directory shares reached from `/share/:token`.
   - Virtual collections and product-specific sections (e.g. `__recent__`, `__shared__`).
+  - The distinction between public share-link flows and authenticated internal-sharing flows such as request outcomes and granted-content access under `__shared__`.
   - Admin-only UI visibility and product policies that are not reusable across contexts.
 
 - **Page shells own**
@@ -105,6 +106,7 @@ Once the client is upgraded to React Router v7, these behaviors are treated as t
 - **View modes:** List, grid, detail (from `VIEW_MODES` in `constants/fileManager.js`). Persisted through the existing client preference-storage policy/helper boundary.
 - **Sort:** Name/date, asc/desc (`SORT_MODES`). Persisted through the same preference-storage policy boundary and applied before render.
 - **Explorer ownership split:** `useExplorerSession` is the single owner of search/sort/view-mode session state and preference persistence. `useFileManager` is the narrow path/listing seam for the active explorer location. Listing, shared-entry loading, capability checks, recent-files persistence, metadata enrichment, and parent-folder verification belong to explorer gateways plus the narrow controller/listing seams that call them. `FileManager` remains the page shell that selects product overlays such as share-link mode and virtual collections, while control-only chrome state such as an open sort menu stays local to the rendered control seam instead of the page shell.
+- **Virtual collections as overlays:** `__shared__` and `__recent__` reuse the explorer shell but are product overlays with their own browser-visible entry and recovery rules. They should be tracked separately from ordinary folder CRUD even when they share list and preview components.
 - **Recent-file recovery boundary:** When a recent target must be verified, reopened for preview, or removed as stale, the recent-file controller uses explorer gateway seams for parent-folder checks and recent-entry cleanup instead of importing repository or file-service modules directly. Rollback and toast behavior stay unchanged from the user perspective.
 - **Search:** Floating search bar (FloatingSearchBar) to the left of the FAB. Unified behavior on mobile and desktop: always visible, no toggle. Desktop: fixed 300px width; mobile: full remaining width minus margins and FAB. Styled with gradient outline (same palette as AppBar/FAB), pill shape, matte light interior. Search query filters or highlights items by name. Scroll container uses bottom padding equal to the floating area height so the last list item can scroll above the search bar.
 - **Selection:** Multi-select driven by file interactions (no manual selection mode toggle). Desktop: single click enters selection mode and selects that file; double click opens folder/preview; Ctrl+click adds/removes; Shift+click range-selects; click on empty space exits selection mode. Mobile: touch opens folder/preview; long-press enters selection mode and selects that file; in selection mode, tap toggles selection. When `selectedFiles.size === 0`, selection mode auto-exits. The selection controller owns the selected set; route/path changes clear selection through the page-shell/session-boundary seam. File rows/cards do not require checkbox widgets for this flow.
@@ -125,6 +127,7 @@ Once the client is upgraded to React Router v7, these behaviors are treated as t
 - **Browser-boundary rule for touched views:** Presentational/file-tree/share views must not call `window`, `document`, or `ResizeObserver` directly. Link opening, element observation, and similar browser work must flow through a prepared callback, hook, or adapter boundary.
 - **File preview zoom:** PDF and image previews support zoom. Bottom bar (zoom in/out, percentage, reset); Ctrl+wheel on desktop; two-finger pinch on mobile.
 - **Share link mode:** When `shareToken` and `linkInfo` are passed (e.g. from ShareLinkLoader), file manager shows only the share root; write actions may be disabled; “Add to my permissions” and “Login” available via FAB or header.
+- **Internal sharing outcomes:** Internal sharing does not route through `/share/:token`. When access is granted through permissions or approved requests, the browser-visible entry point is the authenticated explorer, especially `__shared__`, with the main observable distinction being read-only versus write-capable actions.
 
 - **Single-file download (iOS + single file):** On iOS (e.g. iPhone Chrome), downloading a single file (any type) uses a share-sheet–friendly path so the user can save to Files or Photos. **Policy:** (1) The app creates a `File` from the blob and calls `navigator.canShare({ files: [file] })` with the actual file; if true, it uses the Web Share API so the system share sheet appears; the user chooses "Save to Files" or similar. (2) If `canShare` returns false or share fails (non-AbortError), the app falls back to blob + `<a download>` + `visibilitychange` revoke. (3) All other cases (desktop, folder download, multi-file zip) keep the existing blob + `<a download>` behavior. **User guidance:** When the share sheet is shown, the UI may show a short hint (e.g. tooltip or toast) that the user can save the file. See `docs/spec/client/services/fileService.md` (§ 2.3) for the service-level spec.
 
@@ -133,7 +136,7 @@ Once the client is upgraded to React Router v7, these behaviors are treated as t
 - **ShareLinkLoader:** Reads `token` from route params; calls `getPublicShareLinkInfo(token)`. While loading, shows spinner and “Loading” text. On error (e.g. 404, 410), shows error message. On success:
   - If `linkInfo` indicates directory: render `FileManager` with `shareToken` and `linkInfo` (browse shared folder).
   - If single file: render `ShareLinkSingleFileView` (full-screen preview/download).
-- **ShareLinkSingleFileView:** Preview or download for the shared file; optional “Login” or “Add to my permissions” when user is logged in.
+- **ShareLinkSingleFileView:** Preview or download for the shared file. Unlike directory-share mode, this single-file screen does not expose share-directory overlay actions such as Login, Leave share, or Add to my permissions unless product behavior explicitly changes and the page spec is updated.
 
 ### Responsive and mobile
 
@@ -196,12 +199,28 @@ When implementing or reviewing client tests, cover at least:
 
 For the full browser-flow inventory and planned Playwright spec ownership across routing, responsive behavior, explorer flows, and share-link flows, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on user-visible UI behavior and representative testing anchors.
 
+Browser-versus-lower-layer split:
+
+- Playwright should own representative browser-visible flows:
+  - protected-route redirects and login outcomes
+  - normal explorer CRUD/navigation
+  - public directory-share browsing and directory-share overlay actions
+  - authenticated `__shared__` and `__recent__` entry/navigation flows
+  - MyPage mobile drawer interaction and visible category switching
+- RTL/MSW, supertest, and unit tests should own broader or less stable branches:
+  - full ACL and permission matrices
+  - recent-files synchronization internals
+  - share-token edge-case permutations without distinct browser value
+  - drag-and-drop cursor/gesture nuance beyond representative denied/no-op smoke
+
 - **Routing and PrivateRoute:** Unauthenticated access to `/files`, `/mypage` redirects to `/login`. Authenticated access renders the correct page. `/admin` redirects to `/mypage` with Admin category selected. Loading state shows spinner.
 - **View/sort/search and toolbar:** View mode and sort mode change UI layout and order; search filters or highlights; selecting items shows toolbar; toolbar actions trigger correct API calls (MSW) and list refresh.
 - **Selection tests:** Prefer interaction-based assertions (`click`, `Ctrl`/`Meta`+click, `Shift`+click, long-press) and outcome checks. Do not assume file rows expose `role="checkbox"`.
 - **Drag-drop and dialogs:** Drop triggers upload or move/copy; conflict dialog appears when name conflicts; rename dialog calls rename API and refreshes list. Assert on API calls and list state.
-- **Share link:** `/share/:token` loads; with MSW returning directory vs file, correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message.
+- **Share link and overlay split:** `/share/:token` loads; with MSW returning directory vs file, the correct component (FileManager vs ShareLinkSingleFileView) renders; error response shows error message. Keep single-file share assertions focused on preview/download rendering unless the product later adds explicit authenticated actions there.
+- **Virtual collections:** `__shared__` and `__recent__` tests should assert on visible list/preview/denial outcomes rather than repository notifier internals or page-shell wiring.
 - **Mobile:** FAB shown on all viewports; action sheet on mobile (small viewport). Assertions can be based on visibility or role/label.
+- **MyPage mobile shell:** The menu button opens the category drawer, selecting a category closes it, and visible content updates without relying on internal drawer state.
 - **Errors:** API error responses surface as snackbar or inline message using `t(errorCode, params)` (see [errorUtils](../../client/src/utils/errorUtils.js) and shared-contracts).
 
 Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md): MSW for API, React Testing Library for components and user flows.

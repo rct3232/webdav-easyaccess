@@ -1,7 +1,14 @@
 import { defineConfig } from '@playwright/test';
 
-const desktopSpecMatch = /(?:auth|share-public|desktop-core-flow)\.spec\.ts$/;
-const mobileSpecMatch = /(?:auth|share-public|mobile-core-flow)\.spec\.ts$/;
+const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
+
+const desktopSpecMatch = laterWavesEnabled
+  ? /(?:auth|share-public|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
+  : /(?:auth|share-public|desktop-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+
+const mobileSpecMatch = laterWavesEnabled
+  ? /(?:auth|share-public|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile)\.spec\.ts$/
+  : /(?:auth|share-public|mobile-core-flow|mypage-user|share-internal)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',

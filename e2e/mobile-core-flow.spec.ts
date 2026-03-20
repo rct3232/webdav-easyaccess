@@ -37,6 +37,87 @@ async function uploadFile(
   await dialog.getByTestId('upload-dialog-submit').click();
 }
 
+async function mobileLongPressFile(
+  page: Parameters<typeof openFabAction>[0],
+  filePath: string,
+) {
+  // Mobile selection uses long-press touch handlers (~500ms) and does not rely on click.
+  const selector = `[data-file-path="${filePath}"]`;
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) throw new Error(`File element not found: ${sel}`);
+
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+
+    const touch = {
+      clientX: x,
+      clientY: y,
+      pageX: x,
+      pageY: y,
+      screenX: x,
+      screenY: y,
+    };
+
+    const ev = new Event('touchstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'touches', { value: [touch] });
+    Object.defineProperty(ev, 'targetTouches', { value: [touch] });
+    Object.defineProperty(ev, 'changedTouches', { value: [touch] });
+    el.dispatchEvent(ev);
+  }, selector);
+
+  await page.waitForTimeout(550);
+
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) throw new Error(`File element not found: ${sel}`);
+    const ev = new Event('touchend', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'touches', { value: [] });
+    Object.defineProperty(ev, 'targetTouches', { value: [] });
+    Object.defineProperty(ev, 'changedTouches', { value: [] });
+    el.dispatchEvent(ev);
+  }, selector);
+}
+
+async function selectTwoFilesMobile(
+  page: Parameters<typeof openFabAction>[0],
+  firstFilePath: string,
+  secondFilePath: string,
+) {
+  await mobileLongPressFile(page, firstFilePath);
+  await expect(page.locator('button[title="Move"]')).toBeVisible();
+
+  // In selection mode, tapping another file toggles selection.
+  await fileItem(page, secondFilePath).click();
+  await expect(page.locator('button[title="Move"]')).toBeVisible();
+}
+
+async function openFolderPickerAndSelectDestination(
+  page: Parameters<typeof openFabAction>[0],
+  action: 'move' | 'copy',
+  destinationFolderName: string,
+) {
+  const actionButtonTitle = action === 'move' ? 'Move' : 'Copy';
+  await page.locator(`button[title="${actionButtonTitle}"]`).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole('button', { name: destinationFolderName, exact: true }).click();
+  await dialog.getByRole('button', { name: 'Select', exact: true }).click();
+}
+
+async function bulkDeleteSelected(
+  page: Parameters<typeof openFabAction>[0],
+) {
+  await page.locator('button[title="Delete"]').click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('confirm-dialog-confirm')).toBeVisible();
+  await dialog.getByTestId('confirm-dialog-confirm').click();
+}
+
 test('logs in and lands in the explorer', async ({ page }) => {
   await loginAsAdmin(page);
   await expect(page).toHaveURL(/\/files(?:\/.*)?$/);
@@ -176,4 +257,148 @@ test('opens a previewable file from the explorer', async ({ page }, testInfo) =>
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('img').first()).toBeVisible();
+});
+
+test('bulk: enter selection mode and shows bulk toolbar', async ({ page }, testInfo) => {
+  const folderName = buildName(testInfo, 'bulk-select-folder');
+  const folderPath = `/${folderName}`;
+
+  await loginAsAdmin(page);
+  await createFolder(page, folderName);
+  await expect(fileItem(page, folderPath)).toBeVisible();
+
+  await mobileLongPressFile(page, folderPath);
+
+  await expect(page.locator('button[title="Move"]')).toBeVisible();
+  await expect(page.locator('button[title="Copy"]')).toBeVisible();
+  await expect(page.locator('button[title="Download"]')).toBeVisible();
+  await expect(page.locator('button[title="Delete"]')).toBeVisible();
+});
+
+test('bulk: move selected items to another folder', async ({ page }, testInfo) => {
+  const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
+  const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
+
+  const destFolderName = buildName(testInfo, 'bulk-move-dest-folder');
+  const destFolderPath = `/${destFolderName}`;
+  const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
+  const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
+
+  await loginAsAdmin(page);
+  await uploadFile(page, {
+    fileName: srcFile1Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await uploadFile(page, {
+    fileName: srcFile2Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await createFolder(page, destFolderName);
+
+  await selectTwoFilesMobile(page, srcFile1Path, srcFile2Path);
+
+  await openFolderPickerAndSelectDestination(page, 'move', destFolderName);
+
+  await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
+  await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
+
+  await page.goto(toFilesRoute(destFolderPath));
+  await expect(fileItem(page, destFile1Path)).toBeVisible();
+  await expect(fileItem(page, destFile2Path)).toBeVisible();
+});
+
+test('bulk: copy selected items to another folder', async ({ page }, testInfo) => {
+  const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
+  const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
+
+  const destFolderName = buildName(testInfo, 'bulk-copy-dest-folder');
+  const destFolderPath = `/${destFolderName}`;
+  const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
+  const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
+
+  await loginAsAdmin(page);
+  await uploadFile(page, {
+    fileName: srcFile1Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await uploadFile(page, {
+    fileName: srcFile2Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await createFolder(page, destFolderName);
+
+  await selectTwoFilesMobile(page, srcFile1Path, srcFile2Path);
+
+  await openFolderPickerAndSelectDestination(page, 'copy', destFolderName);
+
+  await expect(fileItem(page, srcFile1Path)).toBeVisible();
+  await expect(fileItem(page, srcFile2Path)).toBeVisible();
+
+  await page.goto(toFilesRoute(destFolderPath));
+  await expect(fileItem(page, destFile1Path)).toBeVisible();
+  await expect(fileItem(page, destFile2Path)).toBeVisible();
+});
+
+test('bulk: delete selected items', async ({ page }, testInfo) => {
+  const srcFile1Name = buildName(testInfo, 'bulk-delete-src-1', '.txt');
+  const srcFile2Name = buildName(testInfo, 'bulk-delete-src-2', '.txt');
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
+
+  await loginAsAdmin(page);
+  await uploadFile(page, {
+    fileName: srcFile1Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await uploadFile(page, {
+    fileName: srcFile2Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+
+  await expect(fileItem(page, srcFile1Path)).toBeVisible();
+  await expect(fileItem(page, srcFile2Path)).toBeVisible();
+
+  await selectTwoFilesMobile(page, srcFile1Path, srcFile2Path);
+  await bulkDeleteSelected(page);
+
+  await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
+  await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
+});
+
+test('bulk: mobile multi-download button is disabled when multiple items selected', async ({ page }, testInfo) => {
+  const srcFile1Name = buildName(testInfo, 'bulk-download-src-1', '.txt');
+  const srcFile2Name = buildName(testInfo, 'bulk-download-src-2', '.txt');
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
+
+  await loginAsAdmin(page);
+  await uploadFile(page, {
+    fileName: srcFile1Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await uploadFile(page, {
+    fileName: srcFile2Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+
+  await expect(fileItem(page, srcFile1Path)).toBeVisible();
+  await expect(fileItem(page, srcFile2Path)).toBeVisible();
+
+  await selectTwoFilesMobile(page, srcFile1Path, srcFile2Path);
+
+  const downloadButton = page.locator('button[title="Download"]').first();
+  await expect(downloadButton).toBeVisible();
+  await expect(downloadButton).toBeDisabled();
 });

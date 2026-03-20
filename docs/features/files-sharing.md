@@ -169,6 +169,7 @@ flowchart TD
 ### User-facing collection overlays
 
 - `__shared__` is the authenticated browser entry for internal sharing outcomes. It is where a non-admin user discovers content that became accessible through direct permissions or approved requests.
+- After an approved internal permission request, the granted target becomes discoverable to the requester under `__shared__` (with observable read-only vs write-capable affordances based on the granted permission).
 - `__recent__` is the authenticated browser entry for previously accessed content. It may reopen previews or remove/recover stale entries, but it does not redefine explorer core navigation rules.
 - These overlays are product-visible behaviors and therefore belong in browser-flow planning when the user can navigate into them and observe list/preview/denial outcomes.
 
@@ -208,6 +209,17 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
   - mobile uses the action sheet
 - When desktop and mobile verify the same outcome, document the shared outcome once and only call out the interaction surface where the platforms genuinely differ.
 
+### Public share-link E2E anchors
+
+- Entry and error state: when visiting `/share/:token` with an invalid/expired token, assert a visible share error UI (do not depend on precise expiry timing beyond the "expired/not found" user-facing outcome).
+- Read-only mode (directory shares): in shared directory mode, assert that write-capable outcomes are not available via the browser UI (e.g. upload/create/rename/delete/share actions are absent or disabled), while directory listing remains visible.
+- Anonymous access from shared directories: for an anonymous user inside a shared directory, assert that the login entry point is reachable from the shared surface (e.g. a login dialog/route is shown).
+- Add-to-my-permissions (authenticated users): for logged-in users in shared directory mode, assert the visible add-to-my-permissions confirmation flow succeeds and that the browser transitions back to the normal explorer `/files` route.
+- Leaving share scope: for authenticated users inside shared directory mode, assert that the visible "leave share" confirmation appears and that confirming returns the user to regular explorer navigation.
+- Preview within shared scope: even in public shared directory mode, assert that previewable files can still open the preview dialog from the shared explorer.
+- Deterministic E2E setup guidance: for prerequisites, prefer API-backed fixture creation (e.g. create folder + upload) followed by `POST /api/share-links`, then navigate to `/share/:token` for the observable assertions.
+- Session prep guidance: for anonymous share scenarios, use a dedicated helper that clears cookies/storage (or uses a fresh browser context) before visiting `/share/:token`; for logged-in share scenarios, always navigate with an authenticated session established first.
+
 ### Browser coverage boundary for sharing-related flows
 
 - Keep the canonical inventory, priorities, and spec ownership in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
@@ -228,8 +240,9 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
 - **Explorer CRUD happy paths:** Desktop and mobile both keep create folder, upload, rename, and delete in browser-visible coverage. The detailed scenario inventory and spec ownership live in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
 - **Explorer navigation anchors:** Browser coverage should keep direct `/files/<path>` entry and breadcrumb chip navigation focused on visible folder changes, using route results and `data-file-path` item visibility rather than internal router state.
 - **Preview flows:** For previewable files, browser coverage should assert the platform-owned preview entry seam and the visible full-screen preview dialog, without coupling to preview-loader internals.
-- **Batch operations and conflicts:** Move/copy/delete, conflict resolution, bulk progress, and recent-files synchronization remain important coverage targets, but the exhaustive browser-vs-integration split is tracked in the canonical E2E plan.
+- **Batch operations and conflicts:** Move/copy/delete, conflict resolution, bulk progress, and recent-files synchronization remain important coverage targets, but the exhaustive browser-vs-integration split is tracked in the canonical E2E plan. For browser coverage of bulk move/copy, treat folder selection as the start of a job-backed flow and wait for a visible completion signal before asserting destination contents.
 - **Share and permission-request outcomes:** Distinguish public share-link browsing from authenticated internal sharing. Shared-link expiry, add-to-my-permissions, and leave-share remain browser-visible public-share anchors; permission-request request/approve/reject/cancel and resulting `__shared__` access remain browser-visible internal-sharing anchors. Route integration still owns deeper state matrices.
+- **Internal request -> `__shared__` discovery:** for the requester, an approved permission request should make the granted folder/file visible under the authenticated explorer `__shared__` entry, and the UI should reflect the granted capability (read-only vs write-enabled) without requiring the requester to relog or use a public `/share/:token` entry point.
 - **Virtual collection overlays:** `__shared__` and `__recent__` should keep representative browser coverage for entry, navigation, preview/recovery, and visible stale-entry handling, while lower layers own synchronization internals and derived data edge cases.
 - **Permission and meta-path boundaries:** Direct read/write rules, reserved-path protection, and broader ACL allow/deny matrices should stay primarily in middleware and route integration coverage, with browser E2E limited to user-visible denial flows.
 - **Page-test seams:** When a FileManager page test is not validating floating action button or sidebar tree mechanics themselves, it may isolate those shell-only UI surfaces behind lighter equivalents so the scenario continues to verify explorer behavior without unrelated UI-library timing noise.

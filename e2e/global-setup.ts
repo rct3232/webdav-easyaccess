@@ -41,22 +41,29 @@ function waitForWebdav(timeoutMs: number) {
 
   return new Promise<void>((resolve, reject) => {
     const attempt = () => {
-      const request = http.get(
+      const request = http.request(
         webdavBaseUrl,
         {
+          method: 'PROPFIND',
           headers: {
             Authorization: `Basic ${webdavAuth}`,
+            Depth: '1',
           },
           timeout: 2000,
         },
         (response) => {
           response.resume();
-          if ((response.statusCode || 500) < 500) {
+          const statusCode = response.statusCode || 500;
+          if (statusCode >= 200 && statusCode < 300) {
+            resolve();
+            return;
+          }
+          if (statusCode === 207) {
             resolve();
             return;
           }
 
-          retry(new Error(`Unexpected WebDAV status: ${response.statusCode}`));
+          retry(new Error(`Unexpected WebDAV PROPFIND status: ${response.statusCode}`));
         }
       );
 
@@ -65,6 +72,7 @@ function waitForWebdav(timeoutMs: number) {
       });
 
       request.on('error', retry);
+      request.end();
     };
 
     const retry = (error: Error) => {

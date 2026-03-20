@@ -117,6 +117,27 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-20 — e2e/desktop-core-flow.spec.ts — bulk: copy selected items to another folder
+
+- **Case:** B
+- **Root cause:** The desktop bulk-copy E2E assumed the copy was complete immediately after choosing the destination folder, but the actual contract is job-backed (`jobId` + polling). The first assertion sometimes ran before the UI had reached a stable completed state.
+- **Action taken:** Updated the docs to state that browser verification must wait for the visible bulk-operation completion state, then changed the test to wait for the progress chip lifecycle before asserting copied results.
+- **Lesson:** For job-backed explorer actions, folder selection is the start of the operation, not the end; destination assertions must wait for a user-visible completion anchor.
+
+## 2026-03-20 — e2e/desktop-core-flow.spec.ts — bulk copy destination route verification
+
+- **Case:** B
+- **Root cause:** Even after the copy job reported `completed`, the first navigation to the destination route could transiently render an empty listing before the explorer view settled. The test overfit to a single immediate route load instead of the eventual visible destination contents.
+- **Action taken:** Added a destination-route helper that re-enters the folder path and waits for the copied files to become visible across a few short retries instead of assuming the first route transition is final.
+- **Lesson:** When explorer views refresh asynchronously after a background job, re-check the destination listing through short route retries instead of trusting the first empty render.
+
+## 2026-03-20 — e2e/global-setup.ts — WebDAV readiness for desktop bulk copy repeats
+
+- **Case:** B
+- **Root cause:** The E2E global setup treated the WebDAV container as ready once a basic authenticated `GET /` returned a non-5xx status, but the application actually depends on authenticated directory-list semantics. That readiness gap can let browser tests start before the WebDAV layer is fully usable.
+- **Action taken:** Tightened E2E startup to wait for an authenticated `PROPFIND /` success before Playwright begins, and documented that E2E readiness should use an authenticated directory-list probe rather than a plain root GET.
+- **Lesson:** Infrastructure readiness checks should match the real protocol operation the app relies on, not a weaker endpoint that can become reachable earlier.
+
 ## 2026-03-20 — e2e/desktop-core-flow.spec.ts — direct route and breadcrumb explorer assertions
 
 - **Case:** B

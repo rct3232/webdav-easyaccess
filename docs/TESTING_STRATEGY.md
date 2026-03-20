@@ -92,9 +92,12 @@ function createExampleMock(overrides = {}) {
   - deterministic test naming
   - fixture loading
   - stable file-item locators such as `data-file-path`
+- Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) => ...)`.
 - Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
 - Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project.
 - Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
+- For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
+- When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
 
 ### Minimum flow coverage
 

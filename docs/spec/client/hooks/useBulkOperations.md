@@ -77,6 +77,7 @@
 - Polling for batch job status (POLL_INTERVAL_MS)
 - dismissFailedItems before new op
 - For bulk move success paths, recent-file synchronization may be delegated to `recentFilesRepository.applyRecentFilesAfterBulkMove(moves)` using only the subset of moves that actually succeeded.
+- Bulk move/copy completion is asynchronous from the caller's perspective: `handleFolderPickerSelect()` may resolve before the background job reaches its final status, and completion is communicated through progress state plus `onOperationComplete`.
 
 ### 2.7 Error Handling
 
@@ -89,6 +90,7 @@
 - [ ] handleBulkDelete with/without retry
 - [ ] handleBulkDownload
 - [ ] handleFolderPickerSelect triggers move/copy
+- [ ] Job-backed bulk move/copy consumers wait for a visible completion anchor (`progressItems` final state, progress message, or a refreshed listing after `onOperationComplete`) instead of assuming the operation is complete immediately after folder selection
 - [ ] Conflict flow
 - [ ] When a bulk move partially succeeds, recent-file synchronization still runs for the successfully moved subset and does not depend on all items succeeding.
 - [ ] The hook remains behavior-compatible while being documented as a lower-level dependency that can sit behind `useExplorerCommands`

@@ -46,6 +46,42 @@ export async function gotoAsAnonymous(page: Page, targetPath = '/login') {
   await page.goto(targetPath);
 }
 
+export async function gotoAsAnonymousShare(page: Page, shareToken: string) {
+  await gotoAsAnonymous(page, `/share/${shareToken}`);
+}
+
+export async function gotoAsLoggedInShare(page: Page, shareToken: string, userKey: StandardTestUserKey) {
+  await loginAsUser(page, userKey);
+  await page.goto(`/share/${shareToken}`);
+}
+
+async function ensureUserCanLogin(request: APIRequestContext, userKey: StandardTestUserKey) {
+  const user = TEST_USERS[userKey];
+  const maxAttempts = 5;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const loginResponse = await request.post('/api/auth/login', {
+      data: {
+        username: user.username,
+        password: user.password,
+      },
+    });
+
+    if (loginResponse.ok()) {
+      return;
+    }
+
+    if (attempt === maxAttempts) {
+      expect(loginResponse.ok()).toBeTruthy();
+      return;
+    }
+
+    const delayMs = 300 * attempt;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+}
+
 export async function ensureApprovedUser(request: APIRequestContext, userKey: StandardTestUserKey) {
   const adminLoginResponse = await request.post('/api/auth/login', {
     data: {
@@ -60,25 +96,45 @@ export async function ensureApprovedUser(request: APIRequestContext, userKey: St
     Authorization: `Bearer ${adminLoginBody.token}`,
   };
 
-  const createUserResponse = await request.post('/api/admin/users', {
-    headers: authHeaders,
-    data: TEST_USERS[userKey],
-  });
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const createUserResponse = await request.post('/api/admin/users', {
+      headers: authHeaders,
+      data: TEST_USERS[userKey],
+    });
 
-  if (createUserResponse.status() === 201) {
-    return;
+    if (createUserResponse.status() === 201) {
+      await ensureUserCanLogin(request, userKey);
+      return;
+    }
+
+    if (createUserResponse.status() === 400) {
+      const errorBody = await createUserResponse.json();
+      const acceptableDuplicateCodes = new Set([
+        'serverErrors.admin.usernameTaken',
+        'serverErrors.admin.emailTaken',
+      ]);
+
+      expect(acceptableDuplicateCodes.has(errorBody?.errorCode)).toBeTruthy();
+      await ensureUserCanLogin(request, userKey);
+      return;
+    }
+
+    // Retryable infra-ish failures (rate limiting / transient backend errors).
+    if (createUserResponse.status() === 429 || createUserResponse.status() >= 500) {
+      const delayMs = 600 * attempt;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    // If the user already exists but the backend returns a different conflict shape,
+    // treat it as "already ensured" rather than failing the suite.
+    if (createUserResponse.status() === 409) {
+      await ensureUserCanLogin(request, userKey);
+      return;
+    }
+
+    expect(createUserResponse.ok()).toBeTruthy();
   }
-
-  if (createUserResponse.status() === 400) {
-    const errorBody = await createUserResponse.json();
-    const acceptableDuplicateCodes = new Set([
-      'serverErrors.admin.usernameTaken',
-      'serverErrors.admin.emailTaken',
-    ]);
-
-    expect(acceptableDuplicateCodes.has(errorBody?.errorCode)).toBeTruthy();
-    return;
-  }
-
-  expect(createUserResponse.ok()).toBeTruthy();
 }

@@ -117,6 +117,69 @@ Records root cause analyses for test failures. Helps avoid repeating the same mi
 
 <!-- Add new entries below in reverse chronological order -->
 
+## 2026-03-20 — FAB.js / e2e/mobile-smoke.spec.ts — mobile SpeedDial stays closed after tap
+
+- **Case:** A
+- **Root cause:** On the mobile WebKit Playwright project, tapping the controlled MUI `SpeedDial` trigger did not transition the dial into its open state. Runtime trace snapshots showed the trigger remaining `aria-expanded="false"` and the action container staying in `MuiSpeedDial-actionsClosed` after the tap, so the visible action menu never opened.
+- **Action taken:** Classified the failure as a production bug in the FAB interaction model, then updated the component to use an explicit mobile trigger click path instead of relying only on the default controlled `onOpen` / `onClose` flow.
+- **Lesson:** For controlled MUI `SpeedDial` on mobile/WebKit, verify the visible open state directly; a successful tap event does not guarantee the dial transitions out of its closed state.
+
+## 2026-03-20 — e2e/mobile-smoke.spec.ts — opens the mobile file actions fab
+
+- **Case:** B
+- **Root cause:** The new mobile sanity test assumed the visible expanded SpeedDial actions could be asserted through page-wide `[data-testid="file-actions-*"]` selectors. In the actual mobile-rendered UI, the reliable public seam is the visible `menu`/`menuitem` structure with accessible names (`Create folder`, `Upload file`), while the `data-testid` attributes do not identify the active visible action nodes.
+- **Action taken:** Recorded the RCA, then planned to align the mobile smoke assertion with the visible menuitems exposed after opening the FAB.
+- **Lesson:** For MUI SpeedDial on mobile, verify the opened action menu through the rendered `menuitem` accessibility surface rather than assuming the trigger's test IDs also map to the visible expanded action nodes.
+
+## 2026-03-20 — e2e/smoke.spec.ts — mobile CRUD smoke scope
+
+- **Case:** B
+- **Root cause:** The initial smoke rewrite assumed the same CRUD flows should pass on the mobile project immediately, but the attached plan explicitly places dedicated mobile scenarios after the desktop smoke foundation is stable. Requiring create/upload/rename/delete on mobile in Phase 4 over-scoped the smoke suite.
+- **Action taken:** Kept the mobile project as a login/explorer-entry sanity check and limited the CRUD smoke flows to the desktop project for now.
+- **Lesson:** Match the smoke matrix to the rollout phase: stabilize core desktop CRUD first, then add mobile-specific flows as a separate expansion step.
+
+## 2026-03-20 — e2e/smoke.spec.ts — [mobile] uploads a file from the upload dialog
+
+- **Case:** B
+- **Root cause:** The visible mobile SpeedDial upload action did not expose the same button attributes as the hidden cloned elements the helper previously targeted. The menu order was stable, but the selector keyed off the wrong DOM seam.
+- **Action taken:** Updated the helper to select the visible `menuitem` button by position within the opened menu (`Create folder` first, `Upload file` second).
+- **Lesson:** When a component library keeps hidden action clones around, the safest smoke selector can be the visible action order inside the active menu rather than page-wide attribute matching.
+
+## 2026-03-20 — e2e/smoke.spec.ts — [mobile] creates a folder from the file actions fab
+
+- **Case:** B
+- **Root cause:** The mobile FAB helper matched MUI SpeedDial's hidden cloned `menuitem` buttons instead of the visible action button. The public action name was correct, but the selector was not constrained to a visible menuitem instance.
+- **Action taken:** Updated the helper to open the FAB, wait for the rendered menu, and click the visible `menuitem` button by its accessible `aria-label`.
+- **Lesson:** For portaled MUI menus/SpeedDials, scope action queries to the visible menu container instead of using page-wide role queries.
+
+## 2026-03-20 — e2e/smoke.spec.ts — [mobile] logs in and lands in the explorer
+
+- **Case:** B
+- **Root cause:** The desktop Chromium project passed, but the mobile project could not launch because Playwright's WebKit runtime was not installed locally. The failure happened before the mobile UI flow executed.
+- **Action taken:** Classified the issue as environment setup only and prepared to install the missing WebKit browser before rerunning the full smoke suite.
+- **Lesson:** When a Playwright config mixes Chromium and mobile/WebKit projects, installing only Chromium is insufficient for a full smoke run.
+
+## 2026-03-20 — e2e/smoke.spec.ts — creates a folder from the file actions fab
+
+- **Case:** B
+- **Root cause:** The first smoke helper assumed the expanded MUI `SpeedDialAction` entries would be discoverable through per-action `data-testid` selectors. In the real rendered UI, the reliable public contract is the accessible `menuitem` name, which already matches the component spec and existing unit tests.
+- **Action taken:** Updated the smoke helper and docs to open the FAB via a stable root test ID, then select the expanded action through its accessible `menuitem` name.
+- **Lesson:** For MUI SpeedDial, treat the trigger and the expanded actions as separate selector seams: stable hook on the trigger, role/name on the rendered action items.
+
+## 2026-03-20 — e2e/smoke.spec.ts — logs in and lands in the explorer
+
+- **Case:** B
+- **Root cause:** The smoke suite started successfully after Docker access was granted, but Playwright could not launch Chromium because the browser binary had not been installed in the local Playwright cache yet. The app under test was never reached.
+- **Action taken:** Classified the failure as an environment prerequisite issue and prepared to install the required Playwright browser binary before rerunning the smoke suite.
+- **Lesson:** For first-run or freshly updated Playwright environments, ensure the configured browser binaries are installed before interpreting E2E failures as app regressions.
+
+## 2026-03-20 — e2e/smoke.spec.ts — global setup
+
+- **Case:** B
+- **Root cause:** The Playwright smoke run failed before any scenario executed because `e2e/global-setup.ts` shells out to Docker Compose, but the sandbox blocked access to the local Docker socket. This was an environment/runner permission issue, not a source or spec regression.
+- **Action taken:** Classified the failure as test-infrastructure only, recorded it, and prepared to rerun the same smoke suite with broader permissions so Docker-backed E2E setup could start normally.
+- **Lesson:** Docker-based E2E in this repository requires unsandboxed or elevated local Docker access; a sandboxed run can fail during global setup even when the suite itself is valid.
+
 ## 2026-03-19 — FileManager.test.js — FileManager page suite after sort ownership shift
 
 - **Case:** A

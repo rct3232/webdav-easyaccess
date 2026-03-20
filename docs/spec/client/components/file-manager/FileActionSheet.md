@@ -58,6 +58,10 @@
 - Rename, move, delete only when fileWritePermission
 - file.hasWritePermission overrides hasWritePermission
 - Delete with divider above, error color
+- E2E selector contract:
+  - action rows that must be shared with the desktop context-menu flow expose stable `data-testid` values (for example rename/delete)
+  - this keeps mobile and desktop action selection aligned even though the rendered component differs
+  - mobile CRUD flow tests may rely on these stable action rows to verify rename/delete through the action sheet without depending on localized list text
 
 ### 2.7 Verification Scenarios
 

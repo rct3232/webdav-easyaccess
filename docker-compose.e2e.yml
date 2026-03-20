@@ -1,0 +1,17 @@
+services:
+  webdav-test:
+    image: bytemark/webdav
+    container_name: webdav-e2e-test
+    environment:
+      AUTH_TYPE: Basic
+      USERNAME: e2etest
+      PASSWORD: e2etest123
+    ports:
+      - "8090:80"
+    volumes:
+      - ./e2e-data:/var/lib/dav
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

@@ -55,6 +55,9 @@
 - Menu items only when corresponding callback provided
 - Rename, move, delete disabled when !fileWritePermission (file.hasWritePermission ?? hasWritePermission)
 - Returns null when !file
+- E2E selector contract:
+  - action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
+  - this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
 
 ### 2.7 Verification Scenarios
 

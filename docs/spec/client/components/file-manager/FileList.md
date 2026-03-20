@@ -65,6 +65,9 @@
 - files.length === 0: empty message box
 - Long-press (onLongPressSelect) only on mobile when !selectionMode — enters selection mode and selects file; does not open context menu
 - loadMoreRef/Box rendered when hasMore for infinite scroll
+- E2E selector contract:
+  - each rendered item container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder without depending on localized visible text
+  - no per-row `data-testid` is required when `data-file-path` is present
 
 ### 2.7 Verification Scenarios
 

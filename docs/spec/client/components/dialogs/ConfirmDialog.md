@@ -53,6 +53,9 @@
 
 - `variant === 'loading'` – shows only Dialog with CircularProgress, no title/message/buttons
 - `loading` – disables both buttons
+- E2E selector contract:
+  - the confirm and cancel buttons expose stable `data-testid` values for destructive flow tests
+  - tests should still prefer the visible dialog outcome over implementation-specific internal state
 
 ### 2.7 Verification Scenarios
 

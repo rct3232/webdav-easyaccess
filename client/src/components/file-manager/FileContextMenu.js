@@ -60,7 +60,7 @@ const FileContextMenu = ({
       }
     >
       {onDownload && (
-        <MenuItem onClick={() => handleAction(onDownload)}>
+        <MenuItem data-testid="file-action-download" onClick={() => handleAction(onDownload)}>
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
           </ListItemIcon>
@@ -69,6 +69,7 @@ const FileContextMenu = ({
       )}
       {onRename && (
         <MenuItem
+          data-testid="file-action-rename"
           onClick={() => handleAction(onRename)}
           disabled={!fileWritePermission}
         >
@@ -80,6 +81,7 @@ const FileContextMenu = ({
       )}
       {onMove && (
         <MenuItem
+          data-testid="file-action-move"
           onClick={() => handleAction(onMove)}
           disabled={!fileWritePermission}
         >
@@ -90,7 +92,7 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onCopy && (
-        <MenuItem onClick={() => handleAction(onCopy)}>
+        <MenuItem data-testid="file-action-copy" onClick={() => handleAction(onCopy)}>
           <ListItemIcon>
             <CopyIcon fontSize="small" />
           </ListItemIcon>
@@ -98,7 +100,7 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onShare && (
-        <MenuItem onClick={() => handleAction(onShare)}>
+        <MenuItem data-testid="file-action-share" onClick={() => handleAction(onShare)}>
           <ListItemIcon>
             <ShareIcon fontSize="small" />
           </ListItemIcon>
@@ -106,7 +108,7 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onProperties && (
-            <MenuItem onClick={() => handleAction(onProperties)}>
+            <MenuItem data-testid="file-action-properties" onClick={() => handleAction(onProperties)}>
               <ListItemIcon>
                 <InfoIcon fontSize="small" />
               </ListItemIcon>
@@ -115,6 +117,7 @@ const FileContextMenu = ({
           )}
       {onDelete && (
         <MenuItem
+          data-testid="file-action-delete"
           onClick={() => handleAction(onDelete)}
           disabled={!fileWritePermission}
         >

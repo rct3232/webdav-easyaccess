@@ -56,6 +56,10 @@
 - Form resets on close
 - Submit disabled during isSubmitting
 - onProgress called when provided (optional progress reporting)
+- E2E selector contract:
+  - the folder-name input exposes a stable `data-testid`
+  - the primary submit button exposes a stable `data-testid`
+  - these selectors avoid coupling flow tests to localized dialog copy
 
 ### 2.7 Verification Scenarios
 

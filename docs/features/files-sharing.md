@@ -170,6 +170,33 @@ flowchart TD
 
 When implementing or reviewing tests for files and sharing, cover at least:
 
+### E2E selector policy
+
+- Prefer semantic selectors first:
+  - login and dialog text inputs via role/label or stable form attributes
+  - dialogs via `getByRole('dialog')` and visible heading/submit affordances when the text is stable
+- Target concrete explorer items by the existing `data-file-path` container attribute in list and grid views instead of adding per-item test IDs.
+- Add `data-testid` only for documented unstable seams whose structure is icon-driven, cross-viewport, or otherwise difficult to target semantically:
+  - file-action FAB root
+  - file action entries that appear in desktop context menu and mobile action sheet (for example rename/delete)
+  - dialog fields or submit buttons whose stable access would otherwise depend on localized text
+- Once the FAB is open, prefer the visible `menuitem` names for create/upload when those names are stable in the E2E environment.
+
+### E2E flow structure
+
+- Keep flow coverage split by platform responsibility instead of branching inside a shared test body.
+- Shared helpers may hold only platform-agnostic seams such as auth, deterministic naming, fixture loading, and common file-item locators.
+- Desktop and mobile flow specs both verify the same CRUD outcomes:
+  - login
+  - create folder through the FAB flow
+  - upload file through the FAB/dialog flow
+  - rename
+  - delete
+- The platform-specific difference is the file-action surface for rename and delete:
+  - desktop uses desktop item actions/context-menu style entry points
+  - mobile uses the action sheet
+- When desktop and mobile verify the same outcome, document the shared outcome once and only call out the interaction surface where the platforms genuinely differ.
+
 **Scenario locations:**
 
 | Scenario | Server test location | Client test location |

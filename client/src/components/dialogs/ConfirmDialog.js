@@ -68,10 +68,11 @@ const ConfirmDialog = ({
         <DialogContentText>{message}</DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancel} disabled={loading}>
+        <Button data-testid="confirm-dialog-cancel" onClick={handleCancel} disabled={loading}>
           {resolvedCancelText}
         </Button>
         <Button
+          data-testid="confirm-dialog-confirm"
           onClick={handleConfirm}
           variant="contained"
           color={confirmColor}

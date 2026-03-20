@@ -2,19 +2,18 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs');
 const path = require('path');
 
-// 루트 디렉토리의 .env 파일 읽기
 const envPath = path.join(__dirname, '../../.env');
-let PORT = 5001; // 기본값
+let port = process.env.REACT_APP_API_PORT || process.env.API_PORT || '5001';
 
-if (fs.existsSync(envPath)) {
+if (!process.env.REACT_APP_API_PORT && !process.env.API_PORT && fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf8');
   const portMatch = envContent.match(/^PORT\s*=\s*(\d+)/m);
   if (portMatch) {
-    PORT = portMatch[1];
+    port = portMatch[1];
   }
 }
 
-const proxyTarget = `http://localhost:${PORT}`;
+const proxyTarget = `http://localhost:${port}`;
 
 module.exports = function(app) {
   app.use(

@@ -84,6 +84,26 @@ function createExampleMock(overrides = {}) {
 
 ---
 
+## E2E flow policy
+
+- Keep flow specs small and platform-owned. Prefer separate desktop and mobile flow files over a single spec with project-name conditionals.
+- Shared E2E helpers may contain only platform-agnostic preparation and selectors:
+  - authentication/login setup
+  - deterministic test naming
+  - fixture loading
+  - stable file-item locators such as `data-file-path`
+- Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
+- Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project.
+- Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
+
+### Minimum flow coverage
+
+- Desktop flow: login plus CRUD happy paths that exercise create folder, upload, rename, and delete.
+- Mobile flow: the same CRUD happy paths.
+- Treat create/upload as shared FAB-driven outcomes when the user path matches across platforms, and split only the interaction helpers that genuinely differ, such as desktop item actions/context menu versus the mobile action sheet for rename/delete.
+
+---
+
 ## Checklist for New Code
 
 ### New API endpoint

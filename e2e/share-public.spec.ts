@@ -15,12 +15,11 @@ test.describe('public share link', () => {
   });
 
   test.beforeEach(async ({}, testInfo) => {
-    const isP1P2FollowUp =
-      testInfo.title.includes('E2E-SHARE-009') || testInfo.title.includes('E2E-SHARE-010');
+    const isP2Deferred = testInfo.title.includes('E2E-SHARE-010');
 
     test.skip(
-      !laterWavesEnabled && isP1P2FollowUp,
-      'P1/P2 share follow-up runs only when E2E_LATER_WAVES=1 (after share-public + bulk P0 are stable).',
+      !laterWavesEnabled && isP2Deferred,
+      'P2 share follow-up runs only when E2E_LATER_WAVES=1 (after share-public + bulk P0 are stable).',
     );
   });
 
@@ -112,6 +111,24 @@ test.describe('public share link', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('img').first()).toBeVisible();
+  });
+
+  test('E2E-SHARE-009 shared directory still allows file preview', async ({ page }, testInfo) => {
+    await gotoAsAnonymousShare(page, fixtures.anonDir.token);
+
+    const fileLocator = page.locator(`[data-file-path="${fixtures.anonDir.innerFilePath}"]`);
+
+    if (testInfo.project.name === 'desktop') {
+      // Desktop: 더블클릭으로 PreviewDialog 열림
+      await fileLocator.dblclick();
+    } else {
+      // Mobile: 단일 클릭으로 PreviewDialog 열림
+      await fileLocator.click();
+    }
+
+    // PreviewDialog 가 실제로 열림을 검증
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
   });
 });
 

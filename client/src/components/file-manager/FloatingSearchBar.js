@@ -64,14 +64,15 @@ const FloatingSearchBar = ({
         }}
       >
         <Box sx={getFrostedStyle(focused)}>
-          <TextField
-            size="small"
-            fullWidth
-            placeholder={placeholder ?? t('nav.searchPlaceholder')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+        <TextField
+    size="small"
+    fullWidth
+    type="search"
+    placeholder={placeholder ?? t('nav.searchPlaceholder')}
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    onFocus={() => setFocused(true)}
+    onBlur={() => setFocused(false)}
             InputProps={{
               sx: {
                 height: '100%',

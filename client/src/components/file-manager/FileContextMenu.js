@@ -60,7 +60,11 @@ const FileContextMenu = ({
       }
     >
       {onDownload && (
-        <MenuItem data-testid="file-action-download" onClick={() => handleAction(onDownload)}>
+        <MenuItem 
+          data-testid="file-action-download" 
+          onClick={() => handleAction(onDownload)}
+          disabled={!file.hasReadPermission}
+        >
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
           </ListItemIcon>
@@ -92,7 +96,11 @@ const FileContextMenu = ({
         </MenuItem>
       )}
       {onCopy && (
-        <MenuItem data-testid="file-action-copy" onClick={() => handleAction(onCopy)}>
+        <MenuItem 
+          data-testid="file-action-copy" 
+          onClick={() => handleAction(onCopy)}
+          disabled={!file.hasReadPermission}
+        >
           <ListItemIcon>
             <CopyIcon fontSize="small" />
           </ListItemIcon>

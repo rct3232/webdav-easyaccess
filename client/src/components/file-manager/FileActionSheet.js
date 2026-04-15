@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   SwipeableDrawer,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Divider,
@@ -103,9 +103,10 @@ const FileActionSheet = ({
         {/* Actions */}
         <List sx={{ py: 0 }}>
           {canPreview && onPreview && (
-            <ListItem
+            <ListItemButton
+              component="button"
               data-testid="file-action-preview"
-              button
+              disabled={!file.hasReadPermission}
               onClick={() => handleAction(onPreview)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -113,13 +114,13 @@ const FileActionSheet = ({
                 <VisibilityIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.preview')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
           {onProperties && (
-            <ListItem
+            <ListItemButton
+              component="button"
               data-testid="file-action-properties"
-              button
               onClick={() => handleAction(onProperties)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -127,13 +128,14 @@ const FileActionSheet = ({
                 <InfoIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.properties')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
           {onDownload && (
-            <ListItem
+            <ListItemButton
+              component="button"
               data-testid="file-action-download"
-              button
+              disabled={!file.hasReadPermission}
               onClick={() => handleAction(onDownload)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -141,13 +143,14 @@ const FileActionSheet = ({
                 <DownloadIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.download')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
-          {fileWritePermission && onRename && (
-            <ListItem
+          {onRename && (
+            <ListItemButton
+              component="button"
               data-testid="file-action-rename"
-              button
+              disabled={!fileWritePermission}
               onClick={() => handleAction(onRename)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -155,13 +158,14 @@ const FileActionSheet = ({
                 <EditIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.rename')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
-          {fileWritePermission && onMove && (
-            <ListItem
+          {onMove && (
+            <ListItemButton
+              component="button"
               data-testid="file-action-move"
-              button
+              disabled={!fileWritePermission}
               onClick={() => handleAction(onMove)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -169,13 +173,14 @@ const FileActionSheet = ({
                 <MoveIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.move')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
           {onCopy && (
-            <ListItem
+            <ListItemButton
+              component="button"
               data-testid="file-action-copy"
-              button
+              disabled={!file.hasReadPermission}
               onClick={() => handleAction(onCopy)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -183,13 +188,13 @@ const FileActionSheet = ({
                 <CopyIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.copy')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
           {onShare && (
-            <ListItem
+            <ListItemButton
+              component="button"
               data-testid="file-action-share"
-              button
               onClick={() => handleAction(onShare)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -197,15 +202,16 @@ const FileActionSheet = ({
                 <ShareIcon />
               </ListItemIcon>
               <ListItemText primary={t('actions.share')} />
-            </ListItem>
+            </ListItemButton>
           )}
 
-          {fileWritePermission && onDelete && (
+          {onDelete && (
             <>
               <Divider sx={{ my: 1 }} />
-              <ListItem
+              <ListItemButton
+                component="button"
                 data-testid="file-action-delete"
-                button
+                disabled={!fileWritePermission}
                 onClick={() => handleAction(onDelete)}
                 sx={{
                   minHeight: 56,
@@ -217,7 +223,7 @@ const FileActionSheet = ({
                   <DeleteIcon />
                 </ListItemIcon>
                 <ListItemText primary={t('actions.delete')} />
-              </ListItem>
+              </ListItemButton>
             </>
           )}
         </List>

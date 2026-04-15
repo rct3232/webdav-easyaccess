@@ -89,6 +89,49 @@ test.describe('explorer advanced (mobile)', () => {
     expect(aaaIndexAsc).toBeLessThan(zzzIndexAsc);
   });
 
+  test('E2E-EXP-011: Search filtering', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Create 3 test folders with distinct names
+    const folderAlpha = buildName(testInfo, 'alpha');
+    const folderBeta = buildName(testInfo, 'beta');
+    const folderGamma = buildName(testInfo, 'gamma');
+    
+    await createTestFolder(page, folderAlpha);
+    await createTestFolder(page, folderBeta);
+    await createTestFolder(page, folderGamma);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Verify all 3 folders are visible
+    await expect(page.locator(`[data-file-path="/${folderAlpha}"]`)).toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderBeta}"]`)).toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).toBeVisible();
+
+    // 5. Fill searchbox with "beta"
+    const searchbox = page.getByRole('searchbox');
+    await expect(searchbox).toBeVisible();
+    await searchbox.fill('beta');
+
+    // 6. Assert only beta folder visible (search filters results)
+    await expect(page.locator(`[data-file-path="/${folderBeta}"]`)).toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderAlpha}"]`)).not.toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).not.toBeVisible();
+
+    // 7. Click clear button (X icon) to clear search
+    const clearButton = page.locator('[aria-label="Close search"]');
+    await expect(clearButton).toBeVisible();
+    await clearButton.click();
+
+    // 8. Assert all folders visible again
+    await expect(page.locator(`[data-file-path="/${folderAlpha}"]`)).toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderBeta}"]`)).toBeVisible();
+    await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).toBeVisible();
+  });
+
   test('E2E-MOBILE-002: Action sheet opens from more button', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);

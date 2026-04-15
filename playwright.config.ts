@@ -42,4 +42,21 @@ export default defineConfig({
       },
     },
   ],
+  // Automatically start and stop the server/client for E2E tests
+  webServer: [
+    {
+      command: 'npm run e2e:server',
+      url: 'http://localhost:5002',
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'npm run e2e:client',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
 });

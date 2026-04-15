@@ -58,7 +58,8 @@ function waitForWebdav(timeoutMs: number) {
             resolve();
             return;
           }
-          if (statusCode === 207) {
+          if (statusCode === 207 || statusCode === 403) {
+            // 403 Forbidden indicates the server is up but auth failed, which is acceptable for readiness check
             resolve();
             return;
           }
@@ -94,6 +95,8 @@ export default async function globalSetup() {
   cleanDir('data/e2e-metadata');
   fs.mkdirSync(path.join(rootDir, 'e2e-data'), { recursive: true });
 
+  console.log('Ensuring a fresh WebDAV environment by restarting Docker Compose...');
+  runCompose(['down', '-v']);
   runCompose(['up', '-d']);
   await waitForWebdav(60_000);
 }

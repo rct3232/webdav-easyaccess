@@ -10,6 +10,7 @@ If this rule applied, notify me 'Testing principles applied' when answer start.
 
 When writing or reviewing tests:
 
+- **Analyze Implementation First:** Before writing any test code, you MUST read and accurately analyze the actual implementation of the feature. Do not guess or hallucinate the behavior. Ensure the tests reflect the real-world logic and API of the code.
 - **Verify What (results):** Assert on observable outcomes — return values, public state, UI output, API responses. Focus on behavior the caller sees.
 - **Do not verify How (implementation):** Avoid asserting on internal variables, private methods, implementation-specific call order, or module internals. Refactoring implementation should not break tests.
 

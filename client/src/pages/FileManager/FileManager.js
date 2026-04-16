@@ -239,6 +239,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [treeUpdateTrigger, setTreeUpdateTrigger] = useState(null);
   // 파일 로드 성공 시 경로 히스토리 정리
   useEffect(() => {
+    console.log('[DEBUG] FileManager: Render - files length:', files.length, 'loading:', loading);
     if (!loading && files.length >= 0 && currentPath) {
       // 로딩이 완료되고 파일 목록이 로드되었으면 정상적인 이동으로 간주
       // 히스토리에서 제거 (에러가 발생하지 않았음)

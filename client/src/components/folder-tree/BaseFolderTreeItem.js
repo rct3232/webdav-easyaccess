@@ -175,6 +175,7 @@ const BaseFolderTreeItem = ({
   return (
     <>
       <ListItem
+        data-testid="folder-tree-item"
         disablePadding
         sx={{
           '&:hover': {

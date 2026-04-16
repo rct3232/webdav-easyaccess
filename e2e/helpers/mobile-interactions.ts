@@ -56,3 +56,36 @@ export async function clickActionSheetItem(
   await expect(actionItem).toBeVisible();
   await actionItem.click();
 }
+
+/**
+ * Perform a long press on a file/folder item on mobile
+ * 
+ * @param page Playwright page
+ * @param filePath The file path to long press
+ */
+export async function longPressItem(page: Page, filePath: string): Promise<void> {
+  const item = page.locator(`[data-file-path="${filePath}"]`);
+  await expect(item).toBeVisible();
+  
+  const box = await item.boundingBox();
+  if (!box) throw new Error(`Could not get bounding box for item ${filePath}`);
+  
+  // Move to center of element
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // Long press duration (e.g., 500ms)
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+}
+
+/**
+ * Toggle the folder tree using the breadcrumb toggle button on mobile
+ * 
+ * @param page Playwright page
+ */
+export async function toggleFolderTree(page: Page): Promise<void> {
+  const toggleButton = page.getByTestId('breadcrumb-folder-tree-toggle');
+  
+  await expect(toggleButton).toBeVisible();
+  await toggleButton.click();
+}

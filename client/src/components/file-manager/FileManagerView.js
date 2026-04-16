@@ -490,6 +490,7 @@ const FileManagerView = ({
             <Box
               ref={scrollContainerRef}
               onClick={handleScrollAreaClick}
+              data-testid="explorer-container"
               sx={{
                 flex: 1,
                 overflow: 'auto',

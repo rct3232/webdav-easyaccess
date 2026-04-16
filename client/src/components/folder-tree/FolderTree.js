@@ -42,6 +42,7 @@ const FolderTree = ({
 
   return (
     <Box
+      data-testid="folder-tree"
       sx={{
         width: isMobile ? '100%' : 240,
         display: 'flex',

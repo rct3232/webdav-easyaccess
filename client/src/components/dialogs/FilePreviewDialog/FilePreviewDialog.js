@@ -333,6 +333,7 @@ const FilePreviewDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      data-testid="file-preview-dialog"
       fullScreen
       slotProps={{
         backdrop: {

@@ -89,6 +89,7 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
                 onContextMenu(e, file);
               }
             }}
+            aria-selected={isSelected}
             sx={getFileListItemContainerStyles({
               isDisabled,
               isDropTarget,

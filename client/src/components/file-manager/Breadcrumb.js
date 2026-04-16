@@ -257,6 +257,7 @@ const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFold
       
       {(!shareRootPath || showFolderTreeToggle) && onToggleFolderTree && (
       <IconButton
+        data-testid="breadcrumb-folder-tree-toggle"
         onClick={onToggleFolderTree}
         sx={{
           ml: 1,

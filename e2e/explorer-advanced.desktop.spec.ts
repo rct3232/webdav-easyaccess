@@ -4,6 +4,7 @@ import { loginAsAdmin } from './helpers/auth';
 import { openFabAction } from './helpers/explorer';
 import { buildName } from './helpers/files';
 import { switchViewMode, setSortMode } from './helpers/explorer-advanced';
+import { doubleClickItem, ctrlClickItem, shiftClickItem, clickEmptyArea, rightClickItem } from './helpers/desktop-interactions';
 
 async function createTestFolder(page: any, folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -13,7 +14,143 @@ async function createTestFolder(page: any, folderName: string) {
   await dialog.getByTestId('create-folder-submit').click();
 }
 
+async function createTestFile(page: any, fileName: string) {
+  await openFabAction(page, 'Upload file');
+  const dialog = page.getByRole('dialog');
+  const fileInput = dialog.getByTestId('upload-dialog-file-input');
+  await expect(fileInput).toBeVisible();
+  
+  // Upload a dummy file
+  await fileInput.setInputFiles({
+    name: fileName,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('test content'),
+  });
+
+  await dialog.getByTestId('upload-dialog-submit').click();
+  await expect(dialog).not.toBeVisible();
+}
+
 test.describe('explorer advanced (desktop)', () => {
+  test('E2E-DESKTOP-001: Double-click behavior (Folder Entry & File Preview)', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create a test folder and a test file in root
+    const folderName = buildName(testInfo, 'folder-1');
+    const fileName = buildName(testInfo, 'file-1') + '.txt';
+    await createTestFolder(page, folderName);
+    await createTestFile(page, fileName);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Folder Interaction: Double-click folder to enter
+    await doubleClickItem(page, `/${folderName}`);
+    
+    // 5. Assertion: Verify breadcrumb current path updates
+    // We expect the last chip in the breadcrumb to be the folder name
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    const lastChip = breadcrumbChips.last();
+    await expect(lastChip).toContainText(folderName);
+
+    // 6. Navigate back to root to test file preview
+    // Clicking the root breadcrumb chip (usually the first one)
+    await page.locator('.MuiChip-root').first().click();
+
+    // 7. File Interaction: Double-click file to preview
+    await doubleClickItem(page, `/${fileName}`);
+
+    // 8. Assertion: Verify preview pane is visible and contains the file name
+    const previewPane = page.getByTestId('file-preview-dialog');
+    await expect(previewPane).toBeVisible();
+    await expect(previewPane).toContainText(fileName);
+  });
+
+  test('E2E-DESKTOP-002: Ctrl-click multi-selection toggle', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create 3 test files in root
+    const file1 = buildName(testInfo, 'file-1') + '.txt';
+    const file2 = buildName(testInfo, 'file-2') + '.txt';
+    const file3 = buildName(testInfo, 'file-3') + '.txt';
+    await createTestFile(page, file1);
+    await createTestFile(page, file2);
+    await createTestFile(page, file3);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Multi-selection: Ctrl-click file1 and file3
+    await ctrlClickItem(page, `/${file1}`);
+    await ctrlClickItem(page, `/${file3}`);
+
+    // 5. Assertion: Verify file1 and file3 are selected, file2 is not
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file2}"]`)).not.toHaveAttribute('aria-selected', 'true');
+
+    // 6. Selection Toggle (Off): Ctrl-click file1 again
+    await ctrlClickItem(page, `/${file1}`);
+
+    // 7. Assertion: Verify file1 is no longer selected, file3 remains selected
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).not.toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('E2E-DESKTOP-003: Shift-click range selection', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create 3 test files in root
+    const file1 = buildName(testInfo, 'range-1') + '.txt';
+    const file2 = buildName(testInfo, 'range-2') + '.txt';
+    const file3 = buildName(testInfo, 'range-3') + '.txt';
+    await createTestFile(page, file1);
+    await createTestFile(page, file2);
+    await createTestFile(page, file3);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Range Selection: Click file1 then Shift-click file3
+    const item1 = page.locator(`[data-file-path="/${file1}"]`);
+    await item1.click();
+    await shiftClickItem(page, `/${file3}`);
+
+    // 5. Assertion: Verify all items from anchor to target are selected
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file2}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('E2E-DESKTOP-004: Clear selection on empty area click', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create a test file
+    const fileName = buildName(testInfo, 'clear-sel') + '.txt';
+    await createTestFile(page, fileName);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Select the file
+    await page.locator(`[data-file-path="/${fileName}"]`).click();
+    await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute('aria-selected', 'true');
+
+    // 5. Click empty area to clear selection
+    await clickEmptyArea(page);
+
+    // 6. Assertion: Verify no items are selected
+    await expect(page.locator('[aria-selected="true"]')).toHaveCount(0);
+  });
+
   test('E2E-EXP-009: View mode switch changes visible layout', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
@@ -132,5 +269,29 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${folderAlpha}"]`)).toBeVisible();
     await expect(page.locator(`[data-file-path="/${folderBeta}"]`)).toBeVisible();
     await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).toBeVisible();
+  });
+
+  test('E2E-DESKTOP-005: Right-click context menu', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create a test file
+    const fileName = buildName(testInfo, 'context-menu') + '.txt';
+    await createTestFile(page, fileName);
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Right-click the file
+    await rightClickItem(page, `/${fileName}`);
+
+    // 5. Assertion: Verify context menu is visible
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+
+    // 6. Content Verification: Verify "Rename" and "Delete" items are present
+    await expect(menu).toContainText('Rename');
+    await expect(menu).toContainText('Delete');
   });
 });

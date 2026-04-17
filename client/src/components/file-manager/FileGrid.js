@@ -6,11 +6,10 @@ import {
   useTheme,
 } from '@mui/material';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
-import { useLongPressSelect } from './hooks/useLongPressSelect';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
-import FileGridItem from './FileGridItem';
+import FileGridItemContainer from './FileGridItemContainer';
 
 const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
@@ -39,8 +38,6 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     theme,
     isMobile,
   });
-
-  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
 
   if (loading && files.length === 0) {
     return <FileGridSkeleton selectionMode={selectionMode} />;
@@ -73,47 +70,33 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     >
       {files.map((file, index) => {
         const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-        const allowContextMenu = isPermissionDisabled && !isProcessing;
-        const canOpenMenu = !isDisabled || allowContextMenu;
         const isDragging = draggedFile?.path === file.path;
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
-        const longPressHandlers = getLongPressHandlers(file);
 
         return (
-          <Box
+          <FileGridItemContainer
             key={file.path}
-            data-file-path={file.path}
-            {...dragHandlers}
-            {...dropHandlers}
-            {...longPressHandlers}
-            onClick={(e) => {
-              if (!isDisabled) {
-                onFileClick(file, e, index);
-              }
-            }}
-            onContextMenu={(e) => {
-              if (canOpenMenu) {
-                onContextMenu(e, file);
-              }
-            }}
-            sx={{ height: '100%', minWidth: 0 }}
-          >
-            <FileGridItem
-              file={file}
-              isSelected={isSelected}
-              isDisabled={isDisabled}
-              isProcessing={isProcessing}
-              processingType={processingType}
-              isDropTarget={isDropTarget}
-              isDragging={isDragging}
-              selectionMode={selectionMode}
-              showMoreButton={showMoreButton ?? !selectionMode}
-              onMoreClick={onMoreClick}
-              isMobile={isMobile}
-            />
-          </Box>
+            file={file}
+            index={index}
+            onFileClick={onFileClick}
+            onMoreClick={onMoreClick}
+            showMoreButton={showMoreButton}
+            onLongPressSelect={onLongPressSelect}
+            onContextMenu={onContextMenu}
+            isDisabled={isDisabled}
+            isProcessing={isProcessing}
+            processingType={processingType}
+            isPermissionDisabled={isPermissionDisabled}
+            isDragging={isDragging}
+            isDropTarget={isDropTarget}
+            isSelected={isSelected}
+            selectionMode={selectionMode}
+            isMobile={isMobile}
+            dragHandlers={dragHandlers}
+            dropHandlers={dropHandlers}
+          />
         );
       })}
       {hasMore && (

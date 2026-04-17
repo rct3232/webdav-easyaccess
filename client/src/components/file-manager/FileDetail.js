@@ -16,12 +16,12 @@ import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
-import { useLongPressSelect } from './hooks/useLongPressSelect';
+import { useResponsive } from '../../hooks/useResponsive';
 import { renderProcessingIcon } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
-import { useResponsive } from '../../hooks/useResponsive';
 import { FileDetailSkeleton } from './FileSkeletons';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
+import FileDetailRow from './FileDetailRow';
 
 const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { t } = useTranslation();
@@ -70,8 +70,6 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
     isMobile,
   });
 
-  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
-
   return (
     <TableContainer
       component={Box}
@@ -95,163 +93,37 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
             <FileDetailSkeleton selectionMode={selectionMode} />
           ) : (
             files.map((file, index) => {
-              const { isSelected: checked, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-              const allowContextMenu = isPermissionDisabled && !isProcessing;
+              const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
               const isDragging = draggedFile?.path === file.path;
               const isDropTarget = dropTarget === file.path;
               const dragHandlers = getDragHandlers(file, isDisabled);
               const dropHandlers = getDropHandlers(file, isDisabled);
 
               return (
-                <TableRow
+                <FileDetailRow
                   key={`${file.path}-${index}`}
-                  data-file-path={file.path}
-                  {...dragHandlers}
-                  {...dropHandlers}
-                  {...getLongPressHandlers(file)}
-                  hover={!isDisabled}
-                  sx={{
-                    cursor: isDisabled ? 'not-allowed' : (isMobile ? 'pointer' : (selectionMode ? 'pointer' : 'move')),
-                    opacity: isDragging ? 0.5 : (isDisabled ? 0.4 : (file.isHidden ? 0.5 : 1)),
-                    backgroundColor: isDropTarget
-                      ? 'primary.main'
-                      : (selectionMode && checked ? (t) => alpha(t.palette.primary.main, 0.12) : 'transparent'),
-                    ...(selectionMode && checked && !isDropTarget && {
-                      '&:hover': {
-                        backgroundColor: (t) => alpha(t.palette.primary.main, 0.2),
-                      },
-                    }),
-                    transition: 'all 0.2s',
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    color: isDisabled ? 'text.disabled' : (isDropTarget ? 'white' : 'inherit'),
-                    position: 'relative',
-                    height: '40px',
-                    '& > td': {
-                      py: 0.5,
-                    },
-                    ...(isDropTarget && {
-                      '& .MuiSvgIcon-root': {
-                        color: 'white',
-                      },
-                      '& .MuiTypography-root': {
-                        color: 'white',
-                      },
-                    }),
-                    // Prevent text selection on mobile long-press
-                    ...(isMobile && {
-                      userSelect: 'none',
-                      WebkitUserSelect: 'none',
-                      MozUserSelect: 'none',
-                      msUserSelect: 'none',
-                      WebkitTouchCallout: 'none',
-                      touchAction: 'manipulation',
-                    }),
-                  }}
-                  onClick={(e) => {
-                    if (!isDisabled) {
-                      onFileClick(file, e);
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    if (!isDisabled || allowContextMenu) {
-                      onContextMenu(e, file);
-                    }
-                  }}
-                >
-                  <TableCell
-                    sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
-                    ref={index === 0 ? nameColRef : null}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
-                      {getFileIcon(file)}
-                      {(() => {
-                        const originalName = file.basename;
-                        const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
-                        const isTruncated = truncatedName !== originalName;
-
-                        const typography = (
-                          <Typography variant="body2" sx={{ fontSize: '0.875rem', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                            {truncatedName}
-                          </Typography>
-                        );
-
-                        return isTruncated ? (
-                          <Tooltip title={originalName} disableInteractive>
-                            {typography}
-                          </Tooltip>
-                        ) : typography;
-                      })()}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                      {file.type === 'directory' ? t('actions.folder') : file.mime || '-'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                      {file.type === 'directory' ? '-' : formatFileSize(file.size)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                      {formatDate(file.lastmod)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider', width: 48, px: 0.5 }}>
-                    {(showMoreButton ?? !selectionMode) && onMoreClick && (
-                      <Box
-                        component="button"
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMoreClick(file, e);
-                        }}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        onTouchEnd={(e) => {
-                          e.stopPropagation();
-                          if (e.cancelable) e.preventDefault();
-                          onMoreClick(file, e);
-                        }}
-                        sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0.5,
-                          minWidth: 44,
-                          minHeight: 44,
-                          border: 'none',
-                          borderRadius: '50%',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          color: 'inherit',
-                        }}
-                        aria-label="More actions"
-                      >
-                        <MoreVertIcon fontSize="small" />
-                      </Box>
-                    )}
-                  </TableCell>
-                  {isProcessing && (
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        pr: 2,
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      <CircularProgress size={16} thickness={5} />
-                      <Box sx={{ ml: 0.5 }}>
-                        {renderProcessingIcon(processingType)}
-                      </Box>
-                    </Box>
-                  )}
-                </TableRow>
+                  file={file}
+                  index={index}
+                  onFileClick={onFileClick}
+                  onMoreClick={onMoreClick}
+                  showMoreButton={showMoreButton}
+                  onLongPressSelect={onLongPressSelect}
+                  onContextMenu={onContextMenu}
+                  isDisabled={isDisabled}
+                  isProcessing={isProcessing}
+                  processingType={processingType}
+                  isPermissionDisabled={isPermissionDisabled}
+                  isDragging={isDragging}
+                  isDropTarget={isDropTarget}
+                  isSelected={isSelected}
+                  selectionMode={selectionMode}
+                  isMobile={isMobile}
+                  dragHandlers={dragHandlers}
+                  dropHandlers={dropHandlers}
+                  maxPixelWidth={maxPixelWidth}
+                  font={font}
+                  t={t}
+                />
               );
             })
           )}

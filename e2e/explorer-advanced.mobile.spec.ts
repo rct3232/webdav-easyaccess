@@ -32,6 +32,9 @@ async function createTestFile(page: any, fileName: string) {
 
 test.describe('explorer advanced (mobile)', () => {
   test('E2E-MOBILE-001: Long-Press Selection', async ({ page }, testInfo) => {
+    // Log browser console messages to the terminal
+    page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
+
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -41,26 +44,39 @@ test.describe('explorer advanced (mobile)', () => {
 
     // 3. Navigate to /files
     await page.goto('/files');
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for refresh indicator to be fully invisible (opacity 0) to ensure layout is stable
+    const refreshIndicator = page.getByTestId('refresh-indicator');
+    try {
+      await expect(refreshIndicator).toHaveCSS('opacity', '0', { timeout: 5000 });
+    } catch (e) {
+      // Indicator might have already been invisible
+    }
+    
+    // Give a larger buffer for layout stabilization (CSS transitions take up to 0.3s)
+    await page.waitForTimeout(1000);
+
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
     // 4. Trigger Long-Press on the file
     await longPressItem(page, `/${fileName}`);
 
     // 5. Verify Selection Mode UI (Active): Bulk action buttons should be visible
-    await expect(page.locator('[title="actions.move"]')).toBeVisible();
-    await expect(page.locator('[title="actions.copy"]')).toBeVisible();
-    await expect(page.locator('[title="actions.download"]')).toBeVisible();
-    await expect(page.locator('[title="actions.delete"]')).toBeVisible();
-    await expect(page.locator('[title="fileManager.selectAll"]')).toBeVisible();
-    await expect(page.locator('[title="fileManager.deselectAll"]')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-copy')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-download')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-select-all')).toBeVisible();
+    await expect(page.getByTestId('bulk-action-deselect-all')).toBeVisible();
 
     // 6. Verify Selection Mode UI (Inactive): Normal control buttons should be hidden
-    await expect(page.locator('[title="fileManager.sort"]')).not.toBeVisible();
+    await expect(page.getByTestId('file-manager-sort')).not.toBeVisible();
     // View mode toggle buttons are usually identified by their role and name, 
     // and we can check if they are not visible.
-    await expect(page.getByRole('button', { name: /list view/i })).not.toBeVisible();
-    await expect(page.getByRole('button', { name: /grid view/i })).not.toBeVisible();
-    await expect(page.getByRole('button', { name: /detail view/i })).not.toBeVisible();
+    await expect(page.getByTestId('view-mode-list')).not.toBeVisible();
+    await expect(page.getByTestId('view-mode-grid')).not.toBeVisible();
+    await expect(page.getByTestId('view-mode-detail')).not.toBeVisible();
 
     // 7. Verify Item Selection: The long-pressed item should have the visual selection indicator
     await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute('aria-selected', 'true');

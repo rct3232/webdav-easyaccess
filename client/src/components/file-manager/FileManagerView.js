@@ -505,6 +505,7 @@ const FileManagerView = ({
             >
               {isMobile && (
                 <Box
+                  data-testid="refresh-indicator"
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',

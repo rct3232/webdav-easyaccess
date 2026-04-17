@@ -49,7 +49,7 @@ async function selectTwoFilesDesktop(
   await fileItem(page, secondFilePath).click({ modifiers: ['Meta'] });
 
   // Wait for bulk toolbar to be present.
-  await expect(page.locator('button[title="Move"]')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
 }
 
 async function openFolderPickerAndSelectDestination(
@@ -57,8 +57,8 @@ async function openFolderPickerAndSelectDestination(
   action: 'move' | 'copy',
   destinationFolderName: string,
 ) {
-  const actionButtonTitle = action === 'move' ? 'Move' : 'Copy';
-  await page.locator(`button[title="${actionButtonTitle}"]`).click();
+  const testId = action === 'move' ? 'bulk-action-move' : 'bulk-action-copy';
+  await page.getByTestId(testId).click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -107,7 +107,7 @@ async function openFolderRouteAndWaitForItems(
 async function bulkDeleteSelected(
   page: Parameters<typeof openFabAction>[0],
 ) {
-  await page.locator('button[title="Delete"]').click();
+  await page.getByTestId('bulk-action-delete').click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByTestId('confirm-dialog-confirm')).toBeVisible();
@@ -263,10 +263,10 @@ test('bulk: enter selection mode and shows bulk toolbar', async ({ page }, testI
 
   await fileItem(page, folderPath).click();
 
-  await expect(page.locator('button[title="Move"]')).toBeVisible();
-  await expect(page.locator('button[title="Copy"]')).toBeVisible();
-  await expect(page.locator('button[title="Download"]')).toBeVisible();
-  await expect(page.locator('button[title="Delete"]')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-copy')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-download')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
 });
 
 test('bulk: move selected items to another folder', async ({ page }, testInfo) => {

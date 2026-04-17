@@ -66,6 +66,7 @@ export async function clickActionSheetItem(
 export async function longPressItem(page: Page, filePath: string): Promise<void> {
   const item = page.locator(`[data-file-path="${filePath}"]`);
   await expect(item).toBeVisible();
+  await item.scrollIntoViewIfNeeded();
   
   const box = await item.boundingBox();
   if (!box) throw new Error(`Could not get bounding box for item ${filePath}`);

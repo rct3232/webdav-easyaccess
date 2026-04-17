@@ -17,23 +17,29 @@ const LONG_PRESS_MS = 500;
 export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect }) {
   const longPressTimersRef = useRef(new Map());
   const touchMovedRef = useRef(new Map());
+  const longPressOccurredRef = useRef(new Map());
 
   const getLongPressHandlers = useCallback(
     (file) => {
       if (!isMobile || selectionMode || !onLongPressSelect) return {};
 
-      const handleTouchStart = () => {
+      const handleStart = () => {
+        console.log(`[LongPress] Start: ${file.path}`);
         touchMovedRef.current.set(file.path, false);
+        longPressOccurredRef.current.set(file.path, false);
         const timer = setTimeout(() => {
+          console.log(`[LongPress] Timer fired: ${file.path}`);
           if (!touchMovedRef.current.get(file.path)) {
             if (navigator.vibrate) navigator.vibrate(50);
+            longPressOccurredRef.current.set(file.path, true);
             onLongPressSelect(file);
           }
         }, LONG_PRESS_MS);
         longPressTimersRef.current.set(file.path, timer);
       };
 
-      const handleTouchEnd = () => {
+      const handleEnd = () => {
+        console.log(`[LongPress] End: ${file.path}`);
         const timer = longPressTimersRef.current.get(file.path);
         if (timer) {
           clearTimeout(timer);
@@ -41,7 +47,8 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
         }
       };
 
-      const handleTouchMove = () => {
+      const handleMove = () => {
+        console.log(`[LongPress] Move: ${file.path}`);
         touchMovedRef.current.set(file.path, true);
         const timer = longPressTimersRef.current.get(file.path);
         if (timer) {
@@ -51,23 +58,39 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
       };
 
       return {
-        onTouchStart: handleTouchStart,
-        onTouchEnd: handleTouchEnd,
-        onTouchMove: handleTouchMove,
+        onTouchStart: handleStart,
+        onTouchEnd: handleEnd,
+        onTouchMove: handleMove,
+        onMouseDown: handleStart,
+        onMouseUp: handleEnd,
+        onMouseMove: handleMove,
       };
     },
     [isMobile, selectionMode, onLongPressSelect]
   );
 
+  const wasLongPress = useCallback(
+    (filePath) => {
+      const occurred = longPressOccurredRef.current.get(filePath);
+      if (occurred) {
+        longPressOccurredRef.current.set(filePath, false);
+      }
+      return occurred;
+    },
+    []
+  );
+
   useEffect(() => {
     const timers = longPressTimersRef.current;
     const touchMoved = touchMovedRef.current;
+    const occurred = longPressOccurredRef.current;
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
       timers.clear();
       touchMoved.clear();
+      occurred.clear();
     };
   }, []);
 
-  return { getLongPressHandlers };
+  return { getLongPressHandlers, wasLongPress };
 }

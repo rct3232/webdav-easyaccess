@@ -86,11 +86,11 @@ async function selectTwoFilesMobile(
   secondFilePath: string,
 ) {
   await mobileLongPressFile(page, firstFilePath);
-  await expect(page.locator('button[title="Move"]')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
 
   // In selection mode, tapping another file toggles selection.
   await fileItem(page, secondFilePath).click();
-  await expect(page.locator('button[title="Move"]')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
 }
 
 async function openFolderPickerAndSelectDestination(
@@ -98,8 +98,8 @@ async function openFolderPickerAndSelectDestination(
   action: 'move' | 'copy',
   destinationFolderName: string,
 ) {
-  const actionButtonTitle = action === 'move' ? 'Move' : 'Copy';
-  await page.locator(`button[title="${actionButtonTitle}"]`).click();
+  const testId = action === 'move' ? 'bulk-action-move' : 'bulk-action-copy';
+  await page.getByTestId(testId).click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -111,7 +111,7 @@ async function openFolderPickerAndSelectDestination(
 async function bulkDeleteSelected(
   page: Parameters<typeof openFabAction>[0],
 ) {
-  await page.locator('button[title="Delete"]').click();
+  await page.getByTestId('bulk-action-delete').click();
 
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByTestId('confirm-dialog-confirm')).toBeVisible();
@@ -269,10 +269,10 @@ test('bulk: enter selection mode and shows bulk toolbar', async ({ page }, testI
 
   await mobileLongPressFile(page, folderPath);
 
-  await expect(page.locator('button[title="Move"]')).toBeVisible();
-  await expect(page.locator('button[title="Copy"]')).toBeVisible();
-  await expect(page.locator('button[title="Download"]')).toBeVisible();
-  await expect(page.locator('button[title="Delete"]')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-copy')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-download')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
 });
 
 test('bulk: move selected items to another folder', async ({ page }, testInfo) => {
@@ -398,7 +398,7 @@ test('bulk: mobile multi-download button is disabled when multiple items selecte
 
   await selectTwoFilesMobile(page, srcFile1Path, srcFile2Path);
 
-  const downloadButton = page.locator('button[title="Download"]').first();
+  const downloadButton = page.getByTestId('bulk-action-download');
   await expect(downloadButton).toBeVisible();
   await expect(downloadButton).toBeDisabled();
 });

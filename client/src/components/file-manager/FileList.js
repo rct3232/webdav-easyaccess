@@ -39,7 +39,7 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     isMobile,
   });
 
-  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
+  const { getLongPressHandlers, wasLongPress } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
 
   if (loading && files.length === 0) {
     return <FileListSkeleton selectionMode={selectionMode} />;
@@ -80,6 +80,7 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
             {...dropHandlers}
             {...longPressHandlers}
             onClick={(e) => {
+              if (wasLongPress(file.path)) return;
               if (!isDisabled) {
                 onFileClick(file, e, index);
               }

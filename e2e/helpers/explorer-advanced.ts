@@ -6,13 +6,13 @@ import { Page, expect } from '@playwright/test';
  * @param mode View mode: 'list' | 'grid' | 'detail'
  */
 export async function switchViewMode(page: Page, mode: 'list' | 'grid' | 'detail'): Promise<void> {
-  const viewModeTitles = {
-    list: /list view/i,
-    grid: /grid view/i,
-    detail: /detail view/i,
+  const testIds = {
+    list: 'view-mode-list',
+    grid: 'view-mode-grid',
+    detail: 'view-mode-detail',
   };
 
-  const button = page.getByRole('button', { name: viewModeTitles[mode] });
+  const button = page.getByTestId(testIds[mode]);
   await button.click();
 
   // Wait for view mode to change
@@ -25,8 +25,8 @@ export async function switchViewMode(page: Page, mode: 'list' | 'grid' | 'detail
  * @param mode Sort mode: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'
  */
 export async function setSortMode(page: Page, mode: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'): Promise<void> {
-  // Click sort button to open menu - use exact match to avoid matching folder names
-  const sortButton = page.getByRole('button', { name: 'Sort', exact: true });
+  // Click sort button to open menu - use test id for stability
+  const sortButton = page.getByTestId('file-manager-sort');
   await sortButton.click();
 
   // Map mode to radio button value

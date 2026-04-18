@@ -2,7 +2,7 @@ import { APIRequestContext, expect, type TestInfo } from '@playwright/test';
 
 import { TEST_FILES, TEST_USERS } from '../fixtures/test-data';
 
-import { ensureApprovedUser } from './auth';
+import { ensureApprovedUser, getTestSuffix } from './auth';
 import { readTestFileFixture } from './files';
 
 type CreateShareLinkArgs = {
@@ -119,7 +119,7 @@ export async function createPublicShareFixtures(request: APIRequestContext, test
   const singleFileName = `share-single-${baseId}.jpg`;
 
   // Ensure the target "approved standard user" exists.
-  await ensureApprovedUser(request, 'user1');
+  await ensureApprovedUser(request, 'user1', getTestSuffix(testInfo));
 
   // Use an authenticated admin token for deterministic WebDAV-backed fixture creation.
   const adminLogin = await request.post('/api/auth/login', {

@@ -107,13 +107,13 @@ export function useAuthSession() {
       return { success: true, user: normalizedUser };
     } catch (error) {
       const errorData = error?.response?.data || {};
-      return {
-        success: false,
-        ...errorData,
-        error: errorData.error || errorData.message,
-        status: errorData.status,
-        message: errorData.message,
-      };
+       return {
+         success: false,
+         ...errorData,
+         error: errorData.error || errorData.message || errorData.errorCode,
+         status: errorData.status,
+         message: errorData.message,
+       };
     }
   }, [logout]);
 
@@ -151,10 +151,10 @@ export function useAuthSession() {
       setLoading(false);
 
       return { success: true };
-    } catch (error) {
-      const data = error?.response?.data || {};
-      return { success: false, ...data, error: data.error || data.message };
-    }
+     } catch (error) {
+       const data = error?.response?.data || {};
+       return { success: false, ...data, error: data.error || data.message || data.errorCode };
+     }
   }, [logout]);
 
   const isAuthenticated = !!user;

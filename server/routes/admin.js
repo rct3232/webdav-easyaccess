@@ -287,9 +287,9 @@ router.post('/users/:id/reject', authenticateToken, isAdmin, async (req, res) =>
     // Delete permission file
     await Permission.deleteUserPermissionsFile(userId);
 
-    // Delete user from database
-    await User.delete(userId);
-
+    // Reject user status
+    await User.updateStatus(userId, USER_STATUS.REJECTED);
+    
     res.json({
       messageCode: SERVER_MESSAGE_CODES.admin.userRejected,
       user: { id: user.id, username: user.username, email: user.email },

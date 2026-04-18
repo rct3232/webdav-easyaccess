@@ -116,7 +116,9 @@ router.post('/register', async (req, res) => {
         // Ignore delete error
       }
     }
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.registerFail });
+    const status = error.status || HTTP_STATUS.INTERNAL_SERVER_ERROR;
+    const errorCode = error.errorCode || SERVER_ERROR_CODES.auth.registerFail;
+    res.status(status).json({ errorCode });
   }
 });
 

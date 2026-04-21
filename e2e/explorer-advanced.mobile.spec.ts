@@ -109,4 +109,55 @@ test.describe('explorer advanced (mobile)', () => {
     // Check if the folder tree container is no longer visible
     await expect(page.getByTestId('folder-tree')).not.toBeVisible();
   });
+
+  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create two folders, each containing a file with the same name
+    const folderA = buildName(testInfo, 'mobile-conflict-folder-a');
+    const folderB = buildName(testInfo, 'mobile-conflict-folder-b');
+    const conflictFileName = 'mobile_conflict_test.txt';
+
+    await createTestFolder(page, folderA);
+    await createTestFolder(page, folderB);
+
+    // Upload file to folderA
+    await page.goto(`/files/${folderA}`);
+    await createTestFile(page, conflictFileName);
+
+    // Upload file to folderB
+    await page.goto(`/files/${folderB}`);
+    await createTestFile(page, conflictFileName);
+
+    // 3. Action: Move file from folderA to folderB
+    await page.goto(`/files/${folderA}`);
+    await longPressItem(page, `/${folderA}/${conflictFileName}`);
+    
+    // Trigger bulk move
+    await page.getByTestId('bulk-action-move').click();
+    
+    // Select folderB in the folder picker
+    const pickerDialog = page.getByRole('dialog');
+    await expect(pickerDialog).toBeVisible();
+    
+    // Navigate to root via breadcrumb to find folderB
+    const breadcrumbs = pickerDialog.locator('.MuiBreadcrumbs-root button');
+    await breadcrumbs.first().click();
+    
+    // Wait for loading to finish
+    await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
+    
+    // Select folderB
+    await pickerDialog.locator('li').filter({ hasText: folderB }).click();
+    await pickerDialog.getByRole('button', { name: 'Select', exact: true }).click();
+
+    // 4. Assertion: Verify conflict resolution dialog appears
+    const conflictDialog = page.getByRole('dialog');
+    await expect(conflictDialog).toBeVisible();
+    
+    await expect(conflictDialog).toContainText('conflict', { ignoreCase: true });
+    await expect(conflictDialog.getByRole('button', { name: /skip/i })).toBeVisible();
+    await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();
+  });
 });

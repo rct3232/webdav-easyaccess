@@ -247,4 +247,124 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await expect(page.getByTestId('file-action-delete')).toBeVisible();
     await expect(page.getByTestId('file-action-move')).toBeVisible();
   });
+
+  test('E2E-OVERLAY-001: Approved user enters __shared__ from the explorer tree', async ({ page }, testInfo) => {
+    await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    if (testInfo.project.name === 'mobile') {
+      const toggleBtn = page.locator('button[title="Open folder tree"]');
+      const toggleCount = await toggleBtn.count();
+      if (toggleCount > 0) {
+        await toggleBtn.click();
+      }
+    }
+
+    // Wait for folder tree to be ready with shared folders
+    const folderTree = page.getByTestId('folder-tree');
+    await expect(folderTree).toBeVisible({ timeout: 20_000 });
+
+    // Click the "Shared" section header in the folder tree sidebar
+    const sharedHeader = folderTree.getByRole('button', { name: /Shared/i, exact: false }).first();
+    await expect(sharedHeader).toBeVisible();
+    await sharedHeader.click();
+
+    // Verify: browser navigates to /__shared__ path
+    await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
+
+    // Verify: breadcrumb shows "Shared" label
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    await expect(breadcrumbChips.first()).toContainText(/Shared/i);
+
+    // Verify: the shared folders list is rendered under the __shared__ view
+    // The __shared__ view shows the user's granted shared folders (top-level permission paths)
+    // The owner home folder should appear as a shared entry
+    const sharedFolderItem = fileItem(page, fixtures.ownerHomePath);
+    await expect(sharedFolderItem).toBeVisible({ timeout: 20_000 });
+  });
+
+test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a nested shared folder', async ({ page }, testInfo) => {
+    await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    if (testInfo.project.name === 'mobile') {
+      const toggleBtn = page.locator('button[title="Open folder tree"]');
+      const toggleCount = await toggleBtn.count();
+      if (toggleCount > 0) {
+        await toggleBtn.click();
+      }
+    }
+
+    // Wait for folder tree to be ready with shared folders
+    const folderTree = page.getByTestId('folder-tree');
+    await expect(folderTree).toBeVisible({ timeout: 20_000 });
+
+    // Click the "Shared" section header to expand and navigate
+    const sharedHeader = folderTree.getByRole('button', { name: /Shared/i, exact: false }).first();
+    await expect(sharedHeader).toBeVisible();
+    await sharedHeader.click();
+
+    // Verify we are in the __shared__ view
+    await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
+
+    // The listing should show the owner's home folder as a shared entry
+    const sharedFolderItem = fileItem(page, fixtures.ownerHomePath);
+    await expect(sharedFolderItem).toBeVisible({ timeout: 20_000 });
+
+    if (testInfo.project.name === 'mobile') {
+      // On mobile, click the shared folder item in the listing to navigate
+      await sharedFolderItem.click();
+      // Mobile navigates directly to the folder path
+      await expect(page).toHaveURL(new RegExp(`/files${fixtures.ownerHomePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    } else {
+      // On desktop, click the shared folder in the tree sidebar to navigate
+      // Re-open the folder tree (it may have collapsed after Shared header click)
+      const toggleBtn = page.locator('button[title="Open folder tree"]');
+      const toggleCount = await toggleBtn.count();
+      if (toggleCount > 0) {
+        await toggleBtn.click();
+      }
+      await expect(folderTree).toBeVisible({ timeout: 20_000 });
+      const sharedTreeItem = folderTree.getByRole('button', { name: fixtures.ownerUsername }).first();
+      await expect(sharedTreeItem).toBeVisible();
+      await sharedTreeItem.click();
+      await expect(page).toHaveURL(new RegExp(`/files${fixtures.ownerHomePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    }
+
+    // Verify: explorer shell is visible (breadcrumb present)
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    await expect(breadcrumbChips.first()).toBeVisible();
+  });
+
+  test('E2E-OVERLAY-006: Shared target with read permission hides write actions', async ({ page, request }, testInfo) => {
+    // Setup: Create a folder and grant READ permission (not write)
+    const folderName = buildName(testInfo, 'readonly-test-folder');
+    const folderPath = `/${fixtures.ownerUsername}/${folderName}`;
+    await createFolderViaApi(request, fixtures.adminToken, folderPath);
+    await grantReadViaApi(request, fixtures.adminToken, fixtures.requesterUserId, folderPath);
+
+    // Navigate to the target folder as requester
+    await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
+    await page.goto(`/files/${folderPath}`);
+
+    // Wait for the listing to load
+    await page.waitForTimeout(2000);
+
+    // Verify: the listing is visible (even if empty for a folder with no children)
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    await expect(breadcrumbChips.first()).toBeVisible();
+
+    // Verify: the FAB is not visible (no write permission means no create/upload actions)
+    const fab = page.getByTestId('file-actions-fab');
+    await expect(fab).not.toBeVisible({ timeout: 5000 });
+
+    // Verify: the listing shows the folder is accessible but empty
+    // (The listing container exists but has no items)
+    const listingItems = page.locator('[data-file-path]');
+    await expect(listingItems).toHaveCount(0);
+  });
 });

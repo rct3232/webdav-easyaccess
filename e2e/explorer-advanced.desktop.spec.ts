@@ -324,6 +324,38 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(downloadBtn).toBeEnabled();
   });
 
+  test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create a test file to generate a recent entry
+    const fileName = buildName(testInfo, 'recent-test-file') + '.txt';
+    await createTestFile(page, fileName);
+
+    // 3. Navigate to the file's parent directory to track it as recent
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Navigate directly to /files/__recent__ via URL
+    // This triggers the __recent__ view which loads recent files from the API
+    await page.goto('/files/__recent__');
+    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
+
+    // 5. Assertion: breadcrumb shows "Recent" label
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    await expect(breadcrumbChips.first()).toContainText(/Recent/i);
+
+    // 6. Assertion: the folder tree shows the Recent section in expanded/active state
+    const folderTree = page.getByTestId('folder-tree');
+    await expect(folderTree).toBeVisible({ timeout: 20_000 });
+    const recentTreeButton = folderTree.getByRole('button', { name: /Recent/i }).first();
+    await expect(recentTreeButton).toBeVisible();
+
+    // 7. Assertion: a recent file entry is visible in the listing
+    // The newly created file should appear in the recent files list
+    await expect(page.locator('[data-file-path]')).toBeVisible();
+  });
+
   test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);

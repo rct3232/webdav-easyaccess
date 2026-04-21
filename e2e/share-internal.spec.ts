@@ -109,7 +109,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     };
   });
 
-  test('E2E-OVERLAY-003: Request access to another user's content from protected UI', async ({ page, request }) => {
+  test("E2E-OVERLAY-003: Request access to another user's content from protected UI", async ({ page, request }) => {
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
 
     await page.goto(`/files/${fixtures.ownerUsername}`);

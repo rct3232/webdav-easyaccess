@@ -109,7 +109,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     };
   });
 
-  test('E2E-OVERLAY-003 requester can request read permission from protected UI', async ({ page, request }) => {
+  test('E2E-OVERLAY-003: Request access to another user's content from protected UI', async ({ page, request }) => {
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
 
     await page.goto(`/files/${fixtures.ownerUsername}`);
@@ -131,7 +131,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await revokeViaApi(request, fixtures.adminToken, fixtures.requesterUserId, fixtures.ownerHomePath);
   });
 
-  test('E2E-OVERLAY-004 owner approves pending request; requester discovers target under __shared__', async ({ page }, testInfo) => {
+  test('E2E-OVERLAY-004: Owner approves a pending request and requester can open the shared content', async ({ page }, testInfo) => {
     await loginAsUser(page, fixtures.ownerUserKey, fixtures.ownerSuffix);
     await page.goto('/mypage');
 
@@ -165,7 +165,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await expect(fileItem(page, fixtures.targetFolderPath)).toBeVisible({ timeout: 20_000 });
   });
 
-  test('E2E-OVERLAY-005 requester request can be rejected by owner', async ({ page, request }, testInfo) => {
+  test('E2E-OVERLAY-005: Owner rejects a pending request and requester stays blocked from the target', async ({ page, request }, testInfo) => {
     // Setup: Create a unique folder for this test to avoid collision
     const folderName = buildName(testInfo, 'reject-test-folder');
     const folderPath = `/${fixtures.ownerUsername}/${folderName}`;
@@ -219,7 +219,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await expect(dialogVerification.getByRole('button', { name: /request read permission/i })).toBeVisible();
   });
 
-  test('E2E-OVERLAY-007 write-capable shared content allows mutations', async ({ page, request }, testInfo) => {
+  test('E2E-OVERLAY-007: Shared target exposes write-capable actions when the granted permission is write', async ({ page, request }, testInfo) => {
     // Setup: Create folder and grant WRITE permission to user1
     const folderName = buildName(testInfo, 'write-test-folder');
     const folderPath = `/${fixtures.ownerUsername}/${folderName}`;

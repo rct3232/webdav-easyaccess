@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { ensureApprovedUser, loginAsUser, getTestSuffix } from './helpers/auth';
 
 test.describe('MyPage user shell', () => {
-  test('E2E-MYPAGE-001 authenticated user can open MyPage', async ({ page, request }, testInfo) => {
+  test('E2E-MYPAGE-001: Authenticated user can open MyPage', async ({ page, request }, testInfo) => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await loginAsUser(page, 'user1', suffix);
@@ -14,7 +14,7 @@ test.describe('MyPage user shell', () => {
     await expect(page.getByRole('button', { name: /log out/i })).toBeVisible();
   });
 
-  test('E2E-MYPAGE-002 close button returns user to file area', async ({ page, request }, testInfo) => {
+  test('E2E-MYPAGE-002: Close button returns user to file area', async ({ page, request }, testInfo) => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await loginAsUser(page, 'user1', suffix);
@@ -26,7 +26,7 @@ test.describe('MyPage user shell', () => {
     await expect(page.getByRole('button', { name: /log out/i })).toHaveCount(0);
   });
 
-  test('E2E-MYPAGE-003 logout clears session', async ({ page, request }, testInfo) => {
+  test('E2E-MYPAGE-003: Logout clears session', async ({ page, request }, testInfo) => {
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
     await loginAsUser(page, 'user1', suffix);
@@ -39,7 +39,7 @@ test.describe('MyPage user shell', () => {
     await expect(page.locator('input[name="password"]')).toBeVisible();
   });
 
-  test('E2E-MYPAGE-011 mobile drawer open/close', async ({ page, request }, testInfo) => {
+  test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', async ({ page, request }, testInfo) => {
     if (testInfo.project.name !== 'mobile') {
       test.skip();
     }
@@ -65,7 +65,7 @@ test.describe('MyPage user shell', () => {
     await expect(drawer).not.toBeVisible();
   });
 
-  test('E2E-MYPAGE-012 mobile drawer category selection', async ({ page, request }, testInfo) => {
+  test('E2E-MYPAGE-012: Selecting a category from the mobile drawer closes it and updates content', async ({ page, request }, testInfo) => {
     if (testInfo.project.name !== 'mobile') {
       test.skip();
     }

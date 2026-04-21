@@ -32,7 +32,7 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('explorer advanced (desktop)', () => {
-  test('E2E-DESKTOP-001: Double-click behavior (Folder Entry & File Preview)', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-001: Double-click opens folder or preview', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -68,7 +68,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(previewPane).toContainText(fileName);
   });
 
-  test('E2E-DESKTOP-002: Ctrl-click multi-selection toggle', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-002: Ctrl/Meta-click toggles multi-selection', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -101,7 +101,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('E2E-DESKTOP-003: Shift-click range selection', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-003: Shift-click performs range selection', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -128,7 +128,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('E2E-DESKTOP-004: Clear selection on empty area click', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-004: Clicking empty area exits selection mode', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -228,7 +228,7 @@ test.describe('explorer advanced (desktop)', () => {
     expect(aaaIndexAsc).toBeLessThan(zzzIndexAsc);
   });
 
-  test('E2E-EXP-011: Search filtering', async ({ page }, testInfo) => {
+  test('E2E-EXP-011: Search filters current listing', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -271,7 +271,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).toBeVisible();
   });
 
-  test('E2E-DESKTOP-005: Right-click context menu', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-005: Context menu opens per-item actions', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 

@@ -31,7 +31,7 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('explorer advanced (mobile)', () => {
-  test('E2E-MOBILE-001: Long-Press Selection', async ({ page }, testInfo) => {
+  test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page }, testInfo) => {
     // Log browser console messages to the terminal
     page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
 
@@ -82,7 +82,7 @@ test.describe('explorer advanced (mobile)', () => {
     await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('E2E-MOBILE-003: Folder Tree Toggle', async ({ page }, testInfo) => {
+  test('E2E-MOBILE-003: Breadcrumb toggle opens and closes folder tree section', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 

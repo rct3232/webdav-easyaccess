@@ -338,7 +338,7 @@ Current expansion note:
 | ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
 |----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
 | E2E-MOBILE-001 | Mobile explorer | Long-press enters selection mode | admin | `/files` | mobile | visible item exists | selection mode starts and item is selected | P1 | playwright | `e2e/explorer-advanced.mobile.spec.ts` | covered | |
-| E2E-MOBILE-002 | Mobile explorer | Action sheet opens from more button | admin | `/files` | mobile | visible item exists | mobile action sheet is visible | P1 | playwright | `e2e/explorer-advanced.mobile.spec.ts` | covered | |
+| E2E-MOBILE-002 | Mobile explorer | Action sheet opens from more button | admin | `/files` | mobile | visible item exists | mobile action sheet is visible | P1 | playwright | `e2e/explorer-advanced.mobile.spec.ts` | planned | |
 | E2E-MOBILE-003 | Mobile explorer | Breadcrumb toggle opens and closes folder tree section | admin | `/files` | mobile | authenticated session | folder tree collapse opens and closes | P1 | playwright | `e2e/explorer-advanced.mobile.spec.ts` | covered | |
 | E2E-MOBILE-004 | Mobile explorer | Pull-to-refresh reloads current folder | admin | `/files` | mobile | refreshable list and enough vertical scroll area | refresh indicator appears and list reload completes | P2 | playwright | `e2e/explorer-advanced.mobile.spec.ts` | deferred | Gesture sensitivity may be flaky |
 

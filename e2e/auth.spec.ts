@@ -17,35 +17,35 @@ async function submitLogin(page: Page, username: string, password: string) {
   await page.locator('form button[type="submit"]').click();
 }
 
-test('redirects anonymous /files access to the login page', async ({ page }) => {
+test('E2E-AUTH-001: Redirect unauthenticated user from `/files` to `/login`', async ({ page }) => {
   await gotoAsAnonymous(page, '/files');
 
   await expect(page).toHaveURL(/\/login$/);
   await expectLoginFormVisible(page);
 });
 
-test('redirects anonymous /mypage access to the login page', async ({ page }) => {
+test('E2E-AUTH-002: Redirect unauthenticated user from `/mypage` to `/login`', async ({ page }) => {
   await gotoAsAnonymous(page, '/mypage');
 
   await expect(page).toHaveURL(/\/login$/);
   await expectLoginFormVisible(page);
 });
 
-test('renders the login form on /login', async ({ page }) => {
+test('E2E-AUTH-003: Login page loads and renders form', async ({ page }) => {
   await gotoAsAnonymous(page);
 
   await expect(page).toHaveURL(/\/login$/);
   await expectLoginFormVisible(page);
 });
 
-test('logs in as admin and lands in the explorer', async ({ page }) => {
+test('E2E-AUTH-004: Successful admin login lands in explorer', async ({ page }) => {
   await loginAsAdmin(page);
 
   await expect(page).toHaveURL(/\/files(?:\/.*)?$/);
   await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 });
 
-test('logs in as a standard user and lands in the user home path', async ({ page, request }, testInfo) => {
+test('E2E-AUTH-005: Successful standard-user login lands in user-owned explorer path', async ({ page, request }, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensureApprovedUser(request, 'user1', suffix);
   await loginAsUser(page, 'user1', suffix);
@@ -54,7 +54,7 @@ test('logs in as a standard user and lands in the user home path', async ({ page
   await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 });
 
-test('shows a visible error for invalid credentials', async ({ page }) => {
+test('E2E-AUTH-006: Invalid credentials show login failure', async ({ page }) => {
   await page.goto('/login');
   await submitLogin(page, 'admin', 'wrong-password');
 
@@ -63,7 +63,7 @@ test('shows a visible error for invalid credentials', async ({ page }) => {
   await expect(alert).toBeVisible();
 });
 
-test('E2E-AUTH-007 shows warning for pending account login', async ({ page, request }, testInfo) => {
+test('E2E-AUTH-007: Pending account login shows warning', async ({ page, request }, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensurePendingUser(request, 'user2', suffix);
   await page.goto('/login');
@@ -74,7 +74,7 @@ test('E2E-AUTH-007 shows warning for pending account login', async ({ page, requ
   await expect(warning).toBeVisible();
 });
 
-test('E2E-AUTH-008 shows error for rejected account login', async ({ page, request }, testInfo) => {
+test('E2E-AUTH-008: Rejected account login shows rejection error', async ({ page, request }, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensureRejectedUser(request, 'user3', suffix);
   await page.goto('/login');
@@ -86,7 +86,7 @@ test('E2E-AUTH-008 shows error for rejected account login', async ({ page, reque
   await expect(alert).toContainText('registration has been rejected');
 });
 
-test('E2E-AUTH-009 register page availability follows public settings', async ({ page, request }) => {
+test('E2E-AUTH-009: Register page availability follows public settings', async ({ page, request }) => {
   // Test Enabled
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
@@ -108,7 +108,7 @@ test('E2E-AUTH-009 register page availability follows public settings', async ({
   await expect(alert).toContainText('Registration is currently disabled');
 });
 
-test('E2E-AUTH-010 registration success shows success state', async ({ page, request }) => {
+test('E2E-AUTH-010: Registration success with pending approval shows success state instead of explorer navigation', async ({ page, request }) => {
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
   

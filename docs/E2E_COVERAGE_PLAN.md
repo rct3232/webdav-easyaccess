@@ -312,14 +312,14 @@ Current expansion note:
 
 | ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
 |----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
-| E2E-ADMIN-001 | MyPage admin | `/admin` redirects to admin MyPage category | admin | `/admin` | both | authenticated admin session | admin-focused MyPage content is shown | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-002 | MyPage admin | Admin sees user-management and system-settings categories | admin | `/mypage` | both | authenticated admin session | admin categories are visible and sharing category is hidden | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-003 | MyPage admin | Approve pending signup | admin | `/mypage` | both | pending user exists | user moves out of pending state and UI updates | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-004 | MyPage admin | Reject pending signup | admin | `/mypage` | both | pending user exists | user is rejected and UI updates | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-005 | MyPage admin | Create user from admin UI | admin | `/mypage` | both | authenticated admin session | new user appears in admin user list | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-006 | MyPage admin | Delete standard user from admin UI | admin | `/mypage` | both | deletable standard user exists | user disappears from admin list | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-007 | MyPage admin | Toggle registration-related settings | admin | `/mypage` | both | authenticated admin session | settings save succeeds and the next public auth visit reflects the new state | P0 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
-| E2E-ADMIN-008 | MyPage admin | Cleanup actions show confirmation and completion feedback | admin | `/mypage` | both | authenticated admin session | cleanup flow completes with visible result | P1 | playwright | `e2e/mypage-admin.spec.ts` | planned | |
+| E2E-ADMIN-001 | MyPage admin | `/admin` redirects to admin MyPage category | admin | `/admin` | both | authenticated admin session | admin-focused MyPage content is shown | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-002 | MyPage admin | Admin sees user-management and system-settings categories | admin | `/mypage` | both | authenticated admin session | admin categories are visible and sharing category is hidden | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-003 | MyPage admin | Approve pending signup | admin | `/mypage` | both | pending user exists | user moves out of pending state and UI updates | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-004 | MyPage admin | Reject pending signup | admin | `/mypage` | both | pending user exists | user is rejected and UI updates | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-005 | MyPage admin | Create user from admin UI | admin | `/mypage` | both | authenticated admin session | new user appears in admin user list | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-006 | MyPage admin | Delete standard user from admin UI | admin | `/mypage` | both | deletable standard user exists | user disappears from admin list | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-007 | MyPage admin | Toggle registration-related settings | admin | `/mypage` | both | authenticated admin session | settings save succeeds and the next public auth visit reflects the new state | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+| E2E-ADMIN-008 | MyPage admin | Cleanup actions show confirmation and completion feedback | admin | `/mypage` | both | authenticated admin session | cleanup flow completes with visible result | P1 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
 
 ### Desktop-only advanced interactions
 

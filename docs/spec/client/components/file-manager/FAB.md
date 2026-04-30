@@ -65,5 +65,6 @@
 ### 2.8 Edge Cases
 
 - Safe area inset for iOS
+- **PC: Click-to-open only** — On desktop, the SpeedDial opens only on click (reason `'toggle'`). Hover (`'mouseEnter'`) and focus triggers are ignored to prevent unintended opens and flaky test behavior.
 - mobile trigger taps must open the controlled SpeedDial through the trigger click path; do not rely on hover/focus-only transitions
 - tabIndex=-1 on Fab

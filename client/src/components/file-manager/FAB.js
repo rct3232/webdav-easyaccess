@@ -48,8 +48,9 @@ const FAB = ({
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
 
-  const handleSpeedDialOpen = () => {
+  const handleSpeedDialOpen = (_event, reason) => {
     if (isMobile) return;
+    if (reason !== 'toggle') return; // PC: click-only open, ignore hover/focus
     setOpen(true);
   };
 

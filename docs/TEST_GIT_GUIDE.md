@@ -119,6 +119,9 @@ npm run test:e2e:install
 # - Starting the E2E client (port 3000)
 # - Executing the Playwright tests
 npm run test:e2e
+
+# Run gated later waves (P1/P2 scenarios)
+E2E_LATER_WAVES=1 npm run test:e2e
 ```
 
 Required assumptions:

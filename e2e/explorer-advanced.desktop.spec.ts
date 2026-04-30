@@ -32,7 +32,7 @@ async function createTestFile(page: any, fileName: string) {
 }
 
 test.describe('explorer advanced (desktop)', () => {
-  test('E2E-DESKTOP-001: Double-click behavior (Folder Entry & File Preview)', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-001: Double-click opens folder or preview', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -68,7 +68,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(previewPane).toContainText(fileName);
   });
 
-  test('E2E-DESKTOP-002: Ctrl-click multi-selection toggle', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-002: Ctrl/Meta-click toggles multi-selection', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -101,7 +101,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('E2E-DESKTOP-003: Shift-click range selection', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-003: Shift-click performs range selection', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -128,7 +128,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('E2E-DESKTOP-004: Clear selection on empty area click', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-004: Clicking empty area exits selection mode', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -228,7 +228,7 @@ test.describe('explorer advanced (desktop)', () => {
     expect(aaaIndexAsc).toBeLessThan(zzzIndexAsc);
   });
 
-  test('E2E-EXP-011: Search filtering', async ({ page }, testInfo) => {
+  test('E2E-EXP-011: Search filters current listing', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -271,7 +271,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator(`[data-file-path="/${folderGamma}"]`)).toBeVisible();
   });
 
-  test('E2E-DESKTOP-005: Right-click context menu', async ({ page }, testInfo) => {
+  test('E2E-DESKTOP-005: Context menu opens per-item actions', async ({ page }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -293,5 +293,119 @@ test.describe('explorer advanced (desktop)', () => {
     // 6. Content Verification: Verify "Rename" and "Delete" items are present
     await expect(menu).toContainText('Rename');
     await expect(menu).toContainText('Delete');
+  });
+
+  test('E2E-BULK-005: Desktop multi-download is available', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create 3 test files in root
+    const files = [
+      buildName(testInfo, 'multi-dl-1', '.txt'),
+      buildName(testInfo, 'multi-dl-2', '.jpg'),
+      buildName(testInfo, 'multi-dl-3', '.pdf'),
+    ];
+
+    for (const fileName of files) {
+      await createTestFile(page, fileName);
+    }
+
+    // 3. Navigate to /files
+    await page.goto('/files');
+
+    // 4. Multi-selection: Select all 3 files
+    await page.locator(`[data-file-path="/${files[0]}"]`).click();
+    await ctrlClickItem(page, `/${files[1]}`);
+    await ctrlClickItem(page, `/${files[2]}`);
+
+    // 5. Assertion: Verify bulk download button is visible and enabled
+    const downloadBtn = page.getByTestId('bulk-action-download');
+    await expect(downloadBtn).toBeVisible();
+    await expect(downloadBtn).toBeEnabled();
+  });
+
+  test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create a test file to generate a recent entry
+    const fileName = buildName(testInfo, 'recent-test-file') + '.txt';
+    await createTestFile(page, fileName);
+
+    // 3. Navigate to the file's parent directory to track it as recent
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+
+    // 4. Navigate directly to /files/__recent__ via URL
+    // This triggers the __recent__ view which loads recent files from the API
+    await page.goto('/files/__recent__');
+    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
+
+    // 5. Assertion: breadcrumb shows "Recent" label
+    const breadcrumbChips = page.locator('.MuiChip-root');
+    await expect(breadcrumbChips.first()).toContainText(/Recent/i);
+
+    // 6. Assertion: the folder tree shows the Recent section in expanded/active state
+    const folderTree = page.getByTestId('folder-tree');
+    await expect(folderTree).toBeVisible({ timeout: 20_000 });
+    const recentTreeButton = folderTree.getByRole('button', { name: /Recent/i }).first();
+    await expect(recentTreeButton).toBeVisible();
+
+    // 7. Assertion: a recent file entry is visible in the listing
+    // The newly created file should appear in the recent files list
+    await expect(page.locator('[data-file-path]')).toBeVisible();
+  });
+
+  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: Create two folders, each containing a file with the same name
+    const folderA = buildName(testInfo, 'conflict-folder-a');
+    const folderB = buildName(testInfo, 'conflict-folder-b');
+    const conflictFileName = 'conflict_test.txt';
+
+    await createTestFolder(page, folderA);
+    await createTestFolder(page, folderB);
+
+    // Upload file to folderA
+    await page.goto(`/files/${folderA}`);
+    await createTestFile(page, conflictFileName);
+
+    // Upload file to folderB
+    await page.goto(`/files/${folderB}`);
+    await createTestFile(page, conflictFileName);
+
+    // 3. Action: Move file from folderA to folderB
+    await page.goto(`/files/${folderA}`);
+    await page.locator(`[data-file-path="/${folderA}/${conflictFileName}"]`).click();
+
+    // Trigger bulk move
+    await page.getByTestId('bulk-action-move').click();
+
+    // Select folderB in the folder picker
+    const pickerDialog = page.getByRole('dialog');
+    await expect(pickerDialog).toBeVisible();
+
+    // Navigate to root via breadcrumb to find folderB
+    const rootBreadcrumb = pickerDialog.locator('.MuiBreadcrumbs-root button').first();
+    await rootBreadcrumb.click();
+    
+    // Wait for the folder list to be populated and the loader to disappear
+    await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
+    
+    // Select folderB - ensure we wait for it to be attached and visible
+    const folderBItem = pickerDialog.locator('li').filter({ hasText: folderB });
+    await expect(folderBItem).toBeVisible({ timeout: 10000 });
+    await folderBItem.click();
+    await pickerDialog.getByRole('button', { name: 'Select', exact: true }).click();
+
+    // 4. Assertion: Verify conflict resolution dialog appears
+    const conflictDialog = page.getByRole('dialog');
+    await expect(conflictDialog).toBeVisible();
+    
+    await expect(conflictDialog).toContainText('conflict', { ignoreCase: true });
+    await expect(conflictDialog.getByRole('button', { name: /skip/i })).toBeVisible();
+    await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();
   });
 });

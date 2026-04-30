@@ -14,6 +14,11 @@ export const TEST_USERS = {
     password: 'user2pass',
     email: 'user2@e2etest.com',
   },
+  user3: {
+    username: 'user3',
+    password: 'user3pass',
+    email: 'user3@e2etest.com',
+  },
 };
 
 export const TEST_FILES = {

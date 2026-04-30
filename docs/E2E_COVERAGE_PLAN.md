@@ -51,8 +51,9 @@ Those scenarios should still be tested, but often outside Playwright.
 
 ### Platform ownership
 
-- Keep desktop and mobile E2E flows in separate spec files when the interaction surface differs.
+- Keep desktop and mobile E2E interactions in separate spec ownership when the interaction surface differs.
 - Do not centralize desktop context-menu interactions and mobile action-sheet interactions behind a single conditional-heavy helper.
+- Platform-agnostic core flows may live in a shared spec that runs under both desktop and mobile projects, as long as the exercised user path and assertions remain the same across projects.
 - Shared helpers may contain only platform-agnostic seams:
   - login/auth setup
   - deterministic resource naming
@@ -172,8 +173,9 @@ This is the target ownership map for future Playwright growth.
 | Spec file | Intended ownership |
 |-----------|--------------------|
 | `e2e/auth.spec.ts` | public auth, protected-route redirects, and login outcomes shared by desktop and mobile projects |
-| `e2e/desktop-core-flow.spec.ts` | desktop-only ownership for core explorer CRUD and navigation |
-| `e2e/mobile-core-flow.spec.ts` | mobile-only ownership for core explorer CRUD and navigation |
+| `e2e/core-flow.shared.spec.ts` | shared ownership for platform-agnostic core explorer CRUD and navigation that run under both desktop and mobile projects |
+| `e2e/desktop-core-flow.spec.ts` | desktop-only ownership for core explorer bulk interactions that remain desktop-specific |
+| `e2e/mobile-core-flow.spec.ts` | mobile-only ownership for core explorer bulk interactions that remain mobile-specific |
 | `e2e/share-public.spec.ts` | public share success/error, add-to-my-permissions, leave-share |
 | `e2e/share-internal.spec.ts` | internal permission-request lifecycle, approved-user `__shared__` access, and visible read-only vs write-capable outcomes |
 | `e2e/mypage-user.spec.ts` | account, sharing inbox/outbox/share-links, preferences |
@@ -181,7 +183,7 @@ This is the target ownership map for future Playwright growth.
 | `e2e/explorer-advanced.desktop.spec.ts` | desktop-only advanced explorer interactions |
 | `e2e/explorer-advanced.mobile.spec.ts` | mobile-only advanced explorer interactions |
 
-The desktop/mobile core flow area now lives in `e2e/desktop-core-flow.spec.ts` and `e2e/mobile-core-flow.spec.ts`, replacing the earlier `e2e/desktop-flow.spec.ts` and `e2e/mobile-flow.spec.ts` seed filenames.
+The shared core-flow coverage now lives in `e2e/core-flow.shared.spec.ts`, with platform-specific bulk interactions remaining in `e2e/desktop-core-flow.spec.ts` and `e2e/mobile-core-flow.spec.ts`. These files replace the earlier `e2e/desktop-flow.spec.ts` and `e2e/mobile-flow.spec.ts` seed filenames.
 
 ## Flow Inventory
 
@@ -207,7 +209,7 @@ Current expansion note:
 
 - The current E2E expansion wave targets `e2e/share-public.spec.ts` after completing the `desktop-flow`/`mobile-flow` rename to `desktop-core-flow`/`mobile-core-flow`.
 - `e2e/auth.spec.ts` now owns the committed browser coverage for `E2E-AUTH-001` to `E2E-AUTH-006`.
-- The rows for `E2E-EXP-002`, `E2E-EXP-003`, and `E2E-EXP-008` are now covered in the desktop/mobile core flow specs.
+- The shared platform-agnostic core explorer rows are now covered in `e2e/core-flow.shared.spec.ts`, while platform-specific bulk interaction rows remain in the desktop/mobile core flow specs.
 - The rows for `E2E-SHARE-001` through `E2E-SHARE-008` are now `covered` in `e2e/share-public.spec.ts`; `E2E-SHARE-009` stays `planned` and `E2E-SHARE-010` stays `deferred`.
 - `E2E-OVERLAY-001`, `E2E-OVERLAY-002`, and `E2E-OVERLAY-006` are now covered in `e2e/share-internal.spec.ts`.
 - `E2E-OVERLAY-008` is now covered in `e2e/explorer-advanced.desktop.spec.ts`.

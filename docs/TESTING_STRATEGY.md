@@ -86,8 +86,8 @@ function createExampleMock(overrides = {}) {
 
 ## E2E flow policy
 
-- Keep flow specs small and platform-owned. Prefer separate desktop and mobile flow files over a single spec with project-name conditionals.
-- Shared E2E helpers may contain only platform-agnostic preparation and selectors:
+- Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
+- Shared E2E helpers and shared flow specs may contain only platform-agnostic preparation, selectors, and assertions:
   - authentication/login setup
   - deterministic test naming
   - fixture loading

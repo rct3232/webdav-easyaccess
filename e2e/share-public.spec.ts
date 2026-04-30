@@ -58,7 +58,7 @@ test.describe('public share link', () => {
   });
 
   test('E2E-SHARE-005: Logged-in user can add shared content to own permissions', async ({ page }) => {
-    await gotoAsLoggedInShare(page, fixtures.addDir.token, 'user1');
+    await gotoAsLoggedInShare(page, fixtures.addDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
@@ -69,7 +69,7 @@ test.describe('public share link', () => {
   });
 
   test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular `/files` path', async ({ page }) => {
-    await gotoAsLoggedInShare(page, fixtures.transitionDir.token, 'user1');
+    await gotoAsLoggedInShare(page, fixtures.transitionDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
@@ -80,7 +80,7 @@ test.describe('public share link', () => {
   });
 
   test('E2E-SHARE-007: Leaving share scope requires confirmation', async ({ page }, testInfo) => {
-    await gotoAsLoggedInShare(page, fixtures.leaveDir.token, 'user1');
+    await gotoAsLoggedInShare(page, fixtures.leaveDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-cancel').click(); // close add-to-my-permissions modal
@@ -93,12 +93,12 @@ test.describe('public share link', () => {
     }
 
     // In share mode for an authenticated non-admin user, the sidebar home item is their username.
-    await page.getByRole('button', { name: 'user1', exact: true }).click();
+    await page.getByRole('button', { name: fixtures.approvedUsername, exact: true }).click();
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible(); // leave-share confirm
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(/\/files\/user1(?:\/.*)?$/);
+    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.approvedUsername}(?:/.*)?$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     // After leaving share scope, the user is taken back to their own explorer home;
     // the shared directory path should no longer be part of the visible listing.

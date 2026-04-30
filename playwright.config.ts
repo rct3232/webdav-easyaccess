@@ -3,12 +3,12 @@ import { defineConfig } from '@playwright/test';
 const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
 
 const desktopSpecMatch = laterWavesEnabled
-  ? /(?:auth|share-public|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
-  : /(?:auth|share-public|desktop-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+  ? /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
+  : /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal)\.spec\.ts$/;
 
 const mobileSpecMatch = laterWavesEnabled
-  ? /(?:auth|share-public|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile)\.spec\.ts$/
-  : /(?:auth|share-public|mobile-core-flow|mypage-user|share-internal)\.spec\.ts$/;
+  ? /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile)\.spec\.ts$/
+  : /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -46,8 +46,9 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run e2e:server',
-      url: 'http://localhost:5002',
+      url: 'http://localhost:5002/api/health',
       reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
       stdout: 'pipe',
       stderr: 'pipe',
     },
@@ -55,6 +56,7 @@ export default defineConfig({
       command: 'npm run e2e:client',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
     },

@@ -30,7 +30,34 @@ function runCompose(args: string[]) {
 }
 
 function cleanDir(relativePath: string) {
-  fs.rmSync(path.join(rootDir, relativePath), { recursive: true, force: true });
+  const targetPath = path.join(rootDir, relativePath);
+  try {
+    fs.rmSync(targetPath, { recursive: true, force: true });
+  } catch (err: unknown) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code !== 'EACCES') {
+      throw err;
+    }
+
+    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
+    execFileSync(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${rootDir}:/workspace`,
+        'alpine',
+        'sh',
+        '-c',
+        `rm -rf /workspace/${relativePath}`,
+      ],
+      {
+        cwd: rootDir,
+        stdio: 'inherit',
+      }
+    );
+  }
 }
 
 export default async function globalTeardown() {

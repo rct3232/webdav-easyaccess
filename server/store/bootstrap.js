@@ -47,13 +47,7 @@ async function ensureDefaultAdmin() {
 
   // Keep console output consistent with previous behavior
   // eslint-disable-next-line no-console
-  console.log('Default admin account created:');
-  // eslint-disable-next-line no-console
-  console.log('  Username: admin');
-  // eslint-disable-next-line no-console
-  console.log('  Password: ' + defaultPassword);
-  // eslint-disable-next-line no-console
-  console.log('  ⚠️  Please change the default password after first login!');
+  console.log('Default admin account created. Please change the default password after first login.');
 
   return admin;
 }

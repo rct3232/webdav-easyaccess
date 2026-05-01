@@ -1,7 +1,13 @@
 # Codebase Improvement Plan
 
-> **Generated**: 2026-05-01 | **Status**: Draft — Not yet started
+> **Generated**: 2026-05-01 | **Updated**: 2026-05-02
+> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ⏳ Partial (14✅), P3 ⏳ Partial (16✅)
 > **Purpose**: Preserve audit context before implementation begins.
+>
+> **Commits**:
+> - `1562613` — P0: security, memory leak, debug logging fixes
+> - `c133db0` — P1: Korean→English translation, asyncHandler standardization, HTTP_STATUS constants
+> - `ace302b` — P2-14 + P3-16: lint/format config, gitignore cleanup
 
 ---
 
@@ -11,7 +17,9 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P0 — Critical (Immediate Action Required)
+## P0 — Critical ✅ COMPLETE
+
+**Commit: `1562613`**
 
 ### 1. Debug Endpoint Security Vulnerability
 - **File**: `server/index.js:87-94`
@@ -39,7 +47,9 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P1 — High (Prompt Improvement Recommended)
+## P1 — High ✅ COMPLETE
+
+**Commit: `c133db0`**
 
 ### 5. Korean Comments → English Translation
 - **Scope**: `server/routes/files.js` (lines 45, 159, 745, 753, 1068, 1129), `admin.js` (line 400), `auth.js` (line 142), and others.
@@ -80,7 +90,7 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P2 — Medium (Planned Improvement)
+## P2 — Medium ⏳ Partial (14✅, 10-13,15 pending)
 
 ### 10. Test Coverage Gaps
 
@@ -124,7 +134,8 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - **Issue**: Known Node.js >= 18 compatibility issues; community has moved to Vite-based alternatives.
 - **Fix Direction**: Plan migration to Vite as a separate project/epic.
 
-### 14. Root-Level Lint/Format Configuration Missing
+### 14. Root-Level Lint/Format Configuration Missing ✅ COMPLETE
+- **Commit: `ace302b`**
 - Only client has ESLint config (embedded in `package.json`). Server and shared have no linting.
 - No Prettier configuration anywhere.
 - **Fix**: Add root-level `eslint.config.js` + `.prettierrc` applying to all workspaces.
@@ -136,9 +147,10 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P3 — Low (Gradual Improvement)
+## P3 — Low ⏳ Partial (16✅, 17-20 pending)
 
-### 16. `server/undefined/` Directory Cleanup
+### 16. `server/undefined/` Directory Cleanup ✅ COMPLETE
+- **Commit: `ace302b`**
 - `.wea` metadata files committed to repo; not in `.gitignore`.
 - **Fix**: Add `server/undefined/` to `.gitignore`; investigate root cause of undefined storage path.
 

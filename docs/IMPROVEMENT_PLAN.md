@@ -1,13 +1,17 @@
 # Codebase Improvement Plan
 
 > **Generated**: 2026-05-01 | **Updated**: 2026-05-02
-> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ⏳ Partial (14✅), P3 ⏳ Partial (16✅)
+> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ⏳ Partial (14✅ + 12-partial), P3 ⏳ Partial (16✅, 17✅, 19✅)
 > **Purpose**: Preserve audit context before implementation begins.
 >
 > **Commits**:
 > - `1562613` — P0: security, memory leak, debug logging fixes
 > - `c133db0` — P1: Korean→English translation, asyncHandler standardization, HTTP_STATUS constants
 > - `ace302b` — P2-14 + P3-16: lint/format config, gitignore cleanup
+> - `b175854` — P3-17 + P3-19: JWT dev warning, inline require cleanup
+> - `ded0ce8` — P2-15: structured logging context in bulk operation catch blocks
+> - `250cc3a` — P2-12-partial: MutationObserver replaces setInterval polling, Korean→English translation
+> - `fb83a55` — P3-18: JSDoc for runBulkJobWorker and authenticateTokenOrShare
 
 ---
 
@@ -90,7 +94,7 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P2 — Medium ⏳ Partial (14✅, 10-13,15 pending)
+## P2 — Medium ⏳ Partial (14✅, 15✅, 12-partial✅, 10-13,15-deferred)
 
 ### 10. Test Coverage Gaps
 
@@ -120,14 +124,15 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - **Heavy mocking**: 73/147 client test files use `jest.mock()`, averaging 4 mocks per file.
 - **Fix Direction**: Replace with behavior-focused assertions; add shared mock factories (`createMockUser()`, `createMockFile()`).
 
-### 12. Performance Issues
-| File:Line | Issue |
-|-----------|-------|
-| `useBulkOperations.js:210` | useCallback dependency array has 20+ items → unnecessary re-creation |
-| `FileManager.js:534-911` | 15+ useMemo calls with full dependency arrays → cascading re-computation |
-| `useThumbnailLazyLoad.js:143` | `setInterval(observeElements, 500)` queries DOM every 500ms |
+### 12. Performance Issues ⏳ Partial (MutationObserver ✅, useCallback/useMemo deferred)
+| File:Line | Issue | Status |
+|-----------|-------|--------|
+| `useThumbnailLazyLoad.js:143` | `setInterval(observeElements, 500)` queries DOM every 500ms | ✅ Fixed (MutationObserver) |
+| `useBulkOperations.js:210` | useCallback dependency array has 20+ items → unnecessary re-creation | ⏳ Deferred — high-risk |
+| `FileManager.js:534-911` | 15+ useMemo calls with full dependency arrays → cascading re-computation | ⏳ Deferred — high-risk |
 
-- **Fix Direction**: Use `useRef` for stable references; reduce useMemo nesting; replace setInterval polling with MutationObserver.
+- **Fix Direction**: Use `useRef` for stable references; reduce useMemo nesting. (MutationObserver already applied.)
+- **Defer Reason**: useCallback/useMemo changes are high-risk — require careful analysis and testing in dedicated session.
 
 ### 13. CRA v5 Migration Planning
 - **File**: `client/package.json` — `react-scripts 5.0.1`
@@ -140,7 +145,8 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - No Prettier configuration anywhere.
 - **Fix**: Add root-level `eslint.config.js` + `.prettierrc` applying to all workspaces.
 
-### 15. Silent Error Swallowing in Permission Operations
+### 15. Silent Error Swallowing in Permission Operations ✅ COMPLETE
+- **Commit: `ded0ce8`**
 - **File**: `server/routes/files.js:350,371,476,482,493,603,614`
 - **Issue**: Multiple catch blocks log to console but continue execution — makes debugging production issues very difficult.
 - **Fix**: At minimum, log with structured context (jobId, userId, path).
@@ -154,15 +160,18 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - `.wea` metadata files committed to repo; not in `.gitignore`.
 - **Fix**: Add `server/undefined/` to `.gitignore`; investigate root cause of undefined storage path.
 
-### 17. Default JWT Secret Warning
+### 17. Default JWT Secret Warning ✅ COMPLETE
+- **Commit: `b175854`**
 - **File**: `server/utils/auth.js:7` — `'your-secret-key-change-in-production'`
 - Production guard exists, but adding a startup warning in development mode would improve DX.
 
-### 18. JSDoc Documentation Gaps
+### 18. JSDoc Documentation Gaps ✅ COMPLETE
+- **Commit: `fb83a55`**
 - Complex functions (`runBulkJobWorker`, `authenticateTokenOrShare`) lack parameter types, return types, and documented contracts.
 - **Fix**: Add JSDoc annotations to complex functions.
 
-### 19. Inline require() Calls in Route Handlers
+### 19. Inline require() Calls in Route Handlers ✅ COMPLETE
+- **Commit: `b175854`**
 - **File**: `server/routes/files.js:970,1240` — `require()` calls deep inside route handlers instead of top-level imports.
 - **Fix**: Move all requires to top of file per CODING_STYLE.md.
 

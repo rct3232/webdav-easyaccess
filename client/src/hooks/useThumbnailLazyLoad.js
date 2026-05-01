@@ -3,10 +3,10 @@ import { requestThumbnailsBatch } from '../services/fileService';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 
 const DEBOUNCE_MS = 200;
-const ROOT_MARGIN = '100px'; // 뷰포트 밖 100px까지 미리 로드
+const ROOT_MARGIN = '100px'; // preload 100px beyond viewport
 
 /**
- * 이미지/비디오 파일인지 확인
+ * Check if a file is an image or video type
  */
 const isImageOrVideoFile = (file) => {
   if (file.type === 'directory') return false;
@@ -22,12 +22,12 @@ const isImageOrVideoFile = (file) => {
 };
 
 /**
- * Intersection Observer를 사용한 썸네일 레이지 로딩 훅
- * 
- * @param {Array} files - 파일 목록
- * @param {Function} onThumbnailsLoaded - 썸네일 로드 완료 콜백
- * @param {Object} options - { shareToken } 공유 링크 뷰일 때 전달
- * @returns {Object} { containerRef } - 컨테이너 참조 (필요시 사용)
+ * Thumbnail lazy-loading hook using IntersectionObserver
+ *
+ * @param {Array} files - List of files
+ * @param {Function} onThumbnailsLoaded - Callback fired when thumbnails are loaded
+ * @param {Object} options - Pass { shareToken } for shared link view
+ * @returns {Object} { containerRef } - Container reference (use if needed)
  */
 export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) => {
   const observerRef = useRef(null);
@@ -38,20 +38,20 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
   const containerRef = useRef(null);
 
   /**
-   * 썸네일 배치 요청 (디바운싱)
+   * Batch thumbnail request (with debouncing)
    */
   const requestThumbnails = useCallback((paths) => {
     if (paths.length === 0) return;
 
-    // 디바운싱: 기존 타이머 취소
+    // Debounce: cancel existing timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // 대기 중인 경로에 추가
+    // Add paths to pending set
     paths.forEach(path => pendingPathsRef.current.add(path));
 
-    // 디바운싱된 요청
+    // Debounced request
     debounceTimerRef.current = setTimeout(async () => {
       const pathsToRequest = Array.from(pendingPathsRef.current);
       pendingPathsRef.current.clear();
@@ -60,14 +60,14 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
         return;
       }
 
-      // 요청 중인 경로들 추가
+      // Add requested paths to tracker
       pathsToRequest.forEach(path => requestedPathsRef.current.add(path));
 
       pendingRequestRef.current = (async () => {
         try {
           const response = await requestThumbnailsBatch(pathsToRequest, options);
           if (response.thumbnails && onThumbnailsLoaded) {
-            // 썸네일 URL을 Map으로 변환
+            // Convert thumbnail URLs to a Map
             const thumbnailMap = new Map();
             response.thumbnails.forEach(({ path, thumbnailUrl }) => {
               if (thumbnailUrl) {
@@ -78,7 +78,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
           }
         } catch (error) {
           console.error('Failed to load thumbnails:', error);
-          // 에러 발생 시 요청한 경로들을 다시 제거하여 재시도 가능하도록
+          // On error, remove paths from tracker so they can be retried
           pathsToRequest.forEach(path => requestedPathsRef.current.delete(path));
         } finally {
           pendingRequestRef.current = null;
@@ -88,7 +88,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
   }, [onThumbnailsLoaded, options]);
 
   /**
-   * Intersection Observer 콜백
+   * IntersectionObserver callback
    */
   const handleIntersection = useCallback((entries) => {
     const visiblePaths = [];
@@ -98,7 +98,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
         const filePath = entry.target.getAttribute('data-file-path');
         if (filePath) {
           const file = files.find(f => f.path === filePath);
-          // 이미지/비디오 파일이고, 썸네일이 없으며, 아직 요청하지 않은 경우
+          // If image/video, no thumbnail yet, and not already requested
           if (file && isImageOrVideoFile(file) && !file.thumbnailUrl && !requestedPathsRef.current.has(filePath)) {
             visiblePaths.push(filePath);
           }
@@ -112,23 +112,23 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
   }, [files, requestThumbnails]);
 
   /**
-   * Intersection Observer 설정
+   * Set up IntersectionObserver
    */
   useEffect(() => {
-    // Intersection Observer 지원 확인
+    // Check IntersectionObserver support
     if (!window.IntersectionObserver) {
       console.warn('Intersection Observer not supported');
       return;
     }
 
-    // Observer 생성
+    // Create observer
     observerRef.current = new IntersectionObserver(handleIntersection, {
-      root: null, // 뷰포트를 루트로 사용
+      root: null, // use viewport as root
       rootMargin: ROOT_MARGIN,
-      threshold: 0.01, // 1%만 보여도 감지
+      threshold: 0.01, // detect when at least 1% is visible
     });
 
-    // 모든 파일 요소 관찰 시작
+    // Start observing all file elements
     const observeElements = () => {
       const fileElements = document.querySelectorAll('[data-file-path]');
       fileElements.forEach((element) => {
@@ -136,16 +136,22 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
       });
     };
 
-    // 초기 관찰 시작 (DOM이 렌더링될 시간을 줌)
+    // Initial observation (allow DOM time to render)
     const initialTimeout = setTimeout(observeElements, 100);
 
-    // 파일 목록이 변경되면 다시 관찰
-    const refreshInterval = setInterval(observeElements, 500);
+    // Watch for new DOM nodes instead of polling with setInterval
+    const mutationObserver = new MutationObserver(() => {
+      observeElements();
+    });
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
 
     // Cleanup
     return () => {
       clearTimeout(initialTimeout);
-      clearInterval(refreshInterval);
+      mutationObserver.disconnect();
       if (observerRef.current) {
         observerRef.current.disconnect();
       }
@@ -156,7 +162,7 @@ export const useThumbnailLazyLoad = (files, onThumbnailsLoaded, options = {}) =>
   }, [handleIntersection]);
 
   /**
-   * 파일 목록이 변경되면 요청 상태 초기화
+   * Reset request state when file list changes
    */
   useEffect(() => {
     requestedPathsRef.current.clear();

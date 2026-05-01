@@ -339,7 +339,7 @@ async function runBulkJobWorker(jobId) {
                   }
                 }
               } catch (dirError) {
-                // proceed
+                console.debug ? console.debug(`[BulkJob ${jobId}] Skipping directory check for admin: user=${userId}, path=${filePath}`, dirError) : null;
               }
             }
             if (isDir) {
@@ -349,7 +349,7 @@ async function runBulkJobWorker(jobId) {
                   await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
                   allDeletedDirPrefixes.add(normalizedTargetPath);
                 } catch (permError) {
-                  console.error('Failed to revoke permissions after direct directory deletion:', permError);
+                  console.error(`[BulkJob ${jobId}] Failed to revoke permissions after direct directory deletion: user=${userId}, path=${normalizedTargetPath}`, permError);
                 }
                 pushResult({ path: filePath, status: 'succeeded' });
                 return;
@@ -369,7 +369,7 @@ async function runBulkJobWorker(jobId) {
                   prefixes.forEach(p => allDeletedDirPrefixes.add(p));
                 }
               } catch (permError) {
-                console.error('Failed to revoke permissions after directory deletion:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to revoke permissions after selective directory deletion: user=${userId}, path=${normalizedTargetPath}`, permError);
               }
               pushResult({ path: filePath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -473,14 +473,14 @@ async function runBulkJobWorker(jobId) {
                   [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
                   { excludePrefixes, duplicateExactMatches: !rootMovedFully }
                 );
-              } catch (permError) {
-                console.error('Failed to rewrite permissions after move:', permError);
+               } catch (permError) {
+                console.error(`[BulkJob ${jobId}] Failed to rewrite permissions after move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               if (result.movedDirMappings && result.movedDirMappings.length > 0) {
                 try {
                   await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
                 } catch (permError) {
-                  console.error('Failed to rewrite permissions after move:', permError);
+                  console.error(`[BulkJob ${jobId}] Failed to rewrite dir mappings after move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
                 }
               }
               try {
@@ -490,8 +490,8 @@ async function runBulkJobWorker(jobId) {
                     await Permission.grant(homeOwnerId, dir, PERMISSIONS.ADMIN);
                   }
                 }
-              } catch (permError) {
-                console.error('Failed to grant home owner admin permission after directory move:', permError);
+               } catch (permError) {
+                console.error(`[BulkJob ${jobId}] Failed to grant home owner admin after directory move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -602,7 +602,7 @@ async function runBulkJobWorker(jobId) {
                   allCreatedDirs.add(dir);
                 }
               } catch (permError) {
-                console.error('Failed to grant executor permissions after copy:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to grant executor permissions after copy: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               try {
                 for (const dir of result.createdDirs || []) {
@@ -612,7 +612,7 @@ async function runBulkJobWorker(jobId) {
                   }
                 }
               } catch (permError) {
-                console.error('Failed to grant home owner admin permissions after copy:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to grant home owner admin after copy: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {

@@ -13,12 +13,13 @@ const {
   deleteFile,
   moveFile,
   copyFile,
+  createDirectory,
   isImageFile,
   isVideoFile,
   pathExists,
   getFileMetadata,
 } = require('../utils/webdav');
-const { getThumbnailUrl } = require('../utils/thumbnail');
+const { getThumbnailUrl, thumbnailCache, getThumbnailHash, ensureThumbnailsBatch } = require('../utils/thumbnail');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
@@ -747,7 +748,6 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
     const filteredItems = (user && user.is_admin)
       ? items
       : items.filter(item => item.basename !== '.wea');
-    const { getThumbnailUrl } = require('../utils/thumbnail');
     
     // Current directory write permission (sync from doc). Share: always false.
     const currentDirWritePermission = isShare
@@ -967,7 +967,6 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
         }
         
         // Create intermediate directories if they don't exist
-        const { createDirectory } = require('../utils/webdav');
         const dirParts = relativeDir.split('/').filter(Boolean);
         let currentPath = folderPath;
         

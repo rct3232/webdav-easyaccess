@@ -32,3 +32,6 @@ e2e-data/
 # FFmpeg binary
 ffmpeg.exe
 ffprobe.exe
+
+# Stale storage backend artifacts
+server/undefined/

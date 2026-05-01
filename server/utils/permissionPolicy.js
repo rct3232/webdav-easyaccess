@@ -183,17 +183,17 @@ async function getUserOrNull(userId) {
 async function canGrantPermission(user, folderPath, userId) {
   if (!user) return false;
   
-  // 관리자는 모든 폴더에 대해 권한 부여 가능
+  // Admins can grant permissions on any folder
   if (isAdminUser(user)) {
     return true;
   }
   
-  // 폴더 소유자는 자신의 폴더에 대한 권한 부여 가능
+  // Folder owners can grant permissions on their own folders
   if (isOwnerPath(user, folderPath)) {
     return true;
   }
   
-  // 해당 폴더에 admin 권한이 있으면 권한 부여 가능
+  // Users with admin permission on the folder can grant permissions
   return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 
@@ -216,22 +216,22 @@ async function canGrantPermission(user, folderPath, userId) {
 async function canRevokePermission(user, folderPath, userId, targetUserId) {
   if (!user) return false;
   
-  // 자기 자신의 권한을 취소하는 경우는 항상 허용
+  // Revoking one's own permission is always allowed
   if (userId === targetUserId) {
     return true;
   }
   
-  // 관리자는 모든 폴더에 대해 권한 취소 가능
+  // Admins can revoke permissions on any folder
   if (isAdminUser(user)) {
     return true;
   }
   
-  // 폴더 소유자는 자신의 폴더에 대한 권한 취소 가능
+  // Folder owners can revoke permissions on their own folders
   if (isOwnerPath(user, folderPath)) {
     return true;
   }
   
-  // 해당 폴더에 admin 권한이 있으면 권한 취소 가능
+  // Users with admin permission on the folder can revoke permissions
   return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 
@@ -252,17 +252,17 @@ async function canRevokePermission(user, folderPath, userId, targetUserId) {
 async function canViewPermissions(user, folderPath, userId) {
   if (!user) return false;
   
-  // 관리자는 모든 폴더의 권한 정보를 볼 수 있음
+  // Admins can view permission info on any folder
   if (isAdminUser(user)) {
     return true;
   }
   
-  // 폴더 소유자는 자신의 폴더의 권한 정보를 볼 수 있음
+  // Folder owners can view permission info on their own folders
   if (isOwnerPath(user, folderPath)) {
     return true;
   }
   
-  // 해당 폴더에 admin 권한이 있으면 권한 정보를 볼 수 있음
+  // Users with admin permission on the folder can view permission info
   return await hasDirectFolderPermission(userId, folderPath, PERMISSIONS.ADMIN);
 }
 

@@ -510,12 +510,12 @@ async function deleteUserPermissionsFile(userId) {
       const { deletePath } = require('./storage');
       await deletePath(p);
     }
-    // 캐시에서도 제거
+    // Also remove from cache
     cache.delete(uid);
     invalidateExistenceIndexForAclMutation('/');
   } catch (error) {
     console.error(`Failed to delete permission file for user ${uid}:`, error);
-    // best-effort: 에러가 나도 계속 진행
+    // best-effort: continue even if error occurs
   }
 }
 

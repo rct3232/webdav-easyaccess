@@ -110,7 +110,7 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
   if (!requestingUser) {
     throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
   }
-  // 관리자는 모든 사용자의 권한 조회 가능, 일반 사용자는 본인만
+  // Admins can view any user's permissions; regular users can only view their own
   if (!requestingUser.is_admin && parseInt(userId) !== req.user.id) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
@@ -162,21 +162,21 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
 
   let permissions;
   if (includeSubfolders) {
-    // 하위 폴더 포함하여 권한 정보 가져오기
-    // hasPermissionsInPath는 내부적으로 경로 끝에 /를 추가하므로 그대로 전달
+    // Fetch permission info including subfolders
+    // hasPermissionsInPath internally appends / to the path, so pass as-is
     permissions = await Permission.hasPermissionsInPath(folderPath);
     
-    // 반환된 권한의 경로도 정규화 (끝에 / 제거)
+    // Normalize returned permission paths (remove trailing /)
     permissions = permissions.map(perm => ({
       ...perm,
       folder_path: normalizePath(perm.folder_path)
     }));
   } else {
-    // 해당 폴더만 (파일 공유 시 filePath로 해당 파일 독립권한 포함)
+    // This folder only (including file-specific permissions when filePath is provided)
     const filePath = req.query.filePath || undefined;
     permissions = await Permission.getFolderPermissions(folderPath, filePath);
 
-    // 반환된 권한의 경로도 정규화 (끝에 / 제거)
+    // Normalize returned permission paths (remove trailing /)
     permissions = permissions.map(perm => ({
       ...perm,
       folder_path: normalizePath(perm.folder_path)

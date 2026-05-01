@@ -6,14 +6,14 @@ const { createError, mapDatabaseError } = require('../utils/errorHandler');
 const SHARE_LINKS_DIR = '/.wea/share-links/';
 
 /**
- * ShareLink 저장소
- * WebDAV의 /.wea/share-links/ 경로에 JSON 파일로 저장
+ * ShareLink storage
+ * Stores share links as JSON files under /.wea/share-links/ on WebDAV
  */
 
 /**
- * 공유 링크 파일 경로 생성
+ * Create the file path for a share link entry
  * @param {string} token - Access token
- * @returns {string} WebDAV 경로
+ * @returns {string} WebDAV path
  */
 function getShareLinkPath(token) {
   return normalizeWebdavPath(`${SHARE_LINKS_DIR}${token}.json`);
@@ -43,9 +43,9 @@ function mapShareLinkRow(row) {
 }
 
 /**
- * 공유 링크 생성
- * @param {Object} linkData - 링크 데이터
- * @returns {Promise<Object>} 생성된 링크 데이터
+ * Create a new share link
+ * @param {Object} linkData - Link data
+ * @returns {Promise<Object>} The created link data
  */
 async function createShareLink(linkData) {
   const { token, filePath, createdBy, expiresInDays } = linkData;
@@ -85,7 +85,7 @@ async function createShareLink(linkData) {
     }
   }
 
-  // 디렉토리 존재 확인 및 생성
+  // Ensure directory exists and create if needed
   await storage.ensureDirSafe(SHARE_LINKS_DIR);
 
   const createdAt = new Date().toISOString();
@@ -107,26 +107,26 @@ async function createShareLink(linkData) {
   
   const linkPath = getShareLinkPath(token);
   
-  // 파일이 이미 존재하는지 확인
+  // Check if the file already exists
   const exists = await storage.exists(linkPath);
   if (exists) {
-    // 이미 존재하는 경우 기존 링크 반환 (토큰 충돌은 거의 불가능하지만 방어적 코드)
+    // If it exists, return the existing link (token collision is nearly impossible but defensive)
     const existingLink = await getShareLink(token);
     if (existingLink) {
       return existingLink;
     }
   }
   
-  // 파일 쓰기 (overwrite 옵션 사용)
+  // Write file (using overwrite option)
   await storage.writeFile(linkPath, JSON.stringify(link, null, 2), { overwrite: true });
   
   return link;
 }
 
 /**
- * 공유 링크 조회
+ * Retrieve a share link
  * @param {string} token - Access token
- * @returns {Promise<Object|null>} 링크 데이터 또는 null
+ * @returns {Promise<Object|null>} Link data or null
  */
 async function getShareLink(token) {
   if (isPostgresqlBackend()) {
@@ -159,9 +159,9 @@ async function getShareLink(token) {
 }
 
 /**
- * 사용자가 생성한 모든 공유 링크 조회
- * @param {number} userId - 사용자 ID
- * @returns {Promise<Array>} 링크 목록
+ * Retrieve all share links created by a user
+ * @param {number} userId - User ID
+ * @returns {Promise<Array>} List of links
  */
 async function getUserShareLinks(userId) {
   if (isPostgresqlBackend()) {
@@ -181,10 +181,10 @@ async function getUserShareLinks(userId) {
   }
 
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Ensure directory exists and create if needed
     await storage.ensureDirSafe(SHARE_LINKS_DIR);
     
-    // /.wea/share-links/ 디렉토리의 모든 파일 조회
+    // List all files in the /.wea/share-links/ directory
     const linksDir = normalizeWebdavPath(SHARE_LINKS_DIR);
     const files = await storage.listDir(linksDir);
     
@@ -196,33 +196,33 @@ async function getUserShareLinks(userId) {
           const content = await storage.readFile(linkPath);
           const link = JSON.parse(content);
           
-          // 해당 사용자가 생성한 링크만 필터링
+          // Filter to only links created by this user
           if (link.createdBy === userId) {
             links.push(link);
           }
         } catch (error) {
-          // 파일 읽기 실패 시 무시하고 계속
+          // Ignore file read failures and continue
           console.error(`Failed to read share link file ${file.basename}:`, error);
         }
       }
     }
     
-    // 생성일 기준 내림차순 정렬
+    // Sort by creation date descending
     links.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
     return links;
   } catch (error) {
-    // 디렉토리가 없거나 다른 에러 발생 시 빈 배열 반환
+    // Return empty array if directory missing or other error occurs
     console.error('Failed to get user share links:', error);
     return [];
   }
 }
 
 /**
- * 공유 링크 수정
+ * Update a share link
  * @param {string} token - Access token
- * @param {Object} updates - 수정할 데이터
- * @returns {Promise<Object>} 수정된 링크 데이터
+ * @param {Object} updates - Data to update
+ * @returns {Promise<Object>} Updated link data
  */
 async function updateShareLink(token, updates) {
   if (isPostgresqlBackend()) {
@@ -283,7 +283,7 @@ async function updateShareLink(token, updates) {
 }
 
 /**
- * 공유 링크 삭제
+ * Delete a share link
  * @param {string} token - Access token
  * @returns {Promise<void>}
  */
@@ -308,9 +308,9 @@ async function deleteShareLink(token) {
 }
 
 /**
- * 공유 링크 다운로드 횟수 증가
+ * Increment download count for a share link
  * @param {string} token - Access token
- * @returns {Promise<Object>} 업데이트된 링크 데이터
+ * @returns {Promise<Object>} Updated link data
  */
 async function incrementDownloadCount(token) {
   if (isPostgresqlBackend()) {
@@ -344,13 +344,13 @@ async function incrementDownloadCount(token) {
 }
 
 /**
- * 만료된 링크 확인
- * @param {Object} link - 링크 데이터
- * @returns {boolean} 만료 여부
+ * Check if a link is expired
+ * @param {Object} link - Link data
+ * @returns {boolean} Whether the link is expired
  */
 function isLinkExpired(link) {
   if (!link.expiresAt) {
-    return false; // 무제한
+    return false; // unlimited
   }
   
   const now = new Date();

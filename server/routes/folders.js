@@ -25,7 +25,7 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
   // Check access for non-admin users
   const user = req.user.full;
 
-  // 관리자는 모든 경로에 폴더 생성 가능
+  // Admins can create folders at any path
   if (!user.is_admin) {
     if (folderPath === '/' || folderPath === '') {
       throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
@@ -51,15 +51,15 @@ router.post('/create', authenticateToken, requireUser, normalizePathParam, check
 
   await createDirectory(folderPath);
 
-  // 사용자가 생성한 폴더에 대해 자동으로 쓰기 권한 부여
+  // Automatically grant write permission on folders created by the user
   try {
     await Permission.grant(req.user.id, folderPath, PERMISSIONS.WRITE);
   } catch (permError) {
     console.error('Failed to grant permission after folder creation:', permError);
-    // 권한 부여 실패해도 폴더는 생성되었으므로 계속 진행
+    // Folder was created even if permission grant failed, so continue
   }
 
-  // 홈 디렉토리 소유자에게 해당 폴더에 대한 ADMIN 부여
+  // Grant ADMIN to the home directory owner for that folder
   try {
     const homeOwnerId = await getHomeOwnerUserIdForPath(folderPath);
     if (homeOwnerId != null) {

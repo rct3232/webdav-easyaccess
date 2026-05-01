@@ -7,9 +7,9 @@ const RECENT_FILES_DIR = '/.wea/recent-files/';
 const MAX_RECENT_FILES = 20;
 
 /**
- * 사용자별 최근 파일 경로 생성
- * @param {number} userId - 사용자 ID
- * @returns {string} WebDAV 경로
+ * Generate recent file path for a user
+ * @param {number} userId - User ID
+ * @returns {string} WebDAV path
  */
 function getUserRecentFilesPath(userId) {
   return normalizeWebdavPath(`${RECENT_FILES_DIR}${userId}.json`);
@@ -66,9 +66,9 @@ async function replaceRecentFilesPg(userId, files, client) {
 }
 
 /**
- * 사용자의 최근 파일 목록 조회
- * @param {number} userId - 사용자 ID
- * @returns {Promise<Array>} 최근 파일 목록
+ * Get user's recent files list
+ * @param {number} userId - User ID
+ * @returns {Promise<Array>} Recent files list
  */
 async function getUserRecentFiles(userId) {
   if (isPostgresqlBackend()) {
@@ -80,7 +80,7 @@ async function getUserRecentFiles(userId) {
   }
 
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     
     const filePath = getUserRecentFilesPath(userId);
@@ -94,17 +94,17 @@ async function getUserRecentFiles(userId) {
     const files = JSON.parse(content);
     return Array.isArray(files) ? files : [];
   } catch (error) {
-    // 파일이 없거나 파싱 실패 시 빈 배열 반환
+    // Return empty array if file doesn't exist or parsing fails
     console.error('Failed to get user recent files:', error);
     return [];
   }
 }
 
 /**
- * 최근 파일 추가
- * @param {number} userId - 사용자 ID
- * @param {Object} fileData - 파일 정보 { path, name, type }
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Add a recent file
+ * @param {number} userId - User ID
+ * @param {Object} fileData - File info { path, name, type }
+ * @returns {Promise<Array>} Updated recent files list
  */
 async function addRecentFile(userId, fileData) {
   if (isPostgresqlBackend()) {
@@ -147,24 +147,24 @@ async function addRecentFile(userId, fileData) {
   }
 
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     
     const files = await getUserRecentFiles(userId);
     
-    // 경로 정규화
+    // Normalize path
     const normalizedNewPath = normalizePath(fileData.path);
     
-    // 중복 제거 (정규화된 경로로 비교)
+    // Remove duplicates (compare by normalized path)
     const filtered = files.filter(f => {
       const normalizedExistingPath = normalizePath(f.path);
       return normalizedExistingPath !== normalizedNewPath;
     });
     
-    // 새 파일을 맨 앞에 추가
+    // Add new file at the front
     const newFiles = [
       {
-        path: normalizedNewPath, // 정규화된 경로로 저장
+        path: normalizedNewPath, // Store as normalized path
         name: fileData.name || fileData.basename || normalizedNewPath.split('/').pop(),
         type: fileData.type || 'file',
         lastAccessed: new Date().toISOString(),
@@ -183,10 +183,10 @@ async function addRecentFile(userId, fileData) {
 }
 
 /**
- * 최근 파일 제거
- * @param {number} userId - 사용자 ID
- * @param {string} filePath - 파일 경로
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Remove a recent file
+ * @param {number} userId - User ID
+ * @param {string} filePath - File path
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function removeRecentFile(userId, targetPath) {
   if (isPostgresqlBackend()) {
@@ -209,7 +209,7 @@ async function removeRecentFile(userId, targetPath) {
 
   try {
     const files = await getUserRecentFiles(userId);
-    // 경로 정규화하여 비교
+    // Normalize path for comparison
     const normalizedTargetPath = normalizePath(targetPath);
     const filtered = files.filter(f => {
       const normalizedExistingPath = normalizePath(f.path);
@@ -227,8 +227,8 @@ async function removeRecentFile(userId, targetPath) {
 }
 
 /**
- * 최근 파일 목록 초기화
- * @param {number} userId - 사용자 ID
+ * Clear recent files list
+ * @param {number} userId - User ID
  * @returns {Promise<void>}
  */
 async function clearRecentFiles(userId) {
@@ -247,7 +247,7 @@ async function clearRecentFiles(userId) {
     const filePath = getUserRecentFilesPath(userId);
     await storage.deletePath(filePath);
   } catch (error) {
-    // 파일이 없어도 에러로 처리하지 않음
+    // Do not treat missing file as an error
     if (error.message && !error.message.includes('not found')) {
       console.error('Failed to clear recent files:', error);
       throw error;
@@ -256,10 +256,10 @@ async function clearRecentFiles(userId) {
 }
 
 /**
- * 일괄 이동 적용 (한 번의 읽기/쓰기로 N개 이동 반영)
- * @param {number} userId - 사용자 ID
+ * Apply batch moves (reflect N moves in a single read/write)
+ * @param {number} userId - User ID
  * @param {Array<{ oldPath: string, newPath: string, file?: { type?: string, name?: string, basename?: string } }>} moves
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function applyBulkMove(userId, moves) {
   if (isPostgresqlBackend()) {
@@ -373,11 +373,11 @@ async function applyBulkMove(userId, moves) {
 }
 
 /**
- * 일괄 경로 제거 (한 번의 읽기/쓰기로 N개 삭제 반영)
- * @param {number} userId - 사용자 ID
- * @param {string[]} filePaths - 제거할 파일/폴더 경로 배열 (삭제된 항목 전체)
- * @param {string[]} folderPaths - 제거할 폴더 경로 배열 (하위 경로도 제거용, filePaths의 부분집합)
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Apply batch removals (reflect N deletions in a single read/write)
+ * @param {number} userId - User ID
+ * @param {string[]} filePaths - Array of file/folder paths to remove (fully deleted items)
+ * @param {string[]} folderPaths - Array of folder paths to remove (also removes sub-paths, subset of filePaths)
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function removePaths(userId, filePaths = [], folderPaths = []) {
   if (isPostgresqlBackend()) {

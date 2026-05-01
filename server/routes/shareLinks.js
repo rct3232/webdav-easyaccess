@@ -12,7 +12,7 @@ const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../store/metaPaths');
 
 /**
- * 공유 링크 생성
+ * Create a share link
  * POST /api/share-links
  */
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -25,18 +25,18 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
 
   const normalizedPath = normalizePath(filePath);
 
-  // 메타 경로는 공유 불가
+  // Meta paths cannot be shared
   if (isMetaPath(normalizedPath)) {
     throw forbiddenError(SERVER_ERROR_CODES.share.cannotAddShare);
   }
 
-  // 파일 존재 여부 확인
+  // Check if file exists
   const exists = await pathExists(normalizedPath);
   if (!exists) {
     throw notFoundError(SERVER_ERROR_CODES.share.fileNotFound);
   }
 
-  // 디렉터리 여부 판별 (listDirectory 성공 시 디렉터리)
+  // Determine if path is a directory (directory if listDirectory succeeds)
   let isDirectory = false;
   try {
     await listDirectory(normalizedPath);
@@ -51,7 +51,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
     }
   }
 
-  // 유효기간 검증
+  // Validate expiration period
   let expiresInDaysValue = expiresInDays;
   if (expiresInDaysValue !== null && expiresInDaysValue !== undefined) {
     const days = parseInt(expiresInDaysValue, 10);
@@ -74,7 +74,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
 }));
 
 /**
- * 사용자가 생성한 공유 링크 목록 조회
+ * Get share links created by the user
  * GET /api/share-links
  */
 router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -92,7 +92,7 @@ router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) =>
 }));
 
 /**
- * 공유 링크 정보 조회
+ * Get share link info
  * GET /api/share-links/:token
  */
 router.get('/:token', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -104,7 +104,7 @@ router.get('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
     throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
-  // 자신이 생성한 링크만 조회 가능
+  // Can only view links created by oneself
   if (link.createdBy !== user.id && !user.is_admin) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
@@ -120,7 +120,7 @@ router.get('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
 }));
 
 /**
- * 공유 링크 수정 (유효기간 연장 등)
+ * Update share link (extend expiration, etc.)
  * PUT /api/share-links/:token
  */
 router.put('/:token', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -133,7 +133,7 @@ router.put('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
     throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
-  // 자신이 생성한 링크만 수정 가능
+  // Can only update links created by oneself
   if (link.createdBy !== user.id && !user.is_admin) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
@@ -166,7 +166,7 @@ router.put('/:token', authenticateToken, requireUser, asyncHandler(async (req, r
 }));
 
 /**
- * 공유 링크 삭제
+ * Delete share link
  * DELETE /api/share-links/:token
  */
 router.delete('/:token', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -178,7 +178,7 @@ router.delete('/:token', authenticateToken, requireUser, asyncHandler(async (req
     throw notFoundError(SERVER_ERROR_CODES.share.shareLinkNotFound);
   }
 
-  // 자신이 생성한 링크만 삭제 가능
+  // Can only delete links created by oneself
   if (link.createdBy !== user.id && !user.is_admin) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }

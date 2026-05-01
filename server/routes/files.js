@@ -156,7 +156,7 @@ async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = 
     if (!exists) return conflicts;
   }
 
-  // conflict에 파일만 포함 (폴더는 conflict로 처리하지 않음)
+  // Only include files in conflicts (folders are not treated as conflicts)
   if (!isDestDir) {
     conflicts.push({
       path: destinationPath,
@@ -742,8 +742,8 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       // Re-throw other errors
       throw error;
     }
-    // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
-    // Share 모드와 일반 사용자는 .wea 필터링
+    // For admins, return .wea folder too (filtering handled by client)
+    // Share mode and regular users filter out .wea
     const filteredItems = (user && user.is_admin)
       ? items
       : items.filter(item => item.basename !== '.wea');
@@ -754,7 +754,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       ? false
       : (user.is_admin || isOwnerPath(user, folderPath) || Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE));
 
-    // 항목별 권한 체크 (동기, doc 기반). Share: hasReadPermission=true, hasWritePermission=false
+    // Per-item permission check (sync, doc-based). Share mode: hasReadPermission=true, hasWritePermission=false
     const itemsWithThumbnails = filteredItems.map((item) => {
       if (!item.basename || item.basename.includes('/') || item.basename.includes('\\')) {
         return null;
@@ -808,8 +808,8 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       };
     });
 
-  // 모든 항목 반환 (권한 정보 포함)
-  // 직접 권한이 없는 디렉토리도 표시하되, 비활성화 상태로 표시됨
+  // Return all items (with permission info)
+  // Directories without direct permissions are also shown but in a disabled state
   res.json(itemsWithThumbnails.filter(item => item !== null));
 }));
 
@@ -930,9 +930,9 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
   
   const user = req.user.full;
     
-    // 관리자는 모든 경로에 파일 업로드 가능
+    // Admins can upload files to any path
     if (!user.is_admin) {
-      // 경로 정규화 (끝의 / 제거)
+      // Normalize path (remove trailing /)
       const normalizedPath = normalizePath(folderPath);
       
       if (normalizedPath === '/' || normalizedPath === '') {
@@ -945,11 +945,11 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
         folderPath = normalizedPath;
       }
     } else {
-      // 관리자의 경우도 경로 정규화
+      // Admins also normalize the path
       folderPath = normalizePath(folderPath);
     }
     
-    // 디렉토리 경로로 변환 (끝에 / 추가)
+    // Convert to directory path (append trailing /)
     if (folderPath !== '/' && !folderPath.endsWith('/')) {
       folderPath = folderPath + '/';
     }
@@ -1053,8 +1053,8 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
     throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
 
-  // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
-  // 파일 경로 자체에 대한 추가 체크는 불필요 (부모 폴더 권한으로 충분)
+  // Final permission check already done above (permission check for folderPath)
+  // No additional check needed for the file path itself (parent folder permission is sufficient)
 
   await putFileContents(filePath, req.file.buffer);
 
@@ -1112,7 +1112,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
     } catch (permError) {
       console.error('Failed to rewrite permissions after directory rename:', permError);
     }
-    // 새 경로에 홈 소유자 ADMIN 부여 (기존 경로에 권한 엔트리가 없었던 경우에도 일관되게 적용)
+    // Grant home owner ADMIN on the new path (consistently applied even if no permission entry existed at the old path)
     try {
       const homeOwnerId = await getHomeOwnerUserIdForPath(normalizedNew);
       if (homeOwnerId != null) {
@@ -1126,7 +1126,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
 }));
 
 // Helper to handle onConflict in batch operations
-// 폴더는 conflict 적용 안 함 (항상 merge), 파일만 skip/overwrite 적용
+// Folders are not subject to conflict handling (always merge); files use skip/overwrite
 const handleSingleOpConflict = async (destPath, onConflict) => {
   const destExists = await pathExists(destPath);
   if (!destExists) return 'none';

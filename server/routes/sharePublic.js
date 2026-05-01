@@ -150,7 +150,7 @@ router.post('/:token/add-to-my-permissions', authenticateToken, requireUser, asy
 }));
 
 /**
- * 공유 링크 정보 조회 (인증 불필요)
+ * Get share link info (no auth required)
  * GET /api/share/:token/info
  */
 router.get('/:token/info', asyncHandler(async (req, res) => {
@@ -161,12 +161,12 @@ router.get('/:token/info', asyncHandler(async (req, res) => {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
-  // 만료 확인
+  // Check expiration
   if (ShareLink.isExpired(link)) {
     return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
-  // 파일 존재 여부 확인
+  // Check if file exists
   const exists = await pathExists(link.filePath);
   if (!exists) {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
@@ -200,7 +200,7 @@ router.get('/:token/info', asyncHandler(async (req, res) => {
 }));
 
 /**
- * 공개 미리보기 엔드포인트 (인증 불필요)
+ * Public preview endpoint (no auth required)
  * GET /api/share/:token/preview
  */
 router.get('/:token/preview', asyncHandler(async (req, res) => {
@@ -211,18 +211,18 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
-  // 만료 확인
+  // Check expiration
   if (ShareLink.isExpired(link)) {
     return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
-  // 파일 존재 여부 확인
+  // Check if file exists
   const exists = await pathExists(link.filePath);
   if (!exists) {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
   }
 
-  // 파일 미리보기 (inline)
+  // Preview file (inline)
   try {
     // Range-ready hook (phase 2): for now ignore Range and serve 200 full body.
     // const range = req.headers.range;
@@ -242,7 +242,7 @@ router.get('/:token/preview', asyncHandler(async (req, res) => {
 }));
 
 /**
- * 공개 다운로드 엔드포인트 (인증 불필요)
+ * Public download endpoint (no auth required)
  * GET /api/share/:token
  */
 router.get('/:token', asyncHandler(async (req, res) => {
@@ -253,23 +253,23 @@ router.get('/:token', asyncHandler(async (req, res) => {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound });
   }
 
-  // 만료 확인
+  // Check expiration
   if (ShareLink.isExpired(link)) {
     return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.share.shareLinkExpired });
   }
 
-  // 파일 존재 여부 확인
+  // Check if file exists
   const exists = await pathExists(link.filePath);
   if (!exists) {
     return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.share.fileNotFound });
   }
 
-  // 파일 다운로드
+  // Download file
   try {
     const buffer = await getFileContents(link.filePath);
     const fileName = link.filePath.split('/').pop();
 
-    // 다운로드 횟수 증가
+    // Increment download count
     await ShareLink.incrementDownloadCount(token);
 
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);

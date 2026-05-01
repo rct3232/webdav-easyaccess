@@ -15,6 +15,7 @@ const {
 } = require('../utils/auth');
 const { sendRegistrationPendingEmail } = require('../utils/email');
 const { ensureDefaultAdmin, ensureDirs } = require('../store/bootstrap');
+const { asyncHandler, createError, validationError } = require('../utils/errorHandler');
 
 // Simple in-memory login rate limiter (best-effort, per-process).
 // Configure via env:
@@ -63,29 +64,29 @@ function clearLoginFailures(key) {
   loginAttempts.delete(key);
 }
 
-router.post('/register', async (req, res) => {
+router.post('/register', asyncHandler(async (req, res) => {
   let createdUser = null;
-  
+
   try {
     const registrationEnabled = await Settings.isRegistrationEnabled();
     if (!registrationEnabled) {
-      return res.status(403).json({ errorCode: SERVER_ERROR_CODES.auth.registrationDisabled });
+      throw createError(SERVER_ERROR_CODES.auth.registrationDisabled, HTTP_STATUS.FORBIDDEN);
     }
 
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.requiredFields });
+      throw validationError(SERVER_ERROR_CODES.auth.requiredFields);
     }
 
     const existingUser = await User.findByUsername(username);
     if (existingUser) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.usernameTaken });
+      throw validationError(SERVER_ERROR_CODES.auth.usernameTaken);
     }
 
     const existingEmail = await User.findByEmail(email);
     if (existingEmail) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.emailTaken });
+      throw validationError(SERVER_ERROR_CODES.auth.emailTaken);
     }
 
     // Note: WebDAV folder existence check removed - will be handled during approval
@@ -98,9 +99,7 @@ router.post('/register', async (req, res) => {
       if (createdUser && createdUser.id) {
         await User.delete(createdUser.id);
       }
-      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        errorCode: SERVER_ERROR_CODES.auth.emailSendFail,
-      });
+      throw createError(SERVER_ERROR_CODES.auth.emailSendFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
 
     res.status(HTTP_STATUS.CREATED).json({
@@ -116,126 +115,110 @@ router.post('/register', async (req, res) => {
         // Ignore delete error
       }
     }
-    const status = error.status || HTTP_STATUS.INTERNAL_SERVER_ERROR;
-    const errorCode = error.errorCode || SERVER_ERROR_CODES.auth.registerFail;
-    res.status(status).json({ errorCode });
+    throw error;
   }
-});
+}));
 
-router.post('/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
+router.post('/login', asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.auth.loginRequiredFields });
-    }
+  if (!username || !password) {
+    throw validationError(SERVER_ERROR_CODES.auth.loginRequiredFields);
+  }
 
-    const limit = checkLoginRateLimit(req, username);
-    if (!limit.ok) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((limit.retryAfterMs || 0) / 1000));
-      res.setHeader('Retry-After', String(retryAfterSeconds));
-      return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
-        errorCode: SERVER_ERROR_CODES.auth.loginRateLimit,
-      });
-    }
+  const limit = checkLoginRateLimit(req, username);
+  if (!limit.ok) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((limit.retryAfterMs || 0) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    throw createError(SERVER_ERROR_CODES.auth.loginRateLimit, HTTP_STATUS.TOO_MANY_REQUESTS);
+  }
 
-    // Admin 계정이 없으면 자동 복구 (/.wea 삭제 등으로 인한 복구)
-    if (username === 'admin') {
-      const adminExists = await User.findByUsername('admin');
-      if (!adminExists) {
-        try {
-          // 필요한 디렉토리 재생성
-          await ensureDirs();
-          // Admin 계정 재생성
-          await ensureDefaultAdmin();
-        } catch (recoveryError) {
-          console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);
-          // 복구 실패해도 계속 진행 (기존 로직대로 처리)
-        }
+  // Admin 계정이 없으면 자동 복구 (/.wea 삭제 등으로 인한 복구)
+  if (username === 'admin') {
+    const adminExists = await User.findByUsername('admin');
+    if (!adminExists) {
+      try {
+        // 필요한 디렉토리 재생성
+        await ensureDirs();
+        // Admin 계정 재생성
+        await ensureDefaultAdmin();
+      } catch (recoveryError) {
+        console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);
+        // 복구 실패해도 계속 진행 (기존 로직대로 처리)
       }
     }
+  }
 
-    const user = await User.findByUsername(username);
-    if (!user) {
-      recordLoginFailure(limit.key);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.invalidCredentials });
-    }
+  const user = await User.findByUsername(username);
+  if (!user) {
+    recordLoginFailure(limit.key);
+    throw createError(SERVER_ERROR_CODES.auth.invalidCredentials, HTTP_STATUS.UNAUTHORIZED);
+  }
 
-    const isValid = await User.verifyPassword(user, password);
-    if (!isValid) {
-      recordLoginFailure(limit.key);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.invalidCredentials });
-    }
+  const isValid = await User.verifyPassword(user, password);
+  if (!isValid) {
+    recordLoginFailure(limit.key);
+    throw createError(SERVER_ERROR_CODES.auth.invalidCredentials, HTTP_STATUS.UNAUTHORIZED);
+  }
 
-    if (user.status === USER_STATUS.PENDING) {
-      recordLoginFailure(limit.key);
-      return res.status(403).json({
-        errorCode: SERVER_ERROR_CODES.auth.pendingApproval,
-        status: USER_STATUS.PENDING,
-      });
-    }
-
-    if (user.status === USER_STATUS.REJECTED) {
-      recordLoginFailure(limit.key);
-      return res.status(403).json({
-        errorCode: SERVER_ERROR_CODES.auth.rejected,
-        status: USER_STATUS.REJECTED,
-      });
-    }
-
-    const token = generateToken(user);
-    const refreshTokenId = generateRefreshTokenId();
-    const refreshExpiresAt = Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000;
-    addRefreshToken(refreshTokenId, user.id, refreshExpiresAt);
-    clearLoginFailures(limit.key);
-
-    res.json({
-      messageCode: SERVER_MESSAGE_CODES.auth.loginSuccess,
-      token,
-      refreshToken: refreshTokenId,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        is_admin: user.is_admin,
-        status: user.status,
-      },
+  if (user.status === USER_STATUS.PENDING) {
+    recordLoginFailure(limit.key);
+    return res.status(HTTP_STATUS.FORBIDDEN).json({
+      errorCode: SERVER_ERROR_CODES.auth.pendingApproval,
+      status: USER_STATUS.PENDING,
     });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.loginFail });
   }
-});
 
-router.post('/refresh', async (req, res) => {
-  try {
-    const { refreshToken } = req.body || {};
-    const user = await validateRefreshToken(refreshToken);
-    if (!user) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.auth.refreshTokenInvalid });
-    }
-    const token = generateToken(user);
-    return res.json({ token });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.refreshFail });
+  if (user.status === USER_STATUS.REJECTED) {
+    recordLoginFailure(limit.key);
+    return res.status(HTTP_STATUS.FORBIDDEN).json({
+      errorCode: SERVER_ERROR_CODES.auth.rejected,
+      status: USER_STATUS.REJECTED,
+    });
   }
-});
 
-router.get('/me', authenticateToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.auth.userNotFound });
-    }
-    const jwtVersion = req.user.token_version;
-    const dbVersion = Number.isInteger(user.token_version) ? user.token_version : 0;
-    if (Number.isInteger(jwtVersion) && jwtVersion !== dbVersion) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
-    }
-    res.json(user);
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.auth.userLoadFail });
+  const token = generateToken(user);
+  const refreshTokenId = generateRefreshTokenId();
+  const refreshExpiresAt = Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000;
+  addRefreshToken(refreshTokenId, user.id, refreshExpiresAt);
+  clearLoginFailures(limit.key);
+
+  res.json({
+    messageCode: SERVER_MESSAGE_CODES.auth.loginSuccess,
+    token,
+    refreshToken: refreshTokenId,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      is_admin: user.is_admin,
+      status: user.status,
+    },
+  });
+}));
+
+router.post('/refresh', asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body || {};
+  const user = await validateRefreshToken(refreshToken);
+  if (!user) {
+    throw createError(SERVER_ERROR_CODES.auth.refreshTokenInvalid, HTTP_STATUS.UNAUTHORIZED);
   }
-});
+  const token = generateToken(user);
+  res.json({ token });
+}));
+
+router.get('/me', authenticateToken, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.id);
+  if (!user) {
+    throw createError(SERVER_ERROR_CODES.auth.userNotFound, HTTP_STATUS.NOT_FOUND);
+  }
+  const jwtVersion = req.user.token_version;
+  const dbVersion = Number.isInteger(user.token_version) ? user.token_version : 0;
+  if (Number.isInteger(jwtVersion) && jwtVersion !== dbVersion) {
+    throw createError(SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken, HTTP_STATUS.UNAUTHORIZED);
+  }
+  res.json(user);
+}));
 
 module.exports = router;
 

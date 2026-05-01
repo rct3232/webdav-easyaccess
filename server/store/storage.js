@@ -248,25 +248,25 @@ async function deletePath(p) {
 }
 
 /**
- * 디렉토리 안전하게 생성 (존재 확인 후 생성, 실패 시 재시도)
- * @param {string} dirPath - 디렉토리 경로
+ * Safely create a directory (check existence first, retry on failure)
+ * @param {string} dirPath - Directory path
  * @returns {Promise<void>}
  */
 async function ensureDirSafe(dirPath) {
   const normalizedPath = normalizeWebdavPath(dirPath);
   try {
-    // 디렉토리가 존재하는지 확인
+    // Check if directory exists
     const dirExists = await exists(normalizedPath);
     if (!dirExists) {
-      // 디렉토리 생성
+      // Create directory
       await ensureDir(normalizedPath);
     }
   } catch (error) {
-    // 에러 발생 시에도 디렉토리 생성 시도
+    // Attempt to create directory even on error
     try {
       await ensureDir(normalizedPath);
     } catch (e) {
-      // 디렉토리 생성 실패는 무시 (이미 존재할 수 있음)
+      // Ignore directory creation failure (may already exist)
     }
   }
 }
@@ -283,7 +283,7 @@ async function listDir(dirPath) {
         type: ent.isDirectory() ? 'directory' : 'file',
       }));
     } catch (e) {
-      // spec 2.6: EACCES 등 권한 없음 → throw; 상위 403
+      // spec 2.6: EACCES etc permission denied → throw; upstream returns 403
       if (e?.code === 'EACCES' || e?.code === 'EPERM') {
         const err = new Error(e.message || 'Permission denied');
         err.code = e.code;

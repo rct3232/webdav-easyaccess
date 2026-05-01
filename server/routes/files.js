@@ -269,6 +269,12 @@ function scheduleBulkWorker(jobId) {
   setImmediate(runBulkJobWorker, jobId);
 }
 
+/**
+ * Process a bulk delete/move/copy job asynchronously.
+ *
+ * @param {string} jobId - The ID of the bulk operation job to process
+ * @returns {Promise<void>} Resolves when the job completes or fails
+ */
 async function runBulkJobWorker(jobId) {
   const job = getJob(jobId);
   if (!job || job.status !== 'pending') return;

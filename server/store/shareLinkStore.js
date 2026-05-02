@@ -7,7 +7,13 @@ const SHARE_LINKS_DIR = '/.wea/share-links/';
 
 /**
  * ShareLink storage
- * Stores share links as JSON files under /.wea/share-links/ on WebDAV
+ * Stores share link data as JSON files under /.wea/share-links/ on WebDAV
+ */
+
+/**
+ * Create path for a share link file
+ * @param {string} token - Access token
+ * @returns {string} WebDAV path
  */
 
 /**

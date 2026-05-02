@@ -133,18 +133,18 @@ router.post('/login', asyncHandler(async (req, res) => {
     throw createError(SERVER_ERROR_CODES.auth.loginRateLimit, HTTP_STATUS.TOO_MANY_REQUESTS);
   }
 
-  // Admin 계정이 없으면 자동 복구 (/.wea 삭제 등으로 인한 복구)
+  // Auto-recover admin account if missing (e.g., after /.wea deletion)
   if (username === 'admin') {
     const adminExists = await User.findByUsername('admin');
     if (!adminExists) {
       try {
-        // 필요한 디렉토리 재생성
+        // Recreate required directories
         await ensureDirs();
-        // Admin 계정 재생성
+        // Recreate admin account
         await ensureDefaultAdmin();
       } catch (recoveryError) {
         console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);
-        // 복구 실패해도 계속 진행 (기존 로직대로 처리)
+        // Continue even if recovery fails (handled by existing logic)
       }
     }
   }

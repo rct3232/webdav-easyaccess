@@ -248,7 +248,7 @@ async function deletePath(p) {
 }
 
 /**
- * Safely create a directory (check existence first, retry on failure)
+ * Create directory safely (check existence before creating, retry on failure)
  * @param {string} dirPath - Directory path
  * @returns {Promise<void>}
  */

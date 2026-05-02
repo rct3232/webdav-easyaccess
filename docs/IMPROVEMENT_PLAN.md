@@ -12,6 +12,7 @@
 > - `ded0ce8` — P2-15: structured logging context in bulk operation catch blocks
 > - `250cc3a` — P2-12-partial: MutationObserver replaces setInterval polling, Korean→English translation
 > - `fb83a55` — P3-18: JSDoc for runBulkJobWorker and authenticateTokenOrShare
+> - `1089e0f` — SQLite storage backend + Docker WebDAV dev scripts (all 7 store modules, schema init)
 
 ---
 

@@ -29,6 +29,10 @@ function isPostgresqlBackend() {
   return storage.getBackend() === 'postgresql';
 }
 
+function isSqliteBackend() {
+  return storage.getBackend() === 'sqlite';
+}
+
 function toIsoString(value) {
   if (!value) return null;
   if (typeof value === 'string') return value;
@@ -81,6 +85,41 @@ async function createShareLink(linkData) {
         const inserted = await client.query(
           `INSERT INTO share_links (token, file_path, created_by, created_at, expires_at, download_count)
            VALUES ($1, $2, $3, NOW(), $4, 0)
+           RETURNING *`,
+          [String(token), normalizedFilePath, Number(createdBy), expiresAt]
+        );
+        return mapShareLinkRow(inserted.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    let expiresAt = null;
+    if (expiresInDays !== null && expiresInDays !== undefined) {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + expiresInDays);
+      expiresAt = expiryDate.toISOString();
+    }
+
+    const normalizedFilePath = normalizeWebdavPath(filePath);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)]
+        );
+        if (existing.rows.length > 0) {
+          return mapShareLinkRow(existing.rows[0]);
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO share_links (token, file_path, created_by, created_at, expires_at, download_count)
+           VALUES (?, ?, ?, datetime('now'), ?, 0)
            RETURNING *`,
           [String(token), normalizedFilePath, Number(createdBy), expiresAt]
         );
@@ -152,6 +191,29 @@ async function getShareLink(token) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      const db = storage.getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
+      if (res.rows.length === 0) return null;
+      return mapShareLinkRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
     const linkPath = getShareLinkPath(token);
     const content = await storage.readFile(linkPath);
@@ -180,6 +242,28 @@ async function getUserShareLinks(userId) {
           ORDER BY created_at DESC`,
         [Number(userId)]
       );
+      return res.rows.map(mapShareLinkRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const db = storage.getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM share_links
+            WHERE created_by = ?
+            ORDER BY created_at DESC`,
+          [Number(userId)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       return res.rows.map(mapShareLinkRow);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -272,6 +356,47 @@ async function updateShareLink(token, updates) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)]
+        );
+        if (existing.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+        }
+
+        const current = mapShareLinkRow(existing.rows[0]);
+        const merged = {
+          ...current,
+          ...updates,
+        };
+
+        const updated = await client.query(
+          `UPDATE share_links
+              SET file_path = ?,
+                  expires_at = ?,
+                  download_count = ?
+            WHERE token = ?
+            RETURNING *`,
+          [
+            normalizeWebdavPath(merged.filePath),
+            merged.expiresAt || null,
+            Number(merged.downloadCount || 0),
+            String(token),
+          ]
+        );
+        return mapShareLinkRow(updated.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const link = await getShareLink(token);
   if (!link) {
     throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
@@ -309,6 +434,21 @@ async function deleteShareLink(token) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      await storage.withSqliteTransaction(async (client) => {
+        await client.query(
+          `DELETE FROM share_links
+            WHERE token = ?`,
+          [String(token)]
+        );
+      });
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const linkPath = getShareLinkPath(token);
   await storage.deletePath(linkPath);
 }
@@ -326,6 +466,26 @@ async function incrementDownloadCount(token) {
           `UPDATE share_links
               SET download_count = download_count + 1
             WHERE token = $1
+            RETURNING *`,
+          [String(token)]
+        );
+        if (updated.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+        }
+        return mapShareLinkRow(updated.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const updated = await client.query(
+          `UPDATE share_links
+              SET download_count = download_count + 1
+            WHERE token = ?
             RETURNING *`,
           [String(token)]
         );

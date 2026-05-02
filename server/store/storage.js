@@ -16,14 +16,20 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { createError, mapDatabaseError } = require('../utils/errorHandler');
 
 let pgPool = null;
+let sqliteDb = null;
 
 function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
   if (forced === 'fs' || forced === 'filesystem') return 'fs';
   if (forced === 'webdav') return 'webdav';
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
+  if (forced === 'sqlite') return 'sqlite';
   if (process.env.NODE_ENV === 'test') return 'fs';
   return 'webdav';
+}
+
+function isSqliteBackend() {
+  return getBackend() === 'sqlite';
 }
 
 function getFsBaseDir() {
@@ -113,6 +119,94 @@ async function closePgPool() {
   const pool = pgPool;
   pgPool = null;
   await pool.end();
+}
+
+function getSqliteConnection() {
+  if (sqliteDb) return sqliteDb;
+  let sqlite3;
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (error) {
+    throw createError(
+      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+      500,
+      { reason: 'sqlite3_module_missing' }
+    );
+  }
+
+  const dbPath = process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../data/webdav.db');
+  const dir = path.dirname(dbPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  sqliteDb = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error('Failed to open SQLite database:', err.message);
+    }
+  });
+
+  sqliteDb.run('PRAGMA journal_mode = WAL', () => {});
+  sqliteDb.run('PRAGMA foreign_keys = ON', () => {});
+
+  return sqliteDb;
+}
+
+function closeSqliteDb() {
+  if (!sqliteDb) return;
+  const db = sqliteDb;
+  sqliteDb = null;
+  return new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+function sqliteQuery(sql, params = []) {
+  const db = getSqliteConnection();
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve({ rows: rows || [] });
+    });
+  });
+}
+
+function sqliteRun(sql, params = []) {
+  const db = getSqliteConnection();
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ changes: this.changes, lastID: this.lastID });
+    });
+  });
+}
+
+async function withSqliteTransaction(callback) {
+  const db = getSqliteConnection();
+  return new Promise((resolve, reject) => {
+    db.serialize(async () => {
+      try {
+        await sqliteRun('BEGIN');
+        const client = {
+          query: (sql, params = []) => sqliteQuery(sql, params),
+          release: () => {},
+        };
+        const result = await callback(client);
+        await sqliteRun('COMMIT');
+        resolve(result);
+      } catch (error) {
+        try {
+          await sqliteRun('ROLLBACK');
+        } catch {
+          // ignore rollback errors and surface the original failure
+        }
+        reject(mapDatabaseError(error));
+      }
+    });
+  });
 }
 
 async function withTransaction(callback) {
@@ -303,10 +397,14 @@ async function listDir(dirPath) {
 
 module.exports = {
   getBackend,
+  isSqliteBackend,
   getFsBaseDir,
   getPgPool,
   withTransaction,
   closePgPool,
+  getSqliteConnection,
+  withSqliteTransaction,
+  closeSqliteDb,
   ensureDir,
   ensureDirSafe,
   exists,

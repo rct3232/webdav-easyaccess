@@ -9,7 +9,8 @@ const {
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
 } = require('./metaPaths');
-const { ensureDir } = require('./storage');
+const { ensureDir, isSqliteBackend } = require('./storage');
+const { initSqliteSchema } = require('../scripts/initSqliteSchema');
 const userStore = require('./userStore');
 const settingsStore = require('./settingsStore');
 const permissionStore = require('./permissionStore');
@@ -53,10 +54,14 @@ async function ensureDefaultAdmin() {
 }
 
 async function initMetadataStore() {
-  await ensureDirs();
-  await userStore.ensureUserIndexFile();
-  await settingsStore.ensureSettingsFile();
-  await permissionRequestStore.ensurePermissionRequestsFile();
+  if (isSqliteBackend()) {
+    await initSqliteSchema();
+  } else {
+    await ensureDirs();
+    await userStore.ensureUserIndexFile();
+    await settingsStore.ensureSettingsFile();
+    await permissionRequestStore.ensurePermissionRequestsFile();
+  }
   await ensureDefaultAdmin();
 }
 

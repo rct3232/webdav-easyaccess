@@ -19,6 +19,10 @@ function isPostgresqlBackend() {
   return storage.getBackend() === 'postgresql';
 }
 
+function isSqliteBackend() {
+  return storage.getBackend() === 'sqlite';
+}
+
 function toIsoString(value) {
   if (!value) return null;
   if (typeof value === 'string') return value;
@@ -65,6 +69,36 @@ async function replaceRecentFilesPg(userId, files, client) {
   }
 }
 
+async function listRecentFilesSqlite(userId, client = null) {
+  const executor = client || storage.getSqliteConnection();
+  const res = await executor.query(
+    `SELECT path, name, type, last_accessed
+     FROM recent_files
+     WHERE user_id = ?
+     ORDER BY last_accessed DESC`,
+    [Number(userId)]
+  );
+  return res.rows.map(mapRecentFileRow);
+}
+
+async function replaceRecentFilesSqlite(userId, files, client) {
+  const userIdNum = Number(userId);
+  await client.query(`DELETE FROM recent_files WHERE user_id = ?`, [userIdNum]);
+  for (const item of files) {
+    await client.query(
+      `INSERT INTO recent_files (user_id, path, name, type, last_accessed)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        userIdNum,
+        normalizePath(item.path),
+        item.name || normalizePath(item.path).split('/').pop() || '',
+        item.type || 'file',
+        item.lastAccessed || new Date().toISOString(),
+      ]
+    );
+  }
+}
+
 /**
  * Get user's recent files list
  * @param {number} userId - User ID
@@ -74,6 +108,14 @@ async function getUserRecentFiles(userId) {
   if (isPostgresqlBackend()) {
     try {
       return await listRecentFilesPg(userId);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      return await listRecentFilesSqlite(userId);
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -207,6 +249,24 @@ async function removeRecentFile(userId, targetPath) {
     }
   }
 
+  if (isSqliteBackend()) {
+    const userIdNum = Number(userId);
+    const normalizedTargetPath = normalizePath(targetPath);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        await client.query(
+          `DELETE FROM recent_files
+           WHERE user_id = ?
+             AND path = ?`,
+          [userIdNum, normalizedTargetPath]
+        );
+        return await listRecentFilesSqlite(userIdNum, client);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
     const files = await getUserRecentFiles(userId);
     // Normalize path for comparison
@@ -236,6 +296,17 @@ async function clearRecentFiles(userId) {
     try {
       await storage.withTransaction(async (client) => {
         await client.query(`DELETE FROM recent_files WHERE user_id = $1`, [Number(userId)]);
+      });
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      await storage.withSqliteTransaction(async (client) => {
+        await client.query(`DELETE FROM recent_files WHERE user_id = ?`, [Number(userId)]);
       });
       return;
     } catch (error) {
@@ -317,8 +388,63 @@ async function applyBulkMove(userId, moves) {
     }
   }
 
-  if (!moves || moves.length === 0) return await getUserRecentFiles(userId);
+  if (isSqliteBackend()) {
+    if (!moves || moves.length === 0) return await getUserRecentFiles(userId);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        let files = await listRecentFilesSqlite(userId, client);
+
+        for (const { oldPath, newPath, file } of moves) {
+          const oldNorm = normalizePath(oldPath);
+          const newNorm = normalizePath(newPath);
+          const isDir = file?.type === 'directory';
+
+          if (isDir) {
+            const toReAdd = [];
+            files = files.filter((f) => {
+              const p = normalizePath(f.path);
+              if (p === oldNorm || p.startsWith(oldNorm + '/')) {
+                const rel = p === oldNorm ? '' : p.slice(oldNorm.length);
+                toReAdd.push({ ...f, path: newNorm + rel });
+                return false;
+              }
+              return true;
+            });
+            const now = new Date().toISOString();
+            for (const f of toReAdd) {
+              if (f.type === 'directory') continue;
+              files.unshift({ ...f, lastAccessed: now });
+            }
+          } else {
+            files = files.filter((f) => normalizePath(f.path) !== oldNorm);
+            const name = file?.name || file?.basename || newNorm.split('/').pop();
+            files.unshift({
+              path: newNorm,
+              name,
+              type: file?.type || 'file',
+              lastAccessed: new Date().toISOString(),
+            });
+          }
+        }
+
+        const seen = new Set();
+        const deduped = files.filter((f) => {
+          const p = normalizePath(f.path);
+          if (seen.has(p)) return false;
+          seen.add(p);
+          return true;
+        });
+        const result = deduped.slice(0, MAX_RECENT_FILES);
+        await replaceRecentFilesSqlite(userId, result, client);
+        return result;
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     let files = await getUserRecentFiles(userId);
 
@@ -405,10 +531,34 @@ async function removePaths(userId, filePaths = [], folderPaths = []) {
     }
   }
 
+  if (isSqliteBackend()) {
+    if (!filePaths.length && !folderPaths.length) return await getUserRecentFiles(userId);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        let files = await listRecentFilesSqlite(userId, client);
+        const filePathsSet = new Set((filePaths || []).map((p) => normalizePath(p)));
+        const folderPathsNorm = (folderPaths || []).map((p) => normalizePath(p));
+
+        files = files.filter((f) => {
+          const p = normalizePath(f.path);
+          if (filePathsSet.has(p)) return false;
+          for (const folder of folderPathsNorm) {
+            if (p === folder || p.startsWith(folder + '/')) return false;
+          }
+          return true;
+        });
+
+        await replaceRecentFilesSqlite(userId, files, client);
+        return files;
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   if (!filePaths.length && !folderPaths.length) return await getUserRecentFiles(userId);
   try {
-    await storage.ensureDirSafe(RECENT_FILES_DIR);
-    let files = await getUserRecentFiles(userId);
+    await storage.ensureDirSafe(RECENT_FILES_DIR);    let files = await getUserRecentFiles(userId);
     const filePathsSet = new Set((filePaths || []).map((p) => normalizePath(p)));
     const folderPathsNorm = (folderPaths || []).map((p) => normalizePath(p));
 

@@ -22,7 +22,9 @@
     "test:e2e:install": "playwright install chromium webkit",
     "lint": "npm run lint --workspace server && npm run lint --workspace client",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:webdav:start": "docker compose -f docker-compose.e2e.yml up -d && sleep 3",
+    "dev:webdav:stop": "docker compose -f docker-compose.e2e.yml down"
   },
   "keywords": [
     "webdav",

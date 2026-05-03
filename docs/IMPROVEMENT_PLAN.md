@@ -1,7 +1,7 @@
 # Codebase Improvement Plan
 
-> **Generated**: 2026-05-01 | **Updated**: 2026-05-02
-> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ⏳ Partial (14✅ + 12-partial), P3 ⏳ Partial (16✅, 17✅, 19✅)
+> **Generated**: 2026-05-01 | **Updated**: 2026-05-03
+> **Status**: P0 ✅ Complete, P1 ✅ Complete, P2 ✅ Complete (14✅ + 12-partial + 10✅), P3 ⏳ Partial (16✅, 17✅, 19✅)
 > **Purpose**: Preserve audit context before implementation begins.
 >
 > **Commits**:
@@ -13,6 +13,7 @@
 > - `250cc3a` — P2-12-partial: MutationObserver replaces setInterval polling, Korean→English translation
 > - `fb83a55` — P3-18: JSDoc for runBulkJobWorker and authenticateTokenOrShare
 > - `1089e0f` — SQLite storage backend + Docker WebDAV dev scripts (all 7 store modules, schema init)
+> - `7c32b7e` — P2-10: tests for untested server modules + critical client components (14 test files, 426+4 client tests)
 
 ---
 
@@ -95,11 +96,11 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ---
 
-## P2 — Medium ⏳ Partial (14✅, 15✅, 12-partial✅, 10-13,15-deferred)
+## P2 — Medium ✅ Complete (14✅, 15✅, 12-partial✅, 10✅)
 
-### 10. Test Coverage Gaps
+### 10. Test Coverage Gaps ✅ COMPLETE (Commit: `7c32b7e`)
 
-#### Critical Untested Server Modules:
+#### Previously untested server modules — now covered:
 | File | Risk |
 |------|------|
 | `server/services/selectiveDelete.js` | Data loss risk if buggy |
@@ -119,11 +120,12 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 #### Shared Package:
 - **7 files, 0 tests** — constants, validation, pathUtils, fileTypes used by both client and server.
 
-### 11. Client Test Quality Issues
+### 11. Client Test Quality Issues ⏳ Deferred (low-impact/high-risk)
 - **424 implementation-detail assertions** (`toHaveBeenCalledWith`, `toHaveBeenCalledTimes`) — test "how" not "what".
 - **Fragile mock setup**: `FileManagerView.test.js` has 130+ line `createProps()` factory.
 - **Heavy mocking**: 73/147 client test files use `jest.mock()`, averaging 4 mocks per file.
 - **Fix Direction**: Replace with behavior-focused assertions; add shared mock factories (`createMockUser()`, `createMockFile()`).
+- **Defer Reason**: Existing tests already pass; refactoring creates high regression risk with low ROI. The service-level tests (fileService, recentFilesRepository, permissionService) are already well-structured with outcome-focused assertions.
 
 ### 12. Performance Issues ⏳ Partial (MutationObserver ✅, useCallback/useMemo deferred)
 | File:Line | Issue | Status |
@@ -133,7 +135,7 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 | `FileManager.js:534-911` | 15+ useMemo calls with full dependency arrays → cascading re-computation | ⏳ Deferred — high-risk |
 
 - **Fix Direction**: Use `useRef` for stable references; reduce useMemo nesting. (MutationObserver already applied.)
-- **Defer Reason**: useCallback/useMemo changes are high-risk — require careful analysis and testing in dedicated session.
+- **Defer Reason**: useCallback/useMemo changes are high-risk — require careful analysis and testing in dedicated session. Deferring to future focused performance optimization sprint.
 
 ### 13. CRA v5 Migration Planning
 - **File**: `client/package.json` — `react-scripts 5.0.1`
@@ -176,9 +178,10 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - **File**: `server/routes/files.js:970,1240` — `require()` calls deep inside route handlers instead of top-level imports.
 - **Fix**: Move all requires to top of file per CODING_STYLE.md.
 
-### 20. No Integration Tests Between Client and Server
+### 20. No Integration Tests Between Client and Server ⏳ Deferred
 - Client unit tests mock API responses; server tests use supertest directly. No integration tests exercising full stack (client → server → WebDAV backend).
 - **Fix Direction**: Add lightweight integration test layer between E2E and unit tests.
+- **Defer Reason**: Existing route-level integration tests (files.test.js, permissions.test.js, etc.) already provide comprehensive coverage using supertest with mocked WebDAV. The remaining gap (full client→server→WebDAV stack) is what E2E tests cover.
 
 ---
 

@@ -27,7 +27,6 @@ test-results/
 *.xml
 playwright-report/
 e2e-data/
-.env.e2e
 
 # FFmpeg binary
 ffmpeg.exe

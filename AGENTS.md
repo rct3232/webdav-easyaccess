@@ -15,7 +15,21 @@ This document defines the mandatory workflows and standards for all agents worki
 3. **Update**: Modify or add spec/feature docs (`docs/spec/`, `docs/features/`) before implementation.
 4. **Implement**: Proceed to code changes only after docs are updated.
 
-### 2.2 Commit Message Style
+### 2.2 Branching Convention
+**Mandatory before any source code edit (non-trivial changes).**
+1. **Check existing branches**: Run `git branch` to see if a suitable branch already exists.
+2. **Create branch if needed**: If no appropriate branch exists, create one following the naming convention:
+   - Format: `<category>/<task-name>` (lowercase, hyphen-separated)
+   - Categories: `feature/`, `fix/`, `refactor/`, `test/`, `chore/`
+   - Examples: `feature/e2e-test`, `fix/mobile-scroll-fix`, `refactor/auth-middleware`
+3. **Switch to the branch**: Work on the created branch, not directly on `main` or `dev`.
+4. **Exception (no branch needed)**: Trivial single-commit work — documentation cleanup, simple hotfixes (≤ 1 file, ≤ 10 lines) — may be committed directly without creating a new branch.
+5. **Merge to dev after completion**: When work is done on a feature branch:
+   - Run all unit and integration tests (`npm run test:ci` in both `client/` and `server/`). Only proceed if all pass.
+   - Switch to `dev`, merge the feature branch, then delete the feature branch.
+   - **Never merge directly to `main`**. The `main` branch is protected by CI/CD pipelines that automatically create PRs; management and review of those PRs is handled by the user.
+
+### 2.3 Commit Message Style
 **Mandatory before any commit.**
 1. **Context Check**: Run `git log --oneline -20` to match existing style.
 2. **Format**: Use Conventional Commits: `<type>: <short description>` (lowercase, imperative mood).

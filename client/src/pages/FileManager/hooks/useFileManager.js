@@ -223,7 +223,7 @@ export const useFileManager = (user, options = {}) => {
         loadPermission();
       }
     }
-  }, [currentPath, loadFiles, user]);
+  }, [currentPath, user, shareToken]);
 
   useEffect(() => {
     if (currentPath !== '/__recent__') return undefined;
@@ -231,7 +231,7 @@ export const useFileManager = (user, options = {}) => {
     return explorerGateway.subscribeToRecentFiles(() => {
       loadFiles();
     });
-  }, [currentPath, loadFiles]);
+  }, [currentPath, user, shareToken]);
 
   return {
     currentPath,

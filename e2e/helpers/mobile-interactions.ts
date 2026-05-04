@@ -2,42 +2,48 @@ import { Page, expect } from '@playwright/test';
 
 /**
  * Open the Action Sheet for a specific file/folder on mobile
- * Clicks the More (⋮) button on the item and waits for the bottom sheet to appear
- * 
+ * Clicks the More (⋮) button on the item and waits for the bottom sheet to appear.
+ *
+ * Uses Promise.all to click and wait simultaneously — avoids race conditions with
+ * MUI SwipeableDrawer's CSS transition (~200ms) where [role="dialog"] may be in DOM
+ * but not yet visible. Targets a specific action item ([data-testid="file-action-rename"])
+ * instead of the generic [role="dialog"] for reliability.
+ *
  * @param page Playwright page
  * @param filePath The file path to open action sheet for (e.g., '/admin/test-file.txt')
  */
 export async function openActionSheet(page: Page, filePath: string): Promise<void> {
   // Find the item with the matching data-file-path attribute
   const item = page.locator(`[data-file-path="${filePath}"]`);
-  
+
   // Find the More button within this item (aria-label="More actions")
   const moreButton = item.locator('[aria-label="More actions"]');
-  
+
   // Verify the button exists before clicking
   await expect(moreButton).toBeVisible();
-  
-  // Click the More button
-  await moreButton.click();
-  
-  // Wait for the Action Sheet (SwipeableDrawer) to become visible
-  // The drawer has anchor="bottom" and contains the file actions
-  const actionSheet = page.locator('[role="dialog"]');
-  await expect(actionSheet).toBeVisible();
+
+  // Click and wait for a specific action item simultaneously.
+  // This avoids race conditions with SwipeableDrawer's CSS transition:
+  // - waitForSelector starts polling immediately after click begins
+  // - Targets a concrete action item instead of generic [role="dialog"]
+  await Promise.all([
+    page.waitForSelector('[data-testid="file-action-rename"]', { state: 'visible', timeout: 5000 }),
+    moreButton.click(),
+  ]);
 }
 
 /**
- * Close the Action Sheet on mobile
- * 
+ * Close the Action Sheet on mobile.
+ * Waits for a specific action item to disappear instead of [role="dialog"]
+ * to avoid race conditions with SwipeableDrawer's close animation.
+ *
  * @param page Playwright page
  */
 export async function closeActionSheet(page: Page): Promise<void> {
-  // Click outside the drawer or press Escape to close
   await page.keyboard.press('Escape');
-  
-  // Wait for the drawer to close
-  const actionSheet = page.locator('[role="dialog"]');
-  await expect(actionSheet).not.toBeVisible();
+
+  // Wait for the action sheet to close by checking a specific action item disappears
+  await expect(page.locator('[data-testid="file-action-rename"]')).not.toBeVisible();
 }
 
 /**

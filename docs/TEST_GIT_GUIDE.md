@@ -366,6 +366,12 @@ cat .gitignore | grep coverage
 
 **Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before restarting Docker Compose. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
 
+### Q: Mobile Action Sheet tests are flaky (E2E-EXP-006, E2E-MOBILE-002)
+
+**Root cause**: `openActionSheet` helper waits for `[role="dialog"]` to be visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the element is in DOM but not fully visible, causing Playwright's `toBeVisible()` to fail with a race condition.
+
+**Fix**: The `openActionSheet` helper now uses `Promise.all` to click and wait simultaneously, and targets specific action items (`[data-testid="file-action-rename"]`) instead of the generic `[role="dialog"]` locator. E2E-MOBILE-002 no longer redundantly checks `[role="dialog"]` after `openActionSheet`.
+
 ### Q: Tests are too slow
 
 ```bash

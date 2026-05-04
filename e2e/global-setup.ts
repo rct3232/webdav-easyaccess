@@ -147,6 +147,7 @@ export default async function globalSetup() {
   cleanDir('playwright-report');
   cleanDir('e2e-data');
   cleanDir('data/e2e-metadata');
+  cleanDir('data/webdav');
   fs.mkdirSync(path.join(rootDir, 'e2e-data'), { recursive: true });
 
   console.log('Ensuring a fresh WebDAV environment by restarting Docker Compose...');

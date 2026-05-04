@@ -360,6 +360,12 @@ cat .gitignore | grep coverage
 # 4. Ensure test isolation (beforeEach/afterEach)
 ```
 
+### Q: E2E tests pass on first run but fail on second run
+
+**Root cause**: The `data/webdav/` directory is a Docker bind mount (`./data/webdav:/var/lib/dav`). While `docker compose down -v` removes named Docker volumes, it does NOT clean host-path bind mounts. Stale WebDAV data from the previous run persists, causing conflicts.
+
+**Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before restarting Docker Compose. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
+
 ### Q: Tests are too slow
 
 ```bash

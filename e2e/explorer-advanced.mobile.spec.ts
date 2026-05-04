@@ -94,15 +94,14 @@ test.describe('explorer advanced (mobile)', () => {
     // 3. Navigate to /files
     await page.goto('/files');
  
-    // 4. Trigger Action Sheet
+    // 4. Trigger Action Sheet (openActionSheet already guarantees it's open)
     await openActionSheet(page, filePath);
- 
-    // 5. Verify Action Sheet is visible and contains key actions
-    const actionSheet = page.locator('[role="dialog"]');
-    await expect(actionSheet).toBeVisible();
-    await expect(actionSheet.locator('[data-testid="file-action-rename"]')).toBeVisible();
-    await expect(actionSheet.locator('[data-testid="file-action-delete"]')).toBeVisible();
-    await expect(actionSheet.locator('[data-testid="file-action-share"]')).toBeVisible();
+
+    // 5. Verify key actions are present — use direct selectors instead of [role="dialog"]
+    // to avoid race conditions with SwipeableDrawer's CSS transition
+    await expect(page.locator('[data-testid="file-action-rename"]')).toBeVisible();
+    await expect(page.locator('[data-testid="file-action-delete"]')).toBeVisible();
+    await expect(page.locator('[data-testid="file-action-share"]')).toBeVisible();
  
     // 6. Cleanup
     await closeActionSheet(page);

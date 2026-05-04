@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const { getBackend, getPgPool, ensureDir, writeFile, readFile, deletePath } = require('./storage');
+const { getBackend, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction, ensureDir, writeFile, readFile, deletePath } = require('./storage');
 const { LOCKS_DIR, lockPathByKey, sha256HexLower } = require('./metaPaths');
 
 function sleep(ms) {
@@ -64,6 +64,24 @@ function createPostgresqlLockRelease(lockKey, token) {
       const pool = getPgPool();
       await pool.query(
         'DELETE FROM locks WHERE lock_name_hash = $1 AND token = $2',
+        [lockKey, token]
+      );
+    } catch {
+      // Best effort: ignore.
+    }
+  };
+}
+
+function createSqliteLockRelease(lockKey, token) {
+  let released = false;
+  return async () => {
+    if (released) return;
+    released = true;
+
+    try {
+      const db = getSqliteConnection();
+      await db.query(
+        'DELETE FROM locks WHERE lock_name_hash = ? AND token = ?',
         [lockKey, token]
       );
     } catch {
@@ -143,9 +161,9 @@ async function acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, 
     );
     const insertResult = await pool.query(
       `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (lock_name_hash) DO NOTHING
-       RETURNING lock_name_hash`,
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (lock_name_hash) DO NOTHING
+        RETURNING lock_name_hash`,
       [lockKey, token, owner, createdAt, expiresAt]
     );
 
@@ -164,11 +182,49 @@ async function acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, 
   }
 }
 
+async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs) {
+  const deadline = Date.now() + waitMs;
+  while (true) {
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + ttlMs);
+
+    try {
+      return await withSqliteTransaction(async (client) => {
+        await client.query(
+          'DELETE FROM locks WHERE lock_name_hash = ? AND expires_at < CURRENT_TIMESTAMP',
+          [lockKey]
+        );
+        const insertResult = await client.query(
+          `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          [lockKey, token, owner, createdAt, expiresAt]
+        );
+
+        if (insertResult.changes > 0) {
+          return {
+            token,
+            lockPath,
+            release: createSqliteLockRelease(lockKey, token),
+          };
+        }
+      });
+    } catch {
+      // Insert failed (lock held); retry loop handles contention.
+    }
+
+    if (Date.now() >= deadline) {
+      throw makeTimeoutError(lockName, lockPath, waitMs);
+    }
+    await sleep(retryDelayMs);
+  }
+}
+
 /**
  * Acquire a distributed lock with backend-specific strategy.
  *
  * webdav/fs: lock file + If-None-Match + stale lockfile TTL cleanup.
  * postgresql: lock row + stale row cleanup + ON CONFLICT retry.
+ * sqlite: lock row + stale row cleanup + INSERT-or-fail retry.
  *
  * @param {string} lockName - logical resource name (e.g. "users-index", "settings", `perm:${userId}`)
  * @param {object} options
@@ -191,6 +247,10 @@ async function acquireLock(lockName, options = {}) {
 
   if (backend === 'postgresql') {
     return acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
+  }
+
+  if (isSqliteBackend()) {
+    return acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
   }
 
   return acquireFileBackendLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);

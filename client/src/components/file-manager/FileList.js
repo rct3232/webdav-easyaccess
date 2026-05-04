@@ -6,11 +6,10 @@ import {
   useTheme,
 } from '@mui/material';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
-import { useLongPressSelect } from './hooks/useLongPressSelect';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileListSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
-import FileListItem, { getFileListItemContainerStyles } from './FileListItem';
+import FileItem from './FileItem';
 
 const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
@@ -39,8 +38,6 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     isMobile,
   });
 
-  const { getLongPressHandlers } = useLongPressSelect({ isMobile, selectionMode, onLongPressSelect });
-
   if (loading && files.length === 0) {
     return <FileListSkeleton selectionMode={selectionMode} />;
   }
@@ -68,51 +65,29 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
         const isDropTarget = dropTarget === file.path;
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
-        const longPressHandlers = getLongPressHandlers(file);
-        const allowContextMenu = isPermissionDisabled && !isProcessing;
-        const canOpenMenu = !isDisabled || allowContextMenu;
 
         return (
-          <Box
+          <FileItem
             key={file.path}
-            data-file-path={file.path}
-            {...dragHandlers}
-            {...dropHandlers}
-            {...longPressHandlers}
-            onClick={(e) => {
-              if (!isDisabled) {
-                onFileClick(file, e, index);
-              }
-            }}
-            onContextMenu={(e) => {
-              if (canOpenMenu) {
-                onContextMenu(e, file);
-              }
-            }}
-            sx={getFileListItemContainerStyles({
-              isDisabled,
-              isDropTarget,
-              isDragging,
-              isHidden: file.isHidden,
-              isMobile,
-              selectionMode,
-              isSelected,
-            })}
-          >
-            <FileListItem
-              file={file}
-              isSelected={isSelected}
-              isDisabled={isDisabled}
-              isProcessing={isProcessing}
-              processingType={processingType}
-              isDropTarget={isDropTarget}
-              isDragging={isDragging}
-              selectionMode={selectionMode}
-              showMoreButton={showMoreButton ?? !selectionMode}
-              onMoreClick={onMoreClick}
-              isMobile={isMobile}
-            />
-          </Box>
+            file={file}
+            index={index}
+            onFileClick={onFileClick}
+            onMoreClick={onMoreClick}
+            showMoreButton={showMoreButton}
+            onLongPressSelect={onLongPressSelect}
+            onContextMenu={onContextMenu}
+            isDisabled={isDisabled}
+            isProcessing={isProcessing}
+            processingType={processingType}
+            isPermissionDisabled={isPermissionDisabled}
+            isDragging={isDragging}
+            isDropTarget={isDropTarget}
+            isSelected={isSelected}
+            selectionMode={selectionMode}
+            isMobile={isMobile}
+            dragHandlers={dragHandlers}
+            dropHandlers={dropHandlers}
+          />
         );
       })}
       {hasMore && (

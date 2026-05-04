@@ -5,7 +5,7 @@ const {
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../utils/errorHandler');
 const { META_ROOT } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
 const { withLock } = require('./locks');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { mapDatabaseError } = require('../utils/errorHandler');
@@ -244,6 +244,78 @@ async function createRequest({
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT *
+             FROM permission_requests
+            WHERE requester_id = ?
+              AND owner_id = ?
+              AND requested_permission = ?
+              AND status = ?
+              AND target_type = ?
+              AND (
+                (? = 'file' AND file_path = ?)
+                OR
+                (? = 'folder' AND folder_path = ?)
+              )
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [
+            Number(requesterId),
+            Number(ownerId),
+            perm,
+            PERMISSION_REQUEST_STATUS.PENDING,
+            target_type,
+            target_type,
+            file_path,
+            target_type,
+            folder_path,
+          ]
+        );
+        if (existing.rows.length > 0) {
+          return mapPermissionRequestRow(existing.rows[0]);
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO permission_requests (
+             requester_id,
+             requester_username,
+             owner_id,
+             owner_username,
+             target_type,
+             folder_path,
+             file_path,
+             requested_permission,
+             status,
+             message,
+             created_at,
+             resolved_at,
+             resolved_by
+           )
+           VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,NULL,NULL)
+           RETURNING *`,
+          [
+            Number(requesterId),
+            requesterUsername || '',
+            Number(ownerId),
+            ownerUsername || '',
+            target_type,
+            folder_path,
+            file_path,
+            perm,
+            PERMISSION_REQUEST_STATUS.PENDING,
+            typeof message === 'string' ? message : '',
+          ]
+        );
+        return mapPermissionRequestRow(inserted.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('permission_requests', async () => {
     const doc = await readDoc();
     doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
@@ -310,6 +382,23 @@ async function getById(id) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const res = await client.query(
+          `SELECT *
+             FROM permission_requests
+            WHERE id = ?
+            LIMIT 1`,
+          [Number(id)]
+        );
+        return mapPermissionRequestRow(res.rows[0]) || null;
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const doc = await readDoc();
   const req = (doc.requests || []).map(sanitizeRequest).filter(Boolean).find((r) => r.id === Number(id));
   return req || null;
@@ -334,6 +423,30 @@ async function listInbox(ownerId, { status } = {}) {
         params
       );
       return res.rows.map(mapPermissionRequestRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    const normalizedStatus = status ? normalizeStatus(status) : null;
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const params = [Number(ownerId)];
+        let whereStatusSql = '';
+        if (normalizedStatus) {
+          params.push(normalizedStatus);
+          whereStatusSql = ` AND status = ?`;
+        }
+        const res = await client.query(
+          `SELECT *
+             FROM permission_requests
+            WHERE owner_id = ?${whereStatusSql}
+            ORDER BY created_at DESC`,
+          params
+        );
+        return res.rows.map(mapPermissionRequestRow);
+      });
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -368,6 +481,30 @@ async function listOutbox(requesterId, { status } = {}) {
         params
       );
       return res.rows.map(mapPermissionRequestRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    const normalizedStatus = status ? normalizeStatus(status) : null;
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const params = [Number(requesterId)];
+        let whereStatusSql = '';
+        if (normalizedStatus) {
+          params.push(normalizedStatus);
+          whereStatusSql = ` AND status = ?`;
+        }
+        const res = await client.query(
+          `SELECT *
+             FROM permission_requests
+            WHERE requester_id = ?${whereStatusSql}
+            ORDER BY created_at DESC`,
+          params
+        );
+        return res.rows.map(mapPermissionRequestRow);
+      });
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -424,6 +561,44 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT id
+             FROM permission_requests
+            WHERE id = ?
+            LIMIT 1`,
+          [Number(id)]
+        );
+        if (existing.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
+        }
+
+        const updated = await client.query(
+          `UPDATE permission_requests
+              SET status = ?,
+                  resolved_at = CASE WHEN ? = ? THEN NULL ELSE CURRENT_TIMESTAMP END,
+                  resolved_by = CASE WHEN ? = ? THEN NULL ELSE ? END
+            WHERE id = ?
+            RETURNING *`,
+          [
+            nextStatus,
+            nextStatus,
+            PERMISSION_REQUEST_STATUS.PENDING,
+            nextStatus,
+            PERMISSION_REQUEST_STATUS.PENDING,
+            Number.isInteger(resolvedBy) ? resolvedBy : null,
+            Number(id),
+          ]
+        );
+        return mapPermissionRequestRow(updated.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('permission_requests', async () => {
     const doc = await readDoc();
     doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
@@ -468,6 +643,24 @@ async function deleteByRequesterId(userId) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const rows = await client.query(
+          `SELECT id FROM permission_requests WHERE requester_id = ?`,
+          [Number(userId)]
+        );
+        await client.query(
+          `DELETE FROM permission_requests WHERE requester_id = ?`,
+          [Number(userId)]
+        );
+        return { deletedCount: Number(rows.rows.length) };
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('permission_requests', async () => {
     const doc = await readDoc();
     doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
@@ -506,6 +699,34 @@ async function rejectByOwnerId(userId, resolvedBy = null) {
           ]
         );
         return { rejectedCount: Number(rejected.rowCount || 0) };
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const rows = await client.query(
+          `SELECT id FROM permission_requests WHERE owner_id = ? AND status = ?`,
+          [Number(userId), PERMISSION_REQUEST_STATUS.PENDING]
+        );
+        await client.query(
+          `UPDATE permission_requests
+              SET status = ?,
+                  resolved_at = CURRENT_TIMESTAMP,
+                  resolved_by = ?
+            WHERE owner_id = ?
+              AND status = ?`,
+          [
+            PERMISSION_REQUEST_STATUS.REJECTED,
+            Number.isInteger(resolvedBy) ? resolvedBy : null,
+            Number(userId),
+            PERMISSION_REQUEST_STATUS.PENDING,
+          ]
+        );
+        return { rejectedCount: Number(rows.rows.length) };
       });
     } catch (error) {
       throw mapDatabaseError(error);

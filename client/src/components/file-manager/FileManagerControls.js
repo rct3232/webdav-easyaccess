@@ -63,10 +63,10 @@ const FileManagerControls = ({
           <>
             {isMobile ? (
               <>
-                <IconButton size="small" onClick={handleSelectAll} title={t('fileManager.selectAll')} disabled={selectionActionsDisabled}>
+                <IconButton size="small" onClick={handleSelectAll} title={t('fileManager.selectAll')} data-testid="bulk-action-select-all" disabled={selectionActionsDisabled}>
                   <SelectAllIcon />
                 </IconButton>
-                <IconButton size="small" onClick={handleDeselectAll} title={t('fileManager.deselectAll')} disabled={selectionActionsDisabled}>
+                <IconButton size="small" onClick={handleDeselectAll} title={t('fileManager.deselectAll')} data-testid="bulk-action-deselect-all" disabled={selectionActionsDisabled}>
                   <DeselectIcon />
                 </IconButton>
               </>
@@ -106,93 +106,101 @@ const FileManagerControls = ({
           <Box sx={{ flexGrow: 1 }} />
 
           {!downloadOnly && handleBulkMove && (
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={handleBulkMove}
-              disabled={moveDeleteDisabled}
-              title={t('actions.move')}
-            >
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={handleBulkMove}
+                disabled={moveDeleteDisabled}
+                title={t('actions.move')}
+                data-testid="bulk-action-move"
+              >
               <MoveIcon fontSize="small" />
             </IconButton>
           )}
           {!downloadOnly && handleBulkCopy && (
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={handleBulkCopy}
-              disabled={copyDisabled}
-              title={t('actions.copy')}
-            >
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={handleBulkCopy}
+                disabled={copyDisabled}
+                title={t('actions.copy')}
+                data-testid="bulk-action-copy"
+              >
               <CopyIcon fontSize="small" />
             </IconButton>
           )}
           {handleBulkDownload && (
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={handleBulkDownload}
-              disabled={downloadDisabled}
-              title={t('actions.download')}
-            >
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={handleBulkDownload}
+                disabled={downloadDisabled}
+                title={t('actions.download')}
+                data-testid="bulk-action-download"
+              >
               <DownloadIcon fontSize="small" />
             </IconButton>
           )}
           {!downloadOnly && openBulkDeleteDialog && (
-            <IconButton
-              size="small"
-              color="error"
-              onClick={() => {
-                const filePaths = Array.from(selectedFiles);
-                if (filePaths.length > 0) {
-                  openBulkDeleteDialog(filePaths);
-                }
-              }}
-              disabled={moveDeleteDisabled}
-              title={t('actions.delete')}
-            >
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => {
+                  const filePaths = Array.from(selectedFiles);
+                  if (filePaths.length > 0) {
+                    openBulkDeleteDialog(filePaths);
+                  }
+                }}
+                disabled={moveDeleteDisabled}
+                title={t('actions.delete')}
+                data-testid="bulk-action-delete"
+              >
               <DeleteIcon fontSize="small" />
             </IconButton>
           )}
         </>
       ) : (
         <>
-          <IconButton
-            onClick={(e) => setSortMenuAnchor(e.currentTarget)}
-            title={t('fileManager.sort')}
-          >
+            <IconButton
+              onClick={(e) => setSortMenuAnchor(e.currentTarget)}
+              title={t('fileManager.sort')}
+              data-testid="file-manager-sort"
+            >
             <SortIcon />
           </IconButton>
 
           <Box sx={{ flexGrow: 1 }} />
 
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <IconButton
-              color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-              onClick={() => {
-                setViewMode(VIEW_MODES.LIST);
-              }}
-              title={t('fileManager.listViewTitle')}
-            >
+                <IconButton
+                  color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
+                  onClick={() => {
+                    setViewMode(VIEW_MODES.LIST);
+                  }}
+                  title={t('fileManager.listViewTitle')}
+                  data-testid="view-mode-list"
+                >
               <ViewStreamIcon />
             </IconButton>
-            <IconButton
-              color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-              onClick={() => {
-                setViewMode(VIEW_MODES.GRID);
-              }}
-              title={t('fileManager.gridViewTitle')}
-            >
+                <IconButton
+                  color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
+                  onClick={() => {
+                    setViewMode(VIEW_MODES.GRID);
+                  }}
+                  title={t('fileManager.gridViewTitle')}
+                  data-testid="view-mode-grid"
+                >
               <ViewModuleIcon />
             </IconButton>
             {!isMobile && (
-              <IconButton
-                color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
-                onClick={() => {
-                  setViewMode(VIEW_MODES.DETAIL);
-                }}
-                title={t('fileManager.detailViewTitle')}
-              >
+                <IconButton
+                  color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
+                  onClick={() => {
+                    setViewMode(VIEW_MODES.DETAIL);
+                  }}
+                  title={t('fileManager.detailViewTitle')}
+                  data-testid="view-mode-detail"
+                >
                 <ViewListIcon />
               </IconButton>
             )}

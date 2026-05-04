@@ -351,7 +351,7 @@ async function ensureThumbnail(webdavPath) {
   }
 }
 
-// 동시 처리 수를 제한하는 헬퍼 함수
+// Helper function to limit concurrency
 async function limitConcurrency(tasks, concurrency = 10) {
   const results = [];
   const executing = [];
@@ -379,7 +379,7 @@ async function ensureThumbnailsBatch(webdavPaths) {
   const CONCURRENCY_LIMIT = parseInt(process.env.THUMBNAIL_CONCURRENCY_LIMIT) || 10;
   const results = [];
   
-  // 먼저 캐시된 썸네일 확인
+  // Check cached thumbnails first
   const cachedResults = [];
   const uncachedPaths = [];
   
@@ -395,7 +395,7 @@ async function ensureThumbnailsBatch(webdavPaths) {
     }
   }
   
-  // 캐시되지 않은 썸네일들을 생성
+  // Generate uncached thumbnails
   if (uncachedPaths.length > 0) {
     const tasks = uncachedPaths.map(webdavPath => async () => {
       try {

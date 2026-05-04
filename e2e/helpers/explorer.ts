@@ -7,10 +7,9 @@ export async function openFabAction(page: Page, actionName: string) {
 
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
-  await page.waitForTimeout(200); // Wait for FAB animation
 
-  const action = menu.getByRole('menuitem', { name: actionName }).first();
-  await expect(action).toBeVisible();
+  const action = menu.getByRole('menuitem', { name: actionName }).locator(':visible').first();
+  await expect(action).toBeVisible({ timeout: 5000 });
   await action.click();
 }
 

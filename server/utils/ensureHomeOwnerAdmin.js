@@ -1,6 +1,6 @@
 /**
  * Ensure home-owner admin: for each user, upgrade or grant admin on paths under their home.
- * Used on server startup (once) and via admin "권한정리" button.
+ * Used on server startup (once) and via admin "permission cleanup" button.
  */
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');

@@ -6,14 +6,20 @@ const { createError, mapDatabaseError } = require('../utils/errorHandler');
 const SHARE_LINKS_DIR = '/.wea/share-links/';
 
 /**
- * ShareLink 저장소
- * WebDAV의 /.wea/share-links/ 경로에 JSON 파일로 저장
+ * ShareLink storage
+ * Stores share link data as JSON files under /.wea/share-links/ on WebDAV
  */
 
 /**
- * 공유 링크 파일 경로 생성
+ * Create path for a share link file
  * @param {string} token - Access token
- * @returns {string} WebDAV 경로
+ * @returns {string} WebDAV path
+ */
+
+/**
+ * Create the file path for a share link entry
+ * @param {string} token - Access token
+ * @returns {string} WebDAV path
  */
 function getShareLinkPath(token) {
   return normalizeWebdavPath(`${SHARE_LINKS_DIR}${token}.json`);
@@ -21,6 +27,10 @@ function getShareLinkPath(token) {
 
 function isPostgresqlBackend() {
   return storage.getBackend() === 'postgresql';
+}
+
+function isSqliteBackend() {
+  return storage.getBackend() === 'sqlite';
 }
 
 function toIsoString(value) {
@@ -43,9 +53,9 @@ function mapShareLinkRow(row) {
 }
 
 /**
- * 공유 링크 생성
- * @param {Object} linkData - 링크 데이터
- * @returns {Promise<Object>} 생성된 링크 데이터
+ * Create a new share link
+ * @param {Object} linkData - Link data
+ * @returns {Promise<Object>} The created link data
  */
 async function createShareLink(linkData) {
   const { token, filePath, createdBy, expiresInDays } = linkData;
@@ -85,7 +95,42 @@ async function createShareLink(linkData) {
     }
   }
 
-  // 디렉토리 존재 확인 및 생성
+  if (isSqliteBackend()) {
+    let expiresAt = null;
+    if (expiresInDays !== null && expiresInDays !== undefined) {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + expiresInDays);
+      expiresAt = expiryDate.toISOString();
+    }
+
+    const normalizedFilePath = normalizeWebdavPath(filePath);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)]
+        );
+        if (existing.rows.length > 0) {
+          return mapShareLinkRow(existing.rows[0]);
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO share_links (token, file_path, created_by, created_at, expires_at, download_count)
+           VALUES (?, ?, ?, datetime('now'), ?, 0)
+           RETURNING *`,
+          [String(token), normalizedFilePath, Number(createdBy), expiresAt]
+        );
+        return mapShareLinkRow(inserted.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  // Ensure directory exists and create if needed
   await storage.ensureDirSafe(SHARE_LINKS_DIR);
 
   const createdAt = new Date().toISOString();
@@ -107,26 +152,26 @@ async function createShareLink(linkData) {
   
   const linkPath = getShareLinkPath(token);
   
-  // 파일이 이미 존재하는지 확인
+  // Check if the file already exists
   const exists = await storage.exists(linkPath);
   if (exists) {
-    // 이미 존재하는 경우 기존 링크 반환 (토큰 충돌은 거의 불가능하지만 방어적 코드)
+    // If it exists, return the existing link (token collision is nearly impossible but defensive)
     const existingLink = await getShareLink(token);
     if (existingLink) {
       return existingLink;
     }
   }
   
-  // 파일 쓰기 (overwrite 옵션 사용)
+  // Write file (using overwrite option)
   await storage.writeFile(linkPath, JSON.stringify(link, null, 2), { overwrite: true });
   
   return link;
 }
 
 /**
- * 공유 링크 조회
+ * Retrieve a share link
  * @param {string} token - Access token
- * @returns {Promise<Object|null>} 링크 데이터 또는 null
+ * @returns {Promise<Object|null>} Link data or null
  */
 async function getShareLink(token) {
   if (isPostgresqlBackend()) {
@@ -139,6 +184,29 @@ async function getShareLink(token) {
           LIMIT 1`,
         [String(token)]
       );
+      if (res.rows.length === 0) return null;
+      return mapShareLinkRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const db = storage.getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       if (res.rows.length === 0) return null;
       return mapShareLinkRow(res.rows[0]);
     } catch (error) {
@@ -159,9 +227,9 @@ async function getShareLink(token) {
 }
 
 /**
- * 사용자가 생성한 모든 공유 링크 조회
- * @param {number} userId - 사용자 ID
- * @returns {Promise<Array>} 링크 목록
+ * Retrieve all share links created by a user
+ * @param {number} userId - User ID
+ * @returns {Promise<Array>} List of links
  */
 async function getUserShareLinks(userId) {
   if (isPostgresqlBackend()) {
@@ -180,11 +248,33 @@ async function getUserShareLinks(userId) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      const db = storage.getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM share_links
+            WHERE created_by = ?
+            ORDER BY created_at DESC`,
+          [Number(userId)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
+      return res.rows.map(mapShareLinkRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Ensure directory exists and create if needed
     await storage.ensureDirSafe(SHARE_LINKS_DIR);
     
-    // /.wea/share-links/ 디렉토리의 모든 파일 조회
+    // List all files in the /.wea/share-links/ directory
     const linksDir = normalizeWebdavPath(SHARE_LINKS_DIR);
     const files = await storage.listDir(linksDir);
     
@@ -196,33 +286,33 @@ async function getUserShareLinks(userId) {
           const content = await storage.readFile(linkPath);
           const link = JSON.parse(content);
           
-          // 해당 사용자가 생성한 링크만 필터링
+          // Filter to only links created by this user
           if (link.createdBy === userId) {
             links.push(link);
           }
         } catch (error) {
-          // 파일 읽기 실패 시 무시하고 계속
+          // Ignore file read failures and continue
           console.error(`Failed to read share link file ${file.basename}:`, error);
         }
       }
     }
     
-    // 생성일 기준 내림차순 정렬
+    // Sort by creation date descending
     links.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
     return links;
   } catch (error) {
-    // 디렉토리가 없거나 다른 에러 발생 시 빈 배열 반환
+    // Return empty array if directory missing or other error occurs
     console.error('Failed to get user share links:', error);
     return [];
   }
 }
 
 /**
- * 공유 링크 수정
+ * Update a share link
  * @param {string} token - Access token
- * @param {Object} updates - 수정할 데이터
- * @returns {Promise<Object>} 수정된 링크 데이터
+ * @param {Object} updates - Data to update
+ * @returns {Promise<Object>} Updated link data
  */
 async function updateShareLink(token, updates) {
   if (isPostgresqlBackend()) {
@@ -266,6 +356,47 @@ async function updateShareLink(token, updates) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const existing = await client.query(
+          `SELECT *
+             FROM share_links
+            WHERE token = ?
+            LIMIT 1`,
+          [String(token)]
+        );
+        if (existing.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+        }
+
+        const current = mapShareLinkRow(existing.rows[0]);
+        const merged = {
+          ...current,
+          ...updates,
+        };
+
+        const updated = await client.query(
+          `UPDATE share_links
+              SET file_path = ?,
+                  expires_at = ?,
+                  download_count = ?
+            WHERE token = ?
+            RETURNING *`,
+          [
+            normalizeWebdavPath(merged.filePath),
+            merged.expiresAt || null,
+            Number(merged.downloadCount || 0),
+            String(token),
+          ]
+        );
+        return mapShareLinkRow(updated.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const link = await getShareLink(token);
   if (!link) {
     throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
@@ -283,7 +414,7 @@ async function updateShareLink(token, updates) {
 }
 
 /**
- * 공유 링크 삭제
+ * Delete a share link
  * @param {string} token - Access token
  * @returns {Promise<void>}
  */
@@ -303,14 +434,29 @@ async function deleteShareLink(token) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      await storage.withSqliteTransaction(async (client) => {
+        await client.query(
+          `DELETE FROM share_links
+            WHERE token = ?`,
+          [String(token)]
+        );
+      });
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const linkPath = getShareLinkPath(token);
   await storage.deletePath(linkPath);
 }
 
 /**
- * 공유 링크 다운로드 횟수 증가
+ * Increment download count for a share link
  * @param {string} token - Access token
- * @returns {Promise<Object>} 업데이트된 링크 데이터
+ * @returns {Promise<Object>} Updated link data
  */
 async function incrementDownloadCount(token) {
   if (isPostgresqlBackend()) {
@@ -320,6 +466,26 @@ async function incrementDownloadCount(token) {
           `UPDATE share_links
               SET download_count = download_count + 1
             WHERE token = $1
+            RETURNING *`,
+          [String(token)]
+        );
+        if (updated.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+        }
+        return mapShareLinkRow(updated.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        const updated = await client.query(
+          `UPDATE share_links
+              SET download_count = download_count + 1
+            WHERE token = ?
             RETURNING *`,
           [String(token)]
         );
@@ -344,13 +510,13 @@ async function incrementDownloadCount(token) {
 }
 
 /**
- * 만료된 링크 확인
- * @param {Object} link - 링크 데이터
- * @returns {boolean} 만료 여부
+ * Check if a link is expired
+ * @param {Object} link - Link data
+ * @returns {boolean} Whether the link is expired
  */
 function isLinkExpired(link) {
   if (!link.expiresAt) {
-    return false; // 무제한
+    return false; // unlimited
   }
   
   const now = new Date();

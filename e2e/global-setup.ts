@@ -33,14 +33,72 @@ function runCompose(args: string[]) {
 }
 
 function cleanDir(relativePath: string) {
-  fs.rmSync(path.join(rootDir, relativePath), { recursive: true, force: true });
+  const targetPath = path.join(rootDir, relativePath);
+  try {
+    fs.rmSync(targetPath, { recursive: true, force: true });
+  } catch (err: unknown) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code !== 'EACCES') {
+      throw err;
+    }
+
+    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
+    execFileSync(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${rootDir}:/workspace`,
+        'alpine',
+        'sh',
+        '-c',
+        `rm -rf /workspace/${relativePath}`,
+      ],
+      {
+        cwd: rootDir,
+        stdio: 'inherit',
+      }
+    );
+  }
 }
 
 function waitForWebdav(timeoutMs: number) {
   const startedAt = Date.now();
 
   return new Promise<void>((resolve, reject) => {
+    let done = false;
+
+    const finishSuccess = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+
+    const finishFailure = (error: Error) => {
+      if (done) return;
+      done = true;
+      reject(error);
+    };
+
+    const scheduleRetry = (error: Error) => {
+      if (done) return;
+      if (Date.now() - startedAt >= timeoutMs) {
+        finishFailure(error);
+        return;
+      }
+      setTimeout(attempt, 1000);
+    };
+
     const attempt = () => {
+      if (done) return;
+      let attemptSettled = false;
+      const settleAttempt = (handler: () => void) => {
+        if (attemptSettled || done) return;
+        attemptSettled = true;
+        handler();
+      };
+
       const request = http.request(
         webdavBaseUrl,
         {
@@ -54,34 +112,30 @@ function waitForWebdav(timeoutMs: number) {
         (response) => {
           response.resume();
           const statusCode = response.statusCode || 500;
-          if (statusCode >= 200 && statusCode < 300) {
-            resolve();
-            return;
-          }
-          if (statusCode === 207 || statusCode === 403) {
-            // 403 Forbidden indicates the server is up but auth failed, which is acceptable for readiness check
-            resolve();
-            return;
-          }
-
-          retry(new Error(`Unexpected WebDAV PROPFIND status: ${response.statusCode}`));
+          settleAttempt(() => {
+            if ((statusCode >= 200 && statusCode < 300) || statusCode === 207 || statusCode === 403) {
+              finishSuccess();
+              return;
+            }
+            scheduleRetry(new Error(`Unexpected WebDAV PROPFIND status: ${response.statusCode}`));
+          });
         }
       );
 
       request.on('timeout', () => {
-        request.destroy(new Error('Timed out waiting for WebDAV server'));
+        settleAttempt(() => {
+          request.destroy();
+          scheduleRetry(new Error('Timed out waiting for WebDAV server'));
+        });
       });
 
-      request.on('error', retry);
-      request.end();
-    };
+      request.on('error', (error) => {
+        settleAttempt(() => {
+          scheduleRetry(error);
+        });
+      });
 
-    const retry = (error: Error) => {
-      if (Date.now() - startedAt >= timeoutMs) {
-        reject(error);
-        return;
-      }
-      setTimeout(attempt, 1000);
+      request.end();
     };
 
     attempt();
@@ -93,6 +147,7 @@ export default async function globalSetup() {
   cleanDir('playwright-report');
   cleanDir('e2e-data');
   cleanDir('data/e2e-metadata');
+  cleanDir('data/webdav');
   fs.mkdirSync(path.join(rootDir, 'e2e-data'), { recursive: true });
 
   console.log('Ensuring a fresh WebDAV environment by restarting Docker Compose...');

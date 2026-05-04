@@ -119,6 +119,9 @@ npm run test:e2e:install
 # - Starting the E2E client (port 3000)
 # - Executing the Playwright tests
 npm run test:e2e
+
+# Run gated later waves (P1/P2 scenarios)
+E2E_LATER_WAVES=1 npm run test:e2e
 ```
 
 Required assumptions:
@@ -356,6 +359,18 @@ cat .gitignore | grep coverage
 # 3. Pin dependency versions (commit package-lock.json)
 # 4. Ensure test isolation (beforeEach/afterEach)
 ```
+
+### Q: E2E tests pass on first run but fail on second run
+
+**Root cause**: The `data/webdav/` directory is a Docker bind mount (`./data/webdav:/var/lib/dav`). While `docker compose down -v` removes named Docker volumes, it does NOT clean host-path bind mounts. Stale WebDAV data from the previous run persists, causing conflicts.
+
+**Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before restarting Docker Compose. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
+
+### Q: Mobile Action Sheet tests are flaky (E2E-EXP-006, E2E-MOBILE-002)
+
+**Root cause**: `openActionSheet` helper waits for `[role="dialog"]` to be visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the element is in DOM but not fully visible, causing Playwright's `toBeVisible()` to fail with a race condition.
+
+**Fix**: The `openActionSheet` helper now uses `Promise.all` to click and wait simultaneously, and targets specific action items (`[data-testid="file-action-rename"]`) instead of the generic `[role="dialog"]` locator. E2E-MOBILE-002 no longer redundantly checks `[role="dialog"]` after `openActionSheet`.
 
 ### Q: Tests are too slow
 

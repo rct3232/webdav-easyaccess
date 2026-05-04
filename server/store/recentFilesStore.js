@@ -7,9 +7,9 @@ const RECENT_FILES_DIR = '/.wea/recent-files/';
 const MAX_RECENT_FILES = 20;
 
 /**
- * 사용자별 최근 파일 경로 생성
- * @param {number} userId - 사용자 ID
- * @returns {string} WebDAV 경로
+ * Generate recent file path for a user
+ * @param {number} userId - User ID
+ * @returns {string} WebDAV path
  */
 function getUserRecentFilesPath(userId) {
   return normalizeWebdavPath(`${RECENT_FILES_DIR}${userId}.json`);
@@ -17,6 +17,10 @@ function getUserRecentFilesPath(userId) {
 
 function isPostgresqlBackend() {
   return storage.getBackend() === 'postgresql';
+}
+
+function isSqliteBackend() {
+  return storage.getBackend() === 'sqlite';
 }
 
 function toIsoString(value) {
@@ -65,10 +69,40 @@ async function replaceRecentFilesPg(userId, files, client) {
   }
 }
 
+async function listRecentFilesSqlite(userId, client = null) {
+  const executor = client || storage.getSqliteConnection();
+  const res = await executor.query(
+    `SELECT path, name, type, last_accessed
+     FROM recent_files
+     WHERE user_id = ?
+     ORDER BY last_accessed DESC`,
+    [Number(userId)]
+  );
+  return res.rows.map(mapRecentFileRow);
+}
+
+async function replaceRecentFilesSqlite(userId, files, client) {
+  const userIdNum = Number(userId);
+  await client.query(`DELETE FROM recent_files WHERE user_id = ?`, [userIdNum]);
+  for (const item of files) {
+    await client.query(
+      `INSERT INTO recent_files (user_id, path, name, type, last_accessed)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        userIdNum,
+        normalizePath(item.path),
+        item.name || normalizePath(item.path).split('/').pop() || '',
+        item.type || 'file',
+        item.lastAccessed || new Date().toISOString(),
+      ]
+    );
+  }
+}
+
 /**
- * 사용자의 최근 파일 목록 조회
- * @param {number} userId - 사용자 ID
- * @returns {Promise<Array>} 최근 파일 목록
+ * Get user's recent files list
+ * @param {number} userId - User ID
+ * @returns {Promise<Array>} Recent files list
  */
 async function getUserRecentFiles(userId) {
   if (isPostgresqlBackend()) {
@@ -79,8 +113,16 @@ async function getUserRecentFiles(userId) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      return await listRecentFilesSqlite(userId);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     
     const filePath = getUserRecentFilesPath(userId);
@@ -94,17 +136,17 @@ async function getUserRecentFiles(userId) {
     const files = JSON.parse(content);
     return Array.isArray(files) ? files : [];
   } catch (error) {
-    // 파일이 없거나 파싱 실패 시 빈 배열 반환
+    // Return empty array if file doesn't exist or parsing fails
     console.error('Failed to get user recent files:', error);
     return [];
   }
 }
 
 /**
- * 최근 파일 추가
- * @param {number} userId - 사용자 ID
- * @param {Object} fileData - 파일 정보 { path, name, type }
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Add a recent file
+ * @param {number} userId - User ID
+ * @param {Object} fileData - File info { path, name, type }
+ * @returns {Promise<Array>} Updated recent files list
  */
 async function addRecentFile(userId, fileData) {
   if (isPostgresqlBackend()) {
@@ -147,24 +189,24 @@ async function addRecentFile(userId, fileData) {
   }
 
   try {
-    // 디렉토리 존재 확인 및 생성
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     
     const files = await getUserRecentFiles(userId);
     
-    // 경로 정규화
+    // Normalize path
     const normalizedNewPath = normalizePath(fileData.path);
     
-    // 중복 제거 (정규화된 경로로 비교)
+    // Remove duplicates (compare by normalized path)
     const filtered = files.filter(f => {
       const normalizedExistingPath = normalizePath(f.path);
       return normalizedExistingPath !== normalizedNewPath;
     });
     
-    // 새 파일을 맨 앞에 추가
+    // Add new file at the front
     const newFiles = [
       {
-        path: normalizedNewPath, // 정규화된 경로로 저장
+        path: normalizedNewPath, // Store as normalized path
         name: fileData.name || fileData.basename || normalizedNewPath.split('/').pop(),
         type: fileData.type || 'file',
         lastAccessed: new Date().toISOString(),
@@ -183,10 +225,10 @@ async function addRecentFile(userId, fileData) {
 }
 
 /**
- * 최근 파일 제거
- * @param {number} userId - 사용자 ID
- * @param {string} filePath - 파일 경로
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Remove a recent file
+ * @param {number} userId - User ID
+ * @param {string} filePath - File path
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function removeRecentFile(userId, targetPath) {
   if (isPostgresqlBackend()) {
@@ -207,9 +249,27 @@ async function removeRecentFile(userId, targetPath) {
     }
   }
 
+  if (isSqliteBackend()) {
+    const userIdNum = Number(userId);
+    const normalizedTargetPath = normalizePath(targetPath);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        await client.query(
+          `DELETE FROM recent_files
+           WHERE user_id = ?
+             AND path = ?`,
+          [userIdNum, normalizedTargetPath]
+        );
+        return await listRecentFilesSqlite(userIdNum, client);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
     const files = await getUserRecentFiles(userId);
-    // 경로 정규화하여 비교
+    // Normalize path for comparison
     const normalizedTargetPath = normalizePath(targetPath);
     const filtered = files.filter(f => {
       const normalizedExistingPath = normalizePath(f.path);
@@ -227,8 +287,8 @@ async function removeRecentFile(userId, targetPath) {
 }
 
 /**
- * 최근 파일 목록 초기화
- * @param {number} userId - 사용자 ID
+ * Clear recent files list
+ * @param {number} userId - User ID
  * @returns {Promise<void>}
  */
 async function clearRecentFiles(userId) {
@@ -243,11 +303,22 @@ async function clearRecentFiles(userId) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      await storage.withSqliteTransaction(async (client) => {
+        await client.query(`DELETE FROM recent_files WHERE user_id = ?`, [Number(userId)]);
+      });
+      return;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
     const filePath = getUserRecentFilesPath(userId);
     await storage.deletePath(filePath);
   } catch (error) {
-    // 파일이 없어도 에러로 처리하지 않음
+    // Do not treat missing file as an error
     if (error.message && !error.message.includes('not found')) {
       console.error('Failed to clear recent files:', error);
       throw error;
@@ -256,10 +327,10 @@ async function clearRecentFiles(userId) {
 }
 
 /**
- * 일괄 이동 적용 (한 번의 읽기/쓰기로 N개 이동 반영)
- * @param {number} userId - 사용자 ID
+ * Apply batch moves (reflect N moves in a single read/write)
+ * @param {number} userId - User ID
  * @param {Array<{ oldPath: string, newPath: string, file?: { type?: string, name?: string, basename?: string } }>} moves
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function applyBulkMove(userId, moves) {
   if (isPostgresqlBackend()) {
@@ -317,8 +388,63 @@ async function applyBulkMove(userId, moves) {
     }
   }
 
-  if (!moves || moves.length === 0) return await getUserRecentFiles(userId);
+  if (isSqliteBackend()) {
+    if (!moves || moves.length === 0) return await getUserRecentFiles(userId);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        let files = await listRecentFilesSqlite(userId, client);
+
+        for (const { oldPath, newPath, file } of moves) {
+          const oldNorm = normalizePath(oldPath);
+          const newNorm = normalizePath(newPath);
+          const isDir = file?.type === 'directory';
+
+          if (isDir) {
+            const toReAdd = [];
+            files = files.filter((f) => {
+              const p = normalizePath(f.path);
+              if (p === oldNorm || p.startsWith(oldNorm + '/')) {
+                const rel = p === oldNorm ? '' : p.slice(oldNorm.length);
+                toReAdd.push({ ...f, path: newNorm + rel });
+                return false;
+              }
+              return true;
+            });
+            const now = new Date().toISOString();
+            for (const f of toReAdd) {
+              if (f.type === 'directory') continue;
+              files.unshift({ ...f, lastAccessed: now });
+            }
+          } else {
+            files = files.filter((f) => normalizePath(f.path) !== oldNorm);
+            const name = file?.name || file?.basename || newNorm.split('/').pop();
+            files.unshift({
+              path: newNorm,
+              name,
+              type: file?.type || 'file',
+              lastAccessed: new Date().toISOString(),
+            });
+          }
+        }
+
+        const seen = new Set();
+        const deduped = files.filter((f) => {
+          const p = normalizePath(f.path);
+          if (seen.has(p)) return false;
+          seen.add(p);
+          return true;
+        });
+        const result = deduped.slice(0, MAX_RECENT_FILES);
+        await replaceRecentFilesSqlite(userId, result, client);
+        return result;
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   try {
+    // Check directory existence and create if needed
     await storage.ensureDirSafe(RECENT_FILES_DIR);
     let files = await getUserRecentFiles(userId);
 
@@ -373,11 +499,11 @@ async function applyBulkMove(userId, moves) {
 }
 
 /**
- * 일괄 경로 제거 (한 번의 읽기/쓰기로 N개 삭제 반영)
- * @param {number} userId - 사용자 ID
- * @param {string[]} filePaths - 제거할 파일/폴더 경로 배열 (삭제된 항목 전체)
- * @param {string[]} folderPaths - 제거할 폴더 경로 배열 (하위 경로도 제거용, filePaths의 부분집합)
- * @returns {Promise<Array>} 업데이트된 최근 파일 목록
+ * Apply batch removals (reflect N deletions in a single read/write)
+ * @param {number} userId - User ID
+ * @param {string[]} filePaths - Array of file/folder paths to remove (fully deleted items)
+ * @param {string[]} folderPaths - Array of folder paths to remove (also removes sub-paths, subset of filePaths)
+ * @returns {Promise<Array>} Updated recent file list
  */
 async function removePaths(userId, filePaths = [], folderPaths = []) {
   if (isPostgresqlBackend()) {
@@ -405,10 +531,34 @@ async function removePaths(userId, filePaths = [], folderPaths = []) {
     }
   }
 
+  if (isSqliteBackend()) {
+    if (!filePaths.length && !folderPaths.length) return await getUserRecentFiles(userId);
+    try {
+      return await storage.withSqliteTransaction(async (client) => {
+        let files = await listRecentFilesSqlite(userId, client);
+        const filePathsSet = new Set((filePaths || []).map((p) => normalizePath(p)));
+        const folderPathsNorm = (folderPaths || []).map((p) => normalizePath(p));
+
+        files = files.filter((f) => {
+          const p = normalizePath(f.path);
+          if (filePathsSet.has(p)) return false;
+          for (const folder of folderPathsNorm) {
+            if (p === folder || p.startsWith(folder + '/')) return false;
+          }
+          return true;
+        });
+
+        await replaceRecentFilesSqlite(userId, files, client);
+        return files;
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   if (!filePaths.length && !folderPaths.length) return await getUserRecentFiles(userId);
   try {
-    await storage.ensureDirSafe(RECENT_FILES_DIR);
-    let files = await getUserRecentFiles(userId);
+    await storage.ensureDirSafe(RECENT_FILES_DIR);    let files = await getUserRecentFiles(userId);
     const filePathsSet = new Set((filePaths || []).map((p) => normalizePath(p)));
     const folderPathsNorm = (folderPaths || []).map((p) => normalizePath(p));
 

@@ -1,6 +1,6 @@
 const { withLock } = require('./locks');
 const { SETTINGS_PATH, META_ROOT } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
 const { mapDatabaseError } = require('../utils/errorHandler');
 
 function nowIso() {
@@ -12,7 +12,7 @@ function isPostgresqlBackend() {
 }
 
 async function ensureSettingsFile() {
-  if (isPostgresqlBackend()) return;
+  if (isPostgresqlBackend() || isSqliteBackend()) return;
   await ensureDir(META_ROOT);
   const ok = await exists(SETTINGS_PATH);
   if (!ok) {
@@ -32,6 +32,21 @@ async function readSettings() {
     try {
       const pool = getPgPool();
       const res = await pool.query(`SELECT key, value FROM settings`);
+      const out = {};
+      for (const row of res.rows) {
+        out[row.key] = row.value;
+      }
+      return out;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const res = await withSqliteTransaction(async (client) => {
+        return client.query(`SELECT key, value FROM settings`);
+      });
       const out = {};
       for (const row of res.rows) {
         out[row.key] = row.value;
@@ -89,6 +104,24 @@ async function get(key) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      const res = await withSqliteTransaction(async (client) => {
+        return client.query(
+          `SELECT value
+             FROM settings
+            WHERE key = ?
+            LIMIT 1`,
+          [String(key)]
+        );
+      });
+      if (res.rows.length === 0) return null;
+      return res.rows[0].value;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   const s = await readSettings();
   return Object.prototype.hasOwnProperty.call(s, key) ? s[key] : null;
 }
@@ -104,6 +137,25 @@ async function set(key, value) {
            DO UPDATE
              SET value = EXCLUDED.value,
                  updated_at = NOW()`,
+          [String(key), JSON.stringify(String(value))]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      await withSqliteTransaction(async (client) => {
+        await client.query(
+          `INSERT INTO settings (key, value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT (key)
+           DO UPDATE SET
+             value = EXCLUDED.value,
+             updated_at = CURRENT_TIMESTAMP`,
           [String(key), JSON.stringify(String(value))]
         );
       });

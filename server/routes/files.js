@@ -13,12 +13,13 @@ const {
   deleteFile,
   moveFile,
   copyFile,
+  createDirectory,
   isImageFile,
   isVideoFile,
   pathExists,
   getFileMetadata,
 } = require('../utils/webdav');
-const { getThumbnailUrl } = require('../utils/thumbnail');
+const { getThumbnailUrl, thumbnailCache, getThumbnailHash, ensureThumbnailsBatch } = require('../utils/thumbnail');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
@@ -156,7 +157,7 @@ async function checkConflictsRecursive(sourcePath, destinationPath, conflicts = 
     if (!exists) return conflicts;
   }
 
-  // conflict에 파일만 포함 (폴더는 conflict로 처리하지 않음)
+  // Only include files in conflicts (folders are not treated as conflicts)
   if (!isDestDir) {
     conflicts.push({
       path: destinationPath,
@@ -268,6 +269,12 @@ function scheduleBulkWorker(jobId) {
   setImmediate(runBulkJobWorker, jobId);
 }
 
+/**
+ * Process a bulk delete/move/copy job asynchronously.
+ *
+ * @param {string} jobId - The ID of the bulk operation job to process
+ * @returns {Promise<void>} Resolves when the job completes or fails
+ */
 async function runBulkJobWorker(jobId) {
   const job = getJob(jobId);
   if (!job || job.status !== 'pending') return;
@@ -338,7 +345,7 @@ async function runBulkJobWorker(jobId) {
                   }
                 }
               } catch (dirError) {
-                // proceed
+                console.debug ? console.debug(`[BulkJob ${jobId}] Skipping directory check for admin: user=${userId}, path=${filePath}`, dirError) : null;
               }
             }
             if (isDir) {
@@ -348,7 +355,7 @@ async function runBulkJobWorker(jobId) {
                   await Permission.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
                   allDeletedDirPrefixes.add(normalizedTargetPath);
                 } catch (permError) {
-                  console.error('Failed to revoke permissions after direct directory deletion:', permError);
+                  console.error(`[BulkJob ${jobId}] Failed to revoke permissions after direct directory deletion: user=${userId}, path=${normalizedTargetPath}`, permError);
                 }
                 pushResult({ path: filePath, status: 'succeeded' });
                 return;
@@ -368,7 +375,7 @@ async function runBulkJobWorker(jobId) {
                   prefixes.forEach(p => allDeletedDirPrefixes.add(p));
                 }
               } catch (permError) {
-                console.error('Failed to revoke permissions after directory deletion:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to revoke permissions after selective directory deletion: user=${userId}, path=${normalizedTargetPath}`, permError);
               }
               pushResult({ path: filePath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -472,14 +479,14 @@ async function runBulkJobWorker(jobId) {
                   [{ fromPrefix: normalizedSourcePath, toPrefix: normalizedDestinationPath }],
                   { excludePrefixes, duplicateExactMatches: !rootMovedFully }
                 );
-              } catch (permError) {
-                console.error('Failed to rewrite permissions after move:', permError);
+               } catch (permError) {
+                console.error(`[BulkJob ${jobId}] Failed to rewrite permissions after move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               if (result.movedDirMappings && result.movedDirMappings.length > 0) {
                 try {
                   await Permission.rewritePermissionsForAllUsers(result.movedDirMappings);
                 } catch (permError) {
-                  console.error('Failed to rewrite permissions after move:', permError);
+                  console.error(`[BulkJob ${jobId}] Failed to rewrite dir mappings after move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
                 }
               }
               try {
@@ -489,8 +496,8 @@ async function runBulkJobWorker(jobId) {
                     await Permission.grant(homeOwnerId, dir, PERMISSIONS.ADMIN);
                   }
                 }
-              } catch (permError) {
-                console.error('Failed to grant home owner admin permission after directory move:', permError);
+               } catch (permError) {
+                console.error(`[BulkJob ${jobId}] Failed to grant home owner admin after directory move: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -601,7 +608,7 @@ async function runBulkJobWorker(jobId) {
                   allCreatedDirs.add(dir);
                 }
               } catch (permError) {
-                console.error('Failed to grant executor permissions after copy:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to grant executor permissions after copy: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               try {
                 for (const dir of result.createdDirs || []) {
@@ -611,7 +618,7 @@ async function runBulkJobWorker(jobId) {
                   }
                 }
               } catch (permError) {
-                console.error('Failed to grant home owner admin permissions after copy:', permError);
+                console.error(`[BulkJob ${jobId}] Failed to grant home owner admin after copy: user=${userId}, source=${sourcePath}, dest=${destinationPath}`, permError);
               }
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
               if (result.skippedPaths && result.skippedPaths.length > 0) {
@@ -742,19 +749,18 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       // Re-throw other errors
       throw error;
     }
-    // Admin인 경우 .wea 폴더도 반환 (필터링은 클라이언트에서 처리)
-    // Share 모드와 일반 사용자는 .wea 필터링
+    // For admins, return .wea folder too (filtering handled by client)
+    // Share mode and regular users filter out .wea
     const filteredItems = (user && user.is_admin)
       ? items
       : items.filter(item => item.basename !== '.wea');
-    const { getThumbnailUrl } = require('../utils/thumbnail');
     
     // Current directory write permission (sync from doc). Share: always false.
     const currentDirWritePermission = isShare
       ? false
       : (user.is_admin || isOwnerPath(user, folderPath) || Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE));
 
-    // 항목별 권한 체크 (동기, doc 기반). Share: hasReadPermission=true, hasWritePermission=false
+    // Per-item permission check (sync, doc-based). Share mode: hasReadPermission=true, hasWritePermission=false
     const itemsWithThumbnails = filteredItems.map((item) => {
       if (!item.basename || item.basename.includes('/') || item.basename.includes('\\')) {
         return null;
@@ -808,8 +814,8 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
       };
     });
 
-  // 모든 항목 반환 (권한 정보 포함)
-  // 직접 권한이 없는 디렉토리도 표시하되, 비활성화 상태로 표시됨
+  // Return all items (with permission info)
+  // Directories without direct permissions are also shown but in a disabled state
   res.json(itemsWithThumbnails.filter(item => item !== null));
 }));
 
@@ -930,9 +936,9 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
   
   const user = req.user.full;
     
-    // 관리자는 모든 경로에 파일 업로드 가능
+    // Admins can upload files to any path
     if (!user.is_admin) {
-      // 경로 정규화 (끝의 / 제거)
+      // Normalize path (remove trailing /)
       const normalizedPath = normalizePath(folderPath);
       
       if (normalizedPath === '/' || normalizedPath === '') {
@@ -945,11 +951,11 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
         folderPath = normalizedPath;
       }
     } else {
-      // 관리자의 경우도 경로 정규화
+      // Admins also normalize the path
       folderPath = normalizePath(folderPath);
     }
     
-    // 디렉토리 경로로 변환 (끝에 / 추가)
+    // Convert to directory path (append trailing /)
     if (folderPath !== '/' && !folderPath.endsWith('/')) {
       folderPath = folderPath + '/';
     }
@@ -967,7 +973,6 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
         }
         
         // Create intermediate directories if they don't exist
-        const { createDirectory } = require('../utils/webdav');
         const dirParts = relativeDir.split('/').filter(Boolean);
         let currentPath = folderPath;
         
@@ -1053,8 +1058,8 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
     throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
 
-  // 최종 권한 체크는 이미 위에서 완료됨 (folderPath에 대한 권한 체크)
-  // 파일 경로 자체에 대한 추가 체크는 불필요 (부모 폴더 권한으로 충분)
+  // Final permission check already done above (permission check for folderPath)
+  // No additional check needed for the file path itself (parent folder permission is sufficient)
 
   await putFileContents(filePath, req.file.buffer);
 
@@ -1112,7 +1117,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
     } catch (permError) {
       console.error('Failed to rewrite permissions after directory rename:', permError);
     }
-    // 새 경로에 홈 소유자 ADMIN 부여 (기존 경로에 권한 엔트리가 없었던 경우에도 일관되게 적용)
+    // Grant home owner ADMIN on the new path (consistently applied even if no permission entry existed at the old path)
     try {
       const homeOwnerId = await getHomeOwnerUserIdForPath(normalizedNew);
       if (homeOwnerId != null) {
@@ -1126,7 +1131,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
 }));
 
 // Helper to handle onConflict in batch operations
-// 폴더는 conflict 적용 안 함 (항상 merge), 파일만 skip/overwrite 적용
+// Folders are not subject to conflict handling (always merge); files use skip/overwrite
 const handleSingleOpConflict = async (destPath, onConflict) => {
   const destExists = await pathExists(destPath);
   if (!destExists) return 'none';

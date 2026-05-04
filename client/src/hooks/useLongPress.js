@@ -8,6 +8,7 @@ import { useCallback, useRef } from 'react';
 export const useLongPress = (onLongPress, delay = 500) => {
   const timeoutRef = useRef(null);
   const touchMoveRef = useRef(false);
+  const longPressOccurredRef = useRef(false);
 
   const start = useCallback((e) => {
     touchMoveRef.current = false;
@@ -17,6 +18,7 @@ export const useLongPress = (onLongPress, delay = 500) => {
         if (navigator.vibrate) {
           navigator.vibrate(50); // 50ms 진동
         }
+        longPressOccurredRef.current = true;
         onLongPress(e);
       }
     }, delay);
@@ -34,6 +36,14 @@ export const useLongPress = (onLongPress, delay = 500) => {
     clear();
   }, [clear]);
 
+  const wasLongPress = useCallback(() => {
+    const occurred = longPressOccurredRef.current;
+    if (occurred) {
+      longPressOccurredRef.current = false;
+    }
+    return occurred;
+  }, []);
+
   return {
     onTouchStart: start,
     onTouchEnd: clear,
@@ -41,6 +51,7 @@ export const useLongPress = (onLongPress, delay = 500) => {
     onMouseDown: start,
     onMouseUp: clear,
     onMouseLeave: clear,
+    wasLongPress,
   };
 };
 

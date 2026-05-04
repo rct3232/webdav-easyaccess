@@ -8,7 +8,7 @@ const recentFilesStore = require('../store/recentFilesStore');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 
 /**
- * 사용자의 최근 파일 목록 조회
+ * Get user's recent files list
  * GET /api/recent-files
  */
 router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -19,7 +19,7 @@ router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) =>
 }));
 
 /**
- * 최근 파일 추가
+ * Add a recent file
  * POST /api/recent-files
  */
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -44,7 +44,7 @@ router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) =
 }));
 
 /**
- * 전체 최근 파일 목록 초기화
+ * Clear all recent files
  * DELETE /api/recent-files
  * Must be defined before /:filePath(*) so it matches DELETE /api/recent-files (no path segment).
  */
@@ -57,7 +57,7 @@ router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res)
 }));
 
 /**
- * 특정 파일 제거
+ * Remove a specific file from recent files
  * DELETE /api/recent-files/:filePath
  */
 router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -68,7 +68,7 @@ router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(asyn
     throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
   }
 
-  // URL 디코딩
+  // Decode URL
   const decodedPath = decodeURIComponent(filePath);
   const normalizedPath = normalizePath(decodedPath);
 
@@ -78,7 +78,7 @@ router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(asyn
 }));
 
 /**
- * 일괄 이동 적용 (벌크 이동 시 N번 DELETE/POST 대신 1회 호출)
+ * Apply bulk moves (single call instead of N DELETE/POST for bulk moves)
  * POST /api/recent-files/apply-moves
  * Body: { moves: Array<{ oldPath, newPath, file?: { type, name, basename } }> }
  */
@@ -95,7 +95,7 @@ router.post('/apply-moves', authenticateToken, requireUser, asyncHandler(async (
 }));
 
 /**
- * 일괄 경로 제거 (벌크 삭제 시 N번 DELETE 대신 1회 호출)
+ * Remove paths in bulk (single call instead of N DELETE for bulk deletion)
  * POST /api/recent-files/remove-paths
  * Body: { filePaths: string[], folderPaths: string[] }
  */

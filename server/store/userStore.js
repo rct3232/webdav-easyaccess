@@ -10,7 +10,7 @@ const {
   emailIndexPathByEmailHash,
   sha256HexLower,
 } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile, deletePath, getBackend, withTransaction, getPgPool } = require('./storage');
+const { ensureDir, exists, readFile, writeFile, deletePath, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
 const { withLock } = require('./locks');
 
 function nowIso() {
@@ -148,6 +148,27 @@ async function findByUsername(username) {
       throw mapDatabaseError(error);
     }
   }
+  if (isSqliteBackend()) {
+    try {
+      const db = getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM users
+            WHERE username = ?
+            LIMIT 1`,
+          [String(username)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
   return await readUserByUsername(username);
 }
 
@@ -165,6 +186,30 @@ async function findByEmail(email) {
           LIMIT 1`,
         [emailHash]
       );
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+  if (isSqliteBackend()) {
+    const emailNorm = normalizeEmail(email);
+    if (!emailNorm) return undefined;
+    const emailHash = sha256HexLower(emailNorm);
+    try {
+      const db = getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM users
+            WHERE email_hash = ?
+            LIMIT 1`,
+          [emailHash],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       return mapUserRow(res.rows[0]);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -192,6 +237,27 @@ async function findById(id) {
           LIMIT 1`,
         [Number(id)]
       );
+      return mapUserRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+  if (isSqliteBackend()) {
+    try {
+      const db = getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM users
+            WHERE id = ?
+            LIMIT 1`,
+          [Number(id)],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       return mapUserRow(res.rows[0]);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -254,6 +320,64 @@ async function createUser({ username, email, passwordHash, isAdmin = false }) {
             0,
             createdAt,
           ]
+        );
+        return mapUserRow(inserted.rows[0]);
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    const emailNorm = normalizeEmail(email);
+    const emailHash = sha256HexLower(emailNorm);
+    const createdAt = nowIso();
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const dupUsername = await client.query(
+          `SELECT 1 FROM users WHERE username = ? LIMIT 1`,
+          [String(username)]
+        );
+        if (dupUsername.rows.length > 0) {
+          throw createError(SERVER_ERROR_CODES.admin.usernameTaken, 409);
+        }
+
+        const dupEmail = await client.query(
+          `SELECT 1 FROM users WHERE email_hash = ? LIMIT 1`,
+          [emailHash]
+        );
+        if (dupEmail.rows.length > 0) {
+          throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
+        }
+
+        await client.query(
+          `INSERT INTO users (
+              username,
+              email,
+              email_hash,
+              password,
+              status,
+              is_admin,
+              token_version,
+              created_at,
+              updated_at
+            )
+            VALUES (?,?,?,?,?,?,?,?,?)`,
+          [
+            String(username),
+            emailNorm,
+            emailHash,
+            String(passwordHash),
+            isAdmin ? USER_STATUS.APPROVED : USER_STATUS.PENDING,
+            Boolean(isAdmin),
+            0,
+            createdAt,
+            createdAt,
+          ]
+        );
+
+        const inserted = await client.query(
+          `SELECT * FROM users WHERE id = last_insert_rowid() LIMIT 1`
         );
         return mapUserRow(inserted.rows[0]);
       });
@@ -334,6 +458,23 @@ async function updateStatus(userId, status) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      await withSqliteTransaction(async (client) => {
+        await client.query(
+          `UPDATE users
+              SET status = ?,
+                  updated_at = datetime('now')
+            WHERE id = ?`,
+          [status, Number(userId)]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('users', async () => {
     const user = await findById(userId);
     if (!user) {
@@ -383,6 +524,48 @@ async function updateEmail(userId, newEmail) {
                   updated_at = NOW()
             WHERE id = $1`,
           [userIdNum, newNorm, newHash]
+        );
+        return { success: true };
+      });
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    const userIdNum = Number(userId);
+    const newHash = sha256HexLower(newNorm);
+    try {
+      return await withSqliteTransaction(async (client) => {
+        const currentUserRes = await client.query(
+          `SELECT *
+             FROM users
+            WHERE id = ?
+            LIMIT 1`,
+          [userIdNum]
+        );
+        if (currentUserRes.rows.length === 0) {
+          throw createError(SERVER_ERROR_CODES.admin.userNotFound, 404);
+        }
+
+        const dupEmailRes = await client.query(
+          `SELECT id
+             FROM users
+            WHERE email_hash = ?
+            LIMIT 1`,
+          [newHash]
+        );
+        if (dupEmailRes.rows.length > 0 && Number(dupEmailRes.rows[0].id) !== userIdNum) {
+          throw createError(SERVER_ERROR_CODES.auth.emailTaken, 409);
+        }
+
+        await client.query(
+          `UPDATE users
+              SET email = ?,
+                  email_hash = ?,
+                  updated_at = datetime('now')
+            WHERE id = ?`,
+          [newNorm, newHash, userIdNum]
         );
         return { success: true };
       });
@@ -444,6 +627,24 @@ async function updatePassword(userId, passwordHash) {
     }
   }
 
+  if (isSqliteBackend()) {
+    try {
+      await withSqliteTransaction(async (client) => {
+        await client.query(
+          `UPDATE users
+              SET password = ?,
+                  token_version = token_version + 1,
+                  updated_at = datetime('now')
+            WHERE id = ?`,
+          [String(passwordHash), Number(userId)]
+        );
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   return await withLock('users', async () => {
     const user = await findById(userId);
     if (!user) return { success: true };
@@ -460,6 +661,17 @@ async function deleteUser(userId) {
     try {
       await withTransaction(async (client) => {
         await client.query(`DELETE FROM users WHERE id = $1`, [Number(userId)]);
+      });
+      return { success: true };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      await withSqliteTransaction(async (client) => {
+        await client.query(`DELETE FROM users WHERE id = ?`, [Number(userId)]);
       });
       return { success: true };
     } catch (error) {
@@ -496,6 +708,27 @@ async function findAll() {
            FROM users
           ORDER BY created_at DESC`
       );
+      return res.rows.map(mapUserRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const db = getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM users
+            ORDER BY created_at DESC`,
+          [],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       return res.rows.map(mapUserRow);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -540,6 +773,28 @@ async function findByStatus(status) {
           ORDER BY created_at DESC`,
         [status]
       );
+      return res.rows.map(mapUserRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  if (isSqliteBackend()) {
+    try {
+      const db = getSqliteConnection();
+      const res = await new Promise((resolve, reject) => {
+        db.all(
+          `SELECT *
+             FROM users
+            WHERE status = ?
+            ORDER BY created_at DESC`,
+          [status],
+          (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          }
+        );
+      });
       return res.rows.map(mapUserRow);
     } catch (error) {
       throw mapDatabaseError(error);

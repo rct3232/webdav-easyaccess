@@ -27,8 +27,10 @@ test-results/
 *.xml
 playwright-report/
 e2e-data/
-.env.e2e
 
 # FFmpeg binary
 ffmpeg.exe
 ffprobe.exe
+
+# Stale storage backend artifacts
+server/undefined/

@@ -219,6 +219,7 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
 - Preview within shared scope: even in public shared directory mode, assert that previewable files can still open the preview dialog from the shared explorer.
 - Deterministic E2E setup guidance: for prerequisites, prefer API-backed fixture creation (e.g. create folder + upload) followed by `POST /api/share-links`, then navigate to `/share/:token` for the observable assertions.
 - Session prep guidance: for anonymous share scenarios, use a dedicated helper that clears cookies/storage (or uses a fresh browser context) before visiting `/share/:token`; for logged-in share scenarios, always navigate with an authenticated session established first.
+- Logged-in share-link E2E fixtures must authenticate with the same user identity that the setup helper provisioned. If setup creates a test-specific suffixed approved user for isolation, the browser login step must use that exact suffixed identity instead of a shared seed username.
 
 ### Browser coverage boundary for sharing-related flows
 

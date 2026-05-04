@@ -296,8 +296,8 @@ async function listDirectory(path = '/') {
     const normalizedPath = normalizePath(path);
     const requestPath = getRequestPath(normalizedPath);
     const items = await client.getDirectoryContents(requestPath);
-    // WebDAV 클라이언트가 반환하는 항목들을 정규화하여 반환
-    // basename만 사용하여 직접 자식만 표시되도록 보장
+    // Normalize items returned by the WebDAV client
+    // Use only basename to ensure direct children are displayed
     return items.map(item => ({
       filename: item.filename,
       basename: item.basename,
@@ -306,8 +306,8 @@ async function listDirectory(path = '/') {
       type: item.type,
       mime: item.mime,
     })).filter(item => {
-      // basename만 있는 항목만 반환 (직접 자식만)
-      // filename이 있더라도 실제로는 basename으로 경로를 구성하므로 필터링 불필요
+      // Return only items with a basename (direct children only)
+      // Even if filename exists, the path is constructed from basename, so no filtering needed
       return item.basename && item.basename.trim() !== '';
     });
   } catch (error) {

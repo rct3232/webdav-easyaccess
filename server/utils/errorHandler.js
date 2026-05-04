@@ -150,7 +150,7 @@ function mapDatabaseError(error, options = {}) {
     return error;
   }
 
-  // 디버깅: 원본 DB 에러를 콘솔에 노출
+  // Debug: expose raw DB error to console
   console.error(
     '[mapDatabaseError] raw DB error:',
     { code: error?.code, message: error?.message }

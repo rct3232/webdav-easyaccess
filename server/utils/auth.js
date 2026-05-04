@@ -51,6 +51,14 @@ if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) 
   throw new Error('JWT_SECRET must be set in production');
 }
 
+// Warn in development when using the default secret.
+if (JWT_SECRET === DEFAULT_JWT_SECRET) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '⚠️  JWT_SECRET is using the default value. Set the JWT_SECRET environment variable for security.'
+  );
+}
+
 function generateToken(user) {
   const tokenVersion = Number.isInteger(user?.token_version) ? user.token_version : 0;
   const isAdmin = user?.is_admin ? 1 : 0;
@@ -97,8 +105,12 @@ async function authenticateToken(req, res, next) {
  * When both are present, share token wins so that logged-in users can view share links.
  * 1. X-Share-Token header or ?shareToken= query -> req.shareContext, req.principalId = "share:" + token
  * 2. JWT (Authorization: Bearer <token>) -> req.user, req.principalId = userId
- * Neither present -> 401
- */
+  * Neither present -> 401
+  *
+  * @param {import('express').Request} req - Express request object
+  * @param {import('express').Response} res - Express response object
+  * @param {import('express').NextFunction} next - Express next middleware function
+  */
 async function authenticateTokenOrShare(req, res, next) {
   const shareToken =
     req.headers['x-share-token'] || req.query.shareToken || req.body?.shareToken;

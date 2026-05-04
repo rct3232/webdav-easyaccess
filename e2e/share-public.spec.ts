@@ -23,12 +23,12 @@ test.describe('public share link', () => {
     );
   });
 
-  test('E2E-SHARE-001 invalid or expired share token shows error state', async ({ page }) => {
+  test('E2E-SHARE-001: Invalid or expired share token shows error state', async ({ page }) => {
     await page.goto(`/share/${fixtures.invalidShareToken}`);
     await expect(page.getByText(/Link has expired or file could not be found\./i)).toBeVisible();
   });
 
-  test('E2E-SHARE-002 valid directory share renders read-only explorer mode', async ({ page }) => {
+  test('E2E-SHARE-002: Directory share loads read-only explorer view', async ({ page }) => {
     await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
     await expect(page.getByTestId('share-link-fab')).toBeVisible();
@@ -36,7 +36,7 @@ test.describe('public share link', () => {
     await expect(fileItem(page, fixtures.anonDir.innerFilePath)).toBeVisible();
   });
 
-  test('E2E-SHARE-008 share mode hides or disables write actions', async ({ page }) => {
+  test('E2E-SHARE-008: Share mode hides or disables write actions', async ({ page }) => {
     await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
     await openItemActions(page, fixtures.anonDir.innerFilePath);
@@ -47,7 +47,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('file-action-share')).toHaveCount(0);
   });
 
-  test('E2E-SHARE-004 anonymous user can open login flow from shared directory', async ({ page }) => {
+  test('E2E-SHARE-004: Anonymous user can open login flow from shared directory', async ({ page }) => {
     await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
     await page.getByTestId('share-link-fab').click();
@@ -57,8 +57,8 @@ test.describe('public share link', () => {
     await expect(page.locator('input[name="password"]')).toBeVisible();
   });
 
-  test('E2E-SHARE-005 logged-in user can add shared content to own permissions', async ({ page }) => {
-    await gotoAsLoggedInShare(page, fixtures.addDir.token, 'user1');
+  test('E2E-SHARE-005: Logged-in user can add shared content to own permissions', async ({ page }) => {
+    await gotoAsLoggedInShare(page, fixtures.addDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
@@ -68,8 +68,8 @@ test.describe('public share link', () => {
     await expect(fileItem(page, fixtures.addDir.innerFilePath)).toBeVisible();
   });
 
-  test('E2E-SHARE-006 successful add-to-my-permissions transitions to normal /files route', async ({ page }) => {
-    await gotoAsLoggedInShare(page, fixtures.transitionDir.token, 'user1');
+  test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular `/files` path', async ({ page }) => {
+    await gotoAsLoggedInShare(page, fixtures.transitionDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
@@ -79,8 +79,8 @@ test.describe('public share link', () => {
     await expect(fileItem(page, fixtures.transitionDir.innerFilePath)).toBeVisible();
   });
 
-  test('E2E-SHARE-007 leaving share scope requires confirmation', async ({ page }, testInfo) => {
-    await gotoAsLoggedInShare(page, fixtures.leaveDir.token, 'user1');
+  test('E2E-SHARE-007: Leaving share scope requires confirmation', async ({ page }, testInfo) => {
+    await gotoAsLoggedInShare(page, fixtures.leaveDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-cancel').click(); // close add-to-my-permissions modal
@@ -93,19 +93,19 @@ test.describe('public share link', () => {
     }
 
     // In share mode for an authenticated non-admin user, the sidebar home item is their username.
-    await page.getByRole('button', { name: 'user1', exact: true }).click();
+    await page.getByRole('button', { name: fixtures.approvedUsername, exact: true }).click();
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible(); // leave-share confirm
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(/\/files\/user1(?:\/.*)?$/);
+    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.approvedUsername}(?:/.*)?$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     // After leaving share scope, the user is taken back to their own explorer home;
     // the shared directory path should no longer be part of the visible listing.
     await expect(fileItem(page, fixtures.leaveDir.innerFilePath)).toHaveCount(0);
   });
 
-  test('E2E-SHARE-003 single-file share loads full-screen preview view', async ({ page }) => {
+  test('E2E-SHARE-003: Single-file share loads full-screen preview view', async ({ page }) => {
     await page.goto(`/share/${fixtures.singleFile.token}`);
 
     const dialog = page.getByRole('dialog');
@@ -113,7 +113,7 @@ test.describe('public share link', () => {
     await expect(dialog.locator('img').first()).toBeVisible();
   });
 
-  test('E2E-SHARE-009 shared directory still allows file preview', async ({ page }, testInfo) => {
+  test('E2E-SHARE-009: Shared directory still allows file preview', async ({ page }, testInfo) => {
     await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
     const fileLocator = page.locator(`[data-file-path="${fixtures.anonDir.innerFilePath}"]`);

@@ -69,19 +69,19 @@ async function requestWithAuth(config) {
       if (config?._retry) {
         removeTokens();
         handle401RefreshFailure(policyConfig);
-        return null;
+        throw err;
       }
-      if (shouldSkipAuthNavigation(policyConfig)) return null;
+      if (shouldSkipAuthNavigation(policyConfig)) throw err;
 
       try {
         await refreshAccessToken();
         // Retry once with the refreshed token. Any failure here is treated
         // as auth failure (same observable behavior as the previous monolith).
         return await performRequest({ ...config, _retry: true });
-      } catch {
+      } catch (refreshError) {
         removeTokens();
         handle401RefreshFailure(policyConfig);
-        return null;
+        throw refreshError;
       }
     }
 

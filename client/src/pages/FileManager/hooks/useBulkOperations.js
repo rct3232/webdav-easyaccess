@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   downloadMultipleFiles,
@@ -35,6 +35,15 @@ export const useBulkOperations = (
   const { progressItems, updateProgress } = useFileOperationProgress();
 
   const { markProcessing: markProcessingImpl, clearProcessing: clearProcessingImpl, shareToken } = options;
+
+  const activeIntervalsRef = useRef(new Set());
+
+  useEffect(() => {
+    return () => {
+      activeIntervalsRef.current.forEach(intervalId => clearInterval(intervalId));
+      activeIntervalsRef.current.clear();
+    };
+  }, []);
 
   const markProcessing = useCallback((filePaths, opType) => {
     if (typeof markProcessingImpl === 'function') {
@@ -150,6 +159,7 @@ export const useBulkOperations = (
         }, retryDataObj);
 
         if (jobStatus !== 'pending' && jobStatus !== 'running') {
+          activeIntervalsRef.current.delete(intervalId);
           clearInterval(intervalId);
           const deletedFolders = [];
           succeeded.forEach(filePath => {
@@ -206,6 +216,7 @@ export const useBulkOperations = (
     };
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    activeIntervalsRef.current.add(intervalId);
     poll();
   }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress, t]);
 
@@ -350,6 +361,7 @@ export const useBulkOperations = (
         }, retryDataObj);
 
         if (jobStatus !== 'pending' && jobStatus !== 'running') {
+          activeIntervalsRef.current.delete(intervalId);
           clearInterval(intervalId);
           let skippedErrorMsg;
           if (hasAnySkipped) {
@@ -414,6 +426,7 @@ export const useBulkOperations = (
     };
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    activeIntervalsRef.current.add(intervalId);
     poll();
   }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files, t]);
 

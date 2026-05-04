@@ -26,7 +26,7 @@ router.get('/approved', authenticateToken, asyncHandler(async (req, res) => {
     .filter(u => !u.is_admin)
     .map(u => ({ id: u.id, username: u.username, email: u.email }))
     .sort((a, b) => a.username.localeCompare(b.username));
-  // 현재 사용자는 제외
+  // Exclude current user
   const filtered = rows.filter(user => user.id !== req.user.id);
   res.json(filtered);
 }));
@@ -91,8 +91,8 @@ router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) 
     throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
   }
   
-  // 관리자는 모든 사용자의 권한을 수정할 수 있고, 일반 사용자는 자신의 권한만 수정할 수 있음
-  // 하지만 일반 사용자가 자신의 권한을 수정하는 것은 제한적이므로 (보안상), 관리자만 허용
+  // Admins can modify any user's permissions; regular users can only modify their own.
+  // However, for security reasons, only admins are allowed.
   if (!requestingUser.is_admin) {
     throw forbiddenError(SERVER_ERROR_CODES.admin.adminRequired);
   }

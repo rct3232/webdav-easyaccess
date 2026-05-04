@@ -9,7 +9,8 @@ const {
   PERMISSIONS_DIR,
   PERMISSIONS_USERS_DIR,
 } = require('./metaPaths');
-const { ensureDir } = require('./storage');
+const { ensureDir, isSqliteBackend } = require('./storage');
+const { initSqliteSchema } = require('../scripts/initSqliteSchema');
 const userStore = require('./userStore');
 const settingsStore = require('./settingsStore');
 const permissionStore = require('./permissionStore');
@@ -47,22 +48,20 @@ async function ensureDefaultAdmin() {
 
   // Keep console output consistent with previous behavior
   // eslint-disable-next-line no-console
-  console.log('Default admin account created:');
-  // eslint-disable-next-line no-console
-  console.log('  Username: admin');
-  // eslint-disable-next-line no-console
-  console.log('  Password: ' + defaultPassword);
-  // eslint-disable-next-line no-console
-  console.log('  ⚠️  Please change the default password after first login!');
+  console.log('Default admin account created. Please change the default password after first login.');
 
   return admin;
 }
 
 async function initMetadataStore() {
-  await ensureDirs();
-  await userStore.ensureUserIndexFile();
-  await settingsStore.ensureSettingsFile();
-  await permissionRequestStore.ensurePermissionRequestsFile();
+  if (isSqliteBackend()) {
+    await initSqliteSchema();
+  } else {
+    await ensureDirs();
+    await userStore.ensureUserIndexFile();
+    await settingsStore.ensureSettingsFile();
+    await permissionRequestStore.ensurePermissionRequestsFile();
+  }
   await ensureDefaultAdmin();
 }
 

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
+const isQuiet = process.env.E2E_QUIET === '1';
 
 const desktopSpecMatch = laterWavesEnabled
   ? /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop)\.spec\.ts$/
@@ -49,16 +50,16 @@ export default defineConfig({
       url: 'http://localhost:5002/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: isQuiet ? 'ignore' : 'pipe',
+      stderr: isQuiet ? 'ignore' : 'pipe',
     },
     {
       command: 'npm run e2e:client',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: isQuiet ? 'ignore' : 'pipe',
+      stderr: isQuiet ? 'ignore' : 'pipe',
     },
   ],
 });

@@ -7,14 +7,14 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermission,
-} = require('../../test-utils');
-const ShareLink = require('../../models/ShareLink');
+} = require('../../../../test-utils');
+const ShareLink = require('../../../../models/ShareLink');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 
 var mockWebdav;
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -29,7 +29,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 beforeEach(() => {

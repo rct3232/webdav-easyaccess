@@ -10,7 +10,7 @@ const envPath = process.env.DOTENV_CONFIG_PATH
   ? path.resolve(__dirname, process.env.DOTENV_CONFIG_PATH)
   : path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+  dotenv.config({ path: envPath, override: false });
 } else {
   console.warn(`Warning: env file not found at ${envPath}. Using default environment variables.`);
   dotenv.config();
@@ -76,8 +76,8 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/permission-requests', require('./routes/permissionRequests'));
-app.use('/api/share-links', require('./routes/shareLinks'));
-app.use('/api/share', require('./routes/sharePublic'));
+app.use('/api/share-links', require('./domains/sharing/routes/shareLinks'));
+app.use('/api/share', require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', require('./domains/recentFiles/routes'));
 
 app.get('/api/health', (req, res) => {

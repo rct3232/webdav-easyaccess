@@ -7,11 +7,11 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermission,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 
 var mockWebdav;
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -22,7 +22,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 beforeEach(() => {
@@ -131,7 +131,7 @@ describe('DELETE /api/share-links/:token (expired link)', () => {
       .send({ filePath: `/${user.username}/del.pdf`, expiresInDays: 1 });
     const linkToken = createRes.body.token;
 
-    const ShareLink = require('../../models/ShareLink');
+    const ShareLink = require('../../../../models/ShareLink');
     await ShareLink.update(linkToken, { expiresAt: new Date(0).toISOString() });
 
     const res = await request(app)
@@ -156,7 +156,7 @@ describe('PUT /api/share-links/:token', () => {
       .send({ filePath: `/${user.username}/doc.pdf`, expiresInDays: 1 });
     const linkToken = createRes.body.token;
 
-    const ShareLink = require('../../models/ShareLink');
+    const ShareLink = require('../../../../models/ShareLink');
     await ShareLink.update(linkToken, { expiresAt: new Date(0).toISOString() });
 
     const res = await request(app)

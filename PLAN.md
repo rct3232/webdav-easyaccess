@@ -387,66 +387,126 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 4: Sharing Domain Separation
+### Phase 0: Dead Code Cleanup (Pre-Phase)
 
 **Dependencies:** None  
-**Risk Level:** Low — self-contained lifecycle, minimal cross-domain calls
+**Risk Level:** Very Low — remove orphaned files only
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 4.1 | Create `domains/sharing/routes/shareLinks.js` from current `routes/shareLinks.js` | Mount path updated in index.js |
-| 4.2 | Create `domains/sharing/routes/sharePublic.js` from current `routes/sharePublic.js` | Public endpoints respond |
-| 4.3 | Extract link lifecycle into `services/shareLinkService.js` (create, expire, revoke) | Service unit testable in isolation |
-| 4.4 | Extract token-based access logic into `services/shareAccessService.js` | Decouples permission model import from route |
-| 4.5 | Move share link persistence to use MetadataAdapter pattern (or keep as dedicated store if simpler) | Share link CRUD works |
-| 4.6 | Move test files `routes/__tests__/shareLinks.test.js` + `sharePublic.test.js` → `domains/sharing/routes/__tests__/` | Test files co-located with source |
-| 4.7 | Run server tests | All pass |
+| 0.1 | Delete `server/routes/auth.js` — orphaned file with 5 broken imports (stale Phase 3 remnant), not mounted in `index.js` | No `require('./routes/auth')` exists in codebase |
+| 0.2 | Run server tests to confirm zero impact | All pass |
+
+---
+
+### Phase 4: Sharing Domain Separation
+
+**Dependencies:** None (parallel with Phase 5)  
+**Risk Level:** Low — self-contained lifecycle, minimal cross-domain calls
+
+**Files to relocate:**
+- `routes/shareLinks.js` (192 lines) → `domains/sharing/routes/shareLinks.js`
+- `routes/sharePublic.js` (285 lines) → `domains/sharing/routes/sharePublic.js`
+- `store/shareLinkStore.js` (535 lines) → kept intact, wrapped via facade (Phase 7 MetadataAdapter split)
+- `models/ShareLink.js` (80 lines) → kept as thin model wrapper
+
+| Task | Description | Verify |
+|------|-------------|--------|
+| 4.1 | Create `domains/sharing/` directory structure | Directory exists |
+| 4.2 | Move `routes/shareLinks.js` → `domains/sharing/routes/shareLinks.js`; update `index.js` mount: `require('./domains/sharing/routes/shareLinks')` | `/api/share-links` responds |
+| 4.3 | Move `routes/sharePublic.js` → `domains/sharing/routes/sharePublic.js`; update `index.js` mount: `require('./domains/sharing/routes/sharePublic')` | `/api/share` responds |
+| 4.4 | Extract `services/shareLinkService.js` from shareLinks.js business logic: filePath validation, isMetaPath check, directory vs file detection, permission grant on create, permission revoke on delete | Service unit-testable in isolation |
+| 4.5 | Extract `services/shareAccessService.js` from sharePublic.js: `collectPathsUnderSharePath`, `collectDirectoryPathsUnderSharePath`, token validation, permission check logic | Decouples Permission model import from route |
+| 4.6 | Apply `mapServiceError` pattern: define `SHARING_ERROR_MAP`, wrap route handlers with `handleServiceError` | Route files ≤ 60 lines |
+| 4.7 | Move test files `routes/__tests__/shareLinks.test.js` + `sharePublic.test.js` → `domains/sharing/routes/__tests__/` | Test files co-located with source |
+| 4.8 | Run full server test suite | All pass — gate for Phase 5/6 |
+
+**Note:** `shareLinkStore.js` (535 lines) stays as-is in Phase 4. Its 3-way backend branching will be split into MetadataAdapter variants in Phase 7 Task 7.10.
 
 ---
 
 ### Phase 5: Permissions Domain Separation — **Critical Phase**
 
-**Dependencies:** None  
-**Risk Level:** High — largest store, consumed by files/sharing/admin domains
+**Dependencies:** None (parallel with Phase 4)  
+**Risk Level:** High — largest store (1,301 lines), consumed by files/sharing/admin domains
 
-This phase wraps `permissionStore.js` (1,301 lines) with a facade pattern and resolves the reverse dependency between `utils/permissionPolicy.js` ↔ `middleware/permissions.js`.
-`permissionStore.js` internal structure is kept intact until S3/PostgreSQL backend introduction enables tree-based permissions.
+**Reverse dependency to resolve:** `utils/permissionPolicy.js` → `middleware/permissions.js` (utils → middleware violates layering)
+
+**Files involved:**
+- `store/permissionStore.js` (1,301 lines) → facade wrapping, internal structure kept intact
+- `store/permissionRequestStore.js` (775 lines) → relocated
+- `store/permissionExistenceIndex.js` (134 lines) → relocated
+- `utils/permissionPolicy.js` (287 lines) → relocated + reverse dependency extracted
+- `middleware/permissions.js` (249 lines) → extracts core functions to aclService
+- `routes/permissions.js` (321 lines) → split into domain routes
+- `routes/permissionRequests.js` (198 lines) → relocated
+- `models/Permission.js` (102 lines) → kept as thin wrapper, facade replaces indirection
+- `models/PermissionRequest.js` (38 lines) → kept as thin wrapper
+
+**permissionStore.js structural groups (for Phase 7 MetadataAdapter split):**
+| Group | Lines | Content |
+|-------|-------|---------|
+| A. Share Permissions | 108–326 | Token-based share CRUD (separate cache, separate DB table) |
+| B. User Permission Persistence | 56–718 | 3-way backend branching (PG/SQLite/FS) — MetadataAdapter target |
+| C. Folder Permission Logic | 550–608 | grant/revoke/check on folder paths |
+| D. File Permission Logic | 752–956 | File-level permission operations |
+| E. Bulk/Admin Operations | 1038–1273 | rewritePermissionsForAllUsers, revokePermissionsPrefixForAllUsers |
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 5.1 | Create `domains/permissions/stores/permissionFacade.js` wrapping `permissionStore.js` — control external access, expose only needed functions | All external imports go through facade |
-| 5.2 | Move `store/permissionRequestStore.js` → `domains/permissions/stores/requestStore.js` | Permission request flow works |
-| 5.3 | Move `store/permissionExistenceIndex.js` → `domains/permissions/stores/existenceIndex.js` | Existence checks work identically |
-| 5.4 | Resolve reverse dependency: move `utils/permissionPolicy.js` into `domains/permissions/policy/`; extract `checkFilePermission`, `checkFolderPermission`, `isSharePrincipal` from `middleware/permissions.js` into `domains/permissions/services/aclService.js`; `middleware/permissions.js` calls aclService (dependency direction: middleware → service, not service → middleware) | No utils→middleware import chain; middleware imports from service only |
-| 5.5 | Create `services/aclService.js`: single entry point for `checkPermission(path, user, action)` consumed by other domains | Files/sharing routes call aclService instead of Permission model directly |
-| 5.6 | Split current `routes/permissions.js` into domain route files; update mount paths | All permission endpoints respond |
-| 5.7 | Move `routes/permissionRequests.js` → `domains/permissions/routes/` | Permission request endpoints respond |
-| 5.8 | Update `server/test-utils.js` import paths for store/permissionStore → domains/permissions/stores/* | test-utils loads successfully |
-| 5.9 | Move test files: `routes/__tests__/permissions.test.js`, `permissionRequests.test.js`, `store/__tests__/permissionStore*.test.js`, `store/__tests__/permissionRequestStore.test.js` → co-located in `domains/permissions/` | Test files co-located with source |
-| 5.10 | Run full server test suite | All pass — this is the gate for Phase 6 |
+| 5.1 | Create `domains/permissions/` directory structure | Directory exists |
+| 5.2 | Create `domains/permissions/stores/permissionFacade.js` wrapping `permissionStore.js` — expose only needed external functions, all external imports go through facade | facade loads, re-exports correct functions |
+| 5.3 | Move `store/permissionRequestStore.js` → `domains/permissions/stores/requestStore.js`; update `models/PermissionRequest.js` import | PermissionRequest model works |
+| 5.4 | Move `store/permissionExistenceIndex.js` → `domains/permissions/stores/existenceIndex.js`; update import in `permissionStore.js` and `routes/permissions.js` | Existence checks work identically |
+| 5.5 | **Resolve reverse dependency (critical):** (a) Move `utils/permissionPolicy.js` → `domains/permissions/policy/permissionPolicy.js`; (b) Extract `checkFilePermission`, `checkFolderPermission`, `isSharePrincipal` from `middleware/permissions.js` into `domains/permissions/services/aclService.js`; (c) `middleware/permissions.js` imports from `aclService` (direction: middleware → service) | No utils→middleware import; middleware imports service only |
+| 5.6 | Create `domains/permissions/services/aclService.js`: single entry `checkPermission(path, principalId, action)` consumed by other domains | Files/sharing routes call aclService instead of Permission model directly |
+| 5.7 | Extract `domains/permissions/policy/permissionRank.js` from `permissionStore.js:726` and `permissionPolicy.js:41` — deduplicate | Single source of truth for permission ranking |
+| 5.8 | Extract `domains/permissions/policy/inheritancePolicy.js`: "no inheritance" rule + owner exception logic | Policy logic isolated |
+| 5.9 | Split `routes/permissions.js` (321 lines) → `domains/permissions/routes/userPathPermissions.js` + `filePermissions.js` | Each ≤ 200 lines |
+| 5.10 | Move `routes/permissionRequests.js` → `domains/permissions/routes/permissionRequests.js` | Permission request endpoints respond |
+| 5.11 | Apply `mapServiceError` pattern to all permission routes | Route files reduced |
+| 5.12 | Update `server/test-utils.js` import paths for store/permissionStore → domains/permissions/stores/* | test-utils loads successfully |
+| 5.13 | Move test files: `routes/__tests__/permissions.test.js`, `permissionRequests.test.js`, `store/__tests__/permissionStore*.test.js`, `store/__tests__/permissionRequestStore.test.js` → co-located in `domains/permissions/` | Test files co-located |
+| 5.14 | Run full server test suite | All pass — **Phase 6 gate** |
 
 ---
 
 ### Phase 6: Files Domain Separation — **Critical Phase**
 
 **Dependencies:** Phase 5 (aclService as consumer)  
-**Risk Level:** High — largest file, most dependencies
+**Risk Level:** High — largest file (1,552 lines), most dependencies
 
-This phase splits `files.js` (1,552 lines) into three route modules, extracts business logic to services, and incorporates `routes/folders.js` (98 lines).
+**Files involved:**
+- `routes/files.js` (1,552 lines) → split into 3 route modules
+- `routes/folders.js` (98 lines) → relocated
+- `services/selectiveTransfer.js` (180 lines) → relocated
+- `services/selectiveDownload.js` (91 lines) → relocated
+- `services/selectiveDelete.js` (122 lines) → relocated
+- `store/bulkJobStore.js` — batch job persistence
+
+**Inline Map instances to migrate to CacheAdapter:**
+- `downloadProgress` (line 63) — multi-file download progress
+- `operationProgress` (line 64) — generic operation progress
+- `previewTickets` (line 68) — video preview ticket store
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 6.1 | Create `FileStoreAdapter` interface in `infrastructure/adapters/filestore/`; extract WebDAV CRUD from `utils/webdav.js` into `WebdavFileStoreAdapter` | Adapter provides all file operations currently used by files route |
-| 6.2 | Extract `runBulkJobWorker` + conflict detection from `files.js` into `domains/files/services/batchOperationService.js` (~400 lines) | Batch operation logic isolated, routes slimmed |
-| 6.3 | Extract `download-multiple` handler from `files.js` into `domains/files/services/downloadService.js` (~260 lines) | Download logic isolated |
-| 6.4 | Split `routes/files.js` → `domains/files/routes/crud.js`, `batch.js`, `preview.js` | Each ≤ 400 lines |
-| 6.5 | Move `routes/folders.js` → `domains/files/routes/folders.js`; update mount path in `index.js` | `/api/folders` responds |
-| 6.6 | Extract inline Maps (`downloadProgress`, `operationProgress`, `previewTickets`) to use CacheAdapter from Phase 2 | Progress tracking works identically |
-| 6.7 | Relocate `services/selectiveTransfer.js`, `selectiveDownload.js`, `selectiveDelete.js` → `domains/files/services/` (physical move + import path update). Update `defaultWebdavAdapter()` references to use `FileStoreAdapter` from `infrastructure/adapters/filestore/` | Import paths updated, default adapter comes from adapter factory |
-| 6.8 | Replace direct Permission model imports in files routes with aclService from Phase 5 | No more cross-domain model imports |
-| 6.9 | Update `server/test-utils.js` import paths for store references | test-utils loads successfully |
-| 6.10 | Move `store/__tests__/bulkJobStore.test.js`, `services/__tests__/*.test.js` → co-located in `domains/files/` | Test files co-located with source |
-| 6.11 | Run full server test suite | All pass — this is the gate for Phase 7 |
+| 6.1 | Create `FileStoreAdapter` interface in `infrastructure/adapters/filestore/` | Interface documented |
+| 6.2 | Implement `WebdavFileStoreAdapter` wrapping `utils/webdav.js` functions: `listDirectory`, `getFileContents`, `putFileContents`, `deleteFile`, `moveFile`, `copyFile`, `createDirectory`, `pathExists`, `getFileMetadata` | Adapter provides all file operations |
+| 6.3 | Create `infrastructure/adapters/filestore/index.js` factory: `createFileStoreAdapter(config)` | Returns WebdavFileStoreAdapter by default |
+| 6.4 | Create `domains/files/` directory structure | Directory exists |
+| 6.5 | Extract `domains/files/services/batchOperationService.js` from files.js: `runBulkJobWorker` (~383 lines), `getConflicts`, `checkConflictsRecursive`, `scheduleBulkWorker` | Batch logic isolated, routes slimmed |
+| 6.6 | Extract `domains/files/services/downloadService.js` from files.js: `download-multiple` handler (~257 lines), `collectFilesFromDirectory` | Download logic isolated |
+| 6.7 | Extract `domains/files/services/fileService.js`: single-file CRUD business logic from route handlers | Service unit-testable |
+| 6.8 | Extract `domains/files/services/conflictResolver.js`: `checkConflictsRecursive`, `getConflicts`, `handleSingleOpConflict` | Conflict logic isolated |
+| 6.9 | Split `routes/files.js` → `domains/files/routes/crud.js` (list, download, upload, rename, thumbnail), `batch.js` (batch-delete/move/copy, bulk-operation polling), `preview.js` (preview-ticket, preview-stream) | Each ≤ 400 lines |
+| 6.10 | Move `routes/folders.js` → `domains/files/routes/folders.js`; update `index.js` mount | `/api/folders` responds |
+| 6.11 | Migrate `downloadProgress`, `operationProgress`, `previewTickets` Maps → CacheAdapter injection from Phase 2 | Progress tracking works identically |
+| 6.12 | Relocate `services/selectiveTransfer.js`, `selectiveDownload.js`, `selectiveDelete.js` → `domains/files/services/`; update import paths; replace `defaultWebdavAdapter()` with `FileStoreAdapter` from factory | Import paths updated |
+| 6.13 | Replace direct Permission model imports in files routes with aclService from Phase 5 | No cross-domain model imports |
+| 6.14 | Update `server/test-utils.js` import paths | test-utils loads successfully |
+| 6.15 | Move test files: `store/__tests__/bulkJobStore.test.js`, `services/__tests__/*.test.js` → co-located in `domains/files/` | Test files co-located |
+| 6.16 | Run full server test suite | All pass — **Phase 7 gate** |
 
 ---
 
@@ -455,27 +515,39 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 **Dependencies:** Phases 1–6  
 **Risk Level:** Medium — admin calls into other domains; needs their service interfaces stable
 
+**Files involved:**
+- `routes/admin.js` (510 lines) → split into domain routes
+- `routes/users.js` (116 lines) → merged into admin domain
+- `routes/settings.js` (19 lines) → relocated
+- `store/userStore.js` (821 lines) → split into MetadataAdapter variants
+- `store/shareLinkStore.js` (535 lines) → split into MetadataAdapter variants (from Phase 4)
+- `store/permissionStore.js` Group B (persistence, ~660 lines) → split into MetadataAdapter variants (from Phase 5)
+- `utils/webdav.js` → non-adapter parts extracted
+- `store/locks.js` → infrastructure extraction
+- `index.js` inline handlers → extracted
+
 | Task | Description | Verify |
 |------|-------------|--------|
-| 7.1 | Split `routes/admin.js` → `domains/admin/routes/userManagement.js`, `settings.js`, `maintenance.js` | Each route ≤ 200 lines |
-| 7.2 | Create `services/userService.js`: user lifecycle with rollback (currently inline in admin route) | Admin user CRUD works |
-| 7.3 | Create `services/cleanupService.js`: orphan detection logic (currently reaching into storage/locks/metaPaths directly) | Cleanup endpoint works identically |
-| 7.4 | Extract shared helpers: consolidate duplicated `safeJsonParse`, `nowIso`, `toIsoString` from 6 store files → `utils/sharedHelpers.js` (cross-domain utilities, not infrastructure) | All stores use centralized helpers |
-| 7.5 | Create `infrastructure/lockManager.js` from current `store/locks.js`; update all callers | Lock acquisition works across backends |
-| 7.6 | Move `utils/webdav.js` non-adapter parts: connection test → `infrastructure/webdavRoutes.js`; type detection (`isImageFile`, `isVideoFile`) → keep as thin wrappers delegating to `@webdav-easyaccess/shared/fileTypes`; WebDAV client management (`getWebDAVClient`, `resetWebDAVClient`, etc.) → internal to `WebdavFileStoreAdapter` | No orphans in utils/; adapter owns client management |
-| 7.7 | **Migrate `clientCache` (Map in `utils/webdav.js:10`)** to use CacheAdapter injection | WebDAV connection caching works via CacheAdapter |
-| 7.8 | **Extract inline route handlers from `index.js`**: create `infrastructure/healthRoutes.js` (GET /api/health) and `infrastructure/webdavRoutes.js` (GET /api/webdav/test, GET /api/webdav/info). Mount them via `index.js`. `/api/debug-log` stays gated by NODE_ENV. | `/api/health`, `/api/webdav/test`, `/api/webdav/info` respond identically |
-| 7.9 | **Relocate `scripts/initSqliteSchema.js`** → `infrastructure/sqliteSchemaInit.js`; update import in `store/bootstrap.js` (or new `infrastructure/bootstrap.js`) | SQLite backend starts without error |
-| 7.10 | **Split `store/userStore.js`** (821 lines) into MetadataAdapter variants (`PostgresqlMetadataAdapter`, `SqliteMetadataAdapter`, `FsJsonMetadataAdapter`) + `domains/admin/stores/userStore.js` thin wrapper | Each adapter file ≤ 300 lines; all user CRUD flows work |
-| 7.11 | **Move `routes/users.js`** (116 lines) → `domains/admin/routes/userManagement.js` (merged with admin user routes) | All `/api/users/*` endpoints respond |
-| 7.12 | **Move `routes/settings.js`** (19 lines) → `domains/admin/routes/settings.js` | All `/api/settings/*` endpoints respond |
-| 7.13 | **Update `server/test-utils.js`**: update all import paths referencing old store/ and utils/ locations to new domain/infrastructure paths | test-utils loads successfully |
-| 7.14 | **Move test files**: `routes/__tests__/admin.test.js`, `routes/__tests__/users.test.js`, `routes/__tests__/settings.test.js`, `routes/__tests__/health.test.js`, `store/__tests__/userStore.test.js`, `store/__tests__/storage.test.js`, `store/__tests__/locks.test.js`, `store/__tests__/settingsStore.test.js`, `store/__tests__/recentFilesStore.test.js`, `store/__tests__/shareLinkStore.test.js` → co-located with their source domains or `infrastructure/` | Test files co-located with source |
-| 7.15 | **Explicitly retain `server/testing/mocks/` as shared test double location** — update mock import paths in all test files. If a domain needs domain-specific mocks, add `domains/<name>/testing/` | Shared mocks still load correctly |
-| 7.16 | **Update `server/stryker.config.json` mutate paths**: add `domains/**`, `infrastructure/**`; remove `store/**` and `services/**` (now under domains/) | Mutation tests cover new structure |
-| 7.17 | Update `index.js`: mount all domain routes from new paths; extract `/api/debug-log` into a separate dev-only module; verify middleware chain unchanged | All endpoints respond on correct paths |
-| 7.18 | Remove old files: `server/routes/*.js`, `server/store/*.js`, `server/utils/thumbnail.js`, `server/utils/webdav.js`, `server/utils/permissionPolicy.js`, `server/utils/ensureHomeOwnerAdmin.js`, unused helpers | File count in old directories = 0 (or only shared utilities + email.js + paths.js) |
-| 7.19 | Run full test suite: `npm run test:ci -w server` then `npm run test:ci -w client` | All pass — final gate |
+| 7.1 | Split `routes/admin.js` → `domains/admin/routes/userManagement.js`, `settings.js`, `maintenance.js` | Each ≤ 200 lines |
+| 7.2 | Create `domains/admin/services/userService.js`: user lifecycle with rollback semantics (currently inline in admin route) | Admin user CRUD works |
+| 7.3 | Create `domains/admin/services/cleanupService.js`: orphan detection logic (currently reaching into storage/locks/metaPaths directly) | Cleanup endpoint works identically |
+| 7.4 | Create `utils/sharedHelpers.js`: consolidate duplicated `safeJsonParse`, `nowIso`, `toIsoString` from 6 store files | All stores use centralized helpers |
+| 7.5 | Create `infrastructure/lockManager.js` from `store/locks.js`; update all callers | Lock acquisition works across backends |
+| 7.6 | Move `utils/webdav.js` non-adapter parts: connection test → `infrastructure/webdavRoutes.js`; type detection (`isImageFile`, `isVideoFile`) → keep as thin wrappers delegating to `@webdav-easyaccess/shared/fileTypes`; WebDAV client management → internal to `WebdavFileStoreAdapter` | No orphans in utils/ |
+| 7.7 | Migrate `clientCache` Map (`utils/webdav.js:10`) → CacheAdapter injection | WebDAV connection caching works via CacheAdapter |
+| 7.8 | Extract inline route handlers from `index.js`: create `infrastructure/healthRoutes.js` (GET /api/health) and `infrastructure/webdavRoutes.js` (GET /api/webdav/test, /api/webdav/info) | Endpoints respond identically |
+| 7.9 | Relocate `scripts/initSqliteSchema.js` → `infrastructure/sqliteSchemaInit.js`; update import in bootstrap | SQLite backend starts without error |
+| 7.10 | **Split `store/userStore.js`** (821 lines) into MetadataAdapter variants: `PostgresqlMetadataAdapter.js`, `SqliteMetadataAdapter.js`, `FsJsonMetadataAdapter.js` + `domains/admin/stores/userStore.js` thin wrapper | Each adapter ≤ 300 lines; all user CRUD works |
+| 7.11 | **Split `store/shareLinkStore.js`** (535 lines, from Phase 4) into MetadataAdapter variants sharing the same pattern as userStore | Each adapter ≤ 200 lines; share link CRUD works |
+| 7.12 | Move `routes/users.js` (116 lines) → `domains/admin/routes/userManagement.js` (merged) | `/api/users/*` responds |
+| 7.13 | Move `routes/settings.js` (19 lines) → `domains/admin/routes/settings.js` | `/api/settings/*` responds |
+| 7.14 | Update `server/test-utils.js`: all import paths for old store/utils locations → new domain/infrastructure paths | test-utils loads successfully |
+| 7.15 | Move 10 test files → co-located with their source domains or `infrastructure/` | Test files co-located |
+| 7.16 | Retain `server/testing/mocks/` as shared test double location; update mock import paths | Shared mocks load correctly |
+| 7.17 | Update `server/stryker.config.json`: add `domains/**`, `infrastructure/**`; remove `store/**`, `services/**` | Mutation tests cover new structure |
+| 7.18 | Update `index.js`: mount all domain routes from new paths; extract `/api/debug-log` into dev-only module | All endpoints respond on correct paths |
+| 7.19 | Remove old files: `server/routes/*.js`, `server/store/*.js`, `server/utils/thumbnail.js`, `server/utils/webdav.js`, `server/utils/permissionPolicy.js`, `server/utils/ensureHomeOwnerAdmin.js` | Old directories empty (only shared utilities + email.js + paths.js remain) |
+| 7.20 | Run full test suite: `npm run test:ci -w server` then `npm run test:ci -w client` | **Final gate — all pass** |
 
 ---
 
@@ -500,7 +572,7 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 
 ## Execution Rules
 
-1. **One phase at a time.** Do not begin Phase N+1 until Phase N tests pass.
+1. **One phase at a time** (with exception). Phase 4 and Phase 5 may run in parallel since they are independent. Phase 6 depends on Phase 5. Phase 7 depends on Phases 1–6.
 2. **No net behavior change.** Each phase must produce identical external behavior (same API responses, same error codes). Verify via existing test suite.
 3. **Commit per task.** Small commits with conventional commit messages referencing the phase and task number.
 4. **Branch per phase.** Format: `refactor/phase-N-domainname`
@@ -511,3 +583,14 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 9. **Test command reference.** Use `npm run test -w server` for full server test suite, `npm run test:unit -w server` for unit tests, `npm run test:integration -w server` for route tests. Root-level test commands may differ (see `package.json`).
 10. **Test import paths**: Add `moduleNameMapper` in `jest.config.js` for `@server/*` and `@testing/*` aliases before any test file moves. Update all test imports to use aliases instead of fragile relative paths.
 11. **Adapter isolation in service layer.** CacheAdapter, MetadataAdapter, FileStoreAdapter are internal implementation details of the service layer. Service functions must not expose adapter types, TTL parameters, or storage-specific APIs to route handlers or other callers. TTL conversion (e.g., absolute timestamps → relative ttl_ms) is handled internally by the service. Route handlers call only domain operations (loginUser, refreshAccessToken, etc.), never raw adapter methods.
+
+## Execution Order
+
+```
+Phase 0 (dead code cleanup)
+    ↓
+Phase 4 (Sharing) ────────────────────┐
+                                        ├→ Phase 6 (Files, depends on Phase 5)
+Phase 5 (Permissions) ─────────────────┘         ↓
+                                                  Phase 7 (Admin + Infrastructure)
+```

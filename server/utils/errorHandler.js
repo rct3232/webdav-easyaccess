@@ -238,6 +238,21 @@ function conflictError(errorCode, params = undefined) {
   return createError(errorCode, 409, params);
 }
 
+/**
+ * Map service-layer domain errors to HTTP validation errors.
+ * Usage: router handlers can call this to convert service errors into proper HTTP errors.
+ * @param {Error} error - Service error (typically with message like 'pathRequired')
+ * @param {Object} errorMap - Mapping from service error message to HTTP error code
+ * @returns {Error} Mapped HTTP error (with status + errorCode), or rethrows if unmapped
+ */
+function mapServiceError(error, errorMap) {
+  const errorCode = errorMap[error.message];
+  if (errorCode) {
+    return validationError(errorCode);
+  }
+  throw error;
+}
+
 module.exports = {
   asyncHandler,
   errorHandler,
@@ -245,6 +260,7 @@ module.exports = {
   logError,
   createError,
   mapDatabaseError,
+  mapServiceError,
   validationError,
   unauthorizedError,
   forbiddenError,

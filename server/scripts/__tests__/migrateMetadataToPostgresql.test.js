@@ -24,6 +24,7 @@ describe('migrateMetadataToPostgresql script helpers', () => {
       mode: 'apply',
       reportFile: './report.json',
       fsDir: './tmp-meta',
+      fullSync: false,
       help: false,
     });
   });

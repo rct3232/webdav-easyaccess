@@ -3,7 +3,8 @@ const router = express.Router();
 const { PERMISSIONS, USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../models/User');
-const { authenticateToken, deleteAllRefreshTokensForUser } = require('../utils/auth');
+const { authenticateToken } = require('../utils/auth');
+const { revokeAllUserTokens } = require('../domains/auth/service');
 const { asyncHandler, notFoundError, forbiddenError, validationError, conflictError } = require('../utils/errorHandler');
 
 // Get all users (admin only - simplified for now)
@@ -53,7 +54,7 @@ router.put('/:id/password', authenticateToken, asyncHandler(async (req, res) => 
 
   const userId = parseInt(req.params.id, 10);
   await User.updatePassword(userId, password);
-  deleteAllRefreshTokensForUser(userId);
+  revokeAllUserTokens(userId);
   res.json({ messageCode: SERVER_MESSAGE_CODES.users.passwordUpdated });
 }));
 

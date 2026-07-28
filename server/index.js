@@ -68,7 +68,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', require('./domains/auth/routes'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/settings', require('./routes/settings'));

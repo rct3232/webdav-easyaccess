@@ -8,11 +8,11 @@ const {
   createTestUser,
   createAuthenticatedTestUser,
   USER_STATUS,
-} = require('../../test-utils');
-const Settings = require('../../models/Settings');
+} = require('../../../../test-utils');
+const Settings = require('../../../../models/Settings');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-jest.mock('../../utils/email', () => ({
+jest.mock('../../../../utils/email', () => ({
   sendRegistrationPendingEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -22,7 +22,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 afterAll(async () => {

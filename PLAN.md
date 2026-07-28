@@ -471,7 +471,7 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 6: Files Domain Separation — **Critical Phase**
+### Phase 6: Files Domain Separation — **Critical Phase** [Detailed Plan](docs/phases/phase6-files-domain.md)
 
 **Dependencies:** Phase 5 (aclService as consumer)  
 **Risk Level:** High — largest file (1,552 lines), most dependencies
@@ -562,6 +562,12 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 - Implement `S3FileStoreAdapter` matching the FileStoreAdapter interface defined in Phase 6
 - Add `.env` config key: `WEA_FILE_STORAGE=s3|webdav` to select backend
 - No route or service code changes required — only adapter swap via factory
+
+### Thumbnails Domain Consolidation
+- `/api/files/thumbnail/:hash` and `/api/files/thumbnails/batch` currently live in files domain but delegate to `domains/thumbnails/services/` via the `utils/thumbnail.js` shim — two separate URL paths serve overlapping functionality
+- Migrate thumbnail endpoints into `domains/thumbnails/routes.js` under a single mount (`/api/thumbnails`) with batch generation, hash lookup, and extension-based serving consolidated
+- Remove `server/utils/thumbnail.js` shim after migration
+- Update files domain to call thumbnails service layer directly (no HTTP self-calls)
 
 ### Client-Side Modularization
 - `FileManager.js` (927 lines): extract state into dedicated store modules, eliminate 500+ lines of prop bundling

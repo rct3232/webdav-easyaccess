@@ -6,7 +6,7 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-} = require('../../test-utils');
+} = require('../../../test-utils');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 let app;
@@ -15,7 +15,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../index');
 });
 
 afterAll(async () => {

@@ -2,19 +2,31 @@
  * Thumbnails routes integration tests.
  * @see docs/api.md, docs/spec/server/routes/thumbnails.md
  *
- * Mocks thumbnail util to avoid ffmpeg/sharp and control token/hash validation.
+ * Mocks thumbnailService and cache to avoid ffmpeg/sharp and control token/hash validation.
  */
 const request = require('supertest');
-const { createTestDatabase } = require('../../test-utils');
+const { createTestDatabase } = require('../../../../test-utils');
 
 const mockVerifyThumbnailToken = jest.fn();
-const mockGetThumbnailHash = jest.fn();
+const mockFindCachedThumbnailByHash = jest.fn();
 const mockThumbnailCache = new Map();
 
-jest.mock('../../utils/thumbnail', () => ({
-  thumbnailCache: mockThumbnailCache,
-  getThumbnailHash: (...args) => mockGetThumbnailHash(...args),
+jest.mock('../../services/thumbnailService', () => ({
   verifyThumbnailToken: (...args) => mockVerifyThumbnailToken(...args),
+  findCachedThumbnailByHash: (...args) => mockFindCachedThumbnailByHash(...args),
+}));
+
+jest.mock('../../cache', () => ({
+  getThumbnailCacheAdapter: () => ({
+    get: (key) => mockThumbnailCache.get(key) || null,
+    set: (key, value) => mockThumbnailCache.set(key, value),
+    delete: (key) => mockThumbnailCache.delete(key),
+    has: (key) => mockThumbnailCache.has(key),
+    clear: () => mockThumbnailCache.clear(),
+    keys: () => mockThumbnailCache.keys(),
+    entries: () => mockThumbnailCache.entries(),
+    get size() { return mockThumbnailCache.size; },
+  }),
 }));
 
 let app;
@@ -23,15 +35,13 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 beforeEach(() => {
   mockThumbnailCache.clear();
   mockVerifyThumbnailToken.mockReturnValue(false);
-  mockGetThumbnailHash.mockImplementation((path) =>
-    require('crypto').createHash('md5').update(path).digest('hex')
-  );
+  mockFindCachedThumbnailByHash.mockReturnValue(null);
 });
 
 afterAll(async () => {
@@ -69,11 +79,13 @@ describe('GET /api/thumbnails/:hash.:ext', () => {
   it('returns 200 with image when token valid and hash in cache', async () => {
     const hash = require('crypto').createHash('md5').update('/test/image.jpg').digest('hex');
     mockVerifyThumbnailToken.mockReturnValue(true);
-    mockGetThumbnailHash.mockReturnValue(hash);
-    mockThumbnailCache.set('/test/image.jpg', {
-      buffer: Buffer.from('fake-jpeg-content'),
-      extension: 'jpeg',
-      mimeType: 'image/jpeg',
+    mockFindCachedThumbnailByHash.mockReturnValue({
+      webdavPath: '/test/image.jpg',
+      thumbnail: {
+        buffer: Buffer.from('fake-jpeg-content'),
+        extension: 'jpeg',
+        mimeType: 'image/jpeg',
+      },
     });
 
     const res = await request(app)

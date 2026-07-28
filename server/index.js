@@ -61,7 +61,7 @@ const requestLogger = require('./middleware/requestLogger');
 app.use('/api', requestLogger());
 
 // Thumbnails are non-JSON responses; mount before forcing JSON Content-Type.
-app.use('/api/thumbnails', require('./routes/thumbnails'));
+app.use('/api/thumbnails', require('./domains/thumbnails/routes'));
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');

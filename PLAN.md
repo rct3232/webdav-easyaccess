@@ -325,7 +325,7 @@ function mapServiceError(error, errorMap)
 
 ## Phases
 
-### Phase 1: RecentFiles Domain Separation
+### Phase 1: RecentFiles Domain Separation ✅ COMPLETE
 
 **Dependencies:** None  
 **Risk Level:** Low — smallest domain, zero cross-domain coupling
@@ -339,7 +339,7 @@ function mapServiceError(error, errorMap)
 
 ---
 
-### Phase 2: Thumbnails Domain + CacheAdapter Definition
+### Phase 2: Thumbnails Domain + CacheAdapter Definition ✅ COMPLETE
 
 **Dependencies:** None  
 **Risk Level:** Low — self-contained, defines first adapter interface

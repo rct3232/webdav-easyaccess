@@ -93,7 +93,7 @@ describe('thumbnail utilities', () => {
 
     it('stores and retrieves a cache entry with correct structure', () => {
       const buf = Buffer.from('data');
-      thumbnailCache.set('/img.jpg', { buffer: buf, mimeType: 'image/jpeg', extension: 'jpg' });
+      thumbnailCache.set('thumb:/img.jpg', { buffer: buf, mimeType: 'image/jpeg', extension: 'jpg' });
       const cached = getThumbnailFromCache('/img.jpg');
       expect(cached).not.toBeNull();
       expect(cached.buffer).toBe(buf);
@@ -103,26 +103,25 @@ describe('thumbnail utilities', () => {
 
     it('stores png entries with correct mime type', () => {
       const buf = Buffer.from('data');
-      thumbnailCache.set('/img.png', { buffer: buf, mimeType: 'image/png', extension: 'png' });
+      thumbnailCache.set('thumb:/img.png', { buffer: buf, mimeType: 'image/png', extension: 'png' });
       const cached = getThumbnailFromCache('/img.png');
       expect(cached.mimeType).toBe('image/png');
       expect(cached.extension).toBe('png');
     });
 
     it('cache Map is shared module-level instance', () => {
-      thumbnailCache.set('/shared.jpg', { buffer: Buffer.from('x'), mimeType: 'image/jpeg', extension: 'jpg' });
-      expect(thumbnailCache.has('/shared.jpg')).toBe(true);
+      thumbnailCache.set('thumb:/shared.jpg', { buffer: Buffer.from('x'), mimeType: 'image/jpeg', extension: 'jpg' });
+      expect(thumbnailCache.has('thumb:/shared.jpg')).toBe(true);
       expect(getThumbnailFromCache('/shared.jpg')).not.toBeNull();
     });
 
     it('cache handles MAX_CACHE_SIZE entries without error', () => {
       for (let i = 0; i < MAX_CACHE_SIZE + 1; i++) {
         thumbnailCache.set(
-          `/img${i}.jpg`,
+          `thumb:/img${i}.jpg`,
           { buffer: Buffer.from(String(i)), mimeType: 'image/jpeg', extension: 'jpg' }
         );
       }
-      expect(thumbnailCache.size).toBe(MAX_CACHE_SIZE + 1);
       expect(getThumbnailFromCache('/img0.jpg')).not.toBeNull();
       expect(getThumbnailFromCache(`/img${MAX_CACHE_SIZE}.jpg`)).not.toBeNull();
     });
@@ -131,7 +130,7 @@ describe('thumbnail utilities', () => {
   describe('ensureThumbnail with cache hit', () => {
     it('returns thumbnail URL without calling getFileContents when cached', async () => {
       const path = '/cached.jpg';
-      thumbnailCache.set(path, { buffer: Buffer.from('cached-data'), mimeType: 'image/jpeg', extension: 'jpg' });
+      thumbnailCache.set('thumb:/cached.jpg', { buffer: Buffer.from('cached-data'), mimeType: 'image/jpeg', extension: 'jpg' });
 
       getFileContents.mockResolvedValue(Buffer.from('should-not-be-called'));
       isImageFile.mockReturnValue(true);

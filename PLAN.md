@@ -76,9 +76,13 @@ server/
 │   │       └── thumbnailCache.js  — Uses CacheAdapter interface
 │   │
 │   ├── auth/                   — Phase 3 target
-│   │   ├── routes.js
-│   │   ├── service.js          — Token issue/revoke, password hash
-│   │   └── sessionStore.js     — Uses CacheAdapter for refresh tokens + rate limiting
+│   │   ├── routes.js           — HTTP handlers only (≤60 lines)
+│   │   ├── service.js          — Domain operations: loginUser, registerUser, refreshAccessToken, getAuthenticatedUser, revokeAllUserTokens
+│   │   ├── tokenStore.js       — Refresh token CRUD via CacheAdapter (internal to domain)
+│   │   └── __tests__/
+│   │       ├── tokenStore.test.js
+│   │       └── routes/
+│   │           └── auth.test.js
 │   │
 │   ├── sharing/                — Phase 4 target
 │   │   ├── routes/
@@ -149,7 +153,6 @@ server/
 │   │       └── index.js              — Factory (Redis adapter added in Future Work)
 │   │
 │   ├── lockManager.js          — Distributed locking (current locks.js extraction)
-│   ├── sharedHelpers.js        — safeJsonParse, nowIso, toIsoString (deduplicated)
 │   ├── bootstrap.js            — Server init: create adapters, seed defaults
 │   ├── webdavRoutes.js         — /api/webdav/test, /api/webdav/info (extracted from index.js inline handlers)
 │   ├── healthRoutes.js         — /api/health (extracted from index.js inline handler)
@@ -172,6 +175,7 @@ server/
     ├── errorHandler.js         — Global error handling (unchanged)
     ├── responseWriter.js       — Chunked buffer responses (unchanged)
     ├── asyncUtils.js           — Concurrency limiting (unchanged)
+    ├── sharedHelpers.js        — safeJsonParse, nowIso, toIsoString (deduplicated from 6 store files)
     ├── email.js                — Email notifications (zero internal deps, stays as cross-domain util)
     └── paths.js                — Project root / data dir resolution (unchanged)
 ```
@@ -362,15 +366,24 @@ function mapServiceError(error, errorMap)
 **Dependencies:** Phase 2 (CacheAdapter)  
 **Risk Level:** Medium — auth is called by every route; breaking changes affect everything
 
+This phase separates auth into domain logic (`domains/auth/`) and shared utilities (`utils/auth.js`).
+Refresh token management moves entirely into the domain; `authenticateToken` stays in `utils/` as a shared utility.
+`users.js` imports `revokeAllUserTokens` from `domains/auth/service` (cross-domain shared service, consistent with Phase 5 aclService pattern).
+
 | Task | Description | Verify |
 |------|-------------|--------|
-| 3.1 | Create `domains/auth/routes.js` from current `routes/auth.js`; update mount in `index.js` | `/api/auth/*` endpoints respond |
-| 3.2 | Extract token issuance, password hashing, user validation into `service.js` | Route handlers ≤ 40 lines each |
-| 3.3 | Migrate `refreshTokensStore` (Map in utils/auth.js) → CacheAdapter via injection | Refresh flow works, tokens stored via adapter |
-| 3.4 | Migrate `loginAttempts` (Map in routes/auth.js) → CacheAdapter | Rate limiting behavior preserved |
-| 3.5 | Keep `authenticateToken` middleware in `utils/auth.js` (shared utility, not domain-specific) | All authenticated routes still work |
-| 3.6 | Move test files `routes/__tests__/auth.test.js` → `domains/auth/routes/__tests__/` | Test file co-located with source |
-| 3.7 | Run full server test suite | All pass |
+| 3.1 | Create `domains/auth/routes.js` from current `routes/auth.js` (HTTP handlers only, ≤60 lines); update mount in `index.js` | `/api/auth/*` endpoints respond |
+| 3.2 | Create `domains/auth/service.js`: expose `loginUser`, `registerUser`, `refreshAccessToken`, `getAuthenticatedUser`, `revokeAllUserTokens`. Rate limiting and refresh token logic internal to service using CacheAdapter | Route ≤ 40 lines, service unit-testable |
+| 3.3 | Create `domains/auth/tokenStore.js`: CacheAdapter-based refresh token CRUD (`addRefreshToken`, `validateRefreshToken`, `deleteRefreshToken`, `deleteAllRefreshTokensForUser`). `REFRESH_TOKEN_EXPIRES_IN_DAYS` as internal constant. TTL conversion handled internally | Refresh flow works identically |
+| 3.4 | Migrate `loginAttempts` Map to CacheAdapter inside `domains/auth/service.js`. `checkLoginRateLimit`, `recordLoginFailure`, `clearLoginFailures` become internal service functions | Rate limiting behavior preserved (same IP, same window) |
+| 3.5 | Clean up `utils/auth.js`: keep only `generateToken`, `verifyToken`, `authenticateToken`, `authenticateTokenOrShare`. Remove all refresh token functions and `REFRESH_TOKEN_EXPIRES_IN_DAYS` | All 8 route files importing `authenticateToken` still work |
+| 3.6 | Update `utils/__tests__/auth.test.js`: move refresh token tests (lines 139-199) to `domains/auth/__tests__/tokenStore.test.js`. Keep `authenticateToken`/`generateToken` tests in `utils/__tests__/auth.test.js` | All tests pass |
+| 3.7 | Move `routes/__tests__/auth.test.js` → `domains/auth/routes/__tests__/` | Test file co-located with source |
+| 3.8 | Update `test-utils.js`: no change needed (`generateToken` stays in `utils/auth.js`) | `npm run test -w server` passes |
+| 3.9 | Update `routes/users.js`: change `deleteAllRefreshTokensForUser` import from `../utils/auth` to `revokeAllUserTokens` from `../domains/auth/service` | Password change still invalidates refresh tokens |
+| 3.10 | Update docs: `docs/spec/server/routes/auth.md`, `docs/spec/server/utils/auth.md` | Docs reflect new structure |
+| 3.11 | Update `docs/adapter-migration-log.md`: mark `refreshTokensStore` and `loginAttempts` as DONE | Log accurate |
+| 3.12 | Run full server test suite | All pass |
 
 ---
 
@@ -404,7 +417,7 @@ This phase wraps `permissionStore.js` (1,301 lines) with a facade pattern and re
 | 5.1 | Create `domains/permissions/stores/permissionFacade.js` wrapping `permissionStore.js` — control external access, expose only needed functions | All external imports go through facade |
 | 5.2 | Move `store/permissionRequestStore.js` → `domains/permissions/stores/requestStore.js` | Permission request flow works |
 | 5.3 | Move `store/permissionExistenceIndex.js` → `domains/permissions/stores/existenceIndex.js` | Existence checks work identically |
-| 5.4 | Resolve reverse dependency: move `utils/permissionPolicy.js` into `domains/permissions/policy/`; `middleware/permissions.js` imports from service layer only | No utils→middleware import chain |
+| 5.4 | Resolve reverse dependency: move `utils/permissionPolicy.js` into `domains/permissions/policy/`; extract `checkFilePermission`, `checkFolderPermission`, `isSharePrincipal` from `middleware/permissions.js` into `domains/permissions/services/aclService.js`; `middleware/permissions.js` calls aclService (dependency direction: middleware → service, not service → middleware) | No utils→middleware import chain; middleware imports from service only |
 | 5.5 | Create `services/aclService.js`: single entry point for `checkPermission(path, user, action)` consumed by other domains | Files/sharing routes call aclService instead of Permission model directly |
 | 5.6 | Split current `routes/permissions.js` into domain route files; update mount paths | All permission endpoints respond |
 | 5.7 | Move `routes/permissionRequests.js` → `domains/permissions/routes/` | Permission request endpoints respond |
@@ -429,7 +442,7 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 | 6.4 | Split `routes/files.js` → `domains/files/routes/crud.js`, `batch.js`, `preview.js` | Each ≤ 400 lines |
 | 6.5 | Move `routes/folders.js` → `domains/files/routes/folders.js`; update mount path in `index.js` | `/api/folders` responds |
 | 6.6 | Extract inline Maps (`downloadProgress`, `operationProgress`, `previewTickets`) to use CacheAdapter from Phase 2 | Progress tracking works identically |
-| 6.7 | Relocate `services/selectiveTransfer.js`, `selectiveDownload.js`, `selectiveDelete.js` → `domains/files/services/` (files already exist at `server/services/` — physical move + import path update) | Import paths updated, tests pass |
+| 6.7 | Relocate `services/selectiveTransfer.js`, `selectiveDownload.js`, `selectiveDelete.js` → `domains/files/services/` (physical move + import path update). Update `defaultWebdavAdapter()` references to use `FileStoreAdapter` from `infrastructure/adapters/filestore/` | Import paths updated, default adapter comes from adapter factory |
 | 6.8 | Replace direct Permission model imports in files routes with aclService from Phase 5 | No more cross-domain model imports |
 | 6.9 | Update `server/test-utils.js` import paths for store references | test-utils loads successfully |
 | 6.10 | Move `store/__tests__/bulkJobStore.test.js`, `services/__tests__/*.test.js` → co-located in `domains/files/` | Test files co-located with source |
@@ -447,9 +460,9 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 | 7.1 | Split `routes/admin.js` → `domains/admin/routes/userManagement.js`, `settings.js`, `maintenance.js` | Each route ≤ 200 lines |
 | 7.2 | Create `services/userService.js`: user lifecycle with rollback (currently inline in admin route) | Admin user CRUD works |
 | 7.3 | Create `services/cleanupService.js`: orphan detection logic (currently reaching into storage/locks/metaPaths directly) | Cleanup endpoint works identically |
-| 7.4 | Extract shared helpers: consolidate duplicated `safeJsonParse`, `nowIso`, `toIsoString` from 6 store files → `infrastructure/sharedHelpers.js` | All stores use centralized helpers |
+| 7.4 | Extract shared helpers: consolidate duplicated `safeJsonParse`, `nowIso`, `toIsoString` from 6 store files → `utils/sharedHelpers.js` (cross-domain utilities, not infrastructure) | All stores use centralized helpers |
 | 7.5 | Create `infrastructure/lockManager.js` from current `store/locks.js`; update all callers | Lock acquisition works across backends |
-| 7.6 | Move `utils/webdav.js` non-adapter parts (connection testing, type detection) to appropriate locations: connection test → `infrastructure/webdavRoutes.js`, type detection → `shared/fileTypes.js` | No orphans in utils/ |
+| 7.6 | Move `utils/webdav.js` non-adapter parts: connection test → `infrastructure/webdavRoutes.js`; type detection (`isImageFile`, `isVideoFile`) → keep as thin wrappers delegating to `@webdav-easyaccess/shared/fileTypes`; WebDAV client management (`getWebDAVClient`, `resetWebDAVClient`, etc.) → internal to `WebdavFileStoreAdapter` | No orphans in utils/; adapter owns client management |
 | 7.7 | **Migrate `clientCache` (Map in `utils/webdav.js:10`)** to use CacheAdapter injection | WebDAV connection caching works via CacheAdapter |
 | 7.8 | **Extract inline route handlers from `index.js`**: create `infrastructure/healthRoutes.js` (GET /api/health) and `infrastructure/webdavRoutes.js` (GET /api/webdav/test, GET /api/webdav/info). Mount them via `index.js`. `/api/debug-log` stays gated by NODE_ENV. | `/api/health`, `/api/webdav/test`, `/api/webdav/info` respond identically |
 | 7.9 | **Relocate `scripts/initSqliteSchema.js`** → `infrastructure/sqliteSchemaInit.js`; update import in `store/bootstrap.js` (or new `infrastructure/bootstrap.js`) | SQLite backend starts without error |
@@ -497,3 +510,4 @@ This phase splits `files.js` (1,552 lines) into three route modules, extracts bu
 8. **Update `stryker.config.json` mutate paths in Phase 7.** Only after all domains and infrastructure directories are stable. The `store/` and `services/` patterns must be replaced with `domains/**` and `infrastructure/**`.
 9. **Test command reference.** Use `npm run test -w server` for full server test suite, `npm run test:unit -w server` for unit tests, `npm run test:integration -w server` for route tests. Root-level test commands may differ (see `package.json`).
 10. **Test import paths**: Add `moduleNameMapper` in `jest.config.js` for `@server/*` and `@testing/*` aliases before any test file moves. Update all test imports to use aliases instead of fragile relative paths.
+11. **Adapter isolation in service layer.** CacheAdapter, MetadataAdapter, FileStoreAdapter are internal implementation details of the service layer. Service functions must not expose adapter types, TTL parameters, or storage-specific APIs to route handlers or other callers. TTL conversion (e.g., absolute timestamps → relative ttl_ms) is handled internally by the service. Route handlers call only domain operations (loginUser, refreshAccessToken, etc.), never raw adapter methods.

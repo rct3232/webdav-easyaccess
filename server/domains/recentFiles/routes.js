@@ -2,25 +2,28 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../utils/auth');
 const requireUser = require('../../middleware/requireUser');
-const { asyncHandler, validationError } = require('../../utils/errorHandler');
+const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const recentFilesService = require('./service');
 
+const ERROR_MAP = {
+  pathRequired: SERVER_ERROR_CODES.recentFiles.pathRequired,
+  movesRequired: SERVER_ERROR_CODES.recentFiles.movesRequired,
+  pathsMustBeArrays: SERVER_ERROR_CODES.recentFiles.pathsMustBeArrays,
+};
+
+function handleServiceError(error) {
+  return mapServiceError(error, ERROR_MAP);
+}
+
 router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  const files = await recentFilesService.getRecentFiles(req.user.full.id);
-  res.json(files);
+  res.json(await recentFilesService.getRecentFiles(req.user.full.id));
 }));
 
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    const updatedFiles = await recentFilesService.addRecentFile(req.user.full.id, req.body);
-    res.json(updatedFiles);
-  } catch (error) {
-    if (error.message === 'pathRequired') {
-      throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
-    }
-    throw error;
-  }
+    res.json(await recentFilesService.addRecentFile(req.user.full.id, req.body));
+  } catch (e) { throw handleServiceError(e); }
 }));
 
 router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
@@ -30,38 +33,20 @@ router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res)
 
 router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    const updatedFiles = await recentFilesService.removeRecentFile(req.user.full.id, req.params.filePath);
-    res.json(updatedFiles);
-  } catch (error) {
-    if (error.message === 'pathRequired') {
-      throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
-    }
-    throw error;
-  }
+    res.json(await recentFilesService.removeRecentFile(req.user.full.id, req.params.filePath));
+  } catch (e) { throw handleServiceError(e); }
 }));
 
 router.post('/apply-moves', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    const updatedFiles = await recentFilesService.applyBulkMove(req.user.full.id, req.body.moves);
-    res.json(updatedFiles);
-  } catch (error) {
-    if (error.message === 'movesRequired') {
-      throw validationError(SERVER_ERROR_CODES.recentFiles.movesRequired);
-    }
-    throw error;
-  }
+    res.json(await recentFilesService.applyBulkMove(req.user.full.id, req.body.moves));
+  } catch (e) { throw handleServiceError(e); }
 }));
 
 router.post('/remove-paths', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    const updatedFiles = await recentFilesService.removePaths(req.user.full.id, req.body.filePaths, req.body.folderPaths);
-    res.json(updatedFiles);
-  } catch (error) {
-    if (error.message === 'pathsMustBeArrays') {
-      throw validationError(SERVER_ERROR_CODES.recentFiles.pathsMustBeArrays);
-    }
-    throw error;
-  }
+    res.json(await recentFilesService.removePaths(req.user.full.id, req.body.filePaths, req.body.folderPaths));
+  } catch (e) { throw handleServiceError(e); }
 }));
 
 module.exports = router;

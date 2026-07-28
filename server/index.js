@@ -72,8 +72,11 @@ app.use('/api/auth', require('./domains/auth/routes'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/settings', require('./routes/settings'));
-app.use('/api/files', require('./routes/files'));
-app.use('/api/folders', require('./routes/folders'));
+// Files domain routes (Phase 6 split)
+app.use('/api/files', require('./domains/files/routes/crud'));
+app.use('/api/files', require('./domains/files/routes/batch'));
+app.use('/api/files', require('./domains/files/routes/preview'));
+app.use('/api/folders', require('./domains/files/routes/folders'));
 app.use('/api/permissions', require('./domains/permissions/routes'));
 app.use('/api/permission-requests', require('./domains/permissions/routes/permissionRequests'));
 app.use('/api/share-links', require('./domains/sharing/routes/shareLinks'));

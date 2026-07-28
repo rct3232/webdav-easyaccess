@@ -27,15 +27,15 @@ entries() => Iterator<[string, any]>
 | 6 | `cache` | `store/permissionStore.js` | 35 | Permission TTL cache (TTL 5s) | Phase 7 | Pending |
 | 7 | `shareCache` | `store/permissionStore.js` | 36 | Share permission TTL cache (TTL 5s) | Phase 7 | Pending |
 | 8 | `existenceIndex` | `store/permissionExistenceIndex.js` | 5 | Path existence cache (TTL 30s, manual invalidation) | Phase 7 | Pending |
-| 9 | `jobs` | `store/bulkJobStore.js` | 3 | Bulk operation job tracking (TTL 1hr) | Phase 7 | Pending |
+| 9 | `jobs` | `store/bulkJobStore.js` → `domains/files/stores/operationProgress.js` | 3 | Bulk operation job tracking (TTL 1hr) | Phase 6 | **DONE** — Migrated to operationProgress store via CacheAdapter |
 
 ## In-Route Maps (Phase 6 targets)
 
 | # | Map Instance | File | Line | Purpose | Phase | Status |
 |---|-------------|------|------|---------|-------|--------|
-| 10 | `downloadProgress` | `routes/files.js` | 63 | Download progress per job | Phase 6 | Pending |
-| 11 | `operationProgress` | `routes/files.js` | 64 | Bulk operation progress | Phase 6 | Pending |
-| 12 | `previewTickets` | `routes/files.js` | 68 | Video preview tickets (TTL 120s) | Phase 6 | Pending |
+| 10 | `downloadProgress` | `routes/files.js` → `domains/files/stores/operationProgress.js` | 63 | Download progress per job | Phase 6 | **DONE** — Migrated to operationProgress store via CacheAdapter |
+| 11 | `operationProgress` | `routes/files.js` (DEAD CODE) | 64 | Bulk operation progress | Phase 6 | **REMOVED** — Dead code, never populated; endpoint always returned 404. Not migrated. |
+| 12 | `previewTickets` | `routes/files.js` → `domains/files/stores/operationProgress.js` | 68 | Video preview tickets (TTL 120s) | Phase 6 | **DONE** — Migrated to operationProgress store via CacheAdapter |
 
 ## Notes
 

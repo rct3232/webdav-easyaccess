@@ -267,6 +267,62 @@ Implementations: `InMemoryCacheAdapter` (current, Map-based), `RedisCacheAdapter
 
 ---
 
+## Shared Utilities
+
+### mapServiceError Helper
+
+Added in Phase 1. Available in `utils/errorHandler.js`. Reusable across all domain phases.
+
+**Purpose**: Converts service-layer domain errors into HTTP validation errors without coupling services to HTTP status codes.
+
+**Problem it solves**: Each route handler previously needed repetitive `try/catch` blocks mapping service error messages to HTTP error codes:
+
+```javascript
+// BEFORE: verbose, repeated across all route handlers
+router.post('/', asyncHandler(async (req, res) => {
+  try {
+    res.json(await service.addRecentFile(userId, req.body));
+  } catch (error) {
+    if (error.message === 'pathRequired') {
+      throw validationError(SERVER_ERROR_CODES.recentFiles.pathRequired);
+    }
+    throw error;
+  }
+}));
+```
+
+**Solution**: Centralized error mapping with a reusable helper:
+
+```javascript
+// AFTER: concise, maintainable
+const ERROR_MAP = {
+  pathRequired: SERVER_ERROR_CODES.recentFiles.pathRequired,
+  movesRequired: SERVER_ERROR_CODES.recentFiles.movesRequired,
+};
+
+router.post('/', asyncHandler(async (req, res) => {
+  try {
+    res.json(await service.addRecentFile(userId, req.body));
+  } catch (e) { throw handleServiceError(e); }
+}));
+```
+
+**Signature**:
+```javascript
+/**
+ * @param {Error} error - Service error (with message matching a key in errorMap)
+ * @param {Object} errorMap - { serviceErrorMessage: SERVER_ERROR_CODES.xxx }
+ * @returns {Error} validationError with mapped errorCode, or rethrows if unmapped
+ */
+function mapServiceError(error, errorMap)
+```
+
+**Usage per domain**: Each domain defines its own `ERROR_MAP` object mapping service error messages to `SERVER_ERROR_CODES`. The helper returns a `validationError` (400) for mapped errors, or rethrows unmapped errors for the global error handler.
+
+**Impact on route file size**: Reduced `recentFiles/routes.js` from 67 → 52 lines (24% reduction). Same pattern applies to all Phase 2–7 domains.
+
+---
+
 ## Phases
 
 ### Phase 1: RecentFiles Domain Separation

@@ -20,8 +20,8 @@ entries() => Iterator<[string, any]>
 | # | Map Instance | File | Line | Purpose | Phase | Status |
 |---|-------------|------|------|---------|-------|--------|
 | 1 | `thumbnailCache` | `utils/thumbnail.js` | 17 | Thumbnail buffer cache (FIFO, max 1000) | Phase 2 | **DONE** — Migrated via `domains/thumbnails/cache.js` + `thumbnailService.js` |
-| 2 | `refreshTokensStore` | `utils/auth.js` | 14 | In-memory refresh tokens (`tokenId -> {userId, expiresAt}`) | Phase 3 | Pending |
-| 3 | `loginAttempts` | `routes/auth.js` | 26 | Login rate limiter (`IP -> [{timestamp}]`) | Phase 3 | Pending |
+| 2 | `refreshTokensStore` | `utils/auth.js` | 14 | In-memory refresh tokens (`tokenId -> {userId, expiresAt}`) | Phase 3 | **DONE** — Migrated via `domains/auth/tokenStore.js` using CacheAdapter |
+| 3 | `loginAttempts` | `routes/auth.js` | 26 | Login rate limiter (`IP -> [{timestamp}]`) | Phase 3 | **DONE** — Migrated via `domains/auth/service.js` using CacheAdapter |
 | 4 | `clientCache` | `utils/webdav.js` | 10 | WebDAV HTTP client instances (never flushed) | Phase 7 | Pending |
 | 5 | `userCache` | `middleware/permissions.js` | 11 | User lookup cache (TTL 3s, unbounded growth risk) | Phase 7 | Pending |
 | 6 | `cache` | `store/permissionStore.js` | 35 | Permission TTL cache (TTL 5s) | Phase 7 | Pending |

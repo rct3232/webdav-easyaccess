@@ -6,6 +6,7 @@ const Permission = require('../../../models/Permission');
 const User = require('../../../models/User');
 const { pathExists, listDirectory, getFileContents } = require('../../../utils/webdav');
 const { canGrantPermission } = require('../../../utils/permissionPolicy');
+const { meetsRank } = require('../../permissions/policy/permissionRank');
 
 async function collectPathsUnderSharePath(rootPath) {
   let items;
@@ -101,14 +102,12 @@ async function checkUserSharePermission(token, userId) {
   const folderPath = normalizePath(result.link.filePath);
   const pathsToCheck = await collectPathsUnderSharePath(folderPath);
 
-  const readRank = PERMISSIONS.ALL.indexOf(PERMISSIONS.READ);
   let hasSufficientPermission = true;
   let firstMissingPath = null;
 
   for (const p of pathsToCheck) {
     const effective = await Permission.getEffectivePermission(userId, p);
-    const rank = effective ? PERMISSIONS.ALL.indexOf(effective) : -1;
-    if (rank < readRank) {
+    if (!effective || !meetsRank(effective, PERMISSIONS.READ)) {
       hasSufficientPermission = false;
       firstMissingPath = p;
       break;
@@ -146,12 +145,9 @@ async function addToMyPermissions(token, userId) {
 
   const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);
   const pathsToGrant = dirPaths.length > 0 ? dirPaths : [folderPath];
-  const readRank = PERMISSIONS.ALL.indexOf(PERMISSIONS.READ);
-
   for (const p of pathsToGrant) {
     const effective = await Permission.getEffectivePermission(userId, p);
-    const rank = effective ? PERMISSIONS.ALL.indexOf(effective) : -1;
-    if (rank >= readRank) continue;
+    if (effective && meetsRank(effective, PERMISSIONS.READ)) continue;
     await Permission.grant(userId, p, PERMISSIONS.READ);
   }
 

@@ -3,9 +3,9 @@ const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const Permission = require('../../../models/Permission');
+const PermissionFacade = require('../services/permissionFacade');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canReadFile, canGrantPermission, canRevokePermission, canViewPermissions } = require('../../../utils/permissionPolicy');
+const { canReadFile, canGrantPermission, canRevokePermission, canViewPermissions } = require('../policy/permissionPolicy');
 const requireUser = require('../../../middleware/requireUser');
 const normalizePathParam = require('../../../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
@@ -14,7 +14,7 @@ const {
   getExistenceState,
   makeUserPermissionsEtag,
   queueReconciliation,
-} = require('../../../store/permissionExistenceIndex');
+} = require('../stores/permissionExistenceIndex');
 
 // Grant permission (folder or file; use target: 'file' for file-level)
 router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
@@ -38,14 +38,7 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
   }
 
   const options = isFile ? { target: 'file' } : {};
-  try {
-    await Permission.grant(userId, folderPath, permission, options);
-  } catch (err) {
-    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
-    }
-    throw err;
-  }
+  await PermissionFacade.grant(userId, folderPath, permission, options);
   res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionGranted });
 }));
 
@@ -68,7 +61,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
   }
 
   if (isPathOnly) {
-    await Permission.revoke(userId, folderPath, { scope: 'pathOnly' });
+    await PermissionFacade.revoke(userId, folderPath, { scope: 'pathOnly' });
     return res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
   }
 
@@ -76,7 +69,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
   const normalizedFolderPathWithSlash = normalizePath(folderPath, { isDirectory: true });
 
   if (includeSubfolders === 'true') {
-    const allPermissions = await Permission.getUserPermissions(userId);
+    const allPermissions = await PermissionFacade.getUserPermissions(userId);
     const permissionsToRevoke = allPermissions.filter(perm => {
       const normalizedPermPath = normalizePath(perm.folder_path);
       return normalizedPermPath === normalizedFolderPath ||
@@ -86,7 +79,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
     let deletedCount = 0;
     for (const perm of permissionsToRevoke) {
       try {
-        await Permission.revoke(userId, perm.folder_path);
+        await PermissionFacade.revoke(userId, perm.folder_path);
         deletedCount++;
       } catch (error) {
         console.error(`Failed to revoke permission for ${perm.folder_path}:`, error);
@@ -98,7 +91,7 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
     });
   }
 
-  await Permission.revoke(userId, folderPath);
+  await PermissionFacade.revoke(userId, folderPath);
   res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
 }));
 
@@ -115,7 +108,7 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
-  const permissionDoc = await Permission.getPermissionDoc(userId);
+  const permissionDoc = await PermissionFacade.getPermissionDoc(userId);
   const permissions = Object.entries(permissionDoc?.permissions || {}).map(([folder_path, permission]) => ({ folder_path, permission }));
   const responseEtag = makeUserPermissionsEtag(userId, permissionDoc?.updated_at);
   res.setHeader('ETag', responseEtag);
@@ -164,7 +157,7 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
   if (includeSubfolders) {
     // Fetch permission info including subfolders
     // hasPermissionsInPath internally appends / to the path, so pass as-is
-    permissions = await Permission.hasPermissionsInPath(folderPath);
+    permissions = await PermissionFacade.hasPermissionsInPath(folderPath);
 
     // Normalize returned permission paths (remove trailing /)
     permissions = permissions.map(perm => ({
@@ -174,7 +167,7 @@ router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncH
   } else {
     // This folder only (including file-specific permissions when filePath is provided)
     const filePath = req.query.filePath || undefined;
-    permissions = await Permission.getFolderPermissions(folderPath, filePath);
+    permissions = await PermissionFacade.getFolderPermissions(folderPath, filePath);
 
     // Normalize returned permission paths (remove trailing /)
     permissions = permissions.map(perm => ({

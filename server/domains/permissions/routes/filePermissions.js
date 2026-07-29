@@ -3,9 +3,9 @@ const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const Permission = require('../../../models/Permission');
+const PermissionFacade = require('../services/permissionFacade');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canGrantPermission, canRevokePermission } = require('../../../utils/permissionPolicy');
+const { canGrantPermission, canRevokePermission } = require('../policy/permissionPolicy');
 const requireUser = require('../../../middleware/requireUser');
 const normalizePathParam = require('../../../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError } = require('../../../utils/errorHandler');
@@ -25,15 +25,8 @@ router.post('/file/grant', authenticateToken, requireUser, normalizePathParam, a
   if (!canGrant) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
-  try {
-    await Permission.grantFile(userId, filePath, permission);
-    res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionGranted });
-  } catch (err) {
-    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
-    }
-    throw err;
-  }
+  await PermissionFacade.grantFile(userId, filePath, permission);
+  res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionGranted });
 }));
 
 // Revoke file permission
@@ -49,7 +42,7 @@ router.delete('/file/revoke', authenticateToken, requireUser, normalizePathParam
   if (!canRevoke) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
-  await Permission.revokeFile(userId, filePath);
+  await PermissionFacade.revokeFile(userId, filePath);
   res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionRevoked });
 }));
 
@@ -68,15 +61,8 @@ router.patch('/file', authenticateToken, requireUser, normalizePathParam, asyncH
   if (!canGrant) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
-  try {
-    await Permission.grantFile(userId, filePath, permission);
-    res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionUpdated });
-  } catch (err) {
-    if (err.code === 'PATH_IS_ADMIN' || err.code === 'FILE_PERMISSION_NOT_HIGHER_THAN_PATH' || err.code === 'INVALID_PERMISSION') {
-      throw validationError(SERVER_ERROR_CODES.permissions.permissionHigherThanParent);
-    }
-    throw err;
-  }
+  await PermissionFacade.grantFile(userId, filePath, permission);
+  res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.filePermissionUpdated });
 }));
 
 // Check current user's effective permission for a file path (file-level overrides path)
@@ -86,13 +72,13 @@ router.get('/file/check', authenticateToken, requireUser, normalizePathParam, as
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
   const filePath = normalizePath(pathParam);
-  const doc = await Permission.getPermissionDoc(req.user.id);
+  const doc = await PermissionFacade.getPermissionDoc(req.user.id);
   const fp = doc.file_permissions || {};
   const filePerm = fp[filePath];
   const source = filePerm != null ? 'file' : 'path';
-  const { checkFilePermission } = require('../../../middleware/permissions');
-  const hasRead = await checkFilePermission(req.user.id, filePath, PERMISSIONS.READ);
-  const hasWrite = await checkFilePermission(req.user.id, filePath, PERMISSIONS.WRITE);
+  const { checkFilePermission: aclCheckFilePermission } = require('../services/aclService');
+  const hasRead = await aclCheckFilePermission(req.user.id, filePath, PERMISSIONS.READ);
+   const hasWrite = await aclCheckFilePermission(req.user.id, filePath, PERMISSIONS.WRITE);
   res.json({
     path: filePath,
     hasRead,
@@ -105,7 +91,7 @@ router.get('/file/check', authenticateToken, requireUser, normalizePathParam, as
 router.get('/file/list', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const folderPath = req.query.folderPath ? normalizePath(req.query.folderPath) : null;
-  let list = await Permission.getUserFilePermissions(userId);
+  let list = await PermissionFacade.getUserFilePermissions(userId);
   if (folderPath != null && folderPath !== '') {
     const prefix = folderPath === '/' ? '/' : `${folderPath.replace(/\/$/, '')}/`;
     list = list.filter(({ filePath }) => {

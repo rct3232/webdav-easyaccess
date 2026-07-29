@@ -49,7 +49,6 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | POST | `/api/files/batch-delete` | Token | Delete items. Body: e.g. `paths`. |
 | POST | `/api/files/download-multiple` | Token or share | ZIP multiple files/folders. Body: `paths`; optional `downloadId`. |
 | GET | `/api/files/download-progress/:id` | Token or share | Progress of ZIP download. |
-| GET | `/api/files/operation-progress/:id` | Token | Progress of bulk operation (move/copy/delete). |
 | GET | `/api/files/bulk-operation/:jobId` | Token | Bulk job status. |
 | POST | `/api/files/bulk-operation/:jobId/cancel` | Token | Cancel bulk operation. |
 | GET | `/api/files/thumbnail/:hash` | Token | Single thumbnail image. |

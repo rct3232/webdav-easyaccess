@@ -60,7 +60,7 @@ This section is a reference summary of the existing endpoints that back the abov
 - **Check conflicts:** `POST /api/files/check-conflicts` — Body: e.g. `paths`, `destinationPath`. Used before paste.
 - **Metadata:** `POST /api/files/metadata` — Body: e.g. `paths`.
 - **Download multiple (ZIP):** `POST /api/files/download-multiple`, `GET /api/files/download-progress/:id`.
-- **Bulk operation progress:** `GET /api/files/operation-progress/:id`, `GET /api/files/bulk-operation/:jobId`, `POST /api/files/bulk-operation/:jobId/cancel`.
+- **Bulk operation progress:** `GET /api/files/bulk-operation/:jobId`, `POST /api/files/bulk-operation/:jobId/cancel`.
 
 All path parameters are normalized by middleware; `path`, `sourcePath`, `destinationPath`, `oldPath`, `folderPath` are normalized. Access to `/.wea` is blocked for non-admin (see [ARCHITECTURE.md](../ARCHITECTURE.md) and [permissions.md](permissions.md)).
 

@@ -1,0 +1,121 @@
+const path = require('path');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const { isMetaPath } = require('../../../store/metaPaths');
+const { asyncLimit } = require('../../../utils/asyncUtils');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createError } = require('../../../utils/errorHandler');
+const { createFileStoreAdapter } = require('../../../infrastructure/adapters/filestore');
+
+function posixJoin(a, b) {
+  const left = a === '/' ? '' : String(a || '');
+  const right = String(b || '');
+  const joined = path.posix.join(left, right);
+  return joined.startsWith('/') ? joined : `/${joined}`;
+}
+
+function defaultWebdavAdapter() {
+  return createFileStoreAdapter();
+}
+
+/**
+ * Selectively delete a directory tree (recursive_strict).
+ *
+ * - Only enter/delete a directory if canEnterDirectory(dirPath) is true.
+ * - Only delete a file if canDeleteFileByParent(filePath) is true (filePath = full path of the file to delete).
+ * - Skipped items are left intact and returned in skippedPaths.
+ *
+ * Returns:
+ * - deletedPaths: paths successfully deleted (files and directories)
+ * - deletedDirPrefixes: directories successfully deleted (useful for ACL cleanup)
+ * - skippedPaths: skipped directory/file paths
+ */
+async function selectiveDelete({
+  rootPath,
+  canEnterDirectory,
+  canDeleteFileByParent,
+  webdav = defaultWebdavAdapter(),
+  allowMetaPath = false,
+} = {}) {
+  if (typeof canEnterDirectory !== 'function' || typeof canDeleteFileByParent !== 'function') {
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.callbacksRequired, 400);
+  }
+
+  const root = normalizePath(rootPath);
+  if (isMetaPath(root) && !allowMetaPath) {
+    throw createError(SERVER_ERROR_CODES.selectiveTransfer.accessDenied, 403);
+  }
+
+  const deletedPaths = [];
+  const deletedDirPrefixes = [];
+  const skippedPaths = [];
+
+  let canEnterRoot = canEnterDirectory(root);
+  if (typeof canEnterRoot?.then === 'function') canEnterRoot = await canEnterRoot;
+  if (!canEnterRoot) {
+    return { deletedPaths, deletedDirPrefixes, skippedPaths: [root] };
+  }
+
+  async function walkDir(dirPath) {
+    const items = await webdav.listDirectory(dirPath);
+    
+    // Track items that couldn't be deleted
+    const results = await asyncLimit(10, items, async (item) => {
+      if (!item?.basename) return { skipped: false };
+      if (item.basename === '.wea' && !allowMetaPath) return { skipped: false };
+
+      const childPath = posixJoin(dirPath, item.basename);
+      if (isMetaPath(childPath) && !allowMetaPath) return { skipped: false };
+
+      if (item.type !== 'directory') {
+        let ok = canDeleteFileByParent(childPath);
+        if (typeof ok?.then === 'function') ok = await ok;
+        if (!ok) {
+          skippedPaths.push(childPath);
+          return { skipped: true };
+        }
+        try {
+          await webdav.deleteFile(childPath, { isDirectory: item.type === 'directory' });
+          deletedPaths.push(childPath);
+          return { skipped: false };
+        } catch {
+          skippedPaths.push(childPath);
+          return { skipped: true };
+        }
+      } else {
+        let ok = canEnterDirectory(childPath);
+        if (typeof ok?.then === 'function') ok = await ok;
+        if (!ok) {
+          skippedPaths.push(childPath);
+          return { skipped: true };
+        }
+
+        const childFullyDeleted = await walkDir(childPath);
+        return { skipped: !childFullyDeleted };
+      }
+    });
+
+    const hadSkipOrFailure = results.some(r => r.skipped);
+
+    // Critical: Never delete a directory if anything in its subtree was skipped or failed.
+    if (hadSkipOrFailure) {
+      return false;
+    }
+
+    try {
+      await webdav.deleteFile(dirPath, { isDirectory: true });
+      deletedPaths.push(dirPath);
+      deletedDirPrefixes.push(dirPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  await walkDir(root);
+
+  return { deletedPaths, deletedDirPrefixes, skippedPaths };
+}
+
+module.exports = {
+  selectiveDelete,
+};

@@ -2,12 +2,12 @@ const path = require('path');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
-const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
 const { asyncLimit } = require('./asyncUtils');
 const { createError } = require('./errorHandler');
 const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-const clientCache = new Map();
+const { createCacheAdapter } = require('../infrastructure/adapters/cache');
+const clientCache = createCacheAdapter();
 
 let createClientPromise = null;
 async function getCreateClient() {
@@ -536,43 +536,6 @@ async function createDirectory(path) {
   }
 }
 
-function isImageFile(filename) {
-  return getFileType(filename) === 'image';
-}
-
-function isVideoFile(filename) {
-  return getFileType(filename) === 'video';
-}
-
-async function testConnection() {
-  const client = await getWebDAVClient();
-  const baseUrl = process.env.WEBDAV_URL?.trim() || '';
-  const testPaths = baseUrl.includes('/') && baseUrl.split('/').length > 3 ? ['', '/'] : ['/'];
-
-  let lastError = null;
-  for (const testPath of testPaths) {
-    try {
-      const items = await client.getDirectoryContents(testPath);
-      return {
-        success: true,
-        messageCode: SERVER_MESSAGE_CODES.api.webdavTestOk,
-        itemCount: items.length,
-        testPath: testPath || '/',
-      };
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  const error = lastError || createError(SERVER_ERROR_CODES.webdav.allConnectionAttemptsFailed, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-  const status = error.status || error.statusCode || error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR;
-  if (error.errorCode) throw error;
-  if (status === HTTP_STATUS.UNAUTHORIZED) throw createError(SERVER_ERROR_CODES.webdav.credentialsNotConfigured, status);
-  if (status === HTTP_STATUS.NOT_FOUND) throw createError(SERVER_ERROR_CODES.webdav.cannotConnect, status);
-  if (status === HTTP_STATUS.FORBIDDEN) throw createError(SERVER_ERROR_CODES.webdav.connectionRefused, status);
-  throw createError(SERVER_ERROR_CODES.api.webdavTestFailed, status, { reason: error.message });
-}
-
 async function pathExists(path) {
   const client = await getWebDAVClient();
   try {
@@ -664,7 +627,11 @@ module.exports = {
   pathExists,
   getFileMetadata,
   getRecursiveFolderStats,
-  isImageFile,
-  isVideoFile,
-  testConnection,
 };
+
+// Re-export for backward compatibility
+const { testConnection } = require('../infrastructure/webdavTest');
+const { isImageFile, isVideoFile } = require('./fileTypes');
+module.exports.testConnection = testConnection;
+module.exports.isImageFile = isImageFile;
+module.exports.isVideoFile = isVideoFile;

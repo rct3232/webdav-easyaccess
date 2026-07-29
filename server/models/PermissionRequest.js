@@ -1,4 +1,4 @@
-const permissionRequestStore = require('../store/permissionRequestStore');
+const permissionRequestStore = require('../domains/permissions/stores/permissionRequestStore');
 
 class PermissionRequest {
   static async ensureFile() {

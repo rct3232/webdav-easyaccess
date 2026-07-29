@@ -6,6 +6,7 @@
 |------|-------------|
 | Mount path | `/api/thumbnails` |
 | Role | Public thumbnail by hash and extension. No auth required. |
+| Status | **Phase 2 relocated** — Moved from `server/routes/thumbnails.js` to `server/domains/thumbnails/routes.js` |
 
 ---
 
@@ -13,8 +14,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/thumbnails.js`
-- **Test file:** `server/routes/__tests__/thumbnails.test.js`
+- **Source:** `server/domains/thumbnails/routes.js`
+- **Test file:** `server/domains/thumbnails/routes/__tests__/thumbnails.test.js`
 
 ### 2.2 Route List
 
@@ -30,11 +31,15 @@
 
 - **GET /:hash.:ext:** 200: image blob (e.g. jpeg, png). 404 if not found.
 
-### 2.5 Related Documents
+### 2.5 Dependencies
 
-- [api.md](../../../api.md), thumbnail util
+- `./services/thumbnailService` — `findCachedThumbnailByHash`, `getThumbnailHash`, `verifyThumbnailToken`
 
-### 2.6 Integration Test Scenarios
+### 2.6 Related Documents
+
+- [api.md](../../../api.md), thumbnail service
+
+### 2.7 Integration Test Scenarios
 
 - [ ] Returns image for valid hash.ext
 - [ ] 404 for invalid hash

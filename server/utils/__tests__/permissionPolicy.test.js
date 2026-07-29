@@ -7,12 +7,13 @@ const Permission = require('../../models/Permission');
 const User = require('../../models/User');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 
-jest.mock('../../middleware/permissions', () => ({
+jest.mock('../../domains/permissions/services/aclService', () => ({
   checkFilePermission: jest.fn(),
   checkFolderPermission: jest.fn(),
+  isSharePrincipal: jest.fn(),
 }));
 
-const { checkFilePermission, checkFolderPermission } = require('../../middleware/permissions');
+const { checkFilePermission, checkFolderPermission } = require('../../domains/permissions/services/aclService');
 
 const {
   isAdminUser,
@@ -31,7 +32,7 @@ const {
   canGrantPermission,
   canRevokePermission,
   canViewPermissions,
-} = require('../permissionPolicy');
+} = require('../../domains/permissions/policy/permissionPolicy');
 
 const adminUser = { id: 1, username: 'admin', is_admin: true };
 const regularUser = { id: 2, username: 'alice', is_admin: false };

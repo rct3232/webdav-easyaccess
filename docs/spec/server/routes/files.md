@@ -1,4 +1,4 @@
-# files routes Spec
+# files routes Spec (Phase 6 Domain Split)
 
 ## 1. Overview
 
@@ -11,10 +11,19 @@
 
 ## 2. Implementation Spec
 
-### 2.1 File Path
+### 2.1 File Path (Post-Phase 6)
 
-- **Source:** `server/routes/files.js`
-- **Test file:** `server/routes/__tests__/files.test.js`
+The monolithic `server/routes/files.js` was split into domain-bounded modules:
+
+| Route Module | Source File | Mount Point | Endpoints |
+|-------------|-------------|-------------|-----------|
+| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, download, upload, rename |
+| Batch operations | `domains/files/routes/batch.js` | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel |
+| Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
+
+- **Test file:** `server/domains/files/__tests__/files.test.js` (relocated from routes)
+- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService, selectiveTransfer, selectiveDownload, selectiveDelete
+- **Stores:** `domains/files/stores/operationProgress.js`
 
 ### 2.2 Route List
 
@@ -31,7 +40,6 @@
 | POST | `/batch-delete` | Token | Delete items. Body: paths. |
 | POST | `/download-multiple` | Token or share | ZIP multiple files. Body: paths, downloadId. |
 | GET | `/download-progress/:id` | Token or share | ZIP download progress. |
-| GET | `/operation-progress/:id` | Token | Bulk operation progress. |
 | GET | `/bulk-operation/:jobId` | Token | Bulk job status. |
 | POST | `/bulk-operation/:jobId/cancel` | Token | Cancel bulk operation. |
 | GET | `/thumbnail/:hash` | Token | Single thumbnail image. |

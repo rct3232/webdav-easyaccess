@@ -4,13 +4,13 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const envPath = process.env.DOTENV_CONFIG_PATH
   ? path.resolve(__dirname, process.env.DOTENV_CONFIG_PATH)
   : path.join(__dirname, '../.env');
 if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+  dotenv.config({ path: envPath, override: false });
 } else {
   console.warn(`Warning: env file not found at ${envPath}. Using default environment variables.`);
   dotenv.config();
@@ -61,28 +61,32 @@ const requestLogger = require('./middleware/requestLogger');
 app.use('/api', requestLogger());
 
 // Thumbnails are non-JSON responses; mount before forcing JSON Content-Type.
-app.use('/api/thumbnails', require('./routes/thumbnails'));
+app.use('/api/thumbnails', require('./domains/thumbnails/routes'));
+app.use('/api/thumbnails', require('./domains/thumbnails/routes/thumbnailRoutes'));
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
 
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/admin', require('./routes/admin'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/files', require('./routes/files'));
-app.use('/api/folders', require('./routes/folders'));
-app.use('/api/permissions', require('./routes/permissions'));
-app.use('/api/permission-requests', require('./routes/permissionRequests'));
-app.use('/api/share-links', require('./routes/shareLinks'));
-app.use('/api/share', require('./routes/sharePublic'));
-app.use('/api/recent-files', require('./routes/recentFiles'));
+app.use('/api/auth', require('./domains/auth/routes'));
+app.use('/api/users', require('./domains/admin/routes/users'));
+app.use('/api/admin', require('./domains/admin/routes/userManagement'));
+app.use('/api/admin', require('./domains/admin/routes/settings'));
+app.use('/api/admin', require('./domains/admin/routes/maintenance'));
+app.use('/api/settings', require('./domains/admin/routes/settings'));
+// Files domain routes (Phase 6 split)
+app.use('/api/files', require('./domains/files/routes/crud'));
+app.use('/api/files', require('./domains/files/routes/batch'));
+app.use('/api/files', require('./domains/files/routes/preview'));
+app.use('/api/folders', require('./domains/files/routes/folders'));
+app.use('/api/permissions', require('./domains/permissions/routes'));
+app.use('/api/permission-requests', require('./domains/permissions/routes/permissionRequests'));
+app.use('/api/share-links', require('./domains/sharing/routes/shareLinks'));
+app.use('/api/share', require('./domains/sharing/routes/sharePublic'));
+app.use('/api/recent-files', require('./domains/recentFiles/routes'));
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', messageCode: SERVER_MESSAGE_CODES.api.healthOk });
-});
+app.use('/api', require('./infrastructure/healthRoutes'));
 
 // Debug endpoint — development only
 if (process.env.NODE_ENV !== 'production') {
@@ -95,42 +99,11 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 
+app.use('/api/webdav', require('./infrastructure/webdavRoutes'));
+
 // Error handler middleware (must be after all routes)
 const { errorHandler } = require('./utils/errorHandler');
 app.use(errorHandler);
-
-app.get('/api/webdav/test', async (req, res) => {
-  try {
-    const { testConnection } = require('./utils/webdav');
-    const result = await testConnection();
-    res.json(result);
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      success: false, 
-      errorCode: SERVER_ERROR_CODES.api.webdavTestFailed,
-      params: { reason: error.message },
-    });
-  }
-});
-
-app.get('/api/webdav/info', (req, res) => {
-  try {
-    const webdavUrl = process.env.WEBDAV_URL || '';
-    let displayUrl = webdavUrl;
-    try {
-      const url = new URL(webdavUrl);
-      displayUrl = url.hostname + (url.port ? `:${url.port}` : '') + url.pathname;
-      if (displayUrl.endsWith('/')) {
-        displayUrl = displayUrl.slice(0, -1);
-      }
-    } catch (e) {
-      displayUrl = webdavUrl;
-    }
-    res.json({ url: displayUrl });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
-  }
-});
 
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {
@@ -148,7 +121,7 @@ initMetadataStore().then(async () => {
 
   // Initialize FFmpeg once on startup to avoid repeated lookups/errors per request.
   try {
-    const { initFfmpegOnce } = require('./utils/thumbnail');
+    const { initFfmpegOnce } = require('./domains/thumbnails/services/videoProcessor');
     const status = await initFfmpegOnce();
     if (status.available) {
       const source = status.source ? ` (${status.source})` : '';
@@ -181,7 +154,7 @@ initMetadataStore().then(async () => {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       setImmediate(() => {
-        const { ensureHomeOwnerAdminForAllUsers } = require('./utils/ensureHomeOwnerAdmin');
+        const { ensureHomeOwnerAdminForAllUsers } = require('./domains/admin/services/cleanupService');
         ensureHomeOwnerAdminForAllUsers()
           .then(() => console.log('✓ Permission cleanup (home-owner admin) completed'))
           .catch(err => console.error('Permission cleanup on startup failed:', err));

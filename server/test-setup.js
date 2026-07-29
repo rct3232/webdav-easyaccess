@@ -6,3 +6,4 @@
  */
 process.env.NODE_ENV = 'test';
 process.env.WEA_DISABLE_DEFAULT_ADMIN = 'true';
+process.env.WEA_STORAGE_BACKEND = 'fs';

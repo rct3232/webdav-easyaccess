@@ -8,19 +8,19 @@ const {
   createAuthenticatedTestUser,
   createTestUser,
   USER_STATUS,
-} = require('../../test-utils');
-const Settings = require('../../models/Settings');
-const Permission = require('../../models/Permission');
+} = require('../../../../test-utils');
+const Settings = require('../../../../models/Settings');
+const Permission = require('../../../../models/Permission');
 
 var mockEmail;
 var mockWebdav;
-jest.mock('../../utils/email', () => {
-  const { createEmailMock } = require('../../testing/mocks/emailMock');
+jest.mock('../../../../utils/email', () => {
+  const { createEmailMock } = require('../../../../testing/mocks/emailMock');
   mockEmail = createEmailMock();
   return mockEmail;
 });
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -33,7 +33,7 @@ beforeAll(async () => {
   process.env.WEA_STORAGE_BACKEND = 'fs';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 afterAll(async () => {

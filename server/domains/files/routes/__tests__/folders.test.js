@@ -7,11 +7,11 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermission,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 
 var mockWebdav;
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -22,7 +22,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 beforeEach(() => {

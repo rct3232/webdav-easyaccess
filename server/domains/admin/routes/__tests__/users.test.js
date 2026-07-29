@@ -7,7 +7,7 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   createTestUser,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 
 let app;
 let dbCleanup;
@@ -15,7 +15,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 afterAll(async () => {

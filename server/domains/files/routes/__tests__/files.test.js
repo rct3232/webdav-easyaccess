@@ -10,12 +10,12 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermission,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 var mockWebdav;
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -43,7 +43,7 @@ beforeAll(async () => {
   process.env.WEA_SKIP_BULK_WORKER = '1';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 afterAll(async () => {

@@ -3,7 +3,7 @@
  * @see docs/api.md, docs/spec/server/routes/settings.md
  */
 const request = require('supertest');
-const { createTestDatabase } = require('../../test-utils');
+const { createTestDatabase } = require('../../../../test-utils');
 
 let app;
 let dbCleanup;
@@ -11,7 +11,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('../../../../index');
 });
 
 afterAll(async () => {

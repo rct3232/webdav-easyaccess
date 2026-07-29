@@ -1,8 +1,38 @@
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { getWebDAVClient } = require('../utils/webdav');
 const { createError } = require('../utils/errorHandler');
+
+let createClientPromise = null;
+async function getCreateClient() {
+  if (!createClientPromise) {
+    createClientPromise = import('webdav').then(mod => mod.createClient);
+  }
+  return await createClientPromise;
+}
+
+async function getWebDAVClient() {
+  const url = process.env.WEBDAV_URL?.trim();
+  const username = process.env.WEBDAV_USERNAME;
+  const password = process.env.WEBDAV_PASSWORD;
+  if (!url || !username || !password) {
+    throw createError(SERVER_ERROR_CODES.webdav.credentialsNotConfigured, HTTP_STATUS.SERVICE_UNAVAILABLE);
+  }
+  const createClient = await getCreateClient();
+  const authType = process.env.WEBDAV_AUTH_TYPE || 'auto';
+  const clientOptions = {
+    username,
+    password,
+    headers: {
+      'User-Agent': 'WebDAV-EasyAccess/1.0',
+      'Accept-Charset': 'utf-8',
+    },
+  };
+  if (authType !== 'auto') {
+    clientOptions.authType = authType;
+  }
+  return createClient(url, clientOptions);
+}
 
 async function testConnection() {
   const client = await getWebDAVClient();

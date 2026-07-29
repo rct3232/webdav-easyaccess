@@ -12,18 +12,7 @@ const {
 } = require('./metaPaths');
 const { ensureDir, exists, readFile, writeFile, deletePath, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
 const { withLock } = require('./locks');
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
+const { nowIso, safeJsonParse, toIsoString } = require('../utils/sharedHelpers');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -31,13 +20,6 @@ function normalizeEmail(email) {
 
 function isPostgresqlBackend() {
   return getBackend() === 'postgresql';
-}
-
-function toIsoString(value) {
-  if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 function mapUserRow(row) {

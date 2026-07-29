@@ -5,7 +5,7 @@
 const request = require('supertest');
 const { createTestDatabase } = require('../../test-utils');
 
-jest.mock('../../infrastructure/webdavTest', () => ({
+jest.mock('../webdavTest', () => ({
   testConnection: jest.fn().mockResolvedValue({ success: true }),
 }));
 

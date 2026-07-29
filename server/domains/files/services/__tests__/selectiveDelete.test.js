@@ -3,7 +3,7 @@
  * Verifies selective recursive deletion with permission callbacks.
  * @see docs/spec/server/services/selectiveDelete.md
  */
-const { selectiveDelete } = require('../../domains/files/services/selectiveDelete');
+const { selectiveDelete } = require('../selectiveDelete');
 
 function createMockWebdav(overrides = {}) {
   const defaults = {

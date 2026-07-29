@@ -2,7 +2,7 @@
  * storage tests.
  * Verifies ensureDir, exists, readFile, writeFile, deletePath, listDir with FS backend in test.
  */
-const storage = require('../storage');
+const storage = require('../../store/storage');
 const { createTestDatabase } = require('../../test-utils');
 
 describe('storage store', () => {
@@ -90,14 +90,14 @@ describe('storage store', () => {
 
     afterEach(async () => {
       jest.dontMock('pg');
-      const isolatedStorage = require('../storage');
+      const isolatedStorage = require('../../store/storage');
       await isolatedStorage.closePgPool();
       process.env = { ...originalEnv };
     });
 
     it('getBackend resolves postgresql backend', () => {
       process.env.WEA_STORAGE_BACKEND = 'postgresql';
-      const isolatedStorage = require('../storage');
+      const isolatedStorage = require('../../store/storage');
       expect(isolatedStorage.getBackend()).toBe('postgresql');
     });
 
@@ -120,7 +120,7 @@ describe('storage store', () => {
 
       let isolatedStorage;
       jest.isolateModules(() => {
-        isolatedStorage = require('../storage');
+        isolatedStorage = require('../../store/storage');
       });
       const result = await isolatedStorage.withTransaction(async (dbClient) => {
         const q = await dbClient.query('SELECT 1');
@@ -151,7 +151,7 @@ describe('storage store', () => {
 
       let isolatedStorage;
       jest.isolateModules(() => {
-        isolatedStorage = require('../storage');
+        isolatedStorage = require('../../store/storage');
       });
       await expect(
         isolatedStorage.withTransaction(async () => {

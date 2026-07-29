@@ -2,7 +2,7 @@
  * locks store tests.
  * Verifies acquireLock, withLock: acquire and release, exclusive access.
  */
-const locks = require('../locks');
+const locks = require('../lockManager');
 const { createTestDatabase } = require('../../test-utils');
 
 describe('locks store', () => {
@@ -70,7 +70,7 @@ describe('locks store', () => {
     });
 
     afterEach(() => {
-      jest.dontMock('../storage');
+      jest.dontMock('../../store/storage');
       process.env = { ...originalEnv };
     });
 
@@ -126,11 +126,11 @@ describe('locks store', () => {
       });
 
       let isolatedLocks;
-      const { sha256HexLower } = require('../metaPaths');
+      const { sha256HexLower } = require('../../store/metaPaths');
       const expectedKey = sha256HexLower('pg-lock-stale-cleanup');
       fakePool.state.row.lockKey = expectedKey;
 
-      jest.doMock('../storage', () => ({
+      jest.doMock('../../store/storage', () => ({
         getBackend: () => 'postgresql',
         getPgPool: () => fakePool,
         ensureDir: jest.fn(),
@@ -140,7 +140,7 @@ describe('locks store', () => {
       }));
 
       jest.isolateModules(() => {
-        isolatedLocks = require('../locks');
+        isolatedLocks = require('../lockManager');
       });
 
       const lock = await isolatedLocks.acquireLock('pg-lock-stale-cleanup', {
@@ -159,7 +159,7 @@ describe('locks store', () => {
       const fakePool = createFakePgPool();
       let isolatedLocks;
 
-      jest.doMock('../storage', () => ({
+      jest.doMock('../../store/storage', () => ({
         getBackend: () => 'postgresql',
         getPgPool: () => fakePool,
         ensureDir: jest.fn(),
@@ -169,7 +169,7 @@ describe('locks store', () => {
       }));
 
       jest.isolateModules(() => {
-        isolatedLocks = require('../locks');
+        isolatedLocks = require('../lockManager');
       });
 
       const lock = await isolatedLocks.acquireLock('pg-lock-ownership', {
@@ -207,7 +207,7 @@ describe('locks store', () => {
       const fakePool = createFakePgPool();
       let isolatedLocks;
 
-      jest.doMock('../storage', () => ({
+      jest.doMock('../../store/storage', () => ({
         getBackend: () => 'postgresql',
         getPgPool: () => fakePool,
         ensureDir: jest.fn(),
@@ -217,7 +217,7 @@ describe('locks store', () => {
       }));
 
       jest.isolateModules(() => {
-        isolatedLocks = require('../locks');
+        isolatedLocks = require('../lockManager');
       });
 
       const owner = await isolatedLocks.acquireLock('pg-lock-contention', {

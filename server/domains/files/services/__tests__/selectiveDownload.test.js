@@ -3,7 +3,7 @@
  * Verifies selectiveCollectFiles behavior per spec.
  * @see docs/spec/server/services/selectiveDownload.md
  */
-const { selectiveCollectFiles } = require('../../domains/files/services/selectiveDownload');
+const { selectiveCollectFiles } = require('../selectiveDownload');
 
 function createMockWebdav(overrides = {}) {
   const defaults = {

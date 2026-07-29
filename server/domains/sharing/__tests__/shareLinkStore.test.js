@@ -140,11 +140,11 @@ function loadShareLinkStoreWithStorageMock(storageMock) {
   let adapter;
   jest.isolateModules(() => {
     // Mock storage at the path relative to this test file (resolves to server/store/storage.js)
-    jest.doMock('../../store/storage', () => storageMock);
+    jest.doMock('../../../store/storage', () => storageMock);
     const AdapterFactory = require(AdapterModulePath);
     adapter = AdapterFactory();
   });
-  jest.dontMock('../../store/storage');
+  jest.dontMock('../../../store/storage');
 
   return adapter;
 }

@@ -3,9 +3,9 @@
  * Verifies createUser, findByUsername, findByEmail, findById, findAll, updateStatus,
  * updateEmail, updatePassword, deleteUser. Includes error cases.
  */
-const userStore = require('../userStore');
+const userStore = require('../../../../store/userStore');
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { createTestDatabase } = require('../../test-utils');
+const { createTestDatabase } = require('../../../../test-utils');
 
 describe('userStore', () => {
   let dbCleanup;

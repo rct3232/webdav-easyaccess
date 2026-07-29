@@ -22,10 +22,7 @@ const {
   canWriteFile,
   isSharePrincipal,
 } = require('../../permissions/services/aclService');
-const PermissionFacade = require('../../permissions/services/permissionFacade');
-
-const { getHomeOwnerUserIdForPath } = require('../../permissions/policy/ownerPathResolver');
-const { getFileMetadata, pathExists, createDirectory, putFileContents } = require('../../../utils/webdav');
+const { getFileMetadata, pathExists } = require('../../../utils/webdav');
 
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -182,9 +179,8 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
   }
 
   let originalFilename = req.file.originalname;
-  
   try {
-    if (/[^\x00-\x7F]/.test(originalFilename)) {
+    if (/[\x00-\x7F]/.test(originalFilename)) {
       const latin1Buffer = Buffer.from(originalFilename, 'latin1');
       originalFilename = latin1Buffer.toString('utf8');
     }
@@ -192,113 +188,30 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
 
   let folderPath = req.body.path || '/';
   const relativePath = req.body.relativePath || '';
-
-  const user = req.user.full;
-  
-  if (!user.is_admin) {
-    const normalizedPath = normalizePath(folderPath);
-    
-    if (normalizedPath === '/' || normalizedPath === '') {
-      folderPath = `/${user.username}`;
-    } else {
-      const ok = await canWriteFolder(user, normalizedPath);
-      if (!ok) {
-        return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
-      }
-      folderPath = normalizedPath;
-    }
-  } else {
-    folderPath = normalizePath(folderPath);
-  }
-  
-  if (folderPath !== '/' && !folderPath.endsWith('/')) {
-    folderPath = folderPath + '/';
-  }
-  
-  let finalFolderPath = folderPath;
-  if (relativePath) {
-    const relativeDir = path.dirname(relativePath);
-    if (relativeDir && relativeDir !== '.') {
-      finalFolderPath = path.join(folderPath, relativeDir).replace(/\\/g, '/');
-      if (!finalFolderPath.endsWith('/')) {
-        finalFolderPath = finalFolderPath + '/';
-      }
-      
-      const dirParts = relativeDir.split('/').filter(Boolean);
-      let currentPath = folderPath;
-      
-      let parentFolderOwners = [];
-      try {
-        const parentPermissions = await PermissionFacade.getFolderPermissions(folderPath);
-        parentFolderOwners = parentPermissions
-          .filter(perm => perm.permission === PERMISSIONS.WRITE || perm.permission === PERMISSIONS.ADMIN)
-          .map(perm => perm.id);
-      } catch (permQueryError) {
-        console.error('Failed to query parent folder permissions:', permQueryError);
-      }
-      
-      for (const dirPart of dirParts) {
-        currentPath = path.join(currentPath, dirPart).replace(/\\/g, '/');
-        if (!currentPath.endsWith('/')) {
-          currentPath = currentPath + '/';
-        }
-        
-        const dirExists = await pathExists(currentPath);
-        
-        if (!dirExists) {
-          try {
-            await createDirectory(currentPath);
-            
-            try {
-              await PermissionFacade.grant(req.user.id, currentPath, PERMISSIONS.WRITE);
-              
-              for (const ownerId of parentFolderOwners) {
-                try {
-                  if (ownerId !== req.user.id) {
-                    await PermissionFacade.grant(ownerId, currentPath, PERMISSIONS.WRITE);
-                  }
-                } catch (ownerPermError) {
-                  console.error(`Failed to grant permission to parent folder owner ${ownerId} for ${currentPath}:`, ownerPermError);
-                }
-              }
-
-              try {
-                const homeOwnerId = await getHomeOwnerUserIdForPath(currentPath);
-                if (homeOwnerId != null) {
-                  await PermissionFacade.grant(homeOwnerId, currentPath, PERMISSIONS.ADMIN);
-                }
-              } catch (homeOwnerPermError) {
-                console.error('Failed to grant home owner admin permission for intermediate directory:', homeOwnerPermError);
-              }
-              
-            } catch (permError) {
-              console.error('Failed to grant permissions for intermediate directory:', permError);
-            }
-          } catch (createError) {}
-        }
-      }
-    }
-  }
-
   const { onConflict } = req.body;
 
-  const filePath = finalFolderPath === '/' 
-    ? '/' + originalFilename 
-    : (finalFolderPath + originalFilename).replace(/\\/g, '/').replace(/\/+/g, '/');
-
-  const fileExists = await pathExists(filePath);
-
-  if (fileExists && onConflict === 'skip') {
-    return res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSkipped, path: filePath, skipped: true });
+  if (!req.user.is_admin && normalizePath(folderPath) !== '/' && normalizePath(folderPath) !== '') {
+    const ok = await canWriteFolder(req.user.full, normalizePath(folderPath));
+    if (!ok) {
+      throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
+    }
   }
 
-  if (fileExists && onConflict !== 'overwrite') {
-    throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
+  const fileService = createFileService();
+  const result = await fileService.uploadFile(
+    req.user.full,
+    folderPath,
+    req.file.buffer,
+    originalFilename,
+    relativePath,
+    onConflict
+  );
+
+  if (result.skipped) {
+    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSkipped, path: result.path, skipped: true });
+  } else {
+    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, path: result.path });
   }
-
-  await putFileContents(filePath, req.file.buffer);
-
-  res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, path: filePath });
 }));
 
 router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {

@@ -223,7 +223,7 @@ function createFileService(options = {}) {
     const fileExists = await webdav.pathExists(filePath);
 
     if (fileExists && onConflict === 'skip') {
-      return { path: filePath };
+      return { path: filePath, skipped: true };
     }
 
     if (fileExists && onConflict !== 'overwrite') {

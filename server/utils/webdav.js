@@ -6,7 +6,8 @@ const { asyncLimit } = require('./asyncUtils');
 const { createError } = require('./errorHandler');
 const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-const clientCache = new Map();
+const { createCacheAdapter } = require('../infrastructure/adapters/cache');
+const clientCache = createCacheAdapter();
 
 let createClientPromise = null;
 async function getCreateClient() {

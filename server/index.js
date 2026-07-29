@@ -70,11 +70,11 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/api/auth', require('./domains/auth/routes'));
-app.use('/api/users', require('./routes/users'));
+app.use('/api/users', require('./domains/admin/routes/users'));
 app.use('/api/admin', require('./domains/admin/routes/userManagement'));
 app.use('/api/admin', require('./domains/admin/routes/settings'));
 app.use('/api/admin', require('./domains/admin/routes/maintenance'));
-app.use('/api/settings', require('./routes/settings'));
+app.use('/api/settings', require('./domains/admin/routes/settings'));
 // Files domain routes (Phase 6 split)
 app.use('/api/files', require('./domains/files/routes/crud'));
 app.use('/api/files', require('./domains/files/routes/batch'));

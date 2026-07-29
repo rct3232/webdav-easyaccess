@@ -4,20 +4,10 @@ const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
 const { sha256HexLower, normalizeWebdavPath } = require('../../../store/metaPaths');
-
-function nowIso() {
-  return new Date().toISOString();
-}
+const { nowIso, toIsoString } = require('../../../utils/sharedHelpers');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
-}
-
-function toIsoString(value) {
-  if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 function mapUserRow(row) {

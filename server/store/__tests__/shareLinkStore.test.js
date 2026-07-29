@@ -17,6 +17,7 @@ function createFsShareLinkStorageMock() {
     state: { links },
     getBackend: () => 'fs',
     ensureDirSafe: jest.fn(async () => {}),
+    ensureDir: jest.fn(async () => {}),
     exists: jest.fn(async (filePath) => links.has(tokenFromShareLinkPath(filePath))),
     readFile: jest.fn(async (filePath) => {
       const token = tokenFromShareLinkPath(filePath);
@@ -124,14 +125,28 @@ function createPostgresqlShareLinkStorageMock() {
 }
 
 function loadShareLinkStoreWithStorageMock(storageMock) {
-  jest.resetModules();
-  jest.doMock('../storage', () => storageMock);
-  let isolated;
+  // Directly instantiate the appropriate metadata adapter with mocked storage.
+  const backend = storageMock.getBackend();
+
+  let AdapterModulePath;
+  if (backend === 'postgresql') {
+    AdapterModulePath = '../../infrastructure/adapters/metadata/PostgresqlMetadataAdapter';
+  } else if (backend === 'sqlite') {
+    AdapterModulePath = '../../infrastructure/adapters/metadata/SqliteMetadataAdapter';
+  } else {
+    AdapterModulePath = '../../infrastructure/adapters/metadata/FsJsonMetadataAdapter';
+  }
+
+  let adapter;
   jest.isolateModules(() => {
-    isolated = require('../shareLinkStore');
+    // Mock storage at the path relative to this test file (resolves to server/store/storage.js)
+    jest.doMock('../storage', () => storageMock);
+    const AdapterFactory = require(AdapterModulePath);
+    adapter = AdapterFactory();
   });
   jest.dontMock('../storage');
-  return isolated;
+
+  return adapter;
 }
 
 function projectShareLink(link) {

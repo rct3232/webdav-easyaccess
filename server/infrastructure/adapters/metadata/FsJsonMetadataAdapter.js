@@ -3,18 +3,7 @@
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
+const { nowIso, safeJsonParse } = require('../../../utils/sharedHelpers');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();

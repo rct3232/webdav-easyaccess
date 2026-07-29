@@ -9,20 +9,9 @@ const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, get
 const { withLock } = require('../../../store/locks');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { mapDatabaseError } = require('../../../utils/errorHandler');
+const { nowIso, safeJsonParse, toIsoString } = require('../../../utils/sharedHelpers');
 
 const PERMISSION_REQUESTS_PATH = `${META_ROOT}/permission_requests.json`;
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
 
 function normalizePermission(p) {
   if (p === PERMISSIONS.READ || p === PERMISSIONS.WRITE) return p;
@@ -35,13 +24,6 @@ function normalizeStatus(s) {
 
 function isPostgresqlBackend() {
   return getBackend() === 'postgresql';
-}
-
-function toIsoString(value) {
-  if (!value) return '';
-  if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 function mapPermissionRequestRow(row) {

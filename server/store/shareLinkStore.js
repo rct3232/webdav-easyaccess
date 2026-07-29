@@ -2,6 +2,7 @@ const storage = require('./storage');
 const { normalizeWebdavPath } = require('./metaPaths');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../utils/errorHandler');
+const { toIsoString } = require('../utils/sharedHelpers');
 
 const SHARE_LINKS_DIR = '/.wea/share-links/';
 
@@ -31,13 +32,6 @@ function isPostgresqlBackend() {
 
 function isSqliteBackend() {
   return storage.getBackend() === 'sqlite';
-}
-
-function toIsoString(value) {
-  if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 function mapShareLinkRow(row) {

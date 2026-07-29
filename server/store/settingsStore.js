@@ -2,10 +2,7 @@ const { withLock } = require('./locks');
 const { SETTINGS_PATH, META_ROOT } = require('./metaPaths');
 const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
 const { mapDatabaseError } = require('../utils/errorHandler');
-
-function nowIso() {
-  return new Date().toISOString();
-}
+const { nowIso } = require('../utils/sharedHelpers');
 
 function isPostgresqlBackend() {
   return getBackend() === 'postgresql';

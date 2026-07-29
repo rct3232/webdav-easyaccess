@@ -2,6 +2,7 @@ const storage = require('./storage');
 const { normalizeWebdavPath } = require('./metaPaths');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { mapDatabaseError } = require('../utils/errorHandler');
+const { toIsoString } = require('../utils/sharedHelpers');
 
 const RECENT_FILES_DIR = '/.wea/recent-files/';
 const MAX_RECENT_FILES = 20;
@@ -21,13 +22,6 @@ function isPostgresqlBackend() {
 
 function isSqliteBackend() {
   return storage.getBackend() === 'sqlite';
-}
-
-function toIsoString(value) {
-  if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 function mapRecentFileRow(row) {

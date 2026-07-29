@@ -16,21 +16,10 @@ const { ensureDir, exists, readFile, writeFile, getBackend, getPgPool, withTrans
 const { withLock } = require('../../../store/locks');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const userStore = require('../../../store/userStore');
+const { nowIso, safeJsonParse } = require('../../../utils/sharedHelpers');
 
 function isPostgresqlBackend() {
   return getBackend() === 'postgresql';
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }
 
 const cache = new Map(); // userId -> { expiresAt:number, data: object }

@@ -2,21 +2,10 @@ const crypto = require('crypto');
 
 const { getBackend, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction, ensureDir, writeFile, readFile, deletePath } = require('../store/storage');
 const { LOCKS_DIR, lockPathByKey, sha256HexLower } = require('../store/metaPaths');
+const { nowIso, safeJsonParse } = require('../utils/sharedHelpers');
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function safeJsonParse(str) {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return null;
-  }
 }
 
 function getErrorStatus(err) {

@@ -10,7 +10,7 @@ const path = require('path');
 
 const User = require('./models/User');
 const userStore = require('./store/userStore');
-const permissionStore = require('./store/permissionStore');
+const PermissionFacade = require('./domains/permissions/services/permissionFacade');
 const { generateToken } = require('./utils/auth');
 const { initMetadataStore } = require('./store/bootstrap');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
@@ -100,7 +100,7 @@ async function getFullTestUser(userId) {
  * @returns {Promise<Object>}
  */
 async function grantTestPermission(userId, folderPath, permission = PERMISSIONS.READ) {
-  return permissionStore.grant(userId, folderPath, permission);
+  return PermissionFacade.grant(userId, folderPath, permission);
 }
 
 /**

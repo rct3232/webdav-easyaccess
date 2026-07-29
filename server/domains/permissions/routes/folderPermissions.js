@@ -76,18 +76,20 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
              (normalizedPermPath.startsWith(normalizedFolderPathWithSlash) &&
               normalizedPermPath.length > normalizedFolderPathWithSlash.length);
     });
+    const failures = [];
     let deletedCount = 0;
     for (const perm of permissionsToRevoke) {
       try {
         await PermissionFacade.revoke(userId, perm.folder_path);
         deletedCount++;
       } catch (error) {
-        console.error(`Failed to revoke permission for ${perm.folder_path}:`, error);
+        failures.push({ path: perm.folder_path, reason: error.message || 'unknown' });
       }
     }
     return res.json({
       messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked,
       deletedCount,
+      ...(failures.length > 0 && { partialFailures: failures }),
     });
   }
 

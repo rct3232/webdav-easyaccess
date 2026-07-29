@@ -10,7 +10,8 @@ const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
 
 const { scheduleBulkWorker } = require('../services/batchOperationService');
-const { createJob, getJob, setJobCancelled } = require('../../../store/bulkJobStore');
+const { createOperationProgressStore } = require('../stores/operationProgress');
+const opStore = createOperationProgressStore();
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -21,7 +22,7 @@ router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam,
   if (!paths || !Array.isArray(paths) || paths.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = createJob(req.user.id, 'delete', { paths });
+  const { jobId } = opStore.createJob(req.user.id, 'delete', { paths });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
@@ -32,7 +33,7 @@ router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, c
   if (!moves || !Array.isArray(moves) || moves.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = createJob(req.user.id, 'move', { moves, onConflict });
+  const { jobId } = opStore.createJob(req.user.id, 'move', { moves, onConflict });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
@@ -43,7 +44,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
   if (!copies || !Array.isArray(copies) || copies.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = createJob(req.user.id, 'copy', { copies, onConflict });
+  const { jobId } = opStore.createJob(req.user.id, 'copy', { copies, onConflict });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
@@ -51,7 +52,7 @@ router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, c
 // GET /bulk-operation/:jobId
 router.get('/bulk-operation/:jobId', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-  const job = getJob(jobId);
+  const job = opStore.getJob(jobId);
   if (!job) {
     throw notFoundError(SERVER_ERROR_CODES.files.jobNotFound);
   }
@@ -70,14 +71,14 @@ router.get('/bulk-operation/:jobId', authenticateToken, requireUser, asyncHandle
 // POST /bulk-operation/:jobId/cancel
 router.post('/bulk-operation/:jobId/cancel', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-  const job = getJob(jobId);
+  const job = opStore.getJob(jobId);
   if (!job) {
     throw notFoundError(SERVER_ERROR_CODES.files.jobNotFound);
   }
   if (String(job.userId) !== String(req.user.id)) {
     throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
   }
-  setJobCancelled(jobId);
+  opStore.setJobCancelled(jobId);
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.cancelRequested, jobId });
 }));
 

@@ -181,4 +181,4 @@ Success bodies are endpoint-specific. Typical examples:
 - **List/GET:** JSON array or object as documented in the route implementation.
 - **Create/Update:** Often the created/updated resource or `{ messageCode }` for i18n.
 
-For exact response shapes, see the route handlers in `server/routes/`. Error responses always follow [shared-contracts.md](shared-contracts.md).
+For exact response shapes, see the route handlers under `server/domains/*/routes/`. Error responses always follow [shared-contracts.md](shared-contracts.md).

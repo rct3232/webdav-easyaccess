@@ -13,8 +13,22 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/sharePublic.js`
-- **Test file:** `server/routes/__tests__/sharePublic.test.js`
+- **Source:** `server/domains/sharing/routes/sharePublic.js`
+- **Service:** `server/domains/sharing/services/shareAccessService.js`
+- **Test file:** `server/domains/sharing/routes/__tests__/sharePublic.test.js`
+
+### 2.1.1 Service Layer
+
+Business logic is delegated to `shareAccessService`, which exports:
+
+| Function | Description |
+|----------|-------------|
+| `resolveShareLink(token)` | Validates token existence and expiration (returns error for expired links). |
+| `getShareLinkMetadata(token)` | Returns public metadata including `fileName`, `fileType`, `isDirectory`. |
+| `checkUserSharePermission(token, userId)` | Walks all paths under shared path; checks effective permission rank. |
+| `addToMyPermissions(token, userId)` | Grants READ on all directories under the shared path. |
+| `previewFile(token)` | Returns `{ buffer, fileName, contentType }` for inline preview. |
+| `downloadFile(token)` | Returns `{ buffer, fileName }`; increments download count. |
 
 ### 2.2 Route List
 

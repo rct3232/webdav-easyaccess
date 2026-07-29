@@ -13,8 +13,10 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/users.js`
-- **Test file:** `server/routes/__tests__/users.test.js`
+- **Source:** `server/domains/admin/routes/users.js` (merged into admin domain)
+- **Test file:** `server/domains/admin/routes/__tests__/users.test.js`
+
+**Architecture note:** Routes are served by the admin domain. Business logic is delegated to `server/domains/admin/services/userService.js`, which exports: `listUsers`, `listApprovedUsers`, `getUserById`, `updatePassword`, `updateEmail`.
 
 ### 2.2 Route List
 

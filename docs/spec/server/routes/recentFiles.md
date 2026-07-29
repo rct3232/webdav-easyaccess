@@ -13,8 +13,10 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/recentFiles.js`
-- **Test file:** `server/routes/__tests__/recentFiles.test.js`
+- **Source:** `server/domains/recentFiles/routes.js`
+- **Test file:** `server/domains/recentFiles/__tests__/recentFiles.test.js`
+
+**Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileData)`, `removeRecentFile(userId, filePath)`, `clearRecentFiles(userId)`, `applyBulkMove(userId, moves)`, `removePaths(userId, filePaths, folderPaths)`. The service delegates to `server/store/recentFilesStore` for persistence.
 
 ### 2.2 Route List
 

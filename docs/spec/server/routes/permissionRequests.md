@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/permissionRequests.js`
-- **Test file:** `server/routes/__tests__/permissionRequests.test.js`
+- **Source:** `server/domains/permissions/routes/permissionRequests.js`
+- **Test file:** `server/domains/permissions/routes/__tests__/permissionRequests.test.js`
 
 ### 2.2 Route List
 

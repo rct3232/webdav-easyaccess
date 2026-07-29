@@ -35,7 +35,74 @@ Duplication inventory (this document links instead of repeating full content):
 
 ## 1. Server Architecture
 
-### 1.1 Middleware Pipeline
+The server follows a **modular monolith** architecture organized into domain-bounded modules and an infrastructure layer. Entry point is `server/index.js`.
+
+### 1.0 Domain-Bounded Structure
+
+Each domain encapsulates its own routes, services, stores, and policy logic under `server/domains/`:
+
+```
+server/domains/
+├── admin/
+│   ├── routes/        # settings.js, users.js, userManagement.js, maintenance.js
+│   └── services/      # cleanupService.js, userService.js
+├── auth/
+│   ├── routes/        # (nested test files)
+│   ├── routes.js      # login, register, refresh, me
+│   ├── service.js     # auth business logic
+│   └── tokenStore.js  # token persistence
+├── files/
+│   ├── routes/        # crud.js, batch.js, folders.js, preview.js
+│   ├── services/      # fileService.js, downloadService.js, selectiveTransfer.js, etc.
+│   └── stores/        # operationProgress.js
+├── permissions/
+│   ├── policy/        # permissionPolicy.js, inheritancePolicy.js, ownerPathResolver.js, permissionRank.js
+│   ├── routes/        # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
+│   ├── services/      # aclService.js, permissionFacade.js
+│   └── stores/        # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
+├── recentFiles/
+│   ├── routes.js
+│   └── service.js
+├── sharing/
+│   ├── routes/        # shareLinks.js, sharePublic.js
+│   └── services/      # shareLinkService.js, shareAccessService.js
+└── thumbnails/
+    ├── cache.js       # LRU thumbnail cache
+    ├── routes/        # thumbnailRoutes.js (public token-based)
+    ├── routes.js      # JWT-protected thumbnail endpoints
+    └── services/      # imageProcessor.js, videoProcessor.js, thumbnailService.js
+```
+
+Domains are mounted in `server/index.js` under their respective API prefixes. Cross-domain dependencies are minimized; shared utilities live in `server/utils/`.
+
+### 1.1 Adapter Layer
+
+The adapter layer sits between domains and physical storage, providing interchangeable backends:
+
+| Adapter | Location | Purpose |
+|---------|----------|---------|
+| Metadata adapters | `infrastructure/adapters/metadata/` | Abstracts user, permission, settings, share-link, and recent-file persistence. Factory: `createMetadataAdapter()` selects backend via `WEA_STORAGE_BACKEND`. |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps WebDAV file operations behind the `FileStoreAdapter` interface. Default implementation: `WebdavFileStoreAdapter` delegates to `utils/webdav.js`. Factory: `createFileStoreAdapter()`. |
+| Cache adapter | `infrastructure/adapters/cache/` | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future. |
+
+**Metadata adapter implementations:**
+- `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (production default)
+- `SqliteMetadataAdapter` — SQLite via better-sqlite3 (development/testing)
+- `FsJsonMetadataAdapter` — JSON files under `/.wea/` (legacy WebDAV/filesystem backend)
+
+### 1.2 Infrastructure Layer
+
+Cross-cutting infrastructure modules live in `server/infrastructure/`:
+
+| Module | File | Responsibility |
+|--------|------|---------------|
+| Lock Manager | `lockManager.js` | Distributed locking for metadata writes. Supports file-based (webdav/fs), PostgreSQL, and SQLite backends with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
+| Health Routes | `healthRoutes.js` | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`. |
+| WebDAV Routes | `webdavRoutes.js` | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required. |
+| WebDAV Test | `webdavTest.js` | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result. |
+| SQLite Schema Init | `sqliteSchemaInit.js` | Converts PostgreSQL DDL to SQLite-compatible SQL and executes against the SQLite connection. Used during bootstrap when `WEA_STORAGE_BACKEND=sqlite`. |
+
+### 1.3 Middleware Pipeline
 
 For routes that require it, a standardized middleware chain runs for security and data normalization. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth, User Loader, Path Normalizer, or Meta Path Guard.
 
@@ -50,7 +117,7 @@ Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loa
 4.  **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`): Blocks non-admin access to reserved path `/.wea`.
 5.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
-### 1.2 Permission Policy (ACL)
+### 1.4 Permission Policy (ACL)
 
 The system runs its own **ACL (Access Control List)** independent of WebDAV server permissions.
 

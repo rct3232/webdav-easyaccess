@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/settings.js`
-- **Test file:** `server/routes/__tests__/settings.test.js`
+- **Source:** `server/domains/admin/routes/settings.js` (merged into admin domain)
+- **Test file:** `server/domains/admin/routes/__tests__/settings.test.js`
 
 ### 2.2 Route List
 

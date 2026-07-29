@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/auth.js`
-- **Test file:** `server/routes/__tests__/auth.test.js`
+- **Source:** `server/domains/auth/routes.js`
+- **Test file:** `server/domains/auth/routes/__tests__/auth.test.js`
 
 ### 2.2 Route List (sync with api.md)
 
@@ -30,19 +30,31 @@
 - `authenticateToken` for /me
 - None for register, login, refresh
 
-### 2.4 Request/Response Spec
+### 2.4 Architecture Notes
+
+Business logic is extracted into `server/domains/auth/service.js`, which exports:
+- `registerUser({ username, email, password })` — registration with validation
+- `loginUser({ username, password }, req)` — authentication with rate limiting
+- `refreshAccessToken(refreshToken)` — token refresh via token store
+- `getAuthenticatedUser(userId, tokenVersion)` — user lookup with token version check
+- `revokeAllUserTokens(userId)` — revoke all tokens for a user
+- `checkLoginRateLimit(req)`, `recordLoginFailure(key)`, `clearLoginFailures(key)` — rate limit helpers
+- `setRateLimitCacheAdapter(adapter)` — dependency injection for rate limit cache
+
+Refresh token CRUD is managed by `server/domains/auth/tokenStore.js` using CacheAdapter internally. Rate limiting (`loginAttempts`) also uses CacheAdapter via the service layer.
+
+### 2.5 Request/Response Spec
 
 - **POST /register:** Body: `{ username, email, password }`. 201: `{ messageCode, status, user }`. Errors: 403 (registration disabled), 400 (required, usernameTaken, emailTaken), 500.
 - **POST /login:** Body: `{ username, password }`. 200: `{ token, refreshToken, user }`. Errors: 400, 401 (invalid credentials), 403 (pending/rejected), 429 (rate limit).
 - **POST /refresh:** Body: `{ refreshToken }`. 200: `{ token }`. Errors: 401.
-- **GET /me:** 200: user object. Errors: 401 (토큰 만료; refresh 전이면 interceptor 처리), 404, 500.
-- **POST /refresh:** Body에 refreshToken 없거나 잘못된 형식 → 401
+- **GET /me:** 200: user object. Errors: 401, 404, 500.
 
-### 2.5 Related Documents
+### 2.6 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md)
 
-### 2.6 Integration Test Scenarios
+### 2.7 Integration Test Scenarios
 
 - [ ] Register success returns 201 and user
 - [ ] Register when disabled returns 403

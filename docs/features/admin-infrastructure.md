@@ -20,7 +20,7 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 ### Admin role and middleware
 
 - **isAdmin:** Determined by `user.is_admin` (from metadata store). Stored in JWT payload for quick checks; admin routes re-load user and enforce `is_admin`.
-- **Admin middleware:** In `server/routes/admin.js`, `isAdmin` loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
+- **Admin middleware:** Each admin route module (`server/domains/admin/routes/settings.js`, `userManagement.js`, `maintenance.js`) defines a local `isAdmin` handler that loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
 - **Pipeline boundary:** Full middleware ordering and exclusions are documented in `docs/ARCHITECTURE.md` and are not duplicated here.
 
 ### Admin APIs
@@ -53,8 +53,19 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 - **Storage backend selection:** `WEA_STORAGE_BACKEND` (`webdav`, `fs`, `postgresql`) with stable store interfaces across backends.
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
-- **Locking contract:** `server/store/locks.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes).
+- **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports file-based, PostgreSQL, and SQLite backends with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.
 - **Migration workflow:** `server/scripts/migrateMetadataToPostgresql.js` command usage and order are documented in `docs/SETUP.md`.
+
+### Infrastructure layer
+
+Cross-cutting infrastructure modules reside in `server/infrastructure/`:
+
+- **Health routes** (`healthRoutes.js`): Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.
+- **WebDAV diagnostic routes** (`webdavRoutes.js`): No-auth endpoints `GET /api/webdav/test` and `GET /api/webdav/info` for connectivity checks and URL display. Connection test logic is extracted to `webdavTest.js`.
+- **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting file-based (webdav/fs), PostgreSQL, and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
+- **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when `WEA_STORAGE_BACKEND=sqlite`.
+
+These modules are mounted in `server/index.js` alongside the domain routes.
 
 ---
 

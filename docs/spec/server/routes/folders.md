@@ -13,8 +13,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/folders.js`
-- **Test file:** `server/routes/__tests__/folders.test.js`
+- **Source:** `server/domains/files/routes/folders.js`
+- **Test file:** `server/domains/files/routes/__tests__/folders.test.js`
 
 ### 2.2 Route List
 

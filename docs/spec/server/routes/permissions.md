@@ -13,9 +13,12 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/permissions.js`
-- **Existence index helper:** `server/store/permissionExistenceIndex.js`
-- **Test file:** `server/routes/__tests__/permissions.test.js`
+- **Route index:** `server/domains/permissions/routes/index.js` (re-exports from modules below)
+- **Folder permissions:** `server/domains/permissions/routes/folderPermissions.js` (`POST /grant`, `DELETE /revoke`, `GET /user/:userId`, `GET /folder`)
+- **File permissions:** `server/domains/permissions/routes/filePermissions.js` (`POST /file/grant`, `DELETE /file/revoke`, `PATCH /file`, `GET /file/check`, `GET /file/list`)
+- **Queries:** `server/domains/permissions/routes/queries.js` (`GET /check`)
+- **Existence index helper:** `server/domains/permissions/stores/permissionExistenceIndex.js`
+- **Test file:** `server/domains/permissions/routes/__tests__/permissions.test.js`
 
 ### 2.2 Route List
 

@@ -13,8 +13,21 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/routes/shareLinks.js`
-- **Test file:** `server/routes/__tests__/shareLinks.test.js`
+- **Source:** `server/domains/sharing/routes/shareLinks.js`
+- **Service:** `server/domains/sharing/services/shareLinkService.js`
+- **Test file:** `server/domains/sharing/routes/__tests__/shareLinks.test.js`
+
+### 2.1.1 Service Layer
+
+Business logic is delegated to `shareLinkService`, which exports:
+
+| Function | Description |
+|----------|-------------|
+| `createShareLink(filePath, userId, expiresInDays)` | Validates path exists, rejects meta paths, creates link and grants share permission. |
+| `listUserShareLinks(userId)` | Returns all links for a user with `isExpired` flag. |
+| `getShareLinkInfo(token, userId)` | Ownership check; returns link details. |
+| `updateShareLink(token, expiresInDays, userId)` | Ownership check; updates expiry (null removes expiry). |
+| `deleteShareLink(token, userId)` | Ownership check; deletes link and revokes share permission. |
 
 ### 2.2 Route List
 

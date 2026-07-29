@@ -11,7 +11,8 @@ const Permission = require('../../../models/Permission');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { sendApprovalEmail, sendRejectionEmail } = require('../../../utils/email');
 const { createDirectory, pathExists } = require('../../../utils/webdav');
-const { createError, validationError } = require('../../../utils/errorHandler');
+const { createError, validationError, notFoundError, conflictError } = require('../../../utils/errorHandler');
+const { revokeAllUserTokens } = require('../../../domains/auth/service');
 
 async function createAdminUser({ username, email, password, isAdmin }) {
   let createdUser = null;
@@ -195,10 +196,55 @@ async function bulkUpdateUserPermissions(userId, permissionEntries) {
   return true;
 }
 
+async function listUsers() {
+  const users = await User.findAll();
+  return users.map(u => ({
+    id: u.id,
+    username: u.username,
+    email: u.email,
+    created_at: u.created_at,
+  }));
+}
+
+async function listApprovedUsers(requesterId) {
+  const approved = await User.findByStatus(USER_STATUS.APPROVED);
+  const rows = approved
+    .filter(u => !u.is_admin)
+    .map(u => ({ id: u.id, username: u.username, email: u.email }))
+    .sort((a, b) => a.username.localeCompare(b.username));
+  return rows.filter(user => user.id !== requesterId);
+}
+
+async function getUserById(userId) {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
+  }
+  return user;
+}
+
+async function updatePassword(userId, newPassword) {
+  await User.updatePassword(parseInt(userId, 10), newPassword);
+  revokeAllUserTokens(parseInt(userId, 10));
+}
+
+async function updateEmail(userId, newEmail) {
+  const existingEmail = await User.findByEmail(newEmail);
+  if (existingEmail && existingEmail.id !== parseInt(userId)) {
+    throw conflictError(SERVER_ERROR_CODES.auth.emailTaken);
+  }
+  await User.updateEmail(userId, newEmail);
+}
+
 module.exports = {
   createAdminUser,
   approvePendingUser,
   rejectPendingUser,
   deleteUserCascade,
   bulkUpdateUserPermissions,
+  listUsers,
+  listApprovedUsers,
+  getUserById,
+  updatePassword,
+  updateEmail,
 };

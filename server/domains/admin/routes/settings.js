@@ -8,6 +8,17 @@ const User = require('../../../models/User');
 const Settings = require('../../../models/Settings');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
+const { isEmailEnabled } = require('../../../utils/email');
+
+// Public settings endpoint (no authentication required)
+router.get('/public', asyncHandler(async (req, res) => {
+  const registrationEnabled = await Settings.isRegistrationEnabled();
+  const emailEnabled = isEmailEnabled();
+  res.json({
+    registration_enabled: registrationEnabled,
+    email_enabled: emailEnabled,
+  });
+}));
 
 // Middleware to check if user is admin
 const isAdmin = asyncHandler(async (req, res, next) => {

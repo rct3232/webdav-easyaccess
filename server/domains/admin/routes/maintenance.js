@@ -37,7 +37,7 @@ router.get('/folders/list', authenticateToken, isAdmin, asyncHandler(async (req,
 
 // Ensure home-owner admin for all users
 router.post('/permissions/ensure-home-owner-admin', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { ensureHomeOwnerAdminForAllUsers } = require('../../../utils/ensureHomeOwnerAdmin');
+  const { ensureHomeOwnerAdminForAllUsers } = require('../services/cleanupService');
   const result = await ensureHomeOwnerAdminForAllUsers();
   res.json({ success: true, ...result });
 }));

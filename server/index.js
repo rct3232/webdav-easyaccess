@@ -154,7 +154,7 @@ initMetadataStore().then(async () => {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       setImmediate(() => {
-        const { ensureHomeOwnerAdminForAllUsers } = require('./utils/ensureHomeOwnerAdmin');
+        const { ensureHomeOwnerAdminForAllUsers } = require('./domains/admin/services/cleanupService');
         ensureHomeOwnerAdminForAllUsers()
           .then(() => console.log('✓ Permission cleanup (home-owner admin) completed'))
           .catch(err => console.error('Permission cleanup on startup failed:', err));

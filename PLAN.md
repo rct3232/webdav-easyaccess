@@ -387,7 +387,7 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 0: Dead Code Cleanup (Pre-Phase)
+### Phase 0: Dead Code Cleanup (Pre-Phase) ✅ COMPLETE
 
 **Dependencies:** None  
 **Risk Level:** Very Low — remove orphaned files only
@@ -399,7 +399,7 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 4: Sharing Domain Separation
+### Phase 4: Sharing Domain Separation ✅ COMPLETE
 
 **Dependencies:** None (parallel with Phase 5)  
 **Risk Level:** Low — self-contained lifecycle, minimal cross-domain calls
@@ -425,7 +425,7 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 5: Permissions Domain Separation — **Critical Phase**
+### Phase 5: Permissions Domain Separation ✅ COMPLETE — **Critical Phase**
 
 **Dependencies:** None (parallel with Phase 4)  
 **Risk Level:** High — largest store (1,301 lines), consumed by files/sharing/admin domains
@@ -471,7 +471,7 @@ Refresh token management moves entirely into the domain; `authenticateToken` sta
 
 ---
 
-### Phase 6: Files Domain Separation — **Critical Phase** [Detailed Plan](docs/phases/phase6-files-domain.md)
+### Phase 6: Files Domain Separation ✅ COMPLETE — **Critical Phase**
 
 **Dependencies:** Phase 5 (aclService as consumer)  
 **Risk Level:** High — largest file (1,552 lines), most dependencies

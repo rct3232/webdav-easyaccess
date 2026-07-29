@@ -2,12 +2,12 @@
  * permissionStore tests.
  * Verifies grant, revoke, getUserPermissions, checkPermission, getPermissionDoc, checkPermissionSync.
  */
-const permissionStore = require('../permissionStore');
+const permissionStore = require('../../../../store/permissionStore');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 
 describe('permissionStore', () => {
   let dbCleanup;

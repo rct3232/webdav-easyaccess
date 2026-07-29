@@ -3,8 +3,8 @@
  * Verifies createShareLink, getShareLink, getUserShareLinks, updateShareLink, deleteShareLink,
  * incrementDownloadCount, isLinkExpired.
  */
-const shareLinkStore = require('../shareLinkStore');
-const { createTestDatabase, createAuthenticatedTestUser } = require('../../test-utils');
+const shareLinkStore = require('../../../store/shareLinkStore');
+const { createTestDatabase, createAuthenticatedTestUser } = require('../../../test-utils');
 
 function tokenFromShareLinkPath(filePath) {
   const match = String(filePath || '').match(/\/\.wea\/share-links\/(.+)\.json$/);
@@ -130,21 +130,21 @@ function loadShareLinkStoreWithStorageMock(storageMock) {
 
   let AdapterModulePath;
   if (backend === 'postgresql') {
-    AdapterModulePath = '../../infrastructure/adapters/metadata/PostgresqlMetadataAdapter';
+    AdapterModulePath = '../../../infrastructure/adapters/metadata/PostgresqlMetadataAdapter';
   } else if (backend === 'sqlite') {
-    AdapterModulePath = '../../infrastructure/adapters/metadata/SqliteMetadataAdapter';
+    AdapterModulePath = '../../../infrastructure/adapters/metadata/SqliteMetadataAdapter';
   } else {
-    AdapterModulePath = '../../infrastructure/adapters/metadata/FsJsonMetadataAdapter';
+    AdapterModulePath = '../../../infrastructure/adapters/metadata/FsJsonMetadataAdapter';
   }
 
   let adapter;
   jest.isolateModules(() => {
     // Mock storage at the path relative to this test file (resolves to server/store/storage.js)
-    jest.doMock('../storage', () => storageMock);
+    jest.doMock('../../store/storage', () => storageMock);
     const AdapterFactory = require(AdapterModulePath);
     adapter = AdapterFactory();
   });
-  jest.dontMock('../storage');
+  jest.dontMock('../../store/storage');
 
   return adapter;
 }

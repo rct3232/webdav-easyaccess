@@ -8,11 +8,11 @@ const {
   createAuthenticatedTestUser,
   grantTestPermission,
   PERMISSIONS,
-} = require('../../test-utils');
+} = require('../../../../test-utils');
 
 var mockWebdav;
-jest.mock('../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../testing/mocks/webdavMock');
+jest.mock('../../../../utils/webdav', () => {
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -24,8 +24,8 @@ let resetPermissionExistenceIndex;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
-  ({ __resetForTests: resetPermissionExistenceIndex } = require('../../domains/permissions/stores/permissionExistenceIndex'));
+  app = require('../../../../index');
+  ({ __resetForTests: resetPermissionExistenceIndex } = require('../../stores/permissionExistenceIndex'));
 });
 
 afterAll(async () => {

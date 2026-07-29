@@ -4,30 +4,44 @@ const crypto = require('crypto');
 const archiver = require('archiver');
 const path = require('path');
 
-const { authenticateToken, authenticateTokenOrShare } = require('../../../utils/auth');
-const Permission = require('../../../models/Permission');
+const { authenticateTokenOrShare } = require('../../../utils/auth');
 const {
   listDirectory,
   getFileContents,
   isVideoFile,
 } = require('../../../utils/webdav');
-const { thumbnailCache, getThumbnailHash, ensureThumbnailsBatch } = require('../../../utils/thumbnail');
+
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
-const { isSharePrincipal } = require('../../../middleware/permissions');
-const requireUser = require('../../../middleware/requireUser');
 const { requireAuth } = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const normalizePathParam = require('../../../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
 const { selectiveCollectFiles } = require('../services/selectiveDownload');
-const { canReadFile, buildSyncReadChecker, buildSyncReadFileChecker } = require('../../../utils/permissionPolicy');
+const { checkFilePermission, isSharePrincipal, buildSyncReadChecker, buildSyncReadFileChecker, checkFolderPermission } = require('../../permissions/services/aclService');
+const PermissionFacade = require('../../permissions/services/permissionFacade');
 const { createOperationProgressStore } = require('../stores/operationProgress');
 
 const opStore = createOperationProgressStore();
+
+async function detectIsDirectory(filePath) {
+  try {
+    const parentPath = getParentPath(filePath);
+    const fileName = getBasename(filePath);
+    const parentItems = await listDirectory(parentPath);
+    const item = parentItems.find(i => i.basename === fileName);
+    if (item) return item.type === 'directory';
+  } catch {}
+  try {
+    const items = await listDirectory(filePath);
+    return items.length > 0 || filePath.endsWith('/');
+  } catch {
+    return false;
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* 1. POST /preview-ticket                                            */
@@ -39,7 +53,7 @@ router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, normalizeP
   }
 
   const principalId = req.principalId;
-  const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
+  const hasPermission = await checkFilePermission(principalId, filePath, PERMISSIONS.READ);
   if (!hasPermission) {
     return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
@@ -75,7 +89,7 @@ router.get('/preview-stream', normalizePathParam, checkMetaPathAccess, asyncHand
     return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.previewTicketMismatch });
   }
 
-  const hasPermission = await canReadFile(entry.principalId, normalizedReqPath, PERMISSIONS.READ);
+  const hasPermission = await checkFilePermission(entry.principalId, normalizedReqPath, PERMISSIONS.READ);
   if (!hasPermission) {
     return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
@@ -117,11 +131,11 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normali
 
   if (isShare) {
     const token = req.shareContext.token;
-    canEnterDirectory = (dirPath) => Permission.checkSharePermission(token, dirPath, PERMISSIONS.READ);
-    canIncludeFile = (filePath) => Permission.checkSharePermission(token, filePath, PERMISSIONS.READ);
+    canEnterDirectory = (dirPath) => checkFolderPermission('share:' + token, dirPath, PERMISSIONS.READ);
+    canIncludeFile = (filePath) => checkFilePermission('share:' + token, filePath, PERMISSIONS.READ);
   } else {
     const user = req.user.full;
-    const doc = await Permission.getPermissionDoc(req.user.id);
+    const doc = await PermissionFacade.getPermissionDoc(req.user.id);
     const canReadDirSync = buildSyncReadChecker(user, doc);
     const canReadFileSync = buildSyncReadFileChecker(user, doc);
     canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
@@ -155,30 +169,7 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, normali
 
   for (const filePath of paths) {
     try {
-      let isDirectory = false;
-      try {
-        const parentPath = getParentPath(filePath);
-        const fileName = getBasename(filePath);
-        const parentItems = await listDirectory(parentPath);
-        const item = parentItems.find(i => i.basename === fileName);
-        if (item) {
-          isDirectory = item.type === 'directory';
-        } else {
-          try {
-            const items = await listDirectory(filePath);
-            isDirectory = items.length > 0 || filePath.endsWith('/');
-          } catch (listError) {
-            isDirectory = false;
-          }
-        }
-      } catch (checkError) {
-        try {
-          const items = await listDirectory(filePath);
-          isDirectory = items.length > 0 || filePath.endsWith('/');
-        } catch (listError) {
-          isDirectory = false;
-        }
-      }
+      const isDirectory = await detectIsDirectory(filePath);
 
       if (isDirectory) {
         const dirName = path.basename(filePath.replace(/\/$/, '')) || 'folder';
@@ -364,59 +355,6 @@ router.get('/download-progress/:id', authenticateTokenOrShare, requireAuth, asyn
   }
 
   res.json(progress);
-}));
-
-/* ------------------------------------------------------------------ */
-/* 5. GET /thumbnail/:hash                                            */
-/* ------------------------------------------------------------------ */
-router.get('/thumbnail/:hash', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  const { hash } = req.params;
-
-  let foundPath = null;
-  let foundThumbnail = null;
-  for (const [webdavPath, thumbnail] of thumbnailCache.entries()) {
-    if (getThumbnailHash(webdavPath) === hash) {
-      foundPath = webdavPath;
-      foundThumbnail = thumbnail;
-      break;
-    }
-  }
-
-  if (!foundThumbnail) {
-    throw notFoundError(SERVER_ERROR_CODES.files.invalidPath);
-  }
-
-  const canRead = await canReadFile(req.user.id, foundPath, PERMISSIONS.READ);
-  if (!canRead) {
-    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
-  }
-
-  res.setHeader('Content-Type', foundThumbnail.mimeType);
-  res.setHeader('Cache-Control', 'public, max-age=31536000');
-  res.send(foundThumbnail.buffer);
-}));
-
-/* ------------------------------------------------------------------ */
-/* 6. POST /thumbnails/batch                                          */
-/* ------------------------------------------------------------------ */
-router.post('/thumbnails/batch', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { paths } = req.body;
-
-  if (!paths || !Array.isArray(paths) || paths.length === 0) {
-    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-  }
-
-  const principalId = req.principalId;
-  const allowedPaths = [];
-  for (const p of paths) {
-    if (typeof p !== 'string') continue;
-    const canRead = await canReadFile(principalId, p, PERMISSIONS.READ);
-    if (canRead) allowedPaths.push(p);
-  }
-
-  const results = await ensureThumbnailsBatch(allowedPaths);
-
-  res.json({ thumbnails: results });
 }));
 
 module.exports = router;

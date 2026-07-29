@@ -23,10 +23,10 @@ entries() => Iterator<[string, any]>
 | 2 | `refreshTokensStore` | `utils/auth.js` | 14 | In-memory refresh tokens (`tokenId -> {userId, expiresAt}`) | Phase 3 | **DONE** — Migrated via `domains/auth/tokenStore.js` using CacheAdapter |
 | 3 | `loginAttempts` | `routes/auth.js` | 26 | Login rate limiter (`IP -> [{timestamp}]`) | Phase 3 | **DONE** — Migrated via `domains/auth/service.js` using CacheAdapter |
 | 4 | `clientCache` | `utils/webdav.js` | 10 | WebDAV HTTP client instances (never flushed) | Phase 7 | Pending |
-| 5 | `userCache` | `middleware/permissions.js` | 11 | User lookup cache (TTL 3s, unbounded growth risk) | Phase 7 | Pending |
-| 6 | `cache` | `store/permissionStore.js` | 35 | Permission TTL cache (TTL 5s) | Phase 7 | Pending |
-| 7 | `shareCache` | `store/permissionStore.js` | 36 | Share permission TTL cache (TTL 5s) | Phase 7 | Pending |
-| 8 | `existenceIndex` | `store/permissionExistenceIndex.js` | 5 | Path existence cache (TTL 30s, manual invalidation) | Phase 7 | Pending |
+| 5 | `userCache` | `domains/permissions/services/aclService.js` | 13 | User lookup cache (TTL 3s, unbounded growth risk) | Phase 7 | Pending — moved from middleware/permissions.js |
+| 6 | `cache` | `domains/permissions/stores/permissionStore.js` | 35 | Permission TTL cache (TTL 5s) | Phase 7 | Pending — moved from store/permissionStore.js |
+| 7 | `shareCache` | `domains/permissions/stores/permissionStore.js` | 36 | Share permission TTL cache (TTL 5s) | Phase 7 | Pending — moved from store/permissionStore.js |
+| 8 | `existenceIndex` | `domains/permissions/stores/permissionExistenceIndex.js` | 5 | Path existence cache (TTL 30s, manual invalidation) | Phase 7 | Pending — moved from store/permissionExistenceIndex.js |
 | 9 | `jobs` | `store/bulkJobStore.js` → `domains/files/stores/operationProgress.js` | 3 | Bulk operation job tracking (TTL 1hr) | Phase 6 | **DONE** — Migrated to operationProgress store via CacheAdapter |
 
 ## In-Route Maps (Phase 6 targets)

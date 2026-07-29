@@ -7,7 +7,8 @@ const { authenticateToken } = require('../../../utils/auth');
 const PermissionFacade = require('../../../domains/permissions/services/permissionFacade');
 const { createFileStoreAdapter } = require('../../../infrastructure/adapters/filestore');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canWriteFolder, isOwnerPath, getHomeOwnerUserIdForPath } = require('../../../utils/permissionPolicy');
+const { canWriteFolder, isOwnerPath, checkFolderPermission } = require('../../../domains/permissions/services/aclService');
+const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerPathResolver');
 const { isMetaPath } = require('../../../store/metaPaths');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -76,8 +77,7 @@ router.get('/stats', authenticateToken, requireUser, normalizePathParam, checkMe
 
   const user = req.user.full;
   if (!user.is_admin) {
-    const { canReadFolder } = require('../../../utils/permissionPolicy');
-    const ok = await canReadFolder(user.id, folderPath);
+    const ok = await checkFolderPermission(user.id, folderPath);
     if (!ok) {
       throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
     }

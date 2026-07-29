@@ -5,7 +5,7 @@ const ShareLink = require('../../../models/ShareLink');
 const Permission = require('../../../models/Permission');
 const User = require('../../../models/User');
 const { pathExists, listDirectory, getFileContents } = require('../../../utils/webdav');
-const { canGrantPermission } = require('../../../utils/permissionPolicy');
+const { canGrantPermission } = require('../../permissions/policy/permissionPolicy');
 const { meetsRank } = require('../../permissions/policy/permissionRank');
 
 async function collectPathsUnderSharePath(rootPath) {

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
-const { asyncHandler, validationError, forbiddenError, mapServiceError } = require('../../../utils/errorHandler');
+const { asyncHandler, validationError, forbiddenError } = require('../../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const shareLinkService = require('../services/shareLinkService');
 
@@ -16,7 +16,14 @@ const ERROR_MAP = {
 };
 
 function handleServiceError(error) {
-  return mapServiceError(error, ERROR_MAP);
+  const errorCode = ERROR_MAP[error.message];
+  if (errorCode) {
+    const err = new Error(errorCode);
+    err.status = error.status || 400;
+    err.errorCode = errorCode;
+    throw err;
+  }
+  throw error;
 }
 
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {

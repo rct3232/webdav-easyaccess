@@ -14,7 +14,7 @@ const { initSqliteSchema } = require('../scripts/initSqliteSchema');
 const userStore = require('./userStore');
 const settingsStore = require('./settingsStore');
 const permissionStore = require('./permissionStore');
-const permissionRequestStore = require('./permissionRequestStore');
+const permissionRequestStore = require('../domains/permissions/stores/permissionRequestStore');
 
 async function ensureDirs() {
   await ensureDir(META_ROOT);

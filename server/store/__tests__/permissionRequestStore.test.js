@@ -2,7 +2,7 @@
  * permissionRequestStore tests.
  * Verifies createRequest, getById, listInbox, listOutbox, updateStatus, deleteByRequesterId, rejectByOwnerId.
  */
-const permissionRequestStore = require('../permissionRequestStore');
+const permissionRequestStore = require('../../domains/permissions/stores/permissionRequestStore');
 const { PERMISSION_REQUEST_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
   createTestDatabase,

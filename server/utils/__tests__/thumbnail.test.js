@@ -29,7 +29,7 @@ const {
   getThumbnailFromCache,
   thumbnailCache,
   ensureThumbnail,
-} = require('../thumbnail');
+} = require('../../domains/thumbnails/services/thumbnailService');
 
 const MAX_CACHE_SIZE = 1000;
 

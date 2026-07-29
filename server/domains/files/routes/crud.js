@@ -15,11 +15,17 @@ const { asyncHandler, validationError, forbiddenError, notFoundError, conflictEr
 const { createFileService } = require('../services/fileService');
 const { getConflicts } = require('../services/conflictResolver');
 
-const Permission = require('../../../models/Permission');
-const { isSharePrincipal } = require('../../../middleware/permissions');
-const { canReadFolder, canReadFile, canWriteFolder, canWriteFileByParent } = require('../../../utils/permissionPolicy');
+const {
+  checkFilePermission,
+  checkFolderPermission,
+  canWriteFolder,
+  canWriteFile,
+  isSharePrincipal,
+} = require('../../permissions/services/aclService');
+const PermissionFacade = require('../../permissions/services/permissionFacade');
+
+const { getHomeOwnerUserIdForPath } = require('../../permissions/policy/ownerPathResolver');
 const { getFileMetadata, pathExists, createDirectory, putFileContents } = require('../../../utils/webdav');
-const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerPathResolver');
 
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -82,7 +88,7 @@ router.post('/metadata', authenticateTokenOrShare, requireAuth, normalizePathPar
     const pathVal = typeof p === 'string' ? p.trim() : '';
     if (!pathVal) continue;
     const normalized = normalizePath(pathVal);
-    const hasRead = await canReadFile(principalId, normalized, PERMISSIONS.READ);
+    const hasRead = await checkFilePermission(principalId, normalized, PERMISSIONS.READ);
     if (!hasRead) continue;
     try {
       const meta = await getFileMetadata(normalized);
@@ -113,7 +119,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, c
     }
   }
 
-  let hasPermission = await canReadFolder(principalId, folderPath, PERMISSIONS.READ);
+  let hasPermission = await checkFolderPermission(principalId, folderPath, PERMISSIONS.READ);
   if (!hasPermission) {
     if (isShare) {
       return res.status(HTTP_STATUS.FORBIDDEN).json({
@@ -147,7 +153,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathPara
   }
 
   const principalId = req.principalId;
-  const hasPermission = await canReadFile(principalId, filePath, PERMISSIONS.READ);
+  const hasPermission = await checkFilePermission(principalId, filePath, PERMISSIONS.READ);
   if (!hasPermission) {
     return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
@@ -223,7 +229,7 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
       
       let parentFolderOwners = [];
       try {
-        const parentPermissions = await Permission.getFolderPermissions(folderPath);
+        const parentPermissions = await PermissionFacade.getFolderPermissions(folderPath);
         parentFolderOwners = parentPermissions
           .filter(perm => perm.permission === PERMISSIONS.WRITE || perm.permission === PERMISSIONS.ADMIN)
           .map(perm => perm.id);
@@ -244,12 +250,12 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
             await createDirectory(currentPath);
             
             try {
-              await Permission.grant(req.user.id, currentPath, PERMISSIONS.WRITE);
+              await PermissionFacade.grant(req.user.id, currentPath, PERMISSIONS.WRITE);
               
               for (const ownerId of parentFolderOwners) {
                 try {
                   if (ownerId !== req.user.id) {
-                    await Permission.grant(ownerId, currentPath, PERMISSIONS.WRITE);
+                    await PermissionFacade.grant(ownerId, currentPath, PERMISSIONS.WRITE);
                   }
                 } catch (ownerPermError) {
                   console.error(`Failed to grant permission to parent folder owner ${ownerId} for ${currentPath}:`, ownerPermError);
@@ -259,7 +265,7 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
               try {
                 const homeOwnerId = await getHomeOwnerUserIdForPath(currentPath);
                 if (homeOwnerId != null) {
-                  await Permission.grant(homeOwnerId, currentPath, PERMISSIONS.ADMIN);
+                  await PermissionFacade.grant(homeOwnerId, currentPath, PERMISSIONS.ADMIN);
                 }
               } catch (homeOwnerPermError) {
                 console.error('Failed to grant home owner admin permission for intermediate directory:', homeOwnerPermError);
@@ -307,7 +313,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
   const normalizedOld = normalizePath(oldPath);
   const hasPermission = isDir
     ? await canWriteFolder(user, normalizedOld)
-    : await canWriteFileByParent(user, normalizedOld);
+    : await canWriteFile(user, normalizedOld);
 
   if (!hasPermission) {
     throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);

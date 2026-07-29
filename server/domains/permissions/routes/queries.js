@@ -3,7 +3,7 @@ const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const Permission = require('../../../models/Permission');
+const PermissionFacade = require('../services/permissionFacade');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { meetsRank } = require('../policy/permissionRank');
 const requireUser = require('../../../middleware/requireUser');
@@ -18,8 +18,8 @@ router.get('/check', authenticateToken, requireUser, normalizePathParam, asyncHa
   }
   let path = normalizePath(pathParam);
 
-  const effective = await Permission.getEffectivePermission(req.user.id, path);
-  const filePerm = await Permission.getFilePermission(req.user.id, path);
+ const effective = await PermissionFacade.getEffectivePermission(req.user.id, path);
+   const filePerm = await PermissionFacade.getFilePermission(req.user.id, path);
   const hasRead = effective ? meetsRank(effective, PERMISSIONS.READ) : false;
   const hasWrite = effective ? meetsRank(effective, PERMISSIONS.WRITE) : false;
   const source = filePerm != null ? 'file' : 'path';

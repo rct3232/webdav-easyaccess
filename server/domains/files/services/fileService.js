@@ -6,16 +6,11 @@ const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constant
 const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createFileStoreAdapter } = require('../../../infrastructure/adapters/filestore');
 const PermissionFacade = require('../../../domains/permissions/services/permissionFacade');
-const { getThumbnailUrl } = require('../../../utils/thumbnail');
+const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError } = require('../../../utils/errorHandler');
-const {
-  buildSyncWriteChecker,
-  buildSyncReadChecker,
-  buildSyncWriteFileByParentChecker,
-  buildSyncReadFileChecker,
-} = require('../../../utils/permissionPolicy');
-const { isOwnerPath, getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerPathResolver');
+const { buildSyncWriteChecker, buildSyncReadChecker, buildSyncWriteFileByParentChecker, buildSyncReadFileChecker, isOwnerPath } = require('../../../domains/permissions/services/aclService');
+const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerPathResolver');
 
 async function _isDirectoryPath(webdavPath, webdav) {
   try {

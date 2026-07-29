@@ -88,7 +88,7 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
     jest.doMock('../locks', () => ({
       withLock: async (_lockName, fn) => fn(),
     }));
-    jest.doMock('../permissionExistenceIndex', () => ({
+    jest.doMock('../../domains/permissions/stores/permissionExistenceIndex', () => ({
       invalidateExistenceIndexForAclMutation: jest.fn(),
     }));
     jest.doMock('../userStore', () => ({

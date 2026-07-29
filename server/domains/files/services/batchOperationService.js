@@ -2,12 +2,12 @@ const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/path
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncLimitSettledWithCancel } = require('../../../utils/asyncUtils');
-const { listDirectory, deleteFile, moveFile, copyFile } = require('../../../utils/webdav');
+const fileStore = require('../../../infrastructure/adapters/filestore').createFileStoreAdapter();
 const PermissionFacade = require('../../permissions/services/permissionFacade');
 const User = require('../../../models/User');
-const { getCachedUser } = require('../../permissions/services/aclService');
+const { getCachedUser, isOwnerPath } = require('../../permissions/services/aclService');
 const { isMetaPath } = require('../../../store/metaPaths');
-const { createJob, getJob, setJobCancelled, updateJob } = require('../../../store/bulkJobStore');
+const operationProgress = require('../stores/operationProgress').createOperationProgressStore();
 const { selectiveTransfer } = require('./selectiveTransfer');
 const { selectiveDelete } = require('./selectiveDelete');
 const { getConflicts, handleSingleOpConflict } = require('./conflictResolver');
@@ -16,24 +16,23 @@ const {
   buildSyncReadChecker,
   buildSyncWriteFileByParentChecker,
   buildSyncReadFileChecker,
-  getHomeOwnerUserIdForPath,
-  isOwnerPath
-} = require('../../../utils/permissionPolicy');
+} = require('../../permissions/services/aclService');
+const { getHomeOwnerUserIdForPath } = require('../../permissions/policy/ownerPathResolver');
 
 async function isDirectoryPath(webdavPath) {
   try {
-    await listDirectory(webdavPath);
+    await fileStore.listDirectory(webdavPath);
     return true;
   } catch (error) {
     try {
       if (!webdavPath.endsWith('/')) {
-        await listDirectory(webdavPath + '/');
+        await fileStore.listDirectory(webdavPath + '/');
         return true;
       }
     } catch (_) {}
     try {
       if (webdavPath.endsWith('/') && webdavPath !== '/') {
-        await listDirectory(webdavPath.slice(0, -1));
+        await fileStore.listDirectory(webdavPath.slice(0, -1));
         return true;
       }
     } catch (_) {}
@@ -49,21 +48,21 @@ function scheduleBulkWorker(jobId) {
 }
 
 async function runBulkJobWorker(jobId) {
-  const job = getJob(jobId);
+  const job = operationProgress.getJob(jobId);
   if (!job || job.status !== 'pending') return;
-  updateJob(jobId, { status: 'running' });
+  operationProgress.updateJob(jobId, { status: 'running' });
 
   const userId = job.userId;
   let user;
   try {
     user = await getCachedUser(userId);
     if (!user) {
-      updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.auth.userNotFound });
+      operationProgress.updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.auth.userNotFound });
       return;
     }
     user = user.toObject ? user.toObject() : user;
   } catch (e) {
-    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
+    operationProgress.updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
     return;
   }
 
@@ -73,7 +72,7 @@ async function runBulkJobWorker(jobId) {
   const canReadDirSync = buildSyncReadChecker(user, doc);
   const canReadFileSync = buildSyncReadFileChecker(user, doc);
 
-  const getJobRef = () => getJob(jobId);
+  const getJobRef = () => operationProgress.getJob(jobId);
   const pushResult = (entry) => {
     const j = getJobRef();
     if (j) {
@@ -106,7 +105,7 @@ async function runBulkJobWorker(jobId) {
             }
             if (user.is_admin) {
               try {
-                await listDirectory(filePath);
+                await fileStore.listDirectory(filePath);
                 const normalizedPath = filePath.endsWith('/') ? filePath.slice(0, -1) : filePath;
                 const pathParts = normalizedPath.split('/').filter(Boolean);
                 if (pathParts.length === 1) {
@@ -123,7 +122,7 @@ async function runBulkJobWorker(jobId) {
             }
             if (isDir) {
               if (user.is_admin || isOwnerPath(user, normalizedTargetPath)) {
-                await deleteFile(filePath, { isDirectory: true });
+                await fileStore.deleteFile(filePath, { isDirectory: true });
                 try {
                   await PermissionFacade.revokePermissionsPrefixForAllUsers([normalizedTargetPath]);
                   allDeletedDirPrefixes.add(normalizedTargetPath);
@@ -155,7 +154,7 @@ async function runBulkJobWorker(jobId) {
                 result.skippedPaths.forEach(p => pushResult({ path: p, status: 'skipped' }));
               }
             } else {
-              await deleteFile(filePath, { isDirectory: false });
+              await fileStore.deleteFile(filePath, { isDirectory: false });
               pushResult({ path: filePath, status: 'succeeded' });
             }
           } catch (error) {
@@ -172,7 +171,7 @@ async function runBulkJobWorker(jobId) {
       );
       const finalJob = getJobRef();
       if (finalJob) {
-        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+        operationProgress.updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
       }
       return;
     }
@@ -278,7 +277,7 @@ async function runBulkJobWorker(jobId) {
               }
             } else {
               const overwrite = onConflict === 'overwrite';
-              await moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
+              await fileStore.moveFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
             }
           } catch (error) {
@@ -300,7 +299,7 @@ async function runBulkJobWorker(jobId) {
       );
       const finalJob = getJobRef();
       if (finalJob) {
-        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+        operationProgress.updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
       }
       return;
     }
@@ -399,7 +398,7 @@ async function runBulkJobWorker(jobId) {
               }
             } else {
               const overwrite = onConflict === 'overwrite';
-              await copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
+              await fileStore.copyFile(sourcePath, destinationPath, null, overwrite, { isDirectory: false });
               pushResult({ sourcePath, destinationPath, status: 'succeeded' });
             }
           } catch (error) {
@@ -421,15 +420,15 @@ async function runBulkJobWorker(jobId) {
       );
       const finalJob = getJobRef();
       if (finalJob) {
-        updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
+        operationProgress.updateJob(jobId, { status: finalJob.cancelled ? 'cancelled' : 'completed' });
       }
       return;
     }
 
-    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
+    operationProgress.updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.defaultMessage });
   } catch (err) {
     console.error('runBulkJobWorker error:', err);
-    updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
+    operationProgress.updateJob(jobId, { status: 'failed', errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
   }
 }
 

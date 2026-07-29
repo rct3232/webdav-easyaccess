@@ -62,6 +62,7 @@ app.use('/api', requestLogger());
 
 // Thumbnails are non-JSON responses; mount before forcing JSON Content-Type.
 app.use('/api/thumbnails', require('./domains/thumbnails/routes'));
+app.use('/api/thumbnails', require('./domains/thumbnails/routes/thumbnailRoutes'));
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -151,7 +152,7 @@ initMetadataStore().then(async () => {
 
   // Initialize FFmpeg once on startup to avoid repeated lookups/errors per request.
   try {
-    const { initFfmpegOnce } = require('./utils/thumbnail');
+    const { initFfmpegOnce } = require('./domains/thumbnails/services/videoProcessor');
     const status = await initFfmpegOnce();
     if (status.available) {
       const source = status.source ? ` (${status.source})` : '';

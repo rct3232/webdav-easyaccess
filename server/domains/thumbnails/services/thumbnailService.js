@@ -252,4 +252,5 @@ module.exports = {
   signThumbnailToken,
   verifyThumbnailToken,
   findCachedThumbnailByHash,
+  get thumbnailCache() { return _getCache(); },
 };

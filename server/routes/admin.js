@@ -446,7 +446,7 @@ router.post('/cleanup/orphaned', authenticateToken, isAdmin, asyncHandler(async 
   // 4. Clean up orphaned permission request entries
   {
     try {
-      const { PERMISSION_REQUESTS_PATH } = require('../store/permissionRequestStore');
+      const { PERMISSION_REQUESTS_PATH } = require('../domains/permissions/stores/permissionRequestStore');
       const { withLock } = require('../store/locks');
       const { readFile, writeFile, exists, ensureDir } = require('../store/storage');
       const { META_ROOT } = require('../store/metaPaths');

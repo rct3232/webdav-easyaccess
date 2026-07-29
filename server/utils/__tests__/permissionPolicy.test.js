@@ -32,7 +32,7 @@ const {
   canGrantPermission,
   canRevokePermission,
   canViewPermissions,
-} = require('../permissionPolicy');
+} = require('../../domains/permissions/policy/permissionPolicy');
 
 const adminUser = { id: 1, username: 'admin', is_admin: true };
 const regularUser = { id: 2, username: 'alice', is_admin: false };

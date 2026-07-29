@@ -9,6 +9,12 @@ const User = require('../../../models/User');
 const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 const { meetsRank } = require('../policy/permissionRank');
 
+const { isOwnerPath } = require('../policy/ownerPathResolver');
+
+function isAdminUser(user) {
+  return Boolean(user?.is_admin);
+}
+
 // --- User cache (extracted from middleware/permissions.js) ---
 const userCache = new Map();
 const USER_CACHE_TTL_MS =
@@ -168,17 +174,90 @@ async function canAccessPath(userId, requestedPath) {
   return normalizedPath === userFolder || normalizedPath.startsWith(`${userFolder}/`);
 }
 
+// --- Write permission checks (admin/owner bypass + async) ---
+
+async function canWriteFolder(user, folderPath) {
+  if (!user) return false;
+  if (isAdminUser(user)) return true;
+  if (isOwnerPath(user, folderPath)) return true;
+  return await checkFolderPermission(user.id, folderPath, PERMISSIONS.WRITE);
+}
+
+async function canWriteFile(user, filePath) {
+  if (!user) return false;
+  if (isAdminUser(user)) return true;
+  if (isOwnerPath(user, filePath)) return true;
+  return await checkFilePermission(user.id, filePath, PERMISSIONS.WRITE);
+}
+
+// --- Sync permission checkers (batch operations, no async round-trip) ---
+
+function buildSyncReadChecker(user, doc) {
+  return (folderPath) => {
+    if (!user) return false;
+    if (isAdminUser(user)) return true;
+    if (isOwnerPath(user, folderPath)) return true;
+    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.READ);
+  };
+}
+
+function buildSyncReadFileChecker(user, doc) {
+  return (filePath) => {
+    if (!user) return false;
+    if (isAdminUser(user)) return true;
+    if (isOwnerPath(user, filePath)) return true;
+    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.READ);
+  };
+}
+
+function buildSyncWriteChecker(user, doc) {
+  return (folderPath) => {
+    if (!user) return false;
+    if (isAdminUser(user)) return true;
+    if (isOwnerPath(user, folderPath)) return true;
+    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE);
+  };
+}
+
+function buildSyncWriteFileByParentChecker(user, doc) {
+  return (filePath) => {
+    if (!user) return false;
+    if (isAdminUser(user)) return true;
+    if (isOwnerPath(user, filePath)) return true;
+    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.WRITE);
+  };
+}
+
 function __clearUserCacheForTests() {
   userCache.clear();
 }
 
 module.exports = {
+  // Identity helpers
   isSharePrincipal,
   extractShareToken,
+  isAdminUser,
+
+  // Async permission checks (principalId-based)
   checkFilePermission,
   checkFolderPermission,
   checkPermission,
   canAccessPath,
+
+  // User object-based write checks (admin/owner bypass included)
+  canWriteFolder,
+  canWriteFile,
+
+  // Sync batch checkers (accept pre-loaded permission doc)
+  buildSyncReadChecker,
+  buildSyncReadFileChecker,
+  buildSyncWriteChecker,
+  buildSyncWriteFileByParentChecker,
+
+  // Owner path helpers (re-export for cross-domain use)
+  isOwnerPath,
+
+  // Cache utilities
   getCachedUser,
   __clearUserCacheForTests,
 };

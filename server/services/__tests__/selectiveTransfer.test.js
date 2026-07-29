@@ -3,7 +3,7 @@
  * Verifies move/copy error handling per spec.
  * @see docs/spec/server/services/selectiveTransfer.md
  */
-const { selectiveTransfer } = require('../selectiveTransfer');
+const { selectiveTransfer } = require('../../domains/files/services/selectiveTransfer');
 
 function createMockWebdav(overrides = {}) {
   const defaults = {

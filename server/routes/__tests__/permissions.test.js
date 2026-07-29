@@ -25,7 +25,7 @@ beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
   app = require('../../index');
-  ({ __resetForTests: resetPermissionExistenceIndex } = require('../../store/permissionExistenceIndex'));
+  ({ __resetForTests: resetPermissionExistenceIndex } = require('../../domains/permissions/stores/permissionExistenceIndex'));
 });
 
 afterAll(async () => {

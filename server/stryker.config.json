@@ -6,9 +6,10 @@
   "mutate": [
     "utils/**/*.js",
     "middleware/**/*.js",
+    "domains/**/*.js",
+    "infrastructure/**/*.js",
     "store/**/*.js",
-    "models/**/*.js",
-    "services/**/*.js"
+    "models/**/*.js"
   ],
   "ignorePatterns": [
     "**/__tests__/**",

@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const envPath = process.env.DOTENV_CONFIG_PATH
   ? path.resolve(__dirname, process.env.DOTENV_CONFIG_PATH)
@@ -71,7 +71,9 @@ app.use('/api', (req, res, next) => {
 
 app.use('/api/auth', require('./domains/auth/routes'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/admin', require('./routes/admin'));
+app.use('/api/admin', require('./domains/admin/routes/userManagement'));
+app.use('/api/admin', require('./domains/admin/routes/settings'));
+app.use('/api/admin', require('./domains/admin/routes/maintenance'));
 app.use('/api/settings', require('./routes/settings'));
 // Files domain routes (Phase 6 split)
 app.use('/api/files', require('./domains/files/routes/crud'));
@@ -84,9 +86,7 @@ app.use('/api/share-links', require('./domains/sharing/routes/shareLinks'));
 app.use('/api/share', require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', require('./domains/recentFiles/routes'));
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', messageCode: SERVER_MESSAGE_CODES.api.healthOk });
-});
+app.use('/api', require('./infrastructure/healthRoutes'));
 
 // Debug endpoint — development only
 if (process.env.NODE_ENV !== 'production') {
@@ -99,42 +99,11 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 
+app.use('/api/webdav', require('./infrastructure/webdavRoutes'));
+
 // Error handler middleware (must be after all routes)
 const { errorHandler } = require('./utils/errorHandler');
 app.use(errorHandler);
-
-app.get('/api/webdav/test', async (req, res) => {
-  try {
-    const { testConnection } = require('./utils/webdav');
-    const result = await testConnection();
-    res.json(result);
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
-      success: false, 
-      errorCode: SERVER_ERROR_CODES.api.webdavTestFailed,
-      params: { reason: error.message },
-    });
-  }
-});
-
-app.get('/api/webdav/info', (req, res) => {
-  try {
-    const webdavUrl = process.env.WEBDAV_URL || '';
-    let displayUrl = webdavUrl;
-    try {
-      const url = new URL(webdavUrl);
-      displayUrl = url.hostname + (url.port ? `:${url.port}` : '') + url.pathname;
-      if (displayUrl.endsWith('/')) {
-        displayUrl = displayUrl.slice(0, -1);
-      }
-    } catch (e) {
-      displayUrl = webdavUrl;
-    }
-    res.json({ url: displayUrl });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.errorHandler.internalServerError });
-  }
-});
 
 if (fs.existsSync(clientBuildPath)) {
   app.get('*', (req, res) => {

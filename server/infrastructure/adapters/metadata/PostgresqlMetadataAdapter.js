@@ -3,8 +3,7 @@
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
-const { sha256HexLower } = require('../../../store/metaPaths');
-const { getPgPool, withTransaction } = require('../../../store/storage');
+const { sha256HexLower, normalizeWebdavPath } = require('../../../store/metaPaths');
 
 function nowIso() {
   return new Date().toISOString();
@@ -38,6 +37,8 @@ function mapUserRow(row) {
 }
 
 function PostgresqlMetadataAdapter() {
+  // Lazy require to ensure Jest mocks on store/storage are picked up
+  const { getPgPool, withTransaction } = require('../../../store/storage');
   return {
     async ensureUserIndexFile() {
       // No-op for PostgreSQL; schema is managed externally
@@ -272,6 +273,127 @@ function PostgresqlMetadataAdapter() {
         throw mapDatabaseError(error);
       }
     },
+
+    async createShareLink(linkData) {
+      const { token, filePath, createdBy, expiresInDays } = linkData;
+      let expiresAt = null;
+      if (expiresInDays !== null && expiresInDays !== undefined) {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + expiresInDays);
+        expiresAt = expiryDate.toISOString();
+      }
+      const normalizedFilePath = normalizeWebdavPath(filePath);
+      try {
+        return await withTransaction(async (client) => {
+          const existing = await client.query(
+            `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
+            [String(token)]
+          );
+          if (existing.rows.length > 0) {
+            return mapShareLinkRow(existing.rows[0]);
+          }
+          const inserted = await client.query(
+            `INSERT INTO share_links (token, file_path, created_by, created_at, expires_at, download_count)
+             VALUES ($1, $2, $3, NOW(), $4, 0) RETURNING *`,
+            [String(token), normalizedFilePath, Number(createdBy), expiresAt]
+          );
+          return mapShareLinkRow(inserted.rows[0]);
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getShareLink(token) {
+      try {
+        const pool = getPgPool();
+        const res = await pool.query(
+          `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
+          [String(token)]
+        );
+        if (res.rows.length === 0) return null;
+        return mapShareLinkRow(res.rows[0]);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async getUserShareLinks(userId) {
+      try {
+        const pool = getPgPool();
+        const res = await pool.query(
+          `SELECT * FROM share_links WHERE created_by = $1 ORDER BY created_at DESC`,
+          [Number(userId)]
+        );
+        return res.rows.map(mapShareLinkRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async updateShareLink(token, updates) {
+      try {
+        return await withTransaction(async (client) => {
+          const existing = await client.query(
+            `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
+            [String(token)]
+          );
+          if (existing.rows.length === 0) {
+            throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+          }
+          const current = mapShareLinkRow(existing.rows[0]);
+          const merged = { ...current, ...updates };
+          const updated = await client.query(
+            `UPDATE share_links SET file_path = $2, expires_at = $3, download_count = $4
+             WHERE token = $1 RETURNING *`,
+            [String(token), normalizeWebdavPath(merged.filePath), merged.expiresAt || null, Number(merged.downloadCount || 0)]
+          );
+          return mapShareLinkRow(updated.rows[0]);
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async deleteShareLink(token) {
+      try {
+        await withTransaction(async (client) => {
+          await client.query(`DELETE FROM share_links WHERE token = $1`, [String(token)]);
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async incrementDownloadCount(token) {
+      try {
+        return await withTransaction(async (client) => {
+          const updated = await client.query(
+            `UPDATE share_links SET download_count = download_count + 1
+             WHERE token = $1 RETURNING *`,
+            [String(token)]
+          );
+          if (updated.rows.length === 0) {
+            throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
+          }
+          return mapShareLinkRow(updated.rows[0]);
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+  };
+}
+
+function mapShareLinkRow(row) {
+  if (!row) return null;
+  return {
+    token: row.token,
+    filePath: normalizeWebdavPath(row.file_path),
+    createdBy: Number(row.created_by),
+    createdAt: toIsoString(row.created_at),
+    expiresAt: row.expires_at ? toIsoString(row.expires_at) : null,
+    downloadCount: Number(row.download_count || 0),
   };
 }
 

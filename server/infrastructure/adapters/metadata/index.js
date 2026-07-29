@@ -1,14 +1,15 @@
 'use strict';
 
-const { getBackend } = require('../../../store/storage');
-
 /**
  * Factory: create a MetadataAdapter instance based on the configured backend.
+ * All adapter requires are lazy to ensure Jest mocks on store/storage are picked up.
  *
  * @returns {Object} MetadataAdapter instance
  */
 function createMetadataAdapter() {
-  const backend = getBackend();
+  // Lazy require so Jest mocks apply correctly
+  const storage = require('../../../store/storage');
+  const backend = storage.getBackend();
   if (backend === 'postgresql') {
     return require('./PostgresqlMetadataAdapter')();
   }

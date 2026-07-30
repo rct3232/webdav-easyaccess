@@ -275,6 +275,9 @@ npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__
 | 1.5 | Create test fixtures and mocks for S3 operations (Jest mock of `@aws-sdk/client-s3`) | Tests run without real AWS connection |
 | 1.6 | Create `testing/mocks/s3Mock.js`: Jest factory that produces deterministic in-memory mock of `PutObjectCommand`, `GetObjectCommand`, `DeleteObjectCommand`, `HeadObjectCommand`; persists objects in a Map keyed by s3_key, deletable and inspectable from tests | Importable by any route/service test file; no real AWS connection required |
 
+> **Phase 1 — Status: COMPLETE**
+> All S3 blob store adapter tasks (1.1–1.6) are implemented. S3BlobStore (5 methods), NoOpBlobStore stub, factory with env config validation, s3Mock, and spec document are in place. 18 unit tests pass.
+
 ---
 
 ### Phase 2: Core Service Layer — fileNodeService, blobStorageService, uploadService

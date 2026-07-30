@@ -2,16 +2,16 @@
 
 ## Objective
 
-Phase 1–7 completed server modularization (domain-bounded modules, service layer, adapter pattern). Phase 8–16 introduces a fundamental architectural shift: PostgreSQL becomes the filesystem metadata layer (`file_nodes` + `object_map` + `filecache`), and S3 serves as a flat blob store addressed by opaque IDs. Existing WebDAV+PostgreSQL and WebDAV+SQLite backends remain supported with the unified schema; FsJSON mode is deprecated.
+Phase 0–8 introduces a fundamental architectural shift: PostgreSQL becomes the filesystem metadata layer (`file_nodes` + `object_map` + `filecache`), and S3 serves as a flat blob store addressed by opaque IDs. Existing WebDAV+PostgreSQL and WebDAV+SQLite backends remain supported with the unified schema; FsJSON mode is deprecated.
 
 ## Scope
 
 - **In scope**: DB schema migration (new tables, path→node_id conversion), S3 blob adapter, core service layer (fileNodeService, blobStorageService, uploadService), files/sharing/permissions/recentFiles domain integration, GC + fail-safe mechanisms, legacy cleanup
-- **Out of scope**: Client-side refactoring, Redis introduction, WebDAV→S3 data migration tooling (recorded as Future Work)
+- **Out of scope**: Client-side UI/layout changes, Redis introduction, WebDAV→S3 data migration tooling (recorded as Future Work). Client API consumer changes required by server schema migration are **in scope** and integrated into their respective phases.
 
 ## Success Criteria
 
-| Metric | Before (Phase 7) | Target After |
+| Metric | Before | Target After |
 |--------|-----------------|--------------|
 | Filesystem metadata source | WebDAV server (path-based) / FS JSON files | PostgreSQL `file_nodes` table (single source of truth) |
 | Blob storage | WebDAV paths (`/user/doc.pdf`) | S3 opaque keys (`a1b2c3d4-...`) via `object_map` |
@@ -25,18 +25,18 @@ Phase 1–7 completed server modularization (domain-bounded modules, service lay
 
 ## Architecture Shift: Path-Based → Node-Based Filesystem
 
-### Before (Phase 1–7)
+### Before
 
 ```
 WebDAV Server ────┐
-                  ├──→ FileStoreAdapter ───→ fileService.js ───→ routes/
+                   ├──→ FileStoreAdapter ───→ fileService.js ───→ routes/
 S3 (future)        │                         (path-based ops)
 FsJSON metadata ───┘
                      MetadataAdapter
                    (users, permissions, shares as separate stores)
 ```
 
-### After (Phase 8–16)
+### After (Phase 0–8)
 
 ```
                     DB Schema (PostgreSQL / SQLite)
@@ -195,12 +195,19 @@ Same pattern as `permissions_user_paths`: replace `file_path TEXT` with `file_no
 
 Replace `root_path TEXT` and `is_directory BOOLEAN` with `file_node_id BIGINT REFERENCES file_nodes(id)`.
 
-#### `recent_files` — Path → Node ID
+#### `recent_files` — Path → Node ID + CASCADE delete
 
 ```sql
 ALTER TABLE recent_files ADD COLUMN file_node_id BIGINT REFERENCES file_nodes(id) ON DELETE CASCADE DEFAULT NULL;
--- After migration: drop path, name columns (derivable from file_nodes)
+
+-- Replace unique index on (user_id, path) with (user_id, file_node_id)
+CREATE UNIQUE INDEX IF NOT EXISTS recent_files_user_node_uq ON recent_files (user_id, file_node_id);
+
+-- Migration: populate file_node_id FROM path via file_nodes join
+-- Post-migration: DROP path, name columns (derivable from file_nodes.id → getNodePath / file_nodes.name)
 ```
+
+**CASCADE semantics:** When `file_nodes` row is deleted, corresponding `recent_files` entry is auto-removed. This eliminates the need for manual `removePaths` calls in most deletion scenarios — only rename/move requires explicit recent files update (to refresh ordering).
 
 ### Schema Compatibility
 
@@ -214,59 +221,44 @@ ALTER TABLE recent_files ADD COLUMN file_node_id BIGINT REFERENCES file_nodes(id
 
 ## Phases
 
-### Phase 1–7: Server Modularization ✅ COMPLETE
-
-Phases 0–7 have been completed. Summary of accomplishments:
-
-| Phase | Domain | Key Outcome |
-|-------|--------|-------------|
-| 0 | Dead Code Cleanup | Removed orphaned `routes/auth.js` |
-| 1 | RecentFiles | Extracted to `domains/recentFiles/`, service layer |
-| 2 | Thumbnails + CacheAdapter | First adapter interface; thumbnail domain split |
-| 3 | Auth | Token store, rate limiting via CacheAdapter |
-| 4 | Sharing | Share links + public access separated |
-| 5 | Permissions | ACL service, facade pattern, reverse dependency resolved |
-| 6 | Files | FileStoreAdapter interface, 1552-line split, batch/download services |
-| 7 | Admin + Infrastructure | MetadataAdapter trio (PG/SQLite/FsJSON), lockManager extraction |
-
-**Phase 8–16 build upon this modular foundation.** Domain boundaries established in Phase 5–7 provide the integration points for node-based refactoring.
-
----
-
-### Phase 8: Database Schema Migration — New Tables + DDL
+### Phase 0: Database Schema Migration — New Tables + DDL
 
 **Dependencies:** None (foundation phase)
 **Risk Level:** Medium — schema changes affect all backends; backward-compatible additions first
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 8.1 | Create `store/postgresql/ddl/002_filesystem_tables.sql`: DDL for `file_nodes`, `object_map`, `filecache`, `node_ancestors` | SQL validates against PostgreSQL |
-| 8.2 | Update `sqliteSchemaInit.js` converter to handle new table types (BIGINT FK, TIMESTAMPTZ) | SQLite schema initializes without error |
-| 8.3 | Update `001_initial_normalized_schema.sql` or create migration: add `file_node_id` columns to existing tables (`share_links`, `permissions_*`, `recent_files`) with NULL default | Both old and new columns coexist |
-| 8.4 | Create infrastructure/schema management utility: `applyPendingMigrations()` that runs unapplied DDL files in order; tracks applied migrations in `_schema_migrations` table | Migration tracker works idempotently |
-| 8.5 | Update `.env.example`: add `WEA_FILE_STORAGE=s3\|webdav`, `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (optional, for MinIO) | Config documented |
-| 8.6 | Remove FsJSON from `storage.js` backend resolver: supported backends are now `postgresql`, `sqlite`, `webdav`(metadata storage only). Add deprecation warning if `WEA_STORAGE_BACKEND=fs` is detected | FsJSON mode logs warning and falls back to SQLite |
+| 0.1 | Create `store/postgresql/ddl/002_filesystem_tables.sql`: DDL for `file_nodes`, `object_map`, `filecache`, `node_ancestors` | SQL validates against PostgreSQL |
+| 0.2 | Update `sqliteSchemaInit.js` converter to handle new table types (BIGINT FK, TIMESTAMPTZ) | SQLite schema initializes without error |
+| 0.3 | Update `001_initial_normalized_schema.sql` or create migration: add `file_node_id` columns to existing tables (`share_links`, `permissions_*`, `recent_files`) with NULL default | Both old and new columns coexist |
+| 0.4 | Create infrastructure/schema management utility: `applyPendingMigrations()` that runs unapplied DDL files in order; tracks applied migrations in `_schema_migrations` table | Migration tracker works idempotently |
+| 0.5 | Update `.env.example`: add `WEA_FILE_STORAGE=s3\|webdav`, `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (optional, for MinIO) | Config documented |
+| 0.6 | Remove FsJSON from `storage.js` backend resolver: supported backends are now `postgresql`, `sqlite`, `webdav`(metadata storage only). Add deprecation warning if `WEA_STORAGE_BACKEND=fs` is detected | FsJSON mode logs warning and falls back to SQLite |
+| 0.7 | Update `docker-compose.e2e.yml`: add PostgreSQL (`postgres:16`) + MinIO services alongside existing WebDAV service; configure health checks for all three containers | All containers start healthy in E2E environment |
+| 0.8 | Update `.env.e2e`: add S3+PG configuration block (`S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT=http://minio-e2e:9000`, `WEA_PG_HOST=postgresql-e2e`) alongside existing WebDAV settings | Server starts with either backend based on env variable toggle |
+| 0.9 | Update `server/test-setup.js`: make `WEA_STORAGE_BACKEND` configurable via env override instead of hardcoded `fs`; default to `sqlite` for in-process tests when no explicit backend is set | Tests run without FsJSON dependency; CI can switch backends via env |
 
 ---
 
-### Phase 9: S3 Blob Store Adapter
+### Phase 1: S3 Blob Store Adapter
 
-**Dependencies:** Phase 8 (schema ready)
+**Dependencies:** Phase 0 (schema ready)
 **Risk Level:** Medium — new dependency (`@aws-sdk/client-s3`); requires AWS credentials or MinIO for testing
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 9.1 | Add `@aws-sdk/client-s3` to `server/package.json` dependencies | Module resolves |
-| 9.2 | Create `infrastructure/adapters/blobstore/S3BlobStore.js`: implement `uploadBlob(key, buffer)`, `downloadBlob(key)`, `deleteBlob(key)`, `headBlob(key) → {contentLength, contentType}`, `listOrphanedKeys(olderThan)` | Unit tests pass with localstack/MinIO mock |
-| 9.3 | Create `infrastructure/adapters/blobstore/index.js` factory: `createBlobStore(config)` returns S3BlobStore or no-op stub (for WebDAV-only mode) | Factory resolves correctly per config |
-| 9.4 | Add `.env` config resolution in factory: read `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`; validate required keys present when `WEA_FILE_STORAGE=s3` | Missing config throws clear error at startup |
-| 9.5 | Create test fixtures and mocks for S3 operations (Jest mock of `@aws-sdk/client-s3`) | Tests run without real AWS connection |
+| 1.1 | Add `@aws-sdk/client-s3` to `server/package.json` dependencies | Module resolves |
+| 1.2 | Create `infrastructure/adapters/blobstore/S3BlobStore.js`: implement `uploadBlob(key, buffer)`, `downloadBlob(key)`, `deleteBlob(key)`, `headBlob(key) → {contentLength, contentType}`, `listOrphanedKeys(olderThan)` | Unit tests pass with localstack/MinIO mock |
+| 1.3 | Create `infrastructure/adapters/blobstore/index.js` factory: `createBlobStore(config)` returns S3BlobStore or no-op stub (for WebDAV-only mode) | Factory resolves correctly per config |
+| 1.4 | Add `.env` config resolution in factory: read `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`; validate required keys present when `WEA_FILE_STORAGE=s3` | Missing config throws clear error at startup |
+| 1.5 | Create test fixtures and mocks for S3 operations (Jest mock of `@aws-sdk/client-s3`) | Tests run without real AWS connection |
+| 1.6 | Create `testing/mocks/s3Mock.js`: Jest factory that produces deterministic in-memory mock of `PutObjectCommand`, `GetObjectCommand`, `DeleteObjectCommand`, `HeadObjectCommand`; persists objects in a Map keyed by s3_key, deletable and inspectable from tests | Importable by any route/service test file; no real AWS connection required |
 
 ---
 
-### Phase 10: Core Service Layer — fileNodeService, blobStorageService, uploadService
+### Phase 2: Core Service Layer — fileNodeService, blobStorageService, uploadService
 
-**Dependencies:** Phase 8 (schema), Phase 9 (S3 adapter)
+**Dependencies:** Phase 0 (schema), Phase 1 (S3 adapter)
 **Risk Level:** High — central orchestration layer; all file operations flow through here
 
 #### service/fileNodeService.js — Filesystem Tree Management
@@ -311,134 +303,186 @@ uploadFile(parentNodeId, name, buffer, mimeType):
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 10.1 | Implement `fileNodeService` with all tree operations + closure table maintenance | Unit tests pass for create/move/rename/delete/list/resolvePath |
-| 10.2 | Implement `blobStorageService` (S3 mode) with prepareUpload → completeUpload flow | S3 mock tests verify status transitions: pending→active |
-| 10.3 | Implement `uploadService` orchestrating the 4-step upload flow | Integration test: upload file → verify DB + blob state |
-| 10.4 | Implement WebDAV mode in services: `createFile` INSERTs `file_nodes` + WebDAV PUT; on failure, marks `sync_status='orphaned_node'` | Fail-safe test: simulate WebDAV error → orphaned status set |
-| 10.5 | Ancestry maintenance helper: `_updateAncestors(nodeId)` rebuilds closure table rows for a node and its subtree | Closure table consistency verified after every mutation |
+| 2.1 | Implement `fileNodeService` with all tree operations + closure table maintenance | Unit tests pass for create/move/rename/delete/list/resolvePath |
+| 2.2 | Implement `blobStorageService` (S3 mode) with prepareUpload → completeUpload flow | S3 mock tests verify status transitions: pending→active |
+| 2.3 | Implement `uploadService` orchestrating the 4-step upload flow | Integration test: upload file → verify DB + blob state |
+| 2.4 | Implement WebDAV mode in services: `createFile` INSERTs `file_nodes` + WebDAV PUT; on failure, marks `sync_status='orphaned_node'` | Fail-safe test: simulate WebDAV error → orphaned status set |
+| 2.5 | Ancestry maintenance helper: `_updateAncestors(nodeId)` rebuilds closure table rows for a node and its subtree | Closure table consistency verified after every mutation |
+| 2.6 | Create `service/__tests__/fileNodeService.test.js`: test create/move/rename/delete/list/resolvePath; verify `node_ancestors` correctness at depth 0, 1, N using in-memory SQLite | Closure table contains correct ancestor/descendant pairs after every mutation |
+| 2.7 | Create `service/__tests__/blobStorageService.test.js`: test pending→active→orphaned lifecycle with S3 mock; verify filecache metadata updates on completeUpload | Status transitions verified; orphaned row count matches expected value |
+| 2.8 | Create `service/__tests__/uploadService.test.js`: integration test of full 4-step upload flow (TX1 → S3 PUT → TX2) using real DB + s3Mock; simulate failure at each step to verify rollback and orphan detection | Each failure point leaves recoverable state (`sync_status`, `object_map.status`) |
 
 ---
 
-### Phase 11: Files Domain Integration
+### Phase 3: Files Domain Integration
 
-**Dependencies:** Phase 10 (services ready)
+**Dependencies:** Phase 2 (services ready)
 **Risk Level:** High — replaces current file operation flow; affects all file routes
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 11.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + storage-specific adapter) | File CRUD via new service works identically |
-| 11.2 | Update `listDirectoryWithPermissions`: source children from `file_nodes` (DB query) instead of remote listing; enrich with permissions from node_id-based permission store | Response format matches existing API contract |
-| 11.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService) | Upload creates DB entry before blob write |
-| 11.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before |
-| 11.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV) or no-op (S3, blob stays put) | Rename is instant DB update in S3 mode |
-| 11.6 | Batch operations (copy/move/delete): adapt to node-based model — copy = new file_nodes row + new object_map entry referencing same s3_key; delete = recursive descendant removal via closure table | Bulk ops work on node IDs |
-| 11.7 | Copy-on-write for S3 mode: copying a file creates new `file_nodes` + `object_map` pointing to the SAME `s3_key` (read-only share); mutation triggers actual blob copy | Two nodes, one blob, zero storage waste |
-| 11.8 | Update routes (`crud.js`, `batch.js`, `preview.js`, `folders.js`) to use node_id internally while accepting/returning path strings in API (compatibility layer) | API responses unchanged |
+| 3.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + storage-specific adapter) | File CRUD via new service works identically |
+| 3.2 | Update `listDirectoryWithPermissions`: source children from `file_nodes` (DB query) instead of remote listing; enrich with permissions from node_id-based permission store | Response format matches existing API contract |
+| 3.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService) | Upload creates DB entry before blob write |
+| 3.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before |
+| 3.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV) or no-op (S3, blob stays put) | Rename is instant DB update in S3 mode |
+| 3.6 | Batch operations (copy/move/delete): adapt to node-based model — copy = new file_nodes row + new object_map entry referencing same s3_key; delete = recursive descendant removal via closure table | Bulk ops work on node IDs |
+| 3.7 | Copy-on-write for S3 mode: copying a file creates new `file_nodes` + `object_map` pointing to the SAME `s3_key` (read-only share); mutation triggers actual blob copy | Two nodes, one blob, zero storage waste |
+| 3.8 | Update routes (`crud.js`, `batch.js`, `preview.js`, `folders.js`): accept `nodeId` in request payloads; return nodeId + display path in responses. No path-based compatibility layer — FsJSON is deprecated, all backends are DB-driven. | API accepts/returns nodeId; path strings are display-only |
+| 3.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
+| 3.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
 
 ---
 
-### Phase 12: Permissions Domain → Node ID
+### Phase 4: Permissions Domain → Node ID
 
-**Dependencies:** Phase 10 (fileNodeService for ancestor queries), Phase 8 (schema ready)
+**Dependencies:** Phase 2 (fileNodeService for ancestor queries), Phase 0 (schema ready)
 **Risk Level:** High — largest behavioral change; permission checks called on every file access
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 12.1 | Create new `permissions_user_paths` and `permissions_user_files` tables with `file_node_id` column (see schema above); keep old columns during transition period | Tables created, migration script populates new columns from paths |
-| 12.2 | Refactor `domains/permissions/services/aclService.js`: replace path-based lookups (`checkPermissionSync(doc, path, action)`) with node_id-based queries using closure table for folder inheritance | Permission checks return same results as before |
-| 12.3 | Folder permission check: query `node_ancestors` for all ancestors of target node → join with `permissions_user_paths` → find highest-rank match | Ancestor traversal via closure table, not string prefix matching |
-| 12.4 | File permission check: direct lookup in `permissions_user_files` by `file_node_id`; if no match, fall back to folder ancestor check (same as 12.3) | File-level overrides work correctly |
-| 12.5 | Permission grant/revoke: operate on node_ids; when granting on a folder, the closure table handles descendant coverage implicitly at query time (no fan-out INSERT needed) | Grant is O(1); check is O(ancestors) via closure table |
-| 12.6 | Update `permissionFacade.js` and `permissionStore.js`: all external callers use node_id interface; path-based interface deprecated | Facade exposes both during transition, warns on path usage |
-| 12.7 | Middleware `permissions.js`: update to resolve principal's access via node_id (requires path→node resolution from request URL) | Authenticated requests pass permission checks |
+| 4.1 | Create new `permissions_user_paths` and `permissions_user_files` tables with `file_node_id` column (see schema above); keep old columns during transition period | Tables created, migration script populates new columns from paths |
+| 4.2 | Refactor `domains/permissions/services/aclService.js`: replace path-based lookups (`checkPermissionSync(doc, path, action)`) with node_id-based queries using closure table for folder inheritance | Permission checks return same results as before |
+| 4.3 | Folder permission check: query `node_ancestors` for all ancestors of target node → join with `permissions_user_paths` → find highest-rank match | Ancestor traversal via closure table, not string prefix matching |
+| 4.4 | File permission check: direct lookup in `permissions_user_files` by `file_node_id`; if no match, fall back to folder ancestor check (same as 4.3) | File-level overrides work correctly |
+| 4.5 | Permission grant/revoke: operate on node_ids; when granting on a folder, the closure table handles descendant coverage implicitly at query time (no fan-out INSERT needed) | Grant is O(1); check is O(ancestors) via closure table |
+| 4.6 | Update `permissionFacade.js` and `permissionStore.js`: all external callers use node_id interface | Facade accepts nodeId exclusively |
+| 4.7 | Middleware `permissions.js`: update to resolve principal's access via node_id (requires path→node resolution from request URL) | Authenticated requests pass permission checks |
+| 4.8 | **Client:** Refactor `permissionService.js`: grant/revoke/check payloads send `nodeId` instead of `folderPath`/`path`. Update query params and body fields across all permission endpoints (`/permissions/grant`, `/permissions/revoke`, `/permissions/check`, `/permissions/folder`) | Client sends nodeId in all permission API calls |
+| 4.9 | **Client:** Refactor hooks/utilities that manage permission state: `useSharedManage.js`, `buildPermissionDiff.js`, `collectSubfolderPaths()` — replace path-string Maps with nodeId-based state; remove string prefix matching (`startsWith`) for ancestor checks | Permission state keyed by nodeId |
+| 4.10 | Update `domains/permissions/routes/__tests__/permissions.test.js`: grant/revoke/check endpoints use nodeId payloads; add ancestor-inheritance tests (grant on folder → child/grandchild accessible via closure table at depth 0, 1, N) | Permission checks return correct results through closure table traversal |
 
 ---
 
-### Phase 13: Sharing & RecentFiles → Node ID
+### Phase 5: Sharing & RecentFiles → Node ID
 
-**Dependencies:** Phase 10 (fileNodeService), Phase 8 (schema)
-**Risk Level:** Low — self-contained domains, minimal cross-dependencies
+**Dependencies:** Phase 2 (fileNodeService), Phase 0 (schema)
+**Risk Level:** Medium — server-side is self-contained, but client-side changes touch multiple services and utilities across the sharing/recentFiles domain. No parallel execution with Phase 4 due to shared dependency on `fileNodeService`.
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 13.1 | Update `share_links` table: add `file_node_id BIGINT`; new share links store node reference; existing shares retain path for backward compat during transition | Share creation works with both path and nodeId |
-| 13.2 | Refactor `domains/sharing/services/shareLinkService.js`: create share → resolve path to nodeId → store nodeId; lookup share → use nodeId for permission checks via closure table | Shared access respects folder permissions via ancestor walk |
-| 13.3 | Update `shareAccessService.js` (`collectPathsUnderSharePath`, etc.): replace path-prefix string matching with closure table descendant query (`SELECT descendant_id FROM node_ancestors WHERE ancestor_id = shareNode.id`) | Share scope resolution correct for nested structures |
-| 13.4 | Update `recent_files` table: add `file_node_id`; new entries store nodeId; display name derived from `file_nodes.name` (not stored separately) | Recent files list resolves correctly even after file rename/move |
-| 13.5 | Refactor `domains/recentFiles/service.js`: access tracking uses nodeId; path display resolved via `getNodePath(nodeId)` at render time (handles renames transparently) | Renamed files show updated names in recent list |
+| 5.1 | Update `share_links` table: add `file_node_id BIGINT`; all new share links use nodeId exclusively — no backward compatibility for paths | Share creation uses file_node_id only |
+| 5.2 | Refactor `domains/sharing/services/shareLinkService.js`: create share → resolve path to nodeId → store nodeId; lookup share → use nodeId for permission checks via closure table | Shared access respects folder permissions via ancestor walk |
+| 5.3 | Update `shareAccessService.js` (`collectPathsUnderSharePath`, etc.): replace path-prefix string matching with closure table descendant query (`SELECT descendant_id FROM node_ancestors WHERE ancestor_id = shareNode.id`) | Share scope resolution correct for nested structures |
+| 5.4 | Update `recent_files` table: add `file_node_id`; new entries store nodeId; display name derived from `file_nodes.name` (not stored separately) | Recent files list resolves correctly even after file rename/move |
+| 5.5 | Refactor `domains/recentFiles/service.js`: access tracking uses nodeId; path display resolved via `getNodePath(nodeId)` at render time (handles renames transparently) | Renamed files show updated names in recent list |
+| 5.6 | **Client:** Refactor `recentFilesRepository`: API payloads send `fileNode_id` instead of `path`. Remove path-mutation helpers (`updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`) from `client/src/utils/recentFiles.js` — nodeId references make them unnecessary (rename/move does not change the reference). | Recent entries survive renames automatically; no client-side path string manipulation |
+| 5.7 | **Client:** Refactor `shareLinkService`: createShareLink sends `fileNode_id` instead of `filePath`. Update share link UI components (`ExternalShareSection`, `ShareFolderTree`) to use nodeId-based state. | Share links created via nodeId; no path-string payloads |
 
 ---
 
-### Phase 14: Garbage Collection + Fail-Safe Recovery
+### Phase 6: Garbage Collection + Fail-Safe Recovery
 
-**Dependencies:** Phase 10–13 (all services operational)
+**Dependencies:** Phase 2–5 (all services operational)
 **Risk Level:** Low — background maintenance, no user-facing behavior change
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 14.1 | Implement `gcService`: query `object_map` WHERE status='orphaned' AND created_at < threshold → call S3 deleteBlob for each → DELETE rows from object_map | Orphaned blobs cleaned up after configured interval |
-| 14.2 | Add GC trigger: manual endpoint (`/api/admin/maintenance/gc`) + optional cron schedule (configurable via env `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`) | Admin can trigger GC on demand |
-| 14.3 | Implement fail-safe recovery service: startup hook scans `file_nodes WHERE sync_status='orphaned_node'` → attempt retry or mark for manual review | Orphaned nodes detected and reported at startup |
-| 14.4 | Add `/api/admin/maintenance/repair-sync`: admin endpoint to manually resolve orphaned nodes (retry delete, force-mark-active) | Admin can intervene on stuck nodes |
-| 14.5 | Update `domains/admin/services/cleanupService.js`: integrate GC trigger and fail-safe reporting into existing cleanup interface | Cleanup endpoint covers new concerns |
+| 6.1 | Implement `gcService`: query `object_map` WHERE status='orphaned' AND created_at < threshold → call S3 deleteBlob for each → DELETE rows from object_map | Orphaned blobs cleaned up after configured interval |
+| 6.2 | Add GC trigger: manual endpoint (`/api/admin/maintenance/gc`) + optional cron schedule (configurable via env `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`) | Admin can trigger GC on demand |
+| 6.3 | Implement fail-safe recovery service: startup hook scans `file_nodes WHERE sync_status='orphaned_node'` → attempt retry or mark for manual review | Orphaned nodes detected and reported at startup |
+| 6.4 | Add `/api/admin/maintenance/repair-sync`: admin endpoint to manually resolve orphaned nodes (retry delete, force-mark-active) | Admin can intervene on stuck nodes |
+| 6.5 | Update `domains/admin/services/cleanupService.js`: integrate GC trigger and fail-safe reporting into existing cleanup interface | Cleanup endpoint covers new concerns |
+| 6.6 | Create `service/__tests__/gcService.test.js`: seed object_map with orphaned rows + corresponding S3 mock entries; run GC; verify S3 deleteBlob called for orphans only, active blobs untouched | Orphan count drops to zero; active blob keys preserved in S3 mock store |
 
 ---
 
-### Phase 15: Legacy Path-Based Code Removal
+### Phase 7: Legacy Path-Based Code Removal
 
-**Dependencies:** Phases 10–14 (all new paths functional)
+**Dependencies:** Phases 2–6 (all new paths functional)
 **Risk Level:** Medium — removing fallback code; irreversible without git
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 15.1 | Drop `file_path` column from `share_links`; remove path-based share link lookup code | Shares work exclusively via node_id |
-| 15.2 | Drop old `permissions_user_paths(folder_path)` and `permissions_user_files(file_path)` tables; all queries use new node_id versions | Permission checks pass via closure table only |
-| 15.3 | Remove path-based branches from `recentFilesStore.js` (already migrated to MetadataAdapter in Phase 7) | Recent files resolve via nodeId |
-| 15.4 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
-| 15.5 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`); replace with node_id versions everywhere | No path-string permission checks remain |
-| 15.6 | Clean up `store/permissionStore.js` (1290 lines → split into adapter-per-node queries): all backend branching now in MetadataAdapter; store file is thin wrapper | Store file ≤ 300 lines |
+| 7.1 | Drop `file_path` column from `share_links`; remove path-based share link lookup code | Shares work exclusively via node_id |
+| 7.2 | Drop old `permissions_user_paths(folder_path)` and `permissions_user_files(file_path)` tables; all queries use new node_id versions | Permission checks pass via closure table only |
+| 7.3 | Remove path-based branches from `recentFilesStore.js` (already migrated to MetadataAdapter in Phase 6) | Recent files resolve via nodeId |
+| 7.4 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
+| 7.5 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`); replace with node_id versions everywhere | No path-string permission checks remain |
+| 7.6 | Clean up `store/permissionStore.js` (1290 lines → split into adapter-per-node queries): all backend branching now in MetadataAdapter; store file is thin wrapper | Store file ≤ 300 lines |
+| 7.7 | **Client:** Delete path-mutation helpers from `client/src/utils/recentFiles.js`: `updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`, `removeMultiplePaths` — no longer needed with nodeId references | Zero imports of removed helpers across client codebase |
+| 7.8 | **Client:** Remove path-string state management from permission utilities: delete path-based Maps in `buildPermissionDiff.js`; replace string prefix matching (`startsWith`) with nodeId ancestor queries via server API | Permission state uses nodeId exclusively; no path-string traversal remains |
 
 ---
 
-### Phase 16: Full Test Suite + Integration Verification
+### Phase 8: Full Test Suite + Integration Verification + E2E Expansion
 
-**Dependencies:** Phases 8–15 complete
+**Dependencies:** Phases 0–7 complete
 **Risk Level:** Low — validation phase
+
+#### Server-Side Tests
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 16.1 | S3+PostgreSQL integration tests: full upload→list→download→rename→move→delete lifecycle via MinIO test container | All operations succeed end-to-end |
-| 16.2 | WebDAV+PostgreSQL integration tests: same lifecycle, verifying file_nodes sync + fail-safe recovery on simulated errors | Orphaned nodes detected and recoverable |
-| 16.3 | Permission inheritance tests: grant folder permission → verify descendant access via closure table (depth 0, 1, N) | Ancestor permissions propagate correctly |
-| 16.4 | Share link + permission interaction tests: shared node with folder-level restrictions → verify scope enforcement via closure table | Public share doesn't bypass folder locks |
-| 16.5 | GC service tests: create→overwrite→delete sequence → verify orphaned blob cleanup after threshold | Orphan blobs deleted, active blobs preserved |
-| 16.6 | SQLite compatibility tests: run full suite with `WEA_STORAGE_BACKEND=sqlite` | All tests pass on SQLite backend |
-| 16.7 | Update `stryker.config.json`: add new service paths (`domains/files/services/*`, `infrastructure/adapters/blobstore/*`) to mutation scope | Mutation coverage includes new code |
-| 16.8 | Run full CI suite: `npm run test:ci -w server` then `npm run test:ci -w client` | **Final gate — all pass** |
+| 8.1 | S3+PostgreSQL integration tests: full upload→list→download→rename→move→delete lifecycle via MinIO test container | All operations succeed end-to-end |
+| 8.2 | WebDAV+PostgreSQL integration tests: same lifecycle, verifying file_nodes sync + fail-safe recovery on simulated errors | Orphaned nodes detected and recoverable |
+| 8.3 | Permission inheritance tests: grant folder permission → verify descendant access via closure table (depth 0, 1, N) | Ancestor permissions propagate correctly |
+| 8.4 | Share link + permission interaction tests: shared node with folder-level restrictions → verify scope enforcement via closure table | Public share doesn't bypass folder locks |
+| 8.5 | GC service end-to-end test: create→overwrite→delete sequence → verify orphaned blob cleanup after threshold | Orphan blobs deleted, active blobs preserved |
+| 8.6 | SQLite compatibility tests: run full suite with `WEA_STORAGE_BACKEND=sqlite` | All tests pass on SQLite backend |
+| 8.7 | Update `stryker.config.json`: add new service paths (`service/*`, `infrastructure/adapters/blobstore/*`) to mutation scope | Mutation coverage includes all new code |
+
+#### E2E Test Strategy (Playwright)
+
+After Phase 8 is complete, Playwright E2E tests run in both backend modes:
+
+| Mode | Metadata Backend | Blob Storage | Docker Services | Purpose |
+|------|-----------------|-------------|-----------------|---------|
+| WebDAV+PG (Legacy) | PostgreSQL | WebDAV server | postgresql, webdav-test | Regression guard for existing behavior |
+| S3+PG (New) | PostgreSQL | MinIO | postgresql-e2e, minio-e2e | New architecture validation |
+
+**E2E Infrastructure Changes:**
+
+1. `docker-compose.e2e.yml` — MinIO + PostgreSQL added in Phase 0 Task 0.7
+2. `.env.e2e` — S3+PG configuration block added in Phase 0 Task 0.8; mode switching via `WEA_FILE_STORAGE` environment variable
+3. `playwright.config.ts` — extend existing desktop/mobile projects with S3+PG mode as an environment matrix: the same spec files re-run against both backends to serve as a regression guard
+4. `e2e/global-setup.ts` — add PostgreSQL seed (`file_nodes`, root directory per user) + MinIO bucket creation logic; mode selection via `E2E_BACKEND_MODE=s3|webdav` environment variable
+
+**New E2E Scenarios (S3+PG only):**
+
+| ID | Flow | Priority | Planned Spec |
+|----|------|----------|--------------|
+| E2E-S3PG-001 | Upload → list → download → content matches original file | P0 | `e2e/s3-pg-integration.spec.ts` |
+| E2E-S3PG-002 | Rename is instant (DB-only, no blob copy) — verify sub-second completion | P0 | same |
+| E2E-S3PG-003 | Move across folders — closure table updated, file accessible at new path | P1 | same |
+| E2E-S3PG-004 | Copy-on-write: copy file → both reference same blob → overwrite one triggers actual S3 copy | P1 | same |
+| E2E-S3PG-005 | Delete → orphaned object_map row → GC admin endpoint cleans up S3 blob | P1 | same |
+| E2E-S3PG-006 | Permission inheritance: grant folder read → child/grandchild accessible via `__shared__` | P0 | extension of `e2e/share-internal.spec.ts` |
+| E2E-S3PG-007 | Share link survives file rename (nodeId reference, not path string) | P1 | same |
+
+**Impact on Existing E2E Scenarios:**
+
+Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios have identical API contracts, so they re-run in S3+PG mode as a regression guard. No modifications needed.
+
+#### Final Gate
+
+| Task | Description | Verify |
+|------|-------------|--------|
+| 8.8 | Run full CI suite: `npm run test:ci -w server` then `npm run test:ci -w client` | **All pass on SQLite backend** |
+| 8.9 | Run Playwright E2E in WebDAV+PG mode (existing regression baseline) | All existing specs pass |
+| 8.10 | Run Playwright E2E in S3+PG mode (new architecture validation) | All specs + new E2E-S3PG-* scenarios pass |
 
 ---
 
 ## Execution Order
 
 ```
-Phase 0–7 (Modularization) ✅ COMPLETE
-        ↓
-Phase 8 (Schema Migration) ──────────────────────────────┐
-                                                           ├→ Phase 9 (S3 Blob Store)
-Phase 10 (Core Services) ← depends on 8 + 9              │
-        ↓                                                  │
-Phase 11 (Files Domain Integration)                        │
-        ↓                                                  │
-Phase 12 (Permissions → Node ID) ─────────┐                │
-Phase 13 (Sharing & RecentFiles → Node)   │                │
-                                           ├→ Phase 14     │
-                                           │(GC + Fail-safe)│
-                                           │       ↓        │
-                                           │   Phase 15     │
-                                           │ (Legacy Remove) │
-                                           │       ↓         │
-                                           └───▶ Phase 16 ◀──┘
-                                               (Full Test Suite)
+Phase 0 (Schema Migration) ───────────────────────────────┐
+                                                           ├→ Phase 1 (S3 Blob Store)
+Phase 2 (Core Services) ← depends on 0 + 1                 │
+        ↓                                                   │
+Phase 3 (Files Domain Integration)                          │
+        ↓                                                   │
+Phase 4 (Permissions → Node ID) ─────────┐                  │
+Phase 5 (Sharing & RecentFiles → Node)   │                  │
+                                          ├→ Phase 6        │
+                                          │(GC + Fail-safe) │
+                                          │       ↓         │
+                                          │   Phase 7       │
+                                          │(Legacy Remove)  │
+                                          │       ↓          │
+                                          └───▶ Phase 8 ◀───┘
+                                              (Full Test Suite)
 ```
 
 ---
@@ -461,7 +505,7 @@ Replace all in-memory Map instances with `RedisCacheAdapter` implementing the Ca
 
 ### WebDAV → S3 Data Migration Tooling
 
-After S3+PostgreSQL mode is fully operational (Phase 16 complete), build a migration tool that:
+After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migration tool that:
 1. Exports existing data from old instance DB (users, permissions as node_ids, share links, settings) to new instance DB
 2. Iterates WebDAV directory tree → uploads each file to S3 → creates `file_nodes` + `object_map` entries in new DB
 3. Validates migration: blob count match, permission integrity check, share link accessibility verification
@@ -470,8 +514,8 @@ After S3+PostgreSQL mode is fully operational (Phase 16 complete), build a migra
 
 ## Execution Rules
 
-1. **One phase at a time.** Phases 8–16 are strictly sequential with no parallel execution (each phase depends on the previous). Exception: Phase 12 and 13 may run in parallel if closure table and schema are stable after Phase 10.
-2. **No net behavior change per public API.** Each phase must produce identical external behavior (same API responses, same error codes) for the current backend mode. New S3+PG mode is additive — existing WebDAV modes continue to work until Phase 15 cleanup.
+1. **One phase at a time.** Phases 0–8 are strictly sequential with no parallel execution (each phase depends on the previous). No exceptions — Phase 4/5 client-side changes share `fileNodeService` and cannot run concurrently.
+2. **No net behavior change per public API.** Each phase must produce identical external behavior (same API responses, same error codes) for the current backend mode. New S3+PG mode is additive — existing WebDAV modes continue to work until Phase 7 cleanup.
 3. **Commit per task.** Small commits with conventional commit messages referencing the phase and task number.
 4. **Branch per phase.** Format: `refactor/phase-N-domainname`
 5. **Docs first.** Update affected spec files in `docs/spec/server/` before implementation begins for each phase.
@@ -481,4 +525,8 @@ After S3+PostgreSQL mode is fully operational (Phase 16 complete), build a migra
 9. **Test import paths**: Use `moduleNameMapper` in `jest.config.js` for `@server/*` and `@testing/*` aliases. Update all test imports to use aliases instead of fragile relative paths.
 10. **Adapter isolation in service layer.** S3BlobStore, CacheAdapter, MetadataAdapter are internal implementation details. Service functions must not expose adapter types or storage-specific APIs to route handlers. Route handlers call only domain operations (uploadFile, listDirectory, etc.), never raw adapter methods.
 11. **Synchronous upload flow.** The upload sequence (DB INSERT → S3 PUT → DB UPDATE) runs synchronously within a single request. No background job queue for uploads. Failure at any step leaves traceable state (`sync_status`, `object_map.status`) for recovery.
-12. **FsJSON deprecation.** FsJSON backend is removed in Phase 15. All deployments must use PostgreSQL or SQLite. The `WEA_STORAGE_BACKEND=fs` option triggers a deprecation warning and falls back to SQLite if configured.
+12. **FsJSON deprecation.** FsJSON backend is removed in Phase 7. All deployments must use PostgreSQL or SQLite. The `WEA_STORAGE_BACKEND=fs` option triggers a deprecation warning and falls back to SQLite if configured.
+13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase (see Phase 4 tasks 4.8-4.9, Phase 5 tasks 5.6-5.7).
+14. **Multi-backend test execution.** From Phase 8 onward, all server tests run against both SQLite and S3+PG backends. FsJSON backend tests are removed after Phase 7 cleanup. Test backend selection is controlled by `WEA_STORAGE_BACKEND` and `WEA_FILE_STORAGE` environment variables.
+15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards without modification.
+16. **Test data isolation per backend mode.** SQLite in-memory DB and MinIO buckets are initialized fresh by `global-setup.ts` for each test suite run and cleaned up by `global-teardown.ts`. No state sharing occurs between tests or backend modes.

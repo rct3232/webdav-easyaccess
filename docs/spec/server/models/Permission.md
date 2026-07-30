@@ -19,30 +19,26 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| grant | (userId, folderPath, permission, options) | permissionStore.grant |
-| revoke | (userId, folderPath, options) | permissionStore.revoke |
+| grant | (userId, fileNodeId, permission) | permissionStore.grant |
+| revoke | (userId, fileNodeId) | permissionStore.revoke |
 | revokeAllUserPermissions | (userId) | permissionStore.revokeAllUserPermissions |
 | deleteUserPermissionsFile | (userId) | permissionStore.deleteUserPermissionsFile |
 | getUserPermissions | (userId) | permissionStore.getUserPermissions |
-| checkPermission | (userId, folderPath, requiredPermission) | permissionStore.checkPermission |
-| checkPermissionSync | (doc, folderPath, requiredPermission) | permissionStore.checkPermissionSync |
+| checkPermission | (userId, fileNodeId, requiredPermission) | permissionStore.checkPermission |
 | getPermissionDoc | (userId) | permissionStore.getPermissionDoc |
-| checkPermissions | (userId, paths, requiredPermission) | permissionStore.checkPermissions |
-| getFolderPermissions | (folderPath, filePath) | permissionStore.getFolderPermissions |
-| hasPermissionsInPath | (folderPath) | permissionStore.hasPermissionsInPath |
-| rewritePermissionsForAllUsers | (mappings, options) | permissionStore.rewritePermissionsForAllUsers |
-| revokePermissionsPrefixForAllUsers | (prefixes) | permissionStore.revokePermissionsPrefixForAllUsers |
-| getFilePermission | (userId, filePath) | permissionStore.getFilePermission |
-| getEffectivePermission | (userId, path) | permissionStore.getEffectivePermission |
-| grantFile | (userId, filePath, permission) | permissionStore.grant(..., { target: 'file' }) |
-| revokeFile | (userId, filePath) | permissionStore.revoke(..., { scope: 'pathOnly' }) |
+| getFolderPermissions | (fileNodeId) | permissionStore.getFolderPermissions |
+| hasPermissionsInPath | (fileNodeId) | permissionStore.hasPermissionsInPath |
+| getFilePermission | (userId, fileNodeId) | permissionStore.getFilePermission |
+| getEffectivePermission | (userId, nodeId) | permissionStore.getEffectivePermission |
+| grantFile | (userId, fileNodeId, permission) | permissionStore.grant(..., { target: 'file' }) |
+| revokeFile | (userId, fileNodeId) | permissionStore.revoke(..., { scope: 'pathOnly' }) |
 | getUserFilePermissions | (userId) | permissionStore.getUserFilePermissions |
-| checkFilePermissionSync | (doc, filePath, requiredPermission) | permissionStore.checkFilePermissionSync |
-| getPathEffectivePermission | (userId, folderPath) | permissionStore.getPathEffectivePermission |
-| grantSharePermission | (token, rootPath, isDirectory) | permissionStore.grantSharePermission |
+| grantSharePermission | (token, fileNodeId) | permissionStore.grantSharePermission |
 | revokeSharePermission | (token) | permissionStore.revokeSharePermission |
 | getSharePermissionDoc | (token) | permissionStore.getSharePermissionDoc |
-| checkSharePermission | (token, path, requiredPermission) | permissionStore.checkSharePermission |
+| checkSharePermission | (token, nodeId, requiredPermission) | permissionStore.checkSharePermission |
+
+**REMOVED methods:** `rewritePermissionsForAllUsers`, `revokePermissionsPrefixForAllUsers` — node_ids are stable; rename/move does not change node_id.
 
 ### 2.3 Dependencies
 
@@ -50,4 +46,4 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] All methods delegate to store; mock store and assert calls
+- [ ] All methods delegate to store using file_node_id parameters; mock store and assert calls

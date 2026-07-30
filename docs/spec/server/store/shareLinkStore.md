@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Share links: create, get, update, delete, and download counting. Uses JSON docs in `webdav`/`fs` and `share_links` table in `postgresql`. |
+| Role | Share links: create, get, update, delete, and download counting. Uses normalized tables in postgresql/sqlite. |
 
 ---
 
@@ -27,33 +27,26 @@
 | incrementDownloadCount | (token) => Promise\<object\> | Increment downloadCount |
 | isLinkExpired | (link) => boolean | Check expiresAt vs now |
 
-### 2.3 Storage Paths
+### 2.3 PostgreSQL v2 Table Mapping
 
-- `/.wea/share-links/{token}.json`
-- Link shape: token, filePath, createdBy, createdAt, expiresAt, downloadCount
-
-### 2.4 PostgreSQL v2 Table Mapping
-
-- Table: `share_links(token, file_path, created_by, created_at, expires_at, download_count)`
+- Table: `share_links(token, file_node_id, created_by, created_at, expires_at, download_count)`
 - Constraint/index source of truth: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
-### 2.5 Transaction Boundaries
+### 2.4 Transaction Boundaries
 
 - `createShareLink`, `updateShareLink`, `deleteShareLink`: single transaction per call.
 - `incrementDownloadCount`: atomic SQL update (`SET download_count = download_count + 1`) returning the updated row.
 
-### 2.6 Dependencies
+### 2.5 Dependencies
 
-- storage (ensureDirSafe, exists, readFile, writeFile, deletePath, listDir)
-- metaPaths.normalizeWebdavPath
+- PostgresqlMetadataAdapter / SqliteMetadataAdapter
 - errorHandler, SERVER_ERROR_CODES
 
-### 2.7 Verification Scenarios
+### 2.6 Verification Scenarios
 
-- [ ] createShareLink writes JSON; existing token returns existing link
-- [ ] getShareLink returns link or null (ENOENT → null)
+- [ ] createShareLink creates link with file_node_id; existing token returns existing link
+- [ ] getShareLink returns link or null when not found
 - [ ] getUserShareLinks filters by createdBy, sorts by createdAt desc
 - [ ] updateShareLink merges updates; 404 when not found
 - [ ] isLinkExpired: no expiresAt → false; past date → true
-- [ ] backend parity: create/get/update/delete behavior is equivalent for `fs` and `postgresql`
 - [ ] PostgreSQL: concurrent `incrementDownloadCount` calls preserve all increments

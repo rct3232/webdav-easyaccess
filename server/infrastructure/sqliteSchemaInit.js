@@ -74,4 +74,4 @@ async function initSqliteSchema() {
   console.log('[init-sqlite-schema] Schema initialized successfully');
 }
 
-module.exports = { initSqliteSchema };
+module.exports = { initSqliteSchema, convertPostgresToSqlite };

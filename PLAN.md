@@ -160,60 +160,58 @@ CREATE INDEX node_ancestors_ancestor_idx ON node_ancestors (ancestor_id, depth);
 
 **Maintenance strategy:** Application-level cascade on `file_nodes` INSERT/DELETE/UPDATE(parent_id). Self-referential row (`depth=0`) included for every node. No DB triggers (SQLite trigger compatibility concerns).
 
-### Modified Tables
+### Final Tables
 
-#### `share_links` — Add `file_node_id` Reference
+Big-bang strategy: the single DDL file (`001_initial_normalized_schema.sql`) is rewritten in place to contain all tables in their final state. No ALTER statements, no dual columns, no transition period. The migration tool (Future Work) handles path → node_id data translation at big-bang switch-over time.
 
-```sql
-ALTER TABLE share_links ADD COLUMN file_node_id BIGINT REFERENCES file_nodes(id) ON DELETE CASCADE DEFAULT NULL;
--- Migrate: populate file_node_id from file_path, then drop file_path column in final phase
-```
-
-#### `permissions_user_paths` — Path → Node ID
+#### `permissions_user_paths` — Final Definition
 
 ```sql
--- New structure (replaces current path-based table)
-CREATE TABLE permissions_user_paths_new (
+CREATE TABLE permissions_user_paths (
   user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   file_node_id  BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
   permission    TEXT NOT NULL CHECK (permission IN ('read', 'write', 'admin')),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  CONSTRAINT permissions_user_paths_unique UNIQUE (user_id, file_node_id),
-  CONSTRAINT permissions_user_paths_folder_check CHECK (
-    -- This permission is only on directory nodes; enforced at application level
-    TRUE
-  )
+  CONSTRAINT permissions_user_paths_unique UNIQUE (user_id, file_node_id)
 );
 ```
 
-#### `permissions_user_files` — Path → Node ID
+#### `permissions_user_files` — Final Definition
 
-Same pattern as `permissions_user_paths`: replace `file_path TEXT` with `file_node_id BIGINT`.
+Replace `file_path TEXT` with `file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE`. Unique constraint on `(user_id, file_node_id)`.
 
-#### `permissions_shares` — root_path → file_node_id
+#### `permissions_shares` — Final Definition
 
-Replace `root_path TEXT` and `is_directory BOOLEAN` with `file_node_id BIGINT REFERENCES file_nodes(id)`.
+Replace `root_path TEXT` and `is_directory BOOLEAN` with `file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE`.
 
-#### `recent_files` — Path → Node ID + CASCADE delete
+#### `share_links` — Final Definition
+
+Replace `file_path TEXT NOT NULL` with `file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE`.
+
+#### `recent_files` — Final Definition + CASCADE delete
 
 ```sql
-ALTER TABLE recent_files ADD COLUMN file_node_id BIGINT REFERENCES file_nodes(id) ON DELETE CASCADE DEFAULT NULL;
+CREATE TABLE recent_files (
+  user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file_node_id  BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
+  last_accessed TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
--- Replace unique index on (user_id, path) with (user_id, file_node_id)
-CREATE UNIQUE INDEX IF NOT EXISTS recent_files_user_node_uq ON recent_files (user_id, file_node_id);
-
--- Migration: populate file_node_id FROM path via file_nodes join
--- Post-migration: DROP path, name columns (derivable from file_nodes.id → getNodePath / file_nodes.name)
+  CONSTRAINT recent_files_user_node_uq UNIQUE (user_id, file_node_id)
+);
 ```
 
 **CASCADE semantics:** When `file_nodes` row is deleted, corresponding `recent_files` entry is auto-removed. This eliminates the need for manual `removePaths` calls in most deletion scenarios — only rename/move requires explicit recent files update (to refresh ordering).
+
+#### `permission_requests` — Final Definition
+
+Replace `(folder_path TEXT, file_path TEXT, target_type TEXT)` with single `file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE`. Target type derivable from `file_nodes.type`. Partial unique indexes rewritten to use `file_node_id`.
 
 ### Schema Compatibility
 
 | Backend | Schema Source | Notes |
 |---------|---------------|-------|
-| PostgreSQL | `002_s3_filesystem_schema.sql` (new DDL) | Primary target |
+| PostgreSQL | `001_initial_normalized_schema.sql` (rewritten) | Primary target — single final-state DDL |
 | SQLite | Auto-converted via `sqliteSchemaInit.js` | TYPE adjustments (BIGSERIAL→INTEGER, TIMESTAMPTZ→TEXT, etc.) |
 | FsJSON | **Deprecated** — removed from supported backends | No JSON file fallback; DB required for `file_nodes` |
 
@@ -221,22 +219,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS recent_files_user_node_uq ON recent_files (use
 
 ## Phases
 
-### Phase 0: Database Schema Migration — New Tables + DDL
+### Phase 0: Database Schema Migration — Final State DDL
 
 **Dependencies:** None (foundation phase)
-**Risk Level:** Medium — schema changes affect all backends; backward-compatible additions first
+**Risk Level:** Medium — schema changes affect all backends; big-bang final-state approach
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 0.1 | Create `store/postgresql/ddl/002_filesystem_tables.sql`: DDL for `file_nodes`, `object_map`, `filecache`, `node_ancestors` | SQL validates against PostgreSQL |
-| 0.2 | Update `sqliteSchemaInit.js` converter to handle new table types (BIGINT FK, TIMESTAMPTZ) | SQLite schema initializes without error |
-| 0.3 | Update `001_initial_normalized_schema.sql` or create migration: add `file_node_id` columns to existing tables (`share_links`, `permissions_*`, `recent_files`) with NULL default | Both old and new columns coexist |
-| 0.4 | Create infrastructure/schema management utility: `applyPendingMigrations()` that runs unapplied DDL files in order; tracks applied migrations in `_schema_migrations` table | Migration tracker works idempotently |
-| 0.5 | Update `.env.example`: add `WEA_FILE_STORAGE=s3\|webdav`, `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (optional, for MinIO) | Config documented |
-| 0.6 | Remove FsJSON from `storage.js` backend resolver: supported backends are now `postgresql`, `sqlite`, `webdav`(metadata storage only). Add deprecation warning if `WEA_STORAGE_BACKEND=fs` is detected | FsJSON mode logs warning and falls back to SQLite |
+| **0.0** | **[GATE] Docs-First**: Update 10 existing specs + create 2 new specs in `docs/spec/server/` and `docs/features/`. Details: `phase0-sub-plan.md §Task 0.0` | All spec files updated before any implementation task begins |
+| 0.1 | Rewrite `store/postgresql/ddl/001_initial_normalized_schema.sql`: all tables in final state — new (`file_nodes`, `object_map`, `filecache`, `node_ancestors`) + rewritten (all permission/sharing/recentFiles tables use `file_node_id`). Single DDL; no `002_*.sql` | SQL validates against PostgreSQL 16; see Task 0.13 |
+| 0.2 | Update `sqliteSchemaInit.js`: glob-based DDL discovery (`ddl/*.sql`), add `\bBIGINT\b → INTEGER` conversion after BIGSERIAL replacements, handle inline self-referencing FK via deferred checks | SQLite schema initializes without error; see Task 0.10 |
+| 0.4 | Create infrastructure/schema management utility: `applyPendingMigrations()` that runs unapplied DDL files in order; tracks applied migrations in `_schema_migrations` table with SHA-256 checksums | Migration tracker works idempotently; see Task 0.11 |
+| 0.5 | Update `.env.example`: change `WEA_STORAGE_BACKEND` default from `webdav` to `postgresql`; add `WEA_FILE_STORAGE=s3\|webdav`, `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (optional, for MinIO) | Config documented; metadata backend defaults to postgresql |
+| 0.6 | Remove FsJSON + webdav from `storage.js` backend resolver: supported backends are now `postgresql`, `sqlite`. Add deprecation warning if `WEA_STORAGE_BACKEND=fs` or `webdav` is detected; fallback to SQLite/postgreSQL respectively. Remove `webdav` default and branch entirely | FsJSON/webdav metadata mode logs warning; see Task 0.12 |
 | 0.7 | Update `docker-compose.e2e.yml`: add PostgreSQL (`postgres:16`) + MinIO services alongside existing WebDAV service; configure health checks for all three containers | All containers start healthy in E2E environment |
 | 0.8 | Update `.env.e2e`: add S3+PG configuration block (`S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT=http://minio-e2e:9000`, `WEA_PG_HOST=postgresql-e2e`) alongside existing WebDAV settings | Server starts with either backend based on env variable toggle |
-| 0.9 | Update `server/test-setup.js`: make `WEA_STORAGE_BACKEND` configurable via env override instead of hardcoded `fs`; default to `sqlite` for in-process tests when no explicit backend is set | Tests run without FsJSON dependency; CI can switch backends via env |
+| 0.9 | Update `server/test-setup.js`: make `WEA_STORAGE_BACKEND` configurable via env override instead of hardcoded `fs`; default to `sqlite` for in-process tests. Refactor `test-utils.js` `createTestDatabase()` for SQLite isolation (unique `.db` per suite, adapter cache reset). | Tests run without FsJSON dependency; see Task 0.14 |
+| **0.10** | Test `sqliteSchemaInit.js`: glob discovery order, `convertPostgresToSqlite()` type mapping fidelity (BIGSERIAL→INTEGER AUTOINCREMENT, BIGINT→INTEGER, TIMESTAMPTZ→TEXT), converted SQL executes against in-memory SQLite | `server/infrastructure/__tests__/sqliteSchemaInit.test.js` |
+| **0.11** | Test `schemaManager.js`: `_schema_migrations` auto-creation, pending migration detection, idempotency (second call = zero executions), SHA-256 checksum recording | `server/infrastructure/__tests__/schemaManager.test.js` |
+| **0.12** | Test `getBackend()` deprecation: `fs` → warn+sqlite, `webdav` → warn+postgresql, `postgresql`/`sqlite` pass-through, empty → postgresql default. Remove obsolete FS-backend test blocks | `server/infrastructure/__tests__/storage.test.js` |
+| **0.13** | DDL smoke test: execute final DDL against PostgreSQL (Docker) + SQLite; assert 13 tables exist; verify FK constraints including self-referencing `file_nodes.parent_id`; CASCADE delete propagation | `server/store/__tests__/ddlValidation.test.js` |
 
 ---
 
@@ -341,7 +343,7 @@ uploadFile(parentNodeId, name, buffer, mimeType):
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 4.1 | Create new `permissions_user_paths` and `permissions_user_files` tables with `file_node_id` column (see schema above); keep old columns during transition period | Tables created, migration script populates new columns from paths |
+| 4.1 | Rewrite MetadataAdapter queries for `permissions_user_paths` and `permissions_user_files`: replace path-based SQL with node_id-based queries; tables already defined in final state by Phase 0 | Adapter returns same results via nodeId lookups |
 | 4.2 | Refactor `domains/permissions/services/aclService.js`: replace path-based lookups (`checkPermissionSync(doc, path, action)`) with node_id-based queries using closure table for folder inheritance | Permission checks return same results as before |
 | 4.3 | Folder permission check: query `node_ancestors` for all ancestors of target node → join with `permissions_user_paths` → find highest-rank match | Ancestor traversal via closure table, not string prefix matching |
 | 4.4 | File permission check: direct lookup in `permissions_user_files` by `file_node_id`; if no match, fall back to folder ancestor check (same as 4.3) | File-level overrides work correctly |
@@ -361,13 +363,11 @@ uploadFile(parentNodeId, name, buffer, mimeType):
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 5.1 | Update `share_links` table: add `file_node_id BIGINT`; all new share links use nodeId exclusively — no backward compatibility for paths | Share creation uses file_node_id only |
-| 5.2 | Refactor `domains/sharing/services/shareLinkService.js`: create share → resolve path to nodeId → store nodeId; lookup share → use nodeId for permission checks via closure table | Shared access respects folder permissions via ancestor walk |
-| 5.3 | Update `shareAccessService.js` (`collectPathsUnderSharePath`, etc.): replace path-prefix string matching with closure table descendant query (`SELECT descendant_id FROM node_ancestors WHERE ancestor_id = shareNode.id`) | Share scope resolution correct for nested structures |
-| 5.4 | Update `recent_files` table: add `file_node_id`; new entries store nodeId; display name derived from `file_nodes.name` (not stored separately) | Recent files list resolves correctly even after file rename/move |
-| 5.5 | Refactor `domains/recentFiles/service.js`: access tracking uses nodeId; path display resolved via `getNodePath(nodeId)` at render time (handles renames transparently) | Renamed files show updated names in recent list |
-| 5.6 | **Client:** Refactor `recentFilesRepository`: API payloads send `fileNode_id` instead of `path`. Remove path-mutation helpers (`updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`) from `client/src/utils/recentFiles.js` — nodeId references make them unnecessary (rename/move does not change the reference). | Recent entries survive renames automatically; no client-side path string manipulation |
-| 5.7 | **Client:** Refactor `shareLinkService`: createShareLink sends `fileNode_id` instead of `filePath`. Update share link UI components (`ExternalShareSection`, `ShareFolderTree`) to use nodeId-based state. | Share links created via nodeId; no path-string payloads |
+| 5.1 | Refactor `shareLinkService.js`: create share stores `file_node_id`; lookup uses nodeId for permission checks via closure table (table already defined in Phase 0) | Share creation uses file_node_id only; shared access respects folder permissions via ancestor walk |
+| 5.2 | Update `shareAccessService.js` (`collectPathsUnderSharePath`, etc.): replace path-prefix string matching with closure table descendant query (`SELECT descendant_id FROM node_ancestors WHERE ancestor_id = shareNode.id`) | Share scope resolution correct for nested structures |
+| 5.3 | Refactor `domains/recentFiles/service.js`: access tracking uses nodeId; path display resolved via `getNodePath(nodeId)` at render time (table already defined in Phase 0) | Recent files list resolves correctly after rename/move; renamed files show updated names |
+| 5.4 | **Client:** Refactor `recentFilesRepository`: API payloads send `fileNode_id` instead of `path`. Remove path-mutation helpers (`updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`) from `client/src/utils/recentFiles.js` — nodeId references make them unnecessary (rename/move does not change the reference). | Recent entries survive renames automatically; no client-side path string manipulation |
+| 5.5 | **Client:** Refactor `shareLinkService`: createShareLink sends `fileNode_id` instead of `filePath`. Update share link UI components (`ExternalShareSection`, `ShareFolderTree`) to use nodeId-based state. | Share links created via nodeId; no path-string payloads |
 
 ---
 
@@ -387,21 +387,21 @@ uploadFile(parentNodeId, name, buffer, mimeType):
 
 ---
 
-### Phase 7: Legacy Path-Based Code Removal
+### Phase 7: Legacy Application Code Cleanup
 
 **Dependencies:** Phases 2–6 (all new paths functional)
 **Risk Level:** Medium — removing fallback code; irreversible without git
 
+Big-bang note: the database schema has no legacy path columns (defined in final state by Phase 0). This phase removes only application-level code that still references path strings.
+
 | Task | Description | Verify |
 |------|-------------|--------|
-| 7.1 | Drop `file_path` column from `share_links`; remove path-based share link lookup code | Shares work exclusively via node_id |
-| 7.2 | Drop old `permissions_user_paths(folder_path)` and `permissions_user_files(file_path)` tables; all queries use new node_id versions | Permission checks pass via closure table only |
-| 7.3 | Remove path-based branches from `recentFilesStore.js` (already migrated to MetadataAdapter in Phase 6) | Recent files resolve via nodeId |
-| 7.4 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
-| 7.5 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`); replace with node_id versions everywhere | No path-string permission checks remain |
-| 7.6 | Clean up `store/permissionStore.js` (1290 lines → split into adapter-per-node queries): all backend branching now in MetadataAdapter; store file is thin wrapper | Store file ≤ 300 lines |
-| 7.7 | **Client:** Delete path-mutation helpers from `client/src/utils/recentFiles.js`: `updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`, `removeMultiplePaths` — no longer needed with nodeId references | Zero imports of removed helpers across client codebase |
-| 7.8 | **Client:** Remove path-string state management from permission utilities: delete path-based Maps in `buildPermissionDiff.js`; replace string prefix matching (`startsWith`) with nodeId ancestor queries via server API | Permission state uses nodeId exclusively; no path-string traversal remains |
+| 7.1 | Remove path-based branches from `recentFilesStore.js` | Recent files resolve via nodeId exclusively |
+| 7.2 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
+| 7.3 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`); replace with node_id versions everywhere | No path-string permission checks remain in source |
+| 7.4 | Clean up `store/permissionStore.js` (1290 lines → split into adapter-per-node queries): all backend branching now in MetadataAdapter; store file is thin wrapper | Store file ≤ 300 lines |
+| 7.5 | **Client:** Delete path-mutation helpers from `client/src/utils/recentFiles.js`: `updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`, `removeMultiplePaths` — no longer needed with nodeId references | Zero imports of removed helpers across client codebase |
+| 7.6 | **Client:** Remove path-string state management from permission utilities: delete path-based Maps in `buildPermissionDiff.js`; replace string prefix matching (`startsWith`) with nodeId ancestor queries via server API | Permission state uses nodeId exclusively; no path-string traversal remains |
 
 ---
 
@@ -525,7 +525,7 @@ After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migrat
 9. **Test import paths**: Use `moduleNameMapper` in `jest.config.js` for `@server/*` and `@testing/*` aliases. Update all test imports to use aliases instead of fragile relative paths.
 10. **Adapter isolation in service layer.** S3BlobStore, CacheAdapter, MetadataAdapter are internal implementation details. Service functions must not expose adapter types or storage-specific APIs to route handlers. Route handlers call only domain operations (uploadFile, listDirectory, etc.), never raw adapter methods.
 11. **Synchronous upload flow.** The upload sequence (DB INSERT → S3 PUT → DB UPDATE) runs synchronously within a single request. No background job queue for uploads. Failure at any step leaves traceable state (`sync_status`, `object_map.status`) for recovery.
-12. **FsJSON deprecation.** FsJSON backend is removed in Phase 7. All deployments must use PostgreSQL or SQLite. The `WEA_STORAGE_BACKEND=fs` option triggers a deprecation warning and falls back to SQLite if configured.
+12. **FsJSON + webdav metadata deprecation.** FsJSON backend (`WEA_STORAGE_BACKEND=fs`) and webdav metadata backend (`WEA_STORAGE_BACKEND=webdav`) are both removed in Phase 0 (Task 0.6). All deployments must use PostgreSQL or SQLite for metadata storage. The `WEA_FILE_STORAGE=webdav` option for file content/blob storage remains supported — only the metadata layer is affected.
 13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase (see Phase 4 tasks 4.8-4.9, Phase 5 tasks 5.6-5.7).
 14. **Multi-backend test execution.** From Phase 8 onward, all server tests run against both SQLite and S3+PG backends. FsJSON backend tests are removed after Phase 7 cleanup. Test backend selection is controlled by `WEA_STORAGE_BACKEND` and `WEA_FILE_STORAGE` environment variables.
 15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards without modification.

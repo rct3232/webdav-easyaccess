@@ -15,3 +15,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  postgresql-e2e:
+    image: postgres:16
+    container_name: webdav-pg-e2e
+    environment:
+      POSTGRES_DB: webdav_e2e
+      POSTGRES_USER: e2etest
+      POSTGRES_PASSWORD: e2etest
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2etest"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  minio-e2e:
+    image: minio/minio:latest
+    container_name: webdav-minio-e2e
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 2s
+      retries: 10

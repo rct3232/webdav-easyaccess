@@ -12,8 +12,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/store/permissionRequestStore.js`
-- **Test file:** `server/store/__tests__/permissionRequestStore.test.js`
+- **Source:** `server/domains/permissions/stores/permissionRequestStore.js`
+- **Test file:** `server/domains/permissions/routes/__tests__/permissionRequests.test.js` (route-level integration tests; no dedicated store unit test)
 
 ### 2.2 Main Methods
 

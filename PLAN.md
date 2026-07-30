@@ -226,7 +226,7 @@ Replace `(folder_path TEXT, file_path TEXT, target_type TEXT)` with single `file
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| **0.0** | **[GATE] Docs-First**: Update 10 existing specs + create 2 new specs in `docs/spec/server/` and `docs/features/`. Details: `phase0-sub-plan.md §Task 0.0` | All spec files updated before any implementation task begins |
+| **0.0** | **[GATE] Docs-First**: Update 10 existing specs + create 3 new specs in `docs/spec/server/` and `docs/features/` (`storage.md`, `permissionStore.md`, `shareLinkStore.md`, `recentFilesStore.md`, `permissionRequestStore.md`, `Permission.md`, `ShareLink.md`, `metaPaths.md` [deprecated], `files-sharing.md`, `permissions.md` + new: `fileNodesStore.md`, `sqliteSchemaInit.md`, `schemaManager.md`) | All spec files updated before any implementation task begins |
 | 0.1 | Rewrite `store/postgresql/ddl/001_initial_normalized_schema.sql`: all tables in final state — new (`file_nodes`, `object_map`, `filecache`, `node_ancestors`) + rewritten (all permission/sharing/recentFiles tables use `file_node_id`). Single DDL; no `002_*.sql` | SQL validates against PostgreSQL 16; see Task 0.13 |
 | 0.2 | Update `sqliteSchemaInit.js`: glob-based DDL discovery (`ddl/*.sql`), add `\bBIGINT\b → INTEGER` conversion after BIGSERIAL replacements, handle inline self-referencing FK via deferred checks | SQLite schema initializes without error; see Task 0.10 |
 | 0.4 | Create infrastructure/schema management utility: `applyPendingMigrations()` that runs unapplied DDL files in order; tracks applied migrations in `_schema_migrations` table with SHA-256 checksums | Migration tracker works idempotently; see Task 0.11 |
@@ -239,6 +239,25 @@ Replace `(folder_path TEXT, file_path TEXT, target_type TEXT)` with single `file
 | **0.11** | Test `schemaManager.js`: `_schema_migrations` auto-creation, pending migration detection, idempotency (second call = zero executions), SHA-256 checksum recording | `server/infrastructure/__tests__/schemaManager.test.js` |
 | **0.12** | Test `getBackend()` deprecation: `fs` → warn+sqlite, `webdav` → warn+postgresql, `postgresql`/`sqlite` pass-through, empty → postgresql default. Remove obsolete FS-backend test blocks | `server/infrastructure/__tests__/storage.test.js` |
 | **0.13** | DDL smoke test: execute final DDL against PostgreSQL (Docker) + SQLite; assert 13 tables exist; verify FK constraints including self-referencing `file_nodes.parent_id`; CASCADE delete propagation | `server/store/__tests__/ddlValidation.test.js` |
+
+> **Phase 0 — Status: COMPLETE**
+> All infrastructure tasks (0.0–0.14) are implemented. DDL, schema manager, SQLite converter, test utilities, and spec documents are in place.
+
+#### Expected Test Failures After Phase 0
+
+Phase 0 rewrites the DDL to use `file_node_id` across all permission/sharing tables, but application stores still reference the removed legacy path columns. This produces `SQLITE_ERROR: no such column` at runtime. **These failures are valid and expected** — application code migration is explicitly scoped to Phase 4 (Permissions → Node ID) and Phase 5 (Sharing & RecentFiles → Node).
+
+| Failing Area | Affected Tests | Root Cause | Resolved In |
+|---|---|---|---|
+| `permissionStore.js` | Permission model, PermissionRequest model, permissions middleware (~22 failures) | SQL queries reference `folder_path` / `file_path` columns removed from DDL | Phase 4 Tasks 4.1–4.2, 4.6 |
+| `shareLinkStore.js` | ShareLink model, shareLinks/sharePublic routes (~16 failures) | Code writes `file_path` to `share_links`; DDL has `file_node_id` only | Phase 5 Task 5.1 |
+| `permissionRequestStore.js` | permissionRequests routes (~7 failures) | SQL queries reference `folder_path` / `file_path` columns | Phase 4 Task 4.1 |
+| `Settings` model | Settings model, auth routes (~8 failures) | JSON double-serialization bug (unrelated to schema migration) | Separate bug fix required |
+
+**Validation command for Phase 0 scope only** (infrastructure tests only):
+```bash
+npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__"
+```
 
 ---
 

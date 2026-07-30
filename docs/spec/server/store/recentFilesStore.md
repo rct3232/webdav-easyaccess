@@ -41,6 +41,7 @@
 
 - PostgresqlMetadataAdapter / SqliteMetadataAdapter
 - shared pathUtils.normalizePath
+- metaPaths.normalizeWebdavPath (legacy import, retained for backward compatibility until Phase 7 cleanup)
 
 ### 2.6 Verification Scenarios
 

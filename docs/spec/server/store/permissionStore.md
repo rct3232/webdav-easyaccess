@@ -12,35 +12,54 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/store/permissionStore.js`
-- **Test file:** `server/store/__tests__/permissionStore.test.js`
+- **Source:** `server/domains/permissions/stores/permissionStore.js`
+- **Test file:** `server/domains/permissions/stores/__tests__/permissionStore.test.js`
 
 ### 2.2 Main Methods
 
+#### Folder Permissions
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| grant | (userId, fileNodeId, permission) => Promise\<object\> | Grant folder or file permission via node_id |
-| revoke | (userId, fileNodeId) => Promise\<{ success }\> | Revoke all permissions for user on node |
-| getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List folder permissions |
-| checkPermission | (userId, fileNodeId, requiredPermission) => Promise\<boolean\> | Check folder permission |
-| getEffectivePermission | (userId, nodeId) => Promise\<string \| null\> | File or parent path permission |
-| grantFilePermission | (userId, fileNodeId, permission) => Promise\<object\> | File-only permission |
-| revokeFilePermission | (userId, fileNodeId) => Promise\<{ success }\> | Remove file permission |
-| getFolderPermissions | (fileNodeId) => Promise\<Array\> | List users with access |
-| hasPermissionsInPath | (fileNodeId) => Promise\<Array\> | Permissions under path |
-| grantSharePermission | (token, fileNodeId) => Promise\<object\> | Share-token grant |
+| grant | (userId, folderPath, permission, options?) => Promise\<object\> | Grant folder permission |
+| revoke | (userId, folderPath, options?) => Promise\<{ success }\> | Revoke all permissions for user on folder |
+| getUserPermissions | (userId) => Promise\<Array\<{ folder_path, permission }\>\> | List folder permissions for user |
+| checkPermission | (userId, folderPath, requiredPermission) => Promise\<boolean\> | Check folder permission |
+| checkPermissionSync | (doc, folderPath, requiredPermission) => boolean | Synchronous folder permission check against loaded doc |
+| getPermissionDoc | (userId) => Promise\<object\> | Get raw permission document |
+| checkPermissions | (userId, paths, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple paths |
+| getFolderPermissions | (folderPath, filePath?) => Promise\<Array\> | List users with access to folder |
+| hasPermissionsInPath | (folderPath) => Promise\<Array\> | Permissions under path |
+
+#### File Permissions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| getFilePermission | (userId, filePath) => Promise\<object\> | Get file-specific permission |
+| getEffectivePermission | (userId, path) => Promise\<string \| null\> | File or parent path effective permission |
+| grantFilePermission | (userId, filePath, permission) => Promise\<object\> | File-only permission |
+| revokeFilePermission | (userId, filePath) => Promise\<{ success }\> | Remove file permission |
+| getUserFilePermissions | (userId) => Promise\<Array\> | List file permissions for user |
+| checkFilePermissionSync | (doc, filePath, requiredPermission) => boolean | Synchronous file permission check |
+| getPathEffectivePermission | (userId, folderPath) => Promise\<string \| null\> | Effective permission for folder path |
+
+#### Share Token Permissions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| grantSharePermission | (token, rootPath, isDirectory) => Promise\<object\> | Share-token grant |
 | revokeSharePermission | (token) => Promise\<{ success }\> | Revoke share token |
 | getSharePermissionDoc | (token, opts?) => Promise\<object \| null\> | Share doc (cached) |
-| checkSharePermission | (token, nodeId, requiredPermission) => Promise\<boolean\> | Share token check |
+| checkSharePermission | (token, path, requiredPermission) => Promise\<boolean\> | Share token check |
 
-**REMOVED methods:** `rewritePermissionsForAllUsers`, `revokePermissionsPrefixForAllUsers` — node_ids are stable; rename/move does not change node_id.
+#### Admin / Lifecycle
 
-Permission enum contract:
-
-- Allowed values: `read`, `write`, `admin`
-- Ordering for effective checks: `read < write < admin`
-- Canonical runtime source: `shared/constants.js` (`PERMISSIONS.ALL`)
-- Canonical DB enforcement: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| revokeAllUserPermissions | (userId) => Promise\<{ success }\> | Revoke all permissions for user |
+| deleteUserPermissionsFile | (userId) => Promise\<{ success }\> | Delete user permission file |
+| rewritePermissionsForAllUsers | (mapping) => Promise\<void\> | Bulk rewrite paths in permission docs |
+| revokePermissionsPrefixForAllUsers | (prefixes) => Promise\<void\> | Bulk revoke by path prefix |
 
 ### 2.3 Transaction Boundaries
 
@@ -53,6 +72,8 @@ Permission enum contract:
 - `permissions_user_files(user_id, file_node_id, permission, updated_at)` — unique on `(user_id, file_node_id)`
 - `permissions_shares(token, file_node_id, permission, updated_at)`
 
+> **Note:** The current implementation still uses legacy path-based columns (`folder_path`, `file_path`, `root_path`, `is_directory`) in SQL queries. Migration to `file_node_id` is scoped to Phase 4 Tasks 4.1–4.2, 4.6.
+
 Constraint/index details are canonical in:
 
 - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
@@ -63,14 +84,15 @@ Constraint/index details are canonical in:
 - locks, userStore
 - shared pathUtils, constants (PERMISSIONS)
 - errorHandler, SERVER_ERROR_CODES
+- metaPaths (legacy import for path normalization)
 
 ### 2.6 Verification Scenarios
 
-- [ ] grant/revoke folder; checkPermission returns correct boolean using node_ids
+- [ ] grant/revoke folder; checkPermission returns correct boolean
 - [ ] grantFilePermission validates parent and rank; revokeFilePermission removes entry
 - [ ] getEffectivePermission: file perm overrides path perm
 - [ ] checkSharePermission for directory vs file root
 - [ ] Cache bypass and TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables)
-- [ ] PostgreSQL: duplicate node grant upserts/replaces permission without duplicate rows
+- [ ] PostgreSQL: duplicate grant upserts/replaces permission without duplicate rows
 - [ ] PostgreSQL: permission check constraint rejects invalid values
 - [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true

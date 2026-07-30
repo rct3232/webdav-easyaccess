@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite`. `fs` and `webdav` are deprecated (fall back to sqlite/postgresql respectively). Provides PostgreSQL pool/transaction helpers for relational mode. |
+| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite`. `fs` and `webdav` are deprecated (fall back to sqlite/postgresql respectively). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. Also provides legacy filesystem helpers (`ensureDir`, `readFile`, `writeFile`, `deletePath`, `listDir`) for FsJSON metadata — these are deprecated and will be removed in Phase 7. |
 
 ---
 
@@ -13,22 +13,62 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/storage.js`
-- **Test file:** `server/store/__tests__/storage.test.js`
+- **Test file:** `server/infrastructure/__tests__/storage.test.js`
 
 ### 2.2 Main Methods
 
+#### Backend Selection
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`; when env is set to `fs`, warns and returns `sqlite`; when `webdav`, warns and returns `postgresql` |
-| getFsBaseDir | () => string | WEA_FS_DIR or WEA_METADATA_DIR or os.tmpdir() |
+| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; `fs`/`filesystem` → warns + returns `'sqlite'`; `webdav` or any other value → warns + returns `'postgresql'`; empty/undefined → warns + returns `'postgresql'` (default) |
+| isSqliteBackend | () => boolean | Returns `true` if `getBackend() === 'sqlite'` |
+
+#### PostgreSQL Helpers
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | getPgPool | () => Pool | Returns PostgreSQL connection pool when backend is `postgresql` |
 | withTransaction | (callback) => Promise\<T\> | Executes callback in single SQL transaction (begin/commit/rollback) |
+| closePgPool | () => Promise\<void\> | Close pool (for tests and process shutdown) |
+
+#### SQLite Helpers
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| getSqliteConnection | () => Database | Returns better-sqlite3 Database instance |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
+| closeSqliteDb | () => void | Close SQLite database |
+
+#### Legacy Filesystem Helpers (deprecated — Phase 7 removal target)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| getFsBaseDir | () => string | WEA_FS_DIR or WEA_METADATA_DIR or os.tmpdir() |
+| ensureDir | (dirPath) => Promise\<void\> | Create directory recursively |
+| ensureDirSafe | (dirPath) => Promise\<void\> | Create directory with safe path validation |
+| exists | (filePath) => Promise\<boolean\> | Check if path exists |
+| readFile | (filePath) => Promise\<Buffer\> | Read file contents |
+| writeFile | (filePath, data) => Promise\<void\> | Write file contents |
+| deletePath | (targetPath) => Promise\<void\> | Delete file or directory |
+| listDir | (dirPath) => Promise\<Array\> | List directory contents |
 
 ### 2.3 Dependencies
 
 - fs, fs/promises, os, path
 - pg (Pool), backend-specific SQL helpers
 - errorHandler (`createError`, `mapDatabaseError`), SERVER_ERROR_CODES
+
+### 2.4 `WEA_STORAGE_BACKEND` vs `WEA_FILE_STORAGE`
+
+These two environment variables are **completely independent**:
+
+| Variable | Purpose | Values | Handled By |
+|----------|---------|--------|------------|
+| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `postgresql` (default), `sqlite`, `fs` (deprecated), `webdav` (deprecated) | `storage.js:getBackend()` |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3`, `webdav` (default) | Phase 1 S3 adapter (not yet implemented) |
+
+Deprecating `WEA_STORAGE_BACKEND=fs` or `webdav` only affects the metadata layer. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
 ### 2.4 PostgreSQL Infrastructure Contract
 
@@ -63,11 +103,15 @@ Permission contract source of truth for `postgresql` backend:
 - Runtime: `shared/constants.js` (`PERMISSIONS.ALL`)
 - Persistence: `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`permissions_*` permission checks include `admin`)
 
-### 2.6 Verification Scenarios
+### 2.7 Verification Scenarios
 
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
 - [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns sqlite
 - [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns postgresql
+- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns postgresql (default)
+- [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)
+- [ ] getBackend: WEA_STORAGE_BACKEND=pg → postgresql (alias)
+- [ ] getBackend: WEA_STORAGE_BACKEND=sqlite → sqlite
 - [ ] backend parity: shared store-facing behaviors remain consistent across `sqlite` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
 - [ ] getPgPool: missing env throws `storage.postgresqlNotConfigured`
 - [ ] getPgPool: returns singleton pool across repeated calls

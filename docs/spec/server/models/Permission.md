@@ -19,26 +19,25 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| grant | (userId, fileNodeId, permission) | permissionStore.grant |
-| revoke | (userId, fileNodeId) | permissionStore.revoke |
+| grant | (userId, folderPath, permission) | permissionStore.grant |
+| revoke | (userId, folderPath) | permissionStore.revoke |
 | revokeAllUserPermissions | (userId) | permissionStore.revokeAllUserPermissions |
 | deleteUserPermissionsFile | (userId) | permissionStore.deleteUserPermissionsFile |
 | getUserPermissions | (userId) | permissionStore.getUserPermissions |
-| checkPermission | (userId, fileNodeId, requiredPermission) | permissionStore.checkPermission |
+| checkPermission | (userId, folderPath, requiredPermission) | permissionStore.checkPermission |
+| checkPermissionSync | (doc, folderPath, requiredPermission) | permissionStore.checkPermissionSync |
 | getPermissionDoc | (userId) | permissionStore.getPermissionDoc |
-| getFolderPermissions | (fileNodeId) | permissionStore.getFolderPermissions |
-| hasPermissionsInPath | (fileNodeId) | permissionStore.hasPermissionsInPath |
-| getFilePermission | (userId, fileNodeId) | permissionStore.getFilePermission |
-| getEffectivePermission | (userId, nodeId) | permissionStore.getEffectivePermission |
-| grantFile | (userId, fileNodeId, permission) | permissionStore.grant(..., { target: 'file' }) |
-| revokeFile | (userId, fileNodeId) | permissionStore.revoke(..., { scope: 'pathOnly' }) |
+| getFolderPermissions | (folderPath, filePath?) | permissionStore.getFolderPermissions |
+| hasPermissionsInPath | (folderPath) | permissionStore.hasPermissionsInPath |
+| getFilePermission | (userId, filePath) | permissionStore.getFilePermission |
+| getEffectivePermission | (userId, path) | permissionStore.getEffectivePermission |
+| grantFile | (userId, filePath, permission) | permissionStore.grantFilePermission |
+| revokeFile | (userId, filePath) | permissionStore.revokeFilePermission |
 | getUserFilePermissions | (userId) | permissionStore.getUserFilePermissions |
-| grantSharePermission | (token, fileNodeId) | permissionStore.grantSharePermission |
+| grantSharePermission | (token, rootPath, isDirectory) | permissionStore.grantSharePermission |
 | revokeSharePermission | (token) | permissionStore.revokeSharePermission |
 | getSharePermissionDoc | (token) | permissionStore.getSharePermissionDoc |
-| checkSharePermission | (token, nodeId, requiredPermission) | permissionStore.checkSharePermission |
-
-**REMOVED methods:** `rewritePermissionsForAllUsers`, `revokePermissionsPrefixForAllUsers` — node_ids are stable; rename/move does not change node_id.
+| checkSharePermission | (token, path, requiredPermission) | permissionStore.checkSharePermission |
 
 ### 2.3 Dependencies
 
@@ -46,4 +45,4 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] All methods delegate to store using file_node_id parameters; mock store and assert calls
+- [ ] All methods delegate to store; mock store and assert calls

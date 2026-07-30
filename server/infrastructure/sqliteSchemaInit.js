@@ -5,7 +5,7 @@ const path = require('path');
 
 const storage = require('../store/storage');
 
-const DDL_PATH = path.join(__dirname, '../store/postgresql/ddl/001_initial_normalized_schema.sql');
+const DDL_DIR = path.join(__dirname, '../store/postgresql/ddl');
 
 function convertPostgresToSqlite(ddl) {
   let sql = ddl;
@@ -15,6 +15,7 @@ function convertPostgresToSqlite(ddl) {
 
   sql = sql.replace(/BIGSERIAL\s+PRIMARY\s+KEY/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT');
   sql = sql.replace(/BIGSERIAL/gi, 'INTEGER PRIMARY KEY AUTOINCREMENT');
+  sql = sql.replace(/\bBIGINT\b/gi, 'INTEGER');
   sql = sql.replace(/TIMESTAMPTZ/gi, 'TEXT');
   sql = sql.replace(/JSONB/gi, 'TEXT');
   sql = sql.replace(/BOOLEAN/gi, 'INTEGER');
@@ -47,7 +48,9 @@ function splitStatements(sql) {
 }
 
 async function initSqliteSchema() {
-  const ddlSource = await fs.readFile(DDL_PATH, 'utf8');
+  const files = (await fs.readdir(DDL_DIR)).filter((f) => f.endsWith('.sql')).sort();
+  const contents = await Promise.all(files.map((f) => fs.readFile(path.join(DDL_DIR, f), 'utf8')));
+  const ddlSource = contents.join('\n');
   const sqliteDdl = convertPostgresToSqlite(ddlSource);
 
   const db = storage.getSqliteConnection();

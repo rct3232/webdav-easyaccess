@@ -395,14 +395,21 @@ uploadFile(parentNodeId, name, buffer, mimeType):
 **Dependencies:** Phase 2–5 (all services operational)
 **Risk Level:** Low — background maintenance, no user-facing behavior change
 
+**GC Strategy:** Two-tier orphan cleanup. Both tiers execute in a single GC cycle; Tier 1 runs first (fast, targeted), Tier 2 follows (slower, S3 ListObjects-based).
+
+- **Tier 1 (DB-driven):** `object_map.status='orphaned'` rows → known orphans from version supersession
+- **Tier 2 (S3 scan):** `listOrphanedKeys()` diff against active `object_map.s3_key` set → unknown orphans from TX failures, manual row deletion
+
 | Task | Description | Verify |
 |------|-------------|--------|
-| 6.1 | Implement `gcService`: query `object_map` WHERE status='orphaned' AND created_at < threshold → call S3 deleteBlob for each → DELETE rows from object_map | Orphaned blobs cleaned up after configured interval |
+| 6.1a | Implement DB-driven GC in `gcService`: query `object_map WHERE status='orphaned' AND created_at < threshold` → call S3 deleteBlob for each → DELETE rows from object_map | Orphaned blobs cleaned up after configured interval; active blobs untouched |
+| 6.1b | Implement S3 bucket reconciliation in `gcService`: call `blobStore.listOrphanedKeys(olderThan)` → diff against active `object_map.s3_key` set → for keys present only in S3, call `deleteBlob(key)` | DB-untracked blobs (TX2 failure, manual row deletion) recovered and deleted from S3 |
 | 6.2 | Add GC trigger: manual endpoint (`/api/admin/maintenance/gc`) + optional cron schedule (configurable via env `GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`) | Admin can trigger GC on demand |
 | 6.3 | Implement fail-safe recovery service: startup hook scans `file_nodes WHERE sync_status='orphaned_node'` → attempt retry or mark for manual review | Orphaned nodes detected and reported at startup |
 | 6.4 | Add `/api/admin/maintenance/repair-sync`: admin endpoint to manually resolve orphaned nodes (retry delete, force-mark-active) | Admin can intervene on stuck nodes |
 | 6.5 | Update `domains/admin/services/cleanupService.js`: integrate GC trigger and fail-safe reporting into existing cleanup interface | Cleanup endpoint covers new concerns |
-| 6.6 | Create `service/__tests__/gcService.test.js`: seed object_map with orphaned rows + corresponding S3 mock entries; run GC; verify S3 deleteBlob called for orphans only, active blobs untouched | Orphan count drops to zero; active blob keys preserved in S3 mock store |
+| 6.6a | Create `service/__tests__/gcService.test.js` (Tier 1): seed object_map with orphaned rows + corresponding S3 mock entries; run GC; verify S3 deleteBlob called for orphans only, active blobs untouched | Orphan count drops to zero; active blob keys preserved in S3 mock store |
+| 6.6b | Create `service/__tests__/gcService.test.js` (Tier 2): add extra keys to S3 mock that have no object_map rows; run GC; verify listOrphanedKeys + deleteBlob called for untracked keys, active blobs untouched | Untracked S3 blobs cleaned up alongside DB-orphaned blobs |
 
 ---
 
@@ -437,9 +444,10 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 | 8.2 | WebDAV+PostgreSQL integration tests: same lifecycle, verifying file_nodes sync + fail-safe recovery on simulated errors | Orphaned nodes detected and recoverable |
 | 8.3 | Permission inheritance tests: grant folder permission → verify descendant access via closure table (depth 0, 1, N) | Ancestor permissions propagate correctly |
 | 8.4 | Share link + permission interaction tests: shared node with folder-level restrictions → verify scope enforcement via closure table | Public share doesn't bypass folder locks |
-| 8.5 | GC service end-to-end test: create→overwrite→delete sequence → verify orphaned blob cleanup after threshold | Orphan blobs deleted, active blobs preserved |
-| 8.6 | SQLite compatibility tests: run full suite with `WEA_STORAGE_BACKEND=sqlite` | All tests pass on SQLite backend |
-| 8.7 | Update `stryker.config.json`: add new service paths (`service/*`, `infrastructure/adapters/blobstore/*`) to mutation scope | Mutation coverage includes all new code |
+| 8.5 | GC service end-to-end test (Tier 1): create→overwrite→delete sequence → verify DB-orphaned blob cleanup after threshold | Orphan blobs deleted, active blobs preserved |
+| 8.6 | GC service end-to-end test (Tier 2): inject untracked blob into S3 → run GC → verify listOrphanedKeys detects and deletes it | Untracked S3 blobs cleaned up by reconciliation tier |
+| 8.7 | SQLite compatibility tests: run full suite with `WEA_STORAGE_BACKEND=sqlite` | All tests pass on SQLite backend |
+| 8.8 | Update `stryker.config.json`: add new service paths (`service/*`, `infrastructure/adapters/blobstore/*`) to mutation scope | Mutation coverage includes all new code |
 
 #### E2E Test Strategy (Playwright)
 
@@ -468,6 +476,7 @@ After Phase 8 is complete, Playwright E2E tests run in both backend modes:
 | E2E-S3PG-005 | Delete → orphaned object_map row → GC admin endpoint cleans up S3 blob | P1 | same |
 | E2E-S3PG-006 | Permission inheritance: grant folder read → child/grandchild accessible via `__shared__` | P0 | extension of `e2e/share-internal.spec.ts` |
 | E2E-S3PG-007 | Share link survives file rename (nodeId reference, not path string) | P1 | same |
+| E2E-S3PG-008 | S3 bucket reconciliation: directly upload blob to S3 (no object_map entry) → run GC admin endpoint → verify orphaned blob deleted via listOrphanedKeys | P1 | same |
 
 **Impact on Existing E2E Scenarios:**
 
@@ -477,9 +486,9 @@ Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios ha
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 8.8 | Run full CI suite: `npm run test:ci -w server` then `npm run test:ci -w client` | **All pass on SQLite backend** |
-| 8.9 | Run Playwright E2E in WebDAV+PG mode (existing regression baseline) | All existing specs pass |
-| 8.10 | Run Playwright E2E in S3+PG mode (new architecture validation) | All specs + new E2E-S3PG-* scenarios pass |
+| 8.9 | Run full CI suite: `npm run test:ci -w server` then `npm run test:ci -w client` | **All pass on SQLite backend** |
+| 8.10 | Run Playwright E2E in WebDAV+PG mode (existing regression baseline) | All existing specs pass |
+| 8.11 | Run Playwright E2E in S3+PG mode (new architecture validation) | All specs + new E2E-S3PG-* scenarios pass |
 
 ---
 

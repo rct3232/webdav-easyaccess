@@ -1,169 +1,165 @@
 /**
  * storage tests.
- * Verifies ensureDir, exists, readFile, writeFile, deletePath, listDir with FS backend in test.
+ * Verifies getBackend() deprecation logic and postgres infrastructure helpers.
  */
 const storage = require('../../store/storage');
-const { createTestDatabase } = require('../../test-utils');
 
-describe('storage store', () => {
-  let dbCleanup;
+describe('getBackend', () => {
+  const originalEnv = process.env.WEA_STORAGE_BACKEND;
+  const originalConsoleWarn = console.warn;
 
-  beforeAll(async () => {
-    const db = await createTestDatabase();
-    dbCleanup = db.cleanup;
+  afterEach(() => {
+    // Reset environment and modules
+    if (originalEnv === undefined) {
+      delete process.env.WEA_STORAGE_BACKEND;
+    } else {
+      process.env.WEA_STORAGE_BACKEND = originalEnv;
+    }
+    jest.resetModules();
+    console.warn = originalConsoleWarn;
   });
 
-  afterAll(async () => {
-    await dbCleanup?.();
+  it('returns sqlite for fs backend with deprecation warning', () => {
+    process.env.WEA_STORAGE_BACKEND = 'fs';
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('sqlite');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to sqlite.'
+    );
+    warnSpy.mockRestore();
   });
 
-  describe('ensureDir / exists', () => {
-    it('creates dir and exists returns true', async () => {
-      await storage.ensureDir('/.wea/storage-test-dir');
-      const ok = await storage.exists('/.wea/storage-test-dir');
-      expect(ok).toBe(true);
-    });
-
-    it('exists returns false for non-existent path', async () => {
-      const ok = await storage.exists('/.wea/nonexistent-path-xyz');
-      expect(ok).toBe(false);
-    });
+  it('returns postgresql for webdav backend with deprecation warning', () => {
+    process.env.WEA_STORAGE_BACKEND = 'webdav';
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('postgresql');
+    expect(warnSpy).toHaveBeenCalledWith(
+      "DEPRECATION: WEA_STORAGE_BACKEND=webdav is deprecated. Falling back to postgresql."
+    );
+    warnSpy.mockRestore();
   });
 
-  describe('writeFile / readFile', () => {
-    it('writes and reads file', async () => {
-      const path = '/.wea/storage-test.txt';
-      const content = 'hello storage test';
-      await storage.writeFile(path, content, { overwrite: true });
-      const buf = await storage.readFile(path);
-      const text = Buffer.from(buf).toString('utf8');
-      expect(text).toBe(content);
-    });
+  it('passes through postgresql unchanged', () => {
+    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('postgresql');
   });
 
-  describe('deletePath', () => {
-    it('removes file so exists returns false', async () => {
-      const path = '/.wea/storage-delete-test.txt';
-      await storage.writeFile(path, 'temp', { overwrite: true });
-      await storage.deletePath(path);
-      const ok = await storage.exists(path);
-      expect(ok).toBe(false);
-    });
+  it('passes through sqlite unchanged', () => {
+    process.env.WEA_STORAGE_BACKEND = 'sqlite';
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('sqlite');
   });
 
-  describe('listDir', () => {
-    it('returns entries for existing dir', async () => {
-      const items = await storage.listDir('/.wea');
-      expect(Array.isArray(items)).toBe(true);
-    });
-
-    it('throws when EACCES (permission denied)', async () => {
-      const fsp = require('fs/promises');
-      const spy = jest.spyOn(fsp, 'readdir').mockRejectedValueOnce(
-        Object.assign(new Error('Permission denied'), { code: 'EACCES' })
-      );
-      await expect(storage.listDir('/.wea')).rejects.toMatchObject({ code: 'EACCES' });
-      spy.mockRestore();
-    });
+  it('defaults to postgresql for empty/undefined value with deprecation warning', () => {
+    delete process.env.WEA_STORAGE_BACKEND;
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('postgresql');
+    expect(warnSpy).toHaveBeenCalledWith(
+      "DEPRECATION: WEA_STORAGE_BACKEND=(default) is deprecated. Falling back to postgresql."
+    );
+    warnSpy.mockRestore();
   });
 
-  describe('writeFile error handling', () => {
-    it('throws when ENOSPC (disk full)', async () => {
-      const fsp = require('fs/promises');
-      const spy = jest.spyOn(fsp, 'writeFile').mockRejectedValueOnce(
-        Object.assign(new Error('No space left on device'), { code: 'ENOSPC' })
-      );
-      await expect(storage.writeFile('/.wea/enospc-test.txt', 'x', { overwrite: true })).rejects.toMatchObject({
-        code: 'ENOSPC',
-      });
-      spy.mockRestore();
-    });
+  it('passes through pg alias', () => {
+    process.env.WEA_STORAGE_BACKEND = 'pg';
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('postgresql');
   });
 
-  describe('postgres infrastructure helpers', () => {
-    const originalEnv = { ...process.env };
+  it('passes through postgres alias', () => {
+    process.env.WEA_STORAGE_BACKEND = 'postgres';
+    const storage = require('../../store/storage');
+    expect(storage.getBackend()).toBe('postgresql');
+  });
+});
 
-    beforeEach(() => {
-      jest.resetModules();
-      process.env = { ...originalEnv };
+describe('postgres infrastructure helpers', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(async () => {
+    jest.dontMock('pg');
+    const isolatedStorage = require('../../store/storage');
+    await isolatedStorage.closePgPool();
+    process.env = { ...originalEnv };
+  });
+
+  it('getBackend resolves postgresql backend', () => {
+    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    const isolatedStorage = require('../../store/storage');
+    expect(isolatedStorage.getBackend()).toBe('postgresql');
+  });
+
+  it('withTransaction commits on success', async () => {
+    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    process.env.WEA_PG_HOST = 'localhost';
+    process.env.WEA_PG_PORT = '5432';
+    process.env.WEA_PG_DATABASE = 'testdb';
+    process.env.WEA_PG_USER = 'test';
+    process.env.WEA_PG_PASSWORD = 'secret';
+
+    const query = jest.fn(async (sql) => ({ rows: [{ sql }] }));
+    const client = {
+      query,
+      release: jest.fn(),
+    };
+    const connect = jest.fn().mockResolvedValue(client);
+    const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
+    jest.doMock('pg', () => ({ Pool }));
+
+    let isolatedStorage;
+    jest.isolateModules(() => {
+      isolatedStorage = require('../../store/storage');
+    });
+    const result = await isolatedStorage.withTransaction(async (dbClient) => {
+      const q = await dbClient.query('SELECT 1');
+      return q.rows[0].sql;
     });
 
-    afterEach(async () => {
-      jest.dontMock('pg');
-      const isolatedStorage = require('../../store/storage');
-      await isolatedStorage.closePgPool();
-      process.env = { ...originalEnv };
+    expect(result).toBe('SELECT 1');
+    expect(query.mock.calls.map((args) => args[0])).toEqual(['BEGIN', 'SELECT 1', 'COMMIT']);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it('withTransaction rolls back and maps DB errors', async () => {
+    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    process.env.WEA_PG_HOST = 'localhost';
+    process.env.WEA_PG_PORT = '5432';
+    process.env.WEA_PG_DATABASE = 'testdb';
+    process.env.WEA_PG_USER = 'test';
+    process.env.WEA_PG_PASSWORD = 'secret';
+
+    const query = jest.fn(async () => ({ rows: [] }));
+    const client = {
+      query,
+      release: jest.fn(),
+    };
+    const connect = jest.fn().mockResolvedValue(client);
+    const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
+    jest.doMock('pg', () => ({ Pool }));
+
+    let isolatedStorage;
+    jest.isolateModules(() => {
+      isolatedStorage = require('../../store/storage');
+    });
+    await expect(
+      isolatedStorage.withTransaction(async () => {
+        throw { code: '23505', constraint: 'users_email_key' };
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      errorCode: 'serverErrors.errorHandler.databaseConflict',
     });
 
-    it('getBackend resolves postgresql backend', () => {
-      process.env.WEA_STORAGE_BACKEND = 'postgresql';
-      const isolatedStorage = require('../../store/storage');
-      expect(isolatedStorage.getBackend()).toBe('postgresql');
-    });
-
-    it('withTransaction commits on success', async () => {
-      process.env.WEA_STORAGE_BACKEND = 'postgresql';
-      process.env.WEA_PG_HOST = 'localhost';
-      process.env.WEA_PG_PORT = '5432';
-      process.env.WEA_PG_DATABASE = 'testdb';
-      process.env.WEA_PG_USER = 'test';
-      process.env.WEA_PG_PASSWORD = 'secret';
-
-      const query = jest.fn(async (sql) => ({ rows: [{ sql }] }));
-      const client = {
-        query,
-        release: jest.fn(),
-      };
-      const connect = jest.fn().mockResolvedValue(client);
-      const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
-      jest.doMock('pg', () => ({ Pool }));
-
-      let isolatedStorage;
-      jest.isolateModules(() => {
-        isolatedStorage = require('../../store/storage');
-      });
-      const result = await isolatedStorage.withTransaction(async (dbClient) => {
-        const q = await dbClient.query('SELECT 1');
-        return q.rows[0].sql;
-      });
-
-      expect(result).toBe('SELECT 1');
-      expect(query.mock.calls.map((args) => args[0])).toEqual(['BEGIN', 'SELECT 1', 'COMMIT']);
-      expect(client.release).toHaveBeenCalled();
-    });
-
-    it('withTransaction rolls back and maps DB errors', async () => {
-      process.env.WEA_STORAGE_BACKEND = 'postgresql';
-      process.env.WEA_PG_HOST = 'localhost';
-      process.env.WEA_PG_PORT = '5432';
-      process.env.WEA_PG_DATABASE = 'testdb';
-      process.env.WEA_PG_USER = 'test';
-      process.env.WEA_PG_PASSWORD = 'secret';
-
-      const query = jest.fn(async () => ({ rows: [] }));
-      const client = {
-        query,
-        release: jest.fn(),
-      };
-      const connect = jest.fn().mockResolvedValue(client);
-      const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
-      jest.doMock('pg', () => ({ Pool }));
-
-      let isolatedStorage;
-      jest.isolateModules(() => {
-        isolatedStorage = require('../../store/storage');
-      });
-      await expect(
-        isolatedStorage.withTransaction(async () => {
-          throw { code: '23505', constraint: 'users_email_key' };
-        })
-      ).rejects.toMatchObject({
-        status: 409,
-        errorCode: 'serverErrors.errorHandler.databaseConflict',
-      });
-
-      expect(query.mock.calls.map((args) => args[0])).toEqual(['BEGIN', 'ROLLBACK']);
-      expect(client.release).toHaveBeenCalled();
-    });
+    expect(query.mock.calls.map((args) => args[0])).toEqual(['BEGIN', 'ROLLBACK']);
+    expect(client.release).toHaveBeenCalled();
   });
 });

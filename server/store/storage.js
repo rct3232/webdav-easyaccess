@@ -20,12 +20,17 @@ let sqliteDb = null;
 
 function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
-  if (forced === 'fs' || forced === 'filesystem') return 'fs';
-  if (forced === 'webdav') return 'webdav';
+  if (forced === 'fs' || forced === 'filesystem') {
+    console.warn('DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to sqlite.');
+    return 'sqlite';
+  }
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (forced === 'sqlite') return 'sqlite';
-  if (process.env.NODE_ENV === 'test') return 'fs';
-  return 'webdav';
+  if (!['postgresql', 'sqlite'].includes(forced)) {
+    console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to postgresql.`);
+    return 'postgresql';
+  }
+  return forced;
 }
 
 function isSqliteBackend() {

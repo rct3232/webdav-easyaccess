@@ -4,40 +4,56 @@
  * @see docs/TEST_GIT_GUIDE.md
  * @see docs/TESTING_STRATEGY.md
  */
+const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
 const User = require('./models/User');
 const userStore = require('./store/userStore');
 const PermissionFacade = require('./domains/permissions/services/permissionFacade');
 const { generateToken } = require('./utils/auth');
 const { initMetadataStore } = require('./store/bootstrap');
+const storage = require('./store/storage');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 
 /**
- * Create an isolated test storage directory and set WEA_FS_DIR.
+ * Create an isolated test database.
+ * For SQLite: creates a unique file-based DB per test suite (no shared :memory:).
+ * For PostgreSQL: uses the externally-managed PG connection.
  * Use in beforeAll; call cleanup() in afterAll.
- * @returns {Promise<{ dir: string, cleanup: () => Promise<void> }>}
+ * @returns {Promise<{ dir: string|null, cleanup: () => Promise<void> }>}
  */
 async function createTestDatabase() {
-  const base = path.join(os.tmpdir(), `wea-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
-  await fs.promises.mkdir(base, { recursive: true });
-  const prev = process.env.WEA_FS_DIR;
-  process.env.WEA_FS_DIR = base;
+  const backend = storage.getBackend();
 
+  if (backend === 'sqlite') {
+    const dbPath = `/tmp/wea-test-${crypto.randomUUID()}.db`;
+    const prevSqlitePath = process.env.WEA_SQLITE_PATH;
+
+    process.env.WEA_SQLITE_PATH = dbPath;
+    await initMetadataStore();
+
+    return {
+      dir: dbPath,
+      cleanup: async () => {
+        process.env.WEA_SQLITE_PATH = prevSqlitePath;
+        try {
+          storage.closeSqliteDb();
+        } catch { /* ignore */ }
+        try {
+          await fs.promises.unlink(dbPath);
+        } catch { /* ignore cleanup errors */ }
+      },
+    };
+  }
+
+  // PostgreSQL path
   await initMetadataStore();
 
   return {
-    dir: base,
+    dir: null,
     cleanup: async () => {
-      process.env.WEA_FS_DIR = prev;
-      try {
-        await fs.promises.rm(base, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
-      }
+      // PG is managed externally; no cleanup needed
     },
   };
 }

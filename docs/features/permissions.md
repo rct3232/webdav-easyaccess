@@ -6,7 +6,7 @@ This document describes the ACL (Access Control List) and permission rules used 
 
 ## Role of the ACL
 
-The application runs its own **ACL** independent of the WebDAV server. Permissions are stored and read from the metadata store (e.g. under `/.wea` on the WebDAV server or on local FS). The WebDAV server may have its own permissions; the app layer enforces access based on this ACL on every API request.
+The application runs its own **ACL** independent of the WebDAV server. Permissions are stored in PostgreSQL/sqlite via normalized permission tables (`permissions_user_paths`, `permissions_user_files`, `permissions_shares`). The WebDAV server may have its own permissions; the app layer enforces access based on this ACL on every API request.
 
 ---
 

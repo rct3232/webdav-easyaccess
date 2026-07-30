@@ -1,3 +1,7 @@
+> **DEPRECATED** — FsJSON/webdav metadata storage removed in Phase 0.
+> This module is no longer used by the application. The spec is retained for historical reference only.
+> All WebDAV path constants and helpers are superseded by `file_nodes` table + node_id-based references.
+
 # metaPaths Spec
 
 ## 1. Overview

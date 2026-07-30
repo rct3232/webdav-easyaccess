@@ -19,26 +19,21 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| grant | (userId, folderPath, permission, options) | permissionStore.grant |
-| revoke | (userId, folderPath, options) | permissionStore.revoke |
+| grant | (userId, folderPath, permission) | permissionStore.grant |
+| revoke | (userId, folderPath) | permissionStore.revoke |
 | revokeAllUserPermissions | (userId) | permissionStore.revokeAllUserPermissions |
 | deleteUserPermissionsFile | (userId) | permissionStore.deleteUserPermissionsFile |
 | getUserPermissions | (userId) | permissionStore.getUserPermissions |
 | checkPermission | (userId, folderPath, requiredPermission) | permissionStore.checkPermission |
 | checkPermissionSync | (doc, folderPath, requiredPermission) | permissionStore.checkPermissionSync |
 | getPermissionDoc | (userId) | permissionStore.getPermissionDoc |
-| checkPermissions | (userId, paths, requiredPermission) | permissionStore.checkPermissions |
-| getFolderPermissions | (folderPath, filePath) | permissionStore.getFolderPermissions |
+| getFolderPermissions | (folderPath, filePath?) | permissionStore.getFolderPermissions |
 | hasPermissionsInPath | (folderPath) | permissionStore.hasPermissionsInPath |
-| rewritePermissionsForAllUsers | (mappings, options) | permissionStore.rewritePermissionsForAllUsers |
-| revokePermissionsPrefixForAllUsers | (prefixes) | permissionStore.revokePermissionsPrefixForAllUsers |
 | getFilePermission | (userId, filePath) | permissionStore.getFilePermission |
 | getEffectivePermission | (userId, path) | permissionStore.getEffectivePermission |
-| grantFile | (userId, filePath, permission) | permissionStore.grant(..., { target: 'file' }) |
-| revokeFile | (userId, filePath) | permissionStore.revoke(..., { scope: 'pathOnly' }) |
+| grantFile | (userId, filePath, permission) | permissionStore.grantFilePermission |
+| revokeFile | (userId, filePath) | permissionStore.revokeFilePermission |
 | getUserFilePermissions | (userId) | permissionStore.getUserFilePermissions |
-| checkFilePermissionSync | (doc, filePath, requiredPermission) | permissionStore.checkFilePermissionSync |
-| getPathEffectivePermission | (userId, folderPath) | permissionStore.getPathEffectivePermission |
 | grantSharePermission | (token, rootPath, isDirectory) | permissionStore.grantSharePermission |
 | revokeSharePermission | (token) | permissionStore.revokeSharePermission |
 | getSharePermissionDoc | (token) | permissionStore.getSharePermissionDoc |

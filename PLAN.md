@@ -286,7 +286,7 @@ npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__
 **Dependencies:** Phase 0 (schema), Phase 1 (S3 adapter)
 **Risk Level:** High — central orchestration layer; all file operations flow through here
 **Design Decisions:** Factory function DI pattern (consistent with existing `createFileService`, `createBlobStore`); dedicated `fileNodesStore.js` as SQL query middle layer; S3-only scope (WebDAV deferred to Phase 4); TX ownership at orchestration layer only (no nested transactions).
-**Detailed Plan:** See [`phase2-sub-plan.md`](./phase2-sub-plan.md) for full method signatures, algorithms, test plans, and risk analysis.
+**Detailed Plan:** See the Phase 2 spec suite — [`core-service-layer.md`](./docs/features/core-service-layer.md), [`_ancestryHelper.md`](./docs/spec/server/services/_ancestryHelper.md), [`fileNodeService.md`](./docs/spec/server/services/fileNodeService.md), [`blobStorageService.md`](./docs/spec/server/services/blobStorageService.md), [`uploadService.md`](./docs/spec/server/services/uploadService.md), [`fileNodesStore.md`](./docs/spec/server/store/fileNodesStore.md) — for full method signatures, algorithms, test plans, and risk analysis.
 
 #### Layer Architecture
 
@@ -355,13 +355,13 @@ Factory `createUploadService({ fileNodeService, blobStorageService, blobStore, s
 
 #### Test Plan
 
-Test files are created in `server/service/__tests__/` and `server/store/__tests__/`. Follow existing conventions (selectiveDelete.test.js style: inline mock factory, describe per behavior area, async/await). Verification scenarios are defined before implementation in each task (TDD approach). Detailed test scenarios are in [phase2-sub-plan.md](./phase2-sub-plan.md).
+Test files are created in `server/service/__tests__/` and `server/store/__tests__/`. Follow existing conventions (selectiveDelete.test.js style: inline mock factory, describe per behavior area, async/await). Verification scenarios are defined before implementation in each task (TDD approach). Detailed test scenarios are in the Phase 2 spec suite (`docs/spec/server/services/*.md`, `docs/spec/server/store/fileNodesStore.md`).
 
 | Task | Description | Verify |
 |------|-------------|--------|
 | **2.0** | **[GATE] Docs-First**: Create 5 new spec files (`_ancestryHelper.md`, `fileNodeService.md`, `blobStorageService.md`, `uploadService.md`, `core-service-layer.md`) + enhance `fileNodesStore.md` with object_map methods in `docs/spec/server/` and `docs/features/` | All spec/feature docs complete before any implementation task begins |
-| 2.1 | Implement `fileNodesStore.js`: PostgreSQL/SQLite dual-backend SQL layer for file_nodes, object_map, filecache, node_ancestors | In-memory SQLite tests verify all CRUD + ancestor + object_map operations; see [phase2-sub-plan.md §2.1](./phase2-sub-plan.md) |
-| 2.2 | Implement `_ancestryHelper.js`: buildAncestorsForNode, rebuildAfterMove (BFS-based), cleanupOnDelete with delete-then-insert strategy | Closure table correct at depth 0/1/N after every mutation; see [phase2-sub-plan.md §2.2](./phase2-sub-plan.md) |
+| 2.1 | Implement `fileNodesStore.js`: PostgreSQL/SQLite dual-backend SQL layer for file_nodes, object_map, filecache, node_ancestors | In-memory SQLite tests verify all CRUD + ancestor + object_map operations; see [`fileNodesStore.md`](./docs/spec/server/store/fileNodesStore.md) |
+| 2.2 | Implement `_ancestryHelper.js`: buildAncestorsForNode, rebuildAfterMove (BFS-based), cleanupOnDelete with delete-then-insert strategy | Closure table correct at depth 0/1/N after every mutation; see [`_ancestryHelper.md`](./docs/spec/server/services/_ancestryHelper.md) |
 | 2.3 | Implement `fileNodeService.js`: all tree operations (create/move/rename/delete/list/resolvePath/getNodePath) with transaction dispatching and cycle detection | createFile at depth N produces correct ancestor chain; move rejects cycles |
 | 2.4 | Implement `blobStorageService.js` (S3 mode only): prepareUpload → completeUpload lifecycle, downloadBlob, overwriteBlob, deleteBlob (orphan marking) | S3 mock tests verify pending→active→orphaned transitions; filecache metadata updates on completeUpload |
 | 2.5 | Implement `uploadService.js`: 4-step orchestration (TX1 → S3 PUT → TX2); uploadFile + overwriteFile + downloadFile | Integration test with real SQLite + s3Mock; simulate failure at each of 3 points, verify recoverable state |

@@ -5,7 +5,7 @@
 | Item | Description |
 |------|-------------|
 | Mount path | `/api/permissions` |
-| Role | Folder and file permissions: grant, revoke, list by user/folder, check effective permission. |
+| Role | Folder and file permissions: grant, revoke, list by user/folder, check effective permission. All operations use `nodeId` (BIGINT) references instead of path strings. |
 
 ---
 
@@ -24,39 +24,62 @@
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/grant` | Token | Grant permission. Body: folderPath, userId, permission, target? |
-| DELETE | `/revoke` | Token | Revoke. Query: userId, folderPath, includeSubfolders?, scope? |
+| POST | `/grant` | Token | Grant permission. Body: nodeId, userId, permission, targetType? |
+| DELETE | `/revoke` | Token | Revoke. Query: userId, nodeId, scope? |
 | GET | `/user/:userId` | Token | List permissions for user. |
-| GET | `/folder` | Token | List permissions for folder. Query: path, includeSubfolders, filePath? |
-| GET | `/check` | Token | Check current user permission. Query: path. |
-| POST | `/file/grant` | Token | Grant file-level permission. |
-| DELETE | `/file/revoke` | Token | Revoke file-level permission. |
-| PATCH | `/file` | Token | Update file-level permission. |
-| GET | `/file/check` | Token | Check file permission. |
-| GET | `/file/list` | Token | List file permissions. |
+| GET | `/folder` | Token | List permissions for folder. Query: nodeId, fileNodeId? |
+| GET | `/check` | Token | Check current user permission. Query: nodeId. |
+| POST | `/file/grant` | Token | Grant file-level permission. Body: userId, fileNodeId, permission. |
+| DELETE | `/file/revoke` | Token | Revoke file-level permission. Query: userId, fileNodeId. |
+| PATCH | `/file` | Token | Update file-level permission. Body: userId, fileNodeId, permission. |
+| GET | `/file/check` | Token | Check file permission. Query: fileNodeId. |
+| GET | `/file/list` | Token | List file permissions. Query: nodeId? (parent directory) |
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser`, `normalizePathParam`
+- `authenticateToken`, `requireUser`
+
+> **Removed:** `normalizePathParam` — node IDs are opaque integers requiring no normalization.
 
 ### 2.4 Request/Response Spec
 
-- grant: body folderPath, userId, permission; optional target ('file')
-- revoke: query userId, folderPath; optional scope ('pathOnly') for file
-- check: returns hasRead, hasWrite, source
+#### POST `/grant`
+
+- **Body:** `{ nodeId: BIGINT, userId: BIGINT, permission: string, targetType?: 'file' | 'directory' }`
+- `targetType` defaults to `'directory'`; when `'file'`, grants a file-level permission on the node
+
+#### DELETE `/revoke`
+
+- **Query:** `?userId=<BIGINT>&nodeId=<BIGINT>&scope=?`
+- `scope`: optional; `'pathOnly'` for file-level revoke (revokes only direct grant, not inherited)
+
+#### GET `/folder`
+
+- **Query:** `?nodeId=<BIGINT>&fileNodeId=<BIGINT>`
+- Returns permissions granted on the directory identified by `nodeId`; if `fileNodeId` is provided, returns only entries relevant to that specific file within the folder
+
+#### GET `/check`
+
+- **Query:** `?nodeId=<BIGINT>`
+- Returns `{ hasRead: boolean, hasWrite: boolean, source: string }` for current user on the target node
 
 ### 2.4.1 Validation
 
-- grant: `folderPath`, `userId`, `permission` are required; otherwise `400`
-- check: `path` is required; otherwise `400`
+- grant: `nodeId`, `userId`, `permission` are required; otherwise `400`
+- check: `nodeId` is required; otherwise `400`
+- revoke: `userId`, `nodeId` are required; otherwise `400`
 - grant to self is allowed (effectively no-op or same-permission update)
 
-### 2.4.2 `GET /user/:userId` Fast-Path Semantics
+### 2.4.2 Node ID Validation
 
-- Route returns ACL records using a fast path and avoids per-row `pathExists` checks in the request hot path.
+All `nodeId` and `fileNodeId` parameters must correspond to an existing row in `file_nodes`. If the referenced node does not exist, the route returns `404 Not Found` before proceeding with permission logic. This validation applies to all routes accepting nodeId parameters: `/grant`, `/revoke`, `/check`, `/folder`, `/file/grant`, `/file/revoke`, `/file/check`, `/file/list`.
+
+### 2.4.3 `GET /user/:userId` Fast-Path Semantics
+
+- Route returns ACL records using a fast path and avoids per-row existence checks in the request hot path.
 - Existence state is read from index/cache with three states:
-  - `exists`: path confirmed present by fresh evidence
-  - `missing`: path confirmed absent by fresh evidence
+  - `exists`: node confirmed present by fresh evidence
+  - `missing`: node confirmed absent by fresh evidence
   - `unknown`: state not fresh enough to decide
 - Response rules:
   - `exists` entries are returned.
@@ -64,7 +87,7 @@
   - `missing` entries are excluded only when evidence freshness is valid.
 - Public response schema remains backward-compatible.
 
-### 2.4.3 Conditional Gate (`If-None-Match` / `304`)
+### 2.4.4 Conditional Gate (`If-None-Match` / `304`)
 
 - Route computes ETag using:
   - permission document `updated_at`
@@ -72,23 +95,23 @@
 - If `If-None-Match` equals computed ETag, route returns `304 Not Modified` early.
 - Early `304` must happen before expensive permission shaping/reconciliation work.
 
-### 2.4.4 Reconciliation and Invalidation
+### 2.4.5 Reconciliation and Invalidation
 
 - Stale or absent index entries schedule non-blocking reconciliation jobs.
 - Reconciliation runs with bounded concurrency and must not block the API response path.
-- Route maintains an in-memory existence index keyed by normalized ACL path:
+- Route maintains an in-memory existence index keyed by node ID:
   - persisted shape: `{ state: 'exists'|'missing', checkedAt: epochMs }`
   - `unknown` is a read-time derived state used when entry is missing or stale
   - freshness window: configured by env (default short TTL), stale entries treated as `unknown`
 - While state is `unknown`, route keeps the ACL row visible and only enqueues refresh.
-- ACL mutation routes invalidate affected paths/prefixes:
+- ACL mutation routes invalidate affected node IDs:
   - `POST /grant`
   - `DELETE /revoke`
   - `POST /file/grant`
   - `DELETE /file/revoke`
   - `PATCH /file`
 - Invalidation is also wired at ACL-store mutation points so non-route callers keep index consistency.
-- File-system mutation integrations (move/copy/delete flows) can also invalidate affected prefixes.
+- File-system mutation integrations (move/copy/delete flows) can also invalidate affected node IDs via CASCADE or explicit invalidation.
 - Env knobs:
   - `PERMISSIONS_EXISTENCE_INDEX_TTL_MS` (freshness window)
   - `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` (bounded concurrent checks)
@@ -101,11 +124,12 @@
 
 - [ ] Grant/revoke require ownership or admin
 - [ ] Check returns correct hasRead, hasWrite
-- [ ] grant missing `folderPath`/`userId` returns `400`
-- [ ] check missing `path` returns `400`
+- [ ] grant missing `nodeId`/`userId` returns `400`
+- [ ] check missing `nodeId` returns `400`
 - [ ] revoke followed by check removes access immediately
+- [ ] nodeId referencing non-existent file_node returns `404`
 - [ ] `GET /user/:userId` does not perform N-permission synchronous WebDAV checks
 - [ ] stale index entries enqueue reconciliation and still return response quickly
-- [ ] only freshly confirmed missing paths are excluded from user-visible response
+- [ ] only freshly confirmed missing nodes are excluded from user-visible response
 - [ ] matching `If-None-Match` returns `304` before expensive read work
-- [ ] performance regression guard: with many ACL rows and slow mocked `pathExists`, response latency stays near fast-path bound and does not scale linearly with ACL count
+- [ ] performance regression guard: with many ACL rows and slow mocked node lookup, response latency stays near fast-path bound and does not scale linearly with ACL count

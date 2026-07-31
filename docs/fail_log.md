@@ -27,3 +27,14 @@
 - **Area:** `client/src/services/__tests__/apiClient.test.js` and others
 - **Classification:** Case B (Test Error — pre-existing environmental issues)
 - **Observed failure:** Timeout errors (`Exceeded timeout of 5000 ms`) in 403 handling tests. No recent commits modify client code; these are pre-existing flaky tests unrelated to current changes.
+
+---
+
+## 2026-07-31 — Phase 3 verification: createNode closure-table double-population
+
+- **Area:** `server/store/fileNodesStore.js`, `server/domains/permissions/routes/__tests__/{permissions,permissionRequests}.test.js`
+- **Classification:** Case A (Source Error — `createNode` auto-population violates documented architecture) + Case B (route tests bypassed the service-layer node-creation flow)
+- **Summary:** `fileNodesStore.createNode` contained an uncommitted auto-population block that inserted `node_ancestors` rows (self + parent chain) while swallowing errors (`catch (e) { /* ignore */ }`). `fileNodeService.createFile/createDirectory` already calls `buildAncestorsForNode` right after `createNode`, so the auto-population was 100% redundant and caused a `SQLITE_CONSTRAINT: UNIQUE constraint failed: node_ancestors.ancestor_id, node_ancestors.descendant_id` at runtime.
+- **Observed failure:** 29 tests failed across 3 suites — `fileNodesStore.test.js` (7), `fileNodeService.test.js` (15), `uploadService.test.js` (7). Every `createFile`/`createDirectory` call threw via `buildAncestorsForNode` (`service/_ancestryHelper.js:17`).
+- **Spec cross-check:** `docs/spec/server/store/fileNodesStore.md:41` documents `createNode` as a pure INSERT (no ancestor maintenance); `_ancestryHelper.md:32` defines `buildAncestorsForNode` as the single closure-table builder; `fileNodeService.md:50` documents `createNode + buildAncestorsForNode` in one transaction. The auto-population violated all three.
+- **Action taken:** Removed the auto-population block from `fileNodesStore.createNode` (restored pure-INSERT contract). Updated the two permission route test files to create nodes via `fileNodeService.createDirectory/createFile` (the documented production path) instead of raw `fileNodesStore.createNode`, so closure-table rows are properly established. All 15 Phase 2/3 suites (287 tests) pass. Remaining failures in `files`, `folders`, `auth`, `admin`, `recentFiles`, `shareLinks`, and legacy `Permission`/`PermissionRequest`/`ShareLink` model suites are the pre-existing "Expected Test Failures After Phase 0" (PLAN.md) pending Phase 4/5 migration — verified identical with and without the auto-population block.

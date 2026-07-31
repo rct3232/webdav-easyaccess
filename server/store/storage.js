@@ -408,6 +408,8 @@ module.exports = {
   withTransaction,
   closePgPool,
   getSqliteConnection,
+  sqliteQuery,
+  sqliteRun,
   withSqliteTransaction,
   closeSqliteDb,
   ensureDir,

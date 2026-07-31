@@ -280,76 +280,109 @@ npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__
 
 ---
 
-### Phase 2: Core Service Layer — fileNodeService, blobStorageService, uploadService
+### Phase 2: Core Service Layer — fileNodesStore, fileNodeService, blobStorageService, uploadService
 
 **Dependencies:** Phase 0 (schema), Phase 1 (S3 adapter)
 **Risk Level:** High — central orchestration layer; all file operations flow through here
+**Design Decisions:** Factory function DI pattern (consistent with existing `createFileService`, `createBlobStore`); dedicated `fileNodesStore.js` as SQL query middle layer; S3-only scope (WebDAV deferred to Phase 3); TX ownership at orchestration layer only (no nested transactions).
+**Detailed Plan:** See [`phase2-sub-plan.md`](./phase2-sub-plan.md) for full method signatures, algorithms, test plans, and risk analysis.
+
+#### Layer Architecture
+
+```
+uploadService.js          ← Orchestration (4-step TX1 → S3 PUT → TX2 flow)
+  ├── fileNodeService.js   ← Tree operations (create/move/rename/delete/list/resolvePath)
+  │       └── _ancestryHelper.js ← Closure table maintenance (buildAncestorsForNode, rebuildAfterMove)
+  │               └── fileNodesStore.js ← SQL query layer (PostgreSQL / SQLite branching)
+  └── blobStorageService.js ← Blob lifecycle (prepareUpload → completeUpload → download → overwrite)
+          └── S3BlobStore / NoOpBlobStore (Phase 1 artifact)
+```
+
+#### store/fileNodesStore.js — DB Query Layer
+
+PostgreSQL/SQLite dual-backend SQL operations for `file_nodes`, `object_map`, `filecache`, `node_ancestors`. Factory function `createFileNodesStore()` with `getBackend()` branching. Key methods: `createNode`, `getNode`, `getChildren` (with filecache LEFT JOIN), `renameNode`, `moveNode`, `deleteNodeTree`, `updateSyncStatus`, `resolvePathSegment`, ancestor CRUD (`insertAncestorRows`, `deleteAncestorByDescendant`, `getDescendantIds`, `getAncestorChain`), object_map lifecycle (`upsertObjectMap`, `insertObject`, `getActiveObject`, `getObjectMapByS3Key`, `activateObject`, `orphanObject`), filecache (`upsertCache`, `deleteCache`).
+
+#### service/_ancestryHelper.js — Closure Table Maintenance
+
+Isolated module for `node_ancestors` management. Called exclusively by fileNodeService, never exposed to routes. Strategy: delete-then-insert on moves (simplest correct approach). Methods: `buildAncestorsForNode(nodeId, parentId)` — traverses parent chain and inserts self + all ancestors; `rebuildAncestorsAfterMove(movedNodeId, newParentId)` — BFS traversal of subtree, deletes entire subtree's ancestor rows, recomputes from new parent chain; `cleanupAncestorsForDeletion(nodeIds)` — explicit orphan removal (FK CASCADE is the primary mechanism, explicit removal is safety net).
 
 #### service/fileNodeService.js — Filesystem Tree Management
 
-| Method | Purpose | DB Operation |
-|--------|---------|-------------|
-| `createFile(parentNodeId, name)` | Create file node | INSERT `file_nodes` (type='file') + `node_ancestors` cascade |
-| `createDirectory(parentNodeId, name)` | Create directory node | INSERT `file_nodes` (type='directory') + `node_ancestors` cascade |
-| `moveNode(nodeId, newParentId)` | Move to different folder | UPDATE `parent_id`; rebuild `node_ancestors` for subtree |
-| `renameNode(nodeId, newName)` | Rename file/directory | UPDATE `name`; updated_at refresh |
-| `deleteNode(nodeId)` | Delete file or directory tree | DELETE `file_nodes` CASCADE + descendant `node_ancestors` cleanup |
-| `listDirectory(parentNodeId)` | List children of folder | SELECT WHERE parent_id=? ORDER BY name |
-| `getNodePath(nodeId)` | Build path string from ancestors | Recursive ancestor join via `node_ancestors` |
-| `resolvePath(pathString)` | Path → nodeId lookup | Sequential traversal through `file_nodes` by (parent_id, name) |
-| `getDescendantIds(nodeId)` | All descendants of a directory | SELECT descendant_id FROM node_ancestors WHERE ancestor_id=? |
+Factory `createFileNodeService({ fileNodesStore, storage })`. All mutating operations wrapped in `withTx()` (dispatches to `withTransaction` or `withSqliteTransaction` based on backend). Cycle detection on `moveNode` via `getDescendantIds`. Methods:
 
-#### service/blobStorageService.js — Blob Lifecycle
+| Method | TX Scope | Ancestry Impact |
+|--------|----------|----------------|
+| `createFile(parentNodeId, name)` | INSERT file_nodes + buildAncestorsForNode | New node chain from parent |
+| `createDirectory(parentNodeId, name)` | INSERT file_nodes + buildAncestorsForNode | Same as createFile |
+| `renameNode(nodeId, newName)` | No TX needed (single UPDATE) | None |
+| `moveNode(nodeId, newParentId)` | moveNode + rebuildAfterMove in single TX | Full subtree ancestor recomputation |
+| `deleteNode(nodeId)` | deleteAncestors + deleteNodeTree in single TX | CASCADE handles object_map, filecache, node_ancestors FK rows |
+| `listDirectory(parentNodeId)` | Read-only | None |
+| `getNodePath(nodeId)` | Read-only ancestor chain traversal | None |
+| `resolvePath(pathString)` | Sequential segment lookups | None |
+| `getDescendantIds(nodeId)` | SELECT from node_ancestors | None |
 
-| Method | Purpose | Storage Backend |
-|--------|---------|----------------|
-| `prepareUpload(fileNodeId)` | INSERT object_map (status='pending') → return s3_key | S3 mode only |
-| `completeUpload(s3Key, size, mime)` | UPDATE filecache + object_map status='active' | S3 mode |
-| `downloadBlob(fileNodeId)` | object_map lookup → S3 GET | S3 mode |
-| `overwriteBlob(fileNodeId, buffer)` | OLD→orphaned, NEW pending→active, filecache UPDATE | S3 mode |
-| `deleteBlob(fileNodeId)` | Mark object_map row orphaned for GC | S3 mode |
+#### service/blobStorageService.js — Blob Lifecycle (S3 Only)
+
+Factory `createBlobStorageService({ blobStore, fileNodesStore })`. S3 mode only; WebDAV support deferred to Phase 3. `s3Key` generated via `crypto.randomUUID()`. Actual S3 deletion on delete is deferred to GC service (Phase 6); `deleteBlob` merely marks `object_map.status='orphaned'`. Version number is always 1 (single-version mode; the `UNIQUE(file_node_id, version_number)` constraint exists for future version history expansion). Methods:
+
+| Method | DB Operation | S3 Operation |
+|--------|-------------|-------------|
+| `prepareUpload(fileNodeId)` | UPSERT object_map (orphan previous active, INSERT pending) | None |
+| `completeUpload(s3Key, size, mime)` | UPDATE status='active'; upsert filecache | None (S3 PUT done by uploadService) |
+| `downloadBlob(fileNodeId)` | SELECT active s3_key | blobStore.downloadBlob(key) |
+| `overwriteBlob(fileNodeId, buffer)` | OLD→orphaned; NEW insert+active; filecache UPDATE | blobStore.uploadBlob(newKey, buffer) |
+| `deleteBlob(fileNodeId)` | Mark active object_map row orphaned | Deferred to GC (Phase 6) |
 
 #### service/uploadService.js — Orchestration
 
-```
-uploadFile(parentNodeId, name, buffer, mimeType):
-  1. BEGIN TX
-  2. fileNodeService.createFile(parentId, name) → nodeId (sync_status='pending_upload')
-  3. blobStorageService.prepareUpload(nodeId) → s3Key
-  4. COMMIT
-  5. S3 PUT blob(s3Key, buffer)          ← external, outside TX
-  6. BEGIN TX
-  7. filecache INSERT/UPDATE (nodeId, size, mime)
-  8. object_map UPDATE status='active' WHERE s3Key=?
-  9. file_nodes UPDATE sync_status='active', updated_at=NOW()
-  10. COMMIT
-```
+Factory `createUploadService({ fileNodeService, blobStorageService, blobStore, storage })`. Synchronous upload flow per Execution Rule #11. TX ownership lives here — service methods are TX-agnostic. Methods:
+
+| Method | Flow |
+|--------|------|
+| `uploadFile(parentNodeId, name, buffer, mimeType)` | TX1: createFile + prepareUpload → S3 PUT → TX2: completeUpload + sync_status='active' |
+| `overwriteFile(fileNodeId, buffer, mimeType)` | TX1: prepareUpload(new version) + sync_status='pending_upload' → S3 PUT → TX2: completeUpload + sync_status='active' |
+| `downloadFile(fileNodeId)` | blobStorageService.downloadBlob (pass-through) |
+
+**Failure recovery states:**
+
+| Failure Point | DB State | S3 State | Recovery |
+|--------------|----------|----------|----------|
+| TX1 fails | ROLLBACK, nothing persisted | Nothing | Idempotent retry |
+| S3 PUT fails | object_map='pending' | Nothing | Retry endpoint or GC Tier 1 |
+| TX2 fails | object_map='pending'; file_nodes sync_status='pending_upload' | Blob uploaded | GC Tier 2 (listOrphanedKeys) cleans untracked blob |
+
+#### Test Plan
+
+Test files are created in `server/service/__tests__/` and `server/store/__tests__/`. Follow existing conventions (selectiveDelete.test.js style: inline mock factory, describe per behavior area, async/await). Verification scenarios are defined before implementation in each task (TDD approach). Detailed test scenarios are in [phase2-sub-plan.md](./phase2-sub-plan.md).
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 2.1 | Implement `fileNodeService` with all tree operations + closure table maintenance | Unit tests pass for create/move/rename/delete/list/resolvePath |
-| 2.2 | Implement `blobStorageService` (S3 mode) with prepareUpload → completeUpload flow | S3 mock tests verify status transitions: pending→active |
-| 2.3 | Implement `uploadService` orchestrating the 4-step upload flow | Integration test: upload file → verify DB + blob state |
-| 2.4 | Implement WebDAV mode in services: `createFile` INSERTs `file_nodes` + WebDAV PUT; on failure, marks `sync_status='orphaned_node'` | Fail-safe test: simulate WebDAV error → orphaned status set |
-| 2.5 | Ancestry maintenance helper: `_updateAncestors(nodeId)` rebuilds closure table rows for a node and its subtree | Closure table consistency verified after every mutation |
-| 2.6 | Create `service/__tests__/fileNodeService.test.js`: test create/move/rename/delete/list/resolvePath; verify `node_ancestors` correctness at depth 0, 1, N using in-memory SQLite | Closure table contains correct ancestor/descendant pairs after every mutation |
-| 2.7 | Create `service/__tests__/blobStorageService.test.js`: test pending→active→orphaned lifecycle with S3 mock; verify filecache metadata updates on completeUpload | Status transitions verified; orphaned row count matches expected value |
-| 2.8 | Create `service/__tests__/uploadService.test.js`: integration test of full 4-step upload flow (TX1 → S3 PUT → TX2) using real DB + s3Mock; simulate failure at each step to verify rollback and orphan detection | Each failure point leaves recoverable state (`sync_status`, `object_map.status`) |
+| **2.0** | **[GATE] Docs-First**: Create 5 new spec files (`_ancestryHelper.md`, `fileNodeService.md`, `blobStorageService.md`, `uploadService.md`, `core-service-layer.md`) + enhance `fileNodesStore.md` with object_map methods in `docs/spec/server/` and `docs/features/` | All spec/feature docs complete before any implementation task begins |
+| 2.1 | Implement `fileNodesStore.js`: PostgreSQL/SQLite dual-backend SQL layer for file_nodes, object_map, filecache, node_ancestors | In-memory SQLite tests verify all CRUD + ancestor + object_map operations; see [phase2-sub-plan.md §2.1](./phase2-sub-plan.md) |
+| 2.2 | Implement `_ancestryHelper.js`: buildAncestorsForNode, rebuildAfterMove (BFS-based), cleanupOnDelete with delete-then-insert strategy | Closure table correct at depth 0/1/N after every mutation; see [phase2-sub-plan.md §2.2](./phase2-sub-plan.md) |
+| 2.3 | Implement `fileNodeService.js`: all tree operations (create/move/rename/delete/list/resolvePath/getNodePath) with transaction dispatching and cycle detection | createFile at depth N produces correct ancestor chain; move rejects cycles |
+| 2.4 | Implement `blobStorageService.js` (S3 mode only): prepareUpload → completeUpload lifecycle, downloadBlob, overwriteBlob, deleteBlob (orphan marking) | S3 mock tests verify pending→active→orphaned transitions; filecache metadata updates on completeUpload |
+| 2.5 | Implement `uploadService.js`: 4-step orchestration (TX1 → S3 PUT → TX2); uploadFile + overwriteFile + downloadFile | Integration test with real SQLite + s3Mock; simulate failure at each of 3 points, verify recoverable state |
+| 2.6 | Create all test files: `fileNodesStore.test.js`, `fileNodeService.test.js`, `blobStorageService.test.js`, `uploadService.test.js` | All tests pass; closure table consistency verified at depth 0/1/N; each failure point in upload flow leaves recoverable state |
+
+> **Task 2.4 (WebDAV mode) removed** from Phase 2 scope. WebDAV blob storage support is now part of Phase 3 (Files Domain Integration), where fileService.js refactoring introduces the dual-backend switch.
 
 ---
 
-### Phase 3: Files Domain Integration
+### Phase 3: Files Domain Integration + WebDAV Blob Support
 
 **Dependencies:** Phase 2 (services ready)
-**Risk Level:** High — replaces current file operation flow; affects all file routes
+**Risk Level:** High — replaces current file operation flow; affects all file routes; introduces dual-backend switching
 
 | Task | Description | Verify |
 |------|-------------|--------|
-| 3.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + storage-specific adapter) | File CRUD via new service works identically |
+| 3.0 | Add WebDAV mode to `blobStorageService`: extend with `WebdavBlobStore` adapter that maps `file_node_id → WebDAV path` via `file_nodes` tree; `uploadBlob` = WebDAV PUT, `downloadBlob` = WebDAV GET. Factory selects S3BlobStore or WebdavBlobStore based on `WEA_FILE_STORAGE`. | Both S3 and WebDAV modes pass blobStorageService tests identically |
+| 3.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + `blobStorageService`). The factory now injects the Phase 2 services instead of raw WebDAV adapter. | File CRUD via new service works identically; no behavioral regression |
 | 3.2 | Update `listDirectoryWithPermissions`: source children from `file_nodes` (DB query) instead of remote listing; enrich with permissions from node_id-based permission store | Response format matches existing API contract |
-| 3.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService) | Upload creates DB entry before blob write |
-| 3.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before |
-| 3.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV) or no-op (S3, blob stays put) | Rename is instant DB update in S3 mode |
+| 3.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService). WebDAV mode uses synchronous WebDAV PUT inside TX boundary; S3 mode follows Phase 2 4-step flow. | Upload creates DB entry before blob write in both modes |
+| 3.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before in both backends |
+| 3.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV MKCOL/MOVE) or no-op (S3, blob stays put). Fail-safe: on WebDAV operation failure, mark `sync_status='orphaned_node'`. | Rename is instant DB update in S3 mode; fail-safe test simulates WebDAV error → orphaned status set |
 | 3.6 | Batch operations (copy/move/delete): adapt to node-based model — copy = new file_nodes row + new object_map entry referencing same s3_key; delete = recursive descendant removal via closure table | Bulk ops work on node IDs |
 | 3.7 | Copy-on-write for S3 mode: copying a file creates new `file_nodes` + `object_map` pointing to the SAME `s3_key` (read-only share); mutation triggers actual blob copy | Two nodes, one blob, zero storage waste |
 | 3.8 | Update routes (`crud.js`, `batch.js`, `preview.js`, `folders.js`): accept `nodeId` in request payloads; return nodeId + display path in responses. No path-based compatibility layer — FsJSON is deprecated, all backends are DB-driven. | API accepts/returns nodeId; path strings are display-only |

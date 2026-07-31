@@ -133,13 +133,10 @@ async function createAuthenticatedTestUser(opts = {}) {
   const user = await createTestUser({
     ...opts,
     status: USER_STATUS.APPROVED,
+    isAdmin: opts.grantRoot ? true : (opts.isAdmin ?? false),
   });
   const full = await getFullTestUser(user.id);
   const token = createTestToken(full || user);
-
-  if (opts.grantRoot) {
-    await grantTestPermission(user.id, '/', PERMISSIONS.ADMIN);
-  }
 
   return { user, token };
 }

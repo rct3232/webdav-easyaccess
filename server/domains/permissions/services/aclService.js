@@ -1,19 +1,23 @@
 /**
  * ACL Service — core permission-checking logic.
+ * nodeId-based interface using closure table for inheritance.
  * No Express coupling. Consumed by middleware, routes, and policy layer.
  */
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const Permission = require('../../../models/Permission');
 const User = require('../../../models/User');
-const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
 const { meetsRank } = require('../policy/permissionRank');
 
-const { isOwnerPath } = require('../policy/ownerPathResolver');
-
-function isAdminUser(user) {
-  return Boolean(user?.is_admin);
-}
+// Backward-compat: re-export sync checkers and owner helpers from policy layer.
+// These are deprecated in favor of nodeId-based async checks but still consumed by callers.
+const {
+  buildSyncReadChecker,
+  buildSyncWriteChecker,
+  buildSyncReadFileChecker,
+  buildSyncWriteFileByParentChecker,
+} = require('../policy/permissionPolicy');
+const { isOwnerPath, userRootPath } = require('../policy/ownerNodeResolver');
 
 // --- User cache (extracted from middleware/permissions.js) ---
 const userCache = new Map();
@@ -45,113 +49,117 @@ function extractShareToken(principalId) {
   return principalId.slice(6);
 }
 
-// --- Core permission checks ---
-async function checkFilePermission(principalId, filePath, requiredPermission = PERMISSIONS.READ) {
-  if (isSharePrincipal(principalId)) {
-    const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, filePath, requiredPermission) : false;
+function isAdminUser(userOrId) {
+  if (typeof userOrId === 'object' && userOrId !== null) {
+    return Boolean(userOrId.is_admin);
   }
-
-  const userId = principalId;
-  const user = await getCachedUser(userId);
-  if (!user) {
-    return false;
-  }
-
-  if (user.is_admin) {
-    return true;
-  }
-
-  const { isOwnerPath: checkOwnerPath } = require('../policy/ownerPathResolver');
-  if (checkOwnerPath(user, filePath)) {
-    return true;
-  }
-
-  const doc = await Permission.getPermissionDoc(userId);
-  const normalizedFile = normalizePath(filePath);
-  const fp = doc.file_permissions || {};
-  const filePerm = fp[normalizedFile];
-  if (filePerm != null) {
-    return meetsRank(filePerm, requiredPermission);
-  }
-
-  const folderPath = getParentPath(filePath);
-  const normalizedFolderPath = normalizePath(folderPath, { isDirectory: true });
-
-  let hasPermission = await Permission.checkPermission(userId, normalizedFolderPath, requiredPermission);
-  if (!hasPermission && folderPath !== '/') {
-    hasPermission = await Permission.checkPermission(userId, folderPath, requiredPermission);
-  }
-
-  if (!hasPermission) {
-    if (checkOwnerPath(user, normalizedFolderPath) || checkOwnerPath(user, folderPath)) {
-      hasPermission = true;
-    }
-  }
-
-  return hasPermission;
+  return false;
 }
 
-async function checkFolderPermission(principalId, folderPath, requiredPermission = PERMISSIONS.READ) {
+// --- Core permission checks (nodeId-based) ---
+
+/**
+ * Check file permission for a principal.
+ * Resolves share principals via token, admin users bypass all checks,
+ * and regular users are checked against direct file permissions first,
+ * then ancestor folder permissions via the closure table.
+ */
+async function checkFilePermission(principalId, fileNodeId, requiredPermission = PERMISSIONS.READ) {
+  // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, folderPath, requiredPermission) : false;
+    return token ? Permission.checkSharePermission(token, fileNodeId, requiredPermission) : false;
   }
 
+  // Regular user: fetch and check admin status
   const userId = principalId;
   const user = await getCachedUser(userId);
   if (!user) {
     return false;
   }
 
-  if (user.is_admin) {
+  // Admin bypass
+  if (isAdminUser(user)) {
     return true;
   }
 
-  const normalizedPath = normalizePath(folderPath, { isDirectory: true });
-
-  let hasPermission = await Permission.checkPermission(userId, normalizedPath, requiredPermission);
-  if (!hasPermission && folderPath !== '/') {
-    hasPermission = await Permission.checkPermission(userId, normalizePath(folderPath), requiredPermission);
+  // Direct file permission takes precedence over inheritance.
+  const filePerm = await Permission.getFilePermission(userId, fileNodeId);
+  if (filePerm) {
+    return meetsRank(filePerm.permission, requiredPermission);
   }
 
-  if (!hasPermission) {
-    const { isOwnerPath: checkOwnerPath } = require('../policy/ownerPathResolver');
-    if (checkOwnerPath(user, normalizedPath)) {
-      hasPermission = true;
-    }
+  // Inherited from ancestor folder via closure table?
+  return await Permission.checkPermission(userId, fileNodeId, requiredPermission);
+}
+
+/**
+ * Check folder/directory permission for a principal.
+ * Resolves share principals via token, admin users bypass all checks,
+ * and regular users are checked against the closure table for directory permissions.
+ */
+async function checkFolderPermission(principalId, dirNodeId, requiredPermission = PERMISSIONS.READ) {
+  // Share principal: resolve via token → permissions_shares → closure table descendant check
+  if (isSharePrincipal(principalId)) {
+    const token = extractShareToken(principalId);
+    return token ? Permission.checkSharePermission(token, dirNodeId, requiredPermission) : false;
   }
 
-  return hasPermission;
+  // Regular user: fetch and check admin status
+  const userId = principalId;
+  const user = await getCachedUser(userId);
+  if (!user) {
+    return false;
+  }
+
+  // Admin bypass
+  if (isAdminUser(user)) {
+    return true;
+  }
+
+  // Check via closure table (direct or inherited from ancestor)
+  return await Permission.checkPermission(userId, dirNodeId, requiredPermission);
 }
 
 /**
  * Unified permission check entry point.
- * Determines file vs folder automatically and delegates to the appropriate checker.
+ * Determines file vs folder by the isDirectory flag and delegates accordingly.
  */
-async function checkPermission(path, principalId, action = PERMISSIONS.READ) {
+async function checkPermission(nodeId, principalId, action = PERMISSIONS.READ, isDirectory = false) {
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, path, action) : false;
+    return token ? Permission.checkSharePermission(token, nodeId, action) : false;
   }
 
   const userId = principalId;
   const user = await getCachedUser(userId);
-  if (!user || !user.is_admin) {
+  if (!user || !isAdminUser(user)) {
     // Non-admin: delegate to file/folder specific checkers
-    const isDir = path.endsWith('/') || path === '/';
-    if (isDir) {
-      return await checkFolderPermission(principalId, path, action);
-    } else {
-      return await checkFilePermission(principalId, path, action);
+    if (isDirectory) {
+      return await checkFolderPermission(principalId, nodeId, action);
     }
+    return await checkFilePermission(principalId, nodeId, action);
   }
 
   // Admin bypass
   return true;
 }
 
+// --- Write permission checks (admin bypass + async) ---
 
+async function canWriteFolder(user, dirNodeId) {
+  if (!user) return false;
+  if (isAdminUser(user)) return true;
+  return await checkFolderPermission(user.id, dirNodeId, PERMISSIONS.WRITE);
+}
+
+async function canWriteFile(user, fileNodeId) {
+  if (!user) return false;
+  if (isAdminUser(user)) return true;
+  return await checkFilePermission(user.id, fileNodeId, PERMISSIONS.WRITE);
+}
+
+// --- Backward-compat: path-based access check (kept for middleware consumers) ---
 async function canAccessPath(userId, requestedPath) {
   const user = await getCachedUser(userId);
 
@@ -159,12 +167,12 @@ async function canAccessPath(userId, requestedPath) {
     return false;
   }
 
-  if (user.is_admin) {
+  if (isAdminUser(user)) {
     return true;
   }
 
+  const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
   const normalizedPath = normalizePath(requestedPath);
-  const { userRootPath } = require('../policy/ownerPathResolver');
   const userFolder = userRootPath(user);
 
   if (!userFolder || normalizedPath === '/' || normalizedPath === '') {
@@ -174,60 +182,7 @@ async function canAccessPath(userId, requestedPath) {
   return normalizedPath === userFolder || normalizedPath.startsWith(`${userFolder}/`);
 }
 
-// --- Write permission checks (admin/owner bypass + async) ---
-
-async function canWriteFolder(user, folderPath) {
-  if (!user) return false;
-  if (isAdminUser(user)) return true;
-  if (isOwnerPath(user, folderPath)) return true;
-  return await checkFolderPermission(user.id, folderPath, PERMISSIONS.WRITE);
-}
-
-async function canWriteFile(user, filePath) {
-  if (!user) return false;
-  if (isAdminUser(user)) return true;
-  if (isOwnerPath(user, filePath)) return true;
-  return await checkFilePermission(user.id, filePath, PERMISSIONS.WRITE);
-}
-
-// --- Sync permission checkers (batch operations, no async round-trip) ---
-
-function buildSyncReadChecker(user, doc) {
-  return (folderPath) => {
-    if (!user) return false;
-    if (isAdminUser(user)) return true;
-    if (isOwnerPath(user, folderPath)) return true;
-    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.READ);
-  };
-}
-
-function buildSyncReadFileChecker(user, doc) {
-  return (filePath) => {
-    if (!user) return false;
-    if (isAdminUser(user)) return true;
-    if (isOwnerPath(user, filePath)) return true;
-    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.READ);
-  };
-}
-
-function buildSyncWriteChecker(user, doc) {
-  return (folderPath) => {
-    if (!user) return false;
-    if (isAdminUser(user)) return true;
-    if (isOwnerPath(user, folderPath)) return true;
-    return Permission.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE);
-  };
-}
-
-function buildSyncWriteFileByParentChecker(user, doc) {
-  return (filePath) => {
-    if (!user) return false;
-    if (isAdminUser(user)) return true;
-    if (isOwnerPath(user, filePath)) return true;
-    return Permission.checkFilePermissionSync(doc, filePath, PERMISSIONS.WRITE);
-  };
-}
-
+// --- Cache utilities ---
 function __clearUserCacheForTests() {
   userCache.clear();
 }
@@ -238,24 +193,24 @@ module.exports = {
   extractShareToken,
   isAdminUser,
 
-  // Async permission checks (principalId-based)
+  // Async permission checks (principalId + nodeId-based)
   checkFilePermission,
   checkFolderPermission,
   checkPermission,
-  canAccessPath,
 
-  // User object-based write checks (admin/owner bypass included)
+  // User object-based write checks (admin bypass included)
   canWriteFolder,
   canWriteFile,
 
-  // Sync batch checkers (accept pre-loaded permission doc)
-  buildSyncReadChecker,
-  buildSyncReadFileChecker,
-  buildSyncWriteChecker,
-  buildSyncWriteFileByParentChecker,
+  // Backward-compat: path-based access check
+  canAccessPath,
 
-  // Owner path helpers (re-export for cross-domain use)
+  // Backward-compat: re-exported from policy layer
   isOwnerPath,
+  buildSyncReadChecker,
+  buildSyncWriteChecker,
+  buildSyncReadFileChecker,
+  buildSyncWriteFileByParentChecker,
 
   // Cache utilities
   getCachedUser,

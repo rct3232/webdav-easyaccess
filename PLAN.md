@@ -245,13 +245,14 @@ Replace `(folder_path TEXT, file_path TEXT, target_type TEXT)` with single `file
 
 #### Expected Test Failures After Phase 0
 
-Phase 0 rewrites the DDL to use `file_node_id` across all permission/sharing tables, but application stores still reference the removed legacy path columns. This produces `SQLITE_ERROR: no such column` at runtime. **These failures are valid and expected** — application code migration is explicitly scoped to Phase 4 (Permissions → Node ID) and Phase 5 (Sharing & RecentFiles → Node).
+Phase 0 rewrites the DDL to use `file_node_id` across all permission/sharing tables, but application stores still reference the removed legacy path columns. This produces `SQLITE_ERROR: no such column` at runtime. **These failures are valid and expected** — application code migration is explicitly scoped to Phase 3 (Permissions → Node ID) and Phase 5 (Sharing & RecentFiles → Node).
 
 | Failing Area | Affected Tests | Root Cause | Resolved In |
 |---|---|---|---|
-| `permissionStore.js` | Permission model, PermissionRequest model, permissions middleware (~22 failures) | SQL queries reference `folder_path` / `file_path` columns removed from DDL | Phase 4 Tasks 4.1–4.2, 4.6 |
+| `permissionStore.js` | Permission model, PermissionRequest model, permissions middleware (~22 failures) | SQL queries reference `folder_path` / `file_path` columns removed from DDL | Phase 3 Tasks 3.1–3.2, Phase 4 Task 4.8e |
+| `permissionPolicy.js` (sync checkers) | permissionPolicy tests, aclService tests | `checkPermissionSync`/`checkFilePermissionSync` not implemented in store — runtime TypeError if sync paths are hit | Phase 4 Task 4.8d |
 | `shareLinkStore.js` | ShareLink model, shareLinks/sharePublic routes (~16 failures) | Code writes `file_path` to `share_links`; DDL has `file_node_id` only | Phase 5 Task 5.1 |
-| `permissionRequestStore.js` | permissionRequests routes (~7 failures) | SQL queries reference `folder_path` / `file_path` columns | Phase 4 Task 4.1 |
+| `permissionRequestStore.js` | permissionRequests routes (~7 failures) | SQL queries reference `folder_path` / `file_path` columns | Phase 3 Task 3.2 |
 | `Settings` model | Settings model, auth routes (~8 failures) | JSON double-serialization bug (unrelated to schema migration) | Separate bug fix required |
 
 **Validation command for Phase 0 scope only** (infrastructure tests only):
@@ -284,7 +285,7 @@ npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__
 
 **Dependencies:** Phase 0 (schema), Phase 1 (S3 adapter)
 **Risk Level:** High — central orchestration layer; all file operations flow through here
-**Design Decisions:** Factory function DI pattern (consistent with existing `createFileService`, `createBlobStore`); dedicated `fileNodesStore.js` as SQL query middle layer; S3-only scope (WebDAV deferred to Phase 3); TX ownership at orchestration layer only (no nested transactions).
+**Design Decisions:** Factory function DI pattern (consistent with existing `createFileService`, `createBlobStore`); dedicated `fileNodesStore.js` as SQL query middle layer; S3-only scope (WebDAV deferred to Phase 4); TX ownership at orchestration layer only (no nested transactions).
 **Detailed Plan:** See [`phase2-sub-plan.md`](./phase2-sub-plan.md) for full method signatures, algorithms, test plans, and risk analysis.
 
 #### Layer Architecture
@@ -324,7 +325,7 @@ Factory `createFileNodeService({ fileNodesStore, storage })`. All mutating opera
 
 #### service/blobStorageService.js — Blob Lifecycle (S3 Only)
 
-Factory `createBlobStorageService({ blobStore, fileNodesStore })`. S3 mode only; WebDAV support deferred to Phase 3. `s3Key` generated via `crypto.randomUUID()`. Actual S3 deletion on delete is deferred to GC service (Phase 6); `deleteBlob` merely marks `object_map.status='orphaned'`. Version number is always 1 (single-version mode; the `UNIQUE(file_node_id, version_number)` constraint exists for future version history expansion). Methods:
+Factory `createBlobStorageService({ blobStore, fileNodesStore })`. S3 mode only; WebDAV support deferred to Phase 4. `s3Key` generated via `crypto.randomUUID()`. Actual S3 deletion on delete is deferred to GC service (Phase 6); `deleteBlob` merely marks `object_map.status='orphaned'`. Version number is always 1 (single-version mode; the `UNIQUE(file_node_id, version_number)` constraint exists for future version history expansion). Methods:
 
 | Method | DB Operation | S3 Operation |
 |--------|-------------|-------------|
@@ -366,55 +367,69 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 2.5 | Implement `uploadService.js`: 4-step orchestration (TX1 → S3 PUT → TX2); uploadFile + overwriteFile + downloadFile | Integration test with real SQLite + s3Mock; simulate failure at each of 3 points, verify recoverable state |
 | 2.6 | Create all test files: `fileNodesStore.test.js`, `fileNodeService.test.js`, `blobStorageService.test.js`, `uploadService.test.js` | All tests pass; closure table consistency verified at depth 0/1/N; each failure point in upload flow leaves recoverable state |
 
-> **Task 2.4 (WebDAV mode) removed** from Phase 2 scope. WebDAV blob storage support is now part of Phase 3 (Files Domain Integration), where fileService.js refactoring introduces the dual-backend switch.
+> **Task 2.4 (WebDAV mode) removed** from Phase 2 scope. WebDAV blob storage support is now part of Phase 4 (Files Domain Integration), where fileService.js refactoring introduces the dual-backend switch.
 
 ---
 
-### Phase 3: Files Domain Integration + WebDAV Blob Support
-
-**Dependencies:** Phase 2 (services ready)
-**Risk Level:** High — replaces current file operation flow; affects all file routes; introduces dual-backend switching
-
-| Task | Description | Verify |
-|------|-------------|--------|
-| 3.0 | Add WebDAV mode to `blobStorageService`: extend with `WebdavBlobStore` adapter that maps `file_node_id → WebDAV path` via `file_nodes` tree; `uploadBlob` = WebDAV PUT, `downloadBlob` = WebDAV GET. Factory selects S3BlobStore or WebdavBlobStore based on `WEA_FILE_STORAGE`. | Both S3 and WebDAV modes pass blobStorageService tests identically |
-| 3.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + `blobStorageService`). The factory now injects the Phase 2 services instead of raw WebDAV adapter. | File CRUD via new service works identically; no behavioral regression |
-| 3.2 | Update `listDirectoryWithPermissions`: source children from `file_nodes` (DB query) instead of remote listing; enrich with permissions from node_id-based permission store | Response format matches existing API contract |
-| 3.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService). WebDAV mode uses synchronous WebDAV PUT inside TX boundary; S3 mode follows Phase 2 4-step flow. | Upload creates DB entry before blob write in both modes |
-| 3.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before in both backends |
-| 3.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV MKCOL/MOVE) or no-op (S3, blob stays put). Fail-safe: on WebDAV operation failure, mark `sync_status='orphaned_node'`. | Rename is instant DB update in S3 mode; fail-safe test simulates WebDAV error → orphaned status set |
-| 3.6 | Batch operations (copy/move/delete): adapt to node-based model — copy = new file_nodes row + new object_map entry referencing same s3_key; delete = recursive descendant removal via closure table | Bulk ops work on node IDs |
-| 3.7 | Copy-on-write for S3 mode: copying a file creates new `file_nodes` + `object_map` pointing to the SAME `s3_key` (read-only share); mutation triggers actual blob copy | Two nodes, one blob, zero storage waste |
-| 3.8 | Update routes (`crud.js`, `batch.js`, `preview.js`, `folders.js`): accept `nodeId` in request payloads; return nodeId + display path in responses. No path-based compatibility layer — FsJSON is deprecated, all backends are DB-driven. | API accepts/returns nodeId; path strings are display-only |
-| 3.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
-| 3.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
-
----
-
-### Phase 4: Permissions Domain → Node ID
+### Phase 3: Permissions Domain → Node ID
 
 **Dependencies:** Phase 2 (fileNodeService for ancestor queries), Phase 0 (schema ready)
 **Risk Level:** High — largest behavioral change; permission checks called on every file access
 
+> **Phase 3 — Status: COMPLETE**
+> Server-side permission stores, services, routes, and middleware are fully migrated to nodeId and verified (Phase 2/3 scope: 15 suites / 287 tests pass). Client-side migration (Tasks 3.8-3.9) depends on Phase 4 Task 4.8 (file routes return nodeId) — moved there. Remaining legacy cleanup (Tasks 3.1a partial, 3.3b-2, 3.3c) depends on Phase 4 caller migrations — moved to Phase 4 Tasks 4.8c-4.8g.
+
+| Task | Description | Verify | Status |
+|------|-------------|--------|--------|
+| 3.1 | Rewrite permissionStore SQL queries for `permissions_user_paths`, `permissions_user_files`, and `permission_requests`: replace path-based SQL with `file_node_id`-based queries; derive `target_type` from `file_nodes.type` via JOIN | Adapter returns same results via nodeId lookups | ✅ COMPLETE |
+| 3.1a | Remove JSON backend from permissionStore.js (`getPermissionDoc`, `getSharePermissionDoc`, `writeUserPermissionsDoc`, cache Maps) — **partial**: `writeUserPermissionsDoc` removed; `getPermissionDoc`/`getSharePermissionDoc`/caches remain due to active callers (fileService, batchOperationService, downloadService) | Store reduced to ~600 lines; no in-memory doc patterns | ⚠️ PARTIAL — moved to Phase 4 Task 4.8e |
+| 3.2 | permissionRequestStore: fully nodeId-based SQL, single `file_node_id` field, deduplication via partial unique index | All SQL uses file_node_id; tests pass | ✅ COMPLETE |
+| 3.3a | aclService.js: nodeId-based `checkFilePermission`, `checkFolderPermission`, `checkPermission` with closure table inheritance | Permission checks return same results as before | ✅ COMPLETE |
+| 3.3b-1 | ownerPathResolver → ownerNodeResolver: rename file, rewrite with `fileNodesStore.isAncestor()` closure table check; update 5 import sites | Owner detection via ancestry, not path prefix | ✅ COMPLETE |
+| 3.3b-2 | permissionPolicy.js: remove path-based `can*` functions + sync checker builders (lines 112-260) — **blocked** by fileService/batchOperationService/downloadService callers | No path-based functions remain | ❌ DEFERRED — Phase 4 Task 4.8d |
+| 3.3b-3 | aclService.js: remove sync checker re-exports + `canAccessPath` — **blocked** by same callers | No deprecated re-exports remain | ❌ DEFERRED — Phase 4 Task 4.8f |
+| 3.3c | permissionFacade.js + Permission.js: delete or rewrite — **blocked** by 15 production callers | Files deleted or rewritten as thin nodeId pass-through | ❌ DEFERRED — Phase 4 Task 4.8e |
+| 3.4 | Middleware `permissions.js`: extracts nodeId from req.query/req.body; no path normalization needed | Authenticated requests pass permission checks | ✅ COMPLETE |
+| 3.5 | Routes: all 4 files (folderPermissions, filePermissions, permissionRequests, queries) use nodeId/fileNodeId exclusively | API accepts/returns nodeId payloads | ✅ COMPLETE |
+| 3.8 | **Client:** Refactor `permissionService.js` + `sharePermissionGateway.js` + `permissionRequestService.js`: payloads send nodeId — **depends on Phase 4 Task 4.8** (file routes return nodeId) | Client sends nodeId in all permission API calls | ❌ MOVED — Phase 4 Task 4.8a |
+| 3.9 | **Client:** Refactor `useSharedManage.js`, `buildPermissionDiff.js`, remove `collectSubfolderPaths()` — **depends on Phase 4 Task 4.8** | Permission state keyed by nodeId | ❌ MOVED — Phase 4 Task 4.8b |
+| 3.10 | Route tests: grant/revoke/check endpoints use nodeId payloads; ancestor-inheritance tests (depth 0, 1, N) | Permission checks return correct results through closure table traversal | ✅ COMPLETE |
+
+---
+
+### Phase 4: Files Domain Integration + WebDAV Blob Support + Permission Legacy Cleanup
+
+**Dependencies:** Phase 3 (permissions layer node-based), Phase 2 (services ready)
+**Risk Level:** High — replaces current file operation flow; affects all file routes; introduces dual-backend switching; migrates legacy permission callers to nodeId
+
 | Task | Description | Verify |
 |------|-------------|--------|
-| 4.1 | Rewrite MetadataAdapter queries for `permissions_user_paths` and `permissions_user_files`: replace path-based SQL with node_id-based queries; tables already defined in final state by Phase 0 | Adapter returns same results via nodeId lookups |
-| 4.2 | Refactor `domains/permissions/services/aclService.js`: replace path-based lookups (`checkPermissionSync(doc, path, action)`) with node_id-based queries using closure table for folder inheritance | Permission checks return same results as before |
-| 4.3 | Folder permission check: query `node_ancestors` for all ancestors of target node → join with `permissions_user_paths` → find highest-rank match | Ancestor traversal via closure table, not string prefix matching |
-| 4.4 | File permission check: direct lookup in `permissions_user_files` by `file_node_id`; if no match, fall back to folder ancestor check (same as 4.3) | File-level overrides work correctly |
-| 4.5 | Permission grant/revoke: operate on node_ids; when granting on a folder, the closure table handles descendant coverage implicitly at query time (no fan-out INSERT needed) | Grant is O(1); check is O(ancestors) via closure table |
-| 4.6 | Update `permissionFacade.js` and `permissionStore.js`: all external callers use node_id interface | Facade accepts nodeId exclusively |
-| 4.7 | Middleware `permissions.js`: update to resolve principal's access via node_id (requires path→node resolution from request URL) | Authenticated requests pass permission checks |
-| 4.8 | **Client:** Refactor `permissionService.js`: grant/revoke/check payloads send `nodeId` instead of `folderPath`/`path`. Update query params and body fields across all permission endpoints (`/permissions/grant`, `/permissions/revoke`, `/permissions/check`, `/permissions/folder`) | Client sends nodeId in all permission API calls |
-| 4.9 | **Client:** Refactor hooks/utilities that manage permission state: `useSharedManage.js`, `buildPermissionDiff.js`, `collectSubfolderPaths()` — replace path-string Maps with nodeId-based state; remove string prefix matching (`startsWith`) for ancestor checks | Permission state keyed by nodeId |
-| 4.10 | Update `domains/permissions/routes/__tests__/permissions.test.js`: grant/revoke/check endpoints use nodeId payloads; add ancestor-inheritance tests (grant on folder → child/grandchild accessible via closure table at depth 0, 1, N) | Permission checks return correct results through closure table traversal |
+| 4.0 | Add WebDAV mode to `blobStorageService`: extend with `WebdavBlobStore` adapter that maps `file_node_id → WebDAV path` via `file_nodes` tree; `uploadBlob` = WebDAV PUT, `downloadBlob` = WebDAV GET. Factory selects S3BlobStore or WebdavBlobStore based on `WEA_FILE_STORAGE`. | Both S3 and WebDAV modes pass blobStorageService tests identically |
+| 4.1 | Refactor `domains/files/services/fileService.js`: replace direct WebDAV calls with service layer (`fileNodeService` + `blobStorageService`). The factory now injects the Phase 2 services instead of raw WebDAV adapter. | File CRUD via new service works identically; no behavioral regression |
+| 4.2 | Update `listDirectoryWithPermissions`: source children from `file_nodes` (DB query) instead of remote listing; enrich with permissions from node_id-based permission store (Phase 3 artifact); **return `nodeId` in response objects** | Response format matches existing API contract; includes nodeId |
+| 4.3 | Update upload flow: new files create `file_nodes` row + storage blob atomically (via uploadService). WebDAV mode uses synchronous WebDAV PUT inside TX boundary; S3 mode follows Phase 2 4-step flow. | Upload creates DB entry before blob write in both modes |
+| 4.4 | Update download flow: resolve path→nodeId→object_map→S3 key or WebDAV path | Download returns same content as before in both backends |
+| 4.5 | Update rename/move/delete: DB-only operations for metadata; storage adapter handles physical move (WebDAV MKCOL/MOVE) or no-op (S3, blob stays put). Fail-safe: on WebDAV operation failure, mark `sync_status='orphaned_node'`. | Rename is instant DB update in S3 mode; fail-safe test simulates WebDAV error → orphaned status set |
+| 4.6 | Batch operations (copy/move/delete): adapt to node-based model — copy = new file_nodes row + new object_map entry referencing same s3_key; delete = recursive descendant removal via closure table. **Migrate sync checkers** (`buildSync*Checker`) to async nodeId checks in `batchOperationService.js` and `downloadService.js` | Bulk ops work on node IDs; no sync checker usage remains |
+| 4.7 | Copy-on-write for S3 mode: copying a file creates new `file_nodes` + `object_map` pointing to the SAME `s3_key` (read-only share); mutation triggers actual blob copy | Two nodes, one blob, zero storage waste |
+| 4.8 | Update file routes (`crud.js`, `batch.js`, `preview.js`, `folders.js`): accept `nodeId` in request payloads; **return `nodeId` + display path in responses**. No path-based compatibility layer — FsJSON is deprecated, all backends are DB-driven. | API accepts/returns nodeId; path strings are display-only |
+| 4.8a | **Client:** Refactor `permissionService.js` — grant/revoke/check payloads send `nodeId` instead of `folderPath`/`path`; remove `includeSubfolders` (server handles via closure table) | Client sends nodeId in all permission API calls |
+| 4.8b | **Client:** Refactor `useSharedManage.js` (replace `targetPath` → `targetNodeId`), `buildPermissionDiff.js` (nodeId Maps), remove `collectSubfolderPaths()` + simplify `shareTargetPermissionSaveUseCase.js`, rewrite `sharePermissionGateway.js` + `permissionRequestService.js` | Permission state keyed by nodeId; no path-string references |
+| 4.8c | Migrate `fileService.js` sync checkers to async nodeId checks: replace `checkPermissionSync(doc, path)` with `aclService.checkFolderPermission(userId, nodeId, perm)` | No sync checker usage in fileService |
+| 4.8d | Remove path-based compat layer from `permissionPolicy.js` (lines 112-260): delete `canReadFolder`, `canWriteFolder`, `canGrantPermission`, `buildSync*Checker` etc. Keep only `can*Node` functions | `permissionPolicy.js` reduced from 307 to ~100 lines |
+| 4.8e | Remove or rewrite `permissionFacade.js` + `models/Permission.js`: delete both files or rewrite as thin nodeId pass-through; update all 15 production callers to use `permissionStore` or `aclService` directly | Files deleted or contain only nodeId methods |
+| 4.8f | Remove sync checker re-exports from `aclService.js` (lines 14-19) + remove `canAccessPath` | `aclService.js` contains only nodeId-based methods |
+| 4.8g | Remove `ownerNodeResolver.js` backward-compat path helpers (`userRootPath`, `isOwnerPath`, `getHomeOwnerUserIdForPath`) — **only if** all callers migrated to nodeId-based `isOwnerNode` | No path-based owner detection remains |
+| 4.8h | Rewrite client tests: `permissionService.test.js` (nodeId fixtures), `buildPermissionDiff.test.js` (nodeId Maps), remove `folderUtils.test.js` | All client permission tests pass with nodeId |
+| 4.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
+| 4.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
 
 ---
 
 ### Phase 5: Sharing & RecentFiles → Node ID
 
-**Dependencies:** Phase 2 (fileNodeService), Phase 0 (schema)
-**Risk Level:** Medium — server-side is self-contained, but client-side changes touch multiple services and utilities across the sharing/recentFiles domain. No parallel execution with Phase 4 due to shared dependency on `fileNodeService`.
+**Dependencies:** Phase 2 (fileNodeService), Phase 3 (permissions node-based), Phase 0 (schema)
+**Risk Level:** Medium — server-side is self-contained, but client-side changes touch multiple services and utilities across the sharing/recentFiles domain. No parallel execution with Phase 3/4 due to shared dependency on `fileNodeService` and sequential phase rule.
 
 | Task | Description | Verify |
 |------|-------------|--------|
@@ -460,10 +475,10 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 |------|-------------|--------|
 | 7.1 | Remove path-based branches from `recentFilesStore.js` | Recent files resolve via nodeId exclusively |
 | 7.2 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
-| 7.3 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`); replace with node_id versions everywhere | No path-string permission checks remain in source |
-| 7.4 | Clean up `store/permissionStore.js` (1290 lines → split into adapter-per-node queries): all backend branching now in MetadataAdapter; store file is thin wrapper | Store file ≤ 300 lines |
+| 7.3 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`) from any remaining callers; verify Phase 4 Task 4.8d-4.8g completed all permission legacy cleanup | No path-string permission checks remain in source |
+| 7.4 | Clean up `store/permissionStore.js` (reduce line count): remove `getPermissionDoc`, `getSharePermissionDoc`, cache Maps if not yet removed in Phase 4 Task 4.8e; store file is thin wrapper around direct SQL | Store file ≤ 300 lines |
 | 7.5 | **Client:** Delete path-mutation helpers from `client/src/utils/recentFiles.js`: `updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`, `removeMultiplePaths` — no longer needed with nodeId references | Zero imports of removed helpers across client codebase |
-| 7.6 | **Client:** Remove path-string state management from permission utilities: delete path-based Maps in `buildPermissionDiff.js`; replace string prefix matching (`startsWith`) with nodeId ancestor queries via server API | Permission state uses nodeId exclusively; no path-string traversal remains |
+| 7.6 | **Client:** Remove any remaining path-string state from permission utilities: verify Phase 4 Tasks 4.8a-4.8b completed `buildPermissionDiff.js` nodeId migration; remove any residual path-based Maps or `startsWith` matching | Permission state uses nodeId exclusively; no path-string traversal remains |
 
 ---
 
@@ -531,22 +546,23 @@ Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios ha
 ## Execution Order
 
 ```
-Phase 0 (Schema Migration) ───────────────────────────────┐
-                                                           ├→ Phase 1 (S3 Blob Store)
-Phase 2 (Core Services) ← depends on 0 + 1                 │
-        ↓                                                   │
-Phase 3 (Files Domain Integration)                          │
-        ↓                                                   │
-Phase 4 (Permissions → Node ID) ─────────┐                  │
-Phase 5 (Sharing & RecentFiles → Node)   │                  │
-                                          ├→ Phase 6        │
-                                          │(GC + Fail-safe) │
-                                          │       ↓         │
-                                          │   Phase 7       │
-                                          │(Legacy Remove)  │
-                                          │       ↓          │
-                                          └───▶ Phase 8 ◀───┘
-                                              (Full Test Suite)
+Phase 0 (Schema Migration)
+        ↓
+Phase 1 (S3 Blob Store)
+        ↓
+Phase 2 (Core Services)
+        ↓
+Phase 3 (Permissions → Node ID) — complete; client deferred to Phase 4
+        ↓
+Phase 4 (Files Domain + Permission Legacy Cleanup + Client Migration)
+        ↓
+Phase 5 (Sharing & RecentFiles → Node)
+        ↓
+Phase 6 (GC + Fail-safe)
+        ↓
+Phase 7 (Legacy Remove)
+        ↓
+Phase 8 (Full Test Suite)
 ```
 
 ---
@@ -590,7 +606,7 @@ After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migrat
 10. **Adapter isolation in service layer.** S3BlobStore, CacheAdapter, MetadataAdapter are internal implementation details. Service functions must not expose adapter types or storage-specific APIs to route handlers. Route handlers call only domain operations (uploadFile, listDirectory, etc.), never raw adapter methods.
 11. **Synchronous upload flow.** The upload sequence (DB INSERT → S3 PUT → DB UPDATE) runs synchronously within a single request. No background job queue for uploads. Failure at any step leaves traceable state (`sync_status`, `object_map.status`) for recovery.
 12. **FsJSON + webdav metadata deprecation.** FsJSON backend (`WEA_STORAGE_BACKEND=fs`) and webdav metadata backend (`WEA_STORAGE_BACKEND=webdav`) are both removed in Phase 0 (Task 0.6). All deployments must use PostgreSQL or SQLite for metadata storage. The `WEA_FILE_STORAGE=webdav` option for file content/blob storage remains supported — only the metadata layer is affected.
-13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase (see Phase 4 tasks 4.8-4.9, Phase 5 tasks 5.6-5.7).
+13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase (see Phase 4 tasks 4.8a-4.8b, Phase 5 tasks 5.4-5.5).
 14. **Multi-backend test execution.** From Phase 8 onward, all server tests run against both SQLite and S3+PG backends. FsJSON backend tests are removed after Phase 7 cleanup. Test backend selection is controlled by `WEA_STORAGE_BACKEND` and `WEA_FILE_STORAGE` environment variables.
 15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards without modification.
 16. **Test data isolation per backend mode.** SQLite in-memory DB and MinIO buckets are initialized fresh by `global-setup.ts` for each test suite run and cleaned up by `global-teardown.ts`. No state sharing occurs between tests or backend modes.

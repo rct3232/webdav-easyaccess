@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Permission API: list by user/folder, grant, revoke, check effective permission, file-level permissions. |
+| Role | Permission API: list by user/folder, grant, revoke, check effective permission, file-level permissions. All operations use `nodeId` (BIGINT) instead of path strings. |
 
 ---
 
@@ -20,15 +20,16 @@
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
 | getUserPermissions | (userId, options?) | Promise\<Array\> | GET /api/permissions/user/:userId |
-| getFolderPermissions | (path, includeSubfolders?, filePath?) | Promise\<Array\> | GET /api/permissions/folder |
-| grantPermission | ({ userId, folderPath, permission, target? }) | Promise\<void\> | POST /api/permissions/grant |
-| revokePermission | ({ userId, folderPath, includeSubfolders?, scope? }) | Promise\<void\> | DELETE /api/permissions/revoke |
-| checkPermission | (path) | Promise\<Object\> | GET /api/permissions/check |
-| listFilePermissions | (folderPath?) | Promise\<Array\> | GET /api/permissions/file/list |
+| getFolderPermissions | (nodeId, fileNodeId?) | Promise\<Array\> | GET /api/permissions/folder |
+| grantPermission | ({ userId, nodeId, permission, targetType? }) | Promise\<void\> | POST /api/permissions/grant |
+| revokePermission | ({ userId, nodeId, scope? }) | Promise\<void\> | DELETE /api/permissions/revoke |
+| checkPermission | (nodeId) | Promise\<Object\> | GET /api/permissions/check |
+| listFilePermissions | (nodeId?) | Promise\<Array\> | GET /api/permissions/file/list |
 | clearUserPermissionsCache | (userId?) | void | - |
 
-- target: 'file' for file-level grant
-- scope: 'pathOnly' for file-level revoke
+- `targetType`: `'file'` for file-level grant; defaults to `'directory'`
+- `scope`: `'pathOnly'` for file-level revoke
+- `includeSubfolders` removed from all signatures — server handles descendant coverage via closure table at query time
 
 ### 2.3 getUserPermissions shared request path
 
@@ -56,6 +57,7 @@
 - [ ] repeated `getUserPermissions` call within TTL returns cached result
 - [ ] `forceRefresh` triggers fresh HTTP request
 - [ ] grant/revoke invalidates affected user permission cache entry
-- [ ] grantPermission with target 'file' for file permission
-- [ ] revokePermission with scope 'pathOnly' for file
+- [ ] grantPermission with targetType 'file' grants file-level permission
+- [ ] revokePermission with scope 'pathOnly' revokes file-level only
 - [ ] checkPermission returns hasRead, hasWrite, source
+- [ ] All payloads send `nodeId` (BIGINT) instead of path strings

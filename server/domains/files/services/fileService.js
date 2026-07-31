@@ -10,7 +10,7 @@ const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService'
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError } = require('../../../utils/errorHandler');
 const { buildSyncWriteChecker, buildSyncReadChecker, buildSyncWriteFileByParentChecker, buildSyncReadFileChecker, isOwnerPath } = require('../../../domains/permissions/services/aclService');
-const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerPathResolver');
+const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerNodeResolver');
 
 async function _isDirectoryPath(webdavPath, webdav) {
   try {

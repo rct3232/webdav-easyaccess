@@ -4,14 +4,15 @@ const {
 } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-const { META_ROOT } = require('../../../store/metaPaths');
-const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('../../../store/storage');
-const { withLock } = require('../../../store/locks');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const {
+  getBackend,
+  withTransaction,
+  getPgPool,
+  isSqliteBackend,
+  withSqliteTransaction,
+} = require('../../../store/storage');
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { nowIso, safeJsonParse, toIsoString } = require('../../../utils/sharedHelpers');
-
-const PERMISSION_REQUESTS_PATH = `${META_ROOT}/permission_requests.json`;
+const { toIsoString } = require('../../../utils/sharedHelpers');
 
 function normalizePermission(p) {
   if (p === PERMISSIONS.READ || p === PERMISSIONS.WRITE) return p;
@@ -22,10 +23,6 @@ function normalizeStatus(s) {
   return PERMISSION_REQUEST_STATUS.isValid(s) ? s : null;
 }
 
-function isPostgresqlBackend() {
-  return getBackend() === 'postgresql';
-}
-
 function mapPermissionRequestRow(row) {
   if (!row) return null;
   return {
@@ -34,101 +31,15 @@ function mapPermissionRequestRow(row) {
     requester_username: row.requester_username || '',
     owner_id: Number(row.owner_id),
     owner_username: row.owner_username || '',
-    folder_path: row.folder_path ? normalizePath(row.folder_path) : null,
-    file_path: row.file_path ? normalizePath(row.file_path) : null,
-    target_type: row.target_type,
+    file_node_id: Number(row.file_node_id),
     requested_permission: row.requested_permission,
     status: row.status,
     message: row.message || '',
     created_at: toIsoString(row.created_at),
     resolved_at: toIsoString(row.resolved_at),
-    resolved_by: Number.isInteger(row.resolved_by) ? row.resolved_by : (row.resolved_by == null ? null : Number(row.resolved_by)),
-  };
-}
-
-async function ensurePermissionRequestsFile() {
-  if (isPostgresqlBackend()) return;
-  await ensureDir(META_ROOT);
-  if (!(await exists(PERMISSION_REQUESTS_PATH))) {
-    const initial = {
-      nextId: 1,
-      requests: [],
-      updated_at: nowIso(),
-    };
-    await writeFile(PERMISSION_REQUESTS_PATH, JSON.stringify(initial, null, 2), {
-      overwrite: true,
-      contentType: 'application/json; charset=utf-8',
-    });
-  }
-}
-
-async function readDoc() {
-  await ensurePermissionRequestsFile();
-  const buf = await readFile(PERMISSION_REQUESTS_PATH);
-  const text = Buffer.from(buf).toString('utf8');
-  const parsed = safeJsonParse(text);
-
-  if (
-    parsed &&
-    typeof parsed === 'object' &&
-    Number.isInteger(parsed.nextId) &&
-    Array.isArray(parsed.requests)
-  ) {
-    return parsed;
-  }
-
-  // Reset if corrupted
-  const fallback = {
-    nextId: 1,
-    requests: [],
-    updated_at: nowIso(),
-  };
-  await writeFile(PERMISSION_REQUESTS_PATH, JSON.stringify(fallback, null, 2), {
-    overwrite: true,
-    contentType: 'application/json; charset=utf-8',
-  });
-  return fallback;
-}
-
-async function writeDoc(doc) {
-  doc.updated_at = nowIso();
-  await writeFile(PERMISSION_REQUESTS_PATH, JSON.stringify(doc, null, 2), {
-    overwrite: true,
-    contentType: 'application/json; charset=utf-8',
-  });
-}
-
-const TARGET_TYPE = { FOLDER: 'folder', FILE: 'file' };
-
-function sanitizeRequest(r) {
-  if (!r || typeof r !== 'object') return null;
-  const id = Number.isInteger(r.id) ? r.id : null;
-  const requester_id = Number.isInteger(r.requester_id) ? r.requester_id : null;
-  const owner_id = Number.isInteger(r.owner_id) ? r.owner_id : null;
-  const folder_path = typeof r.folder_path === 'string' ? normalizePath(r.folder_path) : null;
-  const file_path = typeof r.file_path === 'string' ? normalizePath(r.file_path) : null;
-  const target_type = r.target_type === TARGET_TYPE.FILE ? TARGET_TYPE.FILE : TARGET_TYPE.FOLDER;
-  const requested_permission = normalizePermission(r.requested_permission);
-  const status = normalizeStatus(r.status);
-
-  if (!id || !requester_id || !owner_id || !requested_permission || !status) return null;
-  if (!folder_path && !file_path) return null;
-
-  return {
-    id,
-    requester_id,
-    requester_username: typeof r.requester_username === 'string' ? r.requester_username : '',
-    owner_id,
-    owner_username: typeof r.owner_username === 'string' ? r.owner_username : '',
-    folder_path: folder_path || null,
-    file_path: file_path || null,
-    target_type,
-    requested_permission,
-    status,
-    message: typeof r.message === 'string' ? r.message : '',
-    created_at: typeof r.created_at === 'string' ? r.created_at : '',
-    resolved_at: typeof r.resolved_at === 'string' ? r.resolved_at : '',
-    resolved_by: Number.isInteger(r.resolved_by) ? r.resolved_by : null,
+    resolved_by:
+      row.resolved_by == null ? null : Number(row.resolved_by),
+    targetType: row.target_type || null,
   };
 }
 
@@ -137,8 +48,7 @@ async function createRequest({
   requesterUsername,
   ownerId,
   ownerUsername,
-  folderPath,
-  filePath,
+  fileNodeId,
   requestedPermission,
   message = '',
 }) {
@@ -147,16 +57,14 @@ async function createRequest({
     throw createError(SERVER_ERROR_CODES.permissionRequests.invalidPermission, 400);
   }
 
-  const isFileRequest = typeof filePath === 'string' && filePath.trim() !== '';
-  const folder_path = isFileRequest ? null : (folderPath ? normalizePath(folderPath) : null);
-  const file_path = isFileRequest ? normalizePath(filePath) : null;
-  const target_type = isFileRequest ? TARGET_TYPE.FILE : TARGET_TYPE.FOLDER;
-
-  if (!isFileRequest && !folder_path) {
-    throw createError(SERVER_ERROR_CODES.permissionRequests.folderOrFileRequired, 400);
+  if (!fileNodeId || !Number.isInteger(fileNodeId)) {
+    throw createError(
+      SERVER_ERROR_CODES.permissionRequests.folderOrFileRequired,
+      400
+    );
   }
 
-  if (isPostgresqlBackend()) {
+  if (getBackend() === 'postgresql') {
     try {
       return await withTransaction(async (client) => {
         const existing = await client.query(
@@ -165,23 +73,16 @@ async function createRequest({
             WHERE requester_id = $1
               AND owner_id = $2
               AND requested_permission = $3
-              AND status = $4
-              AND target_type = $5
-              AND (
-                ($5 = 'file' AND file_path = $6)
-                OR
-                ($5 = 'folder' AND folder_path = $7)
-              )
+              AND file_node_id = $4
+              AND status = $5
             ORDER BY created_at DESC
             LIMIT 1`,
           [
             Number(requesterId),
             Number(ownerId),
             perm,
+            Number(fileNodeId),
             PERMISSION_REQUEST_STATUS.PENDING,
-            target_type,
-            file_path,
-            folder_path,
           ]
         );
         if (existing.rows.length > 0) {
@@ -194,28 +95,20 @@ async function createRequest({
              requester_username,
              owner_id,
              owner_username,
-             target_type,
-             folder_path,
-             file_path,
+             file_node_id,
              requested_permission,
              status,
-             message,
-             created_at,
-             resolved_at,
-             resolved_by
+             message
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NULL,NULL)
+           VALUES ($1,$2,$3,$4,$5,$6,'pending',$7)
            RETURNING *`,
           [
             Number(requesterId),
             requesterUsername || '',
             Number(ownerId),
             ownerUsername || '',
-            target_type,
-            folder_path,
-            file_path,
+            Number(fileNodeId),
             perm,
-            PERMISSION_REQUEST_STATUS.PENDING,
             typeof message === 'string' ? message : '',
           ]
         );
@@ -235,25 +128,16 @@ async function createRequest({
             WHERE requester_id = ?
               AND owner_id = ?
               AND requested_permission = ?
+              AND file_node_id = ?
               AND status = ?
-              AND target_type = ?
-              AND (
-                (? = 'file' AND file_path = ?)
-                OR
-                (? = 'folder' AND folder_path = ?)
-              )
             ORDER BY created_at DESC
             LIMIT 1`,
           [
             Number(requesterId),
             Number(ownerId),
             perm,
+            Number(fileNodeId),
             PERMISSION_REQUEST_STATUS.PENDING,
-            target_type,
-            target_type,
-            file_path,
-            target_type,
-            folder_path,
           ]
         );
         if (existing.rows.length > 0) {
@@ -266,28 +150,20 @@ async function createRequest({
              requester_username,
              owner_id,
              owner_username,
-             target_type,
-             folder_path,
-             file_path,
+             file_node_id,
              requested_permission,
              status,
-             message,
-             created_at,
-             resolved_at,
-             resolved_by
+             message
            )
-           VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,NULL,NULL)
+           VALUES (?,?,?,?,?,?, 'pending', ?)
            RETURNING *`,
           [
             Number(requesterId),
             requesterUsername || '',
             Number(ownerId),
             ownerUsername || '',
-            target_type,
-            folder_path,
-            file_path,
+            Number(fileNodeId),
             perm,
-            PERMISSION_REQUEST_STATUS.PENDING,
             typeof message === 'string' ? message : '',
           ]
         );
@@ -298,63 +174,22 @@ async function createRequest({
     }
   }
 
-  return await withLock('permission_requests', async () => {
-    const doc = await readDoc();
-    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
-
-    // De-dupe: existing pending for same tuple
-    const existing = doc.requests
-      .map(sanitizeRequest)
-      .filter(Boolean)
-      .find(
-        (r) =>
-          r.status === PERMISSION_REQUEST_STATUS.PENDING &&
-          r.requester_id === requesterId &&
-          r.owner_id === ownerId &&
-          r.requested_permission === perm &&
-          (isFileRequest
-            ? r.file_path === file_path
-            : r.folder_path === folder_path)
-      );
-
-    if (existing) {
-      return existing;
-    }
-
-    const id = Number.isInteger(doc.nextId) ? doc.nextId : 1;
-    doc.nextId = id + 1;
-
-    const created = {
-      id,
-      requester_id: requesterId,
-      requester_username: requesterUsername || '',
-      owner_id: ownerId,
-      owner_username: ownerUsername || '',
-      folder_path,
-      file_path: file_path || null,
-      target_type,
-      requested_permission: perm,
-      status: PERMISSION_REQUEST_STATUS.PENDING,
-      message: typeof message === 'string' ? message : '',
-      created_at: nowIso(),
-      resolved_at: '',
-      resolved_by: null,
-    };
-
-    doc.requests.push(created);
-    await writeDoc(doc);
-    return created;
-  });
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function getById(id) {
-  if (isPostgresqlBackend()) {
+  if (getBackend() === 'postgresql') {
     try {
       const pool = getPgPool();
       const res = await pool.query(
-        `SELECT *
-           FROM permission_requests
-          WHERE id = $1
+        `SELECT pr.*, fn.type AS target_type
+           FROM permission_requests pr
+           JOIN file_nodes fn ON fn.id = pr.file_node_id
+          WHERE pr.id = $1
           LIMIT 1`,
         [Number(id)]
       );
@@ -368,9 +203,10 @@ async function getById(id) {
     try {
       return await withSqliteTransaction(async (client) => {
         const res = await client.query(
-          `SELECT *
-             FROM permission_requests
-            WHERE id = ?
+          `SELECT pr.*, fn.type AS target_type
+             FROM permission_requests pr
+             JOIN file_nodes fn ON fn.id = pr.file_node_id
+            WHERE pr.id = ?
             LIMIT 1`,
           [Number(id)]
         );
@@ -381,27 +217,31 @@ async function getById(id) {
     }
   }
 
-  const doc = await readDoc();
-  const req = (doc.requests || []).map(sanitizeRequest).filter(Boolean).find((r) => r.id === Number(id));
-  return req || null;
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function listInbox(ownerId, { status } = {}) {
-  if (isPostgresqlBackend()) {
-    const normalizedStatus = status ? normalizeStatus(status) : null;
+  const normalizedStatus = status ? normalizeStatus(status) : null;
+
+  if (getBackend() === 'postgresql') {
     try {
       const pool = getPgPool();
       const params = [Number(ownerId)];
       let whereStatusSql = '';
       if (normalizedStatus) {
         params.push(normalizedStatus);
-        whereStatusSql = ` AND status = $2`;
+        whereStatusSql = ` AND pr.status = $2`;
       }
       const res = await pool.query(
-        `SELECT *
-           FROM permission_requests
-          WHERE owner_id = $1${whereStatusSql}
-          ORDER BY created_at DESC`,
+        `SELECT pr.*, fn.type AS target_type
+           FROM permission_requests pr
+           JOIN file_nodes fn ON fn.id = pr.file_node_id
+          WHERE pr.owner_id = $1${whereStatusSql}
+          ORDER BY pr.created_at DESC`,
         params
       );
       return res.rows.map(mapPermissionRequestRow);
@@ -411,20 +251,22 @@ async function listInbox(ownerId, { status } = {}) {
   }
 
   if (isSqliteBackend()) {
-    const normalizedStatus = status ? normalizeStatus(status) : null;
     try {
       return await withSqliteTransaction(async (client) => {
         const params = [Number(ownerId)];
         let whereStatusSql = '';
+        let paramPlaceholder = '?';
         if (normalizedStatus) {
           params.push(normalizedStatus);
-          whereStatusSql = ` AND status = ?`;
+          whereStatusSql = ' AND pr.status = ?';
+          paramPlaceholder = '?';
         }
         const res = await client.query(
-          `SELECT *
-             FROM permission_requests
-            WHERE owner_id = ?${whereStatusSql}
-            ORDER BY created_at DESC`,
+          `SELECT pr.*, fn.type AS target_type
+             FROM permission_requests pr
+             JOIN file_nodes fn ON fn.id = pr.file_node_id
+            WHERE pr.owner_id = ${paramPlaceholder}${whereStatusSql}
+            ORDER BY pr.created_at DESC`,
           params
         );
         return res.rows.map(mapPermissionRequestRow);
@@ -434,32 +276,31 @@ async function listInbox(ownerId, { status } = {}) {
     }
   }
 
-  const doc = await readDoc();
-  const normalizedStatus = status ? normalizeStatus(status) : null;
-  return (doc.requests || [])
-    .map(sanitizeRequest)
-    .filter(Boolean)
-    .filter((r) => r.owner_id === Number(ownerId))
-    .filter((r) => (normalizedStatus ? r.status === normalizedStatus : true))
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function listOutbox(requesterId, { status } = {}) {
-  if (isPostgresqlBackend()) {
-    const normalizedStatus = status ? normalizeStatus(status) : null;
+  const normalizedStatus = status ? normalizeStatus(status) : null;
+
+  if (getBackend() === 'postgresql') {
     try {
       const pool = getPgPool();
       const params = [Number(requesterId)];
       let whereStatusSql = '';
       if (normalizedStatus) {
         params.push(normalizedStatus);
-        whereStatusSql = ` AND status = $2`;
+        whereStatusSql = ` AND pr.status = $2`;
       }
       const res = await pool.query(
-        `SELECT *
-           FROM permission_requests
-          WHERE requester_id = $1${whereStatusSql}
-          ORDER BY created_at DESC`,
+        `SELECT pr.*, fn.type AS target_type
+           FROM permission_requests pr
+           JOIN file_nodes fn ON fn.id = pr.file_node_id
+          WHERE pr.requester_id = $1${whereStatusSql}
+          ORDER BY pr.created_at DESC`,
         params
       );
       return res.rows.map(mapPermissionRequestRow);
@@ -469,20 +310,20 @@ async function listOutbox(requesterId, { status } = {}) {
   }
 
   if (isSqliteBackend()) {
-    const normalizedStatus = status ? normalizeStatus(status) : null;
     try {
       return await withSqliteTransaction(async (client) => {
         const params = [Number(requesterId)];
         let whereStatusSql = '';
         if (normalizedStatus) {
           params.push(normalizedStatus);
-          whereStatusSql = ` AND status = ?`;
+          whereStatusSql = ' AND pr.status = ?';
         }
         const res = await client.query(
-          `SELECT *
-             FROM permission_requests
-            WHERE requester_id = ?${whereStatusSql}
-            ORDER BY created_at DESC`,
+          `SELECT pr.*, fn.type AS target_type
+             FROM permission_requests pr
+             JOIN file_nodes fn ON fn.id = pr.file_node_id
+            WHERE pr.requester_id = ?${whereStatusSql}
+            ORDER BY pr.created_at DESC`,
           params
         );
         return res.rows.map(mapPermissionRequestRow);
@@ -492,14 +333,11 @@ async function listOutbox(requesterId, { status } = {}) {
     }
   }
 
-  const doc = await readDoc();
-  const normalizedStatus = status ? normalizeStatus(status) : null;
-  return (doc.requests || [])
-    .map(sanitizeRequest)
-    .filter(Boolean)
-    .filter((r) => r.requester_id === Number(requesterId))
-    .filter((r) => (normalizedStatus ? r.status === normalizedStatus : true))
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function updateStatus(id, { status, resolvedBy } = {}) {
@@ -508,18 +346,18 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     throw createError(SERVER_ERROR_CODES.permissionRequests.invalidStatus, 400);
   }
 
-  if (isPostgresqlBackend()) {
+  if (getBackend() === 'postgresql') {
     try {
       return await withTransaction(async (client) => {
         const existing = await client.query(
-          `SELECT id
-             FROM permission_requests
-            WHERE id = $1
-            LIMIT 1`,
+          `SELECT id FROM permission_requests WHERE id = $1 LIMIT 1`,
           [Number(id)]
         );
         if (existing.rows.length === 0) {
-          throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
+          throw createError(
+            SERVER_ERROR_CODES.permissionRequests.requestNotFound,
+            404
+          );
         }
 
         const updated = await client.query(
@@ -547,14 +385,14 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     try {
       return await withSqliteTransaction(async (client) => {
         const existing = await client.query(
-          `SELECT id
-             FROM permission_requests
-            WHERE id = ?
-            LIMIT 1`,
+          `SELECT id FROM permission_requests WHERE id = ? LIMIT 1`,
           [Number(id)]
         );
         if (existing.rows.length === 0) {
-          throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
+          throw createError(
+            SERVER_ERROR_CODES.permissionRequests.requestNotFound,
+            404
+          );
         }
 
         const updated = await client.query(
@@ -581,41 +419,19 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
     }
   }
 
-  return await withLock('permission_requests', async () => {
-    const doc = await readDoc();
-    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
-
-    const idx = doc.requests.findIndex((r) => r && Number(r.id) === Number(id));
-    if (idx === -1) {
-      throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
-    }
-
-    const current = sanitizeRequest(doc.requests[idx]);
-    if (!current) {
-      // If corrupted entry, treat as not found
-      throw createError(SERVER_ERROR_CODES.permissionRequests.requestNotFound, 404);
-    }
-
-    const updated = {
-      ...current,
-      status: nextStatus,
-      resolved_at: nextStatus === PERMISSION_REQUEST_STATUS.PENDING ? '' : nowIso(),
-      resolved_by: nextStatus === PERMISSION_REQUEST_STATUS.PENDING ? null : (Number.isInteger(resolvedBy) ? resolvedBy : null),
-    };
-
-    doc.requests[idx] = updated;
-    await writeDoc(doc);
-    return updated;
-  });
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function deleteByRequesterId(userId) {
-  if (isPostgresqlBackend()) {
+  if (getBackend() === 'postgresql') {
     try {
       return await withTransaction(async (client) => {
         const deleted = await client.query(
-          `DELETE FROM permission_requests
-            WHERE requester_id = $1`,
+          `DELETE FROM permission_requests WHERE requester_id = $1`,
           [Number(userId)]
         );
         return { deletedCount: Number(deleted.rowCount || 0) };
@@ -643,27 +459,15 @@ async function deleteByRequesterId(userId) {
     }
   }
 
-  return await withLock('permission_requests', async () => {
-    const doc = await readDoc();
-    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
-
-    const initialCount = doc.requests.length;
-    doc.requests = doc.requests.filter((r) => {
-      const sanitized = sanitizeRequest(r);
-      return !sanitized || sanitized.requester_id !== Number(userId);
-    });
-
-    const deletedCount = initialCount - doc.requests.length;
-    if (deletedCount > 0) {
-      await writeDoc(doc);
-    }
-
-    return { deletedCount };
-  });
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
 }
 
 async function rejectByOwnerId(userId, resolvedBy = null) {
-  if (isPostgresqlBackend()) {
+  if (getBackend() === 'postgresql') {
     try {
       return await withTransaction(async (client) => {
         const rejected = await client.query(
@@ -715,36 +519,18 @@ async function rejectByOwnerId(userId, resolvedBy = null) {
     }
   }
 
-  return await withLock('permission_requests', async () => {
-    const doc = await readDoc();
-    doc.requests = Array.isArray(doc.requests) ? doc.requests : [];
+  throw createError(
+    SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
+    500,
+    { reason: 'unsupported_backend' }
+  );
+}
 
-    let rejectedCount = 0;
-    const now = nowIso();
-
-    for (let i = 0; i < doc.requests.length; i++) {
-      const sanitized = sanitizeRequest(doc.requests[i]);
-      if (sanitized && sanitized.owner_id === Number(userId) && sanitized.status === PERMISSION_REQUEST_STATUS.PENDING) {
-        doc.requests[i] = {
-          ...sanitized,
-          status: PERMISSION_REQUEST_STATUS.REJECTED,
-          resolved_at: now,
-          resolved_by: Number.isInteger(resolvedBy) ? resolvedBy : null,
-        };
-        rejectedCount++;
-      }
-    }
-
-    if (rejectedCount > 0) {
-      await writeDoc(doc);
-    }
-
-    return { rejectedCount };
-  });
+async function ensurePermissionRequestsFile() {
+  // No-op: FsJSON deprecated. PostgreSQL/SQLite manage schema via DDL.
 }
 
 module.exports = {
-  PERMISSION_REQUESTS_PATH,
   ensurePermissionRequestsFile,
   createRequest,
   getById,
@@ -754,4 +540,3 @@ module.exports = {
   deleteByRequesterId,
   rejectByOwnerId,
 };
-

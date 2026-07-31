@@ -3,24 +3,25 @@ const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const PermissionFacade = require('../services/permissionFacade');
-const { normalizePath, getParentPath } = require('@webdav-easyaccess/shared/pathUtils');
-const { canReadFile, canGrantPermission, canRevokePermission, canViewPermissions } = require('../policy/permissionPolicy');
+const permissionStore = require('../stores/permissionStore');
+const { canGrantPermissionNode, canRevokePermissionNode, canViewPermissionsNode } = require('../policy/permissionPolicy');
 const requireUser = require('../../../middleware/requireUser');
-const normalizePathParam = require('../../../middleware/normalizePathParam');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
 const User = require('../../../models/User');
+const { createFileNodesStore } = require('../../../store/fileNodesStore');
 const {
   getExistenceState,
   makeUserPermissionsEtag,
   queueReconciliation,
 } = require('../stores/permissionExistenceIndex');
 
-// Grant permission (folder or file; use target: 'file' for file-level)
-router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  const { userId, folderPath, permission, target } = req.body;
+const fileNodesStore = createFileNodesStore();
 
-  if (!userId || !folderPath || !permission) {
+// Grant permission (directory-level; nodeId-based)
+router.post('/grant', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { userId, nodeId, permission } = req.body;
+
+  if (!userId || !nodeId || !permission) {
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
@@ -28,62 +29,56 @@ router.post('/grant', authenticateToken, requireUser, normalizePathParam, asyncH
     throw validationError(SERVER_ERROR_CODES.permissionRequests.invalidPermission);
   }
 
-  const user = req.user.full;
-  const isFile = target === 'file';
-  const pathForCheck = isFile ? getParentPath(normalizePath(folderPath)) : folderPath;
+ const node = await fileNodesStore.getNode(nodeId);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound);
+  }
+  if (node.type !== 'directory') {
+    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+  }
 
-  const canGrant = await canGrantPermission(user, pathForCheck, req.user.id);
+  const requestingUserId = req.user.id;
+  const canGrant = await canGrantPermissionNode(requestingUserId, nodeId);
   if (!canGrant) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
-  const options = isFile ? { target: 'file' } : {};
-  await PermissionFacade.grant(userId, folderPath, permission, options);
+  await permissionStore.grant(userId, nodeId, permission);
   res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionGranted });
 }));
 
-// Revoke permission (folder or file; use scope: 'pathOnly' for file-level only)
-router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  const { userId, folderPath, includeSubfolders, scope } = req.query;
+// Revoke permission (nodeId-based)
+router.delete('/revoke', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const userId = req.query.userId;
+  const nodeId = req.query.nodeId;
+  const includeDescendants = req.query.includeDescendants === 'true';
 
-  if (!userId || !folderPath) {
+  if (!userId || !nodeId) {
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
-  const requestingUser = req.user.full;
-  const targetUserId = parseInt(userId, 10);
-  const isPathOnly = scope === 'pathOnly';
-  const pathForCheck = isPathOnly ? getParentPath(normalizePath(folderPath)) : folderPath;
+  const node = await fileNodesStore.getNode(nodeId);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.files.nodeNotFound);
+  }
 
-  const canRevoke = await canRevokePermission(requestingUser, pathForCheck, req.user.id, targetUserId);
+  const requestingUserId = req.user.id;
+  const targetUserId = parseInt(userId, 10);
+  const canRevoke = await canRevokePermissionNode(requestingUserId, nodeId, targetUserId);
   if (!canRevoke) {
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
-  if (isPathOnly) {
-    await PermissionFacade.revoke(userId, folderPath, { scope: 'pathOnly' });
-    return res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
-  }
-
-  const normalizedFolderPath = normalizePath(folderPath);
-  const normalizedFolderPathWithSlash = normalizePath(folderPath, { isDirectory: true });
-
-  if (includeSubfolders === 'true') {
-    const allPermissions = await PermissionFacade.getUserPermissions(userId);
-    const permissionsToRevoke = allPermissions.filter(perm => {
-      const normalizedPermPath = normalizePath(perm.folder_path);
-      return normalizedPermPath === normalizedFolderPath ||
-             (normalizedPermPath.startsWith(normalizedFolderPathWithSlash) &&
-              normalizedPermPath.length > normalizedFolderPathWithSlash.length);
-    });
+  if (includeDescendants) {
+    const descendantIds = await fileNodesStore.getDescendantIds(nodeId);
     const failures = [];
     let deletedCount = 0;
-    for (const perm of permissionsToRevoke) {
+    for (const descId of descendantIds) {
       try {
-        await PermissionFacade.revoke(userId, perm.folder_path);
+        await permissionStore.revoke(userId, descId);
         deletedCount++;
       } catch (error) {
-        failures.push({ path: perm.folder_path, reason: error.message || 'unknown' });
+        failures.push({ nodeId: descId, reason: error.message || 'unknown' });
       }
     }
     return res.json({
@@ -93,11 +88,11 @@ router.delete('/revoke', authenticateToken, requireUser, normalizePathParam, asy
     });
   }
 
-  await PermissionFacade.revoke(userId, folderPath);
+  await permissionStore.revoke(userId, nodeId);
   res.json({ messageCode: SERVER_MESSAGE_CODES.permissions.permissionRevoked });
 }));
 
-// Get user permissions
+// Get user permissions (nodeId-based response)
 router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const userId = req.params.userId;
   const requestingUser = await User.findById(req.user.id);
@@ -110,75 +105,90 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
     throw forbiddenError(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
   }
 
-  const permissionDoc = await PermissionFacade.getPermissionDoc(userId);
-  const permissions = Object.entries(permissionDoc?.permissions || {}).map(([folder_path, permission]) => ({ folder_path, permission }));
-  const responseEtag = makeUserPermissionsEtag(userId, permissionDoc?.updated_at);
+  const rawPermissions = await permissionStore.getUserPermissions(userId);
+  const permissions = rawPermissions.map(p => ({ nodeId: p.file_node_id, permission: p.permission }));
+  const responseEtag = makeUserPermissionsEtag(userId, undefined);
   res.setHeader('ETag', responseEtag);
   const ifNoneMatch = req.headers?.['if-none-match'];
   if (ifNoneMatch && ifNoneMatch === responseEtag) {
     return res.status(304).end();
   }
 
-  const filteredPermissions = permissions.filter((perm) => {
-    const state = getExistenceState(perm.folder_path);
+  // Filter permissions based on node existence; queue reconciliation for unknown states
+  const filteredPermissions = await Promise.all(permissions.map(async (perm) => {
+    try {
+      const node = await fileNodesStore.getNode(perm.nodeId);
+      if (node) {
+        return perm;
+      }
+    } catch { /* ignore */ }
+
+    // Node not found or error — check existence index
+    const state = getExistenceState(String(perm.nodeId));
     if (state === 'exists') {
-      return true;
+      return perm;
     }
     if (state === 'missing') {
-      return false;
+      return null;
     }
-    queueReconciliation(perm.folder_path);
-    return true;
-  });
+    queueReconciliation(String(perm.nodeId));
+    return perm;
+  }));
 
-  res.json(filteredPermissions);
+  res.json(filteredPermissions.filter(Boolean));
 }));
 
-// Get folder permissions
-router.get('/folder', authenticateToken, requireUser, normalizePathParam, asyncHandler(async (req, res) => {
-  let folderPath = req.query.path || '/';
-  const includeSubfolders = req.query.includeSubfolders === 'true';
+// Get folder permissions (nodeId-based)
+router.get('/folder', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const nodeId = req.query.nodeId;
+  const includeDescendants = req.query.includeDescendants === 'true';
+  const fileNodeId = req.query.fileNodeId || undefined;
 
-  folderPath = normalizePath(folderPath);
-
-  const user = req.user.full;
-
-  let canView = await canViewPermissions(user, folderPath, req.user.id);
-  if (!canView) {
-    const filePath = req.query.filePath || undefined;
-    if (filePath) {
-      const normalizedFile = normalizePath(filePath);
-      canView = await canReadFile(req.user.id, normalizedFile, PERMISSIONS.READ);
-    }
+  if (!nodeId) {
+    throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
-  if (!canView) {
+
+  const node = await fileNodesStore.getNode(nodeId);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound);
+  }
+
+  const canView = await canViewPermissionsNode(req.user.id, nodeId);
+  if (!canView && !fileNodeId) {
     throw forbiddenError(SERVER_ERROR_CODES.permissions.viewPermissionsDenied);
+  }
+  if (!canView && fileNodeId) {
+    // Check if user can read the specific file
+    const { checkFilePermission: aclCheckFilePermission } = require('../services/aclService');
+    const hasRead = await aclCheckFilePermission(req.user.id, Number(fileNodeId), PERMISSIONS.READ);
+    if (!hasRead) {
+      throw forbiddenError(SERVER_ERROR_CODES.permissions.viewPermissionsDenied);
+    }
   }
 
   let permissions;
-  if (includeSubfolders) {
-    // Fetch permission info including subfolders
-    // hasPermissionsInPath internally appends / to the path, so pass as-is
-    permissions = await PermissionFacade.hasPermissionsInPath(folderPath);
-
-    // Normalize returned permission paths (remove trailing /)
-    permissions = permissions.map(perm => ({
-      ...perm,
-      folder_path: normalizePath(perm.folder_path)
-    }));
+  if (includeDescendants) {
+    const descendantIds = await fileNodesStore.getDescendantIds(nodeId);
+    // Fetch all permissions for descendant nodes
+    const allPerms = [];
+    for (const descId of descendantIds) {
+      const perms = await permissionStore.getFolderPermissions(descId, fileNodeId ? Number(fileNodeId) : undefined);
+      allPerms.push(...perms);
+    }
+    // Also include the parent node itself
+    const parentPerms = await permissionStore.getFolderPermissions(nodeId, fileNodeId ? Number(fileNodeId) : undefined);
+    permissions = [...parentPerms, ...allPerms];
   } else {
-    // This folder only (including file-specific permissions when filePath is provided)
-    const filePath = req.query.filePath || undefined;
-    permissions = await PermissionFacade.getFolderPermissions(folderPath, filePath);
-
-    // Normalize returned permission paths (remove trailing /)
-    permissions = permissions.map(perm => ({
-      ...perm,
-      folder_path: normalizePath(perm.folder_path)
-    }));
+    permissions = await permissionStore.getFolderPermissions(
+      nodeId,
+      fileNodeId ? Number(fileNodeId) : undefined
+    );
   }
 
-  res.json(permissions);
+  res.json(permissions.map(perm => ({
+    ...perm,
+    node_id: perm.node_id || null,
+  })));
 }));
 
 module.exports = router;

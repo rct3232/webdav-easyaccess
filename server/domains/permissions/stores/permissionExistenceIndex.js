@@ -69,8 +69,9 @@ function invalidateExistenceIndexByPrefix(path) {
   }
 }
 
-function invalidateExistenceIndexForAclMutation(path) {
-  invalidateExistenceIndexByPrefix(path);
+function invalidateExistenceIndexForAclMutation(pathOrNodeId) {
+  if (typeof pathOrNodeId === 'number') return;
+  invalidateExistenceIndexByPrefix(pathOrNodeId);
 }
 
 function queueReconciliation(path) {

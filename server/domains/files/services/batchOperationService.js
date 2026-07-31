@@ -17,7 +17,7 @@ const {
   buildSyncWriteFileByParentChecker,
   buildSyncReadFileChecker,
 } = require('../../permissions/services/aclService');
-const { getHomeOwnerUserIdForPath } = require('../../permissions/policy/ownerPathResolver');
+const { getHomeOwnerUserIdForPath } = require('../../permissions/policy/ownerNodeResolver');
 
 async function isDirectoryPath(webdavPath) {
   try {

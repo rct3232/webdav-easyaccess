@@ -68,6 +68,8 @@ function createFileNodesStore() {
   /* ------------------------------------------------------------------ */
 
   async function createNode(parentId, name, type) {
+    let node;
+
     if (isPg) {
       try {
         const pool = storage.getPgPool();
@@ -78,7 +80,32 @@ function createFileNodesStore() {
           [parentId != null ? Number(parentId) : null, String(name), String(type)]
         );
         const row = res.rows[0];
-        return {
+        node = {
+          id: Number(row.id),
+          parentId: row.parent_id != null ? Number(row.parent_id) : null,
+          name: row.name,
+          type: row.type,
+          syncStatus: row.sync_status,
+        };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    } else {
+      try {
+        const run = await storage.sqliteRun(
+          `INSERT INTO file_nodes (parent_id, name, type, sync_status)
+           VALUES (?, ?, ?, 'pending_upload')`,
+          [parentId != null ? Number(parentId) : null, String(name), String(type)]
+        );
+        const insertedId = run.lastID;
+        const res = await storage.sqliteQuery(
+          `SELECT id, parent_id, name, type, sync_status
+           FROM file_nodes
+           WHERE id = ?`,
+          [insertedId]
+        );
+        const row = res.rows[0];
+        node = {
           id: Number(row.id),
           parentId: row.parent_id != null ? Number(row.parent_id) : null,
           name: row.name,
@@ -90,30 +117,7 @@ function createFileNodesStore() {
       }
     }
 
-    try {
-      const run = await storage.sqliteRun(
-        `INSERT INTO file_nodes (parent_id, name, type, sync_status)
-         VALUES (?, ?, ?, 'pending_upload')`,
-        [parentId != null ? Number(parentId) : null, String(name), String(type)]
-      );
-      const insertedId = run.lastID;
-      const res = await storage.sqliteQuery(
-        `SELECT id, parent_id, name, type, sync_status
-         FROM file_nodes
-         WHERE id = ?`,
-        [insertedId]
-      );
-      const row = res.rows[0];
-      return {
-        id: Number(row.id),
-        parentId: row.parent_id != null ? Number(row.parent_id) : null,
-        name: row.name,
-        type: row.type,
-        syncStatus: row.sync_status,
-      };
-    } catch (error) {
-      throw mapDatabaseError(error);
-    }
+    return node;
   }
 
   async function getNode(id) {
@@ -482,6 +486,60 @@ function createFileNodesStore() {
     }
   }
 
+  async function isAncestor(ancestorId, descendantId) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `SELECT 1 FROM node_ancestors WHERE ancestor_id = $1 AND descendant_id = $2 LIMIT 1`,
+          [Number(ancestorId), Number(descendantId)]
+        );
+        return res.rows.length > 0;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        `SELECT 1 FROM node_ancestors WHERE ancestor_id = ? AND descendant_id = ? LIMIT 1`,
+        [Number(ancestorId), Number(descendantId)]
+      );
+      return res.rows.length > 0;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  async function getUserRootNode(userId) {
+    const userStore = require('../store/userStore');
+    const user = await userStore.findById(Number(userId));
+    if (!user || !user.username) return null;
+
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          'SELECT * FROM file_nodes WHERE parent_id IS NULL AND name = $1 LIMIT 1',
+          [String(user.username)]
+        );
+        return mapNodeRow(res.rows[0]);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        'SELECT * FROM file_nodes WHERE parent_id IS NULL AND name = ? LIMIT 1',
+        [String(user.username)]
+      );
+      return mapNodeRow(res.rows[0]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /*  object_map operations                                              */
   /* ------------------------------------------------------------------ */
@@ -750,6 +808,8 @@ function createFileNodesStore() {
     deleteAncestorByAncestor,
     getDescendantIds,
     getAncestorChain,
+    isAncestor,
+    getUserRootNode,
     upsertObjectMap,
     insertObject,
     getActiveObject,

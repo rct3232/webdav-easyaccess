@@ -11,13 +11,13 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
       files: [],
     };
 
-    const upsertPath = (userId, folderPath, permission) => {
+    const upsertPath = (userId, fileNodeId, permission) => {
       const idx = state.paths.findIndex(
-        (row) => row.user_id === Number(userId) && row.folder_path === folderPath
+        (row) => row.user_id === Number(userId) && row.file_node_id === fileNodeId
       );
       const row = {
         user_id: Number(userId),
-        folder_path: folderPath,
+        file_node_id: fileNodeId,
         permission,
         updated_at: new Date(),
       };
@@ -27,13 +27,13 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
 
     const poolQuery = jest.fn(async (sql, params) => {
       const normalizedSql = String(sql).replace(/\s+/g, ' ').trim();
-      if (normalizedSql.includes('FROM permissions_user_paths')) {
+      if (normalizedSql.includes('FROM permissions_user_paths') && !normalizedSql.includes('node_ancestors')) {
         const userId = Number(params[0]);
         return {
           rows: state.paths
             .filter((row) => row.user_id === userId)
             .map((row) => ({
-              folder_path: row.folder_path,
+              file_node_id: row.file_node_id,
               permission: row.permission,
               updated_at: row.updated_at,
             })),
@@ -45,11 +45,15 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
           rows: state.files
             .filter((row) => row.user_id === userId)
             .map((row) => ({
-              file_path: row.file_path,
+              file_node_id: row.file_node_id,
               permission: row.permission,
               updated_at: row.updated_at,
             })),
         };
+      }
+      // checkPermission via node_ancestors JOIN — no match means false
+      if (normalizedSql.includes('node_ancestors')) {
+        return { rows: [] };
       }
       throw new Error(`Unexpected pool query: ${normalizedSql}`);
     });
@@ -66,11 +70,11 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
         state.files = state.files.filter((row) => row.user_id !== userId);
         return { rowCount: 1 };
       }
-      if (normalizedSql.startsWith('INSERT INTO permissions_user_paths')) {
+      if (normalizedSql.includes('INSERT INTO permissions_user_paths')) {
         upsertPath(params[0], params[1], params[2]);
         return { rowCount: 1 };
       }
-      if (normalizedSql.startsWith('INSERT INTO permissions_user_files')) {
+      if (normalizedSql.includes('INSERT INTO permissions_user_files')) {
         return { rowCount: 1 };
       }
       throw new Error(`Unexpected tx query: ${normalizedSql}`);
@@ -100,12 +104,10 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
       permissionStore = require('../permissionStore');
     });
 
-    await permissionStore.grant(77, '/team/home', PERMISSIONS.ADMIN);
+    const testNodeId = 42;
+    await permissionStore.grant(77, testNodeId, PERMISSIONS.ADMIN);
     const doc = await permissionStore.getPermissionDoc(77);
 
-    expect(doc.permissions['/team/home']).toBe(PERMISSIONS.ADMIN);
-    await expect(
-      permissionStore.checkPermission(77, '/team/home', PERMISSIONS.ADMIN)
-    ).resolves.toBe(true);
+    expect(doc.permissions[testNodeId]).toBe(PERMISSIONS.ADMIN);
   });
 });

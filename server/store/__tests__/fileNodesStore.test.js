@@ -291,6 +291,26 @@ describe('createFileNodesStore', () => {
       );
       expect(remaining.rows[0].count).toBe(1);
     });
+
+    // isAncestor
+    it('returns true when ancestor relationship exists', async () => {
+      const a = await store.createNode(null, `${testPrefix}isa-a`, 'directory');
+      const b = await store.createNode(a.id, `${testPrefix}isa-b`, 'directory');
+      const c = await store.createNode(b.id, `${testPrefix}isa-c`, 'file');
+
+      await store.insertAncestorRows([
+        { ancestorId: a.id, descendantId: a.id, depth: 0 },
+        { ancestorId: a.id, descendantId: b.id, depth: 1 },
+        { ancestorId: a.id, descendantId: c.id, depth: 2 },
+        { ancestorId: b.id, descendantId: b.id, depth: 0 },
+        { ancestorId: b.id, descendantId: c.id, depth: 1 },
+        { ancestorId: c.id, descendantId: c.id, depth: 0 },
+      ]);
+
+      expect(await store.isAncestor(a.id, c.id)).toBe(true);
+      expect(await store.isAncestor(c.id, a.id)).toBe(false);
+      expect(await store.isAncestor(a.id, a.id)).toBe(true);
+    });
   });
 
   /* ------------------------------------------------------------------ */

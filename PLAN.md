@@ -255,6 +255,8 @@ Phase 0 rewrites the DDL to use `file_node_id` across all permission/sharing tab
 | `permissionRequestStore.js` | permissionRequests routes (~7 failures) | SQL queries reference `folder_path` / `file_path` columns | Phase 3 Task 3.2 |
 | `Settings` model | Settings model, auth routes (~8 failures) | JSON double-serialization bug (unrelated to schema migration) | Separate bug fix required |
 
+> Phase 3 Tasks 3.1–3.2 (now COMPLETE) resolved the `permissionStore.js` and `permissionRequestStore.js` rows above — those ~29 failures no longer occur. Remaining failures at this point: `shareLinkStore` (Phase 5 Task 5.1) and the unrelated `Settings` bug.
+
 **Validation command for Phase 0 scope only** (infrastructure tests only):
 ```bash
 npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__"
@@ -286,7 +288,6 @@ npm run test:unit -w server -- --testPathPattern="infrastructure|store/__tests__
 **Dependencies:** Phase 0 (schema), Phase 1 (S3 adapter)
 **Risk Level:** High — central orchestration layer; all file operations flow through here
 **Design Decisions:** Factory function DI pattern (consistent with existing `createFileService`, `createBlobStore`); dedicated `fileNodesStore.js` as SQL query middle layer; S3-only scope (WebDAV deferred to Phase 4); TX ownership at orchestration layer only (no nested transactions).
-**Detailed Plan:** See the Phase 2 spec suite — [`core-service-layer.md`](./docs/features/core-service-layer.md), [`_ancestryHelper.md`](./docs/spec/server/services/_ancestryHelper.md), [`fileNodeService.md`](./docs/spec/server/services/fileNodeService.md), [`blobStorageService.md`](./docs/spec/server/services/blobStorageService.md), [`uploadService.md`](./docs/spec/server/services/uploadService.md), [`fileNodesStore.md`](./docs/spec/server/store/fileNodesStore.md) — for full method signatures, algorithms, test plans, and risk analysis.
 
 #### Layer Architecture
 
@@ -360,8 +361,8 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | Task | Description | Verify |
 |------|-------------|--------|
 | **2.0** | **[GATE] Docs-First**: Create 5 new spec files (`_ancestryHelper.md`, `fileNodeService.md`, `blobStorageService.md`, `uploadService.md`, `core-service-layer.md`) + enhance `fileNodesStore.md` with object_map methods in `docs/spec/server/` and `docs/features/` | All spec/feature docs complete before any implementation task begins |
-| 2.1 | Implement `fileNodesStore.js`: PostgreSQL/SQLite dual-backend SQL layer for file_nodes, object_map, filecache, node_ancestors | In-memory SQLite tests verify all CRUD + ancestor + object_map operations; see [`fileNodesStore.md`](./docs/spec/server/store/fileNodesStore.md) |
-| 2.2 | Implement `_ancestryHelper.js`: buildAncestorsForNode, rebuildAfterMove (BFS-based), cleanupOnDelete with delete-then-insert strategy | Closure table correct at depth 0/1/N after every mutation; see [`_ancestryHelper.md`](./docs/spec/server/services/_ancestryHelper.md) |
+| 2.1 | Implement `fileNodesStore.js`: PostgreSQL/SQLite dual-backend SQL layer for file_nodes, object_map, filecache, node_ancestors | In-memory SQLite tests verify all CRUD + ancestor + object_map operations; see `docs/spec/server/store/fileNodesStore.md` |
+| 2.2 | Implement `_ancestryHelper.js`: buildAncestorsForNode, rebuildAfterMove (BFS-based), cleanupOnDelete with delete-then-insert strategy | Closure table correct at depth 0/1/N after every mutation; see `docs/spec/server/services/_ancestryHelper.md` |
 | 2.3 | Implement `fileNodeService.js`: all tree operations (create/move/rename/delete/list/resolvePath/getNodePath) with transaction dispatching and cycle detection | createFile at depth N produces correct ancestor chain; move rejects cycles |
 | 2.4 | Implement `blobStorageService.js` (S3 mode only): prepareUpload → completeUpload lifecycle, downloadBlob, overwriteBlob, deleteBlob (orphan marking) | S3 mock tests verify pending→active→orphaned transitions; filecache metadata updates on completeUpload |
 | 2.5 | Implement `uploadService.js`: 4-step orchestration (TX1 → S3 PUT → TX2); uploadFile + overwriteFile + downloadFile | Integration test with real SQLite + s3Mock; simulate failure at each of 3 points, verify recoverable state |
@@ -377,12 +378,12 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 **Risk Level:** High — largest behavioral change; permission checks called on every file access
 
 > **Phase 3 — Status: COMPLETE**
-> Server-side permission stores, services, routes, and middleware are fully migrated to nodeId and verified (Phase 2/3 scope: 15 suites / 287 tests pass). Client-side migration (Tasks 3.8-3.9) depends on Phase 4 Task 4.8 (file routes return nodeId) — moved there. Remaining legacy cleanup (Tasks 3.1a partial, 3.3b-2, 3.3c) depends on Phase 4 caller migrations — moved to Phase 4 Tasks 4.8c-4.8g.
+> Server-side permission stores, services, routes, and middleware are fully migrated to nodeId and verified (Phase 2/3 scope: 15 suites / 287 tests pass). Client-side migration (Tasks 3.8-3.9) depends on Phase 4 Task 4.8 (file routes return nodeId) — moved there. Remaining legacy cleanup (Tasks 3.1a partial, 3.3b-2, 3.3b-3, 3.3c) depends on Phase 4 caller migrations — moved to Phase 4 Tasks 4.8c-4.8g.
 
 | Task | Description | Verify | Status |
 |------|-------------|--------|--------|
 | 3.1 | Rewrite permissionStore SQL queries for `permissions_user_paths`, `permissions_user_files`, and `permission_requests`: replace path-based SQL with `file_node_id`-based queries; derive `target_type` from `file_nodes.type` via JOIN | Adapter returns same results via nodeId lookups | ✅ COMPLETE |
-| 3.1a | Remove JSON backend from permissionStore.js (`getPermissionDoc`, `getSharePermissionDoc`, `writeUserPermissionsDoc`, cache Maps) — **partial**: `writeUserPermissionsDoc` removed; `getPermissionDoc`/`getSharePermissionDoc`/caches remain due to active callers (fileService, batchOperationService, downloadService) | Store reduced to ~600 lines; no in-memory doc patterns | ⚠️ PARTIAL — moved to Phase 4 Task 4.8e |
+| 3.1a | Remove JSON backend from permissionStore.js (`getPermissionDoc`, `getSharePermissionDoc`, `writeUserPermissionsDoc`, cache Maps) — **partial**: `writeUserPermissionsDoc` removed; `getPermissionDoc`/`getSharePermissionDoc`/cache Maps remain due to active callers (auth, permissionFacade, Permission model, fileService, batchOperationService, downloadService, shareAccessService, cleanupService) | Store reduced from ~1290 to ~1069 lines; JSON doc/cache patterns retained for Phase 4 Task 4.8e | ⚠️ PARTIAL — moved to Phase 4 Task 4.8e |
 | 3.2 | permissionRequestStore: fully nodeId-based SQL, single `file_node_id` field, deduplication via partial unique index | All SQL uses file_node_id; tests pass | ✅ COMPLETE |
 | 3.3a | aclService.js: nodeId-based `checkFilePermission`, `checkFolderPermission`, `checkPermission` with closure table inheritance | Permission checks return same results as before | ✅ COMPLETE |
 | 3.3b-1 | ownerPathResolver → ownerNodeResolver: rename file, rewrite with `fileNodesStore.isAncestor()` closure table check; update 5 import sites | Owner detection via ancestry, not path prefix | ✅ COMPLETE |

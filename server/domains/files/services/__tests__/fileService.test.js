@@ -2,16 +2,23 @@
 
 /**
  * fileService test scaffold.
- * Verifies user-facing file operations per spec.
+ * Verifies the Phase 4 nodeId-based fileService contract per spec.
+ * Each test builds the unit under test through the real createFileService
+ * factory with injected mock dependencies; no method of the service itself
+ * is stubbed. These tests FAIL against the pre-refactor (path-based)
+ * createFileService — that is intentional until Wave 2 implements the
+ * nodeId contract.
  * @see docs/spec/server/services/fileService.md
  */
+
+const { createFileService } = require('../fileService');
 
 // ─── Mock factories ────────────────────────────────────────────────
 
 function createMockFileNodeService(overrides = {}) {
   const defaults = {
-    createFile: jest.fn().mockResolvedValue({ nodeId: 10 }),
-    createDirectory: jest.fn().mockResolvedValue({ nodeId: 20 }),
+    createFile: jest.fn().mockResolvedValue({ id: 10 }),
+    createDirectory: jest.fn().mockResolvedValue({ id: 20 }),
     renameNode: jest.fn().mockResolvedValue(true),
     moveNode: jest.fn().mockResolvedValue(true),
     deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
@@ -58,31 +65,14 @@ function createMockAclService(overrides = {}) {
   return { ...defaults, ...overrides };
 }
 
-// ─── Mocked module factory ─────────────────────────────────────────
-// Each test calls `buildService(deps)` which returns an object whose methods
-// are jest mock functions.  The test then sets `.mockImplementation()` on the
-// method it cares about so that the call delegates into the injected deps.
-
-function buildService(deps) {
-  return {
-    _deps: deps,
-    listDirectoryWithPermissions: jest.fn(),
-    uploadFile: jest.fn(),
-    downloadFile: jest.fn(),
-    renameNode: jest.fn(),
-    moveNode: jest.fn(),
-    deleteNode: jest.fn(),
-    copyFile: jest.fn(),
-  };
-}
-
 // ── listDirectoryWithPermissions ────────────────────────────────────
 
 describe('listDirectoryWithPermissions', () => {
   it('returns children with nodeId and permission flags for given parentId', async () => {
+    const fileUpdatedAt = new Date('2026-01-01T00:00:00Z');
     const mockChildren = [
-      { id: 1, name: 'a.txt', type: 'file', size: 100, mimeType: 'text/plain', updated_at: null },
-      { id: 2, name: 'subdir', type: 'directory', size: null, mimeType: null, updated_at: null },
+      { id: 1, name: 'a.txt', type: 'file', size: 100, mimeType: 'text/plain', updatedAt: fileUpdatedAt },
+      { id: 2, name: 'subdir', type: 'directory', size: null, mimeType: null, updatedAt: null },
     ];
 
     const fileNodeService = createMockFileNodeService({
@@ -90,36 +80,35 @@ describe('listDirectoryWithPermissions', () => {
     });
     const aclService = createMockAclService();
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (userId, parentNodeId, user) => {
-        const children = await fileNodeService.listDirectory(parentNodeId);
-        return children.map((child) => ({
-          nodeId: child.id,
-          name: child.name,
-          type: child.type,
-          size: child.size,
-          mimeType: child.mimeType,
-          modifiedAt: child.updated_at,
-          hasReadPermission: true,
-          hasWritePermission: true,
-        }));
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.listDirectoryWithPermissions(1, 99, { id: 1 });
 
     expect(fileNodeService.listDirectory).toHaveBeenCalledWith(99);
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ nodeId: 1, name: 'a.txt', type: 'file' });
+    expect(result[0]).toMatchObject({
+      nodeId: 1,
+      name: 'a.txt',
+      type: 'file',
+      size: 100,
+      mimeType: 'text/plain',
+      modifiedAt: fileUpdatedAt,
+    });
     expect(result[1]).toMatchObject({ nodeId: 2, name: 'subdir', type: 'directory' });
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'read');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 2, 'read');
   });
 
   it('includes size and mimeType from filecache LEFT JOIN', async () => {
     const mockChildren = [
-      { id: 1, name: 'a.txt', type: 'file', size: 100, mimeType: 'text/plain', updated_at: null },
-      { id: 2, name: 'dir', type: 'directory', size: null, mimeType: null, updated_at: null },
+      { id: 1, name: 'a.txt', type: 'file', size: 100, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'dir', type: 'directory', size: null, mimeType: null, updatedAt: null },
     ];
 
     const fileNodeService = createMockFileNodeService({
@@ -127,23 +116,13 @@ describe('listDirectoryWithPermissions', () => {
     });
     const aclService = createMockAclService();
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (_userId, parentNodeId) => {
-        const children = await fileNodeService.listDirectory(parentNodeId);
-        return children.map((child) => ({
-          nodeId: child.id,
-          name: child.name,
-          type: child.type,
-          size: child.size,
-          mimeType: child.mimeType,
-          modifiedAt: child.updated_at,
-          hasReadPermission: true,
-          hasWritePermission: true,
-        }));
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.listDirectoryWithPermissions(1, 99, { id: 1 });
 
@@ -154,7 +133,7 @@ describe('listDirectoryWithPermissions', () => {
 
   it('sets hasReadPermission=false when user lacks read access on child node', async () => {
     const mockChildren = [
-      { id: 1, name: 'secret.txt', type: 'file', size: 50, mimeType: 'text/plain', updated_at: null },
+      { id: 1, name: 'secret.txt', type: 'file', size: 50, mimeType: 'text/plain', updatedAt: null },
     ];
 
     const fileNodeService = createMockFileNodeService({
@@ -166,50 +145,26 @@ describe('listDirectoryWithPermissions', () => {
         .mockResolvedValueOnce(false), // write denied
     });
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (userId, parentNodeId, user) => {
-        const children = await fileNodeService.listDirectory(parentNodeId);
-        return Promise.all(
-          children.map(async (child) => {
-            let hasRead;
-            let hasWrite;
-            if (aclService.isAdminUser(user)) {
-              hasRead = true;
-              hasWrite = true;
-            } else if (child.type === 'file') {
-              hasRead = await aclService.checkFilePermission(userId, child.id, 'read');
-              hasWrite = await aclService.checkFilePermission(userId, child.id, 'write');
-            } else {
-              hasRead = await aclService.checkFolderPermission(userId, child.id, 'read');
-              hasWrite = await aclService.checkFolderPermission(userId, child.id, 'write');
-            }
-            return {
-              nodeId: child.id,
-              name: child.name,
-              type: child.type,
-              size: child.size,
-              mimeType: child.mimeType,
-              modifiedAt: child.updated_at,
-              hasReadPermission: hasRead,
-              hasWritePermission: hasWrite,
-            };
-          })
-        );
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.listDirectoryWithPermissions(1, 99, { id: 1 });
 
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'read');
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'write');
     expect(result[0].hasReadPermission).toBe(false);
     expect(result[0].hasWritePermission).toBe(false);
   });
 
   it('admin user bypass: all items return hasRead=true, hasWrite=true regardless of permissions', async () => {
     const mockChildren = [
-      { id: 1, name: 'a.txt', type: 'file', size: 10, mimeType: 'text/plain', updated_at: null },
-      { id: 2, name: 'b.txt', type: 'file', size: 20, mimeType: 'text/plain', updated_at: null },
+      { id: 1, name: 'a.txt', type: 'file', size: 10, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'b.txt', type: 'file', size: 20, mimeType: 'text/plain', updatedAt: null },
     ];
 
     const fileNodeService = createMockFileNodeService({
@@ -219,24 +174,13 @@ describe('listDirectoryWithPermissions', () => {
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (userId, parentNodeId, user) => {
-        const children = await fileNodeService.listDirectory(parentNodeId);
-        // Admin bypass — no per-item permission calls.
-        return children.map((child) => ({
-          nodeId: child.id,
-          name: child.name,
-          type: child.type,
-          size: child.size,
-          mimeType: child.mimeType,
-          modifiedAt: child.updated_at,
-          hasReadPermission: true,
-          hasWritePermission: true,
-        }));
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.listDirectoryWithPermissions(1, 99, { id: 1 });
 
@@ -255,14 +199,13 @@ describe('listDirectoryWithPermissions', () => {
     });
     const aclService = createMockAclService();
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (_userId, parentNodeId) => {
-        await fileNodeService.listDirectory(parentNodeId);
-        return [];
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.listDirectoryWithPermissions(1, 42, { id: 1 });
 
@@ -275,17 +218,18 @@ describe('listDirectoryWithPermissions', () => {
     });
     const aclService = createMockAclService();
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.listDirectoryWithPermissions.mockImplementation(
-      async (_userId, parentNodeId) => {
-        await fileNodeService.listDirectory(parentNodeId);
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     await expect(
       service.listDirectoryWithPermissions(1, 9999, { id: 1 })
     ).rejects.toThrow();
+    expect(fileNodeService.listDirectory).toHaveBeenCalledWith(9999);
   });
 });
 
@@ -300,30 +244,24 @@ describe('uploadFile — S3 mode', () => {
       uploadFile: jest.fn().mockResolvedValue({ nodeId: 10, size: 42, mimeType: 'text/plain' }),
     });
 
-    const service = buildService({ aclService, uploadService });
-
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        return uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
-      }
-    );
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService: createMockBlobStorageService(),
+      uploadService,
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.uploadFile(
       1, 5, 'hello.txt', Buffer.from('hi'), 'text/plain', { id: 1 }
     );
 
-    expect(uploadService.uploadFile).toHaveBeenCalled();
-    expect(result.nodeId).toBe(10);
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 5, 'write');
+    expect(uploadService.uploadFile).toHaveBeenCalledWith(5, 'hello.txt', Buffer.from('hi'), 'text/plain');
+    expect(result).toMatchObject({ nodeId: 10, size: 42, mimeType: 'text/plain' });
   });
 
   it('sets sync_status=active on successful upload', async () => {
-    const fileNodeService = createMockFileNodeService({
-      updateSyncStatus: jest.fn().mockResolvedValue(true),
-    });
-    const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -331,36 +269,23 @@ describe('uploadFile — S3 mode', () => {
       uploadFile: jest.fn().mockResolvedValue({ nodeId: 10, size: 42, mimeType: 'text/plain' }),
     });
 
-    const service = buildService({
-      fileNodeService,
-      blobStorageService,
-      aclService,
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService: createMockBlobStorageService(),
       uploadService,
+      aclService,
+      fileStorageMode: 's3',
     });
-
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        const result = await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
-        // TX2 completion sets active.
-        await fileNodeService.updateSyncStatus(result.nodeId, 'active');
-        return result;
-      }
-    );
 
     const result = await service.uploadFile(1, 5, 'hello.txt', Buffer.from('hi'), 'text/plain', { id: 1 });
 
+    // TX2 (which sets sync_status='active') runs inside uploadService.uploadFile
+    // per uploadService.md §2.3; fileService returns its result unchanged.
     expect(uploadService.uploadFile).toHaveBeenCalled();
-    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'active');
-    expect(result.nodeId).toBe(10);
+    expect(result).toMatchObject({ nodeId: 10, size: 42, mimeType: 'text/plain' });
   });
 
   it('marks sync_status=pending_upload if TX1 succeeds but blob upload fails', async () => {
-    const fileNodeService = createMockFileNodeService({
-      updateSyncStatus: jest.fn().mockResolvedValue(true),
-    });
     const aclService = createMockAclService({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -368,29 +293,20 @@ describe('uploadFile — S3 mode', () => {
       uploadFile: jest.fn().mockRejectedValue(new Error('S3 PUT failed')),
     });
 
-    const service = buildService({
-      fileNodeService,
-      aclService,
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService: createMockBlobStorageService(),
       uploadService,
+      aclService,
+      fileStorageMode: 's3',
     });
 
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        try {
-          return await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
-        } catch (err) {
-          // TX1 committed → pending_upload state; re-throw to caller.
-          throw err;
-        }
-      }
-    );
-
+    // The pending_upload state is left behind by uploadService's failed TX1→PUT
+    // flow; fileService dispatches to uploadService and propagates the failure.
     await expect(
       service.uploadFile(1, 5, 'fail.txt', Buffer.from('x'), 'text/plain', { id: 1 })
     ).rejects.toThrow();
+    expect(uploadService.uploadFile).toHaveBeenCalledWith(5, 'fail.txt', Buffer.from('x'), 'text/plain');
   });
 
   it('rolls back file_nodes row if createNode throws in TX1', async () => {
@@ -401,20 +317,19 @@ describe('uploadFile — S3 mode', () => {
       uploadFile: jest.fn().mockRejectedValue(new Error('TX1 rollback')),
     });
 
-    const service = buildService({ aclService, uploadService });
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService: createMockBlobStorageService(),
+      uploadService,
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        return uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
-      }
-    );
-
+    // TX1 rollback happens inside uploadService; fileService propagates the failure.
     await expect(
       service.uploadFile(1, 5, 'bad.txt', Buffer.from('x'), 'text/plain', { id: 1 })
     ).rejects.toThrow();
+    expect(uploadService.uploadFile).toHaveBeenCalledWith(5, 'bad.txt', Buffer.from('x'), 'text/plain');
   });
 });
 
@@ -423,7 +338,7 @@ describe('uploadFile — S3 mode', () => {
 describe('uploadFile — WebDAV mode', () => {
   it('creates file_node and performs synchronous WebDAV PUT in single flow', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 30 }),
+      createFile: jest.fn().mockResolvedValue({ id: 30 }),
       getNodePath: jest.fn().mockResolvedValue('/uploads/hello.txt'),
     });
     const blobStorageService = createMockBlobStorageService({
@@ -433,37 +348,28 @@ describe('uploadFile — WebDAV mode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        const node = await fileNodeService.createFile(parentNodeId, name);
-        const webdavPath = await fileNodeService.getNodePath(node.nodeId);
-        await blobStorageService.uploadToWebdav(webdavPath, buffer);
-        return { nodeId: node.nodeId, size: buffer.length, mimeType };
-      }
-    );
 
     const result = await service.uploadFile(
       1, 5, 'hello.txt', Buffer.from('hi'), 'text/plain', { id: 1 }
     );
 
-    expect(fileNodeService.createFile).toHaveBeenCalled();
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 5, 'write');
+    expect(fileNodeService.createFile).toHaveBeenCalledWith(5, 'hello.txt');
+    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(30);
     expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith('/uploads/hello.txt', Buffer.from('hi'));
-    expect(result.nodeId).toBe(30);
+    expect(result).toMatchObject({ nodeId: 30, size: 2, mimeType: 'text/plain' });
   });
 
   it('marks sync_status=orphaned_node if WebDAV PUT fails after DB commit', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 31 }),
+      createFile: jest.fn().mockResolvedValue({ id: 31 }),
       getNodePath: jest.fn().mockResolvedValue('/uploads/fail.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
@@ -474,29 +380,13 @@ describe('uploadFile — WebDAV mode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.uploadFile.mockImplementation(
-      async (userId, parentNodeId, name, buffer, mimeType, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, parentNodeId, 'write');
-        }
-        const node = await fileNodeService.createFile(parentNodeId, name);
-        try {
-          const webdavPath = await fileNodeService.getNodePath(node.nodeId);
-          await blobStorageService.uploadToWebdav(webdavPath, buffer);
-        } catch (err) {
-          // DB committed; mark orphaned and re-throw.
-          await fileNodeService.updateSyncStatus(node.nodeId, 'orphaned_node');
-          throw err;
-        }
-      }
-    );
 
     await expect(
       service.uploadFile(1, 5, 'fail.txt', Buffer.from('x'), 'text/plain', { id: 1 })
@@ -518,19 +408,17 @@ describe('downloadFile', () => {
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ blobStorageService, aclService });
-
-    service.downloadFile.mockImplementation(
-      async (fileNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, fileNodeId, 'read');
-        }
-        return blobStorageService.downloadBlob(fileNodeId);
-      }
-    );
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.downloadFile(10, 1, { id: 1 });
 
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
     expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
     expect(result).toBe(expectedBuffer);
   });
@@ -547,27 +435,18 @@ describe('downloadFile', () => {
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.downloadFile.mockImplementation(
-      async (fileNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, fileNodeId, 'read');
-        }
-        const webdavPath = await fileNodeService.getNodePath(fileNodeId);
-        return blobStorageService.downloadFromWebdav(webdavPath);
-      }
-    );
 
     const result = await service.downloadFile(10, 1, { id: 1 });
 
     expect(fileNodeService.getNodePath).toHaveBeenCalledWith(10);
-    expect(blobStorageService.downloadFromWebdav).toHaveBeenCalled();
+    expect(blobStorageService.downloadFromWebdav).toHaveBeenCalledWith('/files/10/data.txt');
     expect(result).toBe(expectedBuffer);
   });
 
@@ -579,19 +458,17 @@ describe('downloadFile', () => {
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ blobStorageService, aclService });
-
-    service.downloadFile.mockImplementation(
-      async (fileNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, fileNodeId, 'read');
-        }
-        return blobStorageService.downloadBlob(fileNodeId);
-      }
-    );
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.downloadFile(10, 1, { id: 1 });
 
+    expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
     expect(result).toBeNull();
   });
 
@@ -601,21 +478,18 @@ describe('downloadFile', () => {
       checkFilePermission: jest.fn().mockResolvedValue(false),
     });
 
-    const service = buildService({ aclService });
-
-    service.downloadFile.mockImplementation(
-      async (fileNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          const allowed = await aclService.checkFilePermission(userId, fileNodeId, 'read');
-          if (!allowed) throw new Error('permission denied');
-        }
-        return null;
-      }
-    );
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     await expect(
       service.downloadFile(10, 1, { id: 1 })
-    ).rejects.toThrow(/permission denied/i);
+    ).rejects.toThrow();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
   });
 });
 
@@ -631,27 +505,19 @@ describe('renameNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
-
-    service.renameNode.mockImplementation(
-      async (nodeId, newName, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        // Validation
-        if (!newName || newName.includes('/') || newName.includes('\\')) {
-          throw new Error('invalid name');
-        }
-        await fileNodeService.renameNode(nodeId, newName);
-        return { nodeId, newName };
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.renameNode(10, 'newName.txt', 1, { id: 1 });
 
+    expect(aclService.checkFolderPermission).toHaveBeenCalled();
     expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
-    expect(result.nodeId).toBe(10);
-    expect(result.newName).toBe('newName.txt');
+    expect(result).toMatchObject({ nodeId: 10, newName: 'newName.txt' });
   });
 
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
@@ -669,42 +535,21 @@ describe('renameNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.renameNode.mockImplementation(
-      async (nodeId, newName, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        // Validation
-        if (!newName || newName.includes('/') || newName.includes('\\')) {
-          throw new Error('invalid name');
-        }
-        // DB rename always proceeds.
-        await fileNodeService.renameNode(nodeId, newName);
-        try {
-          const oldPath = await fileNodeService.getNodePath(nodeId);
-          const newPath = await fileNodeService.getNodePath(nodeId);
-          // best-effort storage MOVE
-          await blobStorageService.uploadToWebdav(newPath, Buffer.from(''));
-        } catch (storageErr) {
-          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
-          throw storageErr;
-        }
-      }
-    );
 
     await expect(
       service.renameNode(10, 'newName.txt', 1, { id: 1 })
     ).rejects.toThrow();
 
     // DB rename succeeded despite storage failure.
-    expect(fileNodeService.renameNode).toHaveBeenCalled();
+    expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
+    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(10);
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'orphaned_node');
   });
 
@@ -714,16 +559,13 @@ describe('renameNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.renameNode.mockImplementation(
-      async (nodeId, newName) => {
-        if (!newName || newName.includes('/') || newName.includes('\\')) {
-          throw new Error('invalid name');
-        }
-        return fileNodeService.renameNode(nodeId, newName);
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     // Empty name
     await expect(
@@ -749,20 +591,18 @@ describe('renameNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.renameNode.mockImplementation(
-      async (nodeId, newName, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        return fileNodeService.renameNode(nodeId, newName);
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     await expect(
       service.renameNode(10, 'existing.txt', 1, { id: 1 })
     ).rejects.toThrow();
+    expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'existing.txt');
   });
 });
 
@@ -774,27 +614,22 @@ describe('moveNode', () => {
       moveNode: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true) // source parent write
-        .mockResolvedValueOnce(true), // dest parent write
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.moveNode.mockImplementation(
-      async (nodeId, newParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write'); // source parent
-          await aclService.checkFolderPermission(userId, newParentNodeId, 'write'); // dest parent
-        }
-        await fileNodeService.moveNode(nodeId, newParentNodeId);
-        return { nodeId, newParentId: newParentNodeId };
-      }
-    );
+    const result = await service.moveNode(10, 20, 1, { id: 1 });
 
-    await service.moveNode(10, 20, 1, { id: 1 });
-
+    expect(aclService.checkFolderPermission).toHaveBeenCalled();
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
+    expect(result).toMatchObject({ nodeId: 10, newParentId: 20 });
   });
 
   it('no storage operation for S3 mode (blob stays at same s3_key)', async () => {
@@ -803,29 +638,23 @@ describe('moveNode', () => {
     });
     const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.moveNode.mockImplementation(
-      async (nodeId, newParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-          await aclService.checkFolderPermission(userId, newParentNodeId, 'write');
-        }
-        // S3 mode: no storage calls — blob key decoupled from tree position.
-        await fileNodeService.moveNode(nodeId, newParentNodeId);
-        return { nodeId, newParentId: newParentNodeId };
-      }
-    );
+    const result = await service.moveNode(10, 20, 1, { id: 1 });
 
-    await service.moveNode(10, 20, 1, { id: 1 });
-
+    expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
     expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ nodeId: 10, newParentId: 20 });
   });
 
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
@@ -840,41 +669,23 @@ describe('moveNode', () => {
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('MOVE failed')),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.moveNode.mockImplementation(
-      async (nodeId, newParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-          await aclService.checkFolderPermission(userId, newParentNodeId, 'write');
-        }
-        // Cycle detection handled internally by fileNodeService in real impl.
-        await fileNodeService.moveNode(nodeId, newParentNodeId);
-        try {
-          const oldPath = await fileNodeService.getNodePath(nodeId);
-          const newPath = await fileNodeService.getNodePath(nodeId);
-          await blobStorageService.uploadToWebdav(newPath, Buffer.from(''));
-        } catch (storageErr) {
-          await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
-          throw storageErr;
-        }
-      }
-    );
 
     await expect(
       service.moveNode(10, 20, 1, { id: 1 })
     ).rejects.toThrow();
 
+    // DB move succeeded despite storage failure.
+    expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'orphaned_node');
   });
 
@@ -884,31 +695,22 @@ describe('moveNode', () => {
       moveNode: jest.fn().mockRejectedValue(new Error('cycle detected')),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.moveNode.mockImplementation(
-      async (nodeId, newParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-          await aclService.checkFolderPermission(userId, newParentNodeId, 'write');
-        }
-        // Cycle detection: check descendants.
-        const descendants = await fileNodeService.getDescendantIds(nodeId);
-        if (descendants.includes(newParentNodeId)) {
-          throw new Error('cycle detected');
-        }
-        return fileNodeService.moveNode(nodeId, newParentNodeId);
-      }
-    );
-
+    // Cycle detection lives inside fileNodeService.moveNode per spec.
     await expect(
       service.moveNode(10, 50, 1, { id: 1 })
     ).rejects.toThrow();
+    expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 50);
   });
 });
 
@@ -924,17 +726,13 @@ describe('deleteNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
-
-    service.deleteNode.mockImplementation(
-      async (nodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        const descendantIds = await fileNodeService.getDescendantIds(nodeId);
-        return fileNodeService.deleteNode(nodeId);
-      }
-    );
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
     const result = await service.deleteNode(10, 1, { id: 1 });
 
@@ -952,21 +750,19 @@ describe('deleteNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.deleteNode.mockImplementation(
-      async (nodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        const descendantIds = await fileNodeService.getDescendantIds(nodeId);
-        return fileNodeService.deleteNode(nodeId);
-      }
-    );
-
-    await service.deleteNode(5, 1, { id: 1 });
+    const result = await service.deleteNode(5, 1, { id: 1 });
 
     expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(5);
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(5);
+    expect(result.deletedCount).toBe(3);
   });
 
   it('WebDAV mode: storage DELETE bottom-up, marks orphaned_node on per-node failure, DB delete proceeds', async () => {
@@ -987,37 +783,22 @@ describe('deleteNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.deleteNode.mockImplementation(
-      async (nodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        const descendantIds = await fileNodeService.getDescendantIds(nodeId);
-        // Bottom-up: attempt storage DELETE per node.
-        for (const descId of [...descendantIds].reverse()) {
-          try {
-            const webdavPath = await fileNodeService.getNodePath(descId);
-            await blobStorageService.deleteBlob(descId);
-          } catch (err) {
-            // Mark orphaned, continue with remaining nodes.
-            await fileNodeService.updateSyncStatus(descId, 'orphaned_node');
-          }
-        }
-        // DB deletion proceeds regardless of storage failures.
-        return fileNodeService.deleteNode(nodeId);
-      }
-    );
 
     const result = await service.deleteNode(100, 1, { id: 1 });
 
-    expect(fileNodeService.updateSyncStatus).toHaveBeenCalled();
+    // Bottom-up storage DELETE: leaves first (101), then parent (100).
+    expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(101);
+    expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(100);
+    // First DELETE (101) failed → orphaned_node marker; DB deletion proceeds.
+    expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(101, 'orphaned_node');
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(100);
     expect(result.deletedCount).toBe(2);
   });
 
@@ -1031,22 +812,22 @@ describe('deleteNode', () => {
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.deleteNode.mockImplementation(
-      async (nodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFolderPermission(userId, null, 'write');
-        }
-        const descendantIds = await fileNodeService.getDescendantIds(nodeId);
-        // S3 mode: no direct storage calls at this layer.
-        return fileNodeService.deleteNode(nodeId);
-      }
-    );
+    const result = await service.deleteNode(10, 1, { id: 1 });
 
-    await service.deleteNode(10, 1, { id: 1 });
-
+    // blobStorageService.deleteBlob is invoked inside the fileNodeService.deleteNode
+    // cascade, never directly by fileService in S3 mode.
+    expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
+    expect(result.deletedCount).toBe(1);
   });
 });
 
@@ -1055,7 +836,7 @@ describe('deleteNode', () => {
 describe('copyFile — S3 mode', () => {
   it('zero-copy: new file_node + object_map row referencing same s3_key when blob not shared', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 50 }),
+      createFile: jest.fn().mockResolvedValue({ id: 50 }),
     });
     const blobStorageService = createMockBlobStorageService({
       getActiveS3Key: jest.fn().mockResolvedValue('key-original'),
@@ -1063,40 +844,32 @@ describe('copyFile — S3 mode', () => {
       linkObject: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
-      checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(true), // read on source
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true), // write on dest parent
+      checkFilePermission: jest.fn().mockResolvedValue(true), // read on source
+      checkFolderPermission: jest.fn().mockResolvedValue(true), // write on dest parent
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.copyFile.mockImplementation(
-      async (sourceNodeId, destinationParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, sourceNodeId, 'read');
-          await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
-        }
-        const s3Key = await blobStorageService.getActiveS3Key(sourceNodeId);
-        const count = await blobStorageService.countActiveObjectsByS3Key(s3Key);
-        if (count === 1) {
-          // Zero-copy: same key.
-          const node = await fileNodeService.createFile(destinationParentNodeId, 'copy.txt');
-          await blobStorageService.linkObject(node.nodeId, s3Key);
-          return { sourceNodeId, copiedNodeId: node.nodeId };
-        }
-      }
-    );
+    const result = await service.copyFile(10, 20, 1, { id: 1 });
 
-    await service.copyFile(10, 20, 1, { id: 1 });
-
-    expect(blobStorageService.linkObject).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
+    expect(blobStorageService.getActiveS3Key).toHaveBeenCalledWith(10);
+    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, expect.any(String));
+    expect(blobStorageService.linkObject).toHaveBeenCalledWith(50, 'key-original');
     expect(blobStorageService.duplicateBlob).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 50 });
   });
 
   it('duplicates blob to new key via blobStorageService.duplicateBlob when source blob is shared', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 51 }),
+      createFile: jest.fn().mockResolvedValue({ id: 51 }),
     });
     const blobStorageService = createMockBlobStorageService({
       getActiveS3Key: jest.fn().mockResolvedValue('key-shared'),
@@ -1105,41 +878,28 @@ describe('copyFile — S3 mode', () => {
       linkObject: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
-      checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(true),
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.copyFile.mockImplementation(
-      async (sourceNodeId, destinationParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, sourceNodeId, 'read');
-          await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
-        }
-        const s3Key = await blobStorageService.getActiveS3Key(sourceNodeId);
-        const count = await blobStorageService.countActiveObjectsByS3Key(s3Key);
-        if (count > 1) {
-          // Shared: duplicate.
-          const dupResult = await blobStorageService.duplicateBlob(sourceNodeId);
-          const node = await fileNodeService.createFile(destinationParentNodeId, 'copy.txt');
-          await blobStorageService.linkObject(node.nodeId, dupResult.newS3Key);
-          return { sourceNodeId, copiedNodeId: node.nodeId };
-        }
-      }
-    );
-
-    await service.copyFile(10, 20, 1, { id: 1 });
+    const result = await service.copyFile(10, 20, 1, { id: 1 });
 
     expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith(10);
-    expect(blobStorageService.linkObject).toHaveBeenCalled();
+    expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy');
+    expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 51 });
   });
 
   it('checks read on source and write on destination parent before copying', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 52 }),
+      createFile: jest.fn().mockResolvedValue({ id: 52 }),
     });
     const blobStorageService = createMockBlobStorageService({
       getActiveS3Key: jest.fn().mockResolvedValue('key-1'),
@@ -1147,29 +907,23 @@ describe('copyFile — S3 mode', () => {
       linkObject: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
-      checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(false), // read denied on source
+      checkFilePermission: jest.fn().mockResolvedValue(false), // read denied on source
       checkFolderPermission: jest.fn(),
     });
 
-    const service = buildService({ fileNodeService, blobStorageService, aclService });
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
 
-    service.copyFile.mockImplementation(
-      async (sourceNodeId, destinationParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          const canRead = await aclService.checkFilePermission(userId, sourceNodeId, 'read');
-          if (!canRead) throw new Error('permission denied: read on source');
-          await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
-        }
-      }
-    );
-
-    // Source read denied → should fail early.
+    // Source read denied → should fail before any copy proceeds.
     await expect(
       service.copyFile(10, 20, 1, { id: 1 })
     ).rejects.toThrow();
-
-    expect(aclService.checkFilePermission).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
   });
 });
 
@@ -1178,97 +932,60 @@ describe('copyFile — S3 mode', () => {
 describe('copyFile — WebDAV mode', () => {
   it('performs actual blob copy (download + uploadToWebdav) into destination parent', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 60 }),
-      getNodePath: jest.fn()
-        .mockResolvedValueOnce('/src/original.txt') // source path for download
-        .mockResolvedValueOnce('/dest/copy.txt'),   // dest path for upload
+      createFile: jest.fn().mockResolvedValue({ id: 60 }),
+      getNodePath: jest.fn().mockResolvedValue('/dest/copy.txt'), // dest path for upload
     });
     const blobStorageService = createMockBlobStorageService({
-      downloadFromWebdav: jest.fn().mockResolvedValue(Buffer.from('copied-content')),
+      downloadBlob: jest.fn().mockResolvedValue(Buffer.from('copied-content')),
       uploadToWebdav: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
-      checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(true),
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.copyFile.mockImplementation(
-      async (sourceNodeId, destinationParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, sourceNodeId, 'read');
-          await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
-        }
-        const srcPath = await fileNodeService.getNodePath(sourceNodeId);
-        const data = await blobStorageService.downloadFromWebdav(srcPath);
-        const node = await fileNodeService.createFile(destinationParentNodeId, 'copy.txt');
-        const destPath = await fileNodeService.getNodePath(node.nodeId);
-        await blobStorageService.uploadToWebdav(destPath, data);
-        return { sourceNodeId, copiedNodeId: node.nodeId };
-      }
-    );
 
     const result = await service.copyFile(10, 20, 1, { id: 1 });
 
-    expect(blobStorageService.downloadFromWebdav).toHaveBeenCalled();
-    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
-    expect(blobStorageService.uploadToWebdav).toHaveBeenCalled();
-    expect(result.copiedNodeId).toBe(60);
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
+    // Source content downloaded via blobStorageService.downloadBlob (resolves path → WebDAV GET).
+    expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
+    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, expect.any(String));
+    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(60);
+    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith('/dest/copy.txt', Buffer.from('copied-content'));
+    expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 60 });
   });
 
   it('sets orphaned_node if upload fails after node creation, re-throws error', async () => {
     const fileNodeService = createMockFileNodeService({
-      createFile: jest.fn().mockResolvedValue({ nodeId: 61 }),
-      getNodePath: jest.fn()
-        .mockResolvedValueOnce('/src/original.txt')
-        .mockResolvedValueOnce('/dest/copy.txt'),
+      createFile: jest.fn().mockResolvedValue({ id: 61 }),
+      getNodePath: jest.fn().mockResolvedValue('/dest/copy.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStorageService = createMockBlobStorageService({
-      downloadFromWebdav: jest.fn().mockResolvedValue(Buffer.from('data')),
+      downloadBlob: jest.fn().mockResolvedValue(Buffer.from('data')),
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('upload failed')),
     });
     const aclService = createMockAclService({
-      checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(true),
-      checkFolderPermission: jest.fn()
-        .mockResolvedValueOnce(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
-    const service = buildService({
-      fileStorageMode: 'webdav',
+    const service = createFileService({
       fileNodeService,
       blobStorageService,
+      uploadService: createMockUploadService(),
       aclService,
+      fileStorageMode: 'webdav',
     });
-
-    service.copyFile.mockImplementation(
-      async (sourceNodeId, destinationParentNodeId, userId, user) => {
-        if (!aclService.isAdminUser(user)) {
-          await aclService.checkFilePermission(userId, sourceNodeId, 'read');
-          await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
-        }
-        const srcPath = await fileNodeService.getNodePath(sourceNodeId);
-        const data = await blobStorageService.downloadFromWebdav(srcPath);
-        const node = await fileNodeService.createFile(destinationParentNodeId, 'copy.txt');
-        try {
-          const destPath = await fileNodeService.getNodePath(node.nodeId);
-          await blobStorageService.uploadToWebdav(destPath, data);
-        } catch (err) {
-          // Node created but upload failed → orphaned.
-          await fileNodeService.updateSyncStatus(node.nodeId, 'orphaned_node');
-          throw err;
-        }
-      }
-    );
 
     await expect(
       service.copyFile(10, 20, 1, { id: 1 })

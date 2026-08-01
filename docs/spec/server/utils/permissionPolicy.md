@@ -6,6 +6,8 @@
 |------|-------------|
 | Role | Permission policy module split across four files under `server/domains/permissions/policy/`. Covers owner path resolution, read/write checks, grant/revoke/view authorization, and synchronous batch checkers. |
 
+> **Phase 4 note:** Path-based compat layer (Tier 2) and sync checker builders (Tier 3) are scheduled for removal in Phase 4 Tasks 4.8d-4.8f. The nodeId-based functions (Tier 1) are retained as the primary interface.
+
 ---
 
 ## 2. Implementation Spec
@@ -21,7 +23,45 @@
 
 - **Test file:** `server/utils/__tests__/permissionPolicy.test.js` (test has not been relocated yet)
 
-### 2.2 Functions / Exports — permissionPolicy.js
+### 2.2 Tier Classification
+
+Functions in permissionPolicy.js are classified into three tiers for Phase 4 migration:
+
+**Tier 1 (Retained)** — nodeId-based functions only:
+- `canReadNode(userId, nodeId)`
+- `canWriteNode(userId, nodeId)`
+- `isAdminUser(user)`
+
+**Tier 2 (Removing in Task 4.8d)** — path-based compat layer:
+- `canReadFolder(principalId, folderPath)`
+- `canReadFile(principalId, filePath)`
+- `canWriteFolder(user, folderPath)`
+- `canWriteFileByParent(user, filePath)`
+- `hasDirectFolderPermission(userId, folderPath)`
+
+**Tier 3 (Removing in Task 4.8d)** — sync checker builders:
+- `buildSyncWriteChecker(user, doc)`
+- `buildSyncReadChecker(user, doc)`
+- `buildSyncReadFileChecker(user, doc)`
+- `buildSyncWriteFileByParentChecker(user, doc)`
+
+### 2.3 Callers That Must Migrate Before Removal
+
+| Tier 2/3 Function | Current Callers | Migration Target | Phase 4 Task |
+|-------------------|-----------------|------------------|--------------|
+| `canReadFolder` | fileService.listDirectoryWithPermissions, downloadService.downloadMultiple | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1, 4.6 |
+| `canWriteFolder` | batchOperationService.batchMove, batchOperationService.batchDelete | `aclService.checkFolderPermission(userId, nodeId, 'write')` | 4.6 |
+| `canReadFile` | fileService.downloadFile | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1 |
+| `buildSyncWriteChecker` | batchOperationService (pre-migration) | async gate per item | 4.8c |
+| `buildSyncReadChecker` | downloadService (pre-migration) | async gate per file | 4.6 |
+
+### 2.4 Post-Removal State
+
+After Tasks 4.8d-4.8g, `permissionPolicy.js` contains only Tier 1 functions + re-exports from `ownerNodeResolver`, `inheritancePolicy`, `permissionRank`. Expected line count reduction from ~307 to ~100 lines.
+
+Removal is safe only after ALL callers in the table above have migrated to async nodeId checks. Tasks 4.8c (fileService sync→async), 4.6 (batchOperationService, downloadService) must complete before 4.8d can remove Tier 2/3.
+
+### 2.5 Functions / Exports — permissionPolicy.js
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -42,7 +82,7 @@
 | canRevokePermission | (user, folderPath, userId, targetUserId) => Promise\<boolean\> | Check if user can revoke permission from another user |
 | canViewPermissions | (user, folderPath, userId) => Promise\<boolean\> | Check if user can view permissions for a folder |
 
-### 2.3 Functions / Exports — ownerPathResolver.js
+### 2.6 Functions / Exports — ownerPathResolver.js
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -50,14 +90,14 @@
 | isOwnerPath | (user, targetPath) => boolean | Safe prefix match against /{username} |
 | getHomeOwnerUserIdForPath | (folderPath) => Promise\<number \| null\> | Resolves first path segment as username to userId |
 
-### 2.4 Functions / Exports — permissionRank.js
+### 2.7 Functions / Exports — permissionRank.js
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | getPermissionRank | (permission) => number | Numeric rank via PERMISSIONS.ALL.indexOf; -1 for unknown |
 | meetsRank | (actual, required) => boolean | actual rank >= required rank |
 
-### 2.5 Functions / Exports — inheritancePolicy.js
+### 2.8 Functions / Exports — inheritancePolicy.js
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -65,25 +105,25 @@
 | getLookupPaths | (path, options?) => string[] | Returns [withSlash, noSlash] variants for permission lookup |
 | isDirectPermission | (userId, folderPath, requiredPermission) => boolean | Policy marker; actual DB check happens in store layer |
 
-### 2.6 Input / Output
+### 2.9 Input / Output
 
 - Compliant with shared-contracts
 - principalId: number (userId) or string ("share:token")
 
-### 2.7 Dependencies
+### 2.10 Dependencies
 
 - `@webdav-easyaccess/shared/constants` (PERMISSIONS)
 - `@webdav-easyaccess/shared/pathUtils` (normalizePath)
 - Permission model, User model
 - aclService (checkFilePermission, checkFolderPermission, isSharePrincipal) — from `../services/aclService`
 
-### 2.8 Mock Targets
+### 2.11 Mock Targets
 
 - User.findByUsername, User.findById
 - Permission.checkPermission, Permission.getPermissionDoc, Permission.grant
 - aclService.checkFolderPermission, aclService.checkFilePermission
 
-### 2.9 Verification Scenarios
+### 2.12 Verification Scenarios
 
 - [ ] isOwnerPath, userRootPath (ownerPathResolver)
 - [ ] getHomeOwnerUserIdForPath

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Blob lifecycle management for S3 storage. Handles prepareUpload (pending object_map entry), completeUpload (pending→active + filecache write), download (S3 retrieval via active key), overwrite (orphan old + upload new + activate), delete (mark orphaned, actual S3 deletion deferred to GC). S3 mode only; WebDAV support deferred to Phase 3. Factory `createBlobStorageService({ blobStore, fileNodesStore })`. |
+| Role | Blob lifecycle management with dual-backend support (S3 and WebDAV). Handles prepareUpload (pending object_map entry), completeUpload (pending→active + filecache write), download (S3 retrieval via active key or WebDAV GET), overwrite (orphan old + upload new + activate, or WebDAV PUT), delete (mark orphaned for S3; WebDAV DELETE best-effort). Factory dispatches based on `WEA_FILE_STORAGE` config: `s3` → S3BlobStore, `webdav` → WebdavBlobStore. |
 
 ---
 
@@ -18,14 +18,20 @@
 ### 2.2 Factory Function Signature
 
 ```js
-function createBlobStorageService({ blobStore, fileNodesStore }) {
+function createBlobStorageService({ blobStore, fileNodesStore, webdavClient, fileNodeService, fileStorageMode }) {
+  // fileStorageMode: 's3' | 'webdav'
   return {
     prepareUpload(fileNodeId),
     completeUpload(s3Key, size, mimeType),
     downloadBlob(fileNodeId),
     overwriteBlob(fileNodeId, buffer),
     deleteBlob(fileNodeId),
-    getActiveS3Key(fileNodeId)
+    getActiveS3Key(fileNodeId),
+    // WebDAV-specific methods (no-op in S3 mode):
+    uploadToWebdav(webdavPath, buffer),
+    downloadFromWebdav(webdavPath),
+    deleteOnWebdav(webdavPath),
+    headOnWebdav(webdavPath)
   };
 }
 ```
@@ -106,17 +112,66 @@ Returns the s3_key of the currently active object, or null.
 - `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`) from Phase 1 adapter
 - `fileNodesStore` — object_map and filecache CRUD operations
 
-### 2.5 Error Cases
+---
+
+## 3. WebDAV Mode (WebdavBlobStore Adapter)
+
+Factory dispatch logic: `WEA_FILE_STORAGE=s3` → uses S3BlobStore; `WEA_FILE_STORAGE=webdav` → uses WebdavBlobStore. Factory validates that required config keys are present for the selected mode before instantiation.
+
+### 3.1 Interface Methods
+
+Methods matching S3BlobStore shape for dispatch uniformity:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| uploadToWebdav | `(webdavPath, buffer) → Promise<void>` | PUT to WebDAV server at resolved path |
+| downloadFromWebdav | `(webdavPath) → Promise<Buffer \| null>` | GET from WebDAV; returns null if 404 |
+| deleteOnWebdav | `(webdavPath) → Promise<void>` | DELETE on WebDAV; idempotent for missing resources (404 = no throw) |
+| headOnWebdav | `(webdavPath) → Promise<{ contentLength: number, contentType: string } \| null>` | HEAD request |
+
+### 3.2 Path Resolution
+
+`file_node_id` → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to WebDAV methods.
+
+---
+
+## 4. Dual-Backend Dispatch Table
+
+| Operation | S3 Mode | WebDAV Mode |
+|-----------|---------|-------------|
+| prepareUpload | orphan old + INSERT pending | no-op (synchronous) |
+| completeUpload | UPDATE active + filecache | no separate step; upload is atomic |
+| downloadBlob | blobStore.downloadBlob(s3Key) | webdavClient.downloadFromWebdav(path) |
+| overwriteBlob | ensureExclusiveBlob (split shared) → orphan+upload+activate | webdav PUT at same path |
+| deleteBlob | mark orphaned in object_map | webdav DELETE (best-effort) |
+| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key | always 0 (no s3_key concept) |
+| duplicateBlob | download current blob → upload under new key → return key | n/a (copy = download + uploadToWebdav) |
+| linkObject(fileNodeId, s3Key) | INSERT object_map (file_node_id, s3_key, 'active') | n/a |
+| ensureExclusiveBlob(fileNodeId) | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | no-op |
+
+---
+
+## 5. Error Cases
+
+### S3 Mode
 
 - No active object for download → returns null (no throw)
 - completeUpload with unknown s3Key → throws error
 - deleteBlob with no active object → no-op, no error
 
-### 2.6 Version Number Policy
+### WebDAV Mode
+
+- Connection refused / timeout → logs error; sets `sync_status='orphaned_node'` on affected file node rather than throwing
+- 404 on remote (downloadFromWebdav) → returns null (no throw)
+- 404 on DELETE (deleteOnWebdav) → idempotent no-op (no throw)
+
+All WebDAV errors during file metadata operations must set `sync_status='orphaned_node'` rather than throwing.
+
+## 6. Version Number Policy
 
 Single-version mode: `version_number` is always 1 in all INSERT operations. The `UNIQUE(file_node_id, version_number)` constraint exists for future version history expansion but currently only one active version per node is maintained.
 
-### 2.7 Verification Scenarios
+## 7. Verification Scenarios
 
 - [ ] prepareUpload creates pending entry with valid UUID s3Key
 - [ ] prepareUpload orphans previous active row before inserting new pending

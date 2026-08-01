@@ -1,0 +1,450 @@
+# fileService Spec
+
+## 1. Overview
+
+| Item | Description |
+|------|-------------|
+| Role | User-facing file operations service replacing path-based `server/domains/files/services/fileService.js`. Dispatches all work through the Phase 2 service layer (fileNodeService, blobStorageService, uploadService, aclService). No direct WebDAV or S3 calls — all storage operations route through blobStorageService. Dual-backend support for S3 and WebDAV modes determined at factory time by injected dependencies, not hardcoded configuration. |
+
+---
+
+## 2. Implementation Spec
+
+### 2.1 File Path
+
+- **Source:** `server/service/fileService.js` (new file replacing `server/domains/files/services/fileService.js`)
+- **Test file:** `server/domains/files/services/__tests__/fileService.test.js`
+
+### 2.2 Factory Function Signature
+
+```js
+function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode }) {
+  return {
+    listDirectoryWithPermissions(userId, parentNodeId, user),
+    uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict),
+    downloadFile(fileNodeId, userId, user),
+    renameNode(nodeId, newName, userId, user),
+    moveNode(nodeId, newParentNodeId, userId, user),
+    deleteNode(nodeId, userId, user),
+    copyFile(sourceNodeId, destinationParentNodeId, userId, user)
+  };
+}
+```
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeService | object | yes | Tree operations (createFile, renameNode, moveNode, deleteNode, listDirectory, getDescendantIds, updateSyncStatus, getNodePath) — see `fileNodeService.md` |
+| blobStorageService | object | yes | Blob lifecycle (prepareUpload, completeUpload, downloadBlob, overwriteBlob, deleteBlob, getActiveS3Key, duplicateBlob, linkObject, uploadToWebdav) — see `blobStorageService.md` |
+| uploadService | object | yes | 4-step upload orchestration (uploadFile, overwriteFile, downloadFile) — see `uploadService.md` |
+| aclService | object | yes | Permission checks (checkFolderPermission, checkFilePermission, isAdminUser) — see `aclService.js` |
+| fileStorageMode | string | yes | `'s3'` or `'webdav'`. Determined by injected blobStorageService capability at composition time, not read from environment variables inside this service. |
+
+### 2.3 Methods
+
+#### `listDirectoryWithPermissions(userId, parentNodeId, user)`
+
+Lists children of a directory node with permission flags computed per item via the closure table and aclService.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| userId | number | yes | ID of the requesting user (principal) |
+| parentNodeId | number | yes | Node ID of the directory to list |
+| user | object | yes | Full user object with `is_admin` flag for admin bypass resolution |
+
+**Returns:** `array` — each element shaped as:
+
+```js
+{
+  nodeId: number,       // child file_nodes.id
+  name: string,         // file_nodes.name
+  type: string,         // 'file' | 'directory'
+  size: number \| null,  // from filecache LEFT JOIN; null for directories and files without cache entry
+  mimeType: string \| null, // from filecache LEFT JOIN
+  modifiedAt: Date \| null, // file_nodes.updated_at
+  hasReadPermission: boolean,
+  hasWritePermission: boolean
+}
+```
+
+**Operations:**
+
+1. `fileNodeService.listDirectory(parentNodeId)` — retrieves children rows with filecache metadata (LEFT JOIN). If parentNodeId does not exist or is not a directory, throws 404-style error.
+2. For each child item:
+   - If `isAdminUser(user)` → set `hasReadPermission = true`, `hasWritePermission = true` immediately (admin bypass, no DB queries).
+   - Otherwise:
+     - If child type is `'directory'`: call `aclService.checkFolderPermission(userId, childNodeId, 'read')` for read flag and `aclService.checkFolderPermission(userId, childNodeId, 'write')` for write flag.
+     - If child type is `'file'`: call `aclService.checkFilePermission(userId, childNodeId, 'read')` for read flag and `aclService.checkFilePermission(userId, childNodeId, 'write')` for write flag.
+3. Map each result into the response shape above.
+
+**DB operations:** Single SELECT via listDirectory (file_nodes + filecache LEFT JOIN). Permission checks are separate async queries per item unless admin bypass applies.
+
+---
+
+#### `uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict)`
+
+Creates a new file node and stores its content. Dispatch strategy differs by storage mode.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| userId | number | yes | ID of the requesting user |
+| parentNodeId | number \| null | yes | Parent directory node; null for root-level creation |
+| name | string | yes | File name (subject to UNIQUE constraint per parent) |
+| buffer | Buffer | yes | File content bytes |
+| mimeType | string | yes | MIME type of the file |
+| user | object | yes | Full user object for permission resolution |
+| onConflict | string | no | `'skip'`, `'overwrite'`, or `undefined` (default: throw on conflict) |
+
+**Returns:** `{ nodeId, size, mimeType }` — created/updated node ID and metadata. For skip conflicts, returns `{ nodeId, skipped: true }`.
+
+**S3 Mode Flow:**
+
+1. Permission gate: if not admin, verify write permission on parent via `aclService.checkFolderPermission(userId, parentNodeId, 'write')`.
+2. Conflict check: query file_nodes for `(parent_id, name)` uniqueness. If exists and `onConflict === 'skip'`, return early with `{ nodeId, skipped: true }`. If exists and `onConflict !== 'overwrite'`, throw conflict error.
+3. Dispatch to `uploadService.uploadFile(parentNodeId, name, buffer, mimeType)`:
+   - TX1: `fileNodeService.createFile()` + `blobStorageService.prepareUpload()` — creates node with sync_status='pending_upload', inserts pending object_map entry
+   - S3 PUT: `blobStore.uploadBlob(s3Key, buffer)` — outside transaction boundary
+   - TX2: `blobStorageService.completeUpload()` + `fileNodeService.updateSyncStatus(nodeId, 'active')` — transitions to active
+4. Returns result from uploadService.
+
+**WebDAV Mode Flow:**
+
+1. Permission gate: same as S3 mode.
+2. Conflict check: same as S3 mode.
+3. Atomic create + PUT:
+   - `fileNodeService.createFile(parentNodeId, name)` — creates node with sync_status='active'
+   - Compute WebDAV path via `fileNodeService.getNodePath(newNodeId)`
+   - `blobStorageService.uploadToWebdav(webdavPath, buffer)` — synchronous PUT to remote storage
+4. If WebDAV PUT fails after DB commit: call `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe, then re-throw the error.
+5. Returns `{ nodeId, size: buffer.length, mimeType }`.
+
+**Failure recovery:** See Section 5 (Sync Status Fail-Safe Semantics). S3 mode follows uploadService failure table (`uploadService.md` §2.5). WebDAV mode marks orphaned_node on PUT failure.
+
+---
+
+#### `downloadFile(fileNodeId, userId, user)`
+
+Downloads file content through the appropriate storage backend.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the file node to download |
+| userId | number | yes | ID of the requesting user |
+| user | object | yes | Full user object for admin bypass resolution |
+
+**Returns:** `Buffer \| null` — file content, or null if no active storage object exists.
+
+**Operations:**
+
+1. Permission gate: if not `isAdminUser(user)`, call `aclService.checkFilePermission(userId, fileNodeId, 'read')`. If false, throw 403 error.
+2. S3 mode: dispatch to `blobStorageService.downloadBlob(fileNodeId)` — resolves object_map → active s3_key → S3 GET. Returns buffer or null.
+3. WebDAV mode: resolve path via `fileNodeService.getNodePath(fileNodeId)`, then call `blobStorageService.downloadFromWebdav(path)`. Returns buffer or null on 404.
+
+**DB operations:** Permission check queries object_map via aclService (S3) or no storage query (WebDAV). Blob download is read-only from storage backend.
+
+---
+
+#### `renameNode(nodeId, newName, userId, user)`
+
+Renames a node in the database with optional best-effort storage-side rename for WebDAV mode.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| nodeId | number | yes | ID of the node to rename |
+| newName | string | yes | New name (must not conflict with existing sibling) |
+| userId | number | yes | ID of the requesting user |
+| user | object | yes | Full user object for permission resolution |
+
+**Returns:** `{ nodeId, newName }` — confirmation of renamed node.
+
+**Operations:**
+
+1. Permission gate: if not admin, check write permission on parent via `aclService.checkFolderPermission(userId, parentNodeId, 'write')`.
+2. DB rename: `fileNodeService.renameNode(nodeId, newName)` — single UPDATE to file_nodes.name.
+3. Storage-side rename (mode-dependent):
+   - **S3 mode:** No storage operation needed. Blob key is independent of node name.
+   - **WebDAV mode:** Attempt best-effort MOVE: resolve old path and new path via `fileNodeService.getNodePath(nodeId)` before/after, call WebDAV MOVE through blobStorageService. If the MOVE fails, set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` to flag for Phase 6 GC recovery. Do not abort the DB rename — metadata is authoritative.
+4. Return confirmation.
+
+**Validation:** newName must be non-empty and free of path separators (`/`, `\`). Duplicate name under same parent throws UNIQUE constraint error from DB layer.
+
+---
+
+#### `moveNode(nodeId, newParentNodeId, userId, user)`
+
+Moves a node (and its subtree) to a new parent directory with closure table rebuild.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| nodeId | number | yes | ID of the node to move |
+| newParentNodeId | number \| null | yes | New parent directory; null means move to root level |
+| userId | number | yes | ID of the requesting user |
+| user | object | yes | Full user object for permission resolution |
+
+**Returns:** `{ nodeId, newParentId }` — confirmation of moved node.
+
+**Operations:**
+
+1. Permission gate: if not admin:
+   - Check write on current parent via `aclService.checkFolderPermission(userId, currentNode.parent_id, 'write')`
+   - Check write on destination parent via `aclService.checkFolderPermission(userId, newParentNodeId, 'write')`
+2. Cycle detection: handled by fileNodeService.moveNode internally (calls getDescendantIds and rejects if newParentId is a descendant).
+3. DB move: `fileNodeService.moveNode(nodeId, newParentNodeId)` — updates parent_id + rebuilds closure table via _ancestryHelper in TX.
+4. Storage-side move (mode-dependent):
+   - **S3 mode:** No storage operation needed. Blob keys are decoupled from tree position.
+   - **WebDAV mode:** Attempt best-effort MOVE on remote storage. Resolve old/new paths, call blobStorageService to perform WebDAV MOVE. On failure: set `sync_status = 'orphaned_node'` for the moved node and all descendants. Do not abort DB move — metadata is authoritative.
+5. Return confirmation.
+
+---
+
+#### `deleteNode(nodeId, userId, user)`
+
+Deletes a node and its entire subtree. For WebDAV mode, attempts best-effort storage deletion bottom-up before DB removal.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| nodeId | number | yes | ID of the root node to delete |
+| userId | number | yes | ID of the requesting user |
+| user | object | yes | Full user object for permission resolution |
+
+**Returns:** `{ deletedCount }` — total number of nodes removed (including descendants).
+
+**Operations:**
+
+1. Permission gate: if not admin, check write on parent via `aclService.checkFolderPermission(userId, parentNodeId, 'write')`.
+2. Enumerate subtree: `fileNodeService.getDescendantIds(nodeId)` returns self + all descendant IDs from closure table.
+3. Storage deletion (mode-dependent):
+   - **S3 mode:** No direct storage call needed at this layer. blobStorageService.deleteBlob is called per-file as part of the fileNodeService.deleteNode cascade, which marks object_map rows orphaned. Actual S3 deletion deferred to Phase 6 GC.
+   - **WebDAV mode:** Iterate descendant IDs bottom-up (leaves first, then directories). For each file node: resolve path via `fileNodeService.getNodePath(descendantId)`, call `blobStorageService.deleteBlob(descendantId)` which performs WebDAV DELETE best-effort. On per-node failure: set `sync_status = 'orphaned_node'` and continue (do not abort remaining deletions). Directory nodes are deleted in reverse depth order so children are removed before parents on the remote storage.
+4. DB deletion: `fileNodeService.deleteNode(nodeId)` — wrapped in TX, cleans up node_ancestors + triggers FK CASCADE for object_map, filecache rows.
+5. Return `{ deletedCount: descendantIds.length }`.
+
+**DB operations:** getDescendantIds (SELECT), per-node updateSyncStatus (UPDATE) on WebDAV failures, deleteNode (TX: DELETE node_ancestors + DELETE file_nodes → CASCADE to object_map, filecache).
+
+---
+
+#### `copyFile(sourceNodeId, destinationParentNodeId, userId, user)`
+
+Creates a copy of a source file in the destination directory. Copy semantics differ by storage mode.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| sourceNodeId | number | yes | ID of the file node to copy |
+| destinationParentNodeId | number \| null | yes | Target parent directory; null for root-level placement |
+| userId | number | yes | ID of the requesting user |
+| user | object | yes | Full user object for permission resolution |
+
+**Returns:** `{ sourceNodeId, copiedNodeId }` — IDs of original and copy.
+
+**S3 Mode (copy-on-write):**
+
+1. Permission gate: if not admin:
+   - Read check on source via `aclService.checkFilePermission(userId, sourceNodeId, 'read')`
+   - Write check on destination parent via `aclService.checkFolderPermission(userId, destinationParentNodeId, 'write')`
+2. Resolve source blob key: `blobStorageService.getActiveS3Key(sourceNodeId)`. If null (no active object), throw error — nothing to copy.
+3. Check sharing: count how many file_nodes currently reference this s3_key via `blobStorageService.countActiveObjectsByS3Key(s3Key)`.
+   - If count === 1 (exclusive ownership): create new file_node + INSERT new object_map row referencing the SAME s3_key with status='active'. Zero-copy, instant.
+   - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(sourceNodeId)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
+4. New file node inherits source name; if sibling with same name exists, append numeric suffix.
+5. Return `{ sourceNodeId, copiedNodeId }`.
+
+**WebDAV Mode (actual blob copy):**
+
+1. Permission gate: same checks as S3 mode.
+2. Download source content via `blobStorageService.downloadBlob(sourceNodeId)` → resolves path → WebDAV GET.
+3. Create new file_node via `fileNodeService.createFile(destinationParentNodeId, name)`. Handle name conflict with numeric suffix.
+4. Compute new node's WebDAV path via `fileNodeService.getNodePath(copiedNodeId)`.
+5. Upload copy via `blobStorageService.uploadToWebdav(newPath, downloadedBuffer)`.
+6. If upload fails after DB commit: set `sync_status = 'orphaned_node'` on copied node, re-throw error.
+7. Return `{ sourceNodeId, copiedNodeId }`.
+
+### 2.4 Dependencies
+
+| Dependency | Purpose |
+|------------|---------|
+| fileNodeService | Tree CRUD (createFile, renameNode, moveNode, deleteNode, listDirectory), closure table maintenance (getDescendantIds, getNodePath), sync status updates |
+| blobStorageService | Blob lifecycle: prepareUpload/completeUpload for S3 mode; downloadBlob for both modes; uploadToWebdav/deleteBlob for WebDAV operations; getActiveS3Key/duplicateBlob/linkObject for copy-on-write |
+| uploadService | Orchestrates 4-step S3 upload flow (TX1 → PUT → TX2) with failure recovery states |
+| aclService | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser |
+
+### 2.5 Error Cases
+
+- **Permission denied:** Any method where the user lacks required permission and is not an admin throws a 403 error. The caller (route handler) maps this to HTTP 403.
+- **Node not found:** If nodeId or parentNodeId does not correspond to an existing file_nodes row, throw 404 error. Applies to all methods accepting node IDs.
+- **Storage failure — S3 mode:** Upload failures leave object_map in 'pending' state and sync_status as 'pending_upload'. Recoverable via retry endpoint or Phase 6 GC cleanup. See `uploadService.md` §2.5 for full failure matrix.
+- **Storage failure — WebDAV mode:** Any storage operation that fails after a DB commit sets `sync_status = 'orphaned_node'` on the affected node(s) as a fail-safe. The error is still propagated to the caller so the user sees a failure response, but the database reflects an inconsistent state that Phase 6 GC can repair.
+- **Name conflict:** renameNode with duplicate sibling name or copyFile where destination already has same name → throw conflict error (or apply numeric suffix for copy).
+- **Cycle detection:** moveNode rejects if newParentNodeId is a descendant of nodeId via getDescendantIds check inside fileNodeService.moveNode().
+
+### 2.6 Verification Scenarios
+
+#### listDirectoryWithPermissions
+- [ ] Returns children with correct nodeId, name, type from file_nodes for given parentNodeId
+- [ ] Includes size and mimeType from filecache LEFT JOIN; null for directories and uncached files
+- [ ] Sets hasReadPermission=false / hasWritePermission=false when user lacks access on child node (non-admin)
+- [ ] Admin bypass: all items return hasRead=true, hasWrite=true without querying aclService per item
+- [ ] Returns empty array for leaf directory with no children
+- [ ] Throws 404-style error when parentNodeId does not exist or is a file node
+
+#### uploadFile — S3 mode
+- [ ] Creates new file_node via uploadService.uploadFile and returns nodeId, size, mimeType
+- [ ] Sets sync_status='active' on successful completion of TX1 → PUT → TX2 flow
+- [ ] Marks sync_status='pending_upload' if TX1 succeeds but S3 PUT fails (uploadService failure recovery)
+- [ ] Rolls back file_nodes row entirely if createNode throws in TX1
+- [ ] Conflict 'skip': returns `{ nodeId, skipped: true }` when name already exists under parent
+- [ ] Conflict 'overwrite': calls uploadService.overwriteFile path for existing node
+
+#### uploadFile — WebDAV mode
+- [ ] Creates file_node and performs synchronous WebDAV PUT in single flow
+- [ ] Sets sync_status='orphaned_node' if WebDAV PUT fails after DB commit, then re-throws error
+- [ ] Returns nodeId with correct size (buffer.length) and mimeType on success
+
+#### downloadFile
+- [ ] S3 mode: returns buffer via blobStorageService.downloadBlob following object_map → s3_key chain
+- [ ] WebDAV mode: returns buffer via path resolution + webdav GET
+- [ ] Returns null when no active object_map entry or storage resource exists
+- [ ] Throws 403 if non-admin user lacks read permission on file node
+
+#### renameNode
+- [ ] S3 mode: updates name in file_nodes only; no blobStorageService calls (blob key independent of name)
+- [ ] WebDAV mode: attempts best-effort storage MOVE; sets orphaned_node on failure without rolling back DB rename
+- [ ] Throws validation error for empty newName or names containing path separators
+- [ ] Throws conflict error if new name duplicates existing sibling under same parent
+
+#### moveNode
+- [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
+- [ ] S3 mode: no storage operation (blob key decoupled from tree position)
+- [ ] WebDAV mode: attempts best-effort MOVE; marks orphaned_node on failure without rolling back DB move
+- [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
+
+#### deleteNode
+- [ ] Deletes leaf file node via fileNodeService.deleteNode after write-permission gate
+- [ ] Enumerates all descendants for directory nodes via getDescendantIds (closure table)
+- [ ] WebDAV mode: performs storage DELETE bottom-up (leaves first), marks orphaned_node on per-node failure, DB deletion proceeds regardless
+- [ ] S3 mode: fileNodeService.deleteNode calls blobStorageService.deleteBlob per-file to mark object_map orphaned; actual S3 delete deferred to GC
+
+#### copyFile — S3 mode
+- [ ] Zero-copy: new file_node + object_map referencing same s3_key when source blob exclusively owned (count=1)
+- [ ] Duplicates blob via duplicateBlob when source s3_key is shared by multiple nodes (count>1)
+- [ ] Checks read permission on source and write permission on destination parent before proceeding
+
+#### copyFile — WebDAV mode
+- [ ] Downloads source content, creates new file_node, uploads copy to destination path via uploadToWebdav
+- [ ] Sets orphaned_node if upload fails after node creation, re-throws error
+
+---
+
+## 3. Permission Integration
+
+Every public method performs a permission gate before proceeding with its core operation. The gates follow this pattern:
+
+1. **Admin bypass:** `aclService.isAdminUser(user)` returns true → skip all checks, proceed directly to the operation. Admin users have unrestricted access.
+2. **Non-admin path:** For each required permission, call the appropriate aclService function:
+   - Folder operations (list, create child, move into): `aclService.checkFolderPermission(userId, folderNodeId, action)` where action is `'read'` or `'write'`.
+   - File content operations (download, copy source): `aclService.checkFilePermission(userId, fileNodeId, 'read')`.
+   - File mutation operations (upload to parent, delete from parent): `aclService.checkFolderPermission(userId, parentNodeId, 'write')`.
+
+| Method | Permission Gate | Action | ACL Call |
+|--------|----------------|--------|----------|
+| listDirectoryWithPermissions | Per-item flags, not blocking | Read/write enumeration | `checkFolderPermission` for dirs, `checkFilePermission` for files (skipped if admin) |
+| uploadFile | Blocking before create | Write on parent folder | `checkFolderPermission(userId, parentNodeId, 'write')` |
+| downloadFile | Blocking before download | Read on file node | `checkFilePermission(userId, fileNodeId, 'read')` |
+| renameNode | Blocking before rename | Write on current parent | `checkFolderPermission(userId, parentId, 'write')` |
+| moveNode | Blocking before move | Write on source parent AND write on destination parent | `checkFolderPermission` for both parents |
+| deleteNode | Blocking before delete | Write on parent of node being deleted | `checkFolderPermission(userId, parentId, 'write')` |
+| copyFile | Blocking before copy | Read on source + write on destination parent | `checkFilePermission(source)` + `checkFolderPermission(destParent)` |
+
+The aclService functions internally handle: share principal resolution (`share:` prefixed userIds), user caching via getCachedUser, admin bypass within their own bodies, and closure-table inheritance lookups. The fileService does not duplicate this logic — it relies on aclService as the single source of truth for permission decisions.
+
+---
+
+## 4. Sync Status Fail-Safe Semantics
+
+The `sync_status` column on `file_nodes` tracks consistency between database metadata and remote storage state. Three values are used:
+
+| Value | Meaning | Set When |
+|-------|---------|----------|
+| `active` | Database metadata and storage content are in sync. Node is fully usable. | Default for all new nodes (WebDAV mode) or after TX2 completion (S3 uploadService flow). Also set by rename/move when no storage-side operation was needed (S3 mode). |
+| `pending_upload` | Node exists in DB but blob content has not been written to storage yet. Intermediate state during S3 uploads. | Set by `blobStorageService.prepareUpload()` as part of TX1 in the 4-step upload flow. Transitions to `active` after TX2 completes. If S3 PUT fails, remains `pending_upload` for retry or GC cleanup. |
+| `orphaned_node` | Database metadata and storage content are inconsistent. The node's DB row exists but the corresponding storage resource may be missing, at a wrong path, or in an unexpected state. Best-effort recovery is expected from Phase 6 GC. | Set by any method when a best-effort storage operation fails after the DB write committed: WebDAV PUT failure during uploadFile, WebDAV MOVE failure during renameNode/moveNode, WebDAV DELETE failure during deleteNode (per-node), or WebDAV uploadToWebdav failure during copyFile. The error is still propagated to the caller — orphaned_node is a fail-safe marker for eventual consistency repair, not silent degradation. |
+
+**Recovery expectations:** Phase 6 GC service scans `file_nodes` for `sync_status != 'active'` rows and attempts reconciliation:
+- `pending_upload` nodes with no corresponding storage object → clean up DB row (orphaned pending).
+- `orphaned_node` files → attempt re-upload from cached content or mark for user review.
+- `orphaned_node` directories → attempt to repair children recursively or escalate for manual intervention.
+
+---
+
+## 5. Error Cases
+
+| Scenario | Storage Mode | Behavior | HTTP Status (when mapped by route handler) |
+|----------|-------------|----------|---------------------------------------------|
+| User lacks required permission and is not admin | Both | aclService check returns false → method throws permission denied error | 403 |
+| nodeId does not exist in file_nodes | Both | Method throws not-found error before any operation proceeds | 404 |
+| parentNodeId does not exist or is a file node | Both | uploadFile/listDirectoryWithPermissions throw not-found error | 404 |
+| S3 PUT fails during upload (network, storage full) | S3 | TX1 committed (pending state), S3 write failed → sync_status='pending_upload' propagated to caller as error response. Recoverable via retry or GC. | 500 |
+| WebDAV PUT fails during upload (connection refused, timeout, remote 4xx/5xx) | WebDAV | DB node committed with sync_status='orphaned_node', error re-thrown to caller | 500 |
+| WebDAV MOVE fails during rename/move (remote unavailable, path conflict) | WebDAV | DB operation succeeded, sync_status='orphaned_node' set on affected nodes, error propagated | 500 |
+| WebDAV DELETE fails for one node in subtree delete | WebDAV | Per-node: that specific descendant marked 'orphaned_node'. Remaining deletions proceed. DB deletion of entire subtree proceeds regardless. Error aggregated and returned to caller. | 207 (multi-status) or 500 |
+| Name conflict on rename/copy | Both | Conflict error thrown before any mutation | 409 |
+| Cycle detected on moveNode | Both | fileNodeService.moveNode rejects after getDescendantIds check; no DB mutation occurs | 400 |
+| Empty newName or name with path separators on rename | Both | Validation error thrown before any operation | 400 |
+
+---
+
+## 6. Verification Scenarios
+
+Complete checklist of testable behaviors per method, organized to drive the test scaffold in `W1.1-2` (see `phase4-sub-plan-wave1.md`).
+
+### listDirectoryWithPermissions
+- [ ] Returns children with nodeId, name, type fields for given parentNodeId
+- [ ] Includes size and mimeType from filecache LEFT JOIN; null for directories without cache entries
+- [ ] Sets hasReadPermission=false when non-admin user lacks read access on child node
+- [ ] Sets hasWritePermission=false when non-admin user lacks write access on child parent folder
+- [ ] Admin bypass: all items return hasRead=true, hasWrite=true regardless of aclService results (aclService never called for admin)
+- [ ] Returns empty array for leaf directory with no children
+- [ ] Throws 404-style error when parentNodeId does not exist or is a file node
+
+### uploadFile — S3 mode
+- [ ] Creates new file_node via uploadService.uploadFile and returns { nodeId, size, mimeType }
+- [ ] Sets sync_status='active' on successful TX1 → PUT → TX2 completion
+- [ ] Leaves sync_status='pending_upload' if TX1 succeeds but S3 PUT fails (uploadService recovery state)
+- [ ] Rolls back file_nodes row entirely on TX1 failure — no orphaned DB rows
+- [ ] Conflict 'skip': returns { nodeId, skipped: true } for existing name under parent
+- [ ] Conflict default (undefined): throws conflict error for existing name
+
+### uploadFile — WebDAV mode
+- [ ] Creates file_node and performs synchronous WebDAV PUT in single flow; returns nodeId with correct size and mimeType
+- [ ] Sets sync_status='orphaned_node' if WebDAV PUT fails after DB commit, then re-throws original error to caller
+
+### downloadFile
+- [ ] S3 mode: returns buffer via blobStorageService.downloadBlob following object_map → s3_key chain
+- [ ] WebDAV mode: resolves path from nodeId via fileNodeService.getNodePath, retrieves buffer through webdav GET
+- [ ] Returns null when no active object_map entry or storage resource exists (not an error)
+- [ ] Throws 403 if non-admin user lacks read permission on target file node
+
+### renameNode
+- [ ] S3 mode: updates name in file_nodes DB only; zero blobStorageService calls
+- [ ] WebDAV mode: attempts best-effort storage MOVE via blobStorageService; sets orphaned_node on failure without rolling back DB rename
+- [ ] Throws validation error for empty newName or names containing `/` or `\`
+- [ ] Throws conflict error if new name duplicates existing sibling under same parent (UNIQUE constraint violation from DB)
+
+### moveNode
+- [ ] Updates parent_id and rebuilds closure table via fileNodeService.moveNode in TX
+- [ ] S3 mode: no storage operation invoked (blob key decoupled from tree position)
+- [ ] WebDAV mode: attempts best-effort MOVE on remote; sets orphaned_node on failure without rolling back DB move
+- [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
+
+### deleteNode
+- [ ] Deletes leaf file node via fileNodeService.deleteNode after write-permission gate passes
+- [ ] Enumerates all descendants for directory nodes via getDescendantIds (closure table) before deletion
+- [ ] WebDAV mode: performs storage DELETE bottom-up (leaves first, directories last); marks orphaned_node on per-node failure; DB deletion of entire subtree proceeds regardless of individual failures
+- [ ] S3 mode: fileNodeService.deleteNode cascade triggers blobStorageService.deleteBlob per-file to mark object_map rows orphaned; actual S3 delete deferred to Phase 6 GC
+
+### copyFile — S3 mode
+- [ ] Zero-copy when source blob exclusively owned (countActiveObjectsByS3Key === 1): new file_node + object_map row referencing same s3_key with status='active'
+- [ ] Duplicates blob via duplicateBlob when source s3_key shared by multiple nodes: downloads, re-uploads under new key, links copy to new key
+- [ ] Checks read permission on source node and write permission on destination parent before proceeding
+
+### copyFile — WebDAV mode
+- [ ] Downloads source content via downloadBlob, creates new file_node in destination, uploads copy via uploadToWebdav at resolved path
+- [ ] Sets orphaned_node if uploadToWebdav fails after file_node creation; re-throws error to caller

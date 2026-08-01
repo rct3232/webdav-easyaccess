@@ -91,4 +91,42 @@ describe('blobstore factory', () => {
       expect(() => resolveS3Config()).toThrow(/missing.*required/i);
     });
   });
+
+  describe('createBlobStore — WebDAV mode', () => {
+    it('returns WebdavBlobStore instance when config.fileStorageMode is "webdav"', () => {
+      process.env.WEA_FILE_STORAGE = 'webdav';
+
+      ({ createBlobStore } = require('../index'));
+      const store = createBlobStore();
+
+      expect(store).toBeDefined();
+      expect(store.constructor.name).toBe('WebdavBlobStore');
+    });
+
+    it('throws clear error when WEA_FILE_STORAGE=webdav but no webdavClient provided', () => {
+      process.env.WEA_FILE_STORAGE = 'webdav';
+
+      ({ createBlobStore } = require('../index'));
+
+      expect(() => createBlobStore({})).toThrow(/webdav/i);
+    });
+
+    it('returns S3BlobStore instance when config.fileStorageMode is "s3" (existing behavior preserved)', () => {
+      process.env.WEA_FILE_STORAGE = 's3';
+
+      ({ createBlobStore } = require('../index'));
+      const store = createBlobStore();
+
+      expect(store.constructor.name).toBe('S3BlobStore');
+    });
+
+    it('validates required S3 keys are present when mode is "s3" (existing behavior preserved)', () => {
+      process.env.WEA_FILE_STORAGE = 's3';
+      delete process.env.S3_BUCKET;
+
+      ({ createBlobStore } = require('../index'));
+
+      expect(() => createBlobStore()).toThrow();
+    });
+  });
 });

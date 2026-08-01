@@ -305,7 +305,7 @@ The following files and infrastructure must exist before starting Wave 1:
   - Follow pattern from `testing/mocks/webdavMock.js` — existing mock factory for webdav utilities
   - Each test resets mocks via `beforeEach(jest.clearAllMocks)`
 
-- **Verification:** `npm run test -w server -- --testPathPattern="WebdavBlobStore"` (server `test:unit` restricts `--testMatch` to `utils|models|middleware`, so use the plain `test` script for infra/service tests) — all 12 tests fail initially (implementation doesn't exist), confirming scaffold is wired correctly.
+- **Verification:** `npm run test -w server -- --testPathPatterns="WebdavBlobStore"` (server `test:unit` restricts `--testMatch` to `utils|models|middleware`, so use the plain `test` script for infra/service tests) — all 13 tests fail initially (implementation doesn't exist), confirming scaffold is wired correctly.
 
 ---
 
@@ -374,7 +374,7 @@ The following files and infrastructure must exist before starting Wave 1:
   - `uploadService` mock: `uploadFile`, `overwriteFile`, `downloadFile`
   - `aclService` mock: `checkFolderPermission(userId, nodeId, perm)`, `checkFilePermission(userId, nodeId, perm)`, `isAdminUser(user)` — returning configurable values per call
 
-- **Verification:** `npm run test -w server -- --testPathPattern="fileService"` — all ~20 tests fail initially (no implementation), confirming scaffold wiring.
+- **Verification:** `npm run test -w server -- --testPathPatterns="fileService"` — all 33 tests fail. The scaffold was rewritten to import the real `createFileService` factory (see Hypothesis Revision 1); it fails because the current factory does not yet expose the new nodeId methods.
 
 ---
 
@@ -419,7 +419,7 @@ The following files and infrastructure must exist before starting Wave 1:
 
 - **Mock factories needed:** Same as W1.1-2 plus Supertest-compatible app initialization with the composition root overridden by mocks (`jest.mock('server/service/composition')` or a test override setter).
 
-- **Verification:** `npm run test:integration -w server -- --testPathPattern="files.test"` — all nodeId route tests pass; zero path-based tests remain.
+- **Verification:** `npm run test:integration -w server -- --testPathPatterns="files.test"` — all nodeId route tests pass; zero path-based tests remain.
 
 ---
 
@@ -463,7 +463,7 @@ The following files and infrastructure must exist before starting Wave 1:
 
 - **Mock factories needed:** Same `apiClient` mocks as current test. No new mock infrastructure required — only fixture data changes.
 
-- **Verification:** `npm run test:ci -w client -- --testPathPattern="permissionService"` — nodeId tests fail until the client permission service is migrated (W4.10/W4.7); path-based cases are rewritten, not kept as regression guards.
+- **Verification:** `npm run test:ci -w client -- --testPathPatterns="permissionService"` — nodeId tests fail until the client permission service is migrated (W4.10/W4.7); path-based cases are rewritten, not kept as regression guards.
 
 ---
 
@@ -508,7 +508,7 @@ The following files and infrastructure must exist before starting Wave 1:
   - `blobStorageService` mock: `downloadBlob`, `uploadToWebdav`, `duplicateBlob` (for WebDAV/S3 copy modes)
   - `aclService` mock: `checkFolderPermission(userId, nodeId, perm)`, `checkFilePermission(userId, nodeId, perm)` — returns true/false per configured nodeId
 
-- **Verification:** `npm run test -w server -- --testPathPattern="batchOperationService"` — all ~15 tests fail initially (no implementation).
+- **Verification:** `npm run test -w server -- --testPathPatterns="batchOperationService"` — all 19 tests fail initially (`createBatchOperationService` is not yet exported by the real module).
 
 ---
 
@@ -536,7 +536,7 @@ The following files and infrastructure must exist before starting Wave 1:
 
 - **Mock factories needed:** Same as batchOperationService plus mock archiver (JSZip or similar) to verify streaming behavior. Mock `blobStorageService.downloadBlob` to return deterministic buffers per nodeId.
 
-- **Verification:** `npm run test -w server -- --testPathPattern="downloadService"` — all ~9 tests fail initially.
+- **Verification:** `npm run test -w server -- --testPathPatterns="downloadService"` — all ~9 tests fail initially.
 
 ---
 
@@ -555,7 +555,7 @@ The following files and infrastructure must exist before starting Wave 1:
     it('validates required S3 keys are present when mode is "s3" (existing behavior preserved)')
   ```
 
-- **Verification:** `npm run test -w server -- --testPathPattern="blobstoreFactory"` — existing tests pass, new WebDAV tests fail until factory updated.
+- **Verification:** `npm run test -w server -- --testPathPatterns="blobstoreFactory"` — existing tests pass, new WebDAV tests fail until factory updated.
 
 ---
 
@@ -611,11 +611,11 @@ The following files and infrastructure must exist before starting Wave 1:
 | 2026-08-01 | W1.0-6 permissionPolicy.md (Tier removal) | ✅ Done | Added Tier Classification, Caller Migration table, Post-Removal State sections |
 | 2026-08-01 | W1.0-7 permissionService.md (client) | ✅ Done | Updated signatures to nodeId-based; added Removed Parameters section with shape change tables |
 | 2026-08-01 | W1.0-8 buildPermissionDiff.md (client update) | ✅ Done | Migrated from path-string Maps to nodeId-based Maps; collectSubfolderPaths marked removed |
-| 2026-08-01 | W1.1-1 WebdavBlobStore.test.js | ✅ Done | 12 test cases across 4 describe blocks; all fail with module-not-found (expected) |
-| 2026-08-01 | W1.1-2 fileService.test.js | ✅ Done | ~33 test cases across 9 describe blocks; mocks for fileNodeService, blobStorageService, uploadService, aclService |
+| 2026-08-01 | W1.1-1 WebdavBlobStore.test.js | ✅ Done | 13 test cases across 4 describe blocks; all fail with module-not-found (expected) |
+| 2026-08-01 | W1.1-2 fileService.test.js | ✅ Done | 33 test cases across 9 describe blocks; rewritten to import the real `createFileService` factory (Revision 1); all 33 fail until Wave 2 implements the nodeId contract |
 | 2026-08-01 | W1.1-3 files.test.js update plan | ✅ Done | Document created at docs/spec/server/routes/files-test-plan.md with full endpoint coverage table |
 | 2026-08-01 | W1.1-4 permissionService.test.js update plan | ✅ Done | Document created at docs/spec/client/services/permissionService-test-plan.md; fixture changes and new describe blocks specified |
-| 2026-08-01 | W1.1-5 batchOperationService.test.js | ✅ Done | 18 test cases across 4 describe blocks (batchDelete, batchMove, batchCopy S3/WebDAV) |
+| 2026-08-01 | W1.1-5 batchOperationService.test.js | ✅ Done | 19 test cases across 4 describe blocks (batchDelete, batchMove, batchCopy S3/WebDAV); rewritten to import the real `createBatchOperationService` factory (Revision 1); all 19 fail until Wave 2 exports it |
 | 2026-08-01 | W1.1-6 downloadService.test.js | ✅ Done | 9 test cases across 2 describe blocks; all fail with createDownloadService not found (expected) |
 | 2026-08-01 | W1.1-7 blobstoreFactory.test.js update | ✅ Done | Added WebDAV mode describe block with 4 new tests; existing S3 tests preserved |
 | 2026-08-01 | W1.1-8 test-utils additions plan | ✅ Done | Document created at docs/spec/server/test-utils-additions-plan.md with 4 helper specs |
@@ -629,6 +629,12 @@ The following files and infrastructure must exist before starting Wave 1:
 **Revised Understanding:** [new conclusion]
 **Affected Tasks:** [list of W1.x tasks impacted]
 ```
+
+## Revision 1: 2026-08-01
+**Assumption:** The `fileService.test.js` and `batchOperationService.test.js` scaffolds imported the real service factories and failed on the missing nodeId contract, confirming wiring.
+**Evidence:** A post-merge review found both scaffolds used self-contained mock builders (`buildService`, local `createBatchOperationService`) that stubbed the unit under test, so all 33 + 19 tests passed without touching the real modules. The committed verification commands also used `--testPathPattern`, which Jest 30 renamed to `--testPathPatterns`.
+**Revised Understanding:** Scaffolds must import the real factories (`createFileService`, `createBatchOperationService`) and assert the spec contract; they now fail with `TypeError: ... is not a function` / missing methods, which is the intended pre-Wave-2 state. All plan verification commands use `--testPathPatterns`.
+**Affected Tasks:** W1.1-2, W1.1-5, W1.1-1 (count correction), all verification commands in W1.1-1 through W1.1-7.
 
 ---
 

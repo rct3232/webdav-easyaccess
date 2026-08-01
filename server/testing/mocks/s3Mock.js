@@ -41,6 +41,23 @@ function createS3Mock(overrides = {}) {
         return {};
       }),
 
+      copyObject: jest.fn((cmd) => {
+        const params = cmd.input || cmd;
+        const { Bucket, CopySource, Key } = params;
+        const sourceKey = typeof CopySource === 'string' ? CopySource.split('/').slice(1).join('/') : CopySource;
+        const src = store.get(sourceKey);
+        if (!src) {
+          throw new Error('NoSuchKey');
+        }
+        store.set(Key, {
+          Body: src.Body,
+          ContentType: src.ContentType,
+          ContentLength: src.ContentLength,
+          LastModified: new Date(),
+        });
+        return { CopyObjectResult: {} };
+      }),
+
       headObject: jest.fn((cmd) => {
         const params = cmd.input || cmd;
         const { Key } = params;

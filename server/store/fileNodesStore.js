@@ -716,6 +716,31 @@ function createFileNodesStore() {
     }
   }
 
+  async function countActiveObjectsByS3Key(s3Key) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `SELECT COUNT(*)::int AS count FROM object_map WHERE s3_key = $1 AND status = 'active'`,
+          [String(s3Key)]
+        );
+        return Number(res.rows[0].count);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        `SELECT COUNT(*) AS count FROM object_map WHERE s3_key = ? AND status = 'active'`,
+        [String(s3Key)]
+      );
+      return Number(res.rows[0].count);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /*  filecache operations                                               */
   /* ------------------------------------------------------------------ */
@@ -816,6 +841,7 @@ function createFileNodesStore() {
     getObjectMapByS3Key,
     activateObject,
     orphanObject,
+    countActiveObjectsByS3Key,
     upsertCache,
     deleteCache,
   };

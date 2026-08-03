@@ -12,8 +12,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/service/batchOperationService.js`
-- **Test file:** `server/service/__tests__/batchOperationService.test.js`
+- **Source:** `server/domains/files/services/batchOperationService.js`
+- **Test file:** `server/domains/files/services/__tests__/batchOperationService.test.js`
 
 ### 2.2 Factory Function Signature
 

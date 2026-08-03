@@ -1,6 +1,6 @@
 'use strict';
 
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command, CopyObjectCommand } = require('@aws-sdk/client-s3');
 
 class S3BlobStore {
   constructor(config) {
@@ -60,6 +60,21 @@ class S3BlobStore {
       contentLength: Number(res.ContentLength),
       contentType: res.ContentType,
     };
+  }
+
+  async copyBlob(sourceKey, destKey) {
+    try {
+      await this.client.send(new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: `${this.bucket}/${sourceKey}`,
+        Key: destKey,
+      }));
+    } catch (err) {
+      if (err.name === 'NoSuchKey' || String(err.message || '').includes('NoSuchKey')) {
+        throw new Error(`Source key not found for copy: ${sourceKey}`);
+      }
+      throw err;
+    }
   }
 
   async listOrphanedKeys(olderThan) {

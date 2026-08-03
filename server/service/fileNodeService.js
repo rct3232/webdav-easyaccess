@@ -118,6 +118,14 @@ function createFileNodeService({ fileNodesStore }) {
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Read                                                               */
+  /* ------------------------------------------------------------------ */
+
+  async function getNode(nodeId) {
+    return fileNodesStore.getNode(nodeId);
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Public API                                                         */
   /* ------------------------------------------------------------------ */
 
@@ -128,6 +136,7 @@ function createFileNodeService({ fileNodesStore }) {
     moveNode,
     deleteNode,
     listDirectory,
+    getNode,
     getNodePath,
     resolvePath,
     getDescendantIds,

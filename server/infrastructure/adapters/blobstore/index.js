@@ -1,7 +1,8 @@
 'use strict';
 
 const S3BlobStore = require('./S3BlobStore');
-const NoOpBlobStore = require('./NoOpBlobStore');
+const WebdavBlobStore = require('./WebdavBlobStore');
+const { createFileStoreAdapter } = require('../filestore');
 
 function resolveS3Config() {
   const required = ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'];
@@ -31,7 +32,7 @@ function createBlobStore() {
   const storage = process.env.WEA_FILE_STORAGE || 's3';
 
   if (storage === 'webdav') {
-    return new NoOpBlobStore();
+    return new WebdavBlobStore(createFileStoreAdapter());
   }
 
   const config = resolveS3Config();

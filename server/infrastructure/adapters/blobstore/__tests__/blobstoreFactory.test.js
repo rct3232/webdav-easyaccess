@@ -31,16 +31,6 @@ describe('blobstore factory', () => {
       expect(store.constructor.name).toBe('S3BlobStore');
     });
 
-    it('returns NoOpBlobStore when WEA_FILE_STORAGE=webdav', () => {
-      process.env.WEA_FILE_STORAGE = 'webdav';
-
-      ({ createBlobStore } = require('../index'));
-      const store = createBlobStore();
-
-      expect(store).toBeDefined();
-      expect(store.constructor.name).toBe('NoOpBlobStore');
-    });
-
     it('defaults to S3BlobStore when WEA_FILE_STORAGE is empty or undefined', () => {
       delete process.env.WEA_FILE_STORAGE;
 
@@ -101,14 +91,6 @@ describe('blobstore factory', () => {
 
       expect(store).toBeDefined();
       expect(store.constructor.name).toBe('WebdavBlobStore');
-    });
-
-    it('throws clear error when WEA_FILE_STORAGE=webdav but no webdavClient provided', () => {
-      process.env.WEA_FILE_STORAGE = 'webdav';
-
-      ({ createBlobStore } = require('../index'));
-
-      expect(() => createBlobStore({})).toThrow(/webdav/i);
     });
 
     it('returns S3BlobStore instance when config.fileStorageMode is "s3" (existing behavior preserved)', () => {

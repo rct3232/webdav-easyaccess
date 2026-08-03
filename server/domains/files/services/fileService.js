@@ -392,10 +392,10 @@ function createFileService(options = {}) {
   }
 
   async function downloadFileByNodeId(fileNodeId, userId, user) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const allowed = await aclService.checkFilePermission(userId, fileNodeId, 'read');
       if (!allowed) {
-        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+        throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
       }
     }
 

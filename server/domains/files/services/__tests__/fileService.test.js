@@ -595,7 +595,12 @@ describe('downloadFile', () => {
     expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
   });
 
-  it('throws permission denied if user lacks read access (non-admin)', async () => {
+  it('throws not-found (404) if user lacks read access (non-admin)', async () => {
+    const mockNotFound = jest.fn().mockImplementation(() => {
+      const err = new Error('Not Found');
+      err.status = 404;
+      throw err;
+    });
     const aclService = createMockAclService({
       isAdminUser: jest.fn().mockReturnValue(false),
       checkFilePermission: jest.fn().mockResolvedValue(false),
@@ -606,6 +611,7 @@ describe('downloadFile', () => {
       blobStorageService: createMockBlobStorageService(),
       uploadService: createMockUploadService(),
       aclService,
+      notFoundError: mockNotFound,
       fileStorageMode: 's3',
     });
 
@@ -613,6 +619,32 @@ describe('downloadFile', () => {
       service.downloadFile(10, 1, { id: 1 })
     ).rejects.toThrow();
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
+    expect(mockNotFound).toHaveBeenCalled();
+  });
+
+  it('admin bypass: downloads without permission check', async () => {
+    const expectedBuffer = Buffer.from('admin-download');
+    const blobStorageService = createMockBlobStorageService({
+      downloadBlob: jest.fn().mockResolvedValue(expectedBuffer),
+    });
+    const aclService = createMockAclService({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService: createMockFileNodeService(),
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.downloadFile(10, 1, { id: 1 });
+
+    expect(aclService.isAdminUser).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).not.toHaveBeenCalled();
+    expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
+    expect(result).toBe(expectedBuffer);
   });
 });
 

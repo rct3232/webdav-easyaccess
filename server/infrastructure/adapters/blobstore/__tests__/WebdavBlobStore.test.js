@@ -24,6 +24,24 @@ describe('WebdavBlobStore', () => {
     WebdavBlobStore = require('../WebdavBlobStore');
   });
 
+  describe('constructor', () => {
+    it('throws when webdavClient is null', () => {
+      expect(() => new WebdavBlobStore(null)).toThrow(/webdavClient/i);
+    });
+
+    it('throws when webdavClient is undefined', () => {
+      expect(() => new WebdavBlobStore(undefined)).toThrow(/webdavClient/i);
+    });
+  });
+
+  describe('listOrphanedKeys', () => {
+    it('returns empty array', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+      const result = await store.listOrphanedKeys();
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('uploadBlob', () => {
     it('uploads buffer to WebDAV path via putFileContents successfully', async () => {
       const store = new WebdavBlobStore(adapterMock);

@@ -40,7 +40,7 @@ function createMockBlobStorageService(overrides = {}) {
     deleteBlob: jest.fn().mockResolvedValue(true),
     uploadToWebdav: jest.fn().mockResolvedValue(true),
     getActiveS3Key: jest.fn().mockResolvedValue('key-1'),
-    duplicateBlob: jest.fn().mockResolvedValue({ newS3Key: 'key-copy' }),
+    duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
     linkObject: jest.fn().mockResolvedValue(true),
     countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
   };
@@ -871,7 +871,7 @@ describe('copyFile — S3 mode', () => {
     const blobStorageService = createMockBlobStorageService({
       getActiveS3Key: jest.fn().mockResolvedValue('key-shared'),
       countActiveObjectsByS3Key: jest.fn().mockResolvedValue(3), // shared
-      duplicateBlob: jest.fn().mockResolvedValue({ newS3Key: 'key-copy' }),
+      duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
       linkObject: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
@@ -889,7 +889,7 @@ describe('copyFile — S3 mode', () => {
 
     const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
 
-    expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith(10);
+    expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith('key-shared');
     expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy');
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 51 });
   });

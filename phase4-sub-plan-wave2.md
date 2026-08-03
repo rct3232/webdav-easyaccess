@@ -1027,11 +1027,11 @@ This validates that no existing tests were broken by the refactoring. If any pre
 
 | Date | Task | Status | Notes |
 |------|------|--------|-------|
-| 2026-08-03 | W2.0 WebdavBlobStore adapter + S3BlobStore.copyBlob | ✅ Complete | 13/13 tests pass; copyBlob via CopyObjectCommand |
+| 2026-08-03 | W2.0 WebdavBlobStore adapter + S3BlobStore.copyBlob | ✅ Complete | 16/16 tests pass; added constructor validation + listOrphanedKeys tests |
 | 2026-08-03 | W2.1 blobstore factory update | ✅ Complete | 9/9 tests pass; parameterless factory, env-based dispatch |
-| 2026-08-03 | W2.2 blobStorageService dual-backend | ✅ Complete | 14/14 tests pass; all S3 + WebDAV mode guards verified |
-| 2026-08-03 | W2.3 fileService.js refactoring skeleton | ✅ Complete | 33/33 tests pass; nodeId methods alongside legacy path-based |
-| 2026-08-03 | W2.4 Test implementation & verification | ✅ Complete | All Wave 2 suites green; NoOpBlobStore no longer imported |
+| 2026-08-03 | W2.2 blobStorageService dual-backend | ✅ Complete | 28/28 tests pass; added WebDAV mode (8) + COW methods (6) tests; fixed mimeType fallback to 'application/octet-stream'; fixed uploadToWebdav path resolution throw |
+| 2026-08-03 | W2.3 fileService.js refactoring skeleton | ✅ Complete | 33/33 tests pass; added display_path/thumbnailUrl/isHidden to listDirectoryByNodeId; added conflict detection to uploadFileByNodeId; fixed fileStorageMode default to 's3' |
+| 2026-08-03 | W2.4 Test implementation & verification | ✅ Complete | All Wave 2 suites green (86/86); NoOpBlobStore no longer imported |
 
 ### Hypothesis Revisions Template
 

@@ -39,7 +39,7 @@ function createFileService(options = {}) {
   const blobStorageService = options.blobStorageService;
   const uploadService = options.uploadService;
   const aclService = options.aclService;
-  const fileStorageMode = options.fileStorageMode || 'webdav';
+  const fileStorageMode = options.fileStorageMode || 's3';
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
 
@@ -307,15 +307,25 @@ function createFileService(options = {}) {
         hasWritePermission = await aclService.checkFilePermission(userId, child.id, 'write');
       }
 
+      const display_path = await fileNodeService.getNodePath(child.id);
+
+      let thumbnailUrl = null;
+      if (isImageFile(child.name) || isVideoFile(child.name)) {
+        thumbnailUrl = getThumbnailUrl(display_path || `/${child.name}`);
+      }
+
       results.push({
         nodeId: child.id,
         name: child.name,
         type: child.type,
-        size: child.size,
-        mimeType: child.mimeType,
-        modifiedAt: child.updatedAt,
+        display_path,
+        size: child.size ?? null,
+        mimeType: child.mimeType ?? null,
+        modifiedAt: child.updatedAt ?? null,
         hasReadPermission,
         hasWritePermission,
+        isHidden: (child.name || '').startsWith('.'),
+        thumbnailUrl,
       });
     }
 
@@ -330,13 +340,36 @@ function createFileService(options = {}) {
       }
     }
 
+    // Conflict check: see if file with same name exists under parent
+    const existingChildren = await fileNodeService.listDirectory(parentNodeId);
+    const existingFile = existingChildren.find(c => c.name === name && c.type === 'file');
+
+    if (existingFile) {
+      if (onConflict === 'skip') {
+        return { nodeId: existingFile.id, skipped: true };
+      }
+      if (onConflict !== 'overwrite') {
+        throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
+      }
+    }
+
+    const isOverwrite = !!existingFile;
+
     if (fileStorageMode === 's3') {
+      if (isOverwrite) {
+        return await uploadService.overwriteFile(existingFile.id, name, buffer, mimeType);
+      }
       return await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
     }
 
     // WebDAV mode
-    const newFile = await fileNodeService.createFile(parentNodeId, name);
-    const nodeId = newFile.id;
+    let nodeId;
+    if (!isOverwrite) {
+      const newFile = await fileNodeService.createFile(parentNodeId, name);
+      nodeId = newFile.id;
+    } else {
+      nodeId = existingFile.id;
+    }
 
     try {
       await blobStorageService.uploadToWebdav(nodeId, buffer);
@@ -474,7 +507,7 @@ function createFileService(options = {}) {
       if (activeCount === 1) {
         await blobStorageService.linkObject(copiedNodeId, activeS3Key);
       } else {
-        const { newS3Key } = await blobStorageService.duplicateBlob(nodeId);
+        const newS3Key = await blobStorageService.duplicateBlob(activeS3Key);
         await blobStorageService.linkObject(copiedNodeId, newS3Key);
       }
 

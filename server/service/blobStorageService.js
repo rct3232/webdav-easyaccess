@@ -151,10 +151,10 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
   async function uploadToWebdav(fileNodeId, buffer, mimeType) {
     const nodePath = await resolveWebdavPathOrNull(fileNodeId);
     if (nodePath === null) {
-      return null;
+      throw new Error('Cannot resolve path for fileNodeId: ' + fileNodeId);
     }
     await blobStore.uploadBlob(nodePath, buffer);
-    await fileNodesStore.upsertCache(fileNodeId, buffer.length, mimeType || null, null);
+    await fileNodesStore.upsertCache(fileNodeId, buffer.length, mimeType || 'application/octet-stream', null);
   }
 
   return {

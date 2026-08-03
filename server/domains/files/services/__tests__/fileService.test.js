@@ -333,6 +333,99 @@ describe('uploadFile — S3 mode', () => {
   });
 });
 
+ it('uses uploadService.overwriteFile when file already exists and onConflict is overwrite', async () => {
+    const existingNodeId = 99;
+    const mockChildren = [
+      { id: existingNodeId, name: 'hello.txt', type: 'file' },
+    ];
+
+    const fileNodeService = createMockFileNodeService({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+    });
+
+    const aclService = createMockAclService({
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const uploadSvc = createMockUploadService({
+      overwriteFile: jest.fn().mockResolvedValue({ nodeId: existingNodeId, size: 42, mimeType: 'text/plain' }),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: uploadSvc,
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.uploadFile(
+      1, 5, 'hello.txt', Buffer.from('new-content'), 'text/plain', { id: 1 }, 'overwrite'
+    );
+
+    expect(uploadSvc.overwriteFile).toHaveBeenCalledWith(existingNodeId, Buffer.from('new-content'), 'text/plain');
+    expect(result.nodeId).toBe(existingNodeId);
+  });
+
+  it('returns skipped:true when onConflict is skip and file exists', async () => {
+    const existingNodeId = 99;
+    const mockChildren = [
+      { id: existingNodeId, name: 'hello.txt', type: 'file' },
+    ];
+
+    const fileNodeService = createMockFileNodeService({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+    });
+
+    const aclService = createMockAclService({
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const uploadSvc = createMockUploadService();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: uploadSvc,
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.uploadFile(
+      1, 5, 'hello.txt', Buffer.from('hi'), 'text/plain', { id: 1 }, 'skip'
+    );
+
+    expect(result).toMatchObject({ nodeId: existingNodeId, skipped: true });
+    expect(uploadSvc.uploadFile).not.toHaveBeenCalled();
+    expect(uploadSvc.overwriteFile).not.toHaveBeenCalled();
+  });
+
+  it('throws conflictError when onConflict is error (default) and file exists', async () => {
+    const mockChildren = [
+      { id: 99, name: 'hello.txt', type: 'file' },
+    ];
+
+    const fileNodeService = createMockFileNodeService({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+    });
+
+    const aclService = createMockAclService({
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    await expect(
+      service.uploadFile(1, 5, 'hello.txt', Buffer.from('hi'), 'text/plain', { id: 1 })
+    ).rejects.toThrow();
+  });
+
 // ── uploadFile — WebDAV mode ───────────────────────────────────────
 
 describe('uploadFile — WebDAV mode', () => {
@@ -392,6 +485,42 @@ describe('uploadFile — WebDAV mode', () => {
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(31, 'orphaned_node');
   });
 });
+
+ it('WebDAV overwrite uses existing nodeId without calling createFile', async () => {
+    const existingNodeId = 42;
+    const mockChildren = [
+      { id: existingNodeId, name: 'hello.txt', type: 'file' },
+    ];
+
+    const fileNodeService = createMockFileNodeService({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      createFile: jest.fn(), // should NOT be called for overwrite
+    });
+
+    const blobStorageService = createMockBlobStorageService({
+      uploadToWebdav: jest.fn().mockResolvedValue(true),
+    });
+
+    const aclService = createMockAclService({
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService,
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 'webdav',
+    });
+
+    const result = await service.uploadFile(
+      1, 5, 'hello.txt', Buffer.from('new-content'), 'text/plain', { id: 1 }, 'overwrite'
+    );
+
+    expect(fileNodeService.createFile).not.toHaveBeenCalled();
+    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith(existingNodeId, Buffer.from('new-content'));
+    expect(result.nodeId).toBe(existingNodeId);
+  });
 
 // ── downloadFile ────────────────────────────────────────────────────
 

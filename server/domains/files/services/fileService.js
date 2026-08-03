@@ -367,7 +367,7 @@ function createFileService(options = {}) {
 
     if (fileStorageMode === 's3') {
       if (isOverwrite) {
-        return await uploadService.overwriteFile(existingFile.id, name, buffer, mimeType);
+        return await uploadService.overwriteFile(existingFile.id, buffer, mimeType);
       }
       return await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
     }

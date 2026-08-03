@@ -407,11 +407,11 @@ function createFileService(options = {}) {
   }
 
   async function renameNode(nodeId, newName, userId, user) {
-    if (!newName || newName.length === 0) {
-      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+    if (!newName || newName.trim().length === 0) {
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
     if (newName.includes('/') || newName.includes('\\')) {
-      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
 
     if (!aclService.isAdminUser(user)) {
@@ -419,6 +419,12 @@ function createFileService(options = {}) {
       if (!allowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
       }
+    }
+
+    const node = await fileNodeService.getNode(nodeId);
+    const siblings = await fileNodeService.listDirectory(node.parent_id);
+    if (siblings.some(s => s.name === newName && s.id !== nodeId)) {
+      throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
     await fileNodeService.renameNode(nodeId, newName);
@@ -479,19 +485,20 @@ function createFileService(options = {}) {
 
     const descendantIds = await fileNodeService.getDescendantIds(nodeId);
 
-    // WebDAV: bottom-up storage deletion before DB removal
+    // WebDAV: bottom-up storage deletion before DB removal (deepest first, then target node)
     if (fileStorageMode === 'webdav') {
-      for (const descendantId of [...descendantIds].reverse()) {
+      const allNodesToCleanup = [...descendantIds].reverse().concat([nodeId]);
+      for (const descId of allNodesToCleanup) {
         try {
-          await blobStorageService.deleteBlob(descendantId);
+          await blobStorageService.deleteBlob(descId);
         } catch (error) {
-          await fileNodeService.updateSyncStatus(descendantId, 'orphaned_node');
+          await fileNodeService.updateSyncStatus(descId, 'orphaned_node');
         }
       }
     }
 
     await fileNodeService.deleteNode(nodeId);
-    return { deletedCount: descendantIds.length };
+    return { deletedCount: descendantIds.length + 1 };
   }
 
   async function copyFileByNodeId(nodeId, destinationParentNodeId, newName, userId, user) {

@@ -654,6 +654,8 @@ describe('renameNode', () => {
   it('updates name in file_nodes DB only for S3 mode (no storage operation)', async () => {
     const fileNodeService = createMockFileNodeService({
       renameNode: jest.fn().mockResolvedValue(true),
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
+      listDirectory: jest.fn().mockResolvedValue([]),
     });
     const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
@@ -671,6 +673,8 @@ describe('renameNode', () => {
     const result = await service.renameNode(10, 'newName.txt', 1, { id: 1 });
 
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+    expect(fileNodeService.getNode).toHaveBeenCalledWith(10);
+    expect(fileNodeService.listDirectory).toHaveBeenCalledWith(5);
     expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
     expect(result).toMatchObject({ nodeId: 10, newName: 'newName.txt' });
   });
@@ -678,6 +682,8 @@ describe('renameNode', () => {
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
     const fileNodeService = createMockFileNodeService({
       renameNode: jest.fn().mockResolvedValue(true),
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
+      listDirectory: jest.fn().mockResolvedValue([]),
       getNodePath: jest.fn()
         .mockResolvedValueOnce('/files/old.txt')
         .mockResolvedValueOnce('/files/new.txt'),
@@ -706,7 +712,7 @@ describe('renameNode', () => {
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'orphaned_node');
   });
 
-  it('throws if newName is empty or contains invalid characters', async () => {
+  it('throws if newName is empty, whitespace-only, or contains invalid characters', async () => {
     const fileNodeService = createMockFileNodeService();
     const aclService = createMockAclService({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -725,6 +731,11 @@ describe('renameNode', () => {
       service.renameNode(10, '', 1, { id: 1 })
     ).rejects.toThrow();
 
+    // Whitespace-only name (trimmed to empty)
+    await expect(
+      service.renameNode(10, '   ', 1, { id: 1 })
+    ).rejects.toThrow();
+
     // Contains path separator /
     await expect(
       service.renameNode(10, 'a/b.txt', 1, { id: 1 })
@@ -736,9 +747,12 @@ describe('renameNode', () => {
     ).rejects.toThrow();
   });
 
-  it('throws if new name conflicts with existing sibling node', async () => {
+  it('throws if new name conflicts with existing sibling node (pre-check)', async () => {
     const fileNodeService = createMockFileNodeService({
-      renameNode: jest.fn().mockRejectedValue(new Error('duplicate key value violates unique constraint')),
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
+      listDirectory: jest.fn().mockResolvedValue([
+        { id: 20, name: 'existing.txt', type: 'file' },
+      ]),
     });
     const aclService = createMockAclService({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -755,7 +769,32 @@ describe('renameNode', () => {
     await expect(
       service.renameNode(10, 'existing.txt', 1, { id: 1 })
     ).rejects.toThrow();
-    expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'existing.txt');
+    // renameNode on fileNodesStore is never called — rejected at pre-check stage
+    expect(fileNodeService.renameNode).not.toHaveBeenCalled();
+  });
+
+  it('admin bypass: skips permission check and proceeds directly', async () => {
+    const fileNodeService = createMockFileNodeService({
+      renameNode: jest.fn().mockResolvedValue(true),
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
+      listDirectory: jest.fn().mockResolvedValue([]),
+    });
+    const aclService = createMockAclService({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    await service.renameNode(10, 'newName.txt', 1, { id: 1 });
+
+    expect(aclService.isAdminUser).toHaveBeenCalled();
+    expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
   });
 });
 
@@ -867,6 +906,28 @@ describe('moveNode', () => {
     ).rejects.toThrow();
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 50);
   });
+
+  it('admin bypass: skips permission checks and proceeds directly', async () => {
+    const fileNodeService = createMockFileNodeService({
+      moveNode: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createMockAclService({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    await service.moveNode(10, 20, 1, { id: 1 });
+
+    expect(aclService.isAdminUser).toHaveBeenCalled();
+    expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
+  });
 });
 
 // ── deleteNode ──────────────────────────────────────────────────────
@@ -875,7 +936,7 @@ describe('deleteNode', () => {
   it('deletes leaf node via fileNodeService.deleteNode after write-permission gate', async () => {
     const fileNodeService = createMockFileNodeService({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
-      getDescendantIds: jest.fn().mockResolvedValue([10]),
+      getDescendantIds: jest.fn().mockResolvedValue([]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const aclService = createMockAclService({
@@ -894,6 +955,7 @@ describe('deleteNode', () => {
 
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
     expect(fileNodeService.getNode).toHaveBeenCalledWith(10);
+    expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(10);
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
     expect(result.deletedCount).toBe(1);
   });
@@ -901,7 +963,7 @@ describe('deleteNode', () => {
   it('enumerates descendants via getDescendantIds for directory nodes', async () => {
     const fileNodeService = createMockFileNodeService({
       getNode: jest.fn().mockResolvedValue({ id: 5, name: 'dir', type: 'directory' }),
-      getDescendantIds: jest.fn().mockResolvedValue([5, 6, 7]),
+      getDescendantIds: jest.fn().mockResolvedValue([6, 7]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 3 }),
     });
     const aclService = createMockAclService({
@@ -921,20 +983,21 @@ describe('deleteNode', () => {
     expect(fileNodeService.getNode).toHaveBeenCalledWith(5);
     expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(5);
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(5);
+    // 2 descendants + 1 target node = 3 total deleted
     expect(result.deletedCount).toBe(3);
   });
 
-  it('WebDAV mode: storage DELETE bottom-up, marks orphaned_node on per-node failure, DB delete proceeds', async () => {
+  it('WebDAV mode: storage DELETE bottom-up (descendants + target), marks orphaned_node on per-node failure, DB delete proceeds', async () => {
     const fileNodeService = createMockFileNodeService({
       getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
-      getDescendantIds: jest.fn().mockResolvedValue([100, 101]),
+      getDescendantIds: jest.fn().mockResolvedValue([101]),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 2 }),
     });
     const blobStorageService = createMockBlobStorageService({
       deleteBlob: jest.fn()
-        .mockRejectedValueOnce(new Error('WebDAV DELETE failed')) // first fails
-        .mockResolvedValueOnce(true), // second succeeds
+        .mockRejectedValueOnce(new Error('WebDAV DELETE failed')) // child fails
+        .mockResolvedValueOnce(true), // target succeeds
     });
     const aclService = createMockAclService({
       checkFilePermission: jest.fn().mockResolvedValue(true),
@@ -950,19 +1013,20 @@ describe('deleteNode', () => {
 
     const result = await service.deleteNode(100, 1, { id: 1 });
 
-    // Bottom-up storage DELETE: leaves first (101), then parent (100).
+    // Bottom-up storage DELETE: child (101) first, then target node itself (100).
     expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(101);
     expect(blobStorageService.deleteBlob).toHaveBeenCalledWith(100);
     // First DELETE (101) failed → orphaned_node marker; DB deletion proceeds.
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(101, 'orphaned_node');
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(100);
+    // 1 descendant + 1 target node = 2 total deleted
     expect(result.deletedCount).toBe(2);
   });
 
   it('S3 mode: DB-only deletion, no blobStorageService calls', async () => {
     const fileNodeService = createMockFileNodeService({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'file.txt', type: 'file' }),
-      getDescendantIds: jest.fn().mockResolvedValue([10]),
+      getDescendantIds: jest.fn().mockResolvedValue([]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const blobStorageService = createMockBlobStorageService();
@@ -986,6 +1050,30 @@ describe('deleteNode', () => {
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
     expect(result.deletedCount).toBe(1);
+  });
+
+  it('admin bypass: skips permission check and proceeds with deletion', async () => {
+    const fileNodeService = createMockFileNodeService({
+      getNode: jest.fn().mockResolvedValue({ id: 42, name: 'admin.txt', type: 'file' }),
+      getDescendantIds: jest.fn().mockResolvedValue([]),
+      deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    });
+    const aclService = createMockAclService({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createMockBlobStorageService(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    await service.deleteNode(42, 1, { id: 1 });
+
+    expect(aclService.isAdminUser).toHaveBeenCalled();
+    expect(fileNodeService.deleteNode).toHaveBeenCalledWith(42);
   });
 });
 

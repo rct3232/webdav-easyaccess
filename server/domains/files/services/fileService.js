@@ -291,20 +291,29 @@ function createFileService(options = {}) {
   async function listDirectoryByNodeId(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
 
+    if (!children || children.length === 0) {
+      return [];
+    }
+
+    const isAdmin = user && aclService.isAdminUser(user);
+
     const results = [];
     for (const child of children) {
       let hasReadPermission;
       let hasWritePermission;
 
-      if (aclService.isAdminUser(user)) {
+      if (isAdmin) {
         hasReadPermission = true;
         hasWritePermission = true;
-      } else if (child.type === 'directory') {
-        hasReadPermission = await aclService.checkFolderPermission(userId, child.id, 'read');
-        hasWritePermission = await aclService.checkFolderPermission(userId, child.id, 'write');
       } else {
-        hasReadPermission = await aclService.checkFilePermission(userId, child.id, 'read');
-        hasWritePermission = await aclService.checkFilePermission(userId, child.id, 'write');
+        const isDir = child.type === 'directory';
+        if (isDir) {
+          hasReadPermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.READ);
+          hasWritePermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.WRITE);
+        } else {
+          hasReadPermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.READ);
+          hasWritePermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.WRITE);
+        }
       }
 
       const display_path = await fileNodeService.getNodePath(child.id);
@@ -315,6 +324,7 @@ function createFileService(options = {}) {
       }
 
       results.push({
+        id: child.id,
         nodeId: child.id,
         name: child.name,
         type: child.type,

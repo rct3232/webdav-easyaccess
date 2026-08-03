@@ -1,5 +1,77 @@
 'use strict';
 
+const { getComposition } = require('../../../service/composition');
+const { createOperationProgressStore } = require('../stores/operationProgress');
+
+/**
+ * Async worker that processes a bulk job from the operation progress store.
+ * Reads the job, dispatches to the appropriate batch method, and updates progress.
+ */
+async function _processBulkJob(jobId) {
+  const opStore = createOperationProgressStore();
+  const job = opStore.getJob(jobId);
+  if (!job) return;
+
+  const { fileService, batchOperationService: batchOp } = getComposition();
+
+  try {
+    opStore.updateJob(jobId, { status: 'running', progress: 0 });
+
+    let result;
+    switch (job.operation) {
+      case 'delete': {
+        result = await batchOp.batchDelete(job.payload.nodeIds, job.userId);
+        break;
+      }
+      case 'move': {
+        result = await batchOp.batchMove(
+          job.payload.moves,
+          job.userId,
+          { is_admin: true },
+        );
+        break;
+      }
+      case 'copy': {
+        result = await batchOp.batchCopy(
+          job.payload.copies,
+          job.userId,
+          { is_admin: true },
+        );
+        break;
+      }
+      default:
+        opStore.updateJob(jobId, { status: 'failed', errorMessage: `Unknown operation: ${job.operation}` });
+        return;
+    }
+
+    const countKey = result.deletedCount != null ? 'deletedCount'
+      : result.movedCount != null ? 'movedCount'
+      : result.copiedCount != null ? 'copiedCount'
+      : null;
+
+    opStore.updateJob(jobId, {
+      status: 'completed',
+      progress: result[countKey] || 0,
+      total: job.total,
+      results: result.errors || [],
+    });
+  } catch (error) {
+    opStore.updateJob(jobId, { status: 'failed', errorMessage: error.message });
+  }
+}
+
+/**
+ * Schedule a bulk job for asynchronous processing.
+ * @param {string} jobId — the job identifier returned by createJob
+ */
+function scheduleBulkWorker(jobId) {
+  setImmediate(() => {
+    _processBulkJob(jobId).catch(err => {
+      console.error(`[batchOperationService] Unhandled error in bulk worker ${jobId}:`, err);
+    });
+  });
+}
+
 /**
  * Factory: nodeId-based batch operation service.
  * Delegates individual operations to fileService with async permission gates via aclService.
@@ -118,7 +190,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
     let copiedCount = 0;
 
     for (const copy of copies) {
-      const { sourceNodeId, destinationParentNodeId } = copy;
+      const { sourceNodeId, destinationParentNodeId, newName } = copy;
       try {
         if (!user || !aclService.isAdminUser(user)) {
           const canReadSource = await aclService.checkFilePermission(
@@ -145,6 +217,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
         await fileService.copyFile(
           sourceNodeId,
           destinationParentNodeId,
+          newName || null,
           userId,
           user
         );
@@ -164,4 +237,4 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
   return { batchDelete, batchMove, batchCopy };
 }
 
-module.exports = { createBatchOperationService };
+module.exports = { createBatchOperationService, scheduleBulkWorker };

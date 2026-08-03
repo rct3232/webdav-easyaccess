@@ -5,7 +5,6 @@ const router = express.Router();
 
 const { authenticateToken } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
-const normalizePathParam = require('../../../middleware/normalizePathParam');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
 
@@ -16,35 +15,59 @@ const opStore = createOperationProgressStore();
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
+function parseNodeId(value) {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
+  }
+  return parsed;
+}
+
 // POST /batch-delete
-router.post('/batch-delete', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { paths } = req.body;
-  if (!paths || !Array.isArray(paths) || paths.length === 0) {
+router.post('/batch-delete', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { nodeIds } = req.body;
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = opStore.createJob(req.user.id, 'delete', { paths });
+
+  const parsedNodeIds = nodeIds.map(id => parseNodeId(id));
+
+  const { jobId } = opStore.createJob(req.user.id, 'delete', { nodeIds: parsedNodeIds });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
 // POST /batch-move
-router.post('/batch-move', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { moves, onConflict } = req.body;
+router.post('/batch-move', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { moves } = req.body;
   if (!moves || !Array.isArray(moves) || moves.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = opStore.createJob(req.user.id, 'move', { moves, onConflict });
+
+  const parsedMoves = moves.map(move => ({
+    sourceNodeId: parseNodeId(move.sourceNodeId),
+    destinationParentNodeId: parseNodeId(move.destinationParentNodeId),
+  }));
+
+  const { jobId } = opStore.createJob(req.user.id, 'move', { moves: parsedMoves });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));
 
 // POST /batch-copy
-router.post('/batch-copy', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { copies, onConflict } = req.body;
+router.post('/batch-copy', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const { copies } = req.body;
   if (!copies || !Array.isArray(copies) || copies.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
-  const { jobId } = opStore.createJob(req.user.id, 'copy', { copies, onConflict });
+
+  const parsedCopies = copies.map(copy => ({
+    sourceNodeId: parseNodeId(copy.sourceNodeId),
+    destinationParentNodeId: parseNodeId(copy.destinationParentNodeId),
+    newName: copy.newName || null,
+  }));
+
+  const { jobId } = opStore.createJob(req.user.id, 'copy', { copies: parsedCopies });
   scheduleBulkWorker(jobId);
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId });
 }));

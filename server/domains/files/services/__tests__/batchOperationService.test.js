@@ -384,7 +384,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
       expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });
@@ -409,7 +409,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
     });
 
     it('checks async read permission on source and write permission on destination parent', async () => {
@@ -490,8 +490,8 @@ describe('batchOperationService', () => {
       expect(result.copiedCount).toBe(2);
       expect(result.errors).toEqual([]);
       expect(fileService.copyFile).toHaveBeenCalledTimes(2);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
-      expect(fileService.copyFile).toHaveBeenCalledWith(30, 40, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(30, 40, null, 1, { id: 1 });
     });
 
     it('creates new file_node + object_map entry with new webdav path', async () => {
@@ -514,7 +514,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
       expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });

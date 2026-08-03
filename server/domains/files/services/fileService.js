@@ -513,12 +513,18 @@ function createFileService(options = {}) {
       }
     }
 
+    const sourceNode = await fileNodeService.getNode(nodeId);
+    if (!sourceNode) {
+      throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+    const targetName = newName || sourceNode.name;
+
     if (fileStorageMode === 's3') {
       // COW logic: check if blob is exclusively owned
       const activeS3Key = await blobStorageService.getActiveS3Key(nodeId);
       const activeCount = await blobStorageService.countActiveObjectsByS3Key(activeS3Key);
 
-      const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
+      const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
       const copiedNodeId = newFile.id;
 
       if (activeCount === 1) {
@@ -533,7 +539,7 @@ function createFileService(options = {}) {
 
     // WebDAV mode: download + upload
     const buffer = await blobStorageService.downloadBlob(nodeId);
-    const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
+    const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
     const copiedNodeId = newFile.id;
 
     try {

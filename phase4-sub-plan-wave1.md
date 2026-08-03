@@ -40,7 +40,7 @@ The following files and infrastructure must exist before starting Wave 1:
      - `renameNode(nodeId, newName, userId, user)` — DB-only metadata update via `fileNodeService.renameNode()`; for WebDAV mode, attempts storage-side MOVE as best-effort fail-safe (marks `sync_status='orphaned_node'` on failure); for S3 mode, no storage operation needed
      - `moveNode(nodeId, newParentNodeId, userId, user)` — DB move + closure table rebuild; same fail-safe semantics as rename
      - `deleteNode(nodeId, userId, user)` — permission gate, enumerates descendants via `fileNodeService.getDescendantIds()` (closure table), best-effort storage DELETE for WebDAV (bottom-up, `blobStorageService.deleteBlob`), then `fileNodeService.deleteNode()`; FK CASCADE handles `object_map`/`filecache`/`node_ancestors`
-     - `copyFile(sourceNodeId, destinationParentNodeId, userId, user)` — S3 mode: copy-on-write via `blobStorageService.getActiveS3Key` + shared/duplicate key logic + `blobStorageService.linkObject`; WebDAV mode: actual blob copy (download + `uploadToWebdav`)
+     - `copyFile(sourceNodeId, destinationParentNodeId, newName, userId, user)` — [RECTIFIED: D6] 5 args; S3 mode: copy-on-write via `blobStorageService.getActiveS3Key` + shared/duplicate key logic + `blobStorageService.linkObject`; WebDAV mode: actual blob copy (download + `uploadToWebdav`)
   4. Permission Integration — how each method calls `aclService` or uses admin/owner bypass before proceeding
   5. Sync Status Fail-Safe Semantics — definition of `active`, `pending_upload`, `orphaned_node`; when each is set; recovery expectations (Phase 6 GC)
   6. Error Cases — permission denied → 403, node not found → 404, storage failure → orphaned status + error response
@@ -63,40 +63,46 @@ The following files and infrastructure must exist before starting Wave 1:
 - **Action:** UPDATE — append Section 3 "WebDAV Mode" and update Section 2 factory signature
 - **Sections to Add/Modify:**
 
-  1. Update Factory Function Signature (Section 2.2): Change to include WebDAV config parameter:
+  1. Update Factory Function Signature (Section 2.2): [RECTIFIED: D5] Remove `webdavClient` parameter:
      ```js
-     function createBlobStorageService({ blobStore, fileNodesStore, webdavClient, fileStorageMode }) {
+     function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode = 's3', fileNodeService }) {
        // fileStorageMode: 's3' | 'webdav'
+       // fileNodeService: needed for WebDAV path resolution (getNode, getNodePath)
      }
      ```
 
   2. New Section 3 — WebDAV Mode (`WebdavBlobStore` adapter):
-     - Interface methods (matching S3BlobStore shape for dispatch uniformity):
-       - `uploadToWebdav(webdavPath, buffer)` → Promise<void> — PUT to WebDAV server at resolved path
-       - `downloadFromWebdav(webdavPath)` → Promise<Buffer | null> — GET from WebDAV; returns null if 404
-       - `deleteOnWebdav(webdavPath)` → Promise<void> — DELETE on WebDAV; idempotent for missing resources
-       - `headOnWebdav(webdavPath)` → Promise<{ contentLength: number, contentType: string } | null> — HEAD request
-     - Path resolution: `file_node_id` → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to WebDAV methods
-     - Factory dispatch logic: `WEA_FILE_STORAGE=s3` → uses S3BlobStore (existing); `WEA_FILE_STORAGE=webdav` → uses WebdavBlobStore; factory validates that required config keys are present for selected mode
+     - Interface methods (S3-uniform names via `WebdavBlobStore` adapter — D1):
+       - `uploadBlob(filepath, buffer)` → Promise<void> — PUT to WebDAV server at resolved path via `adapter.putFileContents()`
+       - `downloadBlob(filepath)` → Promise<Buffer | null> — GET via `adapter.getFileContents()`; returns null if 404
+       - `deleteBlob(filepath)` → Promise<void> — DELETE via `adapter.deleteFile()`; idempotent for missing resources
+       - `headBlob(filepath)` → Promise<{ contentLength: number, contentType: string } | null> — HEAD via `adapter.getFileMetadata()`; maps `mime → contentType`
+       - `listOrphanedKeys()` → Promise<string[]> — returns `[]` (no orphan tracking in WebDAV)
+     - Path resolution: `file_node_id` → guard via `fileNodeService.getNode(nodeId)` (returns null if missing) → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to adapter methods
+     - Factory dispatch logic: `createBlobStore()` (parameterless, reads `process.env.WEA_FILE_STORAGE || 's3'`) → `webdav` → `new WebdavBlobStore(createFileStoreAdapter())`; `s3` → `new S3BlobStore(resolveS3Config())`
 
-  3. New Section 4 — Dual-Backend Dispatch Table:
+  3. New Section 4 — Dual-Backend Dispatch Table (service-level methods, not adapter methods):
      | Operation | S3 Mode | WebDAV Mode |
      |-----------|---------|-------------|
-     | prepareUpload | orphan old + INSERT pending | no-op (synchronous) |
-     | completeUpload | UPDATE active + filecache | no separate step; upload is atomic |
-     | downloadBlob | blobStore.downloadBlob(s3Key) | webdavClient.downloadFromWebdav(path) |
-     | overwriteBlob | ensureExclusiveBlob (split shared) → orphan+upload+activate | webdav PUT at same path |
-     | deleteBlob | mark orphaned in object_map | webdav DELETE (best-effort) |
-     | countActiveObjectsByS3Key | COUNT active object_map rows by s3_key | always 0 (no s3_key concept) |
-     | duplicateBlob | download current blob → upload under new key → return key | n/a (copy = download + uploadToWebdav) |
-     | linkObject(fileNodeId, s3Key) | INSERT object_map (file_node_id, s3_key, 'active') | n/a |
-     | ensureExclusiveBlob(fileNodeId) | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | no-op |
+     | prepareUpload(fileNodeId) | upsert pending object_map → return s3Key | returns `null` (synchronous) |
+     | completeUpload(s3Key, size, mimeType) | getObjectMapByS3Key → activate → upsertCache | throws `'completeUpload is not applicable in WebDAV mode'` |
+     | downloadBlob(fileNodeId) | active s3_key → `blobStore.downloadBlob(key)` | delegates to `downloadBlobWebdav(fileNodeId)` |
+     | overwriteBlob(fileNodeId, buffer) | orphan old, upload new, insert active | delegates to `uploadToWebdav(fileNodeId, buffer)` |
+     | deleteBlob(fileNodeId) | orphan current active | resolve path (guard node), `blobStore.deleteBlob(path)` |
+     | getActiveS3Key(fileNodeId) | active s3_key or null | always `null` |
+     | countActiveObjectsByS3Key(s3Key) | `fileNodesStore.countActiveObjectsByS3Key` | returns `0` |
+     | duplicateBlob(sourceS3Key) | `blobStore.copyBlob(source, newKey)` → newKey | throws `'duplicateBlob is not applicable in WebDAV mode'` |
+     | linkObject(fileNodeId, s3Key) | `fileNodesStore.insertObject(fileNodeId, s3Key, 'active')` | throws `'linkObject is not applicable in WebDAV mode'` |
+     | ensureExclusiveBlob(fileNodeId) | if count>1: duplicate + orphan + insert active → newKey | returns `null` |
+     | uploadToWebdav(fileNodeId, buffer, mimeType) | n/a | resolve path → `blobStore.uploadBlob(path, buffer)` → `upsertCache(...)` |
+     | downloadBlobWebdav(fileNodeId) | n/a | guard node → `blobStore.downloadBlob(path)` or null |
 
-  4. Update Section 5 — Error Cases: Add WebDAV-specific errors (connection refused, timeout, 404 on remote). All WebDAV errors during file metadata operations must set `sync_status='orphaned_node'` rather than throwing.
+  4. Update Section 5 — Error Cases: Add WebDAV-specific errors (connection refused, timeout, 404 on remote). WebDAV path resolution guards on `fileNodeService.getNode(nodeId)` — returns null when node is missing. WebDAV errors during file metadata operations set `sync_status='orphaned_node'` rather than throwing.
 
 - **Key Content:**
-  - `WebdavBlobStore` is a thin adapter around the existing WebDAV client utilities in `server/utils/webdav.js`
-  - The factory at `infrastructure/adapters/blobstore/index.js` must be updated to accept `fileStorageMode` and instantiate correct store
+  - `WebdavBlobStore` uses the S3-uniform interface (`uploadBlob/downloadBlob/deleteBlob/headBlob/listOrphanedKeys`) — constructed with a file-store adapter from `createFileStoreAdapter()` (D1)
+  - The factory at `infrastructure/adapters/blobstore/index.js` is parameterless; reads `process.env.WEA_FILE_STORAGE` (D2)
+  - `NoOpBlobStore` is removed — webdav mode returns a real `WebdavBlobStore` instance
   - No behavioral change for S3 mode — all existing tests continue passing
 
 - **Verification:** Spec contains Section 3 (WebDAV Mode) with interface definition, Section 4 (Dispatch Table), updated factory signature. Existing verification checklist items in Section 2.7 remain valid for S3 mode.
@@ -217,7 +223,7 @@ The following files and infrastructure must exist before starting Wave 1:
      |-----------------|-----------------|------------------|--------------|
      | `canReadFolder` | fileService.listDirectoryWithPermissions, downloadService.downloadMultiple | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1, 4.6 |
      | `canWriteFolder` | batchOperationService.batchMove, batchOperationService.batchDelete | `aclService.checkFolderPermission(userId, nodeId, 'write')` | 4.6 |
-     | `canReadFile` | fileService.downloadFile | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1 |
+      | `canReadFile` | fileService.downloadFile | `aclService.checkFilePermission(userId, nodeId, 'read')` | 4.1 |
      | `buildSyncWriteChecker` | batchOperationService (pre-migration) | async gate per item | 4.8c |
      | `buildSyncReadChecker` | downloadService (pre-migration) | async gate per file | 4.6 |
 
@@ -277,35 +283,35 @@ The following files and infrastructure must exist before starting Wave 1:
 
 - **Path:** `server/infrastructure/adapters/blobstore/__tests__/WebdavBlobStore.test.js`
 - **Action:** CREATE
-- **describe() blocks:**
+- **describe() blocks:** [RECTIFIED: D1] S3-uniform method names, adapter-shaped mock
 
   ```
-  describe('WebdavBlobStore', setup with jest.resetModules + mock webdav client)
-    describe('uploadToWebdav', test PUT operation)
-      it('uploads buffer to WebDAV path successfully')
-      it('throws descriptive error for empty path')
-      it('throws descriptive error for null/empty buffer')
+  describe('WebdavBlobStore', setup with jest.resetModules + adapter mock)
+    describe('uploadBlob', test PUT via adapter.putFileContents)
+      it('uploads buffer to WebDAV path via putFileContents successfully')
+      it('throws descriptive error for empty/null/undefined filepath')
+      it('throws descriptive error for null or empty buffer')
       it('propagates WebDAV server errors with original message')
-    describe('downloadFromWebdav', test GET operation)
+    describe('downloadBlob', test GET via adapter.getFileContents)
       it('retrieves content and returns Buffer')
       it('returns null for 404 (file not found)')
       it('throws on non-404 HTTP errors')
-    describe('deleteOnWebdav', test DELETE operation)
+    describe('deleteBlob', test DELETE via adapter.deleteFile)
       it('deletes resource successfully')
       it('is idempotent for already-deleted resources (404 → no throw)')
       it('propagates server errors')
-    describe('headOnWebdav', test HEAD operation)
-      it('returns { contentLength, contentType } metadata object')
+    describe('headBlob', test HEAD via adapter.getFileMetadata)
+      it('returns { contentLength, contentType } mapping mime->contentType')
       it('returns null for 404')
       it('throws on non-404 HTTP errors')
   ```
 
 - **Mock factories needed:**
-  - Mock WebDAV client with methods: `putFileContents(path, buffer)`, `getFileContents(path)`, `deleteFile(path)`, `getFileMetadata(path)`
-  - Follow pattern from `testing/mocks/webdavMock.js` — existing mock factory for webdav utilities
+  - `createAdapterMock(overrides)` — returns `{ putFileContents, getFileContents, deleteFile, getFileMetadata }` with jest.fn() defaults
+  - Do NOT `jest.mock('../../../../utils/webdav')` — the adapter mock replaces raw webdav
   - Each test resets mocks via `beforeEach(jest.clearAllMocks)`
 
-- **Verification:** `npm run test -w server -- --testPathPatterns="WebdavBlobStore"` (server `test:unit` restricts `--testMatch` to `utils|models|middleware`, so use the plain `test` script for infra/service tests) — all 13 tests fail initially (implementation doesn't exist), confirming scaffold is wired correctly.
+- **Verification:** `npm run test -w server -- --testPathPatterns="WebdavBlobStore" --no-coverage` — all 13 tests fail initially (implementation doesn't exist), confirming scaffold is wired correctly.
 
 ---
 
@@ -546,16 +552,18 @@ The following files and infrastructure must exist before starting Wave 1:
 - **Action:** UPDATE — add WebDAV factory test cases to existing file
 - **Current State** (from glob results): File exists, tests S3BlobStore factory resolution.
 
-- **Required New Test Cases:**
+- **Required New Test Cases:** [RECTIFIED: D2] Parameterless factory, env-based dispatch
+
   ```
   describe('createBlobStore — WebDAV mode')
-    it('returns WebdavBlobStore instance when config.fileStorageMode is "webdav"')
-    it('throws clear error when WEA_FILE_STORAGE=webdav but no webdavClient provided')
-    it('returns S3BlobStore instance when config.fileStorageMode is "s3" (existing behavior preserved)')
-    it('validates required S3 keys are present when mode is "s3" (existing behavior preserved)')
+    it('returns WebdavBlobStore instance when WEA_FILE_STORAGE=webdav')
+    it('returns S3BlobStore instance when WEA_FILE_STORAGE=s3 (existing behavior preserved)')
+    it('defaults to S3BlobStore when WEA_FILE_STORAGE is empty or undefined')
   ```
 
-- **Verification:** `npm run test -w server -- --testPathPatterns="blobstoreFactory"` — existing tests pass, new WebDAV tests fail until factory updated.
+  Note: The old test `'throws clear error when WEA_FILE_STORAGE=webdav but no webdavClient provided'` is REMOVED — the factory is parameterless and creates the adapter internally via `createFileStoreAdapter()`.
+
+- **Verification:** `npm run test -w server -- --testPathPatterns="blobstoreFactory" --no-coverage` — existing tests pass, new WebDAV tests pass after factory is updated (D2).
 
 ---
 
@@ -613,12 +621,12 @@ The following files and infrastructure must exist before starting Wave 1:
 | 2026-08-01 | W1.0-8 buildPermissionDiff.md (client update) | ✅ Done | Migrated from path-string Maps to nodeId-based Maps; collectSubfolderPaths marked removed |
 | 2026-08-01 | W1.1-1 WebdavBlobStore.test.js | ✅ Done | 13 test cases across 4 describe blocks; all fail with module-not-found (expected) |
 | 2026-08-01 | W1.1-2 fileService.test.js | ✅ Done | 33 test cases across 9 describe blocks; rewritten to import the real `createFileService` factory (Revision 1); all 33 fail until Wave 2 implements the nodeId contract |
-| 2026-08-01 | W1.1-3 files.test.js update plan | ✅ Done | Document created at docs/spec/server/routes/files-test-plan.md with full endpoint coverage table |
-| 2026-08-01 | W1.1-4 permissionService.test.js update plan | ✅ Done | Document created at docs/spec/client/services/permissionService-test-plan.md; fixture changes and new describe blocks specified |
+| 2026-08-01 | W1.1-3 files.test.js update plan | ✅ Done (계획만, 코드 미생성) | Document created at docs/spec/server/routes/files-test-plan.md with full endpoint coverage table |
+| 2026-08-01 | W1.1-4 permissionService.test.js update plan | ✅ Done (계획만, 코드 미생성) | Document created at docs/spec/client/services/permissionService-test-plan.md; fixture changes and new describe blocks specified |
 | 2026-08-01 | W1.1-5 batchOperationService.test.js | ✅ Done | 19 test cases across 4 describe blocks (batchDelete, batchMove, batchCopy S3/WebDAV); rewritten to import the real `createBatchOperationService` factory (Revision 1); all 19 fail until Wave 2 exports it |
 | 2026-08-01 | W1.1-6 downloadService.test.js | ✅ Done | 9 test cases across 2 describe blocks; all fail with createDownloadService not found (expected) |
 | 2026-08-01 | W1.1-7 blobstoreFactory.test.js update | ✅ Done | Added WebDAV mode describe block with 4 new tests; existing S3 tests preserved |
-| 2026-08-01 | W1.1-8 test-utils additions plan | ✅ Done | Document created at docs/spec/server/test-utils-additions-plan.md with 4 helper specs |
+| 2026-08-01 | W1.1-8 test-utils additions plan | ✅ Done (계획만, 코드 미생성) | Document created at docs/spec/server/test-utils-additions-plan.md with 4 helper specs |
 
 ### Hypothesis Revisions Template
 
@@ -668,3 +676,64 @@ Wave 5 will:
 - Remove legacy path-based code: Tier 2/3 functions from permissionPolicy.js (Task 4.8d), PermissionFacade + Permission model (Task 4.8e), ownerNodeResolver path helpers (Task 4.8g)
 - Run full integration test suite against SQLite backend (Task 4.9)
 - Merge to dev branch
+
+---
+
+## Revision 2: Rectification Results (Wave 0)
+
+Wave 2 진입 전, Wave-1 산출물의 계약 불일치를 교정했습니다 (2026-08-03).
+상세 내역은 `phase4-wave-rectify.md` 참조.
+
+### 교정된 계약 (D1-D12)
+
+| ID | Decision (target contract) |
+|----|-----------------------------|
+| D1 | `WebdavBlobStore` uses S3-uniform methods `uploadBlob/downloadBlob/deleteBlob/headBlob/listOrphanedKeys`; constructor takes a file-store adapter `webdavClient` (NOT a raw `{baseUrl,...}` config); `headBlob` maps `getFileMetadata().mime -> contentType`. |
+| D2 | blobstore factory `createBlobStore()` is parameterless (reads `process.env.WEA_FILE_STORAGE \|\| 's3'`); `webdav` -> `new WebdavBlobStore(createFileStoreAdapter())`; else S3 via existing `resolveS3Config()`. Remove `NoOpBlobStore` import+usage. |
+| D3 | `S3BlobStore.copyBlob(sourceKey, destKey)` via `CopyObjectCommand`; propagate clear `NoSuchKey` error. |
+| D4 | `fileNodesStore.countActiveObjectsByS3Key(s3Key)` -> count of `object_map.status='active'` rows for that `s3_key` (SQLite+PG). |
+| D5 | `createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode='s3', fileNodeService })`. Return set = 12 methods incl. `uploadToWebdav`, `downloadBlobWebdav`. No `webdavClient` param. No `downloadFromWebdav` name. |
+| D6 | `createFileService.copyFile(nodeId, destinationParentNodeId, newName, userId, user)` — 5 args. |
+| D7 | File nodes use `checkFilePermission`; folders / move-dest / directory listing use `checkFolderPermission`. |
+| D8 | Add `notFound`, `permissionDenied`, `invalidName` to `SERVER_ERROR_CODES.files`. Fix `fileService.js` references from `SERVER_MESSAGE_CODES` to `SERVER_ERROR_CODES`. |
+| D9 | Expose `fileNodeService.getNode(nodeId)`; existence checks use `getNode`, not `getNodePath` null-guards. |
+| D10 | `deleteNode` returns `{ deletedCount }` from `getDescendantIds(nodeId).length`; `listDirectoryWithPermissions` maps `updatedAt -> modifiedAt`. |
+| D11 | `createBatchOperationService` = Wave-3 work; 19-test scaffold stays RED; fix spec test path to `domains/files/services/__tests__/`. |
+| D12 | Do NOT modify routes in Wave 2. Legacy path-based fileService surface preserved; `files.test.js` stays GREEN. |
+
+### Wave-1 산출물 실제 상태
+
+| 작업 | Wave-1 산출물 | Rectify 교정 | 현재 상태 |
+|------|-------------|-------------|----------|
+| W1.0-1 fileService.md | 생성 (4인자 copyFile) | 5인자, 권한 D7, 코드맵 D8 | ✅ 최종 완료 |
+| W1.0-2 blobStorageService.md | 생성 (webdavClient, adapter 메서드) | 12메서드, webdavClient 제거, S3-uniform | ✅ 최종 완료 |
+| W1.0-3 batchOperationService.md | 생성 (테스트 경로 오류) | 경로 `domains/files/services/__tests__/` | ✅ 최종 완료 |
+| W1.0-4 downloadService.md | 생성 (checkFolderPermission 오류) | checkFilePermission + PERMISSIONS.READ | ✅ 최종 완료 |
+| W1.0-5 files.md | 생성 (WebDAV mock factory 기술) | 서비스 mock via composition root | ✅ 최종 완료 |
+| W1.0-6 permissionPolicy.md | 생성 (canReadFile 매핑 오류) | checkFilePermission, PRE-REMOVAL 배너 | ✅ 최종 완료 |
+| W1.0-7 permissionService.md | 생성 (fileNodeId 불일치) | nodeId 통일, /api/permissions 명시 | ✅ 최종 완료 |
+| W1.0-8 buildPermissionDiff.md | 생성 (소규모 정렬) | nodeId 기반 Maps | ✅ 최종 완료 |
+| W1.1-1 WebdavBlobStore.test.js | 생성 (uploadToWebdav 등) | S3-uniform 메서드, adapter mock | ✅ 최종 완료 |
+| W1.1-2 fileService.test.js | 생성 (mock 기반, 33개) | real factory + 계약 정렬 | ✅ 최종 완료 |
+| W1.1-3 files.test.js 계획 | 계획 문서만 | — | 📝 계획 (Wave-3에서 구현) |
+| W1.1-4 permissionService.test.js 계획 | 계획 문서만 | — | 📝 계획 (Wave-4에서 구현) |
+| W1.1-5 batchOperationService.test.js | 생성 (real factory, 19개) | Wave-3 work, RED 유지 | ✅ 최종 완료 |
+| W1.1-6 downloadService.test.js | 생성 (factory 미존재, 9개) | Wave-4.2 work | ✅ 최종 완료 |
+| W1.1-7 blobstoreFactory.test.js | 업데이트 (NoOp + throw 테스트) | NoOp 제거, 9개로 정리 | ✅ 최종 완료 |
+| W1.1-8 test-utils 계획 | 계획 문서만 | — | 📝 계획 (Wave-3에서 구현) |
+
+### 검증 결과
+
+- 대상 테스트 114개 전부 통과 (blobstore 35, blobStorage 46, fileService 33)
+- `files.test.js` 유지 (Rule #2)
+- `batchOperationService` RED 유지 (Wave-3)
+- 전체 게이트: 45/65 스위트 통과, 981 테스트 통과 (20개 실패 스위트는 기존 인프라 문제)
+
+### Wave-1 문서에서 발견된 원인 (교정 근거)
+
+1. **WebDAV 인터페이스 이름 불일치** (W1.0-2 vs D1): `uploadToWebdav/downloadFromWebdav` → `uploadBlob/downloadBlob`
+2. **factory 시그니처 모호성** (W1.0-2 vs D2): `createBlobStore(config)` → `createBlobStore()` (인자 없음)
+3. **copyFile 인자 수 누락** (W1.0-1 vs D6): 4인자 → 5인자 (`newName` 추가)
+4. **permission 매핑 오류** (W1.0-6 vs D7): `canReadFile → checkFolderPermission` → `checkFilePermission`
+5. **Dispatch Table 혼재** (W1.0-2): adapter 경로 메서드와 서비스 메서드 혼재 → 서비스 메서드로 통일
+6. **테스트 스캐폴드 검증 명령** (전체): `--testPathPattern` → `--testPathPatterns` (Jest 30)

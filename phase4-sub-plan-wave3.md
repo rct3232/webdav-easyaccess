@@ -206,13 +206,15 @@ Must become:
 
 1. Update the method signature and body in `fileService.js`:
 
+**Required imports for this fileService.js module:** `conflictError`, `notFoundError`, `forbiddenError` from `../../../utils/errorHandler`; `{ SERVER_ERROR_CODES }` and `{ PERMISSIONS }` from shared packages; `{ HTTP_STATUS }` from constants.
+
 ```js
 async function uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict = 'error') {
   // 1. Permission check: write access to parent folder
   if (!user || !aclService.isAdminUser(user)) {
     const canWrite = await aclService.checkFolderPermission(userId, parentNodeId, PERMISSIONS.WRITE);
     if (!canWrite) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+      throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
     }
   }
 
@@ -225,7 +227,7 @@ async function uploadFile(userId, parentNodeId, name, buffer, mimeType, user, on
       return { nodeId: existingFile.id, skipped: true };
     }
     if (onConflict !== 'overwrite') {
-      throw conflictError(SERVER_MESSAGE_CODES.files.duplicateFile);
+      throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
   }
 
@@ -245,8 +247,8 @@ async function uploadFileS3(userId, parentNodeId, name, buffer, mimeType, user, 
   }
 
   if (isOverwrite) {
-    // COW write barrier (W2.2): if the blob is shared with another node, split it first
-    await blobStorageService.ensureExclusiveBlob(existingFile.id);
+    // uploadService.overwriteFile handles the full TX1→PUT→TX2 flow internally.
+    // No ensureExclusiveBlob needed — overwrite replaces all content regardless of sharing state.
     const result = await uploadService.overwriteFile(existingFile.id, buffer, mimeType);
     return { nodeId: result.nodeId };
   } else {
@@ -368,7 +370,7 @@ async function downloadFile(fileNodeId, userId, user) {
   if (!user || !aclService.isAdminUser(user)) {
     const canRead = await aclService.checkFilePermission(userId, fileNodeId, PERMISSIONS.READ);
     if (!canRead) {
-      throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+      throw notFoundError(SERVER_ERROR_CODES.files.notFound);
     }
   }
 
@@ -376,7 +378,7 @@ async function downloadFile(fileNodeId, userId, user) {
   const buffer = await blobStorageService.downloadBlob(fileNodeId);
 
   if (!buffer) {
-    throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
   }
 
   return buffer;
@@ -444,17 +446,17 @@ None of this works with nodeId-based architecture. After refactoring:
 async function renameNode(nodeId, newName, userId, user) {
   // 1. Validate new name
   if (!newName || newName.trim().length === 0) {
-    throw conflictError(SERVER_MESSAGE_CODES.files.invalidName);
+    throw conflictError(SERVER_ERROR_CODES.files.invalidName);
   }
   if (/[/\\]/.test(newName)) {
-    throw conflictError(SERVER_MESSAGE_CODES.files.invalidName);
+    throw conflictError(SERVER_ERROR_CODES.files.invalidName);
   }
 
   // 2. Permission check
   if (!user || !aclService.isAdminUser(user)) {
     const canWrite = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
     if (!canWrite) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+      throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
     }
   }
 
@@ -462,7 +464,7 @@ async function renameNode(nodeId, newName, userId, user) {
   const node = await fileNodeService.getNode(nodeId);
   const siblings = await fileNodeService.listDirectory(node.parent_id);
   if (siblings.some(s => s.name === newName && s.id !== nodeId)) {
-    throw conflictError(SERVER_MESSAGE_CODES.files.duplicateFile);
+    throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
   }
 
   // 4. DB rename (instant for both backends)
@@ -493,7 +495,7 @@ async function moveNode(nodeId, newParentNodeId, userId, user) {
     const canWriteSource = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
     const canWriteDest = await aclService.checkFolderPermission(userId, newParentNodeId, PERMISSIONS.WRITE);
     if (!canWriteSource || !canWriteDest) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+      throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
     }
   }
 
@@ -522,7 +524,7 @@ async function deleteNode(nodeId, userId, user) {
   if (!user || !aclService.isAdminUser(user)) {
     const canWrite = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
     if (!canWrite) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+      throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
     }
   }
 
@@ -860,7 +862,7 @@ async function copyFile(sourceNodeId, destinationParentNodeId, newName, userId, 
   // 2. Fetch source node info
   const sourceNode = await fileNodeService.getNode(sourceNodeId);
   if (!sourceNode) {
-    throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
   }
 
   if (fileStorageMode === 'webdav') {
@@ -870,7 +872,7 @@ async function copyFile(sourceNodeId, destinationParentNodeId, newName, userId, 
   // S3 mode: copy-on-write
   const sourceS3Key = await blobStorageService.getActiveS3Key(sourceNodeId);
   if (!sourceS3Key) {
-    throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
   }
 
   // Sharing check via blobStorageService (count active object_map rows for the key)
@@ -945,6 +947,8 @@ npm run test -w server -- --testPathPatterns="fileService" --no-coverage
 
 ## Task W3.6: Route Updates (nodeId API Contract)
 
+**Note:** Response message codes `moveSuccess`, `copySuccess`, `deleteSuccess` require additions to `SERVER_MESSAGE_CODES.files` in `@webdav-easyaccess/shared/serverMessageCodes`. If not yet defined, add them before implementing routes.
+
 ### Spec Reference
 
 Wave 1 Task W1.0-5 (files.md route contract updates), Phase 4 PLAN.md Task 4.8a-4.8b.
@@ -981,8 +985,7 @@ function createComposition(overrides = {}) {
   const aclService = createAclService(/* existing deps */);
   const fileService = createFileService({ fileNodeService, blobStorageService, aclService, uploadService, fileStorageMode });
   const batchOperationService = createBatchOperationService({ fileNodeService, fileService, aclService });
-  const downloadService = createDownloadService({ fileService, blobStorageService, aclService }); // W4.2
-  return { fileNodeService, blobStorageService, uploadService, aclService, fileService, batchOperationService, downloadService };
+  return { fileNodeService, blobStorageService, uploadService, aclService, fileService, batchOperationService };
 }
 ```
 
@@ -1192,7 +1195,7 @@ res.json({
 'use strict';
 
 const validationError = require('../utils/errorHandler').validationError;
-const SERVER_ERROR_CODES = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 function validateNodeIdParam(field = 'nodeId') {
   return (req, res, next) => {

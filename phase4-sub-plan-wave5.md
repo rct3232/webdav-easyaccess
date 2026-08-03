@@ -23,6 +23,8 @@ Validate that all Waves 1-4 produced correct, integrated results by exercising f
 
 ## Task W5.0: Route Integration Tests — Full CRUD Lifecycle
 
+> **PREREQUISITE**: Complete W5.1 (test utilities) before running any scenarios in this task. All scenarios depend on helpers from `server/test-utils.js`.
+
 ### File: `server/domains/files/__tests__/files.integration.test.js` — CREATE NEW (or REWRITE existing `files.test.js`)
 
 The current `files.test.js` uses WebDAV mocks for all operations with path-based payloads. The new integration test file exercises the full stack through HTTP routes while using real SQLite-backed services. S3 and WebDAV storage boundaries are mocked via existing mock factories.
@@ -45,7 +47,12 @@ const { createS3Mock } = require('../../../../testing/mocks/s3Mock');
 const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
 const S3BlobStore = require('../../../../infrastructure/adapters/blobstore/S3BlobStore');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
-const { createComposition, __setCompositionForTests } = require('../../../../service/composition');
+// NOTE: composition.js does not exist — services are wired directly in route handlers.
+// Import service factories from their actual locations:
+const fileServiceModule = require('../../../../domains/files/services/fileService');
+const aclServiceModule = require('../../../../domains/permissions/services/aclService');
+
+// Verify service instantiation occurs in route handlers, not a composition root.
 
 // Mock the AWS SDK client so S3BlobStore dispatches to the in-memory s3Mock
 // (same pattern as server/infrastructure/adapters/blobstore/__tests__/S3BlobStore.test.js)
@@ -109,12 +116,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // CRITICAL: Tear down S3Mock server here to prevent port leaks across test files.
+  if (s3Mock) {
+    try { await s3Mock.close(); } catch { /* ignore */ }
+  }
+
   delete process.env.WEA_STORAGE_BACKEND;
   delete process.env.WEA_SQLITE_PATH;
   delete process.env.WEA_SKIP_BULK_WORKER;
 
   try {
-    storage.closeSqliteDb();
+    // Enable FK enforcement before cleanup — without it, SQLite won't cascade deletes
+    // to node_ancestors, object_map, etc., leaving orphaned rows that pollute subsequent tests.
+    await storage.sqliteRun('PRAGMA foreign_keys = ON');
+    await storage.closeSqliteDb();
   } catch { /* ignore */ }
 
   const fs = require('fs');
@@ -162,6 +177,10 @@ function useS3Mode() {
   return buildComposition({ fileStorageMode: 's3' });
 }
 ```
+
+> **CRITICAL**: Call `useS3Mode()` or `useWebdavMode()` in `beforeEach` BEFORE importing any file services. Services read the storage mode singleton during construction — late calls have no effect on already-instantiated service instances.
+
+> **WARNING**: Each scenario must instantiate fresh service objects after toggling `useS3Mode()`. Services cache storage mode at construction time — reusing instances across mode switches produces silent failures.
 
 ### Scenario 1: Upload → List → Download Cycle
 
@@ -558,6 +577,8 @@ describe('Scenario 3: Move file across folders', () => {
 
 Copy-on-write is an S3-specific optimization. In WebDAV mode, copy operations download and re-upload the blob (no shared reference semantics). This scenario verifies zero-storage-waste for copies and mutation independence after overwrite.
 
+> **Note**: Verify that file2 shares the same S3 key as file1 at creation (COW), but has an independent fileNode entry. Full COW implementation deferred to Wave 3 Task W3.5; this test validates only the metadata independence guarantee.
+
 ```js
 describe('Scenario 4: Copy-on-Write (S3 only)', () => {
   let user, token, parentNodeId;
@@ -796,6 +817,8 @@ describe('Scenario 5: Delete cascade', () => {
 ### Scenario 6: Permission Inheritance in Directory Listing
 
 Permission inheritance works through the closure table (`node_ancestors`). If user U has READ on folder F (nodeId=Nf), then listing any descendant of F must show `hasReadPermission=true` because the ancestor query finds Nf in the chain. This scenario verifies at depths 0, 1, and N.
+
+> **Note**: Test through aclService API (`aclService.checkFolderPermission(userId, folderNodeId)`), not raw SQL — raw queries bypass nodeId resolution and closure table traversal logic that runs in production.
 
 ```js
 describe('Scenario 6: Permission inheritance via closure table', () => {
@@ -1381,7 +1404,7 @@ it('reader can access shared file via inherited permission', async () => {
 | Test File | Backend | Expected Passes | Notes |
 |-----------|---------|-----------------|-------|
 | `server/domains/files/__tests__/files.integration.test.js` | SQLite+S3Mock | 8 scenarios × sub-tests ≈ 15-20 assertions | New file, all Phase 4 CRUD lifecycle |
-| `server/domains/files/routes/__tests__/files.test.js` | SQLite+WebDAV mock | All existing tests pass | Existing tests updated to nodeId payloads in Wave 3 (no path compat layer — PLAN.md Rule 13) |
+| `server/domains/files/routes/__tests__/files.test.js` | SQLite+WebDAV mock | All existing tests pass | Existing tests use path-based payloads. Not migrated in Phase 4. nodeId integration tests are in new files.integration.test.js. |
 | `server/service/__tests__/fileNodeService.test.js` | SQLite | 30+ assertions (existing) | Unchanged, must still pass |
 | `server/service/__tests__/blobStorageService.test.js` | SQLite | 25+ assertions (existing) | S3 mode tests must still pass; WebDAV mode tests added in Wave 2 |
 | `server/store/__tests__/fileNodesStore.test.js` | SQLite | All existing | Store layer unchanged |
@@ -1401,6 +1424,7 @@ If any test fails during W5.2 execution:
    ```
 3. **Classify the failure**:
    - **Route-level (HTTP status wrong)**: Check if route handler was updated in Wave 3 to accept nodeId payloads. If not, this is a Wave 3 regression — fix before proceeding.
+   - **Route handler missing nodeId support**: If files.test.js fails with path-related errors, this may indicate W3.4 migration was incomplete. Check `server/domains/files/routes/` for residual path-based logic.
    - **Service-level (wrong DB state)**: Check fileNodeService/blobStorageService method implementation against spec in `docs/spec/`. Likely an implementation bug from Wave 2-3.
    - **Permission-level (hasRead/hasWrite wrong)**: Check aclService.checkFolderPermission for correct nodeId resolution and closure table traversal.
    - **Cascade failure (wrong nodes deleted)**: Verify FK constraints on SQLite schema (`PRAGMA foreign_keys = ON` is set). If missing, add `storage.sqliteRun('PRAGMA foreign_keys = ON')` to test setup.
@@ -1409,6 +1433,9 @@ If any test fails during W5.2 execution:
 ### CI Command Sequence
 
 ```bash
+# 0. Run new integration test in isolation first (catches setup/teardown issues)
+npm run test:ci -w server -- --testPathPattern="files.integration"
+
 # 1. Server unit tests (existing + new integration)
 npm run test:ci -w server
 
@@ -1468,6 +1495,7 @@ When executing this wave, update `PLAN.md` with the following format for each co
 
 | Timestamp | Action | Result | Notes |
 |-----------|--------|--------|-------|
+| YYYY-MM-DD HH:MM | S3Mock server started/stopped cleanly | PASS/FAIL | Port conflict check after teardown |
 | YYYY-MM-DD HH:MM | Created test infrastructure setup | PASS | In-memory SQLite + schema init confirmed |
 | YYYY-MM-DD HH:MM | Scenario 1 (S3) Upload→List→Download | PASS/FAIL | Content hash match verified |
 | YYYY-MM-DD HH:MM | Scenario 1 (WebDAV) Upload→List→Download | PASS/FAIL | webdavMock calls verified |

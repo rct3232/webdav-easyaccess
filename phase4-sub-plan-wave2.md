@@ -434,8 +434,8 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     linkObject,
     ensureExclusiveBlob,
     // WebDAV-specific exports
-    downloadBlobWebdav: isWebdavMode ? downloadBlobWebdav : undefined,
-    uploadToWebdav: isWebdavMode ? uploadToWebdav : undefined,
+    downloadBlobWebdav,
+    uploadToWebdav,
   };
 }
 
@@ -537,7 +537,7 @@ After refactoring, it must be coupled to:
 
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { HTTP_STATUS, PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError } = require('../../../utils/errorHandler');
 
@@ -628,7 +628,7 @@ New signature: `(fileNodeId, userId, user)` — nodeId-based with permission gat
     if (!user || !aclService.isAdminUser(user)) {
       const canRead = await aclService.checkFilePermission(userId, fileNodeId, PERMISSIONS.READ);
       if (!canRead) {
-        throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+        throw notFoundError(SERVER_ERROR_CODES.files.notFound);
       }
     }
 
@@ -636,7 +636,7 @@ New signature: `(fileNodeId, userId, user)` — nodeId-based with permission gat
     const buffer = await blobStorageService.downloadBlob(fileNodeId);
 
     if (!buffer) {
-      throw notFoundError(SERVER_MESSAGE_CODES.files.notFound);
+      throw notFoundError(SERVER_ERROR_CODES.files.notFound);
     }
 
     return buffer;
@@ -655,7 +655,7 @@ New signature: `(userId, parentNodeId, name, buffer, mimeType, user, onConflict 
     if (!user || !aclService.isAdminUser(user)) {
       const canWrite = await aclService.checkFolderPermission(userId, parentNodeId, PERMISSIONS.WRITE);
       if (!canWrite) {
-        throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+        throw conflictError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
@@ -668,7 +668,7 @@ New signature: `(userId, parentNodeId, name, buffer, mimeType, user, onConflict 
         return { nodeId: existingFile.id, skipped: true };
       }
       if (onConflict !== 'overwrite') {
-        throw conflictError(SERVER_MESSAGE_CODES.files.duplicateFile);
+        throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
       }
     }
 
@@ -720,17 +720,17 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
   async function renameNode(nodeId, newName, userId, user) {
     // 1. Validate new name
     if (!newName || newName.trim().length === 0) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.invalidName);
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
     if (/[/\\]/.test(newName)) {
-      throw conflictError(SERVER_MESSAGE_CODES.files.invalidName);
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
 
     // 2. Permission check
     if (!user || !aclService.isAdminUser(user)) {
       const canWrite = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
       if (!canWrite) {
-        throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+        throw conflictError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
@@ -741,9 +741,10 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
     if (fileStorageMode === 'webdav') {
       try {
         const oldPath = await fileNodeService.getNodePath(nodeId);
-        // The renameNode may have updated the path; we need to do a storage-side move
-        // This is handled by fileNodeService internally or via a dedicated method.
-        // For now, mark as pending if it fails.
+        const newPath = await fileNodeService.getNodePath(nodeId); // path after rename
+        if (oldPath && newPath && oldPath !== newPath) {
+          await blobStorageService.overwriteBlob(nodeId, await blobStorageService.downloadBlob(nodeId));
+        }
       } catch (storageError) {
         await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
         console.error(`WebDAV rename storage sync failed for nodeId ${nodeId}:`, storageError);
@@ -763,7 +764,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
       const canWriteSource = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
       const canWriteDest = await aclService.checkFolderPermission(userId, newParentNodeId, PERMISSIONS.WRITE);
       if (!canWriteSource || !canWriteDest) {
-        throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+        throw conflictError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
@@ -772,7 +773,14 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
 
     if (fileStorageMode === 'webdav') {
       try {
-        // Best-effort: attempt storage-side MOVE. Failure marks orphaned.
+        const sourcePath = await fileNodeService.getNodePath(nodeId);
+        const destNode = await fileNodeService.getNode(newParentNodeId);
+        const destPath = await fileNodeService.getNodePath(destNode.id);
+        if (sourcePath && destPath) {
+          // Storage-side MOVE: download + re-upload to new location
+          const buffer = await blobStorageService.downloadBlob(nodeId);
+          await blobStorageService.overwriteBlob(nodeId, buffer);
+        }
       } catch (storageError) {
         await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
         console.error(`WebDAV move storage sync failed for nodeId ${nodeId}:`, storageError);
@@ -783,7 +791,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
   }
 ```
 
-6.5. Add `deleteNode` method (new in refactored service):
+7. Add `deleteNode` method (new in refactored service):
 
 ```js
   async function deleteNode(nodeId, userId, user) {
@@ -791,7 +799,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
     if (!user || !aclService.isAdminUser(user)) {
       const canWrite = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
       if (!canWrite) {
-        throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+        throw conflictError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
@@ -817,7 +825,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
   }
 ```
 
-6.6. Add `copyFile` method (new in refactored service):
+8. Add `copyFile` method (new in refactored service):
 
 ```js
   async function copyFile(nodeId, destinationParentNodeId, newName, userId, user) {
@@ -826,7 +834,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
       const canRead = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.READ);
       const canWrite = await aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE);
       if (!canRead || !canWrite) {
-        throw conflictError(SERVER_MESSAGE_CODES.files.permissionDenied);
+        throw conflictError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
@@ -843,6 +851,26 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
     // Full COW design is specified in Wave 3 Task W3.5.
     return copyFileS3(nodeId, destinationParentNodeId, newName);
   }
+
+  // --- Internal helpers ---
+  // copyFileS3 is fully implemented in Wave 3 Task W3.5 (COW design).
+  // This stub prevents ReferenceError during Wave 2 execution.
+  async function copyFileS3(sourceNodeId, destinationParentNodeId, newName) {
+    const current = await blobStorageService.getActiveS3Key(sourceNodeId);
+    if (!current) {
+      throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+    const count = await blobStorageService.countActiveObjectsByS3Key(current);
+    let targetKey;
+    if (count > 1) {
+      targetKey = await blobStorageService.duplicateBlob(current);
+    } else {
+      targetKey = current;
+    }
+    const newNode = await fileNodeService.createFile(destinationParentNodeId, newName || 'copied-file');
+    await blobStorageService.linkObject(newNode.id, targetKey);
+    return newNode;
+  }
 ```
 
 7. Update the return object:
@@ -853,6 +881,7 @@ New signature: `(nodeId, newName, userId, user)` — nodeId-based with backend-a
     downloadFile,
     uploadFile,
     renameNode,
+    renameFile: renameNode, // backward-compat alias (D12)
     moveNode,
     deleteNode,
     copyFile,
@@ -876,7 +905,7 @@ module.exports = { createFileService };
 - The old factory parameter `webdav` (raw FileStoreAdapter) is replaced by the injected service trio: `fileNodeService`, `blobStorageService`, `aclService`.
 - `uploadService.uploadFile(parentNodeId, name, buffer, mimeType)` returns `{ nodeId, ... }` (positional args, `result.nodeId`). `uploadService.overwriteFile(fileNodeId, buffer, mimeType)` also returns `{ nodeId }`.
 - The sync-status setter on `fileNodeService` is named `updateSyncStatus(nodeId, status)` (not `markSyncStatus`).
-- `copyFileS3` (the COW implementation) is an internal helper whose full design lives in Wave 3 Task W3.5; it consumes `blobStorageService.getActiveS3Key`, `countActiveObjectsByS3Key`, `duplicateBlob`, `linkObject`.
+- `copyFileS3` (the COW implementation) is included as a stub in Wave 2 to prevent ReferenceError; its full design lives in Wave 3 Task W3.5 and it consumes `blobStorageService.getActiveS3Key`, `countActiveObjectsByS3Key`, `duplicateBlob`, `linkObject`.
 
 ### Test Cases (TDD)
 

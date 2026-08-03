@@ -35,15 +35,15 @@ Each step MUST be verified before proceeding to the next. The grep verification 
 
 #### Current State Analysis
 
-File: `server/domains/files/services/fileService.js` (286 lines)
+File: `server/domains/files/services/fileService.js` (~526 lines — verify current line count before migration; all line references below are approximate and must be confirmed against the live file)
 
-**Imports to remove (lines 12-13):**
+**Imports to remove (approx. lines 12-13, verify against live file):**
 ```js
 const { buildSyncWriteChecker, buildSyncReadChecker, buildSyncWriteFileByParentChecker, buildSyncReadFileChecker, isOwnerPath } = require('../../../domains/permissions/services/aclService');
 const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerNodeResolver');
 ```
 
-**Sync checker usage (lines 62-68):**
+**Sync checker usage (lines ~62-68 (verify)):**
 ```js
 const syncCheckers = {};
 if (!isShare && !user.is_admin) {
@@ -54,7 +54,7 @@ if (!isShare && !user.is_admin) {
 }
 ```
 
-**isOwnerPath + PermissionFacade.sync usage (lines 60, 90-91, 98-99):**
+**isOwnerPath + PermissionFacade.sync usage (lines ~60, ~90-91, ~98-99 (verify)):**
 ```js
 // Line 60: currentDirWritePermission check
 user.is_admin || isOwnerPath(user, folderPath) || PermissionFacade.checkPermissionSync(doc, folderPath, PERMISSIONS.WRITE)
@@ -68,7 +68,7 @@ hasReadPermission = isOwnerPath(user, normalizedPath) || PermissionFacade.checkF
 hasWritePermission = isOwnerPath(user, normalizedPath) || PermissionFacade.checkFilePermissionSync(doc, normalizedPath, PERMISSIONS.WRITE);
 ```
 
-**getHomeOwnerUserIdForPath usage (lines 195, 266):**
+**getHomeOwnerUserIdForPath usage (lines ~195, ~266 (verify)):**
 Called during `uploadFile` intermediate directory creation and `renameFile` post-rename owner grant.
 
 #### Migration Steps
@@ -149,9 +149,17 @@ Called during `uploadFile` intermediate directory creation and `renameFile` post
 Sequential `await` per directory entry would be O(N) round-trips to DB. For directories with 100+ items, this is unacceptable. Instead:
 
 ```js
-// Collect all nodes first
-const readChecks = children.map(child => aclService.checkFolderPermission(userId, child.id, PERMISSIONS.READ));
-const writeChecks = children.map(child => aclService.checkFolderPermission(userId, child.id, PERMISSIONS.WRITE));
+// Batch parallel permission checks — type-discriminated (files vs directories)
+const readChecks = children.map(child =>
+  child.type === 'directory'
+    ? aclService.checkFolderPermission(userId, child.id, PERMISSIONS.READ)
+    : aclService.checkFilePermission(userId, child.id, PERMISSIONS.READ)
+);
+const writeChecks = children.map(child =>
+  child.type === 'directory'
+    ? aclService.checkFolderPermission(userId, child.id, PERMISSIONS.WRITE)
+    : aclService.checkFilePermission(userId, child.id, PERMISSIONS.WRITE)
+);
 
 // Fire all in parallel (closure table supports batch IN queries)
 const [readResults, writeResults] = await Promise.all([Promise.all(readChecks), Promise.all(writeChecks)]);
@@ -178,7 +186,7 @@ Expected output: (empty)
 
 ### W4.1: batchOperationService.js Sync Checker Removal
 
-> **Status:** The implementation is already delivered by **W3.4** (factory rewrite, nodeId-only payloads, async permission gates, thin-dispatcher worker). This task is now a **verification + residue cleanup** pass; the per-step migrations below describe what W3.4 already performed and must be confirmed complete.
+> **Status:** Wave 3 Task W3.4 defined the nodeId-based factory for `batchOperationService` but did not remove the legacy sync checker code from the existing source file. This task performs the actual migration: removing all path-based sync checkers, PermissionFacade calls, and isOwnerPath references from the live `batchOperationService.js`. The Migration Steps below describe what must be done in this Wave 4 task.
 
 #### Current State Analysis
 
@@ -256,7 +264,7 @@ const canReadFileSync = buildSyncReadFileChecker(user, doc);
      ? canWriteDirSync(normalizedTargetPath)
      : canWriteFileByParentSync(normalizedTargetPath);
 
-   // NEW (W3.4 — payloads carry nodeIds, no path resolution):
+   // NEW (W4.1 — migrating from path-based sync checkers to nodeId-based async gates):
    const hasPermission = isDir
      ? await aclService.checkFolderPermission(userId, targetNodeId, PERMISSIONS.WRITE)
      : await aclService.checkFilePermission(userId, targetNodeId, PERMISSIONS.WRITE);
@@ -268,7 +276,7 @@ const canReadFileSync = buildSyncReadFileChecker(user, doc);
    const canEnterDirectory = (dirPath) => canWriteDirSync(dirPath);
    const canDeleteFileByParent = (filePath) => canWriteFileByParentSync(filePath);
 
-   // NEW (W3.4 — no selectiveDelete; fileService.deleteNode handles subtrees):
+   // NEW (W4.1 — no selectiveDelete; fileService.deleteNode handles subtrees via closure table):
    // N/A — the nodeId-based factory delegates to fileService.deleteNode/moveNode/copyFile.
    ```
 
@@ -393,6 +401,8 @@ If any of these return results, **STOP** and migrate the remaining caller before
 
 #### Functions Being Removed (detailed list)
 
+> **Warning:** Line numbers in the table below are from a snapshot of `permissionPolicy.js` and may have shifted. Verify each line range against the live file before deletion.
+
 | Function | Lines | Current Callers (production) | Status |
 |---|---|---|---|
 | `hasDirectFolderPermission` | 111-121 | cleanupService.js:211 (`isOwnerPath`, not this fn directly — verify) | Remove if zero callers |
@@ -408,12 +418,14 @@ If any of these return results, **STOP** and migrate the remaining caller before
 | `buildSyncReadFileChecker` | 245-251 | Zero callers (W4.0-W4.2 cleaned) | Remove |
 | `buildSyncWriteFileByParentChecker` | 253-259 | Zero callers (W4.0-W4.2 cleaned) | Remove |
 
-**Blocker: folders.js line 35 called `canWriteFolder(user, parentPath)` with path-based arguments.** Resolved by W3.6 — `folders.js` `/create` now uses `aclService.checkFolderPermission(principalId, parentNodeId, PERMISSIONS.WRITE)` with a nodeId payload. Confirm before W4.3 proceeds that no path-based `canWriteFolder`/`canReadFolder` caller remains:
+**Blocker: folders.js line 35 calls `canWriteFolder(user, parentPath)` with path-based arguments.** This is NOT resolved by W3.6 — the actual source file still uses the legacy path-based pattern. Before W4.3 can remove these functions from permissionPolicy.js, folders.js must be migrated to nodeId-based calls (`aclService.checkFolderPermission(principalId, parentNodeId, PERMISSIONS.WRITE)`). If the migration in W3.6 was not applied, perform it as a prerequisite to W4.3:
 
 ```js
 // VERIFY (must return zero production hits):
 // grep -rn "canWriteFolder(user\|canReadFolder(principal\|canGrantPermission(user" server/ --include="*.js" | grep -v "\.test\."
 ```
+
+> **Diagnostic note:** `aclService.canWriteFolder(user, dirNodeId)` currently accepts a nodeId parameter internally, but `folders.js` passes a path string (`parentPath`). This type mismatch may cause silent failure or unexpected behavior. Confirm whether `canWriteFolder` performs an internal path-to-nodeId lookup (which would mask the bug) or expects a nodeId directly (which would make the current call broken).
 
 #### Functions Being Removed From Imports (line 18)
 

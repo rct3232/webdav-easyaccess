@@ -71,7 +71,7 @@ describe('GET /api/files/list', () => {
     const res = await request(app)
       .get('/api/files/list')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: `/${user.username}` });
+      .query({ nodeId: 1 });
 
     expect(res.status).toBe(200);
     expect(res.body).toBeDefined();
@@ -81,7 +81,7 @@ describe('GET /api/files/list', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app)
       .get('/api/files/list')
-      .query({ path: '/docs' });
+      .query({ nodeId: 1 });
     expect(res.status).toBe(401);
   });
 
@@ -93,7 +93,7 @@ describe('GET /api/files/list', () => {
     const res = await request(app)
       .get('/api/files/list')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: '/other-user/no-access' });
+      .query({ nodeId: 999 });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
@@ -108,7 +108,7 @@ describe('GET /api/files/list', () => {
     const res = await request(app)
       .get('/api/files/list')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: `/${user.username}` });
+      .query({ nodeId: 1 });
 
     expect(res.status).toBe(200);
     expect(res.body).toBeDefined();
@@ -126,7 +126,7 @@ describe('GET /api/files/download', () => {
     const res = await request(app)
       .get('/api/files/download')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: `/${user.username}/file1.txt` });
+      .query({ nodeId: 5 });
 
     expect(res.status).toBe(200);
     expect(res.body).toBeDefined();
@@ -135,7 +135,7 @@ describe('GET /api/files/download', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app)
       .get('/api/files/download')
-      .query({ path: '/docs/file.txt' });
+      .query({ nodeId: 5 });
     expect(res.status).toBe(401);
   });
 
@@ -146,7 +146,7 @@ describe('GET /api/files/download', () => {
     const res = await request(app)
       .get('/api/files/download')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: '/other-user/no-access/file.txt' });
+      .query({ nodeId: 999 });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
@@ -163,7 +163,7 @@ describe('POST /api/files/preview-ticket', () => {
     const res = await request(app)
       .post('/api/files/preview-ticket')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: `/${user.username}/video.mp4` });
+      .send({ nodeId: 5 });
 
     expect(res.status).toBe(200);
     expect(res.body.ticket).toBeDefined();
@@ -179,7 +179,7 @@ describe('POST /api/files/preview-ticket', () => {
     const res = await request(app)
       .post('/api/files/preview-ticket')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: `/${user.username}/not-video.txt` });
+      .send({ nodeId: 6 });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.previewNotVideo);
@@ -198,14 +198,14 @@ describe('GET /api/files/preview-stream', () => {
     const ticketRes = await request(app)
       .post('/api/files/preview-ticket')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: `/${user.username}/video.mp4` });
+      .send({ nodeId: 5 });
 
     expect(ticketRes.status).toBe(200);
     const ticket = ticketRes.body.ticket;
 
     const res = await request(app)
       .get('/api/files/preview-stream')
-      .query({ path: `/${user.username}/video.mp4`, ticket });
+      .query({ nodeId: 5, ticket });
 
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toContain('inline');
@@ -215,7 +215,7 @@ describe('GET /api/files/preview-stream', () => {
   it('returns 403 for invalid ticket', async () => {
     const res = await request(app)
       .get('/api/files/preview-stream')
-      .query({ path: '/any/video.mp4', ticket: 'nope' });
+      .query({ nodeId: 5, ticket: 'nope' });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.previewTicketInvalid);
@@ -248,7 +248,7 @@ describe('POST /api/files/batch-move', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         moves: [
-          { sourcePath: `/${user.username}/a.txt`, destinationPath: `/${user.username}/b.txt` },
+          { sourceNodeId: 1, destinationParentNodeId: 2 },
         ],
       });
 
@@ -266,7 +266,7 @@ describe('POST /api/files/upload', () => {
     const res = await request(app)
       .post('/api/files/upload')
       .set('Authorization', `Bearer ${token}`)
-      .field('path', '/other-user/no-write')
+      .field('parentNodeId', '999')
       .attach('file', Buffer.from('x'), 'test.txt');
 
     expect(res.status).toBe(403);
@@ -285,7 +285,7 @@ describe('POST /api/files/upload', () => {
     const res = await request(app)
       .post('/api/files/upload')
       .set('Authorization', `Bearer ${token}`)
-      .field('path', `/${user.username}`)
+      .field('parentNodeId', '1')
       .attach('file', Buffer.from('test content'), 'test.txt');
 
     expect(res.status).toBe(200);
@@ -303,7 +303,7 @@ describe('POST /api/files/batch-delete', () => {
     const res = await request(app)
       .post('/api/files/batch-delete')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: [`/${user.username}/a.txt`, `/${user.username}/subdir`] });
+      .send({ nodeIds: [1, 2] });
 
     expect(res.status).toBe(202);
     expect(res.body.jobId).toBeDefined();
@@ -318,7 +318,7 @@ describe('POST /api/files/batch-delete', () => {
     const res = await request(app)
       .post('/api/files/batch-delete')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: [`/${user.username}/a.txt`, '/.wea/permissions/x'] });
+      .send({ nodeIds: [1, 999] });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
@@ -337,7 +337,7 @@ describe('POST /api/files/batch-copy', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         copies: [
-          { sourcePath: `/${user.username}/a.txt`, destinationPath: `/${user.username}/copy.txt` },
+          { sourceNodeId: 1, destinationParentNodeId: 2 },
         ],
       });
 
@@ -379,7 +379,7 @@ describe('PUT /api/files/rename', () => {
       .put('/api/files/rename')
       .set('X-Share-Token', shareToken)
       .send({
-        oldPath: `/${user.username}/file1.txt`,
+        nodeId: 1,
         newName: 'renamed.txt',
       });
 
@@ -396,7 +396,7 @@ describe('PUT /api/files/rename', () => {
     const missingNewName = await request(app)
       .put('/api/files/rename')
       .set('Authorization', `Bearer ${token}`)
-      .send({ oldPath: `/${user.username}/a.txt` });
+      .send({ nodeId: 1 });
 
     expect(missingNewName.status).toBe(400);
     expect(missingNewName.body.errorCode).toBe(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -422,7 +422,7 @@ describe('PUT /api/files/rename', () => {
       .put('/api/files/rename')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        oldPath: `/${user.username}/file1.txt`,
+        nodeId: 1,
         newName: 'renamed.txt',
       });
 
@@ -467,7 +467,7 @@ describe('POST /api/files/metadata', () => {
     const res = await request(app)
       .post('/api/files/metadata')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: [`/${user.username}/file1.txt`] });
+      .send({ nodeIds: [1] });
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -490,7 +490,7 @@ describe('POST /api/files/metadata', () => {
     const res = await request(app)
       .post('/api/files/metadata')
       .set('X-Share-Token', shareToken)
-      .send({ paths: [`/${user.username}/file1.txt`] });
+      .send({ nodeIds: [1] });
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -506,7 +506,7 @@ describe('POST /api/files/download-multiple', () => {
     const res = await request(app)
       .post('/api/files/download-multiple')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: [] });
+      .send({ nodeIds: [] });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBeDefined();
@@ -521,7 +521,7 @@ describe('POST /api/files/download-multiple', () => {
     const res = await request(app)
       .post('/api/files/download-multiple')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: [`/${user.username}/file1.txt`] });
+      .send({ nodeIds: [1] });
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/application\/zip/);
@@ -535,7 +535,7 @@ describe('POST /api/files/download-multiple', () => {
     const res = await request(app)
       .post('/api/files/download-multiple')
       .set('Authorization', `Bearer ${token}`)
-      .send({ paths: ['/other-user/no-access/file.txt'] });
+      .send({ nodeIds: [999] });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
@@ -554,7 +554,7 @@ describe('POST /api/files/bulk-operation/:jobId/cancel', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         moves: [
-          { sourcePath: `/${user.username}/a.txt`, destinationPath: `/${user.username}/b.txt` },
+          { sourceNodeId: 1, destinationParentNodeId: 2 },
         ],
       });
 

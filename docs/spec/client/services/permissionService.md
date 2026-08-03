@@ -15,6 +15,8 @@
 - **Source:** `client/src/services/permissionService.js`
 - **Test file:** `client/src/services/__tests__/permissionService.test.js`
 
+> All permission endpoints are mounted at `/api/permissions`. The service implementation passes relative `/permissions/...`; httpClient (`BASE_URL='/api'`) resolves the absolute prefix. Treat `/api/permissions/...` as the canonical documented form.
+
 ### 2.2 Main Functions
 
 | Function | Input | Return | API called |
@@ -62,7 +64,7 @@ The following parameters are removed in Phase 4:
 
 #### Response Shape Changes
 
-- Responses include `{ fileNodeId, nodeId, display_path, permission }` instead of `{ folderPath, permission }`
+- Responses include `{ nodeId, display_path, permission }`. The canonical identifier is `nodeId`; `fileNodeId` is NOT serialized for permission-list responses.
 
 ### 2.6 Error Handling
 

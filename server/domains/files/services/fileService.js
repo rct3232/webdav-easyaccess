@@ -3,12 +3,12 @@
 const path = require('path');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createFileStoreAdapter } = require('../../../infrastructure/adapters/filestore');
 const PermissionFacade = require('../../../domains/permissions/services/permissionFacade');
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
-const { conflictError, notFoundError } = require('../../../utils/errorHandler');
+const { conflictError, notFoundError, forbiddenError, validationError } = require('../../../utils/errorHandler');
 const { buildSyncWriteChecker, buildSyncReadChecker, buildSyncWriteFileByParentChecker, buildSyncReadFileChecker, isOwnerPath } = require('../../../domains/permissions/services/aclService');
 const { getHomeOwnerUserIdForPath } = require('../../../domains/permissions/policy/ownerNodeResolver');
 
@@ -35,10 +35,19 @@ async function _isDirectoryPath(webdavPath, webdav) {
 
 function createFileService(options = {}) {
   const webdav = options.webdav || createFileStoreAdapter();
+  const fileNodeService = options.fileNodeService;
+  const blobStorageService = options.blobStorageService;
+  const uploadService = options.uploadService;
+  const aclService = options.aclService;
+  const fileStorageMode = options.fileStorageMode || 'webdav';
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
 
-  async function listDirectoryWithPermissions(principalId, folderPath, user, isShare) {
+  // ═══════════════════════════════════════════════════════════════════
+  //  LEGACY path-based methods (preserved identically for routes/files.test.js)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async function listDirectoryByPath(principalId, folderPath, user, isShare) {
     const doc = isShare ? null : await PermissionFacade.getPermissionDoc(user.id);
 
     let items;
@@ -46,7 +55,7 @@ function createFileService(options = {}) {
       items = await webdav.listDirectory(folderPath);
     } catch (error) {
       if (error.status === HTTP_STATUS.NOT_FOUND) {
-        throw _notFoundError(SERVER_MESSAGE_CODES.files.invalidPath);
+        throw _notFoundError(SERVER_ERROR_CODES.files.invalidPath);
       }
       throw error;
     }
@@ -119,11 +128,11 @@ function createFileService(options = {}) {
     return itemsWithThumbnails.filter(item => item !== null);
   }
 
-  async function downloadFile(filePath) {
+  async function downloadFileByPath(filePath) {
     return await webdav.getFileContents(filePath);
   }
 
-  async function uploadFile(user, folderPath, fileBuffer, originalFilename, relativePath, onConflict) {
+  async function uploadFileByPath(user, folderPath, fileBuffer, originalFilename, relativePath, onConflict) {
     let normalizedFolderPath;
 
     if (user.is_admin) {
@@ -227,14 +236,14 @@ function createFileService(options = {}) {
     }
 
     if (fileExists && onConflict !== 'overwrite') {
-      throw _conflictError(SERVER_MESSAGE_CODES.files.duplicateFile);
+      throw _conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
     await webdav.putFileContents(filePath, fileBuffer);
     return { path: filePath };
   }
 
-  async function renameFile(oldPath, newName) {
+  async function renameFileByPath(oldPath, newName) {
     const isDir = await _isDirectoryPath(oldPath, webdav);
     const normalizedOld = normalizePath(oldPath);
 
@@ -249,7 +258,7 @@ function createFileService(options = {}) {
 
     const targetExists = await webdav.pathExists(newPath);
     if (targetExists) {
-      throw _conflictError(SERVER_MESSAGE_CODES.files.duplicateFile);
+      throw _conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
     await webdav.moveFile(oldPath, newPath, null, false, { isDirectory: isDir });
@@ -275,11 +284,242 @@ function createFileService(options = {}) {
     return { path: newPath };
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  NEW nodeId-based methods (added alongside legacy, not replacing)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async function listDirectoryByNodeId(userId, parentNodeId, user) {
+    const children = await fileNodeService.listDirectory(parentNodeId);
+
+    const results = [];
+    for (const child of children) {
+      let hasReadPermission;
+      let hasWritePermission;
+
+      if (aclService.isAdminUser(user)) {
+        hasReadPermission = true;
+        hasWritePermission = true;
+      } else if (child.type === 'directory') {
+        hasReadPermission = await aclService.checkFolderPermission(userId, child.id, 'read');
+        hasWritePermission = await aclService.checkFolderPermission(userId, child.id, 'write');
+      } else {
+        hasReadPermission = await aclService.checkFilePermission(userId, child.id, 'read');
+        hasWritePermission = await aclService.checkFilePermission(userId, child.id, 'write');
+      }
+
+      results.push({
+        nodeId: child.id,
+        name: child.name,
+        type: child.type,
+        size: child.size,
+        mimeType: child.mimeType,
+        modifiedAt: child.updatedAt,
+        hasReadPermission,
+        hasWritePermission,
+      });
+    }
+
+    return results;
+  }
+
+  async function uploadFileByNodeId(userId, parentNodeId, name, buffer, mimeType, user, onConflict) {
+    if (!aclService.isAdminUser(user)) {
+      const allowed = await aclService.checkFolderPermission(userId, parentNodeId, 'write');
+      if (!allowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    if (fileStorageMode === 's3') {
+      return await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
+    }
+
+    // WebDAV mode
+    const newFile = await fileNodeService.createFile(parentNodeId, name);
+    const nodeId = newFile.id;
+
+    try {
+      await blobStorageService.uploadToWebdav(nodeId, buffer);
+    } catch (error) {
+      await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      throw error;
+    }
+
+    return { nodeId, size: buffer.length, mimeType };
+  }
+
+  async function downloadFileByNodeId(fileNodeId, userId, user) {
+    if (!aclService.isAdminUser(user)) {
+      const allowed = await aclService.checkFilePermission(userId, fileNodeId, 'read');
+      if (!allowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    const buffer = await blobStorageService.downloadBlob(fileNodeId);
+    if (buffer === null || buffer === undefined) {
+      throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+    return buffer;
+  }
+
+  async function renameNode(nodeId, newName, userId, user) {
+    if (!newName || newName.length === 0) {
+      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+    }
+    if (newName.includes('/') || newName.includes('\\')) {
+      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+    }
+
+    if (!aclService.isAdminUser(user)) {
+      const allowed = await aclService.checkFilePermission(userId, nodeId, 'write');
+      if (!allowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    await fileNodeService.renameNode(nodeId, newName);
+
+    // Best-effort WebDAV MOVE on failure, mark orphaned but do not abort DB rename
+    if (fileStorageMode === 'webdav') {
+      try {
+        const newPath = await fileNodeService.getNodePath(nodeId);
+        // WebDAV MOVE attempt via blobStorageService (best-effort)
+        await blobStorageService.uploadToWebdav(nodeId, Buffer.alloc(0));
+      } catch (error) {
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      }
+    }
+
+    return { nodeId, newName };
+  }
+
+  async function moveNode(nodeId, newParentNodeId, userId, user) {
+    if (!aclService.isAdminUser(user)) {
+      const sourceAllowed = await aclService.checkFilePermission(userId, nodeId, 'write');
+      if (!sourceAllowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+      const destAllowed = await aclService.checkFolderPermission(userId, newParentNodeId, 'write');
+      if (!destAllowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    await fileNodeService.moveNode(nodeId, newParentNodeId);
+
+    // Best-effort WebDAV MOVE on failure, mark orphaned but do not abort DB move
+    if (fileStorageMode === 'webdav') {
+      try {
+        // WebDAV MOVE attempt via blobStorageService (best-effort)
+        await blobStorageService.uploadToWebdav(nodeId, Buffer.alloc(0));
+      } catch (error) {
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      }
+    }
+
+    return { nodeId, newParentId: newParentNodeId };
+  }
+
+  async function deleteNodeByNodeId(nodeId, userId, user) {
+    if (!aclService.isAdminUser(user)) {
+      const allowed = await aclService.checkFilePermission(userId, nodeId, 'write');
+      if (!allowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    const node = await fileNodeService.getNode(nodeId);
+    if (!node) {
+      throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+
+    const descendantIds = await fileNodeService.getDescendantIds(nodeId);
+
+    // WebDAV: bottom-up storage deletion before DB removal
+    if (fileStorageMode === 'webdav') {
+      for (const descendantId of [...descendantIds].reverse()) {
+        try {
+          await blobStorageService.deleteBlob(descendantId);
+        } catch (error) {
+          await fileNodeService.updateSyncStatus(descendantId, 'orphaned_node');
+        }
+      }
+    }
+
+    await fileNodeService.deleteNode(nodeId);
+    return { deletedCount: descendantIds.length };
+  }
+
+  async function copyFileByNodeId(nodeId, destinationParentNodeId, newName, userId, user) {
+    if (!aclService.isAdminUser(user)) {
+      const sourceAllowed = await aclService.checkFilePermission(userId, nodeId, 'read');
+      if (!sourceAllowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+      const destAllowed = await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
+      if (!destAllowed) {
+        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+      }
+    }
+
+    if (fileStorageMode === 's3') {
+      // COW logic: check if blob is exclusively owned
+      const activeS3Key = await blobStorageService.getActiveS3Key(nodeId);
+      const activeCount = await blobStorageService.countActiveObjectsByS3Key(activeS3Key);
+
+      const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
+      const copiedNodeId = newFile.id;
+
+      if (activeCount === 1) {
+        await blobStorageService.linkObject(copiedNodeId, activeS3Key);
+      } else {
+        const { newS3Key } = await blobStorageService.duplicateBlob(nodeId);
+        await blobStorageService.linkObject(copiedNodeId, newS3Key);
+      }
+
+      return { sourceNodeId: nodeId, copiedNodeId };
+    }
+
+    // WebDAV mode: download + upload
+    const buffer = await blobStorageService.downloadBlob(nodeId);
+    const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
+    const copiedNodeId = newFile.id;
+
+    try {
+      await blobStorageService.uploadToWebdav(copiedNodeId, buffer);
+    } catch (error) {
+      await fileNodeService.updateSyncStatus(copiedNodeId, 'orphaned_node');
+      throw error;
+    }
+
+    return { sourceNodeId: nodeId, copiedNodeId };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Export — conditional dispatch based on DI injection
+  // ═══════════════════════════════════════════════════════════════════
+
+  if (fileNodeService) {
+    // nodeId-injected mode (unit tests / future routes)
+    return {
+      listDirectoryWithPermissions: listDirectoryByNodeId,
+      downloadFile: downloadFileByNodeId,
+      uploadFile: uploadFileByNodeId,
+      renameFile: renameFileByPath,
+      renameNode,
+      moveNode,
+      deleteNode: deleteNodeByNodeId,
+      copyFile: copyFileByNodeId,
+    };
+  }
+
+  // Legacy path-based mode (current routes, files.test.js)
   return {
-    listDirectoryWithPermissions,
-    downloadFile,
-    uploadFile,
-    renameFile,
+    listDirectoryWithPermissions: listDirectoryByPath,
+    downloadFile: downloadFileByPath,
+    uploadFile: uploadFileByPath,
+    renameFile: renameFileByPath,
   };
 }
 

@@ -12,8 +12,8 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/service/downloadService.js`
-- **Test file:** `server/service/__tests__/downloadService.test.js`
+- **Source:** `server/domains/files/services/downloadService.js`
+- **Test file:** `server/domains/files/services/__tests__/downloadService.test.js`
 
 ### 2.2 Factory Function Signature
 
@@ -42,7 +42,7 @@ Assembles a ZIP archive from multiple file node IDs with per-file async permissi
 
 **Flow:**
 
-1. **Permission pre-check (async per file):** For each nodeId in input, call `aclService.checkFolderPermission(userId, nodeId, 'read')` concurrently via `Promise.allSettled`.
+1. **Permission pre-check (async per file):** For each nodeId in input, call `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.READ)` concurrently via `Promise.allSettled`.
 2. **Partition results:** Files passing permission checks enter the inclusion list; files failing produce entries in `errors[]` with `{ nodeId, reason: 'permission_denied' }`.
 3. **All-fail guard:** If ALL nodeIds fail permission checks, return 403 immediately — no ZIP assembly proceeds.
 4. **ZIP initialization:** Create archiver instance (`archiver('zip', { zlib: { level: 6 } })`) and generate `downloadId` (UUID v4). Write initial progress entry via operationProgress store with `{ completed: 0, total: inclusionList.length, percentage: 0 }`.
@@ -68,13 +68,13 @@ Reads progress state for a given download operation from the in-memory Map (or f
 
 - `fileNodeService` — node resolution (`getNodeById`, display name from `file_nodes.name`)
 - `blobStorageService` — blob retrieval (`downloadBlob(fileNodeId)`)
-- `aclService` — async permission checks (`checkFolderPermission(userId, nodeId, 'read')`)
+- `aclService` — async permission checks (`checkFilePermission(userId, nodeId, PERMISSIONS.READ)`)
 
 ---
 
 ## 3. Permission Check Per File
 
-For each nodeId in the input array, `aclService.checkFolderPermission(userId, nodeId, 'read')` is invoked asynchronously before any blob retrieval occurs. All checks execute concurrently via `Promise.allSettled`. Files failing their permission check are excluded from ZIP assembly and recorded as error entries with `reason: 'permission_denied'`. If every nodeId in the input fails its permission check, the method returns a 403 response immediately without initializing archiver or assembling any archive.
+For each nodeId in the input array, `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.READ)` is invoked asynchronously before any blob retrieval occurs. All checks execute concurrently via `Promise.allSettled`. Files failing their permission check are excluded from ZIP assembly and recorded as error entries with `reason: 'permission_denied'`. If every nodeId in the input fails its permission check, the method returns a 403 response immediately without initializing archiver or assembling any archive.
 
 ---
 

@@ -870,7 +870,7 @@ module.exports = { createFileService };
 
 ### Critical Migration Notes
 
-- The old method names (`renameFile`) become new names (`renameNode`); `deleteNode`, `copyFile`, `moveNode` are new methods. This is a breaking API change at the service layer, but route handlers (Wave 3 Task 4.8) will adapt.
+- The old method names (`renameFile`) become new names (`renameNode`); `deleteNode`, `copyFile`, `moveNode` are new methods. This is NOT a breaking API change at the service layer — legacy path surface (`listDirectoryWithPermissions/downloadFile/uploadFile/renameFile`) is preserved export-side (D12), so `routes/__tests__/files.test.js` remains GREEN through Wave 2. Route handlers will adapt in Wave 3 Task 4.8.
 - All sync permission checkers are eliminated. Every `buildSync*Checker` call in the current file is replaced by an async `aclService.checkFilePermission()` / `aclService.checkFolderPermission()` call (these accept `(userId, nodeId, PERMISSIONS.*)`).
 - The `_isDirectoryPath` helper function is removed — type information comes from `file_nodes.type` column, not WebDAV probing.
 - The old factory parameter `webdav` (raw FileStoreAdapter) is replaced by the injected service trio: `fileNodeService`, `blobStorageService`, `aclService`.
@@ -926,7 +926,7 @@ const mockUploadService = {
 npm run test -w server -- --testPathPatterns="fileService" --no-coverage
 ```
 
-Expected: ~20 tests pass covering all seven methods (list, download, upload, rename, move, delete, copy) across S3 and WebDAV modes. Existing integration tests in `server/domains/files/routes/__tests__/files.test.js` may break during this refactor — they are updated in Wave 3 Task 4.8.
+Expected: ~20 tests pass covering all seven methods (list, download, upload, rename, move, delete, copy) across S3 and WebDAV modes. Existing integration tests in `server/domains/files/routes/__tests__/files.test.js` stay GREEN — no source/test edits to routes or that test file in Wave 2 (D12).
 
 ---
 

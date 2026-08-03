@@ -418,6 +418,38 @@ describe('createFileNodesStore', () => {
       expect(obj).not.toBeNull();
       expect(obj.file_node_id).toBe(created.id);
     });
+
+    it('returns 0 when no active objects exist for an s3 key', async () => {
+      const count = await store.countActiveObjectsByS3Key('s3://bucket/nonexistent-key');
+      expect(count).toBe(0);
+    });
+
+    it('counts a single active object for an s3 key', async () => {
+      const created = await store.createNode(null, `${testPrefix}count-single`, 'file');
+      await store.insertObject(created.id, 's3://bucket/count-single-key', 'active');
+
+      const count = await store.countActiveObjectsByS3Key('s3://bucket/count-single-key');
+      expect(count).toBe(1);
+    });
+
+    it('counts multiple active rows sharing the same s3 key', async () => {
+      const nodeA = await store.createNode(null, `${testPrefix}count-multi-a`, 'file');
+      const nodeB = await store.createNode(null, `${testPrefix}count-multi-b`, 'file');
+      await store.insertObject(nodeA.id, 's3://bucket/shared-key', 'active');
+      await store.insertObject(nodeB.id, 's3://bucket/shared-key', 'active');
+
+      const count = await store.countActiveObjectsByS3Key('s3://bucket/shared-key');
+      expect(count).toBe(2);
+    });
+
+    it('excludes orphaned rows from countActiveObjectsByS3Key', async () => {
+      const created = await store.createNode(null, `${testPrefix}count-orphan`, 'file');
+      await store.insertObject(created.id, 's3://bucket/orphan-count-key', 'active');
+      await store.orphanObject('s3://bucket/orphan-count-key');
+
+      const count = await store.countActiveObjectsByS3Key('s3://bucket/orphan-count-key');
+      expect(count).toBe(0);
+    });
   });
 
   /* ------------------------------------------------------------------ */

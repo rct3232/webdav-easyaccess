@@ -51,7 +51,7 @@ Functions in permissionPolicy.js are classified into three tiers for Phase 4 mig
 |-------------------|-----------------|------------------|--------------|
 | `canReadFolder` | fileService.listDirectoryWithPermissions, downloadService.downloadMultiple | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1, 4.6 |
 | `canWriteFolder` | batchOperationService.batchMove, batchOperationService.batchDelete | `aclService.checkFolderPermission(userId, nodeId, 'write')` | 4.6 |
-| `canReadFile` | fileService.downloadFile | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1 |
+| `canReadFile` | fileService.downloadFile | `aclService.checkFilePermission(userId, nodeId, 'read')` | 4.1 |
 | `buildSyncWriteChecker` | batchOperationService (pre-migration) | async gate per item | 4.8c |
 | `buildSyncReadChecker` | downloadService (pre-migration) | async gate per file | 4.6 |
 
@@ -62,6 +62,8 @@ After Tasks 4.8d-4.8g, `permissionPolicy.js` contains only Tier 1 functions + re
 Removal is safe only after ALL callers in the table above have migrated to async nodeId checks. Tasks 4.8c (fileService sync→async), 4.6 (batchOperationService, downloadService) must complete before 4.8d can remove Tier 2/3.
 
 ### 2.5 Functions / Exports — permissionPolicy.js
+
+> **PRE-REMOVAL — NOT FOR NEW USE** — Any Tier-2 (path-based) and Tier-3 (`buildSync*Checker`) entries listed in this tab are intermediates for Phase 4 removal (Tasks 4.8d-4.8f). Treat them as reference only; new code must use the Tier-1 node-id API (`canReadNode`, `canWriteNode`, aclService). The banner does NOT cover Tier-1 rows (`isAdminUser`, `canReadNode`/`canWriteNode`, ownerNodeResolver, inheritance, permissionRank).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -124,6 +126,8 @@ Removal is safe only after ALL callers in the table above have migrated to async
 - aclService.checkFolderPermission, aclService.checkFilePermission
 
 ### 2.12 Verification Scenarios
+
+> **PRE-REMOVAL — NOT FOR NEW USE** — Any Tier-2 (path-based) and Tier-3 (`buildSync*Checker`) entries listed in this tab are intermediates for Phase 4 removal (Tasks 4.8d-4.8f). Treat them as reference only; new code must use the Tier-1 node-id API (`canReadNode`, `canWriteNode`, aclService). The banner does NOT cover Tier-1 rows (`isAdminUser`, `canReadNode`/`canWriteNode`, ownerNodeResolver, inheritance, permissionRank).
 
 - [ ] isOwnerPath, userRootPath (ownerPathResolver)
 - [ ] getHomeOwnerUserIdForPath

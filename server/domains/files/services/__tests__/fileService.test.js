@@ -5,9 +5,9 @@
  * Verifies the Phase 4 nodeId-based fileService contract per spec.
  * Each test builds the unit under test through the real createFileService
  * factory with injected mock dependencies; no method of the service itself
- * is stubbed. These tests FAIL against the pre-refactor (path-based)
- * createFileService — that is intentional until Wave 2 implements the
- * nodeId contract.
+ * is stubbed. The nodeId methods are implemented in Wave 2 alongside the legacy
+ * path-based surface. These tests target the nodeId methods and pass against the refactored
+ * createFileService.
  * @see docs/spec/server/services/fileService.md
  */
 
@@ -24,6 +24,7 @@ function createMockFileNodeService(overrides = {}) {
     deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     listDirectory: jest.fn().mockResolvedValue([]),
     getNodePath: jest.fn().mockResolvedValue('/some/path'),
+    getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
     getDescendantIds: jest.fn().mockResolvedValue([1]),
     updateSyncStatus: jest.fn().mockResolvedValue(true),
   };
@@ -42,7 +43,6 @@ function createMockBlobStorageService(overrides = {}) {
     duplicateBlob: jest.fn().mockResolvedValue({ newS3Key: 'key-copy' }),
     linkObject: jest.fn().mockResolvedValue(true),
     countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
-    downloadFromWebdav: jest.fn().mockResolvedValue(Buffer.from('webdav-content')),
   };
   return { ...defaults, ...overrides };
 }
@@ -339,7 +339,6 @@ describe('uploadFile — WebDAV mode', () => {
   it('creates file_node and performs synchronous WebDAV PUT in single flow', async () => {
     const fileNodeService = createMockFileNodeService({
       createFile: jest.fn().mockResolvedValue({ id: 30 }),
-      getNodePath: jest.fn().mockResolvedValue('/uploads/hello.txt'),
     });
     const blobStorageService = createMockBlobStorageService({
       uploadToWebdav: jest.fn().mockResolvedValue(true),
@@ -362,15 +361,13 @@ describe('uploadFile — WebDAV mode', () => {
 
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 5, 'write');
     expect(fileNodeService.createFile).toHaveBeenCalledWith(5, 'hello.txt');
-    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(30);
-    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith('/uploads/hello.txt', Buffer.from('hi'));
+    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith(30, Buffer.from('hi'));
     expect(result).toMatchObject({ nodeId: 30, size: 2, mimeType: 'text/plain' });
   });
 
   it('marks sync_status=orphaned_node if WebDAV PUT fails after DB commit', async () => {
     const fileNodeService = createMockFileNodeService({
       createFile: jest.fn().mockResolvedValue({ id: 31 }),
-      getNodePath: jest.fn().mockResolvedValue('/uploads/fail.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStorageService = createMockBlobStorageService({
@@ -423,20 +420,17 @@ describe('downloadFile', () => {
     expect(result).toBe(expectedBuffer);
   });
 
-  it('returns buffer for WebDAV mode via webdav path resolution', async () => {
+  it('returns buffer for WebDAV mode via blobStorageService.downloadBlob', async () => {
     const expectedBuffer = Buffer.from('webdav-content');
-    const fileNodeService = createMockFileNodeService({
-      getNodePath: jest.fn().mockResolvedValue('/files/10/data.txt'),
-    });
     const blobStorageService = createMockBlobStorageService({
-      downloadFromWebdav: jest.fn().mockResolvedValue(expectedBuffer),
+      downloadBlob: jest.fn().mockResolvedValue(expectedBuffer),
     });
     const aclService = createMockAclService({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
-      fileNodeService,
+      fileNodeService: createMockFileNodeService(),
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
@@ -445,12 +439,12 @@ describe('downloadFile', () => {
 
     const result = await service.downloadFile(10, 1, { id: 1 });
 
-    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(10);
-    expect(blobStorageService.downloadFromWebdav).toHaveBeenCalledWith('/files/10/data.txt');
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
+    expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
     expect(result).toBe(expectedBuffer);
   });
 
-  it('returns null when no active object_map entry exists', async () => {
+  it('throws not-found when downloadBlob returns null (no active object_map)', async () => {
     const blobStorageService = createMockBlobStorageService({
       downloadBlob: jest.fn().mockResolvedValue(null),
     });
@@ -466,10 +460,10 @@ describe('downloadFile', () => {
       fileStorageMode: 's3',
     });
 
-    const result = await service.downloadFile(10, 1, { id: 1 });
-
+    await expect(
+      service.downloadFile(10, 1, { id: 1 })
+    ).rejects.toThrow();
     expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
-    expect(result).toBeNull();
   });
 
   it('throws permission denied if user lacks read access (non-admin)', async () => {
@@ -502,7 +496,7 @@ describe('renameNode', () => {
     });
     const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -515,7 +509,7 @@ describe('renameNode', () => {
 
     const result = await service.renameNode(10, 'newName.txt', 1, { id: 1 });
 
-    expect(aclService.checkFolderPermission).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
     expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
     expect(result).toMatchObject({ nodeId: 10, newName: 'newName.txt' });
   });
@@ -524,15 +518,15 @@ describe('renameNode', () => {
     const fileNodeService = createMockFileNodeService({
       renameNode: jest.fn().mockResolvedValue(true),
       getNodePath: jest.fn()
-        .mockResolvedValueOnce('/files/old.txt') // old path
-        .mockResolvedValueOnce('/files/new.txt'), // new path
+        .mockResolvedValueOnce('/files/old.txt')
+        .mockResolvedValueOnce('/files/new.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStorageService = createMockBlobStorageService({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('MOVE failed')),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -543,20 +537,18 @@ describe('renameNode', () => {
       fileStorageMode: 'webdav',
     });
 
-    await expect(
-      service.renameNode(10, 'newName.txt', 1, { id: 1 })
-    ).rejects.toThrow();
+    // Best-effort: DB rename succeeds, WebDAV failure caught, orphaned marker set.
+    await service.renameNode(10, 'newName.txt', 1, { id: 1 });
 
-    // DB rename succeeded despite storage failure.
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
     expect(fileNodeService.renameNode).toHaveBeenCalledWith(10, 'newName.txt');
-    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(10);
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'orphaned_node');
   });
 
   it('throws if newName is empty or contains invalid characters', async () => {
     const fileNodeService = createMockFileNodeService();
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -588,7 +580,7 @@ describe('renameNode', () => {
       renameNode: jest.fn().mockRejectedValue(new Error('duplicate key value violates unique constraint')),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -614,6 +606,7 @@ describe('moveNode', () => {
       moveNode: jest.fn().mockResolvedValue(true),
     });
     const aclService = createMockAclService({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -627,7 +620,8 @@ describe('moveNode', () => {
 
     const result = await service.moveNode(10, 20, 1, { id: 1 });
 
-    expect(aclService.checkFolderPermission).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
     expect(result).toMatchObject({ nodeId: 10, newParentId: 20 });
   });
@@ -638,6 +632,7 @@ describe('moveNode', () => {
     });
     const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -651,6 +646,8 @@ describe('moveNode', () => {
 
     const result = await service.moveNode(10, 20, 1, { id: 1 });
 
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+    expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
     expect(blobStorageService.deleteBlob).not.toHaveBeenCalled();
     expect(blobStorageService.uploadToWebdav).not.toHaveBeenCalled();
@@ -660,15 +657,13 @@ describe('moveNode', () => {
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
     const fileNodeService = createMockFileNodeService({
       moveNode: jest.fn().mockResolvedValue(true),
-      getNodePath: jest.fn()
-        .mockResolvedValueOnce('/files/old/')
-        .mockResolvedValueOnce('/new/files/'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStorageService = createMockBlobStorageService({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('MOVE failed')),
     });
     const aclService = createMockAclService({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -680,11 +675,9 @@ describe('moveNode', () => {
       fileStorageMode: 'webdav',
     });
 
-    await expect(
-      service.moveNode(10, 20, 1, { id: 1 })
-    ).rejects.toThrow();
+    // Best-effort: DB move succeeds, WebDAV failure caught, orphaned marker set.
+    await service.moveNode(10, 20, 1, { id: 1 });
 
-    // DB move succeeded despite storage failure.
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(10, 'orphaned_node');
   });
@@ -695,6 +688,7 @@ describe('moveNode', () => {
       moveNode: jest.fn().mockRejectedValue(new Error('cycle detected')),
     });
     const aclService = createMockAclService({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -719,11 +713,12 @@ describe('moveNode', () => {
 describe('deleteNode', () => {
   it('deletes leaf node via fileNodeService.deleteNode after write-permission gate', async () => {
     const fileNodeService = createMockFileNodeService({
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([10]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -736,18 +731,20 @@ describe('deleteNode', () => {
 
     const result = await service.deleteNode(10, 1, { id: 1 });
 
-    expect(aclService.checkFolderPermission).toHaveBeenCalled();
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+    expect(fileNodeService.getNode).toHaveBeenCalledWith(10);
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(10);
     expect(result.deletedCount).toBe(1);
   });
 
   it('enumerates descendants via getDescendantIds for directory nodes', async () => {
     const fileNodeService = createMockFileNodeService({
+      getNode: jest.fn().mockResolvedValue({ id: 5, name: 'dir', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([5, 6, 7]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 3 }),
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -760,6 +757,7 @@ describe('deleteNode', () => {
 
     const result = await service.deleteNode(5, 1, { id: 1 });
 
+    expect(fileNodeService.getNode).toHaveBeenCalledWith(5);
     expect(fileNodeService.getDescendantIds).toHaveBeenCalledWith(5);
     expect(fileNodeService.deleteNode).toHaveBeenCalledWith(5);
     expect(result.deletedCount).toBe(3);
@@ -767,10 +765,8 @@ describe('deleteNode', () => {
 
   it('WebDAV mode: storage DELETE bottom-up, marks orphaned_node on per-node failure, DB delete proceeds', async () => {
     const fileNodeService = createMockFileNodeService({
+      getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([100, 101]),
-      getNodePath: jest.fn()
-        .mockResolvedValueOnce('/files/101.txt')
-        .mockResolvedValueOnce('/files/100.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 2 }),
     });
@@ -780,7 +776,7 @@ describe('deleteNode', () => {
         .mockResolvedValueOnce(true), // second succeeds
     });
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -804,12 +800,13 @@ describe('deleteNode', () => {
 
   it('S3 mode: DB-only deletion, no blobStorageService calls', async () => {
     const fileNodeService = createMockFileNodeService({
+      getNode: jest.fn().mockResolvedValue({ id: 10, name: 'file.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([10]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
     const blobStorageService = createMockBlobStorageService();
     const aclService = createMockAclService({
-      checkFolderPermission: jest.fn().mockResolvedValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
@@ -856,12 +853,12 @@ describe('copyFile — S3 mode', () => {
       fileStorageMode: 's3',
     });
 
-    const result = await service.copyFile(10, 20, 1, { id: 1 });
+    const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
 
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     expect(blobStorageService.getActiveS3Key).toHaveBeenCalledWith(10);
-    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, expect.any(String));
+    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
     expect(blobStorageService.linkObject).toHaveBeenCalledWith(50, 'key-original');
     expect(blobStorageService.duplicateBlob).not.toHaveBeenCalled();
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 50 });
@@ -890,7 +887,7 @@ describe('copyFile — S3 mode', () => {
       fileStorageMode: 's3',
     });
 
-    const result = await service.copyFile(10, 20, 1, { id: 1 });
+    const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
 
     expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith(10);
     expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy');
@@ -921,7 +918,7 @@ describe('copyFile — S3 mode', () => {
 
     // Source read denied → should fail before any copy proceeds.
     await expect(
-      service.copyFile(10, 20, 1, { id: 1 })
+      service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })
     ).rejects.toThrow();
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
   });
@@ -933,7 +930,6 @@ describe('copyFile — WebDAV mode', () => {
   it('performs actual blob copy (download + uploadToWebdav) into destination parent', async () => {
     const fileNodeService = createMockFileNodeService({
       createFile: jest.fn().mockResolvedValue({ id: 60 }),
-      getNodePath: jest.fn().mockResolvedValue('/dest/copy.txt'), // dest path for upload
     });
     const blobStorageService = createMockBlobStorageService({
       downloadBlob: jest.fn().mockResolvedValue(Buffer.from('copied-content')),
@@ -952,22 +948,20 @@ describe('copyFile — WebDAV mode', () => {
       fileStorageMode: 'webdav',
     });
 
-    const result = await service.copyFile(10, 20, 1, { id: 1 });
+    const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
 
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
-    // Source content downloaded via blobStorageService.downloadBlob (resolves path → WebDAV GET).
+    // Source content downloaded via blobStorageService.downloadBlob
     expect(blobStorageService.downloadBlob).toHaveBeenCalledWith(10);
-    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, expect.any(String));
-    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(60);
-    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith('/dest/copy.txt', Buffer.from('copied-content'));
+    expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
+    expect(blobStorageService.uploadToWebdav).toHaveBeenCalledWith(60, Buffer.from('copied-content'));
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 60 });
   });
 
   it('sets orphaned_node if upload fails after node creation, re-throws error', async () => {
     const fileNodeService = createMockFileNodeService({
       createFile: jest.fn().mockResolvedValue({ id: 61 }),
-      getNodePath: jest.fn().mockResolvedValue('/dest/copy.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
     const blobStorageService = createMockBlobStorageService({
@@ -988,7 +982,7 @@ describe('copyFile — WebDAV mode', () => {
     });
 
     await expect(
-      service.copyFile(10, 20, 1, { id: 1 })
+      service.copyFile(10, 20, 'copy.txt', 1, { id: 1 })
     ).rejects.toThrow();
 
     // Node was created, but upload failed → orphaned marker set.

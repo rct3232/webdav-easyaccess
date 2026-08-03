@@ -22,7 +22,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 | Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
 
 - **Test file:** `server/domains/files/__tests__/files.test.js` (relocated from routes)
-- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService, selectiveTransfer, selectiveDownload, selectiveDelete
+- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService, selectiveDelete
 - **Stores:** `domains/files/stores/operationProgress.js`
 
 ### 2.2 Route List
@@ -67,11 +67,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 
 ### 2.5 Test Mock Strategy
 
-- Route integration tests use Supertest with shared WebDAV mock factories; avoid duplicated inline mock objects across test files.
-- Default mock behavior should stay deterministic and represent common success paths (`pathExists`, `listDirectory`, `getFileContents`).
-- Scenario-specific failures (404, conflict, permission-denied) must be applied as per-test overrides (`mockResolvedValueOnce` / `mockRejectedValueOnce`).
-- Batch worker internals are not validated in this route integration test. Validate API contract here and worker internals in dedicated service/unit tests.
-- Keep assertions outcome-focused (HTTP status, response body, visible side effects), not helper implementation details.
+- Routes run with Supertest + service mocks injected through the composition root (`server/service/composition.js`): `fileNodeService`, `blobStorageService`, `aclService`, `uploadService`. Do NOT mock the WebDAV adapter at route level. Defaults are deterministic success (e.g. `listDirectory` returns two children; `downloadBlob` returns a small stub buffer). Failure scenarios (404, conflict, permission-denied) are per-test overrides (`mockResolvedValueOnce`/`mockRejectedValueOnce`). Worker internals (batch) are tested as unit tests; routes assert only API contract (status/body).
 
 ### 2.6 Request/Response Spec
 
@@ -94,7 +90,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 ### 2.7 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md)
-- selectiveTransfer, selectiveDownload, selectiveDelete services
+- selectiveDelete service
 
 ### 2.8 Integration Test Scenarios
 
@@ -106,7 +102,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 
 - [ ] POST /metadata with shareToken
 - [ ] POST /bulk-operation/:jobId/cancel returns 200
-- [ ] Batch move/copy return 202 + jobId (API contract only; worker execution covered by selectiveTransfer unit tests)
+- [ ] Batch move/copy return 202 + jobId (API contract only; worker execution covered by batchOperationService unit tests)
 - [ ] Share token allows list/download for valid token
 - [ ] Upload 413 when payload too large
 - [ ] download-multiple 빈 nodeIds → 400

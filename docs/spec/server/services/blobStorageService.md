@@ -18,7 +18,7 @@
 ### 2.2 Factory Function Signature
 
 ```js
-function createBlobStorageService({ blobStore, fileNodesStore, webdavClient, fileNodeService, fileStorageMode }) {
+function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode = 's3', fileNodeService }) {
   // fileStorageMode: 's3' | 'webdav'
   return {
     prepareUpload(fileNodeId),
@@ -27,11 +27,12 @@ function createBlobStorageService({ blobStore, fileNodesStore, webdavClient, fil
     overwriteBlob(fileNodeId, buffer),
     deleteBlob(fileNodeId),
     getActiveS3Key(fileNodeId),
-    // WebDAV-specific methods (no-op in S3 mode):
-    uploadToWebdav(webdavPath, buffer),
-    downloadFromWebdav(webdavPath),
-    deleteOnWebdav(webdavPath),
-    headOnWebdav(webdavPath)
+    countActiveObjectsByS3Key(s3Key),
+    duplicateBlob(sourceS3Key),
+    linkObject(fileNodeId, s3Key),
+    ensureExclusiveBlob(fileNodeId),
+    uploadToWebdav(fileNodeId, buffer, mimeType),
+    downloadBlobWebdav(fileNodeId),
   };
 }
 ```
@@ -46,7 +47,7 @@ Prepares a new upload by creating a pending object_map entry. Orphans any existi
 |-------|------|----------|-------------|
 | fileNodeId | number | yes | ID of the file node being uploaded to |
 
-**Returns:** string — UUID s3Key for the pending upload
+**Returns:** string — UUID s3Key for the pending upload (S3 mode); null (WebDAV mode)
 
 **DB operations:** `upsertObjectMap(fileNodeId, s3Key, 'pending')` — if active row exists, marks it orphaned then INSERTs new pending.
 
@@ -62,6 +63,8 @@ Finalizes an upload: transitions object_map from pending→active and writes fil
 
 **DB operations:** `activateObject(s3Key)` + `upsertCache(fileNodeId, size, mimeType, null)`
 
+**WebDAV mode:** throws `'completeUpload is not applicable in WebDAV mode'`
+
 #### `downloadBlob(fileNodeId)`
 
 Downloads blob content for an active file node. Returns buffer or null if no active object exists.
@@ -72,7 +75,7 @@ Downloads blob content for an active file node. Returns buffer or null if no act
 
 **Returns:** Buffer \| null
 
-**Operations:** `getActiveObject(fileNodeId)` → `blobStore.downloadBlob(s3Key)`
+**Operations:** `getActiveObject(fileNodeId)` → `blobStore.downloadBlob(s3Key)` (S3); delegates to `downloadBlobWebdav(fileNodeId)` (WebDAV).
 
 #### `overwriteBlob(fileNodeId, buffer)`
 
@@ -83,9 +86,9 @@ Overwrites a file's content: orphans old key, uploads new blob, creates active m
 | fileNodeId | number | yes | ID of the file node to overwrite |
 | buffer | Buffer | yes | New content to upload |
 
-**Returns:** string — new s3Key
+**Returns:** string — new s3Key (S3 mode)
 
-**Operations:** orphan old key → `blobStore.uploadBlob(newS3Key, buffer)` → INSERT active mapping
+**Operations:** orphan old key → `blobStore.uploadBlob(newS3Key, buffer)` → INSERT active mapping (S3); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
 
 #### `deleteBlob(fileNodeId)`
 
@@ -95,7 +98,7 @@ Marks the active object as orphaned. Actual S3 deletion is deferred to GC servic
 |-------|------|----------|-------------|
 | fileNodeId | number | yes | ID of the file node to delete blob for |
 
-**Operations:** `orphanObject(currentS3Key)` — no-op if no active object exists.
+**Operations:** `orphanObject(currentS3Key)` — no-op if no active object exists (S3); resolve path (guard node), `blobStore.deleteBlob(path)` (WebDAV).
 
 #### `getActiveS3Key(fileNodeId)`
 
@@ -105,33 +108,98 @@ Returns the s3_key of the currently active object, or null.
 |-------|------|----------|-------------|
 | fileNodeId | number | yes | ID of the file node |
 
-**Returns:** string \| null
+**Returns:** string \| null (always null in WebDAV mode)
+
+#### `countActiveObjectsByS3Key(s3Key)`
+
+Counts active object_map rows for a given s3_key.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| s3Key | string | yes | The s3_key to count |
+
+**Returns:** number — count of active rows (always 0 in WebDAV mode)
+
+#### `duplicateBlob(sourceS3Key)`
+
+Copies a blob under a new random key.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| sourceS3Key | string | yes | The s3_key to copy from |
+
+**Returns:** string — new s3Key
+
+**Operations:** `blobStore.copyBlob(sourceS3Key, newS3Key)` → returns newS3Key
+
+**WebDAV mode:** throws `'duplicateBlob is not applicable in WebDAV mode'`
+
+#### `linkObject(fileNodeId, s3Key)`
+
+Links an existing s3_key to a file node as active.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the file node |
+| s3Key | string | yes | The s3_key to link |
+
+**Operations:** `fileNodesStore.insertObject(fileNodeId, s3Key, 'active')`
+
+**WebDAV mode:** throws `'linkObject is not applicable in WebDAV mode'`
+
+#### `ensureExclusiveBlob(fileNodeId)`
+
+Write barrier: if multiple file nodes share the same s3_key, duplicates the blob so this node gets its own copy.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the file node |
+
+**Returns:** string — exclusive s3Key, or null if no active object
+
+**Operations (S3):** checks `countActiveObjectsByS3Key`; if count > 1, calls `duplicateBlob` → orphan old → insert active → returns newKey; otherwise returns existing key.
+
+**WebDAV mode:** returns null.
 
 ### 2.4 Dependencies
 
-- `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`) from Phase 1 adapter
+- `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`, `deleteBlob`, `copyBlob`) from Phase 1 adapter
 - `fileNodesStore` — object_map and filecache CRUD operations
+- `fileNodeService` — (WebDAV mode) `getNode(nodeId)` and `getNodePath(nodeId)` for path resolution
 
 ---
 
-## 3. WebDAV Mode (WebdavBlobStore Adapter)
+## 3. WebDAV Mode
 
-Factory dispatch logic: `WEA_FILE_STORAGE=s3` → uses S3BlobStore; `WEA_FILE_STORAGE=webdav` → uses WebdavBlobStore. Factory validates that required config keys are present for the selected mode before instantiation.
+### 3.1 Path Resolution
 
-### 3.1 Interface Methods
+`file_node_id` → guard on `fileNodeService.getNode(fileNodeId)` (returns null if missing) → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to WebDAV blob store methods. `getNodePath(nodeId)` may return `null` for an unknown or empty node. WebDAV methods MUST null-guard: `downloadBlobWebdav(fileNodeId)` returns `null`; `uploadToWebdav(fileNodeId, buffer)` throws a descriptive error when the resolved path is falsy.
 
-Methods matching S3BlobStore shape for dispatch uniformity:
+### 3.2 WebDAV Service Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| uploadToWebdav | `(webdavPath, buffer) → Promise<void>` | PUT to WebDAV server at resolved path |
-| downloadFromWebdav | `(webdavPath) → Promise<Buffer \| null>` | GET from WebDAV; returns null if 404 |
-| deleteOnWebdav | `(webdavPath) → Promise<void>` | DELETE on WebDAV; idempotent for missing resources (404 = no throw) |
-| headOnWebdav | `(webdavPath) → Promise<{ contentLength: number, contentType: string } \| null>` | HEAD request |
+#### `downloadBlobWebdav(fileNodeId)`
 
-### 3.2 Path Resolution
+Downloads blob via WebDAV path. Guards on node existence.
 
-`file_node_id` → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to WebDAV methods.
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the file node to download |
+
+**Returns:** Buffer \| null
+
+**Operations:** resolve path (guard node via `fileNodeService.getNode`) → `blobStore.downloadBlob(path)` or null.
+
+#### `uploadToWebdav(fileNodeId, buffer, mimeType)`
+
+Uploads blob via WebDAV path. Guards on node existence.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the file node to upload to |
+| buffer | Buffer | yes | Content to upload |
+| mimeType | string | no | MIME type (optional) |
+
+**Operations:** resolve path (guard node via `fileNodeService.getNode`) → `blobStore.uploadBlob(path, buffer)` → `upsertCache(fileNodeId, buffer.length, mimeType, null)`.
 
 ---
 
@@ -139,15 +207,16 @@ Methods matching S3BlobStore shape for dispatch uniformity:
 
 | Operation | S3 Mode | WebDAV Mode |
 |-----------|---------|-------------|
-| prepareUpload | orphan old + INSERT pending | no-op (synchronous) |
-| completeUpload | UPDATE active + filecache | no separate step; upload is atomic |
-| downloadBlob | blobStore.downloadBlob(s3Key) | webdavClient.downloadFromWebdav(path) |
-| overwriteBlob | ensureExclusiveBlob (split shared) → orphan+upload+activate | webdav PUT at same path |
-| deleteBlob | mark orphaned in object_map | webdav DELETE (best-effort) |
-| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key | always 0 (no s3_key concept) |
-| duplicateBlob | download current blob → upload under new key → return key | n/a (copy = download + uploadToWebdav) |
-| linkObject(fileNodeId, s3Key) | INSERT object_map (file_node_id, s3_key, 'active') | n/a |
-| ensureExclusiveBlob(fileNodeId) | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | no-op |
+| prepareUpload | orphan old + INSERT pending → return s3Key | returns null (no-op) |
+| completeUpload | UPDATE active + filecache | throws 'completeUpload is not applicable in WebDAV mode' |
+| downloadBlob | blobStore.downloadBlob(s3Key) | delegates to downloadBlobWebdav |
+| overwriteBlob | ensureExclusiveBlob (split shared) → orphan+upload+activate → return newKey | delegates to uploadToWebdav |
+| deleteBlob | mark orphaned in object_map | resolve path → blobStore.deleteBlob(path) |
+| getActiveS3Key | active s3_key or null | always null |
+| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key | returns 0 |
+| duplicateBlob | blobStore.copyBlob(source, newKey) → newKey | throws 'duplicateBlob is not applicable in WebDAV mode' |
+| linkObject | INSERT object_map (file_node_id, s3_key, 'active') | throws 'linkObject is not applicable in WebDAV mode' |
+| ensureExclusiveBlob | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | returns null |
 
 ---
 
@@ -161,11 +230,9 @@ Methods matching S3BlobStore shape for dispatch uniformity:
 
 ### WebDAV Mode
 
-- Connection refused / timeout → logs error; sets `sync_status='orphaned_node'` on affected file node rather than throwing
-- 404 on remote (downloadFromWebdav) → returns null (no throw)
-- 404 on DELETE (deleteOnWebdav) → idempotent no-op (no throw)
-
-All WebDAV errors during file metadata operations must set `sync_status='orphaned_node'` rather than throwing.
+- completeUpload → throws error
+- duplicateBlob → throws error
+- linkObject → throws error
 
 ## 6. Version Number Policy
 
@@ -173,11 +240,19 @@ Single-version mode: `version_number` is always 1 in all INSERT operations. The 
 
 ## 7. Verification Scenarios
 
-- [ ] prepareUpload creates pending entry with valid UUID s3Key
+- [ ] prepareUpload creates pending entry with valid UUID s3Key (S3 mode)
+- [ ] prepareUpload returns null (WebDAV mode)
 - [ ] prepareUpload orphans previous active row before inserting new pending
 - [ ] completeUpload transitions pending→active and writes filecache metadata
+- [ ] completeUpload throws in WebDAV mode
 - [ ] downloadBlob with active object returns buffer matching uploaded content
 - [ ] downloadBlob with no active object returns null
 - [ ] overwriteBlob orphans old key and creates new active mapping
 - [ ] deleteBlob marks active object orphaned (no S3 deletion)
 - [ ] deleteBlob with no active object is a no-op
+- [ ] deleteBlob in WebDAV mode resolves path and calls blobStore.deleteBlob
+- [ ] countActiveObjectsByS3Key returns correct count
+- [ ] duplicateBlob copies blob under new key
+- [ ] ensureExclusiveBlob duplicates when count > 1
+- [ ] downloadBlobWebdav resolves path and downloads via blobStore
+- [ ] uploadToWebdav resolves path, uploads, and writes filecache

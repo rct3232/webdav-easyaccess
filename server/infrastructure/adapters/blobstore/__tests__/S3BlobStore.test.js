@@ -25,6 +25,7 @@ beforeEach(() => {
       if (cmdName === 'GetObjectCommand') return currentMockS3.getObject(command);
       if (cmdName === 'DeleteObjectCommand') return currentMockS3.deleteObject(command);
       if (cmdName === 'HeadObjectCommand') return currentMockS3.headObject(command);
+      if (cmdName === 'CopyObjectCommand') return currentMockS3.copyObject(command);
       if (cmdName === 'ListObjectsV2Command') return currentMockS3.listObjectsV2(command);
       throw new Error(`Unknown command: ${cmdName}`);
     },
@@ -168,6 +169,24 @@ describe('S3BlobStore', () => {
 
       expect(Array.isArray(keys)).toBe(true);
       expect(keys.length).toBe(0);
+    });
+  });
+
+  describe('copyBlob', () => {
+    it('copies object to a new key via CopyObjectCommand', async () => {
+      currentMockS3.putObject({ Bucket: 'test-bucket', Key: 'src-key', Body: Buffer.from('data'), ContentType: 'text/plain' });
+
+      const store = new S3BlobStore(config);
+      await store.copyBlob('src-key', 'dest-key');
+
+      const dest = currentMockS3.getStore().get('dest-key');
+      expect(dest).toBeDefined();
+      expect(dest.Body).toEqual(Buffer.from('data'));
+    });
+
+    it('throws clear error when source key is missing (NoSuchKey)', async () => {
+      const store = new S3BlobStore(config);
+      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(/source key not found/i);
     });
   });
 });

@@ -40,7 +40,7 @@ describe('POST /api/folders/create', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app)
       .post('/api/folders/create')
-      .send({ path: '/user1/new-folder' });
+      .send({ parentNodeId: 1, name: 'new-folder' });
 
     expect(res.status).toBe(401);
     expect(res.body.errorCode).toBeDefined();
@@ -56,7 +56,7 @@ describe('POST /api/folders/create', () => {
     const res = await request(app)
       .post('/api/folders/create')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: folderPath });
+      .send({ parentNodeId: 1, name: 'newdir' });
 
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
@@ -77,13 +77,13 @@ describe('POST /api/folders/create', () => {
     const res1 = await request(app)
       .post('/api/folders/create')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: folderPath });
+      .send({ parentNodeId: 1, name: 'dupdir' });
     expect(res1.status).toBe(200);
 
     const res2 = await request(app)
       .post('/api/folders/create')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: folderPath });
+      .send({ parentNodeId: 1, name: 'dupdir' });
     expect(res2.status).toBe(409);
     expect(res2.body.errorCode).toBeDefined();
   });
@@ -102,7 +102,7 @@ describe('POST /api/folders/create', () => {
     const res = await request(app)
       .post('/api/folders/create')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: `/${user.username}/nonexistent-parent/newdir` });
+      .send({ parentNodeId: 999, name: 'newdir' });
 
     expect(res.status).toBe(404);
     expect(res.body.errorCode).toBeDefined();
@@ -117,7 +117,7 @@ describe('POST /api/folders/create', () => {
     const res = await request(app)
       .post('/api/folders/create')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/.wea/secret' });
+      .send({ parentNodeId: 1, name: '.wea_secret' });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
@@ -129,7 +129,7 @@ describe('GET /api/folders/stats', () => {
   it('returns 401 when not authenticated', async () => {
     const res = await request(app)
       .get('/api/folders/stats')
-      .query({ path: '/user1/folder' });
+      .query({ nodeId: 1 });
 
     expect(res.status).toBe(401);
     expect(res.body.errorCode).toBeDefined();
@@ -158,7 +158,7 @@ describe('GET /api/folders/stats', () => {
     const res = await request(app)
       .get('/api/folders/stats')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: folderPath });
+      .query({ nodeId: 1 });
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('fileCount', 5);
@@ -175,7 +175,7 @@ describe('GET /api/folders/stats', () => {
     const res = await request(app)
       .get('/api/folders/stats')
       .set('Authorization', `Bearer ${token}`)
-      .query({ path: '/other-user/no-access' });
+      .query({ nodeId: 999 });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();

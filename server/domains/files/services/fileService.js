@@ -291,20 +291,29 @@ function createFileService(options = {}) {
   async function listDirectoryByNodeId(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
 
+    if (!children || children.length === 0) {
+      return [];
+    }
+
+    const isAdmin = user && aclService.isAdminUser(user);
+
     const results = [];
     for (const child of children) {
       let hasReadPermission;
       let hasWritePermission;
 
-      if (aclService.isAdminUser(user)) {
+      if (isAdmin) {
         hasReadPermission = true;
         hasWritePermission = true;
-      } else if (child.type === 'directory') {
-        hasReadPermission = await aclService.checkFolderPermission(userId, child.id, 'read');
-        hasWritePermission = await aclService.checkFolderPermission(userId, child.id, 'write');
       } else {
-        hasReadPermission = await aclService.checkFilePermission(userId, child.id, 'read');
-        hasWritePermission = await aclService.checkFilePermission(userId, child.id, 'write');
+        const isDir = child.type === 'directory';
+        if (isDir) {
+          hasReadPermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.READ);
+          hasWritePermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.WRITE);
+        } else {
+          hasReadPermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.READ);
+          hasWritePermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.WRITE);
+        }
       }
 
       const display_path = await fileNodeService.getNodePath(child.id);
@@ -315,6 +324,7 @@ function createFileService(options = {}) {
       }
 
       results.push({
+        id: child.id,
         nodeId: child.id,
         name: child.name,
         type: child.type,
@@ -333,7 +343,7 @@ function createFileService(options = {}) {
   }
 
   async function uploadFileByNodeId(userId, parentNodeId, name, buffer, mimeType, user, onConflict) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const allowed = await aclService.checkFolderPermission(userId, parentNodeId, 'write');
       if (!allowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
@@ -357,7 +367,8 @@ function createFileService(options = {}) {
 
     if (fileStorageMode === 's3') {
       if (isOverwrite) {
-        return await uploadService.overwriteFile(existingFile.id, name, buffer, mimeType);
+        await blobStorageService.ensureExclusiveBlob(existingFile.id);
+        return await uploadService.overwriteFile(existingFile.id, buffer, mimeType);
       }
       return await uploadService.uploadFile(parentNodeId, name, buffer, mimeType);
     }
@@ -382,10 +393,10 @@ function createFileService(options = {}) {
   }
 
   async function downloadFileByNodeId(fileNodeId, userId, user) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const allowed = await aclService.checkFilePermission(userId, fileNodeId, 'read');
       if (!allowed) {
-        throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
+        throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
       }
     }
 
@@ -397,28 +408,42 @@ function createFileService(options = {}) {
   }
 
   async function renameNode(nodeId, newName, userId, user) {
-    if (!newName || newName.length === 0) {
-      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+    if (!newName || newName.trim().length === 0) {
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
     if (newName.includes('/') || newName.includes('\\')) {
-      throw validationError(SERVER_ERROR_CODES.files.invalidName);
+      throw conflictError(SERVER_ERROR_CODES.files.invalidName);
     }
 
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const allowed = await aclService.checkFilePermission(userId, nodeId, 'write');
       if (!allowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
       }
     }
 
-    await fileNodeService.renameNode(nodeId, newName);
+    const node = await fileNodeService.getNode(nodeId);
+    const siblings = await fileNodeService.listDirectory(node.parent_id);
+    if (siblings.some(s => s.name === newName && s.id !== nodeId)) {
+      throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
+    }
 
-    // Best-effort WebDAV MOVE on failure, mark orphaned but do not abort DB rename
+    // Best-effort WebDAV storage sync: download content before DB rename so we can re-upload to new path
+    let webdavBuffer = null;
     if (fileStorageMode === 'webdav') {
       try {
-        const newPath = await fileNodeService.getNodePath(nodeId);
-        // WebDAV MOVE attempt via blobStorageService (best-effort)
-        await blobStorageService.uploadToWebdav(nodeId, Buffer.alloc(0));
+        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
+      } catch (_) {
+        // If download fails, proceed with DB rename only; storage sync is best-effort
+      }
+    }
+
+    await fileNodeService.renameNode(nodeId, newName);
+
+    // Re-upload to new path after rename (DB state is authoritative)
+    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+      try {
+        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
       } catch (error) {
         await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
       }
@@ -428,7 +453,7 @@ function createFileService(options = {}) {
   }
 
   async function moveNode(nodeId, newParentNodeId, userId, user) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const sourceAllowed = await aclService.checkFilePermission(userId, nodeId, 'write');
       if (!sourceAllowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
@@ -439,13 +464,22 @@ function createFileService(options = {}) {
       }
     }
 
-    await fileNodeService.moveNode(nodeId, newParentNodeId);
-
-    // Best-effort WebDAV MOVE on failure, mark orphaned but do not abort DB move
+   // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
+    let webdavBuffer = null;
     if (fileStorageMode === 'webdav') {
       try {
-        // WebDAV MOVE attempt via blobStorageService (best-effort)
-        await blobStorageService.uploadToWebdav(nodeId, Buffer.alloc(0));
+        webdavBuffer = await blobStorageService.downloadBlob(nodeId);
+      } catch (_) {
+        // If download fails, proceed with DB move only; storage sync is best-effort
+      }
+    }
+
+    await fileNodeService.moveNode(nodeId, newParentNodeId);
+
+    // Re-upload to new path after move (DB state is authoritative)
+    if (fileStorageMode === 'webdav' && webdavBuffer != null) {
+      try {
+        await blobStorageService.uploadToWebdav(nodeId, webdavBuffer);
       } catch (error) {
         await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
       }
@@ -455,7 +489,7 @@ function createFileService(options = {}) {
   }
 
   async function deleteNodeByNodeId(nodeId, userId, user) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const allowed = await aclService.checkFilePermission(userId, nodeId, 'write');
       if (!allowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
@@ -469,23 +503,24 @@ function createFileService(options = {}) {
 
     const descendantIds = await fileNodeService.getDescendantIds(nodeId);
 
-    // WebDAV: bottom-up storage deletion before DB removal
+    // WebDAV: bottom-up storage deletion before DB removal (deepest first, then target node)
     if (fileStorageMode === 'webdav') {
-      for (const descendantId of [...descendantIds].reverse()) {
+      const allNodesToCleanup = [...descendantIds].reverse().concat([nodeId]);
+      for (const descId of allNodesToCleanup) {
         try {
-          await blobStorageService.deleteBlob(descendantId);
+          await blobStorageService.deleteBlob(descId);
         } catch (error) {
-          await fileNodeService.updateSyncStatus(descendantId, 'orphaned_node');
+          await fileNodeService.updateSyncStatus(descId, 'orphaned_node');
         }
       }
     }
 
     await fileNodeService.deleteNode(nodeId);
-    return { deletedCount: descendantIds.length };
+    return { deletedCount: descendantIds.length + 1 };
   }
 
   async function copyFileByNodeId(nodeId, destinationParentNodeId, newName, userId, user) {
-    if (!aclService.isAdminUser(user)) {
+    if (!user || !aclService.isAdminUser(user)) {
       const sourceAllowed = await aclService.checkFilePermission(userId, nodeId, 'read');
       if (!sourceAllowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
@@ -496,27 +531,36 @@ function createFileService(options = {}) {
       }
     }
 
+    const sourceNode = await fileNodeService.getNode(nodeId);
+    if (!sourceNode) {
+      throw _notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+    const targetName = newName || sourceNode.name;
+
     if (fileStorageMode === 's3') {
-      // COW logic: check if blob is exclusively owned
+      // COW logic: determine effective S3 key BEFORE creating file_node to avoid orphan window
       const activeS3Key = await blobStorageService.getActiveS3Key(nodeId);
       const activeCount = await blobStorageService.countActiveObjectsByS3Key(activeS3Key);
 
-      const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
-      const copiedNodeId = newFile.id;
-
+      let effectiveS3Key;
       if (activeCount === 1) {
-        await blobStorageService.linkObject(copiedNodeId, activeS3Key);
+        // Blob is exclusively owned → link the same key (zero-copy)
+        effectiveS3Key = activeS3Key;
       } else {
-        const newS3Key = await blobStorageService.duplicateBlob(activeS3Key);
-        await blobStorageService.linkObject(copiedNodeId, newS3Key);
+        // Blob is shared → duplicate so new copy doesn't add another sharer
+        effectiveS3Key = await blobStorageService.duplicateBlob(activeS3Key);
       }
+
+      const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
+      const copiedNodeId = newFile.id;
+      await blobStorageService.linkObject(copiedNodeId, effectiveS3Key);
 
       return { sourceNodeId: nodeId, copiedNodeId };
     }
 
     // WebDAV mode: download + upload
     const buffer = await blobStorageService.downloadBlob(nodeId);
-    const newFile = await fileNodeService.createFile(destinationParentNodeId, newName);
+    const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
     const copiedNodeId = newFile.id;
 
     try {

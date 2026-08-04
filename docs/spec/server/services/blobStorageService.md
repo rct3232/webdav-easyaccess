@@ -37,7 +37,15 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
 }
 ```
 
-### 2.3 Methods
+### 2.3 Blob Store Factory (`createBlobStore()`)
+
+The blob store factory is **parameterless** — it reads `process.env.WEA_FILE_STORAGE` internally. This is decision D2 from Wave 1 rectification.
+
+- `WEA_FILE_STORAGE=webdav` → returns `new WebdavBlobStore(createFileStoreAdapter())`
+- `WEA_FILE_STORAGE=s3` (or empty/undefined) → returns `new S3BlobStore(resolveS3Config())`
+- No `NoOpBlobStore` is used; webdav mode returns a real `WebdavBlobStore` instance
+
+### 2.4 Methods
 
 #### `prepareUpload(fileNodeId)`
 
@@ -161,7 +169,7 @@ Write barrier: if multiple file nodes share the same s3_key, duplicates the blob
 
 **WebDAV mode:** returns null.
 
-### 2.4 Dependencies
+### 2.5 Dependencies
 
 - `blobStore` — S3 blob operations (`uploadBlob`, `downloadBlob`, `deleteBlob`, `copyBlob`) from Phase 1 adapter
 - `fileNodesStore` — object_map and filecache CRUD operations
@@ -171,11 +179,23 @@ Write barrier: if multiple file nodes share the same s3_key, duplicates the blob
 
 ## 3. WebDAV Mode
 
-### 3.1 Path Resolution
+### 3.1 WebdavBlobStore Adapter Interface
+
+`WebdavBlobStore` exposes the same S3-uniform method names so `blobStorageService` can call either backend transparently. Constructor takes a file-store adapter (`webdavClient`) from `createFileStoreAdapter()`. This is decision D1 from Wave 1 rectification.
+
+| Method | Signature | Returns | Description |
+|--------|-----------|---------|-------------|
+| `uploadBlob` | `(filepath: string, buffer: Buffer)` | `Promise<void>` | PUT to WebDAV path via `adapter.putFileContents()` |
+| `downloadBlob` | `(filepath: string)` | `Promise<Buffer \| null>` | GET via `adapter.getFileContents()`; returns null if 404 |
+| `deleteBlob` | `(filepath: string)` | `Promise<void>` | DELETE via `adapter.deleteFile()`; idempotent for 404 |
+| `headBlob` | `(filepath: string)` | `Promise<{contentLength, contentType} \| null>` | HEAD via `adapter.getFileMetadata()`; maps `mime → contentType` |
+| `listOrphanedKeys` | `()` | `Promise<string[]>` | Returns `[]` (no orphan tracking in WebDAV) |
+
+### 3.2 Path Resolution
 
 `file_node_id` → guard on `fileNodeService.getNode(fileNodeId)` (returns null if missing) → reconstruct display path via `fileNodeService.getNodePath(nodeId)` → pass to WebDAV blob store methods. `getNodePath(nodeId)` may return `null` for an unknown or empty node. WebDAV methods MUST null-guard: `downloadBlobWebdav(fileNodeId)` returns `null`; `uploadToWebdav(fileNodeId, buffer)` throws a descriptive error when the resolved path is falsy.
 
-### 3.2 WebDAV Service Methods
+### 3.3 WebDAV Service Methods
 
 #### `downloadBlobWebdav(fileNodeId)`
 
@@ -217,6 +237,8 @@ Uploads blob via WebDAV path. Guards on node existence.
 | duplicateBlob | blobStore.copyBlob(source, newKey) → newKey | throws 'duplicateBlob is not applicable in WebDAV mode' |
 | linkObject | INSERT object_map (file_node_id, s3_key, 'active') | throws 'linkObject is not applicable in WebDAV mode' |
 | ensureExclusiveBlob | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | returns null |
+| uploadToWebdav | n/a | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache |
+| downloadBlobWebdav | n/a | resolve path (guard node) → blobStore.downloadBlob(path) or null |
 
 ---
 

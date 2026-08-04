@@ -27,11 +27,11 @@ OperationProgressStore.prototype.cleanupDownloadProgress = function (id, ttlMs) 
   }, ttlMs || DOWNLOAD_PROGRESS_TTL_MS);
 };
 
-OperationProgressStore.prototype.issuePreviewTicket = function (principalId, filePath, ttlMs) {
+OperationProgressStore.prototype.issuePreviewTicket = function (principalId, fileNodeId, ttlMs) {
   const ticket = crypto.randomBytes(32).toString('hex');
   this.previewTicketCache.set(
     `pt:${ticket}`,
-    { principalId, filePath },
+    { principalId, fileNodeId },
     ttlMs || PREVIEW_TICKET_TTL_MS
   );
   return ticket;
@@ -41,13 +41,13 @@ OperationProgressStore.prototype.readPreviewTicket = function (ticket) {
   if (!ticket || typeof ticket !== 'string') return null;
   const entry = this.previewTicketCache.get(`pt:${ticket}`);
   if (!entry) return null;
-  return { principalId: entry.principalId, filePath: entry.filePath };
+  return { principalId: entry.principalId, fileNodeId: entry.fileNodeId };
 };
 
 OperationProgressStore.prototype.createJob = function (userId, operation, payload) {
   const jobId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
   const total = operation === 'delete'
-    ? (payload.paths?.length ?? 0)
+    ? (payload.nodeIds?.length ?? payload.paths?.length ?? 0)
     : (payload.moves?.length ?? payload.copies?.length ?? 0);
   const job = {
     jobId,

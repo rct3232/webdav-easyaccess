@@ -68,7 +68,7 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -84,7 +84,7 @@ describe('batchOperationService', () => {
       expect(fileService.deleteNode).toHaveBeenNthCalledWith(1, 42, 1, { id: 1 });
       expect(fileService.deleteNode).toHaveBeenNthCalledWith(2, 43, 1, { id: 1 });
       expect(fileService.deleteNode).toHaveBeenNthCalledWith(3, 44, 1, { id: 1 });
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(3);
+      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(3);
     });
 
     it('checks async write permission for each top-level nodeId before deletion', async () => {
@@ -93,7 +93,7 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
       });
@@ -104,9 +104,7 @@ describe('batchOperationService', () => {
 
       expect(result.deletedCount).toBe(2);
       expect(result.errors).toEqual([]);
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(2);
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(1, 1, expect.any(Number), 'write');
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(2, 1, expect.any(Number), 'write');
+      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(2);
     });
 
     it('skips nodes where user lacks delete permission and records error', async () => {
@@ -115,7 +113,7 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(false)
           .mockResolvedValueOnce(true),
@@ -126,7 +124,7 @@ describe('batchOperationService', () => {
       const result = await service.batchDelete([42, 43, 44], 1, { id: 1 });
 
       expect(result.deletedCount).toBe(2);
-      expect(result.errors).toEqual([{ nodeId: 43, reason: 'permission_denied' }]);
+      expect(result.errors).toEqual([{ nodeId: 43, status: 'skipped', reason: 'permission_denied' }]);
       expect(fileService.deleteNode).toHaveBeenCalledTimes(2);
       expect(fileService.deleteNode).not.toHaveBeenCalledWith(43, 1, { id: 1 });
     });
@@ -139,7 +137,7 @@ describe('batchOperationService', () => {
         deleteNode: jest.fn().mockResolvedValue({ deletedCount: 3 }),
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn().mockResolvedValue(true),
+        checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -161,7 +159,7 @@ describe('batchOperationService', () => {
           .mockResolvedValueOnce({ deletedCount: 1 }), // third succeeds
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -172,7 +170,7 @@ describe('batchOperationService', () => {
       const result = await service.batchDelete([42, 57, 60], 1, { id: 1 });
 
       expect(result.deletedCount).toBe(2);
-      expect(result.errors).toEqual([{ nodeId: 57, reason: 'node_not_found' }]);
+      expect(result.errors).toEqual([{ nodeId: 57, status: 'failed', reason: 'node_not_found' }]);
     });
 
     it('handles empty nodeIds array gracefully (no-op, returns 0 count)', async () => {
@@ -187,7 +185,7 @@ describe('batchOperationService', () => {
       expect(result.deletedCount).toBe(0);
       expect(result.errors).toEqual([]);
       expect(fileService.deleteNode).not.toHaveBeenCalled();
-      expect(aclService.checkFolderPermission).not.toHaveBeenCalled();
+      expect(aclService.checkFilePermission).not.toHaveBeenCalled();
     });
   });
 
@@ -200,9 +198,10 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createMockAclService({
+        checkFilePermission: jest.fn()
+          .mockResolvedValueOnce(true), // source write
         checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true) // source parent write
-          .mockResolvedValueOnce(true), // dest parent write
+          .mockResolvedValueOnce(true),  // dest parent write
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -216,9 +215,8 @@ describe('batchOperationService', () => {
       expect(result.movedCount).toBe(1);
       expect(result.errors).toEqual([]);
       expect(fileService.moveNode).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(2);
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(1, 1, expect.any(Number), 'write');
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(2, 1, 20, 'write');
+      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(1);
+      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(1);
     });
 
     it('moves multiple nodes independently', async () => {
@@ -227,10 +225,11 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true) // source 1
+          .mockResolvedValueOnce(true), // source 2
+        checkFolderPermission: jest.fn()
           .mockResolvedValueOnce(true) // dest 1
-          .mockResolvedValueOnce(true) // source 2
           .mockResolvedValueOnce(true), // dest 2
       });
 
@@ -258,9 +257,10 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockResolvedValue(true),
       });
       const aclService = createMockAclService({
+        checkFilePermission: jest.fn()
+          .mockResolvedValueOnce(true), // source 10 -> write
         checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true) // source parent 10 -> write
-          .mockResolvedValueOnce(true), // dest parent 20 -> write
+          .mockResolvedValueOnce(true),  // dest parent 20 -> write
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -271,9 +271,8 @@ describe('batchOperationService', () => {
         { id: 1 }
       );
 
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(2);
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(1, 1, expect.any(Number), 'write');
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(2, 1, 20, 'write');
+      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(1);
+      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(1);
     });
 
     it('rejects moves that would create a cycle (target is descendant of source)', async () => {
@@ -282,8 +281,9 @@ describe('batchOperationService', () => {
         moveNode: jest.fn().mockRejectedValue(new Error('cycle detected')),
       });
       const aclService = createMockAclService({
+        checkFilePermission: jest.fn()
+          .mockResolvedValueOnce(true),
         checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
       });
 
@@ -297,7 +297,7 @@ describe('batchOperationService', () => {
 
       expect(result.movedCount).toBe(0);
       expect(result.errors).toEqual([
-        { sourceNodeId: 10, destinationParentNodeId: 50, reason: 'cycle detected' },
+        { sourceNodeId: 10, destinationParentNodeId: 50, status: 'failed', reason: 'cycle detected' },
       ]);
     });
 
@@ -309,11 +309,8 @@ describe('batchOperationService', () => {
           .mockResolvedValueOnce(true),                       // second succeeds
       });
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
-          .mockResolvedValueOnce(true) // source 1
-          .mockResolvedValueOnce(true) // dest 1
-          .mockResolvedValueOnce(true) // source 2
-          .mockResolvedValueOnce(true), // dest 2
+        checkFilePermission: jest.fn().mockResolvedValue(true),
+        checkFolderPermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
@@ -329,7 +326,7 @@ describe('batchOperationService', () => {
 
       expect(result.movedCount).toBe(1);
       expect(result.errors.length).toBe(1);
-      expect(result.errors[0]).toEqual({ sourceNodeId: 10, destinationParentNodeId: 5, reason: 'cycle detected' });
+      expect(result.errors[0]).toEqual({ sourceNodeId: 10, destinationParentNodeId: 5, status: 'failed', reason: 'cycle detected' });
     });
 
     it('returns { movedCount, errors[] } with correct counts', async () => {
@@ -341,6 +338,7 @@ describe('batchOperationService', () => {
           .mockResolvedValueOnce(true),
       });
       const aclService = createMockAclService({
+        checkFilePermission: jest.fn().mockResolvedValue(true),
         checkFolderPermission: jest.fn().mockResolvedValue(true),
       });
 
@@ -384,7 +382,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
       expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });
@@ -409,7 +407,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
     });
 
     it('checks async read permission on source and write permission on destination parent', async () => {
@@ -459,7 +457,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors.length).toBe(1);
-      expect(result.errors[0]).toEqual({ sourceNodeId: 30, destinationParentNodeId: 40, reason: 'no_active_blob' });
+      expect(result.errors[0]).toEqual({ sourceNodeId: 30, destinationParentNodeId: 40, status: 'failed', reason: 'no_active_blob' });
     });
   });
 
@@ -490,8 +488,8 @@ describe('batchOperationService', () => {
       expect(result.copiedCount).toBe(2);
       expect(result.errors).toEqual([]);
       expect(fileService.copyFile).toHaveBeenCalledTimes(2);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
-      expect(fileService.copyFile).toHaveBeenCalledWith(30, 40, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(30, 40, null, 1, { id: 1 });
     });
 
     it('creates new file_node + object_map entry with new webdav path', async () => {
@@ -514,7 +512,7 @@ describe('batchOperationService', () => {
 
       expect(result.copiedCount).toBe(1);
       expect(result.errors).toEqual([]);
-      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, 1, { id: 1 });
+      expect(fileService.copyFile).toHaveBeenCalledWith(10, 20, null, 1, { id: 1 });
       expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'read');
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });

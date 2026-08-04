@@ -15,7 +15,15 @@
 - **Source:** `server/domains/files/services/downloadService.js`
 - **Test file:** `server/domains/files/services/__tests__/downloadService.test.js`
 
-### 2.2 Factory Function Signature
+### 2.2 Implementation Status
+
+| Component | Status | Wave |
+|-----------|--------|------|
+| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }` | Task W4.1 (Wave 4) |
+| `downloadMultiple` | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled` | Wave 4 |
+| `getDownloadProgress` | Spec'd — in-memory Map with TTL; Redis upgrade path documented | Future |
+
+### 2.3 Factory Function Signature
 
 ```js
 function createDownloadService({ fileNodeService, blobStorageService, aclService }) {

@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Use-case for admin save flows inside `ShareTargetDialog`. Persists edited direct-access state for either folders or files while preserving the current dialog's user-visible success/error behavior. |
+| Role | Use-case for admin save flows inside `ShareTargetDialog`. Persists edited direct-access state for either folders or files while preserving the current dialog's user-visible success/error behavior. Operates on nodeId (BIGINT) — no path strings. |
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| targetPath | string | Y | Target path |
+| targetNodeId | number (BIGINT) | Y | Target node ID referencing `file_nodes.id` |
 | isDirectory | boolean | Y | Whether the target is a folder |
 | initialAccessList | array | Y | Original access entries |
 | accessList | array | Y | Edited access entries |
@@ -30,19 +30,18 @@
 
 ### 2.4 Dependencies
 
-- `sharePermissionGateway`
-- `collectSubfolderPaths` for directory targets
-- file-specific permission rules already expressed in the dialog state
+- `sharePermissionGateway` — all grant/revoke operations use nodeId payloads via this gateway
+
+> **Removed dependency:** `collectSubfolderPaths` was deleted in Wave 4. Server-side closure table inheritance handles permission propagation; the client no longer enumerates subfolder paths for directory grants.
 
 ### 2.5 Execution Semantics
 
 - Directory targets:
-  1. Collect root + subfolder paths.
-  2. Revoke removed users from the target subtree.
-  3. Grant current permissions across the target subtree.
+  1. Grant or revoke permissions on the target nodeId via sharePermissionGateway.
+  2. Inheritance to descendants is handled server-side by the closure table — no recursive path traversal required.
 - File targets:
-  1. Revoke removed or explicitly reverted path-only overrides.
-  2. Grant current file-level overrides when needed.
+  1. Revoke removed or explicitly reverted file-level overrides.
+  2. Grant current file-level overrides when needed (target `'file'`).
 
 ### 2.6 Error Handling
 
@@ -52,6 +51,6 @@
 
 ### 2.7 Verification Scenarios
 
-- [ ] Directory save revokes removed users and grants current users across subfolders
-- [ ] File save respects `revoke` / same-as-path rules
+- [ ] Directory save revokes removed users and grants current users on target nodeId (inheritance handled server-side)
+- [ ] File save respects `revoke` / same-as-path rules via file-level grant with target 'file'
 - [ ] Failure rejects so the dialog can stay open

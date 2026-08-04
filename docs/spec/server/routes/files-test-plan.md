@@ -43,10 +43,10 @@ jest.mock('../../../../utils/webdav', () => {
 
 Every test follows a consistent setup:
 1. `createAuthenticatedTestUser()` — creates user + returns `{ user, token }`
-2. Optional `grantTestPermission(user.id, path, 'read'|'write')` — grants ACL on a path prefix
+2. `permissionStore.grant(user.id, nodeId, 'read'|'write')` — grants ACL on a nodeId (post-Wave 4; replaces the prior `grantTestPermission` helper which operated on path strings)
 3. Supertest request with `Authorization: Bearer ${token}`
 
-This pattern remains valid for Phase 4. The grant mechanism must be updated to operate on `nodeId` rather than path strings once the permission store migrates (Phase 2/3). For this test plan, we note that ACL checks will route through `aclService` instead of path-based string matching.
+This pattern remains valid for Phase 4. The grant mechanism operates on `nodeId` exclusively after Wave 4 removed all path-based permission functions. ACL checks route through `aclService`.
 
 ---
 
@@ -249,7 +249,7 @@ const FIXTURE_IDS = {
 };
 ```
 
-The `grantTestPermission` helper must be updated to accept a `nodeId` instead of (or in addition to) a path string. If the ACL store has migrated to nodeId-based lookups, the grant function signature changes accordingly.
+Wave 4 completed this migration: test helpers now call `permissionStore.grant(userId, nodeId, permission)` directly. The prior `grantTestPermission` helper (path-based) was removed alongside `PermissionFacade`.
 
 ### 4.4 Default Mock Behaviors (`beforeEach`)
 
@@ -284,7 +284,7 @@ beforeEach(() => {
 - [ ] Rewrite all 29 test cases to use nodeId payloads per §3 mapping table
 - [ ] Add response assertions for `nodeId` and `display_path` in returned objects
 - [ ] Create nodeId fixture constants (`FIXTURE_IDS`)
-- [ ] Update `grantTestPermission` calls to operate on nodeId where ACL store requires it
+- [x] ~~Update `grantTestPermission` calls~~ — completed in Wave 4: replaced with `permissionStore.grant(userId, nodeId, permission)`; path-based helper removed
 - [ ] Add new describe blocks for `POST /move`, `POST /copy`, `DELETE /delete` (single-item endpoints)
 - [ ] Remove any test that exercises path-based behavior exclusively
 - [ ] Verify all 29+ rewritten tests pass with mocked service layer

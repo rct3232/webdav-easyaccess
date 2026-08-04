@@ -70,7 +70,7 @@ Grants a directory-level permission to a user for a specific node, using the nod
 
 Replaces path-based grants in new tests. Writes directly to `permissions_user_paths(user_id, file_node_id, permission)` matching the v2 normalized schema. Used when testing permission resolution via closure-table ancestor traversal rather than string path comparison.
 
-The existing `grantTestPermission(userId, folderPath, permission)` remains for legacy path-based tests and is not replaced by this helper.
+Wave 4 removed the path-based `grantTestPermission` entirely — it no longer exists. New test code uses `permissionStore.grant(userId, nodeId, permission)` directly (the store is the sole grant authority). This helper (`grantTestPermissionByNodeId`) provides a convenient wrapper for test fixtures.
 
 #### Parameters
 
@@ -267,7 +267,7 @@ The helpers should delegate backend-aware query construction to the existing sto
 |-----------------|------------|-------------|
 | `createTestDatabase()` | All four new helpers | Consumed by all; provides isolated DB connection |
 | `createTestUser()` | `grantTestPermissionByNodeId` | User creation precedes permission grant |
-| `grantTestPermission(userId, folderPath, permission)` | `grantTestPermissionByNodeId` | Complementary: path-based vs nodeId-based. Both coexist during transition. |
+| ~~`grantTestPermission(userId, folderPath, permission)`~~ (deleted W4) | `permissionStore.grant(userId, nodeId, permission)` | Path-based helper removed in Wave 4; store is the direct grant authority for tests and production alike. |
 | N/A (no existing file-node helper) | `createTestFileNode`, `buildAncestorsForTestNode`, `createTestObjectMapEntry` | New capability for Phase 4 testing |
 
 ---

@@ -130,7 +130,7 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 2. Permission check on parent folder
 3. Check for name conflicts among siblings via `fileNodeService.listDirectory(parentNodeId)` — 409 if duplicate exists
 4. Call `fileNodeService.createDirectory(parentNodeId, name)` → returns new node with `.id`
-5. Grant WRITE permission to creator via `PermissionFacade.grant(userId, dir.id, PERMISSIONS.WRITE)`
+5. Grant WRITE permission to creator via `permissionStore.grant(userId, dir.id, PERMISSIONS.WRITE)` — `PermissionFacade` was deleted in Wave 4; the store is the direct grant authority
 6. Resolve display path via `fileNodeService.getNodePath(dir.id)`
 7. Return `{ nodeId: dir.id, name: dir.name, path: display_path }`
 

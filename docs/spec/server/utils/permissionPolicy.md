@@ -4,9 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Permission policy module split across four files under `server/domains/permissions/policy/`. Covers owner path resolution, read/write checks, grant/revoke/view authorization, and synchronous batch checkers. |
-
-> **Phase 4 note:** Path-based compat layer (Tier 2) and sync checker builders (Tier 3) are scheduled for removal in Phase 4 Tasks 4.8d-4.8f. The nodeId-based functions (Tier 1) are retained as the primary interface.
+| Role | nodeId-only permission policy helpers. All exports operate on `nodeId` (BIGINT) — no path-based functions remain after Wave 4 removal of Tier 2/3 compat layers. |
 
 ---
 
@@ -16,123 +14,93 @@
 
 | Module | Source | Purpose |
 |--------|--------|---------|
-| permissionPolicy | `server/domains/permissions/policy/permissionPolicy.js` | Main policy: isAdminUser, read/write checks, grant/revoke/view authorization, sync checkers |
-| ownerPathResolver | `server/domains/permissions/policy/ownerPathResolver.js` | Owner path detection: userRootPath, isOwnerPath, getHomeOwnerUserIdForPath |
-| inheritancePolicy | `server/domains/permissions/policy/inheritancePolicy.js` | Path normalization for permission lookup: isDirectoryPath, getLookupPaths, isDirectPermission marker |
+| permissionPolicy | `server/domains/permissions/policy/permissionPolicy.js` | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass |
+| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table |
 | permissionRank | `server/domains/permissions/policy/permissionRank.js` | Permission level comparison: getPermissionRank, meetsRank |
 
 - **Test file:** `server/utils/__tests__/permissionPolicy.test.js` (test has not been relocated yet)
 
-### 2.2 Tier Classification
+> **Removed modules** — the following sub-modules were deleted during Wave 4 as their Tier 2/Tier 3 functions had no remaining callers:
+> - `ownerPathResolver.js` — path-based owner resolution; replaced by `ownerNodeResolver.js` (nodeId-based)
+> - `inheritancePolicy.js` — path normalization for permission lookup; inheritance is now handled via closure table queries in the store
 
-Functions in permissionPolicy.js are classified into three tiers for Phase 4 migration:
+### 2.2 Post-Wave 4 State
 
-**Tier 1 (Retained)** — nodeId-based functions only:
-- `canReadNode(userId, nodeId)`
-- `canWriteNode(userId, nodeId)`
-- `isAdminUser(user)`
-
-**Tier 2 (Removing in Task 4.8d)** — path-based compat layer:
-- `canReadFolder(principalId, folderPath)`
-- `canReadFile(principalId, filePath)`
-- `canWriteFolder(user, folderPath)`
-- `canWriteFileByParent(user, filePath)`
-- `hasDirectFolderPermission(userId, folderPath)`
-
-**Tier 3 (Removing in Task 4.8d)** — sync checker builders:
-- `buildSyncWriteChecker(user, doc)`
-- `buildSyncReadChecker(user, doc)`
-- `buildSyncReadFileChecker(user, doc)`
-- `buildSyncWriteFileByParentChecker(user, doc)`
-
-### 2.3 Callers That Must Migrate Before Removal
-
-| Tier 2/3 Function | Current Callers | Migration Target | Phase 4 Task |
-|-------------------|-----------------|------------------|--------------|
-| `canReadFolder` | fileService.listDirectoryWithPermissions, downloadService.downloadMultiple | `aclService.checkFolderPermission(userId, nodeId, 'read')` | 4.1, 4.6 |
-| `canWriteFolder` | batchOperationService.batchMove, batchOperationService.batchDelete | `aclService.checkFolderPermission(userId, nodeId, 'write')` | 4.6 |
-| `canReadFile` | fileService.downloadFile | `aclService.checkFilePermission(userId, nodeId, 'read')` | 4.1 |
-| `buildSyncWriteChecker` | batchOperationService (pre-migration) | async gate per item | 4.8c |
-| `buildSyncReadChecker` | downloadService (pre-migration) | async gate per file | 4.6 |
-
-### 2.4 Post-Removal State
-
-After Tasks 4.8d-4.8g, `permissionPolicy.js` contains only Tier 1 functions + re-exports from `ownerNodeResolver`, `inheritancePolicy`, `permissionRank`. Expected line count reduction from ~307 to ~100 lines.
-
-Removal is safe only after ALL callers in the table above have migrated to async nodeId checks. Tasks 4.8c (fileService sync→async), 4.6 (batchOperationService, downloadService) must complete before 4.8d can remove Tier 2/3.
-
-### 2.5 Functions / Exports — permissionPolicy.js
-
-> **PRE-REMOVAL — NOT FOR NEW USE** — Any Tier-2 (path-based) and Tier-3 (`buildSync*Checker`) entries listed in this tab are intermediates for Phase 4 removal (Tasks 4.8d-4.8f). Treat them as reference only; new code must use the Tier-1 node-id API (`canReadNode`, `canWriteNode`, aclService). The banner does NOT cover Tier-1 rows (`isAdminUser`, `canReadNode`/`canWriteNode`, ownerNodeResolver, inheritance, permissionRank).
+All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions have been removed. The module exports only nodeId-based helpers:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| isAdminUser | (user) => boolean | user?.is_admin |
-| isOwnerPath | (user, targetPath) => boolean | Re-exported from ownerPathResolver; target under /{username} |
-| getHomeOwnerUserIdForPath | (folderPath) => Promise\<number \| null\> | Re-exported from ownerPathResolver; first segment as username |
-| hasDirectFolderPermission | (userId, folderPath, perm?) => Promise\<boolean\> | Direct check with slash/no-slash compatibility |
-| canReadFolder | (principalId, folderPath, requiredPermission?) => Promise\<boolean\> | Delegates to aclService.checkFolderPermission |
-| canReadFile | (principalId, filePath, requiredPermission?) => Promise\<boolean\> | Delegates to aclService.checkFilePermission |
-| canWriteFolder | (user, folderPath) => Promise\<boolean\> | Admin/owner bypass + direct write check |
-| canWriteFileByParent | (user, filePath) => Promise\<boolean\> | Admin/owner bypass + file-level write check |
-| buildSyncWriteChecker | (user, doc) => (folderPath) => boolean | Sync checker using preloaded permission doc for batch ops |
-| buildSyncReadChecker | (user, doc) => (folderPath) => boolean | Sync read checker for folders using preloaded doc |
-| buildSyncReadFileChecker | (user, doc) => (filePath) => boolean | Sync read checker for files using preloaded doc |
-| buildSyncWriteFileByParentChecker | (user, doc) => (filePath) => boolean | Sync file write checker using preloaded doc |
-| getUserOrNull | (userId) => Promise\<User \| null\> | Fetch user by ID or return null |
-| canGrantPermission | (user, folderPath, userId) => Promise\<boolean\> | Check if user can grant permission to another user |
-| canRevokePermission | (user, folderPath, userId, targetUserId) => Promise\<boolean\> | Check if user can revoke permission from another user |
-| canViewPermissions | (user, folderPath, userId) => Promise\<boolean\> | Check if user can view permissions for a folder |
+| isAdminUser | `(user) => boolean` | `user?.is_admin` truthiness check |
+| canReadFolderNode | `(userId, dirNodeId, requiredPermission?) => Promise<boolean>` | Admin + owner bypass → store.checkPermission |
+| canWriteFolderNode | `(userId, dirNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(WRITE) |
+| canReadFileNode | `(userId, fileNodeId, requiredPermission?) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(READ) |
+| canWriteFileNode | `(userId, fileNodeId) => Promise<boolean>` | Admin bypass → aclService.checkFilePermission(WRITE) |
+| canGrantPermissionNode | `(userId, targetNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(ADMIN) |
+| canRevokePermissionNode | `(userId, targetNodeId, targetUserId) => Promise<boolean>` | Self-revoke + admin + owner bypass → store.checkPermission(ADMIN) |
+| canViewPermissionsNode | `(userId, targetNodeId) => Promise<boolean>` | Admin + owner bypass → store.checkPermission(ADMIN) |
+| getUserOrNull | `(userId) => Promise<User \| null>` | Fetch user by ID or return null |
 
-### 2.6 Functions / Exports — ownerPathResolver.js
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| userRootPath | (user) => string \| null | Returns /{username} or null |
-| isOwnerPath | (user, targetPath) => boolean | Safe prefix match against /{username} |
-| getHomeOwnerUserIdForPath | (folderPath) => Promise\<number \| null\> | Resolves first path segment as username to userId |
-
-### 2.7 Functions / Exports — permissionRank.js
+### 2.3 Functions / Exports — permissionRank.js
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | getPermissionRank | (permission) => number | Numeric rank via PERMISSIONS.ALL.indexOf; -1 for unknown |
 | meetsRank | (actual, required) => boolean | actual rank >= required rank |
 
-### 2.8 Functions / Exports — inheritancePolicy.js
+### 2.4 Input / Output
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| isDirectoryPath | (path) => boolean | Ends with '/' or equals '/' |
-| getLookupPaths | (path, options?) => string[] | Returns [withSlash, noSlash] variants for permission lookup |
-| isDirectPermission | (userId, folderPath, requiredPermission) => boolean | Policy marker; actual DB check happens in store layer |
+- All node identifiers are BIGINT (`nodeId`), never path strings.
+- `userId`: number
 
-### 2.9 Input / Output
-
-- Compliant with shared-contracts
-- principalId: number (userId) or string ("share:token")
-
-### 2.10 Dependencies
+### 2.5 Dependencies
 
 - `@webdav-easyaccess/shared/constants` (PERMISSIONS)
-- `@webdav-easyaccess/shared/pathUtils` (normalizePath)
-- Permission model, User model
-- aclService (checkFilePermission, checkFolderPermission, isSharePrincipal) — from `../services/aclService`
+- User model
+- aclService (checkFilePermission) — from `../services/aclService`
+- permissionStore — direct store import for checkPermission calls
+- ownerNodeResolver.isOwnerNode — nodeId-based ownership check
 
-### 2.11 Mock Targets
+### 2.6 Mock Targets
 
-- User.findByUsername, User.findById
-- Permission.checkPermission, Permission.getPermissionDoc, Permission.grant
-- aclService.checkFolderPermission, aclService.checkFilePermission
+- User.findById
+- aclService.checkFilePermission, aclService.checkFolderPermission
+- permStore.checkPermission
+- isOwnerNode
 
-### 2.12 Verification Scenarios
+### 2.7 Verification Scenarios
 
-> **PRE-REMOVAL — NOT FOR NEW USE** — Any Tier-2 (path-based) and Tier-3 (`buildSync*Checker`) entries listed in this tab are intermediates for Phase 4 removal (Tasks 4.8d-4.8f). Treat them as reference only; new code must use the Tier-1 node-id API (`canReadNode`, `canWriteNode`, aclService). The banner does NOT cover Tier-1 rows (`isAdminUser`, `canReadNode`/`canWriteNode`, ownerNodeResolver, inheritance, permissionRank).
+- [ ] canReadFolderNode/canWriteFolderNode: admin bypass returns true without store call
+- [ ] canReadFolderNode/canWriteFolderNode: owner node bypass returns true without store call
+- [ ] canReadFileNode delegates to aclService.checkFilePermission with READ rank
+- [ ] canWriteFileNode delegates to aclService.checkFilePermission with WRITE rank
+- [ ] canGrantPermissionNode checks ADMIN permission via store
+- [ ] canRevokePermissionNode allows self-revoke (userId === targetUserId) without admin check
+- [ ] getUserOrNull returns null for non-existent userId instead of throwing
 
-- [ ] isOwnerPath, userRootPath (ownerPathResolver)
-- [ ] getHomeOwnerUserIdForPath
-- [ ] hasDirectFolderPermission with slash/no-slash compatibility
-- [ ] canReadFolder, canReadFile delegates to aclService
-- [ ] canWriteFolder, canWriteFileByParent admin/owner bypass
-- [ ] buildSync*Checker returns sync functions using preloaded doc
-- [ ] canGrantPermission, canRevokePermission, canViewPermissions authorization
+### 2.8 Removed Functions (Wave 4)
+
+The following functions were removed during Wave 4 and are **not available**:
+
+**Tier 2 — path-based compat layer:**
+| Function | Replacement |
+|----------|-------------|
+| `canReadFolder(principalId, folderPath)` | `canReadFolderNode(userId, dirNodeId)` or `aclService.checkFolderPermission` |
+| `canReadFile(principalId, filePath)` | `canReadFileNode(userId, fileNodeId)` or `aclService.checkFilePermission` |
+| `canWriteFolder(user, folderPath)` | `canWriteFolderNode(userId, dirNodeId)` |
+| `canWriteFileByParent(user, filePath)` | `canWriteFileNode(userId, fileNodeId)` |
+| `hasDirectFolderPermission(userId, folderPath)` | N/A — direct permission checks handled by store closure table query |
+
+**Tier 3 — sync checker builders:**
+| Function | Replacement |
+|----------|-------------|
+| `buildSyncWriteChecker(user, doc)` | Per-item async check via aclService |
+| `buildSyncReadChecker(user, doc)` | Per-item async check via aclService |
+| `buildSyncReadFileChecker(user, doc)` | Per-item async check via aclService |
+| `buildSyncWriteFileByParentChecker(user, doc)` | Per-item async check via aclService |
+
+**Other removed:**
+| Function | Replacement |
+|----------|-------------|
+| `canGrantPermission(user, folderPath, userId)` | `canGrantPermissionNode(userId, targetNodeId)` |
+| `canRevokePermission(user, folderPath, userId, targetUserId)` | `canRevokePermissionNode(userId, targetNodeId, targetUserId)` |
+| `canViewPermissions(user, folderPath, userId)` | `canViewPermissionsNode(userId, targetNodeId)` |

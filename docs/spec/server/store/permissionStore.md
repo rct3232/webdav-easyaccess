@@ -60,6 +60,15 @@
 
 > **Removed:** `rewritePermissionsForAllUsers` and `revokePermissionsPrefixForAllUsers` — path-based bulk operations are unnecessary with nodeId references; CASCADE delete on `file_nodes` handles bulk cleanup.
 
+### 2.8 Deleted Modules (Wave 4)
+
+The following modules were deleted during Wave 4 and their responsibilities absorbed by the store:
+
+- **`permissionFacade.js`** (`server/domains/permissions/services/permissionFacade.js`) — previously a thin wrapper around permission operations; all callers now import `permissionStore` directly.
+- **`models/Permission.js`** (`server/models/Permission.js`) — legacy Permission model class replaced by the store's direct SQL queries via the metadata adapter layer.
+
+The `permissionStore` is now the sole source of truth for all permission CRUD and query operations. No facade or model abstraction sits between callers and the store.
+
 ### 2.3 Transaction Boundaries
 
 - `grant`, `revoke`, `grantFilePermission`, `revokeFilePermission`: per-call transaction to keep each ACL mutation atomic.

@@ -118,12 +118,32 @@ export const handlers = [
   http.get(`${API_BASE}/permissions/check`, () => {
     return HttpResponse.json({ hasRead: true, hasWrite: true });
   }),
-  http.get(`${API_BASE}/permissions/user/:userId`, () => {
-    return HttpResponse.json([]);
+  http.get(`${API_BASE}/permissions/user/:userId`, ({ params }) => {
+    const userId = params.userId;
+    if (userId === '1') {
+      return HttpResponse.json([
+        { nodeId: 2, permission: 'admin' },
+        { nodeId: 3, permission: 'admin' },
+      ]);
+    }
+    return HttpResponse.json([
+      { nodeId: 20, permission: 'read' },
+      { nodeId: 21, permission: 'write' },
+    ]);
   }),
 
-  http.get(`${API_BASE}/permissions/folder`, () => {
-    return HttpResponse.json([]);
+  http.get(`${API_BASE}/permissions/folder`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (nodeId === '2') {
+      return HttpResponse.json([
+        { userId: '1', nodeId: 2, permission: 'admin' },
+        { userId: '2', nodeId: 2, permission: 'read' },
+      ]);
+    }
+    return HttpResponse.json([
+      { userId: '1', nodeId: 20, permission: 'read' },
+    ]);
   }),
 
   // --- Recent files (required for FolderTree / FileManager) ---

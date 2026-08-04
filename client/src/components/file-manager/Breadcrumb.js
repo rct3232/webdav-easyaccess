@@ -11,7 +11,7 @@ import {
 } from '@mui/icons-material';
 import { getUserPermissions } from '../../services/permissionService';
 import { normalizePath } from '../../utils/pathUtils';
-import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils';
+import { filterOutUserOwnFolders } from '../../utils/userUtils';
 
 /**
  * Path breadcrumb navigation component
@@ -21,28 +21,33 @@ import { isUserOwnFolder, filterOutUserOwnFolders } from '../../utils/userUtils'
 const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
   const { t } = useTranslation();
   const scrollContainerRef = useRef(null);
-  const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
+  const [sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
 
   // 공유된 폴더 권한 정보 로드 (로그인한 사용자만; 공유 링크 뷰에서는 user 없음 → 호출 안 함)
   useEffect(() => {
-    if (!user?.id || user?.is_admin || !currentPath || currentPath === '/' || isUserOwnFolder(currentPath, user)) {
-      setSharedPermissionPaths(new Set());
-      return;
+    if (!user?.id || user?.is_admin || !currentPath || currentPath === '/') {
+      const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+      if (currentPath.startsWith(homePath)) {
+        setSharedPermissionNodeIds(new Set());
+        return;
+      }
     }
     const loadSharedFolders = async () => {
       try {
         const data = await getUserPermissions(user.id);
         const sharedFolders = filterOutUserOwnFolders(data || [], user);
 
-        const permissionPaths = new Set();
+        const permissionNodeIds = new Set();
         sharedFolders.forEach(perm => {
-          permissionPaths.add(normalizePath(perm.folder_path));
+          if (perm.nodeId != null) {
+            permissionNodeIds.add(perm.nodeId);
+          }
         });
 
-        setSharedPermissionPaths(permissionPaths);
+        setSharedPermissionNodeIds(permissionNodeIds);
       } catch (error) {
         console.error('Failed to load shared folders:', error);
-        setSharedPermissionPaths(new Set());
+        setSharedPermissionNodeIds(new Set());
       }
     };
 
@@ -113,31 +118,12 @@ const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFold
       const normalizedCurrentPath = normalizePath(currentPath);
       const pathParts = normalizedCurrentPath.split('/').filter(Boolean);
       
-      // 각 경로 부분이 권한이 있는 경로의 일부인지 확인
-      // 권한이 있는 경로의 시작 인덱스 찾기
-      let startIndex = -1;
-      for (let i = 0; i < pathParts.length; i++) {
-        const testPath = '/' + pathParts.slice(0, i + 1).join('/');
-        // 이 경로가 권한이 있는 경로인지, 또는 권한이 있는 경로의 일부인지 확인
-        if (sharedPermissionPaths.has(testPath)) {
-          startIndex = i;
-          break;
-        }
-      }
-      
-      if (startIndex >= 0) {
-        // 권한이 있는 경로부터 breadcrumb 생성 (하위 폴더로 이동할 때도 계층 구조 유지)
-        return pathParts.slice(startIndex).map((part, index) => ({
-          name: part,
-          path: '/' + pathParts.slice(0, startIndex + index + 1).join('/'),
-        }));
-      } else {
-        // 권한이 있는 경로를 찾지 못한 경우 (fallback)
-        return pathParts.map((part, index) => ({
-          name: part,
-          path: '/' + pathParts.slice(0, index + 1).join('/'),
-        }));
-      }
+      // nodeId-based permissions don't provide a direct path mapping,
+      // so show all segments for shared folders (fallback behavior)
+      return pathParts.map((part, index) => ({
+        name: part,
+        path: '/' + pathParts.slice(0, index + 1).join('/'),
+      }));
     }
 
     // 유저 홈 폴더 하위 경로 처리

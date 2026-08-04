@@ -9,9 +9,23 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-  grantTestPermission,
+  grantTestPermissionByNodeId,
 } = require('../../../../test-utils');
+const { createFileNodeService } = require('../../../../service/fileNodeService');
+const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+
+const fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+
+async function createUserWithHomeNode(opts = {}) {
+  const { user, token } = await createAuthenticatedTestUser(opts);
+  const node = await fileNodeService.createDirectory(null, user.username);
+  return { user, token, homeNodeId: node.id };
+}
+
+async function grantHomePermission({ userId, homeNodeId, permission }) {
+  await grantTestPermissionByNodeId({ userId, fileNodeId: homeNodeId, permission });
+}
 
 var mockWebdav;
 jest.mock('../../../../utils/webdav', () => {
@@ -63,10 +77,10 @@ beforeEach(() => {
 
 describe('GET /api/files/list', () => {
   it('returns folder contents for authenticated user', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-list-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .get('/api/files/list')
@@ -118,10 +132,10 @@ describe('GET /api/files/list', () => {
 
 describe('GET /api/files/download', () => {
   it('returns file content for user with permission', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-dl-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .get('/api/files/download')
@@ -155,10 +169,10 @@ describe('GET /api/files/download', () => {
 
 describe('POST /api/files/preview-ticket', () => {
   it('returns a ticket for video file when user has permission', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-preview-ticket-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .post('/api/files/preview-ticket')
@@ -171,10 +185,10 @@ describe('POST /api/files/preview-ticket', () => {
   });
 
   it('returns 400 when file is not video', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-preview-ticket-nv-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .post('/api/files/preview-ticket')
@@ -190,10 +204,10 @@ describe('GET /api/files/preview-stream', () => {
   it('streams video inline with valid ticket', async () => {
     mockWebdav.getFileContents.mockResolvedValueOnce(Buffer.from('video-content'));
 
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-preview-stream-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const ticketRes = await request(app)
       .post('/api/files/preview-ticket')
@@ -238,10 +252,10 @@ describe('POST /api/files/batch-move', () => {
   });
 
   it('returns 202 and jobId for valid batch-move', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-batch-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/files/batch-move')
@@ -274,10 +288,10 @@ describe('POST /api/files/upload', () => {
   });
 
   it('accepts multipart upload and returns 200', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-upload-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     // Simulate new file upload: destination file does not exist yet.
     mockWebdav.pathExists.mockResolvedValue(false);
@@ -295,10 +309,10 @@ describe('POST /api/files/upload', () => {
 
 describe('POST /api/files/batch-delete', () => {
   it('returns 202 and jobId for valid batch-delete', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-del-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/files/batch-delete')
@@ -310,10 +324,10 @@ describe('POST /api/files/batch-delete', () => {
   });
 
   it('returns 403 when paths include meta path for non-admin', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-del-403-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/files/batch-delete')
@@ -327,10 +341,10 @@ describe('POST /api/files/batch-delete', () => {
 
 describe('POST /api/files/batch-copy', () => {
   it('returns 202 and jobId for valid batch-copy', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-copy-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/files/batch-copy')
@@ -363,10 +377,10 @@ describe('GET /api/files/bulk-operation/:jobId', () => {
 
 describe('PUT /api/files/rename', () => {
   it('returns 403 when using share token (share is read-only)', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-rename-share-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const createRes = await request(app)
       .post('/api/share-links')
@@ -388,10 +402,10 @@ describe('PUT /api/files/rename', () => {
   });
 
   it('returns 400 when oldPath or newName missing', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-rename-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const missingNewName = await request(app)
       .put('/api/files/rename')
@@ -411,10 +425,10 @@ describe('PUT /api/files/rename', () => {
   });
 
   it('returns 200 when renamed successfully', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-rename-ok-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     mockWebdav.pathExists.mockResolvedValue(false);
 
@@ -434,10 +448,10 @@ describe('PUT /api/files/rename', () => {
 
 describe('POST /api/files/check-conflicts', () => {
   it('returns 200 with conflicts array', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-conflicts-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/files/check-conflicts')
@@ -459,10 +473,10 @@ describe('POST /api/files/check-conflicts', () => {
 
 describe('POST /api/files/metadata', () => {
   it('returns 200 with metadata array when authenticated', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-meta-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .post('/api/files/metadata')
@@ -474,10 +488,10 @@ describe('POST /api/files/metadata', () => {
   });
 
   it('returns 200 with metadata when using X-Share-Token', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-meta-share-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const createRes = await request(app)
       .post('/api/share-links')
@@ -513,10 +527,10 @@ describe('POST /api/files/download-multiple', () => {
   });
 
   it('returns 200 with zip content for valid paths', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-dl-multi-ok-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .post('/api/files/download-multiple')
@@ -544,10 +558,10 @@ describe('POST /api/files/download-multiple', () => {
 
 describe('POST /api/files/bulk-operation/:jobId/cancel', () => {
   it('returns 200 with messageCode and jobId', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `files-cancel-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const moveRes = await request(app)
       .post('/api/files/batch-move')

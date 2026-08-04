@@ -6,8 +6,22 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-  grantTestPermission,
+  grantTestPermissionByNodeId,
 } = require('../../../../test-utils');
+const { createFileNodeService } = require('../../../../service/fileNodeService');
+const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+
+const fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+
+async function createUserWithHomeNode(opts = {}) {
+  const { user, token } = await createAuthenticatedTestUser(opts);
+  const node = await fileNodeService.createDirectory(null, user.username);
+  return { user, token, homeNodeId: node.id };
+}
+
+async function grantHomePermission({ userId, homeNodeId, permission }) {
+  await grantTestPermissionByNodeId({ userId, fileNodeId: homeNodeId, permission });
+}
 
 var mockWebdav;
 jest.mock('../../../../utils/webdav', () => {
@@ -47,11 +61,10 @@ describe('POST /api/folders/create', () => {
   });
 
   it('returns 200 when folder created with write permission', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `folders-create-${Date.now()}`,
     });
-    const folderPath = `/${user.username}/newdir`;
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     const res = await request(app)
       .post('/api/folders/create')
@@ -65,11 +78,10 @@ describe('POST /api/folders/create', () => {
   });
 
   it('returns 409 when folder already exists', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `folders-dup-${Date.now()}`,
     });
-    const folderPath = `/${user.username}/dupdir`;
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     mockWebdav.pathExists.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     mockWebdav.createDirectory.mockResolvedValueOnce(undefined);
@@ -89,10 +101,10 @@ describe('POST /api/folders/create', () => {
   });
 
   it('returns 404 when parent path does not exist', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `folders-parent-${Date.now()}`,
     });
-    await grantTestPermission(user.id, `/${user.username}`, 'write');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
     mockWebdav.pathExists
       .mockResolvedValueOnce(false)
@@ -149,11 +161,10 @@ describe('GET /api/folders/stats', () => {
   });
 
   it('returns 200 with fileCount and totalSize when user has read permission', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `folders-stats-ok-${Date.now()}`,
     });
-    const folderPath = `/${user.username}/docs`;
-    await grantTestPermission(user.id, folderPath, 'read');
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'read' });
 
     const res = await request(app)
       .get('/api/folders/stats')

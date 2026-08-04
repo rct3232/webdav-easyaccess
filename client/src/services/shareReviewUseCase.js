@@ -6,26 +6,26 @@ import { revokePermission, grantPermission, approvePermissionRequest } from './s
  */
 export async function shareReviewUseCase({
   permissionRequestId,
-  initialFolderPermissions,
-  folderPermissions,
+  initialNodePermissions,
+  nodePermissions,
 } = {}) {
   const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
-    initialFolderPermissions,
-    folderPermissions,
+    initialNodePermissions,
+    nodePermissions,
   });
 
   // Revokes are best-effort: errors for individual entries should not block later grants/approve.
-  for (const { userId, folderPath } of permissionsToRevoke) {
+  for (const { userId, nodeId } of permissionsToRevoke) {
     try {
-      await revokePermission({ userId, folderPath, includeSubfolders: true });
+      await revokePermission({ userId, nodeId });
     } catch (e) {
       // Non-fatal revocation failure (matches current dialog behavior).
     }
   }
 
   // Grants are required; any failure should abort the flow and surface to the caller.
-  for (const { userId, folderPath, permission } of permissionsToGrant) {
-    await grantPermission({ userId, folderPath, permission });
+  for (const { userId, nodeId, permission } of permissionsToGrant) {
+    await grantPermission({ userId, nodeId, permission });
   }
 
   await approvePermissionRequest(permissionRequestId);

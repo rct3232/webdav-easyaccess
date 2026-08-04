@@ -1,40 +1,38 @@
-import { normalizePath } from './pathUtils';
-
 /**
  * Pure permission diff for sharing dialogs.
  * @param {object} params
- * @param {Map<string, Map<string, string>>} params.initialFolderPermissions Path -> (userId -> permission)
- * @param {Map<string, Map<string, string>>} params.folderPermissions Path -> (userId -> permission)
- * @returns {{ permissionsToRevoke: Array<{ userId: string, folderPath: string }>, permissionsToGrant: Array<{ userId: string, folderPath: string, permission: string }> }}
+ * @param {Map<number, Map<string, string>>} params.initialNodePermissions nodeId -> (userId -> permission)
+ * @param {Map<number, Map<string, string>>} params.nodePermissions nodeId -> (userId -> permission)
+ * @returns {{ permissionsToRevoke: Array<{ userId: string, nodeId: number }>, permissionsToGrant: Array<{ userId: string, nodeId: number, permission: string }> }}
  */
-export function buildPermissionDiff({ initialFolderPermissions, folderPermissions } = {}) {
-  const initial = normalizeFolderPermissions(initialFolderPermissions);
-  const current = normalizeFolderPermissions(folderPermissions);
+export function buildPermissionDiff({ initialNodePermissions, nodePermissions } = {}) {
+  const initial = normalizeNodePermissions(initialNodePermissions);
+  const current = normalizeNodePermissions(nodePermissions);
 
   const permissionsToRevoke = [];
   const permissionsToGrant = [];
 
   // Grants: apply *all* current assignments (even unchanged ones) to match
   // the current dialog's effective "make desired state" behavior.
-  for (const [folderPath, userPermMap] of current.entries()) {
+  for (const [nodeId, userPermMap] of current.entries()) {
     for (const [userId, permission] of userPermMap.entries()) {
-      permissionsToGrant.push({ userId, folderPath, permission });
+      permissionsToGrant.push({ userId, nodeId, permission });
     }
   }
 
   // Revokes: remove only assignments that existed initially but are missing now.
-  for (const [folderPath, initialUserPermMap] of initial.entries()) {
-    const currentUserPermMap = current.get(folderPath);
+  for (const [nodeId, initialUserPermMap] of initial.entries()) {
+    const currentUserPermMap = current.get(nodeId);
     if (!currentUserPermMap) {
       for (const userId of initialUserPermMap.keys()) {
-        permissionsToRevoke.push({ userId, folderPath });
+        permissionsToRevoke.push({ userId, nodeId });
       }
       continue;
     }
 
     for (const userId of initialUserPermMap.keys()) {
       if (!currentUserPermMap.has(userId)) {
-        permissionsToRevoke.push({ userId, folderPath });
+        permissionsToRevoke.push({ userId, nodeId });
       }
     }
   }
@@ -42,13 +40,12 @@ export function buildPermissionDiff({ initialFolderPermissions, folderPermission
   return { permissionsToRevoke, permissionsToGrant };
 }
 
-function normalizeFolderPermissions(map) {
+function normalizeNodePermissions(map) {
   if (!map) return new Map();
   const out = new Map();
-  for (const [folderPath, userPermMap] of map.entries()) {
-    const normalizedFolderPath = normalizePath(folderPath);
-    if (!out.has(normalizedFolderPath)) out.set(normalizedFolderPath, new Map());
-    const dest = out.get(normalizedFolderPath);
+  for (const [nodeId, userPermMap] of map.entries()) {
+    if (!out.has(nodeId)) out.set(nodeId, new Map());
+    const dest = out.get(nodeId);
     if (!userPermMap) continue;
     for (const [userId, permission] of userPermMap.entries()) {
       dest.set(String(userId), permission);
@@ -56,4 +53,3 @@ function normalizeFolderPermissions(map) {
   }
   return out;
 }
-

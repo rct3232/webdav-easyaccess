@@ -11,7 +11,6 @@ import {
 } from '../services/sharePermissionGateway';
 import { deriveSharedAccessState } from '../utils/deriveSharedAccessState';
 import { buildPendingRequestState } from '../utils/buildPendingRequestState';
-import { getParentPath, normalizePath } from '../utils/pathUtils';
 import {
   buildShareManageErrorMessage,
   buildShareManageSuccessMessage,
@@ -21,7 +20,8 @@ import {
 
 export function useSharedManage({
   open,
-  targetPath,
+  targetNodeId,
+  parentNodeId,
   displayName,
   isDirectory,
   user,
@@ -67,7 +67,7 @@ export function useSharedManage({
   useEffect(() => clearScheduledMessageHide, [clearScheduledMessageHide]);
 
   useEffect(() => {
-    if (!open || !targetPath || !user) {
+    if (!open || !targetNodeId || !user) {
       setInitialLoading(false);
       setPermissionCheck(null);
       setParentPermissionCheck(null);
@@ -86,20 +86,19 @@ export function useSharedManage({
     const loadPermissionInfo = async () => {
       try {
         if (isDirectory) {
-          const permission = await checkPermission(targetPath);
+          const permission = await checkPermission(targetNodeId);
           setPermissionCheck({ hasRead: Boolean(permission.hasRead), hasWrite: Boolean(permission.hasWrite) });
           setParentPermissionCheck(null);
         } else {
-          const fileResult = await checkPermission(targetPath);
+          const fileResult = await checkPermission(targetNodeId);
           const hasRead = Boolean(fileResult?.hasRead);
           const hasWrite = Boolean(fileResult?.hasWrite);
           const source = fileResult?.source === 'file' ? 'file' : 'path';
           setPermissionCheck({ hasRead, hasWrite, source });
 
-          const parentPath = getParentPath(targetPath);
-          if (parentPath) {
+          if (parentNodeId) {
             try {
-              const pathResult = await checkPermission(parentPath);
+              const pathResult = await checkPermission(parentNodeId);
               setParentPermissionCheck({
                 hasRead: Boolean(pathResult?.hasRead),
                 hasWrite: Boolean(pathResult?.hasWrite),
@@ -122,14 +121,14 @@ export function useSharedManage({
       }
     };
     loadPermissionInfo();
-  }, [open, targetPath, user, isDirectory]);
+  }, [open, targetNodeId, parentNodeId, user, isDirectory]);
 
   useEffect(() => {
     if (!open) {
       setOwnerExists(null);
       return;
     }
-    if (!targetPath || !user) {
+    if (!targetNodeId || !user) {
       setOwnerExists(null);
       return;
     }
@@ -140,7 +139,7 @@ export function useSharedManage({
     setOwnerExists(null);
     const checkOwner = async () => {
       try {
-        const result = await checkOwnerExists(targetPath, { forFile: !isDirectory });
+        const result = await checkOwnerExists(targetNodeId);
         setOwnerExists(result?.ownerExists === true);
       } catch (error) {
         console.error('Failed to check owner existence:', error);
@@ -148,10 +147,10 @@ export function useSharedManage({
       }
     };
     checkOwner();
-  }, [open, targetPath, user, isDirectory]);
+  }, [open, targetNodeId, user, isDirectory]);
 
   useEffect(() => {
-    if (!open || !targetPath || !user || user.is_admin) {
+    if (!open || !targetNodeId || !user || user.is_admin) {
       setPendingRequest({ read: { pending: false, id: null }, write: { pending: false, id: null } });
       return;
     }
@@ -160,7 +159,7 @@ export function useSharedManage({
         const outbox = await listOutboxPermissionRequests({ status: 'pending' });
         setPendingRequest(buildPendingRequestState({
           requests: outbox,
-          targetPath: normalizePath(targetPath),
+          targetNodeId,
           isDirectory,
         }));
       } catch (error) {
@@ -168,7 +167,7 @@ export function useSharedManage({
       }
     };
     loadPendingRequests();
-  }, [open, targetPath, user, isDirectory]);
+  }, [open, targetNodeId, user, isDirectory]);
 
   const { hasReadPermission, hasWritePermission, pathPermission, filePermissionLevel } = deriveSharedAccessState({
     isDirectory,
@@ -211,7 +210,7 @@ export function useSharedManage({
 
   const handlePermissionRequest = useCallback(
     async (requestedPermission) => {
-      if (!targetPath || !user) return;
+      if (!targetNodeId || !user) return;
       setLoading(true);
       try {
         if (
@@ -223,9 +222,7 @@ export function useSharedManage({
           await cancelPermissionRequest(pendingRequest.read.id);
           setPendingRequest((prev) => ({ ...prev, read: { pending: false, id: null } }));
         }
-        const payload = isDirectory
-          ? { folderPath: targetPath, permission: requestedPermission }
-          : { filePath: targetPath, permission: requestedPermission };
+        const payload = { nodeId: targetNodeId, permission: requestedPermission };
         const created = await createPermissionRequest(payload);
         setPendingRequest((prev) => ({
           ...prev,
@@ -247,23 +244,18 @@ export function useSharedManage({
         setLoading(false);
       }
     },
-    [targetPath, user, isDirectory, hasReadPermission, pendingRequest, emitTransientMessage, t]
+    [targetNodeId, user, hasReadPermission, pendingRequest, emitTransientMessage, t]
   );
 
   const handleRevokePermission = useCallback(async () => {
-    if (!user?.id || !targetPath) return;
+    if (!user?.id || !targetNodeId) return;
     setLoading(true);
     try {
-      if (isDirectory) {
-        await revokePermission({ userId: user.id, folderPath: targetPath, includeSubfolders: true });
-      } else {
-        await revokePermission({ userId: user.id, folderPath: targetPath, scope: 'pathOnly' });
-      }
+      await revokePermission({ userId: user.id, nodeId: targetNodeId });
       emitTransientMessage(buildShareManageSuccessMessage({
         kind: 'revoke',
         displayName,
         isDirectory,
-        targetPath,
         t,
       }));
       if (onActionComplete) onActionComplete();
@@ -279,7 +271,7 @@ export function useSharedManage({
       setLoading(false);
       setConfirmDialogOpen(false);
     }
-  }, [displayName, emitTransientMessage, isDirectory, onActionComplete, onClose, t, targetPath, user]);
+  }, [displayName, emitTransientMessage, isDirectory, onActionComplete, onClose, t, targetNodeId, user]);
 
   return {
     loading,

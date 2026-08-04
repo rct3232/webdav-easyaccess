@@ -11,7 +11,8 @@ import SharedManageDialog from '../SharedManageDialog';
 const defaultProps = {
   open: true,
   onClose: jest.fn(),
-  targetPath: '/my-folder',
+  targetNodeId: 42,
+  parentNodeId: null,
   displayName: 'my-folder',
   isDirectory: true,
   user: { id: '1', username: 'testuser', is_admin: false },

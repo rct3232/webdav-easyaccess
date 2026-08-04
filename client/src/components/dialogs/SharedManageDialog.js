@@ -14,7 +14,8 @@ import SharedManageBody from './SharedManageBody';
 const SharedManageDialog = ({
   open,
   onClose,
-  targetPath,
+  targetNodeId,
+  parentNodeId,
   displayName,
   isDirectory,
   user,
@@ -38,7 +39,8 @@ const SharedManageDialog = ({
     handleRevokePermission,
   } = useSharedManage({
     open,
-    targetPath,
+    targetNodeId,
+    parentNodeId,
     displayName,
     isDirectory,
     user,

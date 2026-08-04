@@ -61,6 +61,8 @@ import { useSharedManage } from '../../../hooks/useSharedManage';
 
 const adminFile = {
   path: '/testuser/docs/file.pdf',
+  nodeId: 10,
+  parentId: 5,
   basename: 'file.pdf',
   type: 'file',
   hasAdminPermission: true,
@@ -68,6 +70,7 @@ const adminFile = {
 
 const adminFolder = {
   path: '/testuser/docs',
+  nodeId: 5,
   basename: 'docs',
   type: 'directory',
   hasAdminPermission: true,
@@ -75,6 +78,8 @@ const adminFolder = {
 
 const nonAdminFile = {
   path: '/testuser/docs/file.pdf',
+  nodeId: 10,
+  parentId: 5,
   basename: 'file.pdf',
   type: 'file',
   hasReadPermission: true,

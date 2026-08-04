@@ -1,9 +1,8 @@
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath } from './pathUtils';
 
 export function buildPendingRequestState({
   requests,
-  targetPath,
+  targetNodeId,
   isDirectory,
 } = {}) {
   const emptyState = {
@@ -11,21 +10,20 @@ export function buildPendingRequestState({
     write: { pending: false, id: null },
   };
 
-  if (!targetPath || !Array.isArray(requests)) {
+  if (!targetNodeId || !Array.isArray(requests)) {
     return emptyState;
   }
 
-  const normalizedTarget = normalizePath(targetPath);
   const findPending = (permission) =>
     isDirectory
       ? requests.find(
           (request) =>
-            normalizePath(request.folder_path || '') === normalizedTarget &&
+            request.node_id === targetNodeId &&
             request.requested_permission === permission
         )
       : requests.find(
           (request) =>
-            normalizePath(request.file_path || '') === normalizedTarget &&
+            request.node_id === targetNodeId &&
             request.requested_permission === permission
         );
 

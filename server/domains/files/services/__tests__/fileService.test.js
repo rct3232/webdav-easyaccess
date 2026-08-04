@@ -43,6 +43,7 @@ function createMockBlobStorageService(overrides = {}) {
     duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
     linkObject: jest.fn().mockResolvedValue(true),
     countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
+    ensureExclusiveBlob: jest.fn().mockResolvedValue('key-exclusive'),
   };
   return { ...defaults, ...overrides };
 }

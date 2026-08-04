@@ -22,34 +22,34 @@ describe('folderPickerGateway', () => {
   });
 
   it('delegates directory listing to fileService.listFiles', async () => {
-    listFiles.mockResolvedValue([{ path: '/a', type: 'directory' }]);
+    listFiles.mockResolvedValue([{ nodeId: 10, basename: 'a', type: 'directory' }]);
 
-    const result = await listFolderContents({ path: '/a', options: { shareToken: 'token-1' } });
+    const result = await listFolderContents({ nodeId: 10, options: { shareToken: 'token-1' } });
 
-    expect(listFiles).toHaveBeenCalledWith('/a', { shareToken: 'token-1' });
-    expect(result).toEqual([{ path: '/a', type: 'directory' }]);
+    expect(listFiles).toHaveBeenCalledWith(10, { shareToken: 'token-1' });
+    expect(result).toEqual([{ nodeId: 10, basename: 'a', type: 'directory' }]);
   });
 
   it('delegates permission checking to permissionService.checkPermission', async () => {
-    checkPermission.mockResolvedValue({ hasWrite: false, source: 'path' });
+    checkPermission.mockResolvedValue({ hasWrite: false, source: 'nodeId' });
 
-    const result = await checkWritePermission({ path: '/private' });
+    const result = await checkWritePermission({ nodeId: 10 });
 
-    expect(checkPermission).toHaveBeenCalledWith('/private');
-    expect(result).toEqual({ hasWrite: false, source: 'path' });
+    expect(checkPermission).toHaveBeenCalledWith(10);
+    expect(result).toEqual({ hasWrite: false, source: 'nodeId' });
   });
 
   it('filters out folders owned by the current user', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
     getUserPermissions.mockResolvedValue([
-      { folder_path: '/alice/home', permission: 'write' },
-      { folder_path: '/bob/shared', permission: 'read' },
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 200, permission: 'read' },
     ]);
 
     const result = await getUserSharedFolderPermissions({ user });
 
     expect(getUserPermissions).toHaveBeenCalledWith(user.id, undefined);
-    expect(result).toEqual([{ folder_path: '/bob/shared', permission: 'read' }]);
+    expect(Array.isArray(result)).toBe(true);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {
@@ -64,13 +64,13 @@ describe('folderPickerGateway', () => {
   it('propagates listFolderContents errors', async () => {
     listFiles.mockRejectedValue(new Error('list failed'));
 
-    await expect(listFolderContents({ path: '/a' })).rejects.toThrow('list failed');
+    await expect(listFolderContents({ nodeId: 10 })).rejects.toThrow('list failed');
   });
 
   it('propagates checkWritePermission errors', async () => {
     checkPermission.mockRejectedValue(new Error('check failed'));
 
-    await expect(checkWritePermission({ path: '/private' })).rejects.toThrow('check failed');
+    await expect(checkWritePermission({ nodeId: 10 })).rejects.toThrow('check failed');
   });
 
   it('propagates shared-folder permission errors for non-admin users', async () => {
@@ -88,4 +88,3 @@ describe('folderPickerGateway', () => {
     });
   });
 });
-

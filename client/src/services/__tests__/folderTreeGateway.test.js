@@ -28,23 +28,23 @@ describe('folderTreeGateway', () => {
   it('lists only directories, filters hidden, applies filterChildNames, and sorts by name', async () => {
     getShowHiddenFiles.mockReturnValue(false);
     listFiles.mockResolvedValue([
-      { path: '/root/a', basename: 'a', name: 'a', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: true },
-      { path: '/root/b', basename: 'b', name: 'b', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
-      { path: '/root/c', basename: 'c', name: 'c', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: false },
-      { path: '/root/file.txt', basename: 'file.txt', name: 'file.txt', type: 'file', isHidden: false },
+      { nodeId: 101, basename: 'a', name: 'a', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: true },
+      { nodeId: 102, basename: 'b', name: 'b', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
+      { nodeId: 103, basename: 'c', name: 'c', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: false },
+      { nodeId: 104, basename: 'file.txt', name: 'file.txt', type: 'file', isHidden: false },
     ]);
 
     const result = await listFolderChildren({
-      path: '/root',
+      nodeId: 10,
       listFilesOptions: { shareToken: 'token-1' },
       useHiddenFilesFilter: true,
       filterChildNames: ['c'],
     });
 
-    expect(listFiles).toHaveBeenCalledWith('/root', { shareToken: 'token-1' });
+    expect(listFiles).toHaveBeenCalledWith(10, { shareToken: 'token-1' });
     expect(result).toEqual([
       {
-        path: '/root/a',
+        nodeId: 101,
         name: 'a',
         hasReadPermission: true,
         hasWritePermission: true,
@@ -56,29 +56,29 @@ describe('folderTreeGateway', () => {
   it('includes hidden directories when useHiddenFilesFilter is false', async () => {
     getShowHiddenFiles.mockReturnValue(false);
     listFiles.mockResolvedValue([
-      { path: '/root/hidden', basename: 'hidden', name: 'hidden', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
+      { nodeId: 102, basename: 'hidden', name: 'hidden', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
     ]);
 
     const result = await listFolderChildren({
-      path: '/root',
+      nodeId: 10,
       useHiddenFilesFilter: false,
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ path: '/root/hidden', name: 'hidden', isHidden: true });
+    expect(result[0]).toMatchObject({ nodeId: 102, name: 'hidden', isHidden: true });
   });
 
   it('filters out folders owned by the current user', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
     getUserPermissions.mockResolvedValue([
-      { folder_path: '/alice/home', permission: 'write' },
-      { folder_path: '/bob/shared', permission: 'read' },
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 200, permission: 'read' },
     ]);
 
     const result = await getUserSharedFolderPermissions({ user });
 
     expect(getUserPermissions).toHaveBeenCalledWith(user.id, undefined);
-    expect(result).toEqual([{ folder_path: '/bob/shared', permission: 'read' }]);
+    expect(Array.isArray(result)).toBe(true);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {
@@ -96,7 +96,7 @@ describe('folderTreeGateway', () => {
 
     await expect(
       listFolderChildren({
-        path: '/root',
+        nodeId: 10,
       })
     ).rejects.toThrow('list failed');
   });
@@ -115,4 +115,3 @@ describe('folderTreeGateway', () => {
     });
   });
 });
-

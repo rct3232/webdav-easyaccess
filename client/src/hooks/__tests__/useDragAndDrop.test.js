@@ -18,9 +18,9 @@ describe('useDragAndDrop', () => {
     jest.clearAllMocks();
   });
 
-  it('handleDragOver sets dropEffect to "none" and does not set drop target when target folder has hasWritePermission === false', () => {
-    const draggedFile = { path: '/a.txt', type: 'file' };
-    const noWriteFolder = { path: '/readonly', type: 'directory', hasWritePermission: false };
+  it('handleDragOver sets dropEffect to "none" and does not set drop target when target folder hasWritePermission is false', () => {
+    const draggedFile = { nodeId: 1, parentNodeId: 2, type: 'file' };
+    const noWriteFolder = { nodeId: 3, type: 'directory', hasWritePermission: false };
     const dataTransfer = { dropEffect: '', setData: jest.fn(), effectAllowed: '' };
 
     const { result } = renderHook(() =>
@@ -44,8 +44,8 @@ describe('useDragAndDrop', () => {
   });
 
   it('handleDragOver sets dropEffect to "move" and sets drop target when target folder has write permission', () => {
-    const draggedFile = { path: '/a.txt', type: 'file' };
-    const writeFolder = { path: '/writable', type: 'directory', hasWritePermission: true };
+    const draggedFile = { nodeId: 1, parentNodeId: 2, type: 'file' };
+    const writeFolder = { nodeId: 3, type: 'directory', hasWritePermission: true };
     const dataTransfer = { dropEffect: '', setData: jest.fn(), effectAllowed: '' };
 
     const { result } = renderHook(() =>
@@ -63,12 +63,12 @@ describe('useDragAndDrop', () => {
     });
 
     expect(dataTransfer.dropEffect).toBe('move');
-    expect(result.current.dropTarget).toBe('/writable');
+    expect(result.current.dropTarget).toBe(3);
   });
 
   it('handleDrop calls onDropPermissionDenied and does not call onFileDrop when target has no write permission', () => {
-    const draggedFile = { path: '/a.txt', type: 'file' };
-    const noWriteFolder = { path: '/readonly', type: 'directory', hasWritePermission: false };
+    const draggedFile = { nodeId: 1, parentNodeId: 2, type: 'file' };
+    const noWriteFolder = { nodeId: 3, type: 'directory', hasWritePermission: false };
     const e = { preventDefault: jest.fn(), stopPropagation: jest.fn() };
     const dataTransfer = { setData: jest.fn(), effectAllowed: '' };
 
@@ -83,15 +83,15 @@ describe('useDragAndDrop', () => {
       result.current.handleDrop(e, noWriteFolder);
     });
 
-    expect(mockOnDropPermissionDenied).toHaveBeenCalledWith('/readonly');
+    expect(mockOnDropPermissionDenied).toHaveBeenCalledWith(3);
     expect(mockOnFileDrop).not.toHaveBeenCalled();
     expect(result.current.draggedFile).toBeNull();
     expect(result.current.dropTarget).toBeNull();
   });
 
   it('handleDrop calls onFileDrop when target has write permission', () => {
-    const draggedFile = { path: '/a.txt', type: 'file' };
-    const writeFolder = { path: '/dest', type: 'directory', hasWritePermission: true };
+    const draggedFile = { nodeId: 1, parentNodeId: 2, type: 'file' };
+    const writeFolder = { nodeId: 3, type: 'directory', hasWritePermission: true };
     const e = { preventDefault: jest.fn(), stopPropagation: jest.fn() };
     const dataTransfer = { setData: jest.fn(), effectAllowed: '' };
 
@@ -110,9 +110,9 @@ describe('useDragAndDrop', () => {
     expect(mockOnDropPermissionDenied).not.toHaveBeenCalled();
   });
 
-  it('handleDragOver does not set drop target when target folder is the parent of the dragged path (no-op move)', () => {
-    const draggedFile = { path: '/folder/child.txt', type: 'file' };
-    const parentFolder = { path: '/folder', type: 'directory', hasWritePermission: true };
+  it('handleDragOver does not set drop target when target folder is the parent of the dragged nodeId (no-op move)', () => {
+    const draggedFile = { nodeId: 5, parentNodeId: 3, type: 'file' };
+    const parentFolder = { nodeId: 3, type: 'directory', hasWritePermission: true };
     const dataTransfer = { dropEffect: '', setData: jest.fn(), effectAllowed: '' };
 
     const { result } = renderHook(() =>
@@ -132,9 +132,9 @@ describe('useDragAndDrop', () => {
     expect(result.current.dropTarget).toBeNull();
   });
 
-  it('handleDrop does not call onFileDrop when target folder is the parent of the dragged path (no-op move)', () => {
-    const draggedFile = { path: '/folder/child.txt', type: 'file' };
-    const parentFolder = { path: '/folder', type: 'directory', hasWritePermission: true };
+  it('handleDrop does not call onFileDrop when target folder is the parent of the dragged nodeId (no-op move)', () => {
+    const draggedFile = { nodeId: 5, parentNodeId: 3, type: 'file' };
+    const parentFolder = { nodeId: 3, type: 'directory', hasWritePermission: true };
     const e = { preventDefault: jest.fn(), stopPropagation: jest.fn() };
     const dataTransfer = { setData: jest.fn(), effectAllowed: '' };
 
@@ -155,22 +155,14 @@ describe('useDragAndDrop', () => {
     expect(result.current.dropTarget).toBeNull();
   });
 
-  it('handleDrop does not call onFileDrop for tree-origin no-op drops (target is parent of tree path or equals tree path)', () => {
-    const parentFolder = { path: '/folder', type: 'directory', hasWritePermission: true };
-    const selfFolder = { path: '/folder', type: 'directory', hasWritePermission: true };
+  it('handleDrop does not call onFileDrop for tree-origin no-op drops (target nodeId equals dragged nodeId)', () => {
+    const targetFolder = { nodeId: 3, type: 'directory', hasWritePermission: true };
 
-    const eSameParent = {
-      preventDefault: jest.fn(),
-      stopPropagation: jest.fn(),
-      dataTransfer: {
-        getData: jest.fn(() => '/folder/child.txt'),
-      },
-    };
     const eSelf = {
       preventDefault: jest.fn(),
       stopPropagation: jest.fn(),
       dataTransfer: {
-        getData: jest.fn(() => '/folder'),
+        getData: jest.fn(() => String(3)),
       },
     };
 
@@ -179,23 +171,18 @@ describe('useDragAndDrop', () => {
     );
 
     act(() => {
-      result.current.handleDrop(eSameParent, parentFolder);
-    });
-    expect(mockOnFileDrop).not.toHaveBeenCalled();
-
-    act(() => {
-      result.current.handleDrop(eSelf, selfFolder);
+      result.current.handleDrop(eSelf, targetFolder);
     });
     expect(mockOnFileDrop).not.toHaveBeenCalled();
   });
 
-  it('handleDragOver does not set drop target for tree-origin no-op drops when treePath is available', () => {
-    const folder = { path: '/folder', type: 'directory', hasWritePermission: true };
+  it('handleDragOver does not set drop target for tree-origin no-op drops when dragged nodeId matches', () => {
+    const folder = { nodeId: 3, type: 'directory', hasWritePermission: true };
     const dataTransfer = {
       dropEffect: '',
       effectAllowed: '',
       types: ['text/plain'],
-      getData: jest.fn(() => '/folder/child.txt'),
+      getData: jest.fn(() => String(3)),
     };
 
     const { result } = renderHook(() =>

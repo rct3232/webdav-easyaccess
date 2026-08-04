@@ -3,18 +3,18 @@ import { checkPermission, getUserPermissions } from './permissionService';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
 /**
- * List directory entries for picker paths (normal folders).
+ * List directory entries for picker nodeIds (normal folders).
  * Preserves listFiles raw response shape; callers decide how to filter.
  */
-export const listFolderContents = async ({ path, options } = {}) => {
-  return listFiles(path, options || {});
+export const listFolderContents = async ({ nodeId, options } = {}) => {
+  return listFiles(nodeId, options || {});
 };
 
 /**
- * Check effective permission for a path and return the same structure used by the picker hook.
+ * Check effective permission for a nodeId and return the same structure used by the picker hook.
  */
-export const checkWritePermission = async ({ path } = {}) => {
-  return checkPermission(path);
+export const checkWritePermission = async ({ nodeId } = {}) => {
+  return checkPermission(nodeId);
 };
 
 /**

@@ -6,23 +6,19 @@ import { getShowHiddenFiles } from '../utils/localStorage';
 import { normalizePath, getBasename, getParentPath } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
-const hasAdminPermissionForPath = (itemPath, adminPrefixes) => {
-  if (!itemPath || adminPrefixes.length === 0) return false;
-
-  const normalizedPath = normalizePath(itemPath);
-  return adminPrefixes.some((adminPath) => (
-    normalizedPath === adminPath || normalizedPath.startsWith(`${adminPath}/`)
-  ));
+const hasAdminPermissionForNodeId = (itemNodeId, adminNodeIds) => {
+  if (itemNodeId == null || adminNodeIds.length === 0) return false;
+  return adminNodeIds.has(itemNodeId);
 };
 
-export const listDirectory = async ({ path = '/', options = {} } = {}) => {
+export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   const {
     shareToken,
     showHiddenFiles,
     user,
   } = options;
 
-  const data = await listFiles(path, shareToken ? { shareToken } : {});
+  const data = await listFiles(nodeId, shareToken ? { shareToken } : {});
 
   if (shareToken) {
     return Array.isArray(data) ? data : [];
@@ -43,13 +39,15 @@ export const listDirectory = async ({ path = '/', options = {} } = {}) => {
 
   try {
     const permissions = await getUserPermissions(user.id);
-    const adminPrefixes = (permissions || [])
-      .filter((permission) => permission.permission === 'admin')
-      .map((permission) => normalizePath(permission.folder_path));
+    const adminNodeIds = new Set(
+      (permissions || [])
+        .filter((permission) => permission.permission === 'admin')
+        .map((permission) => permission.node_id)
+    );
 
     return files.map((item) => (
-      item?.path
-        ? { ...item, hasAdminPermission: hasAdminPermissionForPath(item.path, adminPrefixes) }
+      item?.nodeId != null
+        ? { ...item, hasAdminPermission: hasAdminPermissionForNodeId(item.nodeId, adminNodeIds) }
         : item
     ));
   } catch (error) {
@@ -58,8 +56,8 @@ export const listDirectory = async ({ path = '/', options = {} } = {}) => {
   }
 };
 
-export const getPathAccess = async ({ path = '/', options = {} } = {}) => {
-  const permission = await checkPermission(path, options);
+export const getPathAccess = async ({ nodeId, options = {} } = {}) => {
+  const permission = await checkPermission(nodeId, options);
   return {
     canRead: permission?.hasRead === true,
     canWrite: permission?.hasWrite === true,
@@ -67,17 +65,17 @@ export const getPathAccess = async ({ path = '/', options = {} } = {}) => {
   };
 };
 
-export const canNavigateToPath = async (path, options) => {
-  const access = await getPathAccess({ path, options });
+export const canNavigateToPath = async (nodeId, options) => {
+  const access = await getPathAccess({ nodeId, options });
   return access.canRead;
 };
 
 export const getEntriesMetadata = async ({ entries = [], options = {} } = {}) => {
-  const filePaths = (Array.isArray(entries) ? entries : [])
-    .filter((entry) => entry?.type === 'file' && entry?.path)
-    .map((entry) => entry.path);
+  const nodeIds = (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.type === 'file' && entry?.nodeId != null)
+    .map((entry) => entry.nodeId);
 
-  return getFilesMetadata(filePaths, options);
+  return getFilesMetadata(nodeIds, options);
 };
 
 export const loadRecentFiles = async (options) => {
@@ -183,13 +181,13 @@ export const checkConflictsForExplorer = async ({ operations, options } = {}) =>
 };
 
 export const uploadToPath = async ({
-  targetPath = '/',
+  parentNodeId,
   files = [],
   onProgress,
   onConflict = 'error',
   options,
 } = {}) => {
-  return uploadMultipleFiles(files, targetPath, onProgress, onConflict, options);
+  return uploadMultipleFiles(files, parentNodeId, onProgress, onConflict, options);
 };
 
 export const addExplorerRecentFile = async (file, options) => {

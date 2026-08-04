@@ -8,12 +8,12 @@ import { filterOutUserOwnFolders } from '../utils/userUtils';
  * - Preserves existing folder-tree behavior (directories only, hidden-file filtering, sorting).
  */
 export const listFolderChildren = async ({
-  path,
+  nodeId,
   listFilesOptions = {},
   useHiddenFilesFilter = true,
   filterChildNames,
 } = {}) => {
-  const data = await listFiles(path, listFilesOptions || {});
+  const data = await listFiles(nodeId, listFilesOptions || {});
 
   const showHiddenFiles = useHiddenFilesFilter ? getShowHiddenFiles() : true;
 
@@ -21,7 +21,7 @@ export const listFolderChildren = async ({
     .filter((item) => item.type === 'directory')
     .filter((item) => showHiddenFiles || !item.isHidden)
     .map((item) => ({
-      path: item.path,
+      nodeId: item.nodeId,
       name: item.basename || item.name,
       hasReadPermission: item.hasReadPermission,
       hasWritePermission: item.hasWritePermission,

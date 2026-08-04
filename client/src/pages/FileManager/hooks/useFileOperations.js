@@ -3,13 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { downloadFile, downloadMultipleFiles, renameFile } from '../../../services/fileService';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../../../utils/processingUtils';
-import { normalizePath } from '../../../utils/pathUtils';
 import { applyRecentFilesAfterRename } from '../../../services/recentFilesRepository';
 
 /**
  * Common file operations hook
  * Provides unified file operation handlers for FileContextMenu and FileManager
- * 
+ *
  * @param {Object} options - Hook options
  * @param {Function} options.onProgress - Progress update callback
  * @param {Function} options.onMessage - Message callback (for FileContextMenu)
@@ -35,7 +34,7 @@ export const useFileOperations = ({
 
   /**
    * Handle file download
-   * @param {Object} file - File object
+   * @param {Object} file - File object with nodeId
    */
   const handleFileDownload = useCallback(async (file) => {
     try {
@@ -50,44 +49,44 @@ export const useFileOperations = ({
           current: '',
           zipName: '',
         };
-        
+
         if (onProgress) {
           onProgress(progressItem);
         }
-        
-        const result = await downloadMultipleFiles([file.path], (progress) => {
+
+        const result = await downloadMultipleFiles([file.nodeId], (progress) => {
           if (onProgress) {
             onProgress({ ...progress, id: progressId });
           }
         });
 
         const skippedCount = result?.skippedCount || 0;
-        const skippedPaths = result?.skippedInfo?.paths || [];
+        const skippedNodeIds = result?.skippedInfo?.nodeIds || [];
         const skippedTruncated = Boolean(result?.skippedInfo?.truncated);
-        const hasSkipped = skippedCount > 0 || skippedPaths.length > 0;
+        const hasSkipped = skippedCount > 0 || skippedNodeIds.length > 0;
         if (hasSkipped && onProgress) {
           onProgress({
             id: progressId,
             type: 'download',
             status: 'warning',
-            error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedPaths.length }),
+            error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedNodeIds.length }),
             keepOnError: true,
-            skippedPaths,
-            skippedCount: skippedCount || skippedPaths.length,
+            skippedNodeIds,
+            skippedCount: skippedCount || skippedNodeIds.length,
             skippedTruncated,
           });
         }
-        
+
         if (onProgress && !hasSkipped) {
           setTimeout(() => {
             onProgress({ id: progressId, remove: true });
           }, 3000);
         }
       } else {
-        const fileName = file.basename ?? file.name ?? file.path?.split('/').pop();
-        await downloadFile(file.path, { fileName });
+        const fileName = file.basename ?? file.name ?? '';
+        await downloadFile(file.nodeId, { fileName });
       }
-      
+
       if (onClose) {
         onClose();
       }
@@ -111,10 +110,10 @@ export const useFileOperations = ({
 
   /**
    * Handle file rename
-   * @param {Object} file - File object
+   * @param {Object} file - File object with nodeId
    * @param {string} newName - New file name
    * @param {Object} [context] - Operation context
-   * @param {string} [context.startedPath] - Path at operation start
+   * @param {number} [context.startedNodeId] - nodeId at operation start
    */
   const handleFileRename = useCallback(async (file, newName, context = {}) => {
     if (!file || !newName || !newName.trim()) {
@@ -135,8 +134,8 @@ export const useFileOperations = ({
       return;
     }
 
-    const filePath = file.path;
-    const startedPath = context?.startedPath;
+    const nodeId = file.nodeId;
+    const startedNodeId = context?.startedNodeId;
     const progressId = `rename_${Date.now()}`;
     const progressItem = {
       id: progressId,
@@ -147,12 +146,12 @@ export const useFileOperations = ({
       current: '',
       name: `${file.basename} ${t('dialogs.renameTitle')}`,
     };
-    
+
     // Mark processing
     if (setProcessingMap) {
-      markProcessing(setProcessingMap, filePath, 'rename');
+      markProcessing(setProcessingMap, nodeId, 'rename');
     } else if (onProcessingStart) {
-      onProcessingStart([filePath], 'rename');
+      onProcessingStart([nodeId], 'rename');
     }
 
     try {
@@ -165,31 +164,26 @@ export const useFileOperations = ({
         });
       }
 
-      await renameFile(filePath, newName);
-      
-      // 이름변경 성공 시 최근항목 경로 업데이트
+      const result = await renameFile(nodeId, newName);
+
+      // 이름변경 성공 시 최근항목 업데이트
       try {
-        // 새 경로 계산
-        const parentPath = normalizePath(filePath.substring(0, filePath.lastIndexOf('/')) || '/');
-        const newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`;
-        
-        await applyRecentFilesAfterRename(filePath, newPath, {
-          ...file,
-          name: newName,
-          basename: newName,
-        });
+        const renamedFile = result?.display_path != null
+          ? { ...file, display_path: result.display_path, basename: newName, name: newName }
+          : { ...file, basename: newName, name: newName };
+        await applyRecentFilesAfterRename(nodeId, renamedFile.nodeId, renamedFile);
       } catch (err) {
         // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
         console.error('Failed to update recent files after rename:', err);
       }
-      
+
       if (onActionComplete) {
         onActionComplete({
           opType: 'rename',
-          startedPath,
+          startedNodeId,
         });
       }
-      
+
       if (onClose) {
         onClose();
       }
@@ -220,14 +214,14 @@ export const useFileOperations = ({
         alert(errorMsg);
       }
       if (onActionComplete) {
-        onActionComplete({ opType: 'rename', startedPath });
+        onActionComplete({ opType: 'rename', startedNodeId });
       }
     } finally {
       // Clear processing
       if (setProcessingMap) {
-        clearProcessing(setProcessingMap, filePath);
+        clearProcessing(setProcessingMap, nodeId);
       } else if (onProcessingEnd) {
-        onProcessingEnd([filePath]);
+        onProcessingEnd([nodeId]);
       }
     }
   }, [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose, t]);

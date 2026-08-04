@@ -54,18 +54,18 @@ describe('explorerGateway', () => {
   });
 
   it('delegates conflict preflight to fileService with the same operations', async () => {
-    checkConflicts.mockResolvedValueOnce([{ path: '/docs/report.txt' }]);
+    checkConflicts.mockResolvedValueOnce([{ nodeId: 1, basename: 'report.txt' }]);
 
     const result = await checkConflictsForExplorer({
-      operations: [{ sourcePath: 'report.txt', destinationPath: '/docs/report.txt', type: 'upload' }],
+      operations: [{ sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' }],
       options: { limit: false },
     });
 
     expect(checkConflicts).toHaveBeenCalledWith(
-      [{ sourcePath: 'report.txt', destinationPath: '/docs/report.txt', type: 'upload' }],
+      [{ sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' }],
       { limit: false }
     );
-    expect(result).toEqual([{ path: '/docs/report.txt' }]);
+    expect(result).toEqual([{ nodeId: 1, basename: 'report.txt' }]);
   });
 
   it('delegates uploadToPath to fileService preserving progress and conflict options', async () => {
@@ -74,7 +74,7 @@ describe('explorerGateway', () => {
 
     const files = [{ file: { name: 'report.txt' }, relativePath: 'report.txt' }];
     const result = await uploadToPath({
-      targetPath: '/docs',
+      parentNodeId: 5,
       files,
       onProgress,
       onConflict: 'replace',
@@ -83,7 +83,7 @@ describe('explorerGateway', () => {
 
     expect(uploadMultipleFiles).toHaveBeenCalledWith(
       files,
-      '/docs',
+      5,
       onProgress,
       'replace',
       expect.objectContaining({ getSignalForFile: expect.any(Function) })
@@ -107,76 +107,76 @@ describe('explorerGateway', () => {
 
   it('lists a normal directory with hidden filtering and admin permission enrichment', async () => {
     listFiles.mockResolvedValueOnce([
-      { path: '/docs/report.txt', isHidden: false },
-      { path: '/docs/.draft.txt', isHidden: true },
+      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false },
+      { nodeId: 11, display_path: '/docs/.draft.txt', isHidden: true },
     ]);
     getUserPermissions.mockResolvedValueOnce([
-      { folder_path: '/docs', permission: 'admin' },
+      { node_id: 10, permission: 'admin' },
     ]);
 
     const result = await listDirectory({
-      path: '/docs',
+      nodeId: 5,
       options: {
         user: { id: '1', is_admin: false },
       },
     });
 
-    expect(listFiles).toHaveBeenCalledWith('/docs', {});
+    expect(listFiles).toHaveBeenCalledWith(5, {});
     expect(getShowHiddenFiles).toHaveBeenCalled();
     expect(result).toEqual([
-      expect.objectContaining({ path: '/docs/report.txt', hasAdminPermission: true }),
+      expect.objectContaining({ nodeId: 10, hasAdminPermission: true }),
     ]);
   });
 
   it('returns raw share listings without hidden or permission enrichment', async () => {
-    listFiles.mockResolvedValueOnce([{ path: '/shared/.hidden.txt', isHidden: true }]);
+    listFiles.mockResolvedValueOnce([{ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }]);
 
     const result = await listDirectory({
-      path: '/shared',
+      nodeId: 15,
       options: {
         shareToken: 'share-token',
         user: { id: '1', is_admin: false },
       },
     });
 
-    expect(listFiles).toHaveBeenCalledWith('/shared', { shareToken: 'share-token' });
-    expect(result).toEqual([{ path: '/shared/.hidden.txt', isHidden: true }]);
+    expect(listFiles).toHaveBeenCalledWith(15, { shareToken: 'share-token' });
+    expect(result).toEqual([{ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }]);
     expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
   it('maps permission checks into explorer access facts', async () => {
-    checkPermission.mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'path' });
+    checkPermission.mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'nodeId' });
 
-    const access = await getPathAccess({ path: '/docs' });
+    const access = await getPathAccess({ nodeId: 5 });
 
-    expect(checkPermission).toHaveBeenCalledWith('/docs', {});
+    expect(checkPermission).toHaveBeenCalledWith(5, {});
     expect(access).toEqual({
       canRead: true,
       canWrite: false,
-      raw: { hasRead: true, hasWrite: false, source: 'path' },
+      raw: { hasRead: true, hasWrite: false, source: 'nodeId' },
     });
   });
 
   it('uses access facts for canNavigateToPath', async () => {
     checkPermission.mockResolvedValueOnce({ hasRead: false, hasWrite: false });
 
-    const result = await canNavigateToPath('/forbidden');
+    const result = await canNavigateToPath(99);
 
     expect(result).toBe(false);
   });
 
   it('loads metadata for file entries only', async () => {
-    getFilesMetadata.mockResolvedValueOnce([{ path: '/docs/report.txt', size: 12 }]);
+    getFilesMetadata.mockResolvedValueOnce([{ nodeId: 10, display_path: '/docs/report.txt', size: 12 }]);
 
     const result = await getEntriesMetadata({
       entries: [
-        { path: '/docs/report.txt', type: 'file' },
-        { path: '/docs/archive', type: 'directory' },
+        { nodeId: 10, type: 'file' },
+        { nodeId: 11, type: 'directory' },
       ],
     });
 
-    expect(getFilesMetadata).toHaveBeenCalledWith(['/docs/report.txt'], {});
-    expect(result).toEqual([{ path: '/docs/report.txt', size: 12 }]);
+    expect(getFilesMetadata).toHaveBeenCalledWith([10], {});
+    expect(result).toEqual([{ nodeId: 10, display_path: '/docs/report.txt', size: 12 }]);
   });
 
   it('delegates recent file loading, removal, and subscription helpers', async () => {

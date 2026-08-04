@@ -6,7 +6,6 @@
 import { get, post, del } from './apiClient';
 import { normalizePath } from '../utils/pathUtils';
 import { notifyRecentFilesChange } from './recentFilesNotifier';
-import { updateSubPathsOnPathChange } from '../utils/recentFiles';
 
 const asRecentEntry = (entry = {}) => {
   const normalizedPath = entry.path ? normalizePath(entry.path) : '';
@@ -110,46 +109,23 @@ export const clearRecentFiles = async () => {
 
 /**
  * Apply recent-file updates after rename.
- *
- * - For file renames: remove old exact path and add new exact path.
- * - For directory renames: use pure path-mutation planning helpers to update subpaths.
- *
- * @param {string} oldPath
- * @param {string} newPath
+ * @param {number} oldNodeId - nodeId of the renamed entity
+ * @param {number} newDisplayPath - display_path returned by server after rename
  * @param {{type?: 'file'|'directory', name?: string, basename?: string}} file
  * @returns {Promise<Array>}
  */
-export const applyRecentFilesAfterRename = async (oldPath, newPath, file) => {
+export const applyRecentFilesAfterRename = async (oldNodeId, _newDisplayPath, file) => {
   try {
-    if (file?.type !== 'directory') {
-      await removeRecentFile(oldPath, { silent: true });
-
-      await addRecentFile(
-        {
-          path: newPath,
-          name: file?.name || file?.basename,
-          type: file?.type || 'file',
-          basename: file?.basename ?? file?.name,
-        },
-        { silent: true }
-      );
-
-      const result = await getRecentFiles();
-      notifyRecentFilesChange();
-      return result;
-    }
-
-    const recentEntries = await getRecentFiles();
-    const plan = updateSubPathsOnPathChange(recentEntries, oldPath, newPath);
-
-    // Apply removals/additions without triggering multiple notifications.
-    for (const removedPath of plan.removedPaths) {
-      await removeRecentFile(removedPath, { silent: true });
-    }
-
-    for (const entry of plan.addedEntries) {
-      await addRecentFile(entry, { silent: true });
-    }
+    await addRecentFile(
+      {
+        nodeId: oldNodeId,
+        display_path: file?.display_path,
+        name: file?.name || file?.basename,
+        type: file?.type || 'file',
+        basename: file?.basename ?? file?.name,
+      },
+      { silent: true }
+    );
 
     const result = await getRecentFiles();
     notifyRecentFilesChange();
@@ -163,17 +139,17 @@ export const applyRecentFilesAfterRename = async (oldPath, newPath, file) => {
 
 /**
  * Apply recent-file updates after bulk delete.
- * @param {{ filePaths?: string[], folderPaths?: string[] }} params
+ * @param {{ nodeIds?: number[], folderPaths?: string[] }} params
  * @returns {Promise<Array>}
  */
-export const applyRecentFilesAfterBulkDelete = async ({ filePaths = [], folderPaths = [] } = {}) => {
-  if (!filePaths?.length && !folderPaths?.length) {
+export const applyRecentFilesAfterBulkDelete = async ({ nodeIds = [], folderPaths = [] } = {}) => {
+  if (!nodeIds?.length && !folderPaths?.length) {
     return await getRecentFiles();
   }
 
   try {
     await post('/recent-files/remove-paths', {
-      filePaths: filePaths || [],
+      filePaths: nodeIds || [],
       folderPaths: folderPaths || [],
     });
 
@@ -189,7 +165,7 @@ export const applyRecentFilesAfterBulkDelete = async ({ filePaths = [], folderPa
 
 /**
  * Apply recent-file updates after bulk move.
- * @param {{oldPath: string, newPath: string, file?: {type?: 'file'|'directory', name?: string, basename?: string}}[]} moves
+ * @param {{oldNodeId: number, newParentNodeId: number, file?: {type?: 'file'|'directory', name?: string, basename?: string}}[]} moves
  * @returns {Promise<Array>}
  */
 export const applyRecentFilesAfterBulkMove = async (moves = []) => {
@@ -198,9 +174,9 @@ export const applyRecentFilesAfterBulkMove = async (moves = []) => {
   }
 
   try {
-    const payloadMoves = moves.map(({ oldPath, newPath, file }) => ({
-      oldPath,
-      newPath,
+    const payloadMoves = moves.map(({ oldNodeId, newParentNodeId, file }) => ({
+      oldNodeId,
+      newParentNodeId,
       file: file
         ? { type: file.type, name: file.name, basename: file.basename }
         : undefined,

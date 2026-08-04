@@ -1,7 +1,6 @@
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { getContentType } from '@webdav-easyaccess/shared/fileTypes';
 import i18n from '../i18n';
-import { normalizePath } from '../utils/pathUtils';
 import { get, post, put } from './apiClient';
 import {
   checkPermission as checkPermissionApi,
@@ -22,41 +21,42 @@ function shareTokenHeaders(shareToken) {
   return { 'X-Share-Token': shareToken };
 }
 
-export const listFiles = async (path = '/', options = {}) => {
+export const listFiles = async (nodeId, options = {}) => {
   const { shareToken } = options;
-  const normalizedPath = path === '' || path == null ? '/' : normalizePath(path);
+  const params = nodeId != null ? { nodeId } : {};
+  if (shareToken) params.shareToken = shareToken;
   const response = await get(`${API_BASE}/list`, {
-    params: { path: normalizedPath, ...(shareToken && { shareToken }) },
+    params,
     headers: shareTokenHeaders(shareToken),
   });
   return response.data;
 };
 
 /**
- * 여러 파일 경로에 대한 메타데이터(size, lastmod, mime) 조회. 빈 배열이면 [] 반환.
- * @param {string[]} paths - 파일 경로 배열
- * @returns {Promise<Array<{ path: string, size: number, lastmod: string|null, mime: string|null }>>}
+ * Fetch metadata (size, lastmod, mime) for nodeIds. Returns [] for empty input.
+ * @param {number[]} nodeIds - nodeId array
+ * @returns {Promise<Array<{ nodeId: number, size: number, lastmod: string|null, mime: string|null }>>}
  */
-export const getFilesMetadata = async (paths = [], options = {}) => {
-  if (!Array.isArray(paths) || paths.length === 0) {
+export const getFilesMetadata = async (nodeIds = [], options = {}) => {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
     return [];
   }
   const { shareToken } = options;
-  const response = await post(`${API_BASE}/metadata`, { paths, ...(shareToken && { shareToken }) }, {
+  const response = await post(`${API_BASE}/metadata`, { nodeIds, ...(shareToken && { shareToken }) }, {
     headers: shareTokenHeaders(shareToken),
   });
   return Array.isArray(response.data) ? response.data : [];
 };
 
 /**
- * 파일 blob 조회 (미리보기 등)
- * @param {string} filePath - 파일 경로
+ * Fetch file blob (preview, etc.)
+ * @param {number} nodeId - File nodeId
  * @param {Object} options - { inline: boolean }
  * @returns {Promise<Blob>}
  */
-export const getFileBlob = async (filePath, options = {}) => {
+export const getFileBlob = async (nodeId, options = {}) => {
   const { shareToken, inline, signal } = options;
-  const params = { path: filePath };
+  const params = { nodeId };
   if (inline) params.inline = 'true';
   if (shareToken) params.shareToken = shareToken;
   const response = await get(`${API_BASE}/download`, {
@@ -71,38 +71,38 @@ export const getFileBlob = async (filePath, options = {}) => {
 /**
  * Get a streaming URL for video preview suitable for <video src>.
  * Uses a short-lived server-issued ticket (no JWT in query params).
- * @param {string} filePath
+ * @param {number} nodeId
  * @param {object} [options]
  * @param {string} [options.shareToken]
  * @returns {Promise<string>} URL path (same-origin) to use as media src
  */
-export const getVideoPreviewStreamUrl = async (filePath, options = {}) => {
+export const getVideoPreviewStreamUrl = async (nodeId, options = {}) => {
   const { shareToken } = options;
-  const response = await post(`${API_BASE}/preview-ticket`, { path: filePath, ...(shareToken && { shareToken }) }, {
+  const response = await post(`${API_BASE}/preview-ticket`, { nodeId, ...(shareToken && { shareToken }) }, {
     headers: shareTokenHeaders(shareToken),
   });
   const ticket = response?.data?.ticket;
   if (!ticket) {
     throw new Error('No preview ticket in response');
   }
-  const params = new URLSearchParams({ path: filePath, ticket });
+  const params = new URLSearchParams({ nodeId: String(nodeId), ticket });
   return `/api${API_BASE}/preview-stream?${params.toString()}`;
 };
 
 /**
  * Download a single file. On iOS + image, uses share sheet or inline open so the user can save to Photos.
- * @param {string} filePath - Path of the file.
+ * @param {number} nodeId - nodeId of the file.
  * @param {Object} [options] - Optional. fileName, mimeType, isMobile, shareToken.
  */
-export const downloadFile = async (filePath, options = {}) => {
-  const fileName = options.fileName ?? filePath.split('/').pop() ?? '';
+export const downloadFile = async (nodeId, options = {}) => {
+  const fileName = options.fileName ?? '';
   const mimeType = options.mimeType ?? getContentType(fileName);
   const shareToken = options.shareToken;
   const ios = isIOS();
 
   const fetchBlob = () =>
     get(`${API_BASE}/download`, {
-      params: { path: filePath, ...(shareToken && { shareToken }) },
+      params: { nodeId, ...(shareToken && { shareToken }) },
       responseType: 'blob',
       headers: shareToken ? { 'X-Share-Token': shareToken } : {},
     });
@@ -161,10 +161,10 @@ export const downloadFile = async (filePath, options = {}) => {
   triggerDefaultDownload(response.data);
 };
 
-export const uploadFileWithPath = async (file, targetPath = '/', relativePath = '', onConflict = 'error', signal = null) => {
+export const uploadFile = async (file, parentNodeId, relativePath = '', onConflict = 'error', signal = null) => {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('path', targetPath);
+  formData.append('parentNodeId', String(parentNodeId));
   if (relativePath) {
     formData.append('relativePath', relativePath);
   }
@@ -185,7 +185,7 @@ export const uploadFileWithPath = async (file, targetPath = '/', relativePath = 
   return response.data;
 };
 
-export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, onConflict = 'error', options = {}) => {
+export const uploadMultipleFiles = async (files, parentNodeId, onProgress, onConflict = 'error', options = {}) => {
   const results = [];
   const errors = [];
   const { getSignalForFile } = options;
@@ -217,7 +217,7 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
         });
       }
 
-      const result = await uploadFileWithPath(file, targetPath, relativePath, onConflict, signal);
+      const result = await uploadFile(file, parentNodeId, relativePath, onConflict, signal);
       const skipped = result?.skipped === true;
       results.push({ file, result, success: true, skipped });
 
@@ -271,29 +271,30 @@ export const uploadMultipleFiles = async (files, targetPath = '/', onProgress, o
   return { results, errors };
 };
 
-export const renameFile = async (oldPath, newName) => {
+export const renameFile = async (nodeId, newName) => {
   const response = await put(`${API_BASE}/rename`, {
-    oldPath,
+    nodeId,
     newName,
   });
   return response.data;
 };
 
-export const createFolder = async (folderPath) => {
+export const createFolder = async (parentNodeId, name) => {
   const response = await post('/folders/create', {
-    path: folderPath,
+    parentNodeId,
+    name,
   });
   return response.data;
 };
 
 /**
- * 폴더의 재귀적 통계(파일 갯수, 전체 용량) 조회
- * @param {string} folderPath - 폴더 경로
+ * Recursive folder stats (file count, total size).
+ * @param {number} nodeId - Folder nodeId
  * @returns {Promise<{ fileCount: number, totalSize: number }>}
  */
-export const getFolderStats = async (folderPath) => {
+export const getFolderStats = async (nodeId) => {
   const response = await get('/folders/stats', {
-    params: { path: folderPath },
+    params: { nodeId },
   });
   return response.data;
 };
@@ -323,7 +324,7 @@ function serverProgressToPercent(server) {
   return 0;
 }
 
-export const downloadMultipleFiles = async (paths, onProgress, options = {}) => {
+export const downloadMultipleFiles = async (nodeIds, onProgress, options = {}) => {
   const { shareToken } = options;
   const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   let lastProgressEvent = null;
@@ -335,17 +336,12 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
   try {
     let totalSize = 0;
     try {
-      for (const filePath of paths) {
-        const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
-        const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
-        const files = await listFiles(parentPath, listOpts);
-        const fileItem = files.find(item => item.basename === fileName);
-        if (fileItem) {
-          if (fileItem.type === 'directory') {
-            totalSize += 1024 * 1024;
-          } else if (fileItem.size) {
-            totalSize += fileItem.size;
-          }
+      const metadataList = await getFilesMetadata(nodeIds, listOpts);
+      for (const meta of metadataList) {
+        if (meta.size) {
+          totalSize += meta.size;
+        } else {
+          totalSize += 1024 * 1024;
         }
       }
     } catch (err) {
@@ -386,7 +382,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
 
     const response = await post(
       '/files/download-multiple',
-      { paths, downloadId, ...(shareToken && { shareToken }) },
+      { nodeIds, downloadId, ...(shareToken && { shareToken }) },
       {
         responseType: 'blob',
         headers: shareTokenHeaders(shareToken),
@@ -417,7 +413,7 @@ export const downloadMultipleFiles = async (paths, onProgress, options = {}) => 
       }
     }
 
-    // Optional: server may report skipped paths due to permission (URL-encoded JSON)
+    // Optional: server may report skipped nodeIds due to permission (URL-encoded JSON)
     const skippedCountHeader = response.headers['x-wea-skipped-count'];
     const skippedHeader = response.headers['x-wea-skipped'];
     let skippedInfo = null;
@@ -513,10 +509,10 @@ export const updateFilePermission = async ({ userId, filePath, permission }) => 
 /** List current user's file-level permissions. Re-exported from permissionService. */
 export { listFilePermissions } from './permissionService';
 
-export const requestThumbnailsBatch = async (paths, options = {}) => {
+export const requestThumbnailsBatch = async (nodeIds, options = {}) => {
   const { shareToken } = options;
   const response = await post(`${API_BASE}/thumbnails/batch`, {
-    paths,
+    nodeIds,
     ...(shareToken && { shareToken }),
   }, {
     headers: shareTokenHeaders(shareToken),
@@ -525,8 +521,8 @@ export const requestThumbnailsBatch = async (paths, options = {}) => {
 };
 
 /** Starts bulk delete job. Returns { jobId }. Poll with getBulkOperationStatus(jobId). */
-export const batchDeleteFiles = async (paths) => {
-  const response = await post(`${API_BASE}/batch-delete`, { paths });
+export const batchDeleteFiles = async (nodeIds) => {
+  const response = await post(`${API_BASE}/batch-delete`, { nodeIds });
   return response.data;
 };
 

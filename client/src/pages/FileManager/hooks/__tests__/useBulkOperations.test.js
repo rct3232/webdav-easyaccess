@@ -32,17 +32,17 @@ const mockSetTreeUpdateTrigger = jest.fn();
 const mockOnOperationComplete = jest.fn();
 const mockSetSelectedFiles = jest.fn();
 const mockSetSelectionMode = jest.fn();
-const mockGetCurrentPath = jest.fn(() => '/');
+const mockGetCurrentNodeId = jest.fn(() => 0);
 
 const defaultArgs = [
-  new Set(['/file1.txt', '/file2.txt']),
-  [{ path: '/file1.txt', type: 'file' }, { path: '/file2.txt', type: 'file' }],
+  new Set([1, 2]),
+  [{ nodeId: 1, type: 'file', basename: 'file1.txt' }, { nodeId: 2, type: 'file', basename: 'file2.txt' }],
   mockOnOperationComplete,
   mockSetTreeUpdateTrigger,
   undefined,
   mockSetSelectedFiles,
   mockSetSelectionMode,
-  mockGetCurrentPath,
+  mockGetCurrentNodeId,
   {},
 ];
 
@@ -62,15 +62,15 @@ describe('useBulkOperations', () => {
         total: 2,
         results: [
           {
-            path: '/file1.txt',
-            sourcePath: '/file1.txt',
-            destinationPath: '/dest/file1.txt',
+            nodeId: 1,
+            sourceNodeId: 1,
+            destinationParentNodeId: 99,
             status: 'succeeded',
           },
           {
-            path: '/file2.txt',
-            sourcePath: '/file2.txt',
-            destinationPath: '/dest/file2.txt',
+            nodeId: 2,
+            sourceNodeId: 2,
+            destinationParentNodeId: 99,
             status: 'succeeded',
           },
         ],
@@ -126,7 +126,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(fileService.batchDeleteFiles).toHaveBeenCalledWith(
-      expect.arrayContaining(['/file1.txt', '/file2.txt'])
+      expect.arrayContaining([1, 2])
     );
 
     await act(async () => {
@@ -137,7 +137,7 @@ describe('useBulkOperations', () => {
       expect.objectContaining({ opType: 'delete' })
     );
     expect(recentFilesRepository.applyRecentFilesAfterBulkDelete).toHaveBeenCalledWith({
-      filePaths: ['/file1.txt', '/file2.txt'],
+      nodeIds: [1, 2],
       folderPaths: [],
     });
   });
@@ -151,7 +151,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(onConfirm).toHaveBeenCalledWith(
-      expect.arrayContaining(['/file1.txt', '/file2.txt'])
+      expect.arrayContaining([1, 2])
     );
     expect(fileService.batchDeleteFiles).not.toHaveBeenCalled();
   });
@@ -164,7 +164,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(fileService.downloadMultipleFiles).toHaveBeenCalledWith(
-      expect.arrayContaining(['/file1.txt', '/file2.txt']),
+      expect.arrayContaining([1, 2]),
       expect.any(Function),
       undefined
     );
@@ -179,7 +179,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     expect(fileService.checkConflicts).toHaveBeenCalled();
@@ -193,11 +193,11 @@ describe('useBulkOperations', () => {
     });
 
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ opType: 'move', targetPath: '/dest' })
+      expect.objectContaining({ opType: 'move', targetParentNodeId: 99 })
     );
     expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
-      expect.objectContaining({ oldPath: '/file1.txt', newPath: '/dest/file1.txt' }),
-      expect.objectContaining({ oldPath: '/file2.txt', newPath: '/dest/file2.txt' }),
+      expect.objectContaining({ oldNodeId: 1, newParentNodeId: 99 }),
+      expect.objectContaining({ oldNodeId: 2, newParentNodeId: 99 }),
     ]);
   });
 
@@ -208,15 +208,15 @@ describe('useBulkOperations', () => {
       total: 2,
       results: [
         {
-          path: '/file1.txt',
-          sourcePath: '/file1.txt',
-          destinationPath: '/dest/file1.txt',
+          nodeId: 1,
+          sourceNodeId: 1,
+          destinationParentNodeId: 99,
           status: 'succeeded',
         },
         {
-          path: '/file2.txt',
-          sourcePath: '/file2.txt',
-          destinationPath: '/dest/file2.txt',
+          nodeId: 2,
+          sourceNodeId: 2,
+          destinationParentNodeId: 99,
           status: 'skippedByPermission',
         },
       ],
@@ -229,7 +229,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     await act(async () => {
@@ -237,13 +237,13 @@ describe('useBulkOperations', () => {
     });
 
     expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
-      expect.objectContaining({ oldPath: '/file1.txt', newPath: '/dest/file1.txt' }),
+      expect.objectContaining({ oldNodeId: 1, newParentNodeId: 99 }),
     ]);
   });
 
   it('handleFolderPickerSelect with conflicts sets bulkConflictData', async () => {
     fileService.checkConflicts.mockResolvedValue([
-      { sourcePath: '/file1.txt', destinationPath: '/dest/file1.txt' },
+      { sourceNodeId: 1, destinationParentNodeId: 99 },
     ]);
     const { result } = renderHook(() => useBulkOperations(...defaultArgs));
 
@@ -252,7 +252,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     expect(result.current.bulkConflictData).not.toBeNull();
@@ -261,7 +261,7 @@ describe('useBulkOperations', () => {
 
   it('resolveBulkConflict with overwrite proceeds with operation', async () => {
     fileService.checkConflicts.mockResolvedValue([
-      { sourcePath: '/file1.txt', destinationPath: '/dest/file1.txt' },
+      { sourceNodeId: 1, destinationParentNodeId: 99 },
     ]);
     const { result } = renderHook(() => useBulkOperations(...defaultArgs));
 
@@ -270,7 +270,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     expect(result.current.bulkConflictData).not.toBeNull();
@@ -289,7 +289,7 @@ describe('useBulkOperations', () => {
     });
 
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ opType: 'move', targetPath: '/dest' })
+      expect.objectContaining({ opType: 'move', targetParentNodeId: 99 })
     );
   });
 
@@ -320,8 +320,8 @@ describe('useBulkOperations', () => {
       progress: 2,
       total: 2,
       results: [
-        { path: '/file1.txt', sourcePath: '/file1.txt', destinationPath: '/dest/file1.txt', status: 'succeeded' },
-        { path: '/file2.txt', sourcePath: '/file2.txt', destinationPath: '/dest/file2.txt', status: 'succeeded' },
+        { nodeId: 1, sourceNodeId: 1, destinationParentNodeId: 99, status: 'succeeded' },
+        { nodeId: 2, sourceNodeId: 2, destinationParentNodeId: 99, status: 'succeeded' },
       ],
     });
 
@@ -332,7 +332,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     const errorItem = result.current.progressItems.find(
@@ -353,7 +353,7 @@ describe('useBulkOperations', () => {
 
     await waitFor(() => {
       expect(mockOnOperationComplete).toHaveBeenCalledWith(
-        expect.objectContaining({ opType: 'move', targetPath: '/dest' })
+        expect.objectContaining({ opType: 'move', targetParentNodeId: 99 })
       );
     });
   });
@@ -371,8 +371,8 @@ describe('useBulkOperations', () => {
               progress: 2,
               total: 2,
               results: [
-                { path: '/file1.txt', sourcePath: '/file1.txt', destinationPath: '/dest/file1.txt', status: 'succeeded' },
-                { path: '/file2.txt', sourcePath: '/file2.txt', destinationPath: '/dest/file2.txt', status: 'succeeded' },
+                { nodeId: 1, sourceNodeId: 1, destinationParentNodeId: 99, status: 'succeeded' },
+                { nodeId: 2, sourceNodeId: 2, destinationParentNodeId: 99, status: 'succeeded' },
               ],
             }
       );
@@ -385,7 +385,7 @@ describe('useBulkOperations', () => {
     });
 
     await act(async () => {
-      await result.current.handleFolderPickerSelect('/dest');
+      await result.current.handleFolderPickerSelect(99);
     });
 
     await waitFor(() => {

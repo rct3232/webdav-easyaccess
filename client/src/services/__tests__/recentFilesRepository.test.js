@@ -38,7 +38,7 @@ describe('recentFilesRepository', () => {
     });
 
     it('returns list from GET /recent-files', async () => {
-      const list = [{ path: '/a', type: 'file', name: 'a' }];
+      const list = [{ nodeId: 1, display_path: '/a', type: 'file' }];
       get.mockResolvedValueOnce({ data: list });
       const result = await getRecentFiles();
       expect(get).toHaveBeenCalledWith('/recent-files');
@@ -124,66 +124,38 @@ describe('recentFilesRepository', () => {
   });
 
   describe('applyRecentFilesAfterRename', () => {
-    it('for file renames: removes old and adds new, then refreshes + notifies', async () => {
-      del.mockResolvedValueOnce({ data: [] });
+    it('for file renames: re-adds entry with new details, then refreshes + notifies', async () => {
       post.mockResolvedValueOnce({});
       get.mockResolvedValueOnce({ data: [{ path: '/new', type: 'file' }] });
 
-      const result = await applyRecentFilesAfterRename('/old', '/new', {
+      const result = await applyRecentFilesAfterRename(1, '/new', {
         type: 'file',
         name: 'new',
         basename: 'new',
+        display_path: '/new',
       });
 
-      expect(del).toHaveBeenCalledWith(
-        `/recent-files/${encodeURIComponent(normalizePath('/old'))}`
-      );
-      // removeRecentFile is called internally with { silent: true }, so no notify during internal operations.
       expect(post).toHaveBeenCalledWith(
         '/recent-files',
-        expect.objectContaining({ path: normalizePath('/new') })
+        expect.objectContaining({ path: '', type: 'file' })
       );
       expect(notifyRecentFilesChange).toHaveBeenCalledTimes(1);
       expect(result).toEqual([{ path: '/new', type: 'file' }]);
     });
 
-    it('for directory renames: updates subpaths using pure planning helpers', async () => {
-      const initialRecent = [
-        { path: '/old/sub', type: 'directory', name: 'sub', basename: 'sub' },
-        { path: '/old/sub/file.txt', type: 'file', name: 'file.txt', basename: 'file.txt' },
-        { path: '/other/keep.txt', type: 'file', name: 'keep.txt', basename: 'keep.txt' },
-      ];
-      const updatedRecent = [
-        { path: '/new/sub/file.txt', type: 'file', name: 'file.txt', basename: 'file.txt' },
-      ];
-
-      // First refresh for planning, second refresh for result.
-      get.mockResolvedValueOnce({ data: initialRecent });
-      get.mockResolvedValueOnce({ data: updatedRecent });
-
-      del.mockResolvedValue({ data: [] });
+    it('for directory renames: re-adds entry with new details', async () => {
       post.mockResolvedValue({});
+      get.mockResolvedValueOnce({ data: [{ path: '/new', type: 'directory' }] });
 
-      const result = await applyRecentFilesAfterRename('/old', '/new', {
+      const result = await applyRecentFilesAfterRename(1, '/new', {
         type: 'directory',
         name: 'new',
         basename: 'new',
+        display_path: '/new',
       });
 
       expect(notifyRecentFilesChange).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(updatedRecent);
-
-      // Removed: includes directory + file recent entries under old.
-      expect(del).toHaveBeenCalledWith(`/recent-files/${encodeURIComponent(normalizePath('/old/sub'))}`);
-      expect(del).toHaveBeenCalledWith(
-        `/recent-files/${encodeURIComponent(normalizePath('/old/sub/file.txt'))}`
-      );
-
-      // Added: only non-directory entries under old.
-      expect(post).toHaveBeenCalledWith(
-        '/recent-files',
-        expect.objectContaining({ path: normalizePath('/new/sub/file.txt') })
-      );
+      expect(result).toEqual([{ path: '/new', type: 'directory' }]);
     });
   });
 
@@ -193,12 +165,12 @@ describe('recentFilesRepository', () => {
       get.mockResolvedValueOnce({ data: [{ path: '/a', type: 'file' }] });
 
       const result = await applyRecentFilesAfterBulkDelete({
-        filePaths: ['/a'],
+        nodeIds: [1],
         folderPaths: ['/f'],
       });
 
       expect(post).toHaveBeenCalledWith('/recent-files/remove-paths', {
-        filePaths: ['/a'],
+        filePaths: [1],
         folderPaths: ['/f'],
       });
       expect(notifyRecentFilesChange).toHaveBeenCalledTimes(1);
@@ -207,7 +179,7 @@ describe('recentFilesRepository', () => {
 
     it('with empty payload returns GET result and does not notify', async () => {
       get.mockResolvedValueOnce({ data: [] });
-      const result = await applyRecentFilesAfterBulkDelete({ filePaths: [], folderPaths: [] });
+      const result = await applyRecentFilesAfterBulkDelete({ nodeIds: [], folderPaths: [] });
 
       expect(post).not.toHaveBeenCalled();
       expect(notifyRecentFilesChange).not.toHaveBeenCalled();
@@ -221,14 +193,14 @@ describe('recentFilesRepository', () => {
       get.mockResolvedValueOnce({ data: [{ path: '/b', type: 'file' }] });
 
       const result = await applyRecentFilesAfterBulkMove([
-        { oldPath: '/a', newPath: '/b', file: { type: 'file', name: 'a', basename: 'a' } },
+        { oldNodeId: 1, newParentNodeId: 5, file: { type: 'file', name: 'a', basename: 'a' } },
       ]);
 
       expect(post).toHaveBeenCalledWith('/recent-files/apply-moves', {
         moves: [
           expect.objectContaining({
-            oldPath: '/a',
-            newPath: '/b',
+            oldNodeId: 1,
+            newParentNodeId: 5,
           }),
         ],
       });

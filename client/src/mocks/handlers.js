@@ -96,34 +96,22 @@ export const handlers = [
   }),
 
   // --- Files: list, download, upload ---
-  // Non-admin users get currentPath redirected to /:username; list is called with that path.
-  // Return path-prefixed items so folder click navigates to e.g. /testuser/folder and list(/testuser/folder) returns children.
   http.get(`${API_BASE}/files/list`, ({ request }) => {
     const url = new URL(request.url);
-    let path = url.searchParams.get('path') || '/';
-    path = path.replace(/\/$/, '') || '/';
-    const custom = mockFiles.get(path);
+    const nodeIdParam = url.searchParams.get('nodeId');
+    const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
-    const segments = path.split('/').filter(Boolean);
-    const lastSegment = segments[segments.length - 1];
-    // Leaf: /nested paths return empty to avoid infinite recursion in loadAllSubfoldersRecursive
-    if (lastSegment === 'nested') {
-      return HttpResponse.json([]);
-    }
-    const isFolderPath = path.endsWith('/folder') || lastSegment === 'folder';
-    const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+    const isFolder = nodeIdParam === '3' || nodeIdParam === '5';
     const rootItems = [
-      { path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 1, path: '/testuser/test.txt', display_path: '/testuser/test.txt', basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 2, path: '/testuser/docs', display_path: '/testuser/docs', basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 3, path: '/testuser/folder', display_path: '/testuser/folder', basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
     const folderItems = [
-      { path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 4, path: '/testuser/folder/sub.txt', display_path: '/testuser/folder/sub.txt', basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 5, path: '/testuser/folder/nested', display_path: '/testuser/folder/nested', basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
-    // /docs paths: return folderItems (finite) to avoid docs/docs/docs... infinite depth
-    const items = lastSegment === 'docs' ? folderItems : (isFolderPath ? folderItems : rootItems);
-    return HttpResponse.json(items);
+    return HttpResponse.json(isFolder ? folderItems : rootItems);
   }),
 
   // --- Permissions (required for FileManager path navigation and permission checks) ---
@@ -173,9 +161,9 @@ export const handlers = [
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
-    const path = url.searchParams.get('path');
-    if (!path) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.nodeIdRequired', 400);
     }
     return new HttpResponse(new Blob(['mock file content']), {
       headers: { 'Content-Disposition': 'attachment; filename="file"' },
@@ -185,36 +173,30 @@ export const handlers = [
   http.post(`${API_BASE}/files/upload`, async ({ request }) => {
     const formData = await request.formData();
     const file = formData.get('file');
-    const targetPath = formData.get('path') || '/';
+    const parentNodeId = formData.get('parentNodeId') || '1';
     const onConflict = formData.get('onConflict') || 'error';
     if (!file) {
-      return errorResponse('serverErrors.files.invalidPath', 400);
+      return errorResponse('serverErrors.files.invalidParentNodeId', 400);
     }
     const name = file.name;
-    const fullPath = targetPath === '/' ? `/${name}` : `${targetPath.replace(/\/$/, '')}/${name}`;
-    const exists = mockFiles.has(targetPath) && (mockFiles.get(targetPath) ?? []).some((i) => i.basename === name);
+    const exists = mockFiles.has(parentNodeId) && (mockFiles.get(parentNodeId) ?? []).some((i) => i.basename === name);
     if (exists && onConflict === 'skip') {
-      return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', path: fullPath, skipped: true });
+      return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', parentNodeId, skipped: true });
     }
     if (exists && onConflict !== 'overwrite') {
       return errorResponse('serverErrors.files.duplicateFile', 409);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', path: fullPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
   }),
 
   // --- Files: rename (PUT /files/rename, NOT POST /files/move) ---
   http.put(`${API_BASE}/files/rename`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { oldPath, newName } = body;
-    if (!oldPath || !newName) {
+    const { nodeId, newName } = body;
+    if (!nodeId || !newName) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    const dir = oldPath.replace(/\/[^/]+$/, '') || '/';
-    const newPath = dir === '/' ? `/${newName}` : `${dir}/${newName}`;
-    if (oldPath === newPath) {
-      return HttpResponse.json({ messageCode: 'serverMessages.files.nameUnchanged', path: newPath });
-    }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', path: newPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, basename: newName, display_path: `/renamed/${newName}` });
   }),
 
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---
@@ -232,7 +214,7 @@ export const handlers = [
       if (job) {
         job.status = 'completed';
         job.progress = moves.length;
-        job.results = moves.map((m) => ({ sourcePath: m.sourcePath, destinationPath: m.destinationPath, status: 'succeeded' }));
+        job.results = moves.map((m) => ({ sourceNodeId: m.sourceNodeId, destinationParentNodeId: m.destinationParentNodeId, status: 'succeeded' }));
       }
     }, 50);
     return HttpResponse.json({ jobId }, { status: 202 });
@@ -252,27 +234,27 @@ export const handlers = [
       if (job) {
         job.status = 'completed';
         job.progress = copies.length;
-        job.results = copies.map((c) => ({ sourcePath: c.sourcePath, destinationPath: c.destinationPath, status: 'succeeded' }));
+        job.results = copies.map((c) => ({ sourceNodeId: c.sourceNodeId, destinationParentNodeId: c.destinationParentNodeId, status: 'succeeded' }));
       }
     }, 50);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
-  // --- Files: batch-delete (POST, body: { paths }) ---
+  // --- Files: batch-delete (POST, body: { nodeIds }) ---
   http.post(`${API_BASE}/files/batch-delete`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { paths } = body;
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    const { nodeIds } = body;
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const jobId = nextJobId();
-    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: paths.length, results: [], userId: '1' });
+    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: nodeIds.length, results: [], userId: '1' });
     setTimeout(() => {
       const job = mockBulkJobs.get(jobId);
       if (job) {
         job.status = 'completed';
-        job.progress = paths.length;
-        job.results = paths.map((p) => ({ path: p, status: 'succeeded' }));
+        job.progress = nodeIds.length;
+        job.results = nodeIds.map((n) => ({ nodeId: n, status: 'succeeded' }));
       }
     }, 50);
     return HttpResponse.json({ jobId }, { status: 202 });
@@ -305,8 +287,8 @@ export const handlers = [
   // --- Files: download-multiple, download-progress ---
   http.post(`${API_BASE}/files/download-multiple`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { paths } = body;
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    const { nodeIds } = body;
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const blob = new Blob(['mock zip content'], { type: 'application/zip' });
@@ -340,25 +322,40 @@ export const handlers = [
 
   http.post(`${API_BASE}/files/metadata`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const paths = body.paths ?? [];
-    const results = paths.map((p) => ({ path: p, size: 0, lastmod: null, mime: null }));
+    const nodeIds = body.nodeIds ?? [];
+    const results = nodeIds.map((n) => ({ nodeId: n, size: 0, lastmod: null, mime: null }));
     return HttpResponse.json(results);
   }),
 
   http.post(`${API_BASE}/files/thumbnails/batch`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const paths = body.paths ?? [];
-    return HttpResponse.json({ thumbnails: paths.map((p) => ({ path: p, hash: null, url: null })) });
+    const nodeIds = body.nodeIds ?? [];
+    return HttpResponse.json({ thumbnails: nodeIds.map((n) => ({ nodeId: n, hash: null, url: null })) });
+  }),
+
+  // --- Video preview ticket/stream ---
+  http.post(`${API_BASE}/files/preview-ticket`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body?.nodeId) {
+      return errorResponse('serverErrors.files.nodeIdRequired', 400);
+    }
+    return HttpResponse.json({ ticket: `ticket_${Date.now()}` });
+  }),
+
+  http.get(`${API_BASE}/files/preview-stream`, () => {
+    return new HttpResponse(new Blob(['mock video']), {
+      headers: { 'Content-Type': 'video/mp4' },
+    });
   }),
 
   // --- Folders ---
   http.post(`${API_BASE}/folders/create`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const folderPath = body.path;
-    if (!folderPath) {
+    const { parentNodeId, name } = body;
+    if (!parentNodeId || !name) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', path: folderPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });
   }),
 
   // --- Health, settings, webdav ---

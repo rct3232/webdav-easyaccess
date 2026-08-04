@@ -110,93 +110,66 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, checkMe
 
   const principalId = req.principalId;
   const user = req.user?.full;
-  const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  const { blobStorageService, fileNodeService, aclService } = getComposition();
+  const { downloadService } = getComposition();
 
-  opStore.setDownloadProgress(downloadId, {
-    status: 'preparing',
-    progress: 0,
-    total: parsedNodeIds.length,
-    current: '',
-    zipName: '',
-  });
+  const result = await downloadService.downloadMultiple(parsedNodeIds, principalId, user);
 
-  const allFiles = [];
-  for (const nodeId of parsedNodeIds) {
-    try {
-      const node = await fileNodeService.getNode(nodeId);
-      if (!node || node.type !== 'file') continue;
+  const { zipStream: archive, totalFiles, downloadId, errors } = result;
 
-      if (!aclService.isAdminUser(user)) {
-        const hasRead = await aclService.checkFilePermission(principalId, nodeId, PERMISSIONS.READ);
-        if (!hasRead) continue;
-      }
+  const zipName = (parsedNodeIds.length === 1 && totalFiles === 1)
+    ? path.basename(String(parsedNodeIds[0]), path.extname(String(parsedNodeIds[0])))
+    : 'download';
 
-      const buffer = await blobStorageService.downloadBlob(nodeId);
-      if (buffer) {
-        allFiles.push({ path: node.name, relativePath: node.name, buffer });
-      }
-    } catch (_) {}
+  const encodedZipName = encodeURIComponent(`${zipName}.zip`);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-WEA-Skipped-Count, X-WEA-Skipped');
+  res.setHeader('X-WEA-Skipped-Count', String(errors.length));
+
+  if (errors.length > 0) {
+    const maxLen = 7000;
+    let payload = {
+      paths: errors.slice(0, 100).map(e => String(e.nodeId)),
+      truncated: errors.length > 100,
+    };
+    let encoded = encodeURIComponent(JSON.stringify(payload));
+
+    while (encoded.length > maxLen && payload.paths.length > 0) {
+      payload.paths.pop();
+      payload.truncated = true;
+      encoded = encodeURIComponent(JSON.stringify(payload));
+    }
+
+    if (encoded.length > maxLen) {
+      encoded = encodeURIComponent(JSON.stringify({ paths: [], truncated: true }));
+    }
+
+    res.setHeader('X-WEA-Skipped', encoded);
+  } else {
+    res.setHeader('X-WEA-Skipped', encodeURIComponent(JSON.stringify({ paths: [], truncated: false })));
   }
 
-  if (allFiles.length === 0) {
-    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
-  }
-
-  const zipName = allFiles.length === 1 ? path.basename(allFiles[0].path, path.extname(allFiles[0].path)) : 'download';
-
-  opStore.setDownloadProgress(downloadId, {
-    status: 'downloading',
-    progress: 0,
-    total: allFiles.length,
-    current: '',
-    zipName: `${zipName}.zip`,
-  });
-
-  const archiver = require('archiver');
-  const archive = archiver('zip', { zlib: { level: 9 } });
+  res.setHeader('Content-Disposition', `attachment; filename="${zipName}.zip"; filename*=UTF-8''${encodedZipName}`);
 
   archive.on('error', (err) => {
     console.error('Archive error:', err);
     opStore.setDownloadProgress(downloadId, {
       status: 'error',
       progress: 0,
-      total: allFiles.length,
+      total: totalFiles,
       current: '',
       zipName: `${zipName}.zip`,
       errorCode: SERVER_ERROR_CODES.files.zipFail,
     });
-    if (!res.headersSent) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.files.zipFail });
-    }
   });
 
-  const encodedZipName = encodeURIComponent(`${zipName}.zip`);
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-  res.setHeader('Content-Disposition', `attachment; filename="${zipName}.zip"; filename*=UTF-8''${encodedZipName}`);
-
   archive.pipe(res);
-
-  for (let i = 0; i < allFiles.length; i++) {
-    const file = allFiles[i];
-    opStore.setDownloadProgress(downloadId, {
-      status: 'downloading',
-      progress: i + 1,
-      total: allFiles.length,
-      current: file.relativePath,
-      zipName: `${zipName}.zip`,
-    });
-    archive.append(file.buffer, { name: file.relativePath });
-  }
-
   await archive.finalize();
 
   opStore.setDownloadProgress(downloadId, {
     status: 'completed',
-    progress: allFiles.length,
-    total: allFiles.length,
+    progress: totalFiles,
+    total: totalFiles,
     current: '',
     zipName: `${zipName}.zip`,
   });
@@ -209,7 +182,9 @@ router.post('/download-multiple', authenticateTokenOrShare, requireAuth, checkMe
 /* ------------------------------------------------------------------ */
 router.get('/download-progress/:id', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const progress = opStore.getDownloadProgress(id);
+
+  const { downloadService } = getComposition();
+  const progress = downloadService.getDownloadProgress(id);
 
   if (!progress) {
     throw notFoundError(SERVER_ERROR_CODES.files.progressNotFound);

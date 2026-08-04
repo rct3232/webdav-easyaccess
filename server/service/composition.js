@@ -8,6 +8,7 @@ const { createUploadService } = require('./uploadService');
 const aclService = require('../domains/permissions/services/aclService');
 const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
+const { createDownloadService } = require('../domains/files/services/downloadService');
 
 let _composition = null;
 
@@ -45,6 +46,12 @@ function createComposition(overrides = {}) {
     aclService: effectiveAclService,
   });
 
+  const downloadService = overrides.downloadService || createDownloadService({
+    fileNodeService,
+    blobStorageService,
+    aclService: effectiveAclService,
+  });
+
   return {
     fileNodesStore,
     blobStore,
@@ -54,6 +61,7 @@ function createComposition(overrides = {}) {
     aclService: effectiveAclService,
     fileService,
     batchOperationService,
+    downloadService,
   };
 }
 

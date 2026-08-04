@@ -9,8 +9,6 @@ const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
 const { meetsRank } = require('../policy/permissionRank');
 
-const { isOwnerPath, userRootPath } = require('../policy/ownerNodeResolver');
-
 // --- User cache (extracted from middleware/permissions.js) ---
 const userCache = new Map();
 const USER_CACHE_TTL_MS =
@@ -151,29 +149,6 @@ async function canWriteFile(user, fileNodeId) {
   return await checkFilePermission(user.id, fileNodeId, PERMISSIONS.WRITE);
 }
 
-// --- Backward-compat: path-based access check (kept for middleware consumers) ---
-async function canAccessPath(userId, requestedPath) {
-  const user = await getCachedUser(userId);
-
-  if (!user) {
-    return false;
-  }
-
-  if (isAdminUser(user)) {
-    return true;
-  }
-
-  const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
-  const normalizedPath = normalizePath(requestedPath);
-  const userFolder = userRootPath(user);
-
-  if (!userFolder || normalizedPath === '/' || normalizedPath === '') {
-    return false;
-  }
-
-  return normalizedPath === userFolder || normalizedPath.startsWith(`${userFolder}/`);
-}
-
 // --- Cache utilities ---
 function __clearUserCacheForTests() {
   userCache.clear();
@@ -193,9 +168,6 @@ module.exports = {
   // User object-based write checks (admin bypass included)
   canWriteFolder,
   canWriteFile,
-
-  // Backward-compat: path-based access check
-  canAccessPath,
 
   // Cache utilities
   getCachedUser,

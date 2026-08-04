@@ -9,7 +9,6 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const {
   checkFilePermission,
   checkFolderPermission,
-  canAccessPath,
   isSharePrincipal,
   extractShareToken,
   getCachedUser,
@@ -130,7 +129,6 @@ function requireFolderPermission(
 module.exports = {
   checkFilePermission,
   checkFolderPermission,
-  canAccessPath,
   requirePermission,
   requireFolderPermission,
   isSharePrincipal,

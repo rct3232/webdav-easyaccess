@@ -3,7 +3,7 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const User = require('../../../models/User');
 const permissionStore = require('../../../store/permissionStore');
-const { isOwnerPath } = require('../../permissions/policy/ownerNodeResolver');
+
 const { listDirectory } = require('../../../utils/webdav');
 const storage = require('../../../store/storage');
 const metaPaths = require('../../../store/metaPaths');
@@ -208,7 +208,9 @@ async function ensureHomeOwnerAdminForAllUsers() {
       const doc = await permissionStore.getPermissionDoc(user.id);
       const perms = doc?.permissions || {};
       for (const [folderPath, permission] of Object.entries(perms)) {
-        if (!isOwnerPath(user, folderPath)) continue;
+        const normalized = normalizePath(folderPath);
+        const userRoot = `/${user.username}`;
+        if (normalized !== userRoot && !normalized.startsWith(`${userRoot}/`)) continue;
         if (permission === PERMISSIONS.ADMIN) continue;
         try {
           await permissionStore.grant(user.id, folderPath, PERMISSIONS.ADMIN);

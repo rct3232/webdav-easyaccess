@@ -2,7 +2,7 @@
  * ownerNodeResolver tests — nodeId-based owner detection via closure table.
  *
  * Verifies that isOwnerNode checks ancestry through fileNodesStore.isAncestor(),
- * canAccessNode delegates to isOwnerNode, and path-based compat functions work.
+ * and canAccessNode delegates to isOwnerNode.
  */
 
 describe('ownerNodeResolver (nodeId)', () => {
@@ -127,112 +127,4 @@ describe('ownerNodeResolver (nodeId)', () => {
   });
 });
 
-describe('ownerNodeResolver (path-based compat)', () => {
-  let ownerNodeResolver;
-  let mockFileNodesStore;
 
-  beforeEach(() => {
-    jest.resetModules();
-
-    mockFileNodesStore = {
-      getUserRootNode: jest.fn(),
-      isAncestor: jest.fn(),
-    };
-
-    jest.doMock('../../../../store/fileNodesStore', () => ({
-      createFileNodesStore: () => mockFileNodesStore,
-    }));
-
-    ownerNodeResolver = require('../ownerNodeResolver');
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  // userRootPath
-  it('userRootPath returns /{username} for a valid user', () => {
-    const result = ownerNodeResolver.userRootPath({ username: 'alice' });
-    expect(result).toBe('/alice');
-  });
-
-  it('userRootPath returns null for missing user', () => {
-    expect(ownerNodeResolver.userRootPath(null)).toBeNull();
-    expect(ownerNodeResolver.userRootPath(undefined)).toBeNull();
-    expect(ownerNodeResolver.userRootPath({})).toBeNull();
-  });
-
-  // isOwnerPath
-  it('isOwnerPath returns true when path equals root', () => {
-    const user = { username: 'alice' };
-    expect(ownerNodeResolver.isOwnerPath(user, '/alice')).toBe(true);
-  });
-
-  it('isOwnerPath returns true when path is under root', () => {
-    const user = { username: 'alice' };
-    expect(ownerNodeResolver.isOwnerPath(user, '/alice/docs')).toBe(true);
-    expect(ownerNodeResolver.isOwnerPath(user, '/alice/docs/sub')).toBe(true);
-  });
-
-  it('isOwnerPath returns false for another user\'s path', () => {
-    const user = { username: 'alice' };
-    expect(ownerNodeResolver.isOwnerPath(user, '/bob/docs')).toBe(false);
-  });
-
-  it('isOwnerPath returns false when prefix mismatch (e.g. /alice vs /alicer)', () => {
-    const user = { username: 'alice' };
-    expect(ownerNodeResolver.isOwnerPath(user, '/alicer/docs')).toBe(false);
-  });
-
-  // getHomeOwnerUserIdForPath
-  it('getHomeOwnerUserIdForPath returns userId for valid path', async () => {
-    jest.resetModules();
-    const mockFileNodesStore2 = {
-      getUserRootNode: jest.fn(),
-      isAncestor: jest.fn(),
-    };
-    jest.doMock('../../../../store/fileNodesStore', () => ({
-      createFileNodesStore: () => mockFileNodesStore2,
-    }));
-    jest.doMock('../../../../models/User', () => ({
-      findByUsername: jest.fn().mockResolvedValue({ id: 42 }),
-    }));
-    const resolver = require('../ownerNodeResolver');
-    const result = await resolver.getHomeOwnerUserIdForPath('/alice/docs/file.txt');
-    expect(result).toBe(42);
-  });
-
-  it('getHomeOwnerUserIdForPath returns null for empty path', async () => {
-    jest.resetModules();
-    const mockFileNodesStore3 = {
-      getUserRootNode: jest.fn(),
-      isAncestor: jest.fn(),
-    };
-    jest.doMock('../../../../store/fileNodesStore', () => ({
-      createFileNodesStore: () => mockFileNodesStore3,
-    }));
-    jest.doMock('../../../../models/User', () => ({
-      findByUsername: jest.fn().mockResolvedValue(null),
-    }));
-    const resolver = require('../ownerNodeResolver');
-    const result = await resolver.getHomeOwnerUserIdForPath('/');
-    expect(result).toBeNull();
-  });
-
-  it('getHomeOwnerUserIdForPath returns null when user not found', async () => {
-    jest.resetModules();
-    const mockFileNodesStore4 = {
-      getUserRootNode: jest.fn(),
-      isAncestor: jest.fn(),
-    };
-    jest.doMock('../../../../store/fileNodesStore', () => ({
-      createFileNodesStore: () => mockFileNodesStore4,
-    }));
-    jest.doMock('../../../../models/User', () => ({
-      findByUsername: jest.fn().mockResolvedValue(null),
-    }));
-    const resolver = require('../ownerNodeResolver');
-    const result = await resolver.getHomeOwnerUserIdForPath('/unknown/docs');
-    expect(result).toBeNull();
-  });
-});

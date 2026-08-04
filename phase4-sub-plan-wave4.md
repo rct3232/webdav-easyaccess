@@ -1138,7 +1138,7 @@ Display paths (`display_path` from server responses) are used **only** for bread
 
 ```bash
 # No client request may send path identifiers for file operations:
-grep -rn "path:" client/src/services/fileService.js client/src/services/explorerGateway.js client/src/services/folderTreeGateway.js client/src/services/folderPickerGateway.js client/src/hooks/useBulkOperations.js client/src/hooks/useFileOperations.js | grep -v "\.test\."
+grep -rn "path:" client/src/services/fileService.js client/src/services/explorerGateway.js client/src/services/folderTreeGateway.js client/src/services/folderPickerGateway.js client/src/pages/FileManager/hooks/useBulkOperations.js client/src/pages/FileManager/hooks/useFileOperations.js | grep -v "\.test\."
 # Expected: only display-path usage remains (no request payload identifiers)
 
 cd client && npm run test -- --watchAll=false --testPathPatterns="fileService|useBulkOperations|useExplorerCommands|useFileOperations|useDragAndDrop|useDropToUpload|usePreviewLoader" --no-coverage
@@ -1165,7 +1165,7 @@ After each task completes, update this section:
 | W4.7 permissionService.js nodeId migration | ⬜ Pending | `grep -n "folderPath\|includeSubfolders" client/src/services/permissionService.js` → empty | |
 | W4.8 useSharedManage + buildPermissionDiff + gateway rewrite | ⬜ Pending | `grep -rn "folderPath\|targetPath" client/src/hooks/useSharedManage.js client/src/utils/buildPermissionDiff.js client/src/services/sharePermissionGateway.js` → empty (except display path for UI) | |
 | W4.9 Client test rewrites | ⬜ Pending | `cd client && npm run test -- --watchAll=false --testPathPatterns="permissionService\|buildPermissionDiff\|fileService\|useBulkOperations\|useExplorerCommands\|useFileOperations"` → all pass | |
-| W4.10 Client file-layer migration | ⬜ Pending | `grep -rn "path:" client/src/services/fileService.js client/src/services/explorerGateway.js client/src/services/folderTreeGateway.js client/src/services/folderPickerGateway.js client/src/hooks/useBulkOperations.js client/src/hooks/useFileOperations.js` → no request-identifier usage | |
+| W4.10 Client file-layer migration | ⬜ Pending | `grep -rn "path:" client/src/services/fileService.js client/src/services/explorerGateway.js client/src/services/folderTreeGateway.js client/src/services/folderPickerGateway.js client/src/pages/FileManager/hooks/useBulkOperations.js client/src/pages/FileManager/hooks/useFileOperations.js` → no request-identifier usage | |
 
 ---
 

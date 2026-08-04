@@ -302,6 +302,36 @@ cd client && CI=true npx react-scripts test --watchAll=false --no-coverage \
 
 ---
 
+## 4b. Post-verification audit findings (2026-08-04)
+
+Independent code review of completed tasks revealed the following defects:
+
+### Task 1 rework ✅ FIXED — commit `a27de6c`
+
+**Defect was:** `aclService.checkFolderPermission` → fixed to `checkFilePermission(userId, nodeId, PERMISSIONS.READ)`. Added `not_found` error entries for unresolvable nodes. Tests updated. **9/9 pass.**
+
+### Task 3 rework ✅ FIXED — commit `6c60188`
+
+**Defect was:** Missing `downloadBlobWebdav` in mocks → added to both `fileService.test.js` (41/41) and `downloadService.test.js` (9/9).
+
+### Task 4 — ✅ Verified correct. No changes needed.
+
+### Task 5 rework ✅ FIXED — commit `e2c0eb5`
+
+**Defect was:** Dead path data (`currentPath: '/docs'`) in useExplorerCommands fixture → removed. **8/8 pass.**
+
+### Task 6 rework ✅ FIXED — commit pushed
+
+**Fixed:**
+1. Breadcrumb.js — replaced `perm.folder_path` with `perm.nodeId`; added homePath prefix guard for `isUserOwnFolder`
+2. handlers.js — seeded realistic `{ nodeId, permission }` MSW fixtures
+3. userUtils.test.js — rewritten to nodeId-shaped data
+
+**Remaining concerns (out of plan scope):**
+- `deriveFolderPickerSharedState.js:22`, `useShareDialog.js`, `SharedFoldersSection.js`, `useFolderTreeController.js` still read `folder_path` — not in Task 6 file list; defer to next wave.
+
+---
+
 ## 5. Deferred — document only, do NOT fix
 
 | Failure | Root cause | Owner |

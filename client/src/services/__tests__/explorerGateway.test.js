@@ -196,30 +196,26 @@ describe('explorerGateway', () => {
 
   it('loads shared entries with top-level folders and file metadata', async () => {
     getUserPermissions.mockResolvedValueOnce([
-      { folder_path: '/shared/team', permission: 'write' },
-      { folder_path: '/shared/team/reports', permission: 'read' },
-      { folder_path: '/owner-home/docs', permission: 'read' },
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 101, permission: 'read' },
+      { nodeId: 200, permission: 'read' },
     ]);
     listFilePermissions.mockResolvedValueOnce([
-      { filePath: '/lonely/readme.txt', permission: 'read' },
-      { filePath: '/shared/team/report.txt', permission: 'read' },
+      { file_node_id: 300, permission: 'read' },
+      { file_node_id: 100, permission: 'read' },
     ]);
     getFilesMetadata.mockResolvedValueOnce([
-      { path: '/lonely/readme.txt', size: 50, lastmod: '2024-01-01', mime: 'text/plain' },
+      { nodeId: 300, size: 50, lastmod: '2024-01-01', mime: 'text/plain' },
     ]);
 
     const result = await loadSharedEntries({
-      user: { id: '1', username: 'owner-home', is_admin: false },
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
     });
 
     expect(result).toEqual([
-      expect.objectContaining({ path: '/shared/team', type: 'directory', hasWritePermission: true }),
-      expect.objectContaining({
-        path: '/lonely/readme.txt',
-        type: 'file',
-        size: 50,
-        mime: 'text/plain',
-      }),
+      expect.objectContaining({ nodeId: 100, type: 'directory', hasWritePermission: true }),
+      expect.objectContaining({ nodeId: 101, type: 'directory' }),
+      expect.objectContaining({ nodeId: 300, type: 'file', size: 50, mime: 'text/plain' }),
     ]);
   });
 

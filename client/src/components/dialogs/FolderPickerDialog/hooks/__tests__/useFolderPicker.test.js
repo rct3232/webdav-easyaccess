@@ -99,7 +99,7 @@ describe('useFolderPicker', () => {
 
   it('loads shared folders when path is __shared__', async () => {
     folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/other/shared', permission: 'read', owner_id: '2' },
+      { nodeId: 10, permission: 'read' },
     ]);
 
     const { result, openPicker } = renderFolderPickerHook({ currentPath: '/__shared__' });
@@ -112,7 +112,7 @@ describe('useFolderPicker', () => {
 
     expect(folderPickerGateway.getUserSharedFolderPermissions).toHaveBeenCalledWith({ user: mockUser });
     expect(result.current.folders).toEqual([
-      expect.objectContaining({ path: '/other/shared', basename: 'shared', type: 'directory' }),
+      expect.objectContaining({ nodeId: 10, type: 'directory' }),
     ]);
   });
 
@@ -178,7 +178,7 @@ describe('useFolderPicker', () => {
 
   it('returns shared breadcrumbs starting at the first matching permission path', async () => {
     folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'write' },
+      { nodeId: 10, permission: 'write' },
     ]);
 
     const { result, openPicker } = renderFolderPickerHook({
@@ -194,10 +194,10 @@ describe('useFolderPicker', () => {
     });
 
     expect(result.current.breadcrumbs).toEqual([
-      { name: 'nav.shared', path: '/__shared__' },
-      { name: 'root', path: '/shared/root' },
-      { name: 'child', path: '/shared/root/child' },
-    ]);
+       { name: 'nav.shared', path: '/__shared__' },
+       { name: 'root', path: '/shared/root' },
+       { name: 'child', path: '/shared/root/child' },
+     ]);
   });
 
   it('marks invalid destinations for source parent, source path, descendant, and multi-source input', async () => {
@@ -349,8 +349,8 @@ describe('useFolderPicker', () => {
 
   it('handleTogglePath(shared) lands on the best matching shared root for shared-origin moves', async () => {
     folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared', permission: 'read' },
-      { folder_path: '/shared/root', permission: 'write' },
+      { nodeId: 10, permission: 'read' },
+      { nodeId: 20, permission: 'write' },
     ]);
 
     const { result, openPicker } = renderFolderPickerHook({

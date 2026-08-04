@@ -110,8 +110,8 @@ describe('useFolderTreeController', () => {
     getRecentFiles.mockResolvedValue([]);
 
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
-      { folder_path: '/shared/root/child', permission: 'read' },
+      { nodeId: 10, permission: 'read' },
+      { nodeId: 20, permission: 'read' },
     ]);
 
     const { result } = renderControllerHook({
@@ -123,7 +123,7 @@ describe('useFolderTreeController', () => {
     await waitFor(() => {
       expect(result.current.sharedFolders).toHaveLength(2);
     });
-    expect(result.current.sharedFolders[0]).toMatchObject({ folder_path: '/shared/root', permission: 'read' });
+    expect(result.current.sharedFolders[0]).toMatchObject({ nodeId: 10, permission: 'read' });
   });
 
   it('does not load shared folders for admin users', async () => {
@@ -187,11 +187,11 @@ describe('useFolderTreeController', () => {
 
   it('auto-expands shared sections when currentPath enters a shared folder prefix', async () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
+      { nodeId: 10, permission: 'read' },
     ]);
 
     const { result } = renderControllerHook({
-      currentPath: '/shared/root/docs',
+      currentPath: '/__shared__/10',
       user: { id: '1', username: 'testuser', is_admin: false },
       onPathClick: jest.fn(),
     });
@@ -245,7 +245,7 @@ describe('useFolderTreeController', () => {
 
   it('routes recent and shared folder click handlers through onPathClick', async () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
+      { nodeId: 10, permission: 'read' },
     ]);
     const onPathClick = jest.fn();
     const { result } = renderControllerHook({
@@ -260,12 +260,12 @@ describe('useFolderTreeController', () => {
 
     act(() => {
       result.current.handleRecentClick();
-      result.current.handleSharedFolderClick('/shared/root');
+      result.current.handleSharedFolderClick('/__shared__/10');
       result.current.handleRecentToggle({ stopPropagation: jest.fn() });
     });
 
     expect(onPathClick).toHaveBeenCalledWith('/__recent__');
-    expect(onPathClick).toHaveBeenCalledWith('/shared/root');
+    expect(onPathClick).toHaveBeenCalledWith('/__shared__/10');
     expect(result.current.recentExpanded).toBe(true);
   });
 });

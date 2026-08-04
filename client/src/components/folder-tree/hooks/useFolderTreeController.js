@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
-import { normalizePath } from '../../../utils/pathUtils';
 import { getUserBaseFolder } from '../../../utils/userUtils';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 
@@ -65,51 +64,14 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
   const buildSharedFolderTree = useMemo(() => {
     if (sharedFolders.length === 0) return [];
 
-    const permissionPaths = new Map();
-    sharedFolders.forEach((perm) => {
-      const normalized = normalizePath(perm.folder_path);
-      permissionPaths.set(normalized, perm);
-    });
-
-    const pathMap = new Map();
-    permissionPaths.forEach((perm, normalizedPath) => {
-      const parts = normalizedPath.split('/').filter(Boolean);
-      const name = parts[parts.length - 1] || normalizedPath;
-      let parentPath = null;
-
-      for (let i = parts.length - 1; i > 0; i--) {
-        const parentCandidate = '/' + parts.slice(0, i).join('/');
-        if (permissionPaths.has(parentCandidate)) {
-          parentPath = parentCandidate;
-          break;
-        }
-      }
-
-      pathMap.set(normalizedPath, {
-        path: normalizedPath,
-        name,
-        children: [],
-        parentPath,
-        permission: perm.permission,
-        hasReadPermission: true,
-      });
-    });
-
-    const buildTree = (parentPath) => {
-      const children = [];
-      pathMap.forEach((node, path) => {
-        if (node.parentPath === parentPath) {
-          const childNode = {
-            ...node,
-            children: buildTree(path),
-          };
-          children.push(childNode);
-        }
-      });
-      return children.sort((a, b) => a.name.localeCompare(b.name));
-    };
-
-    return buildTree(null);
+    return sharedFolders.map((perm) => ({
+      nodeId: perm.nodeId,
+      path: `/__shared__/${perm.nodeId}`,
+      name: `Shared (${perm.nodeId})`,
+      children: [],
+      permission: perm.permission,
+      hasReadPermission: true,
+    }));
   }, [sharedFolders]);
 
   useEffect(() => {
@@ -129,8 +91,8 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
       if (currentPath === '/__shared__') {
         setSharedExpanded(true);
       } else {
-        const isSharedPath = sharedFolders.some((perm) => currentPath.startsWith(perm.folder_path));
-        if (isSharedPath) {
+        const isSharedNode = currentPath.startsWith('/__shared__/') && sharedFolders.length > 0;
+         if (isSharedNode) {
           setSharedExpanded(true);
         }
       }

@@ -1,53 +1,50 @@
 /**
- * 사용자 관련 유틸리티 함수
+ * User utility functions
  */
 
 import { normalizePath } from './pathUtils';
 
 /**
- * 사용자 기본 폴더 경로 가져오기
- * @param {object} user - 사용자 객체
- * @returns {string} 사용자 기본 폴더 경로
+ * Get user's base folder path
+ * @param {object} user - User object
+ * @returns {string} User's base folder path
  */
 export const getUserBaseFolder = (user) => {
   return `/${user?.username || ''}`;
 };
 
 /**
- * 경로가 사용자 자신의 폴더인지 확인
- * @param {string} path - 확인할 경로
- * @param {object} user - 사용자 객체
- * @returns {boolean} 사용자 자신의 폴더이면 true
+ * Check if a nodeId belongs to the user's own root node
+ * @param {number} nodeId - Node ID to check
+ * @param {object} user - User object ({ rootNodeId })
+ * @returns {boolean} true if it is the user's own folder
  */
-export const isUserOwnFolder = (path, user) => {
-  const userBaseFolder = getUserBaseFolder(user);
-  const normalizedPath = normalizePath(path);
-  const normalizedBase = normalizePath(userBaseFolder);
-  return normalizedPath.startsWith(normalizedBase + '/') || normalizedPath === normalizedBase;
+export const isUserOwnFolder = (nodeId, user) => {
+  if (!user || !nodeId) return false;
+  return nodeId === user.rootNodeId;
 };
 
 /**
- * 권한 목록에서 사용자 자신의 폴더 제외
- * @param {Array} permissions - 권한 배열
- * @param {object} user - 사용자 객체
- * @returns {Array} 필터링된 권한 배열
+ * Filter out user's own folders from permissions list
+ * @param {Array} permissions - Permissions array [{ nodeId, permission }, ...]
+ * @param {object} user - Current logged-in user ({ rootNodeId })
+ * @returns {Array} Filtered permissions array
  */
 export const filterOutUserOwnFolders = (permissions, user) => {
-  return permissions.filter(perm => !isUserOwnFolder(perm.folder_path, user));
+  return permissions.filter(perm => !isUserOwnFolder(perm.nodeId, user));
 };
 
 /**
- * 표시할 사용자 목록 필터링
- * ShareFolderTree와 UserSelectionMenu에서 사용되는 공통 로직
+ * Filter users for display in ShareFolderTree and UserSelectionMenu
  * 
- * @param {Array} users - 사용자 배열 (entries 형식: [[userId, permData], ...])
- * @param {object} options - 필터 옵션
- * @param {boolean} options.isAdminMode - 관리자 모드 여부
- * @param {string} options.currentUserId - 현재 선택된 사용자 ID (관리자 모드용)
- * @param {object} options.user - 현재 로그인한 사용자 객체
- * @param {Map} options.userInfoMap - 사용자 정보 맵
- * @param {Array} options.allUsers - 전체 사용자 배열
- * @returns {Array} 필터링된 사용자 배열
+ * @param {Array} users - User array (entries format: [[userId, permData], ...])
+ * @param {object} options - Filter options
+ * @param {boolean} options.isAdminMode - Whether admin mode is active
+ * @param {string} options.currentUserId - Currently selected user ID (admin mode)
+ * @param {object} options.user - Current logged-in user object
+ * @param {Map} options.userInfoMap - User info map
+ * @param {Array} options.allUsers - All users array
+ * @returns {Array} Filtered user array
  */
 export const filterDisplayUsers = (users, options = {}) => {
   const { isAdminMode, currentUserId, user, userInfoMap, allUsers } = options;
@@ -57,10 +54,10 @@ export const filterDisplayUsers = (users, options = {}) => {
   }
   
   return users.filter(([targetUserId]) => {
-    // 자신 제외
+    // Exclude self
     if (user && targetUserId === user.id) return false;
     
-    // 관리자 제외
+    // Exclude admins
     const userInfo = userInfoMap?.get(targetUserId);
     if (userInfo?.is_admin) return false;
     
@@ -72,9 +69,9 @@ export const filterDisplayUsers = (users, options = {}) => {
 };
 
 /**
- * 사용자 표시 이름 가져오기
- * @param {object} user - 사용자 객체
- * @returns {string} 표시 이름
+ * Get user display name
+ * @param {object} user - User object
+ * @returns {string} Display name
  */
 export const getUserDisplayName = (user) => {
   if (!user) return '';

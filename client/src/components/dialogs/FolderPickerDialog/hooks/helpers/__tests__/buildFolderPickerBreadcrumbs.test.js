@@ -12,7 +12,7 @@ describe('buildFolderPickerBreadcrumbs', () => {
         user: { username: 'user1', is_admin: false },
         homePath: '/user1',
         homeLabel: 'Home',
-        sharedPermissionPaths: new Set(),
+        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
       })
     ).toEqual([{ name: 'Shared', path: '/__shared__' }]);
@@ -25,7 +25,7 @@ describe('buildFolderPickerBreadcrumbs', () => {
         user: { username: 'user1', is_admin: false },
         homePath: '/user1',
         homeLabel: 'Home',
-        sharedPermissionPaths: new Set(),
+        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
       })
     ).toEqual([
@@ -41,7 +41,7 @@ describe('buildFolderPickerBreadcrumbs', () => {
         user: { username: 'admin', is_admin: true },
         homePath: '/',
         homeLabel: 'Root',
-        sharedPermissionPaths: new Set(),
+        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
       })
     ).toEqual([
@@ -51,32 +51,33 @@ describe('buildFolderPickerBreadcrumbs', () => {
     ]);
   });
 
-  it('starts shared breadcrumbs at the first matching permission path', () => {
+  it('produces shared breadcrumbs for non-home paths', () => {
     expect(
       buildFolderPickerBreadcrumbs({
         selectedPath: '/shared/root/child/leaf',
         user: { username: 'user1', is_admin: false },
         homePath: '/user1',
         homeLabel: 'Home',
-        sharedPermissionPaths: new Set(['/shared/root']),
+        sharedPermissionNodeIds: new Set(['10']),
         sharedLabel: 'Shared',
       })
     ).toEqual([
       { name: 'Shared', path: '/__shared__' },
+      { name: 'shared', path: '/shared' },
       { name: 'root', path: '/shared/root' },
       { name: 'child', path: '/shared/root/child' },
       { name: 'leaf', path: '/shared/root/child/leaf' },
     ]);
   });
 
-  it('falls back to full shared path segments when no permission prefix matches', () => {
+  it('falls back to shared prefix for unrecognized paths', () => {
     expect(
       buildFolderPickerBreadcrumbs({
         selectedPath: '/external/folder',
         user: { username: 'user1', is_admin: false },
         homePath: '/user1',
         homeLabel: 'Home',
-        sharedPermissionPaths: new Set(['/shared/root']),
+        sharedPermissionNodeIds: new Set(['20']),
         sharedLabel: 'Shared',
       })
     ).toEqual([

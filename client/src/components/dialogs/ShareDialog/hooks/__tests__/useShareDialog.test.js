@@ -490,7 +490,7 @@ describe('useShareDialog', () => {
       requester_username: 'bob',
     };
     permissionService.getUserPermissions.mockResolvedValue([
-      { folder_path: '/docs', permission: 'read', id: '2' },
+      { nodeId: 10, permission: 'read', id: '2' },
     ]);
     fileService.listFiles.mockResolvedValue([]);
 
@@ -531,7 +531,7 @@ describe('useShareDialog', () => {
       requester_username: 'bob',
     };
     permissionService.getUserPermissions.mockResolvedValue([
-      { folder_path: '/docs', permission: 'read', id: '2' },
+      { nodeId: 10, permission: 'read', id: '2' },
     ]);
     shareReviewUseCase.mockRejectedValue(
       new Error('Approve failed')

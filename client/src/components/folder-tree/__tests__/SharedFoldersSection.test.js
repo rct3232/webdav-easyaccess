@@ -17,8 +17,8 @@ jest.mock('../BaseFolderTreeItem', () => ({ node, onPathClick, onToggleExpand })
 ));
 
 const sharedFolders = [
-  { folder_path: '/__shared__/docs', permission: 'read' },
-  { folder_path: '/__shared__/project', permission: 'write' },
+  { nodeId: 10, permission: 'read' },
+  { nodeId: 20, permission: 'write' },
 ];
 
 const defaultProps = {

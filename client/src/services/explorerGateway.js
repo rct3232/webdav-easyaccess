@@ -90,29 +90,15 @@ export const loadSharedEntries = async ({ user, options = {} } = {}) => {
   const permissions = await getUserPermissions(user.id, options);
   const sharedFolders = filterOutUserOwnFolders(permissions || [], user);
 
-  const permissionPaths = new Map();
-  sharedFolders.forEach((permission) => {
-    const normalizedPath = normalizePath(permission.folder_path);
-    permissionPaths.set(normalizedPath, permission);
-  });
-
-  const topLevelFolders = Array.from(permissionPaths.entries()).filter(([normalizedPath]) => {
-    const pathParts = normalizedPath.split('/').filter(Boolean);
-    for (let index = pathParts.length - 1; index > 0; index -= 1) {
-      const parentPath = `/${pathParts.slice(0, index).join('/')}`;
-      if (permissionPaths.has(parentPath)) {
-        return false;
-      }
-    }
-    return true;
-  });
-
-  const folderEntries = topLevelFolders.map(([normalizedPath, permission]) => {
-    const name = getBasename(normalizedPath) || normalizedPath;
+  const seenNodeIds = new Set();
+  const folderEntries = sharedFolders.map((permission) => {
+    const nodeId = permission.nodeId;
+    if (seenNodeIds.has(nodeId)) return null;
+    seenNodeIds.add(nodeId);
     return {
-      path: normalizedPath,
-      basename: name,
-      name,
+      nodeId,
+      name: `node-${nodeId}`,
+      basename: `node-${nodeId}`,
       type: 'directory',
       size: 0,
       lastmodified: null,
@@ -120,33 +106,25 @@ export const loadSharedEntries = async ({ user, options = {} } = {}) => {
       hasWritePermission: permission.permission === 'write' || permission.permission === 'admin',
       hasAdminPermission: permission.permission === 'admin',
     };
-  });
+  }).filter(Boolean);
 
   let fileOnlyEntries = [];
   try {
     const filePermissions = await listFilePermissions();
     if (Array.isArray(filePermissions) && filePermissions.length > 0) {
       fileOnlyEntries = filePermissions
-        .filter(({ filePath }) => {
-          const normalizedPath = normalizePath(filePath);
-          const parentPath = getParentPath(normalizedPath);
-          return parentPath !== undefined && parentPath !== null && !permissionPaths.has(parentPath);
-        })
-        .map(({ filePath, permission }) => {
-          const normalizedPath = normalizePath(filePath);
-          const name = getBasename(normalizedPath) || normalizedPath;
-          return {
-            path: normalizedPath,
-            basename: name,
-            name,
-            type: 'file',
-            size: 0,
-            lastmodified: null,
-            hasReadPermission: true,
-            hasWritePermission: permission === 'write' || permission === 'admin',
-            hasAdminPermission: permission === 'admin',
-          };
-        });
+        .filter(({ file_node_id: fileNodeId }) => !seenNodeIds.has(fileNodeId))
+        .map(({ file_node_id: fileNodeId, permission }) => ({
+          nodeId: fileNodeId,
+          name: `file-${fileNodeId}`,
+          basename: `file-${fileNodeId}`,
+          type: 'file',
+          size: 0,
+          lastmodified: null,
+          hasReadPermission: true,
+          hasWritePermission: permission === 'write' || permission === 'admin',
+          hasAdminPermission: permission === 'admin',
+        }));
     }
   } catch (error) {
     console.error('[explorerGateway] Failed to load file-only shared permissions:', error);
@@ -158,9 +136,9 @@ export const loadSharedEntries = async ({ user, options = {} } = {}) => {
 
   try {
     const metadataList = await getEntriesMetadata({ entries: fileOnlyEntries });
-    const metadataByPath = new Map(metadataList.map((metadata) => [metadata.path, metadata]));
+    const metadataByNodeId = new Map(metadataList.map((m) => [m.nodeId, m]));
     fileOnlyEntries = fileOnlyEntries.map((entry) => {
-      const metadata = metadataByPath.get(entry.path);
+      const metadata = metadataByNodeId.get(entry.nodeId);
       if (!metadata) return entry;
       return {
         ...entry,

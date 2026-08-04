@@ -64,8 +64,16 @@ export function useShareDialog({
   const [externalShareLoading, setExternalShareLoading] = useState(false);
   const [externalShareLink, setExternalShareLink] = useState(null);
   const [externalShareExpiresInDays, setExternalShareExpiresInDays] = useState(14);
-  const [externalShareUnlimited, setExternalShareUnlimited] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
+ function buildNodeIdToPath(tree) {
+    const result = new Map();
+    tree.forEach((node, path) => {
+      if (node.nodeId != null) result.set(String(node.nodeId), node.path || path);
+    });
+    return result;
+  }
+
+   const [externalShareUnlimited, setExternalShareUnlimited] = useState(false);
+   const [linkCopied, setLinkCopied] = useState(false);
   const inFlightFolderLoadsRef = useRef(new Map());
 
   const loadUsers = useCallback(async () => {
@@ -93,19 +101,21 @@ export function useShareDialog({
           .map(folder => ({
             path: folder.path,
             name: folder.basename || folder.name,
+            nodeId: folder.nodeId,
             children: [],
           }));
 
         setFolderTree(prev => {
           const newMap = new Map(prev);
           let current = newMap.get(path);
-          if (!current) {
-            current = {
-              path,
-              name: path === '/' ? 'Root' : path.split('/').filter(Boolean).pop() || 'Root',
-              children: [],
-            };
-          }
+        if (!current) {
+             current = {
+               path,
+               nodeId: null,
+               name: path === '/' ? 'Root' : path.split('/').filter(Boolean).pop() || 'Root',
+               children: [],
+             };
+           }
           current.children = folders;
           newMap.set(path, current);
           folders.forEach(folder => {
@@ -176,16 +186,18 @@ export function useShareDialog({
         if (userId) {
           setLoadingPermissions(true);
           const permData = await sharePermissionGateway.getUserPermissions(userId);
+          const nodeIdToPath = buildNodeIdToPath(folderTree);
           const newFolderPermissions = new Map();
           (permData || []).forEach(perm => {
-            const normalizedPath = normalizePath(perm.folder_path);
+            const resolvedPath = nodeIdToPath.get(String(perm.nodeId));
+            if (!resolvedPath) return;
             let shouldInclude = true;
             if (startFromUserHome) {
-              shouldInclude = normalizedPath === userBaseFolder || normalizedPath.startsWith(userBaseFolder + '/');
+              shouldInclude = resolvedPath === userBaseFolder || resolvedPath.startsWith(userBaseFolder + '/');
             }
             if (shouldInclude) {
-              if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
-              newFolderPermissions.get(normalizedPath).set(userId, perm.permission);
+              if (!newFolderPermissions.has(resolvedPath)) newFolderPermissions.set(resolvedPath, new Map());
+              newFolderPermissions.get(resolvedPath).set(userId, perm.permission);
             }
           });
           if (startFromUserHome) {
@@ -218,10 +230,12 @@ export function useShareDialog({
 
           try {
             const permData = await sharePermissionGateway.getFolderPermissions(rootPath, true);
+            const nodeIdToPath = buildNodeIdToPath(folderTree);
             (permData || []).forEach(perm => {
-              const normalizedPath = normalizePath(perm.folder_path);
-              if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
-              newFolderPermissions.get(normalizedPath).set(perm.id, perm.permission);
+              const resolvedPath = nodeIdToPath.get(String(perm.node_id));
+              if (!resolvedPath) return;
+              if (!newFolderPermissions.has(resolvedPath)) newFolderPermissions.set(resolvedPath, new Map());
+              newFolderPermissions.get(resolvedPath).set(perm.id, perm.permission);
               if (perm.id && perm.username) {
                 newUserInfoMap.set(perm.id, {
                   username: perm.username,
@@ -280,12 +294,14 @@ export function useShareDialog({
         setLoadingPermissions(true);
         try {
           const permData = await sharePermissionGateway.getFolderPermissions(rootPath, true);
+          const nodeIdToPath = buildNodeIdToPath(folderTree);
           const newFolderPermissions = new Map();
           const newUserInfoMap = new Map();
           (permData || []).forEach(perm => {
-            const normalizedPath = normalizePath(perm.folder_path);
-            if (!newFolderPermissions.has(normalizedPath)) newFolderPermissions.set(normalizedPath, new Map());
-            newFolderPermissions.get(normalizedPath).set(perm.id, perm.permission);
+            const resolvedPath = nodeIdToPath.get(String(perm.node_id));
+            if (!resolvedPath) return;
+            if (!newFolderPermissions.has(resolvedPath)) newFolderPermissions.set(resolvedPath, new Map());
+            newFolderPermissions.get(resolvedPath).set(perm.id, perm.permission);
             if (perm.id && perm.username) {
               newUserInfoMap.set(perm.id, {
                 username: perm.username,

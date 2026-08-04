@@ -24,7 +24,7 @@ export function useFolderPicker({
   const [loading, setLoading] = useState(false);
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const [sharedFolderRoots, setSharedFolderRoots] = useState([]);
-  const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
+  const [sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
 
   const prevOpenRef = useRef(false);
 
@@ -48,12 +48,12 @@ export function useFolderPicker({
 
   const applySharedPermissionState = useCallback((permissions) => {
     const {
-      sharedPermissionPaths: nextSharedPermissionPaths,
+      sharedPermissionNodeIds: nextSharedPermissionNodeIds,
       sharedFolders,
       sharedFolderRoots: nextSharedFolderRoots,
     } = deriveFolderPickerSharedState({ permissions });
 
-    setSharedPermissionPaths(nextSharedPermissionPaths);
+    setSharedPermissionNodeIds(nextSharedPermissionNodeIds);
     setSharedFolderRoots(nextSharedFolderRoots);
 
     return sharedFolders;
@@ -86,7 +86,7 @@ export function useFolderPicker({
     } catch (error) {
       console.error('Failed to load shared folders:', error);
       setSharedFolderRoots([]);
-      setSharedPermissionPaths(new Set());
+      setSharedPermissionNodeIds(new Set());
     }
   }, [applySharedPermissionState, user]);
 
@@ -184,7 +184,7 @@ export function useFolderPicker({
     user,
     homePath,
     homeLabel,
-    sharedPermissionPaths,
+    sharedPermissionNodeIds,
     sharedLabel: t('nav.shared'),
   });
 

@@ -2,7 +2,7 @@ const { HTTP_STATUS, PERMISSIONS } = require('@webdav-easyaccess/shared/constant
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const ShareLink = require('../../../models/ShareLink');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
 const { pathExists, listDirectory, getFileContents } = require('../../../utils/webdav');
 const { meetsRank } = require('../../permissions/policy/permissionRank');
@@ -73,7 +73,7 @@ async function getShareLinkMetadata(token) {
 
   let isDirectory = false;
   try {
-    const shareDoc = await Permission.getSharePermissionDoc(token);
+    const shareDoc = await permissionStore.getSharePermissionDoc(token);
     if (shareDoc) {
       isDirectory = Boolean(shareDoc.isDirectory);
     }
@@ -105,7 +105,7 @@ async function checkUserSharePermission(token, userId) {
   let firstMissingPath = null;
 
   for (const p of pathsToCheck) {
-    const effective = await Permission.getEffectivePermission(userId, p);
+    const effective = await permissionStore.getEffectivePermission(userId, p);
     if (!effective || !meetsRank(effective, PERMISSIONS.READ)) {
       hasSufficientPermission = false;
       firstMissingPath = p;
@@ -140,7 +140,7 @@ async function addToMyPermissions(token, userId) {
   const isAdmin = Boolean(creatorUser.is_admin);
   const isOwner = folderPath === `/${creatorUser.username}` || folderPath.startsWith(`/${creatorUser.username}/`);
   if (!isAdmin && !isOwner) {
-    const hasAdmin = await Permission.checkPermission(createdBy, folderPath, PERMISSIONS.ADMIN);
+    const hasAdmin = await permissionStore.checkPermission(createdBy, folderPath, PERMISSIONS.ADMIN);
     if (!hasAdmin) {
       return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
     }
@@ -149,9 +149,9 @@ async function addToMyPermissions(token, userId) {
   const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);
   const pathsToGrant = dirPaths.length > 0 ? dirPaths : [folderPath];
   for (const p of pathsToGrant) {
-    const effective = await Permission.getEffectivePermission(userId, p);
+    const effective = await permissionStore.getEffectivePermission(userId, p);
     if (effective && meetsRank(effective, PERMISSIONS.READ)) continue;
-    await Permission.grant(userId, p, PERMISSIONS.READ);
+    await permissionStore.grant(userId, p, PERMISSIONS.READ);
   }
 
   return { data: { messageCode: 'addedToShared' } };

@@ -74,12 +74,12 @@ router.put('/:id/permissions', authenticateToken, asyncHandler(async (req, res) 
     throw forbiddenError(SERVER_ERROR_CODES.admin.adminRequired);
   }
 
-  const Permission = require('../../../models/Permission');
-  await Permission.revokeAllUserPermissions(userId);
+  const permissionStore = require('../../../store/permissionStore');
+  await permissionStore.revokeAllUserPermissions(userId);
 
   for (const perm of permissions) {
     if (perm.folderPath && perm.permission) {
-      await Permission.grant(userId, perm.folderPath, perm.permission);
+      await permissionStore.grant(userId, perm.folderPath, perm.permission);
     }
   }
 

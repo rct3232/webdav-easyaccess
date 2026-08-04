@@ -1,5 +1,5 @@
 const ShareLink = require('../../../models/ShareLink');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const { pathExists, listDirectory } = require('../../../utils/webdav');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { isMetaPath } = require('../../../store/metaPaths');
@@ -58,7 +58,7 @@ async function createShareLink(filePath, userId, expiresInDays) {
   const expiresInDaysValue = validateExpiration(expiresInDays);
 
   const link = await ShareLink.create(normalizedPath, userId, expiresInDaysValue);
-  await Permission.grantSharePermission(link.token, normalizedPath, isDirectory);
+  await permissionStore.grantSharePermission(link.token, normalizedPath, isDirectory);
 
   return {
     token: link.token,
@@ -163,7 +163,7 @@ async function deleteShareLink(token, userId) {
   }
 
   await ShareLink.delete(token);
-  await Permission.revokeSharePermission(token);
+  await permissionStore.revokeSharePermission(token);
 }
 
 module.exports = {

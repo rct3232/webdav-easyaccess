@@ -10,7 +10,7 @@ const {
   USER_STATUS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
-const Permission = require('../../../../models/Permission');
+const permissionStore = require('../../../../store/permissionStore');
 
 var mockEmail;
 var mockWebdav;
@@ -137,7 +137,7 @@ describe('POST /api/admin/users/:id/approve', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
 
-    const hasAdmin = await Permission.checkPermission(
+    const hasAdmin = await permissionStore.checkPermission(
       pendingUser.id,
       `/${pendingUser.username}`,
       'admin'

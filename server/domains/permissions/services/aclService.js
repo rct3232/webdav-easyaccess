@@ -5,7 +5,7 @@
  */
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
 const { meetsRank } = require('../policy/permissionRank');
 
@@ -60,7 +60,7 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, fileNodeId, requiredPermission) : false;
+    return token ? permissionStore.checkSharePermission(token, fileNodeId, requiredPermission) : false;
   }
 
   // Regular user: fetch and check admin status
@@ -76,13 +76,13 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
   }
 
   // Direct file permission takes precedence over inheritance.
-  const filePerm = await Permission.getFilePermission(userId, fileNodeId);
+  const filePerm = await permissionStore.getFilePermission(userId, fileNodeId);
   if (filePerm) {
     return meetsRank(filePerm.permission, requiredPermission);
   }
 
   // Inherited from ancestor folder via closure table?
-  return await Permission.checkPermission(userId, fileNodeId, requiredPermission);
+  return await permissionStore.checkPermission(userId, fileNodeId, requiredPermission);
 }
 
 /**
@@ -94,7 +94,7 @@ async function checkFolderPermission(principalId, dirNodeId, requiredPermission 
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, dirNodeId, requiredPermission) : false;
+    return token ? permissionStore.checkSharePermission(token, dirNodeId, requiredPermission) : false;
   }
 
   // Regular user: fetch and check admin status
@@ -110,7 +110,7 @@ async function checkFolderPermission(principalId, dirNodeId, requiredPermission 
   }
 
   // Check via closure table (direct or inherited from ancestor)
-  return await Permission.checkPermission(userId, dirNodeId, requiredPermission);
+  return await permissionStore.checkPermission(userId, dirNodeId, requiredPermission);
 }
 
 /**
@@ -120,7 +120,7 @@ async function checkFolderPermission(principalId, dirNodeId, requiredPermission 
 async function checkPermission(nodeId, principalId, action = PERMISSIONS.READ, isDirectory = false) {
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? Permission.checkSharePermission(token, nodeId, action) : false;
+    return token ? permissionStore.checkSharePermission(token, nodeId, action) : false;
   }
 
   const userId = principalId;

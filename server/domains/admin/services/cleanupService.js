@@ -2,7 +2,7 @@
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const User = require('../../../models/User');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const { isOwnerPath } = require('../../permissions/policy/ownerNodeResolver');
 const { listDirectory } = require('../../../utils/webdav');
 const storage = require('../../../store/storage');
@@ -205,13 +205,13 @@ async function ensureHomeOwnerAdminForAllUsers() {
 
     try {
       // Action 1: upgrade existing entries under home to admin
-      const doc = await Permission.getPermissionDoc(user.id);
+      const doc = await permissionStore.getPermissionDoc(user.id);
       const perms = doc?.permissions || {};
       for (const [folderPath, permission] of Object.entries(perms)) {
         if (!isOwnerPath(user, folderPath)) continue;
         if (permission === PERMISSIONS.ADMIN) continue;
         try {
-          await Permission.grant(user.id, folderPath, PERMISSIONS.ADMIN);
+          await permissionStore.grant(user.id, folderPath, PERMISSIONS.ADMIN);
           result.upgradedPaths += 1;
           userSet.add(user.id);
         } catch (grantErr) {
@@ -235,14 +235,14 @@ async function ensureHomeOwnerAdminForAllUsers() {
         const normalizedDir = normalizePath(dirPath);
         let hasAdmin = false;
         try {
-          hasAdmin = await Permission.checkPermission(user.id, normalizedDir, PERMISSIONS.ADMIN);
+          hasAdmin = await permissionStore.checkPermission(user.id, normalizedDir, PERMISSIONS.ADMIN);
         } catch (checkErr) {
           result.errors.push(`Check ${user.username} ${normalizedDir}: ${checkErr.message}`);
           continue;
         }
         if (hasAdmin) continue;
         try {
-          await Permission.grant(user.id, normalizedDir, PERMISSIONS.ADMIN);
+          await permissionStore.grant(user.id, normalizedDir, PERMISSIONS.ADMIN);
           result.grantedPaths += 1;
           userSet.add(user.id);
         } catch (grantErr) {

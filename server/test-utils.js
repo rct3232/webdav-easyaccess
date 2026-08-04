@@ -9,7 +9,7 @@ const fs = require('fs');
 
 const User = require('./models/User');
 const userStore = require('./store/userStore');
-const PermissionFacade = require('./domains/permissions/services/permissionFacade');
+const permissionStore = require('./store/permissionStore');
 const { generateToken } = require('./utils/auth');
 const { initMetadataStore } = require('./store/bootstrap');
 const storage = require('./store/storage');
@@ -109,14 +109,15 @@ async function getFullTestUser(userId) {
 }
 
 /**
- * Grant a permission to a user for a folder path.
- * @param {number|string} userId
- * @param {string} folderPath - e.g. '/', '/docs'
- * @param {string} [permission='read'] - 'read' | 'write' | 'admin'
+ * Grant a permission to a user for a node.
+ * @param {Object} opts
+ * @param {number|string} opts.userId
+ * @param {number|string} opts.fileNodeId
+ * @param {string} [opts.permission='read'] - 'read' | 'write' | 'admin'
  * @returns {Promise<Object>}
  */
-async function grantTestPermission(userId, folderPath, permission = PERMISSIONS.READ) {
-  return PermissionFacade.grant(userId, folderPath, permission);
+async function grantTestPermissionByNodeId({ userId, fileNodeId, permission = PERMISSIONS.READ }) {
+  return permissionStore.grant(userId, fileNodeId, permission);
 }
 
 /**
@@ -146,7 +147,7 @@ module.exports = {
   createTestUser,
   createTestToken,
   getFullTestUser,
-  grantTestPermission,
+  grantTestPermissionByNodeId,
   createAuthenticatedTestUser,
   PERMISSIONS,
   USER_STATUS,

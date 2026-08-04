@@ -9,7 +9,7 @@ const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess
 const requireUser = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 
-const PermissionFacade = require('../../../domains/permissions/services/permissionFacade');
+const permissionStore = require('../../../store/permissionStore');
 const { getComposition } = require('../../../service/composition');
 
 // Create folder
@@ -46,7 +46,7 @@ router.post('/create', authenticateToken, requireUser, checkMetaPathAccess, asyn
   const dir = await fileNodeService.createDirectory(parentNodeIdParsed, name);
 
   try {
-    await PermissionFacade.grant(userId, dir.id, PERMISSIONS.WRITE);
+    await permissionStore.grant(userId, dir.id, PERMISSIONS.WRITE);
   } catch (permError) {
     console.error('Failed to grant permission after folder creation:', permError);
   }

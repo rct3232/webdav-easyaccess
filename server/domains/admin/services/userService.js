@@ -7,7 +7,7 @@ const {
 } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { sendApprovalEmail, sendRejectionEmail } = require('../../../utils/email');
 const { createDirectory, pathExists } = require('../../../utils/webdav');
@@ -57,9 +57,9 @@ async function createAdminUser({ username, email, password, isAdmin }) {
   }
 
   try {
-    await Permission.grant(createdUser.id, userFolder, PERMISSIONS.ADMIN);
+    await permissionStore.grant(createdUser.id, userFolder, PERMISSIONS.ADMIN);
 
-    const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(createdUser.id, userFolder, PERMISSIONS.ADMIN);
     if (!hasPermission) {
       throw createError(SERVER_ERROR_CODES.admin.userPermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
@@ -109,9 +109,9 @@ async function approvePendingUser(userId) {
   }
 
   try {
-    await Permission.grant(userId, `/${user.username}`, PERMISSIONS.ADMIN);
+    await permissionStore.grant(userId, `/${user.username}`, PERMISSIONS.ADMIN);
 
-    const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(userId, `/${user.username}`, PERMISSIONS.ADMIN);
     if (!hasPermission) {
       throw createError(SERVER_ERROR_CODES.admin.approvePermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
@@ -149,8 +149,8 @@ async function rejectPendingUser(userId, adminId) {
 
   await PermissionRequest.deleteByRequesterId(userId);
   await PermissionRequest.rejectByOwnerId(userId, adminId);
-  await Permission.revokeAllUserPermissions(userId);
-  await Permission.deleteUserPermissionsFile(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
+  await permissionStore.deleteUserPermissionsFile(userId);
   await User.updateStatus(userId, USER_STATUS.REJECTED);
 
   return { id: user.id, username: user.username, email: user.email };
@@ -173,8 +173,8 @@ async function deleteUserCascade(userId, adminId) {
 
   await PermissionRequest.deleteByRequesterId(userId);
   await PermissionRequest.rejectByOwnerId(userId, adminId);
-  await Permission.revokeAllUserPermissions(userId);
-  await Permission.deleteUserPermissionsFile(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
+  await permissionStore.deleteUserPermissionsFile(userId);
   await User.delete(userId);
 
   return { id: user.id, username: user.username, email: user.email };
@@ -185,11 +185,11 @@ async function bulkUpdateUserPermissions(userId, permissionEntries) {
     throw validationError(SERVER_ERROR_CODES.admin.invalidPermissionList);
   }
 
-  await Permission.revokeAllUserPermissions(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
 
   for (const perm of permissionEntries) {
     if (perm.folderPath && perm.permission && PERMISSIONS.isValid(perm.permission)) {
-      await Permission.grant(userId, perm.folderPath, perm.permission);
+      await permissionStore.grant(userId, perm.folderPath, perm.permission);
     }
   }
 

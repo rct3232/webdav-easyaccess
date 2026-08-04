@@ -44,6 +44,7 @@ function createMockBlobStorageService(overrides = {}) {
     linkObject: jest.fn().mockResolvedValue(true),
     countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
     ensureExclusiveBlob: jest.fn().mockResolvedValue('key-exclusive'),
+    downloadBlobWebdav: jest.fn().mockResolvedValue(null),
   };
   return { ...defaults, ...overrides };
 }

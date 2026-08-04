@@ -21,6 +21,7 @@ function createMockBlobStorageService(overrides = {}) {
   const defaults = {
     downloadBlob: jest.fn()
       .mockImplementation(async (nodeId) => Buffer.from(`content-${nodeId}`)),
+    downloadBlobWebdav: jest.fn().mockResolvedValue(null),
   };
   return { ...defaults, ...overrides };
 }

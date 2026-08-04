@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const archiver = require('archiver');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { forbiddenError } = require('../../../utils/errorHandler');
 
 /**
@@ -19,7 +20,7 @@ function createDownloadService({ fileNodeService, blobStorageService, aclService
 
 		// Permission pre-check: async per file via Promise.allSettled
 		const permissionChecks = nodeIds.map((id) =>
-			aclService.checkFolderPermission(userId, id, 'read')
+			aclService.checkFilePermission(userId, id, PERMISSIONS.READ)
 		);
 		const results = await Promise.allSettled(permissionChecks);
 
@@ -53,11 +54,16 @@ function createDownloadService({ fileNodeService, blobStorageService, aclService
 				let displayName = `file_${nodeId}`;
 				try {
 					const node = await fileNodeService.getNode(nodeId);
-					if (node && node.name) {
+					if (!node) {
+						errors.push({ nodeId, reason: 'not_found' });
+						continue;
+					}
+					if (node.name) {
 						displayName = node.name;
 					}
 				} catch (_) {
-					// getNode unavailable — use fallback name
+					errors.push({ nodeId, reason: 'not_found' });
+					continue;
 				}
 
 				const buffer = await blobStorageService.downloadBlob(nodeId);

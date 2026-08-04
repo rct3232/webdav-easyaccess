@@ -12,6 +12,7 @@ function createMockFileNodeService(overrides = {}) {
   const defaults = {
     getNodePath: jest.fn().mockResolvedValue('/files/test.txt'),
     getNodeIdByName: jest.fn().mockResolvedValue(null),
+    getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, name: `file_${nodeId}.txt` })),
   };
   return { ...defaults, ...overrides };
 }
@@ -26,7 +27,6 @@ function createMockBlobStorageService(overrides = {}) {
 
 function createMockAclService(overrides = {}) {
   const defaults = {
-    checkFolderPermission: jest.fn().mockResolvedValue(true),
     checkFilePermission: jest.fn().mockResolvedValue(true),
   };
   return { ...defaults, ...overrides };
@@ -64,7 +64,7 @@ describe('downloadService', () => {
       });
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
       });
@@ -77,15 +77,15 @@ describe('downloadService', () => {
       expect(result.totalFiles).toBe(2);
       expect(result.downloadId).toBeDefined();
       expect(result.errors).toEqual([]);
-      expect(aclService.checkFolderPermission).toHaveBeenCalledWith('user-1', 10, 'read');
-      expect(aclService.checkFolderPermission).toHaveBeenCalledWith('user-1', 20, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 10, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 20, 'read');
     });
 
     it('excludes files where user lacks read permission and records in errors[]', async () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(false),
       });
@@ -106,7 +106,7 @@ describe('downloadService', () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(false)
           .mockResolvedValueOnce(false),
       });
@@ -122,7 +122,7 @@ describe('downloadService', () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn()
+        checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
       });
@@ -131,9 +131,9 @@ describe('downloadService', () => {
 
       await service.downloadMultiple([10, 20], 'user-1', { id: 'user-1' });
 
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(2);
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(1, 'user-1', 10, 'read');
-      expect(aclService.checkFolderPermission).toHaveBeenNthCalledWith(2, 'user-1', 20, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(2);
+      expect(aclService.checkFilePermission).toHaveBeenNthCalledWith(1, 'user-1', 10, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenNthCalledWith(2, 'user-1', 20, 'read');
     });
 
     it('resolves blob content via correct backend (S3: object_map→s3_key; WebDAV: path resolution)', async () => {
@@ -142,7 +142,7 @@ describe('downloadService', () => {
       });
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn().mockResolvedValue(true),
+        checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -156,7 +156,7 @@ describe('downloadService', () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn().mockResolvedValue(true),
+        checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -171,7 +171,7 @@ describe('downloadService', () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn().mockResolvedValue(true),
+        checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
@@ -190,7 +190,7 @@ describe('downloadService', () => {
       const fileNodeService = createMockFileNodeService();
       const blobStorageService = createMockBlobStorageService();
       const aclService = createMockAclService({
-        checkFolderPermission: jest.fn().mockResolvedValue(true),
+        checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });

@@ -216,10 +216,13 @@ const SERVER_MESSAGE_CODES = {
     shareLinkDeleted: P('serverMessages.shareLinks', 'shareLinkDeleted'),
   },
   files: {
-    uploadSkipped: P('serverMessages.files', 'uploadSkipped'),
-    uploadSuccess: P('serverMessages.files', 'uploadSuccess'),
+    copySuccess: P('serverMessages.files', 'copySuccess'),
+    deleteSuccess: P('serverMessages.files', 'deleteSuccess'),
+    moveSuccess: P('serverMessages.files', 'moveSuccess'),
     nameUnchanged: P('serverMessages.files', 'nameUnchanged'),
     renameSuccess: P('serverMessages.files', 'renameSuccess'),
+    uploadSkipped: P('serverMessages.files', 'uploadSkipped'),
+    uploadSuccess: P('serverMessages.files', 'uploadSuccess'),
     cancelRequested: P('serverMessages.files', 'cancelRequested'),
   },
   permissions: {

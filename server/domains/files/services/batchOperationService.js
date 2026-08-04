@@ -1,5 +1,6 @@
 'use strict';
 
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { getComposition } = require('../../../service/composition');
 const { createOperationProgressStore } = require('../stores/operationProgress');
 
@@ -103,9 +104,9 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
     for (const nodeId of nodeIds) {
       try {
         if (!user || !aclService.isAdminUser(user)) {
-          const canWrite = await aclService.checkFolderPermission(userId, nodeId, 'write');
+          const canWrite = await aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE);
           if (!canWrite) {
-            errors.push({ nodeId, reason: 'permission_denied' });
+            errors.push({ nodeId, status: 'skipped', reason: 'permission_denied' });
             continue;
           }
         }
@@ -113,7 +114,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
         await fileService.deleteNode(nodeId, userId, user);
         deletedCount++;
       } catch (err) {
-        errors.push({ nodeId, reason: err.message || 'unknown_error' });
+        errors.push({ nodeId, status: 'failed', reason: err.message || 'unknown_error' });
       }
     }
 
@@ -139,21 +140,22 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
       const { sourceNodeId, destinationParentNodeId } = move;
       try {
         if (!user || !aclService.isAdminUser(user)) {
-          const canWriteSource = await aclService.checkFolderPermission(
+          const canWriteSource = await aclService.checkFilePermission(
             userId,
             sourceNodeId,
-            'write'
+            PERMISSIONS.WRITE
           );
           const canWriteDest = await aclService.checkFolderPermission(
             userId,
             destinationParentNodeId,
-            'write'
+            PERMISSIONS.WRITE
           );
 
           if (!canWriteSource || !canWriteDest) {
             errors.push({
               sourceNodeId,
               destinationParentNodeId,
+              status: 'skipped',
               reason: 'permission_denied',
             });
             continue;
@@ -166,6 +168,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
         errors.push({
           sourceNodeId,
           destinationParentNodeId,
+          status: 'failed',
           reason: err.message || 'unknown_error',
         });
       }
@@ -196,18 +199,19 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
           const canReadSource = await aclService.checkFilePermission(
             userId,
             sourceNodeId,
-            'read'
+            PERMISSIONS.READ
           );
           const canWriteDest = await aclService.checkFolderPermission(
             userId,
             destinationParentNodeId,
-            'write'
+            PERMISSIONS.WRITE
           );
 
           if (!canReadSource || !canWriteDest) {
             errors.push({
               sourceNodeId,
               destinationParentNodeId,
+              status: 'skipped',
               reason: 'permission_denied',
             });
             continue;
@@ -226,6 +230,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
         errors.push({
           sourceNodeId,
           destinationParentNodeId,
+          status: 'failed',
           reason: err.message || 'unknown_error',
         });
       }

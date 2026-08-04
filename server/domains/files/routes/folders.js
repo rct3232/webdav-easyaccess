@@ -4,7 +4,6 @@ const express = require('express');
 const router = express.Router();
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../../../utils/auth');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const requireUser = require('../../../middleware/requireUser');

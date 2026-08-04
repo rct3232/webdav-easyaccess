@@ -7,6 +7,7 @@ const { authenticateToken } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
+const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
 const { scheduleBulkWorker } = require('../services/batchOperationService');
 const { createOperationProgressStore } = require('../stores/operationProgress');
@@ -14,14 +15,6 @@ const opStore = createOperationProgressStore();
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-
-function parseNodeId(value) {
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed) || parsed <= 0) {
-    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
-  }
-  return parsed;
-}
 
 // POST /batch-delete
 router.post('/batch-delete', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {

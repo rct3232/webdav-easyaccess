@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | nodeId-based batch operations replacing path-based bulk workers. Delegates all per-item work to fileService so that subtree traversal, closure-table maintenance, and storage dispatch remain in a single location. Async permission gates via aclService replace the former sync checker functions (`buildSyncWriteChecker`, etc.). No direct storage calls — every mutation flows through fileService → blobStorageService. Integrates with the existing job system: `opStore.createJob` + `scheduleBulkWorker` create jobs; `runBulkJobWorker` dispatches to this service per item and writes progress via operation-progress store. Payloads carry nodeId-only data (no path fields). |
+| Role | nodeId-based batch operations replacing path-based bulk workers. Delegates all per-item work to fileService so that subtree traversal, closure-table maintenance, and storage dispatch remain in a single location. Async permission gates via aclService with `PERMISSIONS.READ` / `PERMISSIONS.WRITE` constants replace the former sync checker functions (`buildSyncWriteChecker`, etc.). No direct storage calls — every mutation flows through fileService → blobStorageService. Integrates with the existing job system: `opStore.createJob` + `scheduleBulkWorker` create jobs; worker dispatches to this service per item and writes progress via operation-progress store. Payloads carry nodeId-only data (no path fields). Error entries include a `status` field (`'skipped'` for permission-denied items, `'failed'` for runtime errors). |
 
 ---
 
@@ -29,7 +29,7 @@ function createBatchOperationService({ fileNodeService, fileService, aclService 
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| fileNodeService | object | yes | Tree operations (getDescendantIds, getNodePath) used only for progress reporting and nodeId resolution — see `fileNodeService.md` |
+| fileNodeService | object | yes | Imported but not directly invoked by batch methods; retained for API compatibility and future nodeId resolution — see `fileNodeService.md` |
 | fileService | object | yes | Per-item operation delegation: deleteNode, moveNode, copyFile — see `fileService.md` |
 | aclService | object | yes | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js` |
 
@@ -51,17 +51,17 @@ Deletes multiple nodes (and their subtrees) in sequence. Each node is independen
 {
   deletedCount: 3,
   errors: [
-    { nodeId: 42, reason: 'permission_denied' },
-    { nodeId: 57, reason: 'node_not_found' }
+    { nodeId: 42, status: 'skipped', reason: 'permission_denied' },
+    { nodeId: 57, status: 'failed', reason: 'node_not_found' }
   ]
 }
 ```
 
 **Operations (per nodeId):**
 
-1. **Permission gate:** If not `aclService.isAdminUser(user)`, resolve the node's parent via `fileNodeService` and call `aclService.checkFolderPermission(userId, parentNodeId, 'write')`. If false, push `{ nodeId, reason: 'permission_denied' }` to errors and skip to next item.
+1. **Permission gate:** If not `aclService.isAdminUser(user)`, call `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` directly on the node itself. If false, push `{ nodeId, status: 'skipped', reason: 'permission_denied' }` to errors and skip to next item.
 2. **Delegation:** Call `fileService.deleteNode(nodeId, userId, user)`. This handles descendant enumeration via getDescendantIds, storage deletion (mode-dependent), and DB cleanup through fileNodeService. On success, increment deletedCount.
-3. **Error capture:** If fileService.deleteNode throws, push `{ nodeId, reason: error.message }` to errors and continue with next item (no abort).
+3. **Error capture:** If fileService.deleteNode throws, push `{ nodeId, status: 'failed', reason: error.message }` to errors and continue with next item (no abort).
 
 **Processing order:** Sequential iteration over nodeIds array. Partial failures are recorded; remaining items still processed.
 
@@ -83,18 +83,18 @@ Moves multiple nodes to new parent directories in sequence. Each move is indepen
 {
   movedCount: 2,
   errors: [
-    { sourceNodeId: 10, destinationParentNodeId: 5, reason: 'permission_denied' },
-    { sourceNodeId: 12, destinationParentNodeId: 8, reason: 'cycle_detected' }
+    { sourceNodeId: 10, destinationParentNodeId: 5, status: 'skipped', reason: 'permission_denied' },
+    { sourceNodeId: 12, destinationParentNodeId: 8, status: 'failed', reason: 'cycle_detected' }
   ]
 }
 ```
 
 **Operations (per move item):**
 
-1. **Permission gate — source:** If not admin, resolve current parent of `sourceNodeId` and call `aclService.checkFolderPermission(userId, currentParentId, 'write')`. If false, push error with reason `'permission_denied_source'` and skip to next item.
-2. **Permission gate — destination:** If not admin, call `aclService.checkFolderPermission(userId, move.destinationParentNodeId, 'write')`. If false, push error with reason `'permission_denied_destination'` and skip to next item.
+1. **Permission gate — source:** If not admin, call `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.WRITE)` directly on the source node. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item.
+2. **Permission gate — destination:** If not admin, call `aclService.checkFolderPermission(userId, move.destinationParentNodeId, PERMISSIONS.WRITE)`. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item. Both source and destination failures produce the same single `'permission_denied'` reason.
 3. **Delegation:** Call `fileService.moveNode(move.sourceNodeId, move.destinationParentNodeId, userId, user)`. On success, increment movedCount.
-4. **Error capture:** If fileService.moveNode throws (e.g., cycle detection, node not found), push `{ sourceNodeId: move.sourceNodeId, destinationParentNodeId: move.destinationParentNodeId, reason: error.message }` to errors and continue with next item.
+4. **Error capture:** If fileService.moveNode throws (e.g., cycle detection, node not found), push `{ sourceNodeId: move.sourceNodeId, destinationParentNodeId: move.destinationParentNodeId, status: 'failed', reason: error.message }` to errors and continue with next item.
 
 **Processing order:** Sequential iteration over moves array. Partial failures are recorded; remaining items still processed.
 
@@ -116,18 +116,18 @@ Copies multiple files to destination directories in sequence. Copy semantics are
 {
   copiedCount: 1,
   errors: [
-    { sourceNodeId: 20, destinationParentNodeId: 6, reason: 'permission_denied_source_read' },
-    { sourceNodeId: 21, destinationParentNodeId: 7, reason: 'no_active_blob' }
+    { sourceNodeId: 20, destinationParentNodeId: 6, status: 'skipped', reason: 'permission_denied' },
+    { sourceNodeId: 21, destinationParentNodeId: 7, status: 'failed', reason: 'no_active_blob' }
   ]
 }
 ```
 
 **Operations (per copy item):**
 
-1. **Permission gate — source read:** If not admin, call `aclService.checkFilePermission(userId, copy.sourceNodeId, 'read')`. If false, push error with reason `'permission_denied_source_read'` and skip to next item.
-2. **Permission gate — destination write:** If not admin, call `aclService.checkFolderPermission(userId, copy.destinationParentNodeId, 'write')`. If false, push error with reason `'permission_denied_destination_write'` and skip to next item.
+1. **Permission gate — source read:** If not admin, call `aclService.checkFilePermission(userId, copy.sourceNodeId, PERMISSIONS.READ)`. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item.
+2. **Permission gate — destination write:** If not admin, call `aclService.checkFolderPermission(userId, copy.destinationParentNodeId, PERMISSIONS.WRITE)`. If false, push error with `status: 'skipped'` and reason `'permission_denied'` and skip to next item. Both source read and destination write failures produce the same single `'permission_denied'` reason.
 3. **Delegation:** Call `fileService.copyFile(copy.sourceNodeId, copy.destinationParentNodeId, userId, user)`. On success, increment copiedCount.
-4. **Error capture:** If fileService.copyFile throws (e.g., no active blob for source, name conflict), push `{ sourceNodeId: copy.sourceNodeId, destinationParentNodeId: copy.destinationParentNodeId, reason: error.message }` to errors and continue with next item.
+4. **Error capture:** If fileService.copyFile throws (e.g., no active blob for source, name conflict), push `{ sourceNodeId: copy.sourceNodeId, destinationParentNodeId: copy.destinationParentNodeId, status: 'failed', reason: error.message }` to errors and continue with next item.
 
 **Processing order:** Sequential iteration over copies array. Partial failures are recorded; remaining items still processed.
 
@@ -135,7 +135,7 @@ Copies multiple files to destination directories in sequence. Copy semantics are
 
 | Dependency | Purpose |
 |------------|---------|
-| fileNodeService | Node metadata lookups for permission resolution (parent_id retrieval, getNodePath) — see `fileNodeService.md` |
+| fileNodeService | Imported but not directly used by batch methods; available for future nodeId resolution needs — see `fileNodeService.md` |
 | fileService | Per-item operation delegation: deleteNode, moveNode, copyFile — carries all closure-table and storage-backend logic — see `fileService.md` |
 | aclService | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser — see `aclService.js` |
 
@@ -147,11 +147,11 @@ All permission checks are async calls to `aclService`, replacing the former sync
 
 | Operation | Permission Check | aclService Call |
 |-----------|-----------------|-----------------|
-| batchDelete (per item) | Write on parent of node being deleted | `aclService.checkFolderPermission(userId, parentNodeId, 'write')` |
-| batchMove — source (per item) | Write on current parent of source node | `aclService.checkFolderPermission(userId, currentParentId, 'write')` |
-| batchMove — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, 'write')` |
-| batchCopy — source (per item) | Read on source file node | `aclService.checkFilePermission(userId, sourceNodeId, 'read')` |
-| batchCopy — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, 'write')` |
+| batchDelete (per item) | Write on the node itself | `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` |
+| batchMove — source (per item) | Write on the source node directly | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.WRITE)` |
+| batchMove — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
+| batchCopy — source (per item) | Read on source file node | `aclService.checkFilePermission(userId, sourceNodeId, PERMISSIONS.READ)` |
+| batchCopy — destination (per item) | Write on target parent directory | `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)` |
 
 Admin bypass: `aclService.isAdminUser(user)` returning true skips all permission checks for the item. Each item is checked independently; one denied item does not block processing of remaining items in the batch.
 
@@ -230,28 +230,26 @@ Per-item transactional integrity is maintained by fileService/fileNodeService. T
 ### batchDelete
 - [ ] Deletes multiple leaf file nodes successfully, returns `{ deletedCount: N, errors: [] }` for N valid items
 - [ ] Deletes directory node and all descendants via fileService.deleteNode cascade (closure table enumeration)
-- [ ] Skips item when user lacks write permission on parent folder; error entry has reason `'permission_denied'`
+- [ ] Skips item when user lacks write permission on the node itself; error entry has `status: 'skipped'`, reason `'permission_denied'`
 - [ ] Admin user bypasses permission checks — all items processed regardless of ACL state
-- [ ] Partial failure: first nodeId valid, second nodeId non-existent → returns `{ deletedCount: 1, errors: [{ nodeId: X, reason: 'node_not_found' }] }`
+- [ ] Partial failure: first nodeId valid, second nodeId non-existent → returns `{ deletedCount: 1, errors: [{ nodeId: X, status: 'failed', reason: 'node_not_found' }] }`
 - [ ] Empty nodeIds array → returns `{ deletedCount: 0, errors: [] }` immediately
 
 ### batchMove
 - [ ] Moves multiple nodes to new parent successfully, updates closure table via fileService.moveNode
-- [ ] Checks write permission on source parent AND destination parent independently per item
-- [ ] Skips item with `'permission_denied_source'` when user cannot write to current parent
-- [ ] Skips item with `'permission_denied_destination'` when user cannot write to target parent
-- [ ] Cycle detection: move rejected by fileService.moveNode → error entry captured, remaining moves proceed
+- [ ] Checks write permission on source node directly AND destination parent per item
+- [ ] Skips item with `status: 'skipped'`, reason `'permission_denied'` when user cannot write to source or destination (same reason for both)
+- [ ] Cycle detection: move rejected by fileService.moveNode → error entry with `status: 'failed'` captured, remaining moves proceed
 - [ ] destinationParentNodeId as null (move to root) is a valid operation
 
 ### batchCopy
 - [ ] Copies multiple files successfully, creates new file_nodes with independent blob references
 - [ ] S3 mode: zero-copy when source blob exclusively owned; duplicateBlob when shared — delegated to fileService.copyFile
 - [ ] WebDAV mode: downloads source content and re-uploads at destination path — delegated to fileService.copyFile
-- [ ] Checks read permission on source node per item
-- [ ] Checks write permission on destination parent per item
-- [ ] Skips item with `'permission_denied_source_read'` when user cannot read source
-- [ ] Skips item with `'permission_denied_destination_write'` when user cannot write to target
-- [ ] Error captured when source has no active blob (no storage content to copy)
+- [ ] Checks read permission on source node per item via `PERMISSIONS.READ`
+- [ ] Checks write permission on destination parent per item via `PERMISSIONS.WRITE`
+- [ ] Skips item with `status: 'skipped'`, reason `'permission_denied'` when user cannot read source or write to destination (same reason for both)
+- [ ] Error captured with `status: 'failed'` when source has no active blob (no storage content to copy)
 
 ### Cross-cutting
 - [ ] No `buildSync*Checker` calls exist anywhere in the batchOperationService implementation

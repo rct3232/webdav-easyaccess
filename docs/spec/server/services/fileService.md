@@ -98,7 +98,7 @@ Creates a new file node and stores its content. Dispatch strategy differs by sto
 
 **S3 Mode Flow:**
 
-1. Permission gate: if not admin, verify write permission on parent via `aclService.checkFolderPermission(userId, parentNodeId, PERMISSIONS.WRITE)`.
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFolderPermission(userId, parentNodeId, 'write')` (string literal). If check returns false, throw 403 via `forbiddenError`. Admin or null-user bypasses this gate entirely.
 2. Conflict check: query file_nodes for `(parent_id, name)` uniqueness. If exists and `onConflict === 'skip'`, return early with `{ nodeId, skipped: true }`. If exists and `onConflict !== 'overwrite'`, throw conflict error.
 3. Dispatch to `uploadService.uploadFile(parentNodeId, name, buffer, mimeType)`. This orchestration internally runs TX1 (`fileNodeService.createFile()` + `blobStorageService.prepareUpload()`), the transport PUT (inside blobStorageService, never a direct blobStore call from fileService), and TX2 (`blobStorageService.completeUpload()` + `fileNodeService.updateSyncStatus(nodeId, 'active')`).
 4. Returns result from uploadService.
@@ -108,9 +108,8 @@ Creates a new file node and stores its content. Dispatch strategy differs by sto
 1. Permission gate: same as S3 mode.
 2. Conflict check: same as S3 mode.
 3. Atomic create + PUT:
-   - `fileNodeService.createFile(parentNodeId, name)` — creates node with sync_status='active'
-   - Compute WebDAV path via `fileNodeService.getNodePath(newNodeId)`
-   - `blobStorageService.uploadToWebdav(webdavPath, buffer)` — synchronous PUT to remote storage
+   - For new file: `fileNodeService.createFile(parentNodeId, name)` — creates node with sync_status='active'. For overwrite: reuse existing file's nodeId.
+    - `blobStorageService.uploadToWebdav(nodeId, buffer)` — synchronous PUT to remote storage (path resolution happens inside blobStorageService).
 4. If WebDAV PUT fails after DB commit: call `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` as fail-safe, then re-throw the error.
 5. Returns `{ nodeId, size: buffer.length, mimeType }`.
 
@@ -132,7 +131,7 @@ Downloads file content through the appropriate storage backend.
 
 **Operations:**
 
-1. Permission gate: if not `isAdminUser(user)`, call `aclService.checkFilePermission(userId, fileNodeId, PERMISSIONS.READ)`. If false, throw 403 error.
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFilePermission(userId, fileNodeId, 'read')` (string literal). If check returns false, throw 404 via `notFoundError`. Admin or null-user bypasses this gate entirely.
 2. S3 mode: dispatch to `blobStorageService.downloadBlob(fileNodeId)` — resolves object_map → active s3_key → S3 GET. Throws `notFoundError` on empty active object.
 3. WebDAV mode: resolve path via `fileNodeService.getNodePath(fileNodeId)`, then call `blobStorageService.downloadFromWebdav(path)`. Throws `notFoundError` on 404.
 
@@ -155,12 +154,14 @@ Renames a node in the database with optional best-effort storage-side rename for
 
 **Operations:**
 
-1. Permission gate: if not admin, check write permission on the node itself via `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)`.
-2. DB rename: `fileNodeService.renameNode(nodeId, newName)` — single UPDATE to file_nodes.name.
-3. Storage-side rename (mode-dependent):
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If check returns false, throw 403 via `forbiddenError`. Admin or null-user bypasses this gate entirely.
+2. Name validation: reject empty `newName` or names containing `/`, `\` via `conflictError(SERVER_ERROR_CODES.files.invalidName)`.
+3. Sibling conflict check: list siblings via `fileNodeService.listDirectory(node.parent_id)` and throw `conflictError` if any sibling matches `newName`.
+4. DB rename: `fileNodeService.renameNode(nodeId, newName)` — single UPDATE to file_nodes.name.
+5. Storage-side sync (mode-dependent):
    - **S3 mode:** No storage operation needed. Blob key is independent of node name.
-   - **WebDAV mode:** Attempt best-effort MOVE: resolve old path and new path via `fileNodeService.getNodePath(nodeId)` before/after, call WebDAV MOVE through blobStorageService. If the MOVE fails, set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')` to flag for Phase 6 GC recovery. Do not abort the DB rename — metadata is authoritative.
-4. Return confirmation.
+   - **WebDAV mode:** Uses "download content → DB rename → re-upload" pattern (not native WebDAV MOVE). Before the DB rename, download file content via `blobStorageService.downloadBlob(nodeId)` — if download fails, proceed with DB-only rename (storage sync is best-effort). After the DB rename, re-upload the buffered content to the new path via `blobStorageService.uploadToWebdav(nodeId, webdavBuffer)`. If re-upload fails, set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')`. Do not abort the DB rename — metadata is authoritative.
+6. Return confirmation.
 
 **Validation:** newName must be non-empty and free of path separators (`/`, `\`). Duplicate name under same parent throws UNIQUE constraint error from DB layer.
 
@@ -181,15 +182,15 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
 
 **Operations:**
 
-1. Permission gate: if not admin:
-   - Check write on source node via `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)`
-   - Check write on destination parent via `aclService.checkFolderPermission(userId, newParentNodeId, PERMISSIONS.WRITE)`
-2. Cycle detection: handled by fileNodeService.moveNode internally (calls getDescendantIds and rejects if newParentId is a descendant).
-3. DB move: `fileNodeService.moveNode(nodeId, newParentNodeId)` — updates parent_id + rebuilds closure table via _ancestryHelper in TX.
-4. Storage-side move (mode-dependent):
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true:
+   - Check write on source via `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If false, throw 403.
+   - Check write on destination parent via `aclService.checkFolderPermission(userId, newParentNodeId, 'write')` (string literal). If false, throw 403.
+   Admin or null-user bypasses this gate entirely.
+2. Storage-side sync (mode-dependent):
    - **S3 mode:** No storage operation needed. Blob keys are decoupled from tree position.
-   - **WebDAV mode:** Attempt best-effort MOVE on remote storage. On failure: set `sync_status = 'orphaned_node'` for the moved node. Do not abort DB move — metadata is authoritative.
-5. Return confirmation.
+   - **WebDAV mode:** Uses "download content → DB move → re-upload" pattern (not native WebDAV MOVE). Before the DB move, download file content via `blobStorageService.downloadBlob(nodeId)` — if download fails, proceed with DB-only move (storage sync is best-effort). After the DB move, re-upload the buffered content to the new path via `blobStorageService.uploadToWebdav(nodeId, webdavBuffer)`. If re-upload fails, set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')`. Do not abort DB move — metadata is authoritative.
+3. DB move: `fileNodeService.moveNode(nodeId, newParentNodeId)` — updates parent_id + rebuilds closure table in TX. Cycle detection handled internally by fileNodeService (calls getDescendantIds and rejects if newParentId is a descendant).
+4. Return confirmation.
 
 ---
 
@@ -207,12 +208,12 @@ Deletes a node and its entire subtree. For WebDAV mode, attempts best-effort sto
 
 **Operations:**
 
-1. Permission gate: if not admin, check write on the node itself via `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)`.
-2. Confirm existence via `fileNodeService.getNode(nodeId)` — resolvers return node or throw; typed non-null.
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true, call `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If check returns false, throw 403 via `forbiddenError`. Admin or null-user bypasses this gate entirely.
+2. Confirm existence via `fileNodeService.getNode(nodeId)` — throws `notFoundError` if node does not exist.
 3. Enumerate subtree: `fileNodeService.getDescendantIds(nodeId)` returns all descendant IDs from closure table.
 4. Storage deletion (mode-dependent):
    - **S3 mode:** No direct storage call needed at this layer. blobStorageService.deleteBlob is called per-file as part of the fileNodeService.deleteNode cascade, which marks object_map rows orphaned. Actual S3 deletion deferred to Phase 6 GC.
-   - **WebDAV mode:** Iterate descendant IDs bottom-up (leaves first, then directories). For each file node: call `blobStorageService.deleteBlob(descendantId)` which performs WebDAV DELETE best-effort. On per-node failure: set `sync_status = 'orphaned_node'` and continue (do not abort remaining deletions). Directory nodes are deleted in reverse depth order so children are removed before parents on the remote storage.
+   - **WebDAV mode:** Build cleanup list as `[...descendantIds].reverse().concat([nodeId])` — deepest descendants first, then the target node itself. For each id: call `blobStorageService.deleteBlob(descId)` in a try/catch; on failure set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(descId, 'orphaned_node')` and continue (do not abort remaining deletions).
 5. DB deletion: `fileNodeService.deleteNode(nodeId)` — wrapped in TX, cleans up node_ancestors + triggers FK CASCADE for object_map, filecache rows.
 6. Return `{ deletedCount: descendantIds.length }`.
 
@@ -236,19 +237,20 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 **S3 Mode (copy-on-write):**
 
-1. Permission gate: if not admin:
-   - Read check on source via `aclService.checkFilePermission(userId, nodeId, PERMISSIONS.READ)`
-   - Write check on destination parent via `aclService.checkFolderPermission(userId, destinationParentNodeId, PERMISSIONS.WRITE)`
+1. Permission gate: guard is `if (!user || !aclService.isAdminUser(user))` — when true:
+   - Read check on source via `aclService.checkFilePermission(userId, nodeId, 'read')` (string literal). If false, throw 403.
+   - Write check on destination parent via `aclService.checkFolderPermission(userId, destinationParentNodeId, 'write')` (string literal). If false, throw 403.
+   Admin or null-user bypasses this gate entirely.
 2. Resolve source blob key: `blobStorageService.getActiveS3Key(nodeId)`. If null (no active object), throw error — nothing to copy.
 3. Check sharing: count how many file_nodes currently reference this s3_key via `blobStorageService.countActiveObjectsByS3Key(s3Key)`.
    - If count === 1 (exclusive ownership): create new file_node + INSERT new object_map row referencing the SAME s3_key with status='active'. Zero-copy, instant.
-   - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(nodeId)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
+   - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(s3Key)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
 4. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
 5. Return `{ sourceNodeId, copiedNodeId }`.
 
 **WebDAV Mode (actual blob copy):**
 
-1. Permission gate: same checks as S3 mode.
+1. Permission gate: same null-guard + string-literal checks as S3 mode (`'read'` on source, `'write'` on destination parent).
 2. Download source content via `blobStorageService.downloadBlob(nodeId)`.
 3. Create new file_node via `fileNodeService.createFile(destinationParentNodeId, newName)`. Handle name conflict with numeric suffix.
 4. Upload copy via `blobStorageService.uploadToWebdav(copiedNodeId, downloadedBuffer)`.
@@ -335,21 +337,19 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 
 Every public method performs a permission gate before proceeding with its core operation. The gates follow this pattern:
 
-1. **Admin bypass:** `aclService.isAdminUser(user)` returns true → skip all checks, proceed directly to the operation. Admin users have unrestricted access.
-2. **Non-admin path:** For each required permission, call the appropriate aclService function:
-   - Folder operations (list, create child, move into): `aclService.checkFolderPermission(userId, folderNodeId, action)` where action is `PERMISSIONS.READ` or `PERMISSIONS.WRITE`.
-   - File content operations (download, copy source): `aclService.checkFilePermission(userId, fileNodeId, PERMISSIONS.READ)`.
-   - File mutation operations (upload to parent, delete from parent): `aclService.checkFolderPermission(userId, parentNodeId, PERMISSIONS.WRITE)`.
+1. **Null guard + Admin bypass:** Every blocking gate uses the outer condition `if (!user || !aclService.isAdminUser(user))`. When `user` is null/undefined or when `isAdminUser()` returns true, the gate is skipped entirely and the method proceeds to its core operation. Only non-admin, non-null users are subject to permission checks.
+2. **Blocking permission gates use string literals:** The blocking gates in `uploadFile`, `downloadFile`, `renameNode`, `moveNode`, `deleteNode`, and `copyFile` pass literal strings (`'read'` / `'write'`) as the permission argument, not `PERMISSIONS.READ` / `PERMISSIONS.WRITE` constants.
+3. **Per-item permission checks use constants:** The per-item checks inside `listDirectoryWithPermissions` (which are non-blocking — they only set boolean flags on each result row) use `PERMISSIONS.READ` and `PERMISSIONS.WRITE` constants.
 
-| Method | Permission Gate | Action | ACL Call |
-|--------|----------------|--------|----------|
-| listDirectoryWithPermissions | Per-item flags, not blocking | Read/write enumeration | `checkFolderPermission` for dirs, `checkFilePermission` for files (skipped if admin) |
-| uploadFile | Blocking before create | Write on parent folder | `checkFolderPermission(userId, parentNodeId, PERMISSIONS.WRITE)` |
-| downloadFile | Blocking before download | Read on file node | `checkFilePermission(userId, fileNodeId, PERMISSIONS.READ)` |
-| renameNode | Blocking before rename | Write on file node | `checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` |
-| moveNode | Blocking before move | Write on source file AND write on destination parent | `checkFilePermission(source)` + `checkFolderPermission(destParent)` |
-| deleteNode | Blocking before delete | Write on file node being deleted | `checkFilePermission(userId, nodeId, PERMISSIONS.WRITE)` |
-| copyFile | Blocking before copy | Read on source + write on destination parent | `checkFilePermission(source)` + `checkFolderPermission(destParent)` |
+| Method | Gate Type | Action | ACL Call (blocking gate) |
+|--------|-----------|--------|--------------------------|
+| listDirectoryWithPermissions | Per-item flags, not blocking | Read/write enumeration per child | `checkFolderPermission(userId, childId, PERMISSIONS.READ/WRITE)` for dirs; `checkFilePermission(userId, childId, PERMISSIONS.READ/WRITE)` for files — skipped entirely if admin. Uses **constant** values. |
+| uploadFile | Blocking before create | Write on parent folder | `checkFolderPermission(userId, parentNodeId, 'write')` — **string literal**. |
+| downloadFile | Blocking before download | Read on file node | `checkFilePermission(userId, fileNodeId, 'read')` — **string literal**. |
+| renameNode | Blocking before rename | Write on target node | `checkFilePermission(userId, nodeId, 'write')` — **string literal**. |
+| moveNode | Blocking before move | Write on source node AND write on destination parent | `checkFilePermission(userId, nodeId, 'write')` + `checkFolderPermission(userId, newParentNodeId, 'write')` — **string literals**. |
+| deleteNode | Blocking before delete | Write on target node | `checkFilePermission(userId, nodeId, 'write')` — **string literal**. |
+| copyFile | Blocking before copy | Read on source + write on destination parent | `checkFilePermission(userId, nodeId, 'read')` + `checkFolderPermission(userId, destParentId, 'write')` — **string literals**. |
 
 The aclService functions internally handle: share principal resolution (`share:` prefixed userIds), user caching via getCachedUser, admin bypass within their own bodies, and closure-table inheritance lookups. The fileService does not duplicate this logic — it relies on aclService as the single source of truth for permission decisions.
 

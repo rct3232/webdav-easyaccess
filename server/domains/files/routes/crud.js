@@ -10,6 +10,7 @@ const requireUser = require('../../../middleware/requireUser');
 const { requireAuth } = requireUser;
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../../../utils/errorHandler');
+const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
 const { getConflicts, getConflictsByNodeIds } = require('../services/conflictResolver');
 
@@ -29,14 +30,6 @@ function requireTokenNotShare(req, res, next) {
     return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
   }
   next();
-}
-
-function parseNodeId(value, fieldName = 'nodeId') {
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed) || parsed <= 0) {
-    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
-  }
-  return parsed;
 }
 
 const METADATA_PATHS_LIMIT = 100;
@@ -225,7 +218,7 @@ router.post('/move', authenticateToken, requireUser, checkMetaPathAccess, asyncH
 
   const result = await fileService.moveNode(fileNodeId, destParentNodeId, principalId, user);
 
-  res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, nodeId: result.nodeId, newParentId: result.newParentId });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.moveSuccess, nodeId: result.nodeId, newParentId: result.newParentId });
 }));
 
 router.post('/copy', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
@@ -248,7 +241,7 @@ router.post('/copy', authenticateToken, requireUser, checkMetaPathAccess, asyncH
     user,
   );
 
-  res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, sourceNodeId: result.sourceNodeId, copiedNodeId: result.copiedNodeId });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.copySuccess, sourceNodeId: result.sourceNodeId, copiedNodeId: result.copiedNodeId });
 }));
 
 router.delete('/delete', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
@@ -264,7 +257,7 @@ router.delete('/delete', authenticateToken, requireUser, checkMetaPathAccess, as
 
   const result = await fileService.deleteNode(fileNodeId, principalId, user);
 
-  res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, nodeId: fileNodeId, deletedCount: result.deletedCount });
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.deleteSuccess, nodeId: fileNodeId, deletedCount: result.deletedCount });
 }));
 
 module.exports = router;

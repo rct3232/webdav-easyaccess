@@ -11,19 +11,12 @@ const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const { requireAuth } = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, notFoundError } = require('../../../utils/errorHandler');
+const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
 const { createOperationProgressStore } = require('../stores/operationProgress');
 const { getComposition } = require('../../../service/composition');
 
 const opStore = createOperationProgressStore();
-
-function parseNodeId(value, fieldName = 'nodeId') {
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed) || parsed <= 0) {
-    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
-  }
-  return parsed;
-}
 
 /* ------------------------------------------------------------------ */
 /* 1. POST /preview-ticket                                            */

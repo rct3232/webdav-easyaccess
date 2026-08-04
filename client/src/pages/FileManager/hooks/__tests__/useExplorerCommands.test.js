@@ -83,8 +83,6 @@ function createProps(overrides = {}) {
     isMobile: false,
     isShareLinkMode: false,
     shareToken: null,
-    currentPath: '/docs',
-    currentPathRef: { current: '/docs' },
     currentNodeId: 10,
     currentNodeIdRef,
     refreshNow: jest.fn(),

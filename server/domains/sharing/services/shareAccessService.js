@@ -5,7 +5,6 @@ const ShareLink = require('../../../models/ShareLink');
 const Permission = require('../../../models/Permission');
 const User = require('../../../models/User');
 const { pathExists, listDirectory, getFileContents } = require('../../../utils/webdav');
-const { canGrantPermission } = require('../../permissions/policy/permissionPolicy');
 const { meetsRank } = require('../../permissions/policy/permissionRank');
 
 async function collectPathsUnderSharePath(rootPath) {
@@ -138,9 +137,13 @@ async function addToMyPermissions(token, userId) {
     return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
   }
 
-  const canGrant = await canGrantPermission(creatorUser, folderPath, createdBy);
-  if (!canGrant) {
-    return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
+  const isAdmin = Boolean(creatorUser.is_admin);
+  const isOwner = folderPath === `/${creatorUser.username}` || folderPath.startsWith(`/${creatorUser.username}/`);
+  if (!isAdmin && !isOwner) {
+    const hasAdmin = await Permission.checkPermission(createdBy, folderPath, PERMISSIONS.ADMIN);
+    if (!hasAdmin) {
+      return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
+    }
   }
 
   const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);

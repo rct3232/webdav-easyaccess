@@ -9,14 +9,6 @@ const Permission = require('../../../models/Permission');
 const User = require('../../../models/User');
 const { meetsRank } = require('../policy/permissionRank');
 
-// Backward-compat: re-export sync checkers and owner helpers from policy layer.
-// These are deprecated in favor of nodeId-based async checks but still consumed by callers.
-const {
-  buildSyncReadChecker,
-  buildSyncWriteChecker,
-  buildSyncReadFileChecker,
-  buildSyncWriteFileByParentChecker,
-} = require('../policy/permissionPolicy');
 const { isOwnerPath, userRootPath } = require('../policy/ownerNodeResolver');
 
 // --- User cache (extracted from middleware/permissions.js) ---
@@ -204,13 +196,6 @@ module.exports = {
 
   // Backward-compat: path-based access check
   canAccessPath,
-
-  // Backward-compat: re-exported from policy layer
-  isOwnerPath,
-  buildSyncReadChecker,
-  buildSyncWriteChecker,
-  buildSyncReadFileChecker,
-  buildSyncWriteFileByParentChecker,
 
   // Cache utilities
   getCachedUser,

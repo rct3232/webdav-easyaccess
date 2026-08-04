@@ -6,8 +6,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
 const { validationError, forbiddenError } = require('../../../utils/errorHandler');
 const { selectiveCollectFiles } = require('./selectiveDownload');
-const { isSharePrincipal, buildSyncReadChecker, buildSyncReadFileChecker, checkFolderPermission, checkFilePermission } = require('../../permissions/services/aclService');
-const PermissionFacade = require('../../permissions/services/permissionFacade');
+const { isSharePrincipal, checkFolderPermission, checkFilePermission } = require('../../permissions/services/aclService');
 
 async function detectIsDirectory(filePath) {
   try {
@@ -45,15 +44,11 @@ async function downloadMultiple(req, res, opStore) {
 
   if (isShare) {
     const token = req.shareContext.token;
-    canEnterDirectory = (dirPath) => checkFolderPermission('share:' + token, dirPath, PERMISSIONS.READ);
-    canIncludeFile = (filePath) => checkFilePermission('share:' + token, filePath, PERMISSIONS.READ);
+    canEnterDirectory = async (nodeId) => checkFolderPermission('share:' + token, nodeId, PERMISSIONS.READ);
+    canIncludeFile = async (nodeId) => checkFilePermission('share:' + token, nodeId, PERMISSIONS.READ);
   } else {
-    const user = req.user.full;
-    const doc = await PermissionFacade.getPermissionDoc(principalId);
-    const canReadDirSync = buildSyncReadChecker(user, doc);
-    const canReadFileSync = buildSyncReadFileChecker(user, doc);
-    canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-    canIncludeFile = (filePath) => canReadFileSync(filePath);
+    canEnterDirectory = async (nodeId) => checkFolderPermission(principalId, nodeId, PERMISSIONS.READ);
+    canIncludeFile = async (nodeId) => checkFilePermission(principalId, nodeId, PERMISSIONS.READ);
   }
 
   const skippedPaths = [];

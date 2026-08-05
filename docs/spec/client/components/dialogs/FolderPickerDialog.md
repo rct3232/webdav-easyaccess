@@ -23,20 +23,20 @@
 |------|------|----------|---------|-------------|
 | open | boolean | Y | - | Whether dialog is open |
 | onClose | function | Y | - | Close handler |
-| onSelect | function | Y | - | Called with selectedPath when Select clicked |
+| onSelect | function | Y | - | Called with selectedNodeId when Select clicked |
 | title | string | N | t('dialogs.folderSelectTitle') | Dialog title |
-| currentPath | string | Y | - | Initial/current path |
+| currentNodeId | number \| null | N | - | Initial/current folder nodeId |
 | user | object | N | - | User object (for home/shared toggle visibility) |
 | action | string | N | - | 'copy' or 'move' – affects toggle and destination validation |
-| sourceFilePath | string | N | - | Single source path (for move/copy) |
-| sourceFilePaths | array | N | - | Multiple source paths |
+| sourceNodeId | number | N | - | Single source nodeId (for move/copy) |
+| sourceNodeIds | array | N | - | Multiple source nodeIds |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
 | onClose | Cancel or dialog close | - |
-| onSelect | Select button click | (selectedPath: string) |
+| onSelect | Select button click | (selectedNodeId: number \| null) |
 
 ### 2.4 Dependencies
 
@@ -57,7 +57,7 @@
 ### 2.6 Conditional Rendering
 
 - Home/Shared toggle shown when (action === 'copy' \|\| action === 'move') && user && !user.is_admin
-- Select disabled when selectedPath === '/__shared__' or (copy/move && !hasWritePermission) or isInvalidDestination()
+- Select disabled when at the shared root (`getCurrentPathType() === 'shared' && selectedNodeId == null`) or (copy/move && !hasWritePermission) or isInvalidDestination()
 - Hidden folders (isHidden, basename starts with '.') rendered with reduced opacity
 - Folders without read permission disabled
 
@@ -65,18 +65,17 @@
 
 Checklist for unit test writing:
 
-- [ ] Breadcrumbs render, path click navigates
+- [ ] Breadcrumbs render, nodeId click navigates
 - [ ] Folder list from useFolderPicker, folder click updates selection
-- [ ] Select disabled for /__shared__ and invalid destinations
-- [ ] onSelect called with selectedPath, then onClose
+- [ ] Select disabled for the shared root and invalid destinations
+- [ ] onSelect called with selectedNodeId, then onClose
 - [ ] Home/Shared toggle visible for non-admin in copy/move
 - [ ] Loading state shows CircularProgress
 - [ ] Empty folders shows noSubfolders message
 
 ### 2.8 Edge Cases
 
-- selectedPath === '/__shared__' – Select disabled, handleSelect returns early
-- isInvalidDestination – from useFolderPicker (e.g. source === dest)
+- Shared root (selectedNodeId null while `getCurrentPathType() === 'shared'`) – Select disabled, handleSelect returns early
+- isInvalidDestination – from useFolderPicker (e.g. source nodeId === destination nodeId)
 - fullScreen on mobile via useResponsive
-- sourcePath가 destPath의 ancestor (자기 폴더 내 하위로 이동): isInvalidDestination true
-- currentPath 빈 문자열: normalizePath 결과 사용; root로 fallback
+- Admin home root (selectedNodeId null while `getCurrentPathType() === 'home'`) remains selectable

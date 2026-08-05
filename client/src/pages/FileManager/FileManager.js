@@ -17,6 +17,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useMessage } from '../../hooks/useMessage';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { getEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
@@ -87,6 +88,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     loading,
     loadFiles,
     hasWritePermission,
+    resolveNodeIdFromPath,
+    resolvePathFromNodeId,
     onLoadErrorRef,
   } = useFileManager(user, {
     onLoadComplete: handleLoadCompleteCallback,
@@ -144,12 +147,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
   const allSelectedHaveWrite = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedPaths = Array.from(selectedFiles);
-    const selectedFileObjects = selectedPaths
-      .map(path => sortedFiles.find(f => f.path === path))
+    const selectedKeys = Array.from(selectedFiles);
+    const selectedFileObjects = selectedKeys
+      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
       .filter(Boolean);
     return (
-      selectedFileObjects.length === selectedPaths.length &&
+      selectedFileObjects.length === selectedKeys.length &&
       selectedFileObjects.every(f => f.hasWritePermission === true)
     );
   }, [selectionMode, selectedFiles, sortedFiles]);
@@ -157,9 +160,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
   const hasReadOnlyInSelection = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedPaths = Array.from(selectedFiles);
-    const selectedFileObjects = selectedPaths
-      .map(path => sortedFiles.find(f => f.path === path))
+    const selectedKeys = Array.from(selectedFiles);
+    const selectedFileObjects = selectedKeys
+      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
       .filter(Boolean);
     return selectedFileObjects.some(f => f.hasWritePermission === false);
   }, [selectionMode, selectedFiles, sortedFiles]);
@@ -196,10 +199,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const propertiesFile = useMemo(() => {
     const source = mobilePropertiesFile || actionSheetFile;
     if (!source) return null;
-    return files.find(f => f.path === source.path) || source;
+    return files.find(f => getEntryKey(f) === getEntryKey(source)) || source;
   }, [files, mobilePropertiesFile, actionSheetFile]);
 
-  // 미리보기 갤러리용 미디어 파일 목록 (같은 경로의 이미지/비디오)
+  // 미리보기 갤러리용 미디어 파일 목록 (같은 노드/경로의 이미지/비디오)
   const mediaFiles = useMemo(() => {
     if (!selectedFile) return [];
     if (currentPath === '/__shared__') {
@@ -209,12 +212,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
       );
     }
+    const isMedia = (f) =>
+      f.type === 'file' &&
+      (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video');
+    const parentNodeId = selectedFile.parentNodeId ?? null;
+    if (parentNodeId != null) {
+      return sortedFiles.filter((f) => (f.parentNodeId ?? null) === parentNodeId && isMedia(f));
+    }
     const parentPath = getParentPath(selectedFile.path);
-    return sortedFiles.filter(
-      (f) =>
-        getParentPath(f.path) === parentPath &&
-        (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
-    );
+    return sortedFiles.filter((f) => getParentPath(f.path) === parentPath && isMedia(f));
   }, [sortedFiles, selectedFile, currentPath]);
 
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
@@ -374,15 +380,43 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   });
 
   const {
-    navigateToPath: navigateToExplorerPath,
+    navigateToNode: navigateToExplorerNode,
     handleFolderOpen: openExplorerFolder,
   } = useExplorerNavigation({
-    currentPath,
-    getPreviousPath: () => currentPathRef.current,
-    setCurrentPath,
-    onTrackPathHistory: trackPathHistory,
-    canNavigateToPath: user?.is_admin ? async () => true : explorerGateway.canNavigateToPath,
+    currentNodeId,
+    getPreviousNodeId: () => currentNodeIdRef.current,
+    setCurrentNodeId: (nodeId) => {
+      const targetPath = resolvePathFromNodeId(nodeId);
+      if (!targetPath) return;
+      setCurrentPath(targetPath);
+    },
+    onTrackNodeHistory: (nodeId, previousNodeId) => {
+      const nextPath = resolvePathFromNodeId(nodeId);
+      if (!nextPath) return;
+      const previousPath = resolvePathFromNodeId(previousNodeId) ?? currentPathRef.current;
+      trackPathHistory(nextPath, previousPath);
+    },
+    canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
   });
+
+  // Hybrid-state transitional navigator: resolves the path to a nodeId when the
+  // session map knows it so the nodeId-based gateway is used; otherwise it falls
+  // back to optimistic path navigation until the nodeId-first URL scheme (C2.1).
+  const navigateToExplorerPath = useCallback((path) => {
+    if (!path) return;
+
+    const nodeId = resolveNodeIdFromPath(path);
+    if (nodeId != null) {
+      return navigateToExplorerNode(nodeId);
+    }
+
+    const normalizedPath = normalizePath(path);
+    if (!normalizedPath) return;
+    if (normalizePath(currentPathRef.current || '') === normalizedPath) return;
+    trackPathHistory(normalizedPath, currentPathRef.current);
+    setCurrentPath(normalizedPath);
+    return undefined;
+  }, [resolveNodeIdFromPath, navigateToExplorerNode, setCurrentPath, trackPathHistory]);
   const handleProductPathClick = useCallback(async (path) => {
     if (!path) return false;
 

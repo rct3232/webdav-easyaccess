@@ -5,85 +5,53 @@
 import { buildFolderPickerBreadcrumbs } from '../buildFolderPickerBreadcrumbs';
 
 describe('buildFolderPickerBreadcrumbs', () => {
-  it('returns only the shared root breadcrumb for /__shared__', () => {
+  it('returns only the shared root breadcrumb for the shared root', () => {
     expect(
       buildFolderPickerBreadcrumbs({
-        selectedPath: '/__shared__',
-        user: { username: 'user1', is_admin: false },
-        homePath: '/user1',
+        homeNodeId: 100,
         homeLabel: 'Home',
-        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
+        navStack: [{ nodeId: null, name: 'Shared', isSharedRoot: true }],
       })
-    ).toEqual([{ name: 'Shared', path: '/__shared__' }]);
+    ).toEqual([{ name: 'Shared', nodeId: null }]);
   });
 
-  it('hides the repeated username crumb for non-admin home paths', () => {
+  it('builds home breadcrumbs from the navigation stack', () => {
     expect(
       buildFolderPickerBreadcrumbs({
-        selectedPath: '/user1/docs',
-        user: { username: 'user1', is_admin: false },
-        homePath: '/user1',
+        homeNodeId: 100,
         homeLabel: 'Home',
-        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
+        navStack: [
+          { nodeId: 100, name: 'Home' },
+          { nodeId: 101, name: 'docs' },
+        ],
       })
     ).toEqual([
-      { name: 'Home', path: '/user1' },
-      { name: 'docs', path: '/user1/docs' },
+      { name: 'Home', nodeId: 100 },
+      { name: 'docs', nodeId: 101 },
     ]);
   });
 
-  it('keeps full root-based breadcrumbs for admin home paths', () => {
+  it('normalizes the admin home root nodeId to null', () => {
     expect(
       buildFolderPickerBreadcrumbs({
-        selectedPath: '/team/docs',
-        user: { username: 'admin', is_admin: true },
-        homePath: '/',
+        homeNodeId: null,
         homeLabel: 'Root',
-        sharedPermissionNodeIds: new Set(),
         sharedLabel: 'Shared',
+        navStack: [{ nodeId: null, name: 'Root' }],
       })
-    ).toEqual([
-      { name: 'Root', path: '/' },
-      { name: 'team', path: '/team' },
-      { name: 'docs', path: '/team/docs' },
-    ]);
+    ).toEqual([{ name: 'Root', nodeId: null }]);
   });
 
-  it('produces shared breadcrumbs for non-home paths', () => {
+  it('falls back to the home crumb when the navStack is empty', () => {
     expect(
       buildFolderPickerBreadcrumbs({
-        selectedPath: '/shared/root/child/leaf',
-        user: { username: 'user1', is_admin: false },
-        homePath: '/user1',
+        homeNodeId: 100,
         homeLabel: 'Home',
-        sharedPermissionNodeIds: new Set(['10']),
         sharedLabel: 'Shared',
+        navStack: [],
       })
-    ).toEqual([
-      { name: 'Shared', path: '/__shared__' },
-      { name: 'shared', path: '/shared' },
-      { name: 'root', path: '/shared/root' },
-      { name: 'child', path: '/shared/root/child' },
-      { name: 'leaf', path: '/shared/root/child/leaf' },
-    ]);
-  });
-
-  it('falls back to shared prefix for unrecognized paths', () => {
-    expect(
-      buildFolderPickerBreadcrumbs({
-        selectedPath: '/external/folder',
-        user: { username: 'user1', is_admin: false },
-        homePath: '/user1',
-        homeLabel: 'Home',
-        sharedPermissionNodeIds: new Set(['20']),
-        sharedLabel: 'Shared',
-      })
-    ).toEqual([
-      { name: 'Shared', path: '/__shared__' },
-      { name: 'external', path: '/external' },
-      { name: 'folder', path: '/external/folder' },
-    ]);
+    ).toEqual([{ name: 'Home', nodeId: 100 }]);
   });
 });

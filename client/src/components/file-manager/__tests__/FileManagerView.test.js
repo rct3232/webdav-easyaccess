@@ -79,7 +79,7 @@ function createProps(overrides = {}) {
         setSearchQuery: jest.fn(),
       },
       listingState: {
-        displayedFiles: [{ path: '/docs/a.txt', basename: 'a.txt', type: 'file', size: 12, lastmod: '2025-01-01T00:00:00Z' }],
+        displayedFiles: [{ nodeId: 1, path: '/docs/a.txt', basename: 'a.txt', type: 'file', size: 12, lastmod: '2025-01-01T00:00:00Z' }],
         loading: false,
         processingMap: new Map(),
         handleThumbnailsLoaded: jest.fn(),
@@ -274,7 +274,7 @@ describe('FileManagerView', () => {
     fireEvent.click(fileName);
 
     expect(props.explorerHandlers.interaction.handleFileClick).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/docs/a.txt' }),
+      expect.objectContaining({ nodeId: 1, path: '/docs/a.txt' }),
       expect.any(Object),
       0
     );

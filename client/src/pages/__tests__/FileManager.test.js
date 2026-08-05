@@ -68,49 +68,40 @@ jest.mock('../../components/folder-tree', () => {
     default: MockFolderTree,
   };
 });
-jest.mock('../FileManager/hooks/useExplorerNavigation', () => {
-  const { normalizePath } = require('../../utils/pathUtils');
+jest.mock('../FileManager/hooks/useExplorerNavigation', () => ({
+  __esModule: true,
+  useExplorerNavigation: ({
+    getPreviousNodeId,
+    setCurrentNodeId,
+    onAfterNavigate,
+    onTrackNodeHistory,
+  } = {}) => {
+    const navigateToNode = async (nextNodeId) => {
+      if (nextNodeId == null) return;
 
-  return {
-    __esModule: true,
-    useExplorerNavigation: ({
-      currentPath,
-      getPreviousPath,
-      setCurrentPath,
-      onAfterNavigate,
-      onTrackPathHistory,
-    } = {}) => {
-      const navigateToPath = async (nextPath) => {
-        const normalizedPath = normalizePath(nextPath);
-        if (!normalizedPath) return;
+      const previousNodeId = typeof getPreviousNodeId === 'function'
+        ? getPreviousNodeId()
+        : null;
 
-        const previousPath = typeof getPreviousPath === 'function'
-          ? getPreviousPath()
-          : currentPath;
+      if (previousNodeId != null && previousNodeId === nextNodeId) return;
 
-        if (
-          typeof onTrackPathHistory === 'function'
-          && previousPath
-          && normalizePath(previousPath) !== normalizedPath
-        ) {
-          onTrackPathHistory(normalizedPath, previousPath);
-          onTrackPathHistory(nextPath, previousPath);
-        }
+      if (typeof onTrackNodeHistory === 'function' && previousNodeId != null) {
+        onTrackNodeHistory(nextNodeId, previousNodeId);
+      }
 
-        setCurrentPath(normalizedPath);
-        if (typeof onAfterNavigate === 'function') {
-          onAfterNavigate(normalizedPath);
-        }
-      };
+      setCurrentNodeId(nextNodeId);
+      if (typeof onAfterNavigate === 'function') {
+        onAfterNavigate(nextNodeId);
+      }
+    };
 
-      return {
-        navigateToPath,
-        handleFolderOpen: navigateToPath,
-        isNavigating: false,
-      };
-    },
-  };
-});
+    return {
+      navigateToNode,
+      handleFolderOpen: navigateToNode,
+      isNavigating: false,
+    };
+  },
+}));
 
 import React from 'react';
 import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';

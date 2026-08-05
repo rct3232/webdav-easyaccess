@@ -26,8 +26,8 @@ function createDefaultProps(overrides = {}) {
     isShareLinkMode: false,
     selectionMode: false,
     displayedFiles: [
-      { path: '/docs/report.txt', name: 'report.txt', basename: 'report.txt', type: 'file' },
-      { path: '/docs/photos', name: 'photos', basename: 'photos', type: 'directory' },
+      { nodeId: 101, path: '/docs/report.txt', name: 'report.txt', basename: 'report.txt', type: 'file' },
+      { nodeId: 102, path: '/docs/photos', name: 'photos', basename: 'photos', type: 'directory' },
     ],
     toggleFileSelection: jest.fn(),
     handleFileClickSelection: jest.fn(),
@@ -106,7 +106,7 @@ describe('useExplorerInteraction', () => {
     });
 
     expect(props.handleFileClickSelection).toHaveBeenCalledTimes(1);
-    expect(props.openExplorerFolder).toHaveBeenCalledWith('/docs/photos');
+    expect(props.openExplorerFolder).toHaveBeenCalledWith(102);
 
     timeSpy.mockRestore();
   });
@@ -141,7 +141,7 @@ describe('useExplorerInteraction', () => {
     });
 
     expect(props.enterSelectionMode).toHaveBeenCalled();
-    expect(props.setSelectedFiles).toHaveBeenCalledWith(new Set(['/docs/report.txt']));
+    expect(props.setSelectedFiles).toHaveBeenCalledWith(new Set([101]));
   });
 
   it('preserves recent-file open flow by navigating to the parent and preparing preview state', async () => {
@@ -187,6 +187,25 @@ describe('useExplorerInteraction', () => {
 
     expect(props.showError).toHaveBeenCalledWith('errors.permissionDenied');
     expect(props.openExplorerFolder).not.toHaveBeenCalled();
+  });
+
+  it('falls back to path-based navigation when a directory has no nodeId yet', async () => {
+    const props = createDefaultProps();
+    const file = {
+      path: '/legacy/dir',
+      basename: 'dir',
+      name: 'dir',
+      type: 'directory',
+      hasReadPermission: true,
+    };
+    const { result } = renderHook(() => useExplorerInteraction(props));
+
+    await act(async () => {
+      await result.current.handleFileClick(file);
+    });
+
+    expect(props.openExplorerFolder).not.toHaveBeenCalled();
+    expect(props.navigateToExplorerPath).toHaveBeenCalledWith('/legacy/dir');
   });
 
   it('opens action sheet on mobile and context menu on desktop from the more button', () => {

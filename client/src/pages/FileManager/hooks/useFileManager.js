@@ -57,6 +57,7 @@ export const useFileManager = (user, options = {}) => {
   const permRequestIdRef = useRef(0);
   const filesRef = useRef([]);
   const nodeIdByPathRef = useRef(new Map());
+  const pathByNodeIdRef = useRef(new Map());
 
   useEffect(() => {
     filesRef.current = files;
@@ -78,6 +79,28 @@ export const useFileManager = (user, options = {}) => {
     }
     return null;
   }, [currentPath]);
+
+  const resolveNodeIdFromPath = useCallback((path) => {
+    const targetPath = normalizePath(path);
+    if (!targetPath || targetPath === '/') return null;
+    if (nodeIdByPathRef.current.has(targetPath)) {
+      const mapped = nodeIdByPathRef.current.get(targetPath);
+      if (mapped != null) return mapped;
+    }
+    const matched = filesRef.current.find(
+      (f) => f?.type === 'directory' && (f.path === targetPath || f.display_path === targetPath)
+    );
+    return matched?.nodeId != null ? matched.nodeId : null;
+  }, []);
+
+  const resolvePathFromNodeId = useCallback((nodeId) => {
+    if (nodeId == null) return null;
+    if (pathByNodeIdRef.current.has(nodeId)) {
+      return pathByNodeIdRef.current.get(nodeId) || null;
+    }
+    const matched = filesRef.current.find((f) => f?.nodeId === nodeId);
+    return matched?.path ?? matched?.display_path ?? null;
+  }, []);
   
   // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
   useEffect(() => {
@@ -139,6 +162,9 @@ export const useFileManager = (user, options = {}) => {
         const targetNodeId = resolveCurrentNodeId();
         setCurrentNodeId(targetNodeId);
         nodeIdByPathRef.current.set(targetPath, targetNodeId);
+        if (targetNodeId != null) {
+          pathByNodeIdRef.current.set(targetNodeId, targetPath);
+        }
         try {
           const filteredData = await explorerGateway.listDirectory({
             nodeId: targetNodeId ?? null,
@@ -149,6 +175,14 @@ export const useFileManager = (user, options = {}) => {
           });
           // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
           if (requestId === requestIdRef.current) {
+            (filteredData || []).forEach((item) => {
+              if (item?.nodeId == null) return;
+              const itemPath = item.path || item.display_path;
+              if (itemPath) {
+                nodeIdByPathRef.current.set(normalizePath(itemPath), item.nodeId);
+                pathByNodeIdRef.current.set(item.nodeId, itemPath);
+              }
+            });
             setFiles(filteredData);
           }
         } catch (error) {
@@ -270,6 +304,8 @@ export const useFileManager = (user, options = {}) => {
     loading,
     loadFiles,
     hasWritePermission,
+    resolveNodeIdFromPath,
+    resolvePathFromNodeId,
     onLoadErrorRef, // 외부에서 onLoadError를 업데이트하기 위해 반환
   };
 };

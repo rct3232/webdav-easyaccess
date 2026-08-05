@@ -62,7 +62,7 @@ export const getPathAccess = async ({ nodeId, options = {} } = {}) => {
   };
 };
 
-export const canNavigateToPath = async (nodeId, options) => {
+export const canNavigateToNode = async (nodeId, options) => {
   const access = await getPathAccess({ nodeId, options });
   return access.canRead;
 };
@@ -196,7 +196,7 @@ const explorerGateway = {
   loadRecentFiles,
   loadSharedEntries,
   removeRecentFile: removeExplorerRecentFile,
-  canNavigateToPath,
+  canNavigateToNode,
   checkConflicts: checkConflictsForExplorer,
   subscribeToRecentFiles,
   uploadToPath,

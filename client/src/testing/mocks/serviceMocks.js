@@ -58,7 +58,7 @@ export function createRecentFilesNotifierMock(overrides = {}) {
 export function createExplorerGatewayMock(overrides = {}) {
   return {
     addRecentFile: jest.fn().mockResolvedValue([]),
-    canNavigateToPath: jest.fn().mockResolvedValue(true),
+    canNavigateToNode: jest.fn().mockResolvedValue(true),
     checkConflicts: jest.fn().mockResolvedValue([]),
     getEntriesMetadata: jest.fn().mockResolvedValue([]),
     getPathAccess: jest.fn().mockResolvedValue({ canRead: true, canWrite: true, raw: {} }),

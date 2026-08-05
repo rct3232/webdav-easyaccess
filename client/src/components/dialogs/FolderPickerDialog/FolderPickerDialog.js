@@ -28,33 +28,35 @@ import {
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useFolderPicker } from './hooks/useFolderPicker';
 
-const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user, action, sourceFilePath, sourceFilePaths }) => {
+const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, user, action, sourceNodeId, sourceNodeIds }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
 
   const {
-    selectedPath,
+    selectedNodeId,
     folders,
     loading,
     hasWritePermission,
     breadcrumbs,
     handleFolderClick,
-    handlePathClick,
+    handleNodeClick,
     handleTogglePath,
     getCurrentPathType,
     isInvalidDestination,
   } = useFolderPicker({
     open,
-    currentPath,
+    currentNodeId,
     user,
     action,
-    sourceFilePath,
-    sourceFilePaths,
+    sourceNodeId,
+    sourceNodeIds,
   });
 
+  const isSharedRoot = getCurrentPathType() === 'shared' && selectedNodeId == null;
+
   const handleSelect = () => {
-    if (selectedPath === '/__shared__') return;
-    onSelect(selectedPath);
+    if (isSharedRoot) return;
+    onSelect(selectedNodeId);
     onClose();
   };
 
@@ -91,7 +93,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
                   key={index}
                   component="button"
                   variant="body2"
-                  onClick={() => handlePathClick(crumb.path)}
+                  onClick={() => handleNodeClick(crumb.nodeId)}
                   sx={{
                     cursor: 'pointer',
                     textDecoration: 'none',
@@ -102,8 +104,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
                     },
                   }}
                 >
-                  {index === 0 && crumb.path === '/__shared__' && <ShareIcon sx={{ mr: 0.5, fontSize: 18 }} />}
-                  {index === 0 && crumb.path !== '/__shared__' && <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />}
+                  {index === 0 && getCurrentPathType() === 'shared' && <ShareIcon sx={{ mr: 0.5, fontSize: 18 }} />}
+                  {index === 0 && getCurrentPathType() === 'home' && <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />}
                   {crumb.name || t('nav.home')}
                 </Link>
               ))}
@@ -194,7 +196,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentPath, user,
           variant="contained"
           color="primary"
           disabled={
-            selectedPath === '/__shared__' ||
+            isSharedRoot ||
             ((action === 'copy' || action === 'move') && !hasWritePermission) ||
             isInvalidDestination()
           }

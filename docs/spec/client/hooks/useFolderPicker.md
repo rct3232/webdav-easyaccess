@@ -49,25 +49,23 @@
 ### 2.4 Dependencies
 
 - IO boundary:
-  - `client/src/services/folderPickerGateway` — `checkWritePermission({ nodeId })`, `listFolderContents({ nodeId })` (pending implementation: the gateway currently sends `{ path }`)
+  - `client/src/services/folderPickerGateway` — `checkWritePermission({ nodeId })`, `listFolderContents({ nodeId })`, `getUserSharedFolderPermissions({ user })`
 - Pure helper utilities:
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
 - Additional pure helper utilities for shared-state and toggle derivation:
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
   - `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
-- Pure user utilities:
-  - `getUserBaseFolder`
 
 #### 2.4.1 Pure Helper Utilities
 - Breadcrumb builder: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/buildFolderPickerBreadcrumbs.js`
-  - Responsibility: derive the `breadcrumbs` model purely from `selectedNodeId`, `user`, `homePath`, `homeLabel`, `sharedPermissionNodeIds`, and translated labels (no gateways/services/hooks).
+  - Responsibility: derive the `breadcrumbs` model purely from the hook-maintained navigation stack (`navStack` of `{ nodeId, name }` entries whose first entry is the home or shared root), `homeNodeId`, `homeLabel`, and `sharedLabel` (no gateways/services/hooks). Breadcrumb clicks emit nodeIds.
 - Invalid-destination validator: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/isInvalidFolderPickerDestination.js`
-  - Responsibility: return whether a copy/move destination is invalid based on `selectedNodeId` and the provided `sourceNodeId`/`sourceNodeIds` (no React state, no translations, no side effects).
+  - Responsibility: return whether a copy/move destination is invalid based on `selectedNodeId` and the provided `sourceNodeId`/`sourceNodeIds` (no React state, no translations, no side effects). Without server ancestor calls, the reliably checkable invalid destination is the source nodeId itself.
 - Shared-state derivation: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/deriveFolderPickerSharedState.js`
   - Responsibility: normalize shared-permission results into top-level shared-folder lists plus shared-permission nodeId context for the picker (no React state, no gateways, no side effects).
 - Toggle-target resolver: `client/src/components/dialogs/FolderPickerDialog/hooks/helpers/resolveFolderPickerToggleTarget.js`
-  - Responsibility: determine the landing nodeId for home/shared toggle changes, including source-home detection and shared-root fallback, without mutating React state or calling IO.
+  - Responsibility: determine the landing nodeId for home/shared toggle changes (home nodeId, shared root, or the matching top-level shared root), without mutating React state or calling IO.
 
 ### 2.5 Side Effects
 
@@ -92,22 +90,20 @@
   - admins fall back to `hasWritePermission = true`
   - non-admins fall back to `hasWritePermission = false` (no path-based heuristic in the nodeId end-state)
 
-> **Note (pending implementation):** The current source still tracks `selectedPath`, calls the gateway with `{ path }`, and falls back to a path-prefix write-permission heuristic; the nodeId migration is task C1.3.
-
 ### 2.7 Verification Scenarios
 
-- [ ] Folders load for nodeId
-- [ ] __shared__ loads shared folders
-- [ ] Breadcrumb contents match home/shared rules, including the non-admin hidden username crumb rule
-- [ ] NodeId click updates `selectedNodeId` and reloads the requested folder
-- [ ] Home/shared toggle routes to the expected landing nodeId for home-origin and shared-origin moves/copies
-- [ ] Shared top-level folder shaping and shared-root resolution preserve the same visible destinations after helper extraction
-- [ ] `isInvalidDestination` returns `true` for the source nodeId and its ancestor/descendant targets
-- [ ] Multi-source copy/move is invalid when any selected source would land in an invalid destination
-- [ ] `checkWritePermission({ nodeId })` and `listFolderContents({ nodeId })` are the gateway contract; `onSelect` returns a nodeId
+- [x] Folders load for nodeId (`listFolderContents({ nodeId })`)
+- [x] __shared__ loads shared folders through the toggle
+- [x] Breadcrumb contents match the navigation stack (home/shared root base; clicks emit nodeIds)
+- [x] NodeId click updates `selectedNodeId` and reloads the requested folder
+- [x] Home/shared toggle routes to the expected landing nodeId (home nodeId, shared root, or matching top-level shared root)
+- [x] Shared top-level folder shaping and shared-root resolution preserve visible destinations after helper extraction
+- [x] `isInvalidDestination` returns `true` when the destination equals the source nodeId (multi-source aware)
+- [x] `checkWritePermission({ nodeId })` and `listFolderContents({ nodeId })` are the gateway contract; `onSelect` returns a nodeId
 
 ### 2.8 Edge Cases
 
 - `sourceNodeId` and `sourceNodeIds` are both supported by the invalid-destination helper
 - `prevOpenRef` ensures initialization only runs when the dialog transitions from closed to open
-- Shared breadcrumbs derive from the shared ancestor chain; otherwise they fall back to `__shared__`
+- Initial nodeId: `currentNodeId` when provided, otherwise the user's home nodeId (`user.rootNodeId`) if derivable, otherwise the server root (`nodeId = null`)
+- Navigation state is a `{ nodeId, name }` stack, so breadcrumbs/back work without server ancestor calls

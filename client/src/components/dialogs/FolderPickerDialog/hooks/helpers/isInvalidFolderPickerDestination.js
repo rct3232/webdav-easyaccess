@@ -1,35 +1,21 @@
-import { getParentPath, normalizePath } from '../../../../../utils/pathUtils';
-
 /**
  * Pure invalid-destination validator for FolderPickerDialog.
- * Returns whether the selectedPath is an invalid copy/move destination.
+ * Returns whether the selectedNodeId is an invalid copy/move destination.
+ *
+ * Without server ancestor calls the only reliably checkable invalid destination is
+ * the source nodeId itself (moving/copying into the source folder).
  */
 export function isInvalidFolderPickerDestination({
   action,
-  selectedPath,
-  sourceFilePath,
-  sourceFilePaths,
+  selectedNodeId,
+  sourceNodeId,
+  sourceNodeIds,
 }) {
   if (action !== 'copy' && action !== 'move') return false;
 
-  const normalizedSelectedPath = normalizePath(selectedPath);
-  const sourcePaths = sourceFilePath ? [sourceFilePath] : (sourceFilePaths || []);
+  if (selectedNodeId == null) return false;
 
-  return sourcePaths.some((path) => {
-    const normalizedSourcePath = normalizePath(path);
+  const sourceIds = sourceNodeId != null ? [sourceNodeId] : (sourceNodeIds || []);
 
-    // Destination is the parent of source (e.g. moving /folder1/file.txt -> /folder1).
-    if (getParentPath(normalizedSourcePath) === normalizedSelectedPath) return true;
-
-    // Destination is the source itself or a descendant of source.
-    if (
-      normalizedSelectedPath === normalizedSourcePath
-      || normalizedSelectedPath.startsWith(normalizedSourcePath + '/')
-    ) {
-      return true;
-    }
-
-    return false;
-  });
+  return sourceIds.some((id) => id != null && id === selectedNodeId);
 }
-

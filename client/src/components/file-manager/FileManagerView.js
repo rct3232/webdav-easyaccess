@@ -750,11 +750,14 @@ const FileManagerView = ({
             setMobilePickerAction(null);
           }
         }}
-        onSelect={(selectedPath) => {
-          const sourceFilePath = mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined);
-          const filePaths = sourceFilePath ? [sourceFilePath] : Array.from(selectedFiles);
-          if (filePaths.length > 0 && folderPickerAction) {
-            handleFolderPickerSelect(selectedPath, { type: folderPickerAction, filePaths });
+        onSelect={(selectedNodeId) => {
+          const sourceNodeIds = mobilePickerFile
+            ? [mobilePickerFile.nodeId]
+            : actionSheetFile
+              ? [actionSheetFile.nodeId]
+              : Array.from(selectedFiles);
+          if (sourceNodeIds.length > 0 && folderPickerAction) {
+            handleFolderPickerSelect(selectedNodeId, { type: folderPickerAction, nodeIds: sourceNodeIds });
           }
         }}
         title={
@@ -762,12 +765,14 @@ const FileManagerView = ({
             ? `${mobilePickerAction === 'move' ? t('actions.move') : t('actions.copy')}: ${mobilePickerFile.basename}`
             : folderPickerAction === 'move' ? t('dialogs.moveFolderSelect') : t('dialogs.copyFolderSelect')
         }
-        currentPath={currentPath}
+        currentNodeId={currentNodeId}
         user={user}
         action={folderPickerAction}
-        sourceFilePath={mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined)}
-        sourceFilePaths={
-          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move') ? Array.from(selectedFiles) : undefined
+        sourceNodeId={mobilePickerFile ? mobilePickerFile.nodeId : (actionSheetFile ? actionSheetFile.nodeId : undefined)}
+        sourceNodeIds={
+          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move')
+            ? Array.from(selectedFiles)
+            : undefined
         }
       />
 

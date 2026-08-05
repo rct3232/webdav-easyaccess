@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react';
-import { normalizePath } from '../../../utils/pathUtils';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 
 function createForbiddenError() {
@@ -9,52 +8,49 @@ function createForbiddenError() {
 }
 
 export function useExplorerNavigation({
-  currentPath,
-  getPreviousPath,
-  setCurrentPath,
+  currentNodeId,
+  getPreviousNodeId,
+  setCurrentNodeId,
   onAfterNavigate,
-  onTrackPathHistory,
-  canNavigateToPath,
+  onTrackNodeHistory,
+  canNavigateToNode,
 } = {}) {
   const [isNavigating, setIsNavigating] = useState(false);
   const navigationSeqRef = useRef(0);
 
-  const navigateToPath = useCallback(async (nextPath) => {
-    if (!nextPath) return;
+  const navigateToNode = useCallback(async (nextNodeId) => {
+    if (nextNodeId == null) return;
 
-    const previousPath = typeof getPreviousPath === 'function'
-      ? getPreviousPath()
-      : currentPath;
+    const previousNodeId = typeof getPreviousNodeId === 'function'
+      ? getPreviousNodeId()
+      : currentNodeId;
 
-    const normalizedPath = normalizePath(nextPath);
-    if (!normalizedPath) return;
-    if (normalizePath(previousPath || '') === normalizedPath) return;
+    if (previousNodeId != null && previousNodeId === nextNodeId) return;
 
-    if (typeof onTrackPathHistory === 'function' && previousPath) {
-      onTrackPathHistory(normalizedPath, previousPath);
-      onTrackPathHistory(nextPath, previousPath);
+    if (typeof onTrackNodeHistory === 'function' && previousNodeId != null) {
+      onTrackNodeHistory(nextNodeId, previousNodeId);
     }
 
     // Optimistic update: transition immediately.
-    setCurrentPath(normalizedPath);
-    if (typeof onAfterNavigate === 'function') onAfterNavigate(normalizedPath);
+    setCurrentNodeId(nextNodeId);
+    if (typeof onAfterNavigate === 'function') onAfterNavigate(nextNodeId);
 
-    if (typeof canNavigateToPath !== 'function') return;
+    if (typeof canNavigateToNode !== 'function') return;
 
     navigationSeqRef.current += 1;
     const seq = navigationSeqRef.current;
     setIsNavigating(true);
 
     try {
-      const ok = await canNavigateToPath(normalizedPath);
+      const ok = await canNavigateToNode(nextNodeId);
       if (seq !== navigationSeqRef.current) return;
       if (ok === false) {
         throw createForbiddenError();
       }
     } catch (error) {
       if (seq !== navigationSeqRef.current) return;
-      if (previousPath) {
-        setCurrentPath(previousPath);
+      if (previousNodeId != null) {
+        setCurrentNodeId(previousNodeId);
       }
       throw error;
     } finally {
@@ -63,16 +59,15 @@ export function useExplorerNavigation({
       }
     }
   }, [
-    currentPath,
-    getPreviousPath,
-    setCurrentPath,
+    currentNodeId,
+    getPreviousNodeId,
+    setCurrentNodeId,
     onAfterNavigate,
-    onTrackPathHistory,
-    canNavigateToPath,
+    onTrackNodeHistory,
+    canNavigateToNode,
   ]);
 
-  const handleFolderOpen = useCallback((folderPath) => navigateToPath(folderPath), [navigateToPath]);
+  const handleFolderOpen = useCallback((nodeId) => navigateToNode(nodeId), [navigateToNode]);
 
-  return { navigateToPath, handleFolderOpen, isNavigating };
+  return { navigateToNode, handleFolderOpen, isNavigating };
 }
-

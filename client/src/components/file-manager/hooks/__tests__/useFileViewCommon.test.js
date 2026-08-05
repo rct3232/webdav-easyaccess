@@ -34,13 +34,14 @@ describe('useFileViewCommon', () => {
 
   it('getFileState returns isSelected, isDisabled, isProcessing from file and selection', () => {
     const file = {
+      nodeId: 7,
       path: '/file.txt',
       basename: 'file.txt',
       type: 'file',
       hasReadPermission: true,
     };
-    const selectedFiles = new Set(['/file.txt']);
-    const processingMap = new Map([['/file.txt', 'rename']]);
+    const selectedFiles = new Set([7]);
+    const processingMap = new Map([[7, 'rename']]);
 
     const { result } = renderHook(() =>
       useFileViewCommon({

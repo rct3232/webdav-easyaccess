@@ -35,7 +35,6 @@ Notes:
 - This hook should not directly talk to the router; it should operate on nodeIds and delegate route updates to the shell (or a narrow adapter passed in).
 - Share-link mode and virtual collections may impose product rules; those rules remain in the shell, which may bypass this hook entirely for those cases.
 - This hook may ask the gateway whether a node is navigable, but it must not turn product concepts such as `__recent__` or `__shared__` into hard-coded explorer-core policy.
-- (pending implementation: the current source still accepts `currentPath` / `canNavigateToPath` / `navigateToPath` and normalizes paths; the nodeId renames are the end-state.)
 
 ### 2.3 Return Value / State
 

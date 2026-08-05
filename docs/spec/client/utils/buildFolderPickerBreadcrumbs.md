@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Pure breadcrumb derivation for `FolderPickerDialog`. Converts the selected picker path plus home/shared context into the breadcrumb model rendered by the dialog. |
+| Role | Pure breadcrumb derivation for `FolderPickerDialog`. Converts the picker's nodeId navigation stack plus home/shared context into the breadcrumb model rendered by the dialog. |
 
 ---
 
@@ -19,33 +19,27 @@
 
 | Function | (input) => return |
 |----------|-------------------|
-| `buildFolderPickerBreadcrumbs` | `({ selectedPath, user, homePath, homeLabel, sharedPermissionPaths, sharedLabel }) => Array<{ name: string, path: string }>` |
+| `buildFolderPickerBreadcrumbs` | `({ homeNodeId, homeLabel, navStack, sharedLabel }) => Array<{ name: string, nodeId: number \| null }>` |
 
 ### 2.3 Dependencies
 
-- `normalizePath` from `client/src/utils/pathUtils`
+None (pure normalization of the hook-maintained navigation stack).
 
 ### 2.4 Rules
 
-- If `selectedPath === '/__shared__'`, return only the shared root breadcrumb.
-- For home paths:
-  - start with `{ name: homeLabel, path: homePath }`
-  - append path segments derived from `selectedPath`
-  - for non-admin users, hide the repeated username crumb directly beneath the home root
-- For shared paths below `__shared__`:
-  - start with `{ name: sharedLabel, path: '/__shared__' }`
-  - if any prefix of `selectedPath` appears in `sharedPermissionPaths`, start the visible shared path trail from the first matching prefix
-  - otherwise, fall back to rendering all normalized path segments under the shared root
+- `navStack` entries are `{ nodeId, name }`; the first entry is the home or shared root base.
+- For the shared root entry (`isSharedRoot`), the rendered name is `sharedLabel` and the nodeId is `null`.
+- All other entries render their stored `name` and `nodeId`.
+- An empty/absent `navStack` falls back to a single home crumb `{ name: homeLabel, nodeId: homeNodeId ?? null }`.
 
 ### 2.5 Verification Scenarios
 
-- [ ] `'/__shared__'` returns a single shared-root breadcrumb
-- [ ] Non-admin home paths hide the repeated username crumb below `homeLabel`
-- [ ] Admin home paths keep the full root-based breadcrumb trail
-- [ ] Shared subpaths start the visible trail at the first matching `sharedPermissionPaths` prefix
-- [ ] Shared subpaths without a matching permission prefix fall back to `__shared__` plus full normalized segments
+- [ ] Shared root returns a single `{ name: sharedLabel, nodeId: null }` crumb
+- [ ] Home navigation stacks render home base plus visited folders with their nodeIds
+- [ ] Admin home root normalizes to `nodeId: null`
+- [ ] Empty navStack falls back to a single home crumb
 
 ### 2.6 Edge Cases
 
-- `selectedPath` may contain trailing slashes and must be normalized consistently for shared-path derivation
-- Empty or root-like home paths still return a valid home breadcrumb
+- `homeNodeId` may be `null` (admin root); the home crumb nodeId is normalized to `null`
+- Entries without a usable name fall back to `homeLabel`

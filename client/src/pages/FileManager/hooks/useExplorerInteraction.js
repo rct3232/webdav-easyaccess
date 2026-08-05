@@ -4,6 +4,7 @@ import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 
 import { canPreview } from '../../../utils/fileUtils';
 import { normalizePath } from '../../../utils/pathUtils';
+import { getEntryKey } from '../../../utils/fileViewUtils';
 import {
   determineErrorType,
   getErrorMessageByType,
@@ -40,7 +41,7 @@ export function useExplorerInteraction({
   recentFileApi,
   handleProductPathClick,
 }) {
-  const lastClickRef = useRef({ filePath: null, time: 0 });
+  const lastClickRef = useRef({ fileKey: null, time: 0 });
   const handleFileClickInternalRef = useRef(null);
 
   const handlePathClick = useCallback(async (path) => {
@@ -108,7 +109,11 @@ export function useExplorerInteraction({
       }
 
       try {
-        await openExplorerFolder(file.path);
+        if (file.nodeId != null) {
+          await openExplorerFolder(file.nodeId);
+        } else {
+          await handlePathClick(file.path);
+        }
       } catch (error) {
         const errorType = determineErrorType(error);
         if (errorType === ERROR_TYPES.PERMISSION_DENIED) {
@@ -186,18 +191,18 @@ export function useExplorerInteraction({
 
     const now = Date.now();
     const last = lastClickRef.current;
-    const isDoubleClick = last.filePath === file.path && (now - last.time) < 350;
+    const isDoubleClick = last.fileKey === getEntryKey(file) && (now - last.time) < 350;
 
     if (isDoubleClick) {
-      lastClickRef.current = { filePath: null, time: 0 };
+      lastClickRef.current = { fileKey: null, time: 0 };
       handleFileClickInternalRef.current?.(file, { forceOpen: true });
       return;
     }
 
-    lastClickRef.current = { filePath: file.path, time: now };
+    lastClickRef.current = { fileKey: getEntryKey(file), time: now };
     const index = typeof fileIndex === 'number'
       ? fileIndex
-      : displayedFiles.findIndex(f => f.path === file.path);
+      : displayedFiles.findIndex(f => getEntryKey(f) === getEntryKey(file));
     handleFileClickSelection(file, event, index >= 0 ? index : 0);
   }, [isMobile, displayedFiles, handleFileClickSelection]);
 
@@ -215,7 +220,7 @@ export function useExplorerInteraction({
   const handleLongPressSelect = useCallback((file) => {
     if (!file) return;
     enterSelectionMode();
-    setSelectedFiles(new Set([file.path]));
+    setSelectedFiles(new Set([getEntryKey(file)]));
   }, [enterSelectionMode, setSelectedFiles]);
 
   const handleActionSheetPreview = useCallback(() => {

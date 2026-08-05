@@ -24,7 +24,7 @@ All file/folder references are nodeId-based (`nodeId`, `parentNodeId` are BIGINT
 | Function | Input | Return | Notes |
 |----------|-------|--------|------|
 | listDirectory | `({ nodeId, options? })` | `Promise<Array<object>>` | Lists directory children via `fileService.listFiles(nodeId)`. `nodeId` may be `null`/omitted to list the root level (server resolves `parentNodeId = null`). Handles share-token forwarding and hidden-file policy at this seam instead of in controller hooks. |
-| canNavigateToPath | `(nodeId, options?)` | `Promise<boolean>` | Permission/availability check for explorer navigation via `getPathAccess({ nodeId })`. |
+| canNavigateToNode | `(nodeId, options?)` | `Promise<boolean>` | Permission/availability check for explorer navigation via `getPathAccess({ nodeId })`. |
 | getPathAccess | `({ nodeId, options? })` | `Promise<{ canRead: boolean, canWrite: boolean, raw?: object }>` | Raw access facts via `permissionService.checkPermission(nodeId)`, with `canRead`/`canWrite` derived from `hasRead`/`hasWrite`. |
 | getEntriesMetadata | `({ entries, options? })` | `Promise<Array<object>>` | Enriches file entries with metadata via `fileService.getFilesMetadata(nodeIds)` (nodeIds collected from `entry.nodeId`). |
 | loadRecentFiles | `(options?: object)` | `Promise<Array<object>>` | Loads recent-file repository entries via `recentFilesRepository.getRecentFiles`. |
@@ -60,7 +60,7 @@ Notes:
 Verify observable IO behavior from the caller perspective:
 
 - [ ] `listDirectory({ nodeId })` returns the same entries as the current listing behavior for a given node (including permission flags and hidden-file behavior as currently implemented).
-- [ ] `canNavigateToPath(nodeId)` returns the same read/forbidden outcome the shell used before the extraction.
+- [ ] `canNavigateToNode(nodeId)` returns the same read/forbidden outcome the shell used before the extraction.
 - [ ] `getPathAccess({ nodeId })` preserves the current read/write capability facts used by explorer flows.
 - [ ] `getEntriesMetadata` preserves the current metadata enrichment behavior used when recent/shared-derived lists need extra entry data.
 - [ ] `loadRecentFiles`, `addRecentFile`, `removeRecentFile`, and `subscribeToRecentFiles` preserve the existing recent-files persistence and notifier behavior from the caller perspective.

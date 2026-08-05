@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { useDragAndDrop } from '../../../hooks/useDragAndDrop';
-import { getFileItemState } from '../../../utils/fileViewUtils';
+import { getFileItemState, getEntryKey } from '../../../utils/fileViewUtils';
 
 // Reusable empty drag/drop handler objects to preserve reference identity.
 const emptyDragHandlers = {
@@ -25,9 +25,9 @@ const emptyDropHandlers = {
  * @param {Function} options.onDragStart - Callback when drag starts (path) => void
  * @param {Function} options.onDragEnd - Callback when drag ends () => void
  * @param {boolean} options.selectionMode - Whether selection mode is active
- * @param {Set} options.selectedFiles - Set of selected file paths
+ * @param {Set} options.selectedFiles - Set of selected entry keys (file.nodeId, path fallback)
  * @param {Function} options.onFileCheck - Callback for file check
- * @param {Map} options.processingMap - Map of file paths to processing types
+ * @param {Map} options.processingMap - Map of file nodeIds to processing types
  * @param {Object} options.theme - MUI theme object
  * @param {boolean} options.isMobile - Whether the device is mobile
  * @returns {Object} Common view logic and handlers
@@ -88,7 +88,7 @@ export const useFileViewCommon = ({
    * Check if file is selected
    */
   const isSelected = useCallback((file) => {
-    return selectedFiles && selectedFiles.has(file.path);
+    return selectedFiles && selectedFiles.has(getEntryKey(file));
   }, [selectedFiles]);
   
   /**

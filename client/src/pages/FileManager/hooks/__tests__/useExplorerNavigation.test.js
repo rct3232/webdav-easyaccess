@@ -7,74 +7,74 @@ import { renderHook, act } from '@testing-library/react';
 import { useExplorerNavigation } from '../useExplorerNavigation';
 
 describe('useExplorerNavigation', () => {
-  it('optimistically sets the normalized path and tracks history', async () => {
-    const setCurrentPath = jest.fn();
-    const canNavigateToPath = jest.fn().mockResolvedValue(true);
-    const onTrackPathHistory = jest.fn();
+  it('optimistically sets the node and tracks node history', async () => {
+    const setCurrentNodeId = jest.fn();
+    const canNavigateToNode = jest.fn().mockResolvedValue(true);
+    const onTrackNodeHistory = jest.fn();
     const onAfterNavigate = jest.fn();
 
     const { result } = renderHook(() => useExplorerNavigation({
-      currentPath: '/docs',
-      getPreviousPath: () => '/docs',
-      setCurrentPath,
+      currentNodeId: 1,
+      getPreviousNodeId: () => 1,
+      setCurrentNodeId,
       onAfterNavigate,
-      onTrackPathHistory,
-      canNavigateToPath,
+      onTrackNodeHistory,
+      canNavigateToNode,
     }));
 
     await act(async () => {
-      await result.current.navigateToPath('/docs/reports/');
+      await result.current.navigateToNode(2);
     });
 
-    expect(setCurrentPath).toHaveBeenCalledWith('/docs/reports');
-    expect(onAfterNavigate).toHaveBeenCalledWith('/docs/reports');
-    expect(onTrackPathHistory).toHaveBeenNthCalledWith(1, '/docs/reports', '/docs');
-    expect(onTrackPathHistory).toHaveBeenNthCalledWith(2, '/docs/reports/', '/docs');
-    expect(canNavigateToPath).toHaveBeenCalledWith('/docs/reports');
+    expect(setCurrentNodeId).toHaveBeenCalledWith(2);
+    expect(onAfterNavigate).toHaveBeenCalledWith(2);
+    expect(onTrackNodeHistory).toHaveBeenCalledTimes(1);
+    expect(onTrackNodeHistory).toHaveBeenCalledWith(2, 1);
+    expect(canNavigateToNode).toHaveBeenCalledWith(2);
     expect(result.current.isNavigating).toBe(false);
   });
 
-  it('rolls back to the previous path and rethrows when guard rejects', async () => {
-    const setCurrentPath = jest.fn();
+  it('rolls back to the previous node and rethrows when guard rejects', async () => {
+    const setCurrentNodeId = jest.fn();
     const error = new Error('network failed');
-    const canNavigateToPath = jest.fn().mockRejectedValue(error);
+    const canNavigateToNode = jest.fn().mockRejectedValue(error);
 
     const { result } = renderHook(() => useExplorerNavigation({
-      currentPath: '/docs',
-      getPreviousPath: () => '/docs',
-      setCurrentPath,
-      canNavigateToPath,
+      currentNodeId: 1,
+      getPreviousNodeId: () => 1,
+      setCurrentNodeId,
+      canNavigateToNode,
     }));
 
     let thrown;
     await act(async () => {
       try {
-        await result.current.navigateToPath('/docs/private');
+        await result.current.navigateToNode(2);
       } catch (caught) {
         thrown = caught;
       }
     });
 
     expect(thrown).toBe(error);
-    expect(setCurrentPath).toHaveBeenNthCalledWith(1, '/docs/private');
-    expect(setCurrentPath).toHaveBeenNthCalledWith(2, '/docs');
+    expect(setCurrentNodeId).toHaveBeenNthCalledWith(1, 2);
+    expect(setCurrentNodeId).toHaveBeenNthCalledWith(2, 1);
   });
 
   it('rolls back and throws a forbidden-shaped error when guard returns false', async () => {
-    const setCurrentPath = jest.fn();
-    const canNavigateToPath = jest.fn().mockResolvedValue(false);
+    const setCurrentNodeId = jest.fn();
+    const canNavigateToNode = jest.fn().mockResolvedValue(false);
 
     const { result } = renderHook(() => useExplorerNavigation({
-      currentPath: '/docs',
-      getPreviousPath: () => '/docs',
-      setCurrentPath,
-      canNavigateToPath,
+      currentNodeId: 1,
+      getPreviousNodeId: () => 1,
+      setCurrentNodeId,
+      canNavigateToNode,
     }));
 
     let thrown;
     await act(async () => {
       try {
-        await result.current.handleFolderOpen('/docs/private');
+        await result.current.handleFolderOpen(2);
       } catch (error) {
         thrown = error;
       }
@@ -82,26 +82,46 @@ describe('useExplorerNavigation', () => {
 
     expect(thrown).toBeDefined();
     expect(thrown.response?.status).toBe(403);
-    expect(setCurrentPath).toHaveBeenNthCalledWith(1, '/docs/private');
-    expect(setCurrentPath).toHaveBeenNthCalledWith(2, '/docs');
+    expect(setCurrentNodeId).toHaveBeenNthCalledWith(1, 2);
+    expect(setCurrentNodeId).toHaveBeenNthCalledWith(2, 1);
   });
 
-  it('is a no-op when navigating to the same normalized path', async () => {
-    const setCurrentPath = jest.fn();
-    const canNavigateToPath = jest.fn();
+  it('is a no-op when navigating to the same node', async () => {
+    const setCurrentNodeId = jest.fn();
+    const canNavigateToNode = jest.fn();
 
     const { result } = renderHook(() => useExplorerNavigation({
-      currentPath: '/docs/reports',
-      getPreviousPath: () => '/docs/reports',
-      setCurrentPath,
-      canNavigateToPath,
+      currentNodeId: 2,
+      getPreviousNodeId: () => 2,
+      setCurrentNodeId,
+      canNavigateToNode,
     }));
 
     await act(async () => {
-      await result.current.navigateToPath('/docs/reports/');
+      await result.current.navigateToNode(2);
     });
 
-    expect(setCurrentPath).not.toHaveBeenCalled();
-    expect(canNavigateToPath).not.toHaveBeenCalled();
+    expect(setCurrentNodeId).not.toHaveBeenCalled();
+    expect(canNavigateToNode).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op for empty nodeId inputs', async () => {
+    const setCurrentNodeId = jest.fn();
+    const canNavigateToNode = jest.fn();
+
+    const { result } = renderHook(() => useExplorerNavigation({
+      currentNodeId: null,
+      getPreviousNodeId: () => null,
+      setCurrentNodeId,
+      canNavigateToNode,
+    }));
+
+    await act(async () => {
+      await result.current.navigateToNode(null);
+      await result.current.handleFolderOpen(undefined);
+    });
+
+    expect(setCurrentNodeId).not.toHaveBeenCalled();
+    expect(canNavigateToNode).not.toHaveBeenCalled();
   });
 });

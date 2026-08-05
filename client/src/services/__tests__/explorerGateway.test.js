@@ -36,7 +36,7 @@ import { checkPermission, getUserPermissions, listFilePermissions } from '../per
 import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
 import { onRecentFilesChange } from '../recentFilesNotifier';
 import explorerGateway, {
-  canNavigateToPath,
+  canNavigateToNode,
   checkConflictsForExplorer,
   getEntriesMetadata,
   getPathAccess,
@@ -93,7 +93,7 @@ describe('explorerGateway', () => {
 
   it('exposes the same gateway functions through the default export', () => {
     expect(explorerGateway).toMatchObject({
-      canNavigateToPath,
+      canNavigateToNode,
       checkConflicts: checkConflictsForExplorer,
       getEntriesMetadata,
       getPathAccess,
@@ -157,10 +157,10 @@ describe('explorerGateway', () => {
     });
   });
 
-  it('uses access facts for canNavigateToPath', async () => {
+  it('uses access facts for canNavigateToNode', async () => {
     checkPermission.mockResolvedValueOnce({ hasRead: false, hasWrite: false });
 
-    const result = await canNavigateToPath(99);
+    const result = await canNavigateToNode(99);
 
     expect(result).toBe(false);
   });

@@ -25,7 +25,7 @@
 |------|------|----------|-------------|
 | isShareLinkMode | boolean | Y | Whether FileManager is currently rendering in share-link mode. |
 | shareToken | string | N | Public share token used for add/check flows. |
-| linkInfo | object | N | Share metadata from `ShareLinkLoader` (used for directory routing after success). |
+| linkInfo | object | N | Share metadata from `ShareLinkLoader` (used for directory routing after success). When it carries `nodeId`, post-success routing is nodeId-first (`/files/node/<nodeId>`, C2.5). |
 | user | object | N | Current authenticated user; enables "add to my permissions" bootstrap when present. |
 | navigate | (path: string) => void | Y | Shell-owned navigation function. |
 | showError | (message: string) => void | Y | Shell-owned message surface. |
@@ -63,14 +63,14 @@
 ### 2.5 Dependencies
 
 - `client/src/services/shareLinkService.js`
-- Pure path helpers such as `toFilesPath`
+- Pure path helpers such as `toFilesPath` (fallback when `linkInfo` has no `nodeId`)
 - Shell-owned routing and error presentation callbacks
 
 ### 2.6 Side Effects
 
 - May call share-link permission check/add APIs.
 - May auto-open the add-to-my-permissions modal after authenticated share-link entry.
-- May navigate to `/files/*` after success or leave-share confirmation.
+- May navigate to `/files/*` after success or leave-share confirmation. Directory routing after add-to-shared is nodeId-first (`/files/node/<linkInfo.nodeId>`); the legacy `/files/<path>` route is the fallback when `nodeId` is unavailable (C2.5, removed in Phase 5).
 
 ### 2.7 Error Handling
 
@@ -82,12 +82,13 @@
 These scenarios should be covered by a dedicated hook unit test in `client/src/pages/FileManager/hooks/__tests__/useShareLinkOverlay.test.js`, not only by FileManager page regression tests.
 
 - [ ] Authenticated share-link entry triggers the same add-to-my-permissions bootstrap behavior as today.
-- [ ] If the user already has sufficient permission, the modal closes and shared-directory navigation follows current behavior.
-- [ ] Confirming add-to-my-permissions keeps the same success navigation and loading state.
+- [ ] If the user already has sufficient permission, the modal closes and shared-directory navigation is nodeId-first when `linkInfo.nodeId` is present (`/files/node/<id>`).
+- [ ] Confirming add-to-my-permissions keeps the same success navigation and loading state, routing to the nodeId route when available.
 - [ ] Clicking a non-share tree path in share mode opens leave-share confirmation and confirmation routes to the authenticated files path.
 
 ### 2.9 Edge Cases
 
 - Missing `shareToken` is a no-op for add-to-my-permissions actions.
+- `linkInfo` without `nodeId` falls back to the legacy `/files/<path>` route for shared-directory navigation.
 - Repeated permission bootstrap for the same token is deduplicated.
 - Out-of-order async responses must not reopen or overwrite the latest modal state.

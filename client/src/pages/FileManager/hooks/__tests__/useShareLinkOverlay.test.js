@@ -22,6 +22,7 @@ function createDefaultProps(overrides = {}) {
     shareToken: 'share-token',
     linkInfo: {
       filePath: '/shared/root',
+      nodeId: 5,
       isDirectory: true,
     },
     user: { id: 'user-1' },
@@ -51,8 +52,23 @@ describe('useShareLinkOverlay', () => {
     expect(checkMyPermissionForShare).toHaveBeenCalledWith('share-token');
   });
 
-  it('closes the modal and routes to the shared directory when permission already exists', async () => {
+  it('closes the modal and routes to the shared directory by nodeId when permission already exists', async () => {
     const props = createDefaultProps();
+    checkMyPermissionForShare.mockResolvedValue({ hasSufficientPermission: true });
+
+    const { result } = renderHook(() => useShareLinkOverlay(props));
+
+    await waitFor(() => {
+      expect(result.current.addToSharedModalOpen).toBe(false);
+    });
+
+    expect(props.navigate).toHaveBeenCalledWith('/files/node/5');
+  });
+
+  it('routes to the legacy path route when linkInfo carries no nodeId', async () => {
+    const props = createDefaultProps({
+      linkInfo: { filePath: '/shared/root', isDirectory: true },
+    });
     checkMyPermissionForShare.mockResolvedValue({ hasSufficientPermission: true });
 
     const { result } = renderHook(() => useShareLinkOverlay(props));
@@ -64,7 +80,7 @@ describe('useShareLinkOverlay', () => {
     expect(props.navigate).toHaveBeenCalledWith('/files/shared/root');
   });
 
-  it('confirms add-to-shared, keeps loading state, and routes on success', async () => {
+  it('confirms add-to-shared, keeps loading state, and routes to the shared directory by nodeId on success', async () => {
     const props = createDefaultProps({
       isShareLinkMode: false,
       user: null,
@@ -92,7 +108,7 @@ describe('useShareLinkOverlay', () => {
 
     expect(addShareLinkToMyPermissions).toHaveBeenCalledWith('share-token');
     expect(result.current.addToSharedConfirmLoading).toBe(false);
-    expect(props.navigate).toHaveBeenCalledWith('/files/shared/root');
+    expect(props.navigate).toHaveBeenCalledWith('/files/node/5');
   });
 
   it('opens leave-share confirmation and routes to files path after confirm', () => {

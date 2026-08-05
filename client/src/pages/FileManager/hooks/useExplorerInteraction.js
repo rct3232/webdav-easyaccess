@@ -44,10 +44,10 @@ export function useExplorerInteraction({
   const lastClickRef = useRef({ fileKey: null, time: 0 });
   const handleFileClickInternalRef = useRef(null);
 
-  const handlePathClick = useCallback(async (path) => {
+  const handlePathClick = useCallback(async (path, file) => {
     if (!path) return;
 
-    const handledByProductPolicy = await handleProductPathClick?.(path);
+    const handledByProductPolicy = await handleProductPathClick?.(path, file);
     if (handledByProductPolicy) return;
 
     return navigateToExplorerPath(path);
@@ -69,7 +69,7 @@ export function useExplorerInteraction({
       if (inSelectionMode) {
         toggleFileSelection(file);
       } else if (file.type === 'directory') {
-        await handlePathClick(file.path);
+        await handlePathClick(file.path, file);
       } else {
         openPreviewForFile(file, setSelectedFile, openPreviewDialog);
       }

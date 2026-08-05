@@ -391,11 +391,16 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
   });
 
-  const handleProductPathClick = useCallback(async (path) => {
+  const handleProductPathClick = useCallback(async (path, file) => {
     if (!path) return false;
 
     if (isShareLinkMode) {
       const normalizedPath = normalizePath(path);
+      // nodeId-first share navigation (C2.5): navigate by the clicked folder nodeId
+      // when available; the path only drives the breadcrumb display.
+      if (file?.nodeId != null) {
+        setCurrentNodeId(file.nodeId);
+      }
       setCurrentPath(normalizedPath);
       if (isMobile) setDrawerOpen(false);
       return true;
@@ -407,7 +412,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
 
     return false;
-  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen]);
+  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId]);
 
   // Path-based navigation entry (recent files / legacy fallbacks): resolve the path to a
   // nodeId via the legacy resolver and navigate by nodeId. Throws so recent-file error
@@ -428,13 +433,33 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   // NodeId-first navigation entry used by the folder tree and breadcrumb.
   // Accepts a nodeId (number), a virtual-root route ('/__shared__' | '/__recent__'),
-  // or null (home). Share mode keeps path-based navigation.
-  const handleFolderTreeNodeClick = useCallback((target) => {
+  // or null (home). Share mode navigates by nodeId (path targets resolve via
+  // resolve-path for authenticated viewers; path fallback keeps breadcrumb display).
+  const handleFolderTreeNodeClick = useCallback(async (target) => {
     if (isShareLinkMode) {
-      if (typeof target !== 'string' || !target) return;
-      const normalizedPath = normalizePath(target);
-      setCurrentPath(normalizedPath);
-      if (isMobile) setDrawerOpen(false);
+      if (typeof target === 'number') {
+        setCurrentNodeId(target);
+        if (isMobile) setDrawerOpen(false);
+        return;
+      }
+      if (typeof target === 'string' && target) {
+        const normalizedPath = normalizePath(target);
+        if (user) {
+          try {
+            const data = await resolvePath(normalizedPath);
+            if (data?.nodeId != null) {
+              setCurrentNodeId(data.nodeId);
+              setCurrentPath(normalizedPath);
+              if (isMobile) setDrawerOpen(false);
+              return;
+            }
+          } catch (error) {
+            // fall through to the display-path fallback
+          }
+        }
+        setCurrentPath(normalizedPath);
+        if (isMobile) setDrawerOpen(false);
+      }
       return;
     }
     if (typeof target === 'string') {
@@ -450,7 +475,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       return;
     }
     navigateToExplorerNode(target);
-  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, navigateToExplorerPath, setCurrentNodeId, navigateToExplorerNode]);
+  }, [isShareLinkMode, isMobile, user, setCurrentPath, setDrawerOpen, setCurrentNodeId, navigateToExplorerPath, navigateToExplorerNode]);
 
   const {
     handlePathClick,

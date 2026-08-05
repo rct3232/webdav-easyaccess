@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 import { addShareLinkToMyPermissions, checkMyPermissionForShare } from '../../../services/shareLinkService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
@@ -23,6 +23,14 @@ export function useShareLinkOverlay({
   const addToSharedCheckDoneRef = useRef(null);
   const addToSharedRequestIdRef = useRef(0);
 
+  // C2.5: share-directory routing is nodeId-first. linkInfo.nodeId is populated at
+  // share-view entry (resolve-path fallback; removed in Phase 5). The legacy path
+  // route is kept as a fallback when no nodeId is available.
+  const shareDirectoryRoute = useMemo(
+    () => (linkInfo?.nodeId != null ? `/files/node/${linkInfo.nodeId}` : toFilesPath(linkInfo?.filePath)),
+    [linkInfo]
+  );
+
   const runSharePermissionBootstrap = useCallback(() => {
     if (!shareToken) return;
 
@@ -42,7 +50,7 @@ export function useShareLinkOverlay({
 
         if (data.hasSufficientPermission && linkInfo?.isDirectory) {
           setAddToSharedModalOpen(false);
-          navigate(toFilesPath(linkInfo.filePath));
+          navigate(shareDirectoryRoute);
         } else if (data.hasSufficientPermission) {
           setAddToSharedModalOpen(false);
         } else {
@@ -53,7 +61,7 @@ export function useShareLinkOverlay({
         if (myRequestId !== addToSharedRequestIdRef.current) return;
         setAddToSharedModalOpen(false);
       });
-  }, [shareToken, linkInfo, navigate]);
+  }, [shareToken, linkInfo, navigate, shareDirectoryRoute]);
 
   useEffect(() => {
     if (!isShareLinkMode || !user || !shareToken) return;
@@ -71,14 +79,14 @@ export function useShareLinkOverlay({
       await addShareLinkToMyPermissions(shareToken);
       setAddToSharedModalOpen(false);
       if (linkInfo?.isDirectory) {
-        navigate(toFilesPath(linkInfo.filePath));
+        navigate(shareDirectoryRoute);
       }
     } catch (err) {
       showError(getServerErrorDisplay(err?.response?.data, t) || err?.message || t('dialogs.addToSharedError'));
     } finally {
       setAddToSharedConfirmLoading(false);
     }
-  }, [shareToken, linkInfo, navigate, showError, t]);
+  }, [shareToken, linkInfo, navigate, showError, t, shareDirectoryRoute]);
 
   const openAddToSharedModal = useCallback(() => {
     runSharePermissionBootstrap();

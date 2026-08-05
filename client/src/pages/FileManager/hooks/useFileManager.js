@@ -23,8 +23,20 @@ export const useFileManager = (user, options = {}) => {
     [linkInfo]
   );
 
+  // Share root nodeId (C2.5): linkInfo.nodeId when available (Phase 5); otherwise a
+  // one-time resolve-path resolution of linkInfo.filePath for authenticated viewers
+  // (fallback removed in Phase 5 once GET /share-link/:token returns a nodeId).
+  const [shareRootNodeId, setShareRootNodeId] = useState(() =>
+    isShareMode ? (linkInfo?.nodeId ?? null) : null
+  );
+
   const [shareCurrentPath, setShareCurrentPath] = useState(() =>
     isShareMode ? normalizePath(linkInfo.filePath || '/') : ''
+  );
+
+  // Current share folder, keyed by nodeId (null = share root listed via shareToken).
+  const [shareCurrentNodeId, setShareCurrentNodeId] = useState(() =>
+    isShareMode && linkInfo?.nodeId != null ? linkInfo.nodeId : null
   );
 
   useEffect(() => {
@@ -32,6 +44,25 @@ export const useFileManager = (user, options = {}) => {
       setShareCurrentPath(shareRootPath);
     }
   }, [isShareMode, shareRootPath]);
+
+  // Resolve the share root nodeId once when linkInfo does not carry it.
+  useEffect(() => {
+    if (!isShareMode || shareRootNodeId != null) return undefined;
+    if (!user || !shareRootPath) return undefined;
+    let cancelled = false;
+    resolvePath(shareRootPath)
+      .then((data) => {
+        if (cancelled || data?.nodeId == null) return;
+        setShareRootNodeId(data.nodeId);
+        setShareCurrentNodeId((prev) => (prev == null ? data.nodeId : prev));
+      })
+      .catch(() => {
+        // Path-based fallback (root listing via shareToken) remains.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isShareMode, shareRootNodeId, user, shareRootPath]);
 
   // Normalize the /files splat into a view key.
   // Real folders: /files/node/<nodeId>; virtual roots: /files/__recent__ / /files/__shared__;
@@ -59,13 +90,14 @@ export const useFileManager = (user, options = {}) => {
   const homeNodeId = user?.rootNodeId ?? null;
 
   // currentNodeId is the source of truth for the explorer location.
-  // null = root / virtual-root level (share mode always lists via shareToken).
+  // null = root / virtual-root level. In share mode it is the current share folder
+  // nodeId (null = share root listed via shareToken).
   const currentNodeId = useMemo(() => {
-    if (isShareMode) return null;
+    if (isShareMode) return shareCurrentNodeId;
     if (urlView.kind === 'node') return urlView.nodeId;
     if (urlView.kind === 'home') return homeNodeId;
     return null;
-  }, [isShareMode, urlView, homeNodeId]);
+  }, [isShareMode, shareCurrentNodeId, urlView, homeNodeId]);
 
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,9 +134,13 @@ export const useFileManager = (user, options = {}) => {
   }, [currentPath]);
 
   // nodeId-first navigation setter: home (null/rootNodeId) -> /files, else /files/node/<id>.
+  // Share mode keeps navigation local (share current folder nodeId).
   const setCurrentNodeId = useCallback(
     (nodeId) => {
-      if (isShareMode) return;
+      if (isShareMode) {
+        setShareCurrentNodeId(nodeId ?? null);
+        return;
+      }
       if (nodeId == null || nodeId === homeNodeId) {
         navigate('/files');
       } else {
@@ -114,11 +150,13 @@ export const useFileManager = (user, options = {}) => {
     [isShareMode, homeNodeId, navigate]
   );
 
-  // Legacy path setter kept for recent-file flows and share mode (Phase 5 keeps recent path-based).
+  // Legacy path setter kept for recent-file flows and share display path
+  // (Phase 5 keeps recent path-based; share display path drives the breadcrumb only).
   const setCurrentPath = useCallback(
     (path) => {
       const normalizedPath = normalizePath(path);
       if (isShareMode) {
+        // Display path only (breadcrumb); navigation is nodeId-first via setCurrentNodeId.
         setShareCurrentPath(normalizedPath);
       } else {
         const navigatePath = normalizedPath === '/' ? '' : normalizedPath.substring(1);
@@ -227,7 +265,7 @@ export const useFileManager = (user, options = {}) => {
         }
       } else {
         if (!isShareMode && urlView.kind === 'legacy') return;
-        const targetNodeId = isShareMode ? null : currentNodeId;
+        const targetNodeId = isShareMode ? shareCurrentNodeId : currentNodeId;
         try {
           const filteredData = await explorerGateway.listDirectory({
             nodeId: targetNodeId ?? null,
@@ -267,11 +305,11 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [urlView.kind, isShareMode, currentNodeId, user, shareToken]);
+  }, [urlView.kind, isShareMode, shareCurrentNodeId, currentNodeId, user, shareToken]);
 
   // Location key drives the listing reload; the display path (ancestors) must not retrigger it.
   const locationKey = isShareMode
-    ? `share:${shareCurrentPath}`
+    ? `share:${shareCurrentNodeId}`
     : `${urlView.kind}:${currentNodeId}`;
 
   useEffect(() => {

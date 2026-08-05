@@ -233,18 +233,65 @@ describe('useFileManager', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/files/node/5');
   });
 
-  it('share mode uses shareCurrentPath from linkInfo', () => {
-    const linkInfo = { filePath: '/shared/root' };
-    const neverSettles = new Promise(() => {});
-    explorerGateway.listDirectory.mockReturnValue(neverSettles);
-    explorerGateway.getPathAccess.mockReturnValue(neverSettles);
-    const { result } = renderHook(
-      () => useFileManager(mockUser, { shareToken: 'token123', linkInfo }),
-      { wrapper: ({ children }) => <TestWrapper initialPath="">{children}</TestWrapper> }
-    );
+  it('share mode uses the share root nodeId from linkInfo and lists by nodeId', async () => {
+    const linkInfo = { filePath: '/shared/root', nodeId: 5 };
+    const { result } = renderWithPath('', { shareToken: 'token123', linkInfo });
 
+    await waitFor(() => {
+      expect(result.current.currentNodeId).toBe(5);
+    });
+    await waitFor(() => {
+      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+        nodeId: 5,
+        options: expect.objectContaining({ shareToken: 'token123' }),
+      });
+    });
+    expect(resolvePath).not.toHaveBeenCalled();
     expect(result.current.currentPath).toBe('/shared/root');
-    expect(result.current.currentNodeId).toBe(null);
+  });
+
+  it('share mode resolves the share root nodeId via resolve-path when linkInfo lacks it', async () => {
+    const linkInfo = { filePath: '/shared/root' };
+    resolvePath.mockResolvedValue({ nodeId: 5 });
+
+    const { result } = renderWithPath('', { shareToken: 'token123', linkInfo });
+
+    await waitFor(() => {
+      expect(resolvePath).toHaveBeenCalledWith('/shared/root');
+    });
+    await waitFor(() => {
+      expect(result.current.currentNodeId).toBe(5);
+    });
+    await waitFor(() => {
+      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+        nodeId: 5,
+        options: expect.objectContaining({ shareToken: 'token123' }),
+      });
+    });
+    expect(result.current.currentPath).toBe('/shared/root');
+  });
+
+  it('share mode navigates to a subfolder by nodeId and keeps the display path for breadcrumbs', async () => {
+    const linkInfo = { filePath: '/shared/root', nodeId: 5 };
+    const { result } = renderWithPath('', { shareToken: 'token123', linkInfo });
+
+    await waitFor(() => {
+      expect(result.current.currentNodeId).toBe(5);
+    });
+
+    act(() => {
+      result.current.setCurrentNodeId(6);
+      result.current.setCurrentPath('/shared/root/sub');
+    });
+
+    await waitFor(() => {
+      expect(explorerGateway.listDirectory).toHaveBeenLastCalledWith({
+        nodeId: 6,
+        options: expect.objectContaining({ shareToken: 'token123' }),
+      });
+    });
+    expect(result.current.currentNodeId).toBe(6);
+    expect(result.current.currentPath).toBe('/shared/root/sub');
   });
 
   it('__recent__ path loads recent files', async () => {

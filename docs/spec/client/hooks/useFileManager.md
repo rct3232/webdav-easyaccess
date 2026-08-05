@@ -102,7 +102,7 @@
 - [ ] `__recent__` flow continues to render the same recent-file entries and metadata while all repository/notifier access flows through `explorerGateway`.
 - [ ] While viewing `__recent__`, notifier-driven recent-file changes trigger a reload through this hook without extra page-shell wiring.
 - [ ] `__shared__` flow (shared folders, file-only permissions) remains stable until overlay extraction.
-- [ ] Share mode nodeId handling remains stable until overlay extraction
+- [ ] Share mode navigates by the share current folder nodeId: `currentNodeId` is the share folder nodeId and share listings use it (`listDirectory({ nodeId: shareCurrentNodeId, options: { shareToken } })`); the share display path is kept for breadcrumb display only (C2.5).
 - [ ] setCurrentNodeId navigates
 - [ ] The hook is treated as a listing/nodeId seam, not the owner of search/sort/view derived state, browser-preference storage, or recent-file recovery logic.
 
@@ -110,3 +110,4 @@
 
 - requestIdRef prevents stale updates
 - shareCurrentNodeId vs currentNodeIdFromUrl
+- Share mode when the root nodeId is unavailable (linkInfo without nodeId / unauthenticated viewer): the share root is listed via `shareToken` with `nodeId: null`, and subfolder navigation still uses child `nodeId`s from listings; the display path fallback keeps the breadcrumb usable.

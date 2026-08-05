@@ -69,7 +69,7 @@ describe('useExplorerInteraction', () => {
       await result.current.handlePathClick('/__shared__');
     });
 
-    expect(props.handleProductPathClick).toHaveBeenCalledWith('/__shared__');
+    expect(props.handleProductPathClick).toHaveBeenCalledWith('/__shared__', undefined);
     expect(props.navigateToExplorerPath).not.toHaveBeenCalled();
   });
 

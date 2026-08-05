@@ -3,19 +3,19 @@ import { buildPendingRequestState } from '../buildPendingRequestState';
 
 describe('buildPendingRequestState', () => {
   it('returns empty state for missing/non-array input', () => {
-    expect(buildPendingRequestState({ requests: null, targetPath: '/docs', isDirectory: true })).toEqual({
+    expect(buildPendingRequestState({ requests: null, targetNodeId: 1001, isDirectory: true })).toEqual({
       read: { pending: false, id: null },
       write: { pending: false, id: null },
     });
   });
 
-  it('matches folder requests by folder_path', () => {
+  it('matches folder requests by node_id', () => {
     const result = buildPendingRequestState({
       requests: [
-        { id: 'r1', folder_path: '/docs', requested_permission: PERMISSIONS.READ },
-        { id: 'r2', folder_path: '/docs', requested_permission: PERMISSIONS.WRITE },
+        { id: 'r1', node_id: 1001, requested_permission: PERMISSIONS.READ },
+        { id: 'r2', node_id: 1001, requested_permission: PERMISSIONS.WRITE },
       ],
-      targetPath: '/docs/',
+      targetNodeId: 1001,
       isDirectory: true,
     });
 
@@ -25,12 +25,12 @@ describe('buildPendingRequestState', () => {
     });
   });
 
-  it('matches file requests by file_path', () => {
+  it('matches file requests by node_id', () => {
     const result = buildPendingRequestState({
       requests: [
-        { id: 'r1', file_path: '/docs/file.txt', requested_permission: PERMISSIONS.READ },
+        { id: 'r1', node_id: 1001, requested_permission: PERMISSIONS.READ },
       ],
-      targetPath: '/docs/file.txt',
+      targetNodeId: 1001,
       isDirectory: false,
     });
 

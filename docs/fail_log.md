@@ -157,3 +157,38 @@
 
 - **Server:** 12 failed suites / 55 failed / 1032 passed / 1090 total — `files.test.js` (Task 4.9) and `folders.test.js` now pass; remaining failures are Phase 5 scope (recentFiles, sharing, legacy models), environmental (`postgresqlNotConfigured`), or the pre-existing Settings serialization bug. Identical to pre-change baseline → zero regressions.
 - **Client:** 8 suites / 23 tests still fail, verified byte-identical on base commit `503678d` (git stash comparison) → pre-existing, out of Phase 4 scope. FileManager/useFileManager/CreateFolderDialog/service-layer suites (231 tests) pass.
+
+---
+
+## 2026-08-05 — Gap Closure C1.5: stale path fixtures in 3 client test suites
+
+- **Area:** `client/src/services/__tests__/sharePermissionSaveUseCase.test.js`, `client/src/services/__tests__/shareReviewUseCase.test.js`, `client/src/utils/__tests__/buildPendingRequestState.test.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** Three suites asserted path-based payloads (`folderPath`/`includeSubfolders`, `folder_path`/`file_path`, `targetPath`) against nodeId-based implementations left stale after the Phase 4.8b nodeId migration. The source implementations are correct; only the fixtures were stale. `sharePermissionSaveUseCase`/`shareReviewUseCase` now take `initialNodePermissions`/`nodePermissions` and call `revokePermission({ userId, nodeId })` / `grantPermission({ userId, nodeId, permission })`; `buildPendingRequestState` matches requests by `request.node_id === targetNodeId`.
+- **Observed failure:** Revoke/grant assertions never matched (expected `folderPath` payloads vs actual `nodeId` payloads); pending-state lookups returned the empty state because request fixtures carried `folder_path`/`file_path` while the matcher read `node_id`.
+- **Action taken:** Updated the 3 suites to nodeId payloads (`nodeId` keys in permission Maps, `node_id` request fixtures, `targetNodeId`), matching the implemented call shapes. Implementations unchanged.
+- **Verification:** All three suites pass via `react-scripts test` (gap closure C1.5).
+
+---
+
+## 2026-08-05 — Gap Closure C1.7: RCA of remaining failing client suites
+
+### FilePreviewDialog.test.js — Case B (Test Error — stale path fixtures)
+
+- **Area:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** 3 of 9 tests asserted path-string arguments (`mockGetFileBlob('/b.jpg', ...)`, `mockGetVideoPreviewStreamUrl('/v.mp4', ...)`) against a nodeId-based preview loader. After the Phase 4.8b nodeId migration, `usePreviewLoader` (`client/src/components/dialogs/FilePreviewDialog/hooks/usePreviewLoader.js:24,31`) calls `getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken })` and `getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal })`, and `fileService.getFileBlob(nodeId)` / `getVideoPreviewStreamUrl(nodeId)` (`fileService.js:57,79`) are nodeId-based. The fixtures carried only `path`, so the mock was invoked with `nodeId === undefined`. The implementation is correct; only the fixtures/assertions were stale.
+- **Observed failure:** `expect(jest.fn()).toHaveBeenCalledWith(...)` — Expected `"/b.jpg"`/`"/v.mp4"`, Received `undefined` with the options object (`{"inline": true, "shareToken": undefined, "signal": {}}` / `{"shareToken": undefined}`).
+- **Spec cross-check:** `docs/spec/client/components/dialogs/FilePreviewDialog.md` §2.4/2.9 specify getFileBlob and ticket-based streaming URL for video preview; the preview payload key is the file `nodeId` (gallery index matching remains `file.path`-keyed per §2.6 in `useGalleryNavigation.js:19`). No spec violation by the source.
+- **Action taken:** Added `nodeId` to all file fixtures in the test and updated the `getFileBlob`/`getVideoPreviewStreamUrl` call assertions to nodeId (`20` for the video fixture, `2` for the non-first gallery file, `1` never loaded). `path` retained in fixtures for gallery-index matching. Implementation unchanged.
+- **Verification:** `CI=true npx react-scripts test --watchAll=false src/components/dialogs/__tests__/FilePreviewDialog.test.js` — 9/9 pass.
+
+### FileActionSheet.test.js — Out of scope (not a stale-path/nodeId issue); spec/implementation behavior conflict
+
+- **Area:** `client/src/components/file-manager/__tests__/FileActionSheet.test.js`
+- **Classification:** Out of scope for C1.7 (spec/implementation behavior conflict; not nodeId-related). Do not change the test.
+- **Summary:** 4 of 8 tests fail for reasons unrelated to the nodeId migration: (1) `calls onDownload and onClose when download clicked` — the fixture file lacks `hasReadPermission`, so the download row is rendered `disabled` (`FileActionSheet.js:138`) and the click is a no-op (`onDownload` called 0 times). (2–4) `hides rename/move/delete when !fileWritePermission` — the component renders rename/move/delete rows **disabled** (`FileActionSheet.js:153,168,214`), not hidden, when write permission is absent; the tests assert the rows are absent from the document.
+- **Observed failure:** `Expected number of calls: 1, Received number of calls: 0` for `onDownload`; `expected document not to contain element, found <span ...>Rename</span>` (likewise Move, Delete) after passing `hasWritePermission={false}`.
+- **Spec cross-check:** `docs/spec/client/components/file-manager/FileActionSheet.md` §2.6/§2.7 state "Rename, move, delete only when fileWritePermission" / "hidden when !fileWritePermission". The implementation deliberately disables instead of hiding, and this is the established pattern: the desktop counterpart `FileContextMenu.js:66-136` applies the identical `disabled={!file.hasReadPermission}` / `disabled={!fileWritePermission}` semantics, and the spec §2.6 E2E selector contract requires the action rows (e.g. rename/delete) to be present in the DOM with stable `data-testid`. The spec's "hidden" wording is stale relative to the implemented (and consistently applied) disable-state design.
+- **Action taken:** None (test not changed). Fixing the tests to assert the disabled state (or removing the fixtures' permission fields) is a product/spec decision: either align `FileActionSheet.md` §2.6/§2.7 to the disable-state design and update the tests accordingly (recommended, consistent with FileContextMenu + E2E selector contract), or change the source to hide the rows (would contradict the sibling component). Both are outside the C1.7 nodeId-migration scope. Recording this incident per AGENTS.md §3.2; **recommendation**: update the spec to document the disable (not hide) behavior and rewrite the three hide-tests to assert `disabled` on the action rows, plus add `hasReadPermission: true` to the shared fixture for the download test.
+- **Verification:** Suite still fails 4/8 (unchanged baseline) — expected, per decision not to modify.

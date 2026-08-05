@@ -34,6 +34,7 @@ jest.mock('../../../hooks/useResponsive', () => ({
 }));
 
 const fileProps = {
+  nodeId: 10,
   path: '/docs/readme.txt',
   basename: 'readme.txt',
   name: 'readme.txt',
@@ -118,11 +119,11 @@ describe('FilePreviewDialog', () => {
   });
 
   it('uses streaming URL (not blob) for video preview', async () => {
-    const videoFile = { path: '/v.mp4', basename: 'v.mp4', name: 'v.mp4', type: 'file' };
+    const videoFile = { nodeId: 20, path: '/v.mp4', basename: 'v.mp4', name: 'v.mp4', type: 'file' };
     renderWithProviders(<FilePreviewDialog {...defaultProps} file={videoFile} />);
 
     await waitFor(() => {
-      expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith('/v.mp4', expect.any(Object));
+      expect(mockGetVideoPreviewStreamUrl).toHaveBeenCalledWith(20, expect.any(Object));
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -132,9 +133,9 @@ describe('FilePreviewDialog', () => {
 
   it('syncs gallery index from file.path (non-first) without locking to the first file', async () => {
     const mediaFiles = [
-      { path: '/a.jpg', basename: 'a.jpg', name: 'a.jpg', type: 'file' },
-      { path: '/b.jpg', basename: 'b.jpg', name: 'b.jpg', type: 'file' },
-      { path: '/c.jpg', basename: 'c.jpg', name: 'c.jpg', type: 'file' },
+      { nodeId: 1, path: '/a.jpg', basename: 'a.jpg', name: 'a.jpg', type: 'file' },
+      { nodeId: 2, path: '/b.jpg', basename: 'b.jpg', name: 'b.jpg', type: 'file' },
+      { nodeId: 3, path: '/c.jpg', basename: 'c.jpg', name: 'c.jpg', type: 'file' },
     ];
     const openedFile = mediaFiles[1];
 
@@ -147,7 +148,7 @@ describe('FilePreviewDialog', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+      expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -155,9 +156,9 @@ describe('FilePreviewDialog', () => {
   });
 
   it('does not lock gallery index to 0 when mediaFiles arrives after open', async () => {
-    const openedFile = { path: '/b.jpg', basename: 'b.jpg', name: 'b.jpg', type: 'file' };
+    const openedFile = { nodeId: 2, path: '/b.jpg', basename: 'b.jpg', name: 'b.jpg', type: 'file' };
     const mediaFilesLater = [
-      { path: '/a.jpg', basename: 'a.jpg', name: 'a.jpg', type: 'file' },
+      { nodeId: 1, path: '/a.jpg', basename: 'a.jpg', name: 'a.jpg', type: 'file' },
       openedFile,
     ];
 
@@ -171,7 +172,7 @@ describe('FilePreviewDialog', () => {
 
     // Should not eagerly fall back to index 0 of mediaFiles (because mediaFiles is empty).
     await waitFor(() => {
-      expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
+      expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
     });
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -189,8 +190,8 @@ describe('FilePreviewDialog', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
     // Must have loaded b.jpg (opened file), never a.jpg (index 0)
-    expect(mockGetFileBlob).toHaveBeenCalledWith('/b.jpg', expect.any(Object));
-    expect(mockGetFileBlob).not.toHaveBeenCalledWith('/a.jpg', expect.any(Object));
+    expect(mockGetFileBlob).toHaveBeenCalledWith(2, expect.any(Object));
+    expect(mockGetFileBlob).not.toHaveBeenCalledWith(1, expect.any(Object));
   });
 
   it('truncates long header filename and shows tooltip on hover (desktop)', async () => {

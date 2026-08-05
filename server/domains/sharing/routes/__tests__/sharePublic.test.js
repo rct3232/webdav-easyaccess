@@ -1,44 +1,72 @@
 /**
- * Share public routes integration tests.
+ * Share public routes integration tests (nodeId contract).
  * @see docs/api.md, docs/spec/server/routes/sharePublic.md, docs/features/files-sharing.md
  */
 const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-  grantTestPermission,
+  grantTestPermissionByNodeId,
 } = require('../../../../test-utils');
+const { createFileNodeService } = require('../../../../service/fileNodeService');
+const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const ShareLink = require('../../../../models/ShareLink');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+const composition = require('../../../../service/composition');
 
-var mockWebdav;
-jest.mock('../../../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
-  mockWebdav = createWebdavMock();
-  return mockWebdav;
-});
+let fileNodeService;
+let webdavMock;
+let blobStorageService;
 
-mockWebdav.pathExists.mockResolvedValue(true);
-mockWebdav.getFileContents.mockResolvedValue(Buffer.from('file content'));
-mockWebdav.listDirectory.mockResolvedValue([]);
+async function createUserWithHomeNode(opts = {}) {
+  const { user, token } = await createAuthenticatedTestUser(opts);
+  const node = await fileNodeService.createDirectory(null, user.username);
+  return { user, token, homeNodeId: node.id };
+}
+
+async function createFileWithBlob({ user, homeNodeId, name, content, mimeType }) {
+  await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+  const file = await fileNodeService.createFile(homeNodeId, name);
+  await blobStorageService.uploadToWebdav(file.id, Buffer.from(content), mimeType);
+  return file.id;
+}
+
+async function createShareLinkForNode(token, fileNodeId) {
+  const res = await request(app)
+    .post('/api/share-links')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ fileNodeId });
+  expect(res.status).toBe(200);
+  return res.body.token;
+}
 
 let app;
 let dbCleanup;
 
 beforeAll(async () => {
+  process.env.WEA_FILE_STORAGE = 'webdav';
+  process.env.WEA_SKIP_BULK_WORKER = '1';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
+  fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+
+  webdavMock = createWebdavMock();
+  const blobStore = new WebdavBlobStore(webdavMock);
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore,
+    fileNodeService,
+  });
+  blobStorageService = composition.getComposition().blobStorageService;
+
   app = require('../../../../index');
 });
 
-beforeEach(() => {
-  mockWebdav.pathExists.mockResolvedValue(true);
-  mockWebdav.getFileContents.mockResolvedValue(Buffer.from('file content'));
-  mockWebdav.listDirectory.mockResolvedValue([]);
-});
-
 afterAll(async () => {
+  delete process.env.WEA_SKIP_BULK_WORKER;
   await dbCleanup?.();
 });
 
@@ -47,45 +75,48 @@ describe('GET /api/share/:token/info', () => {
     const res = await request(app).get('/api/share/invalid-token-xyz/info');
 
     expect(res.status).toBe(404);
-    expect(res.body.errorCode).toBeDefined();
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkNotFound);
   });
 
-  it('returns info without auth when token valid', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+  it('returns info without auth when token valid (nodeId contract)', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-pub-${Date.now()}`,
     });
-    await grantTestPermission(user.id, '/', 'admin');
-
-    const createRes = await request(app)
-      .post('/api/share-links')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ filePath: `/${user.username}/doc.pdf` });
-
-    const linkToken = createRes.body.token;
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'doc.pdf',
+      content: 'pdf-bytes',
+      mimeType: 'application/pdf',
+    });
+    const linkToken = await createShareLinkForNode(token, fileNodeId);
 
     const res = await request(app).get(`/api/share/${linkToken}/info`);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       token: linkToken,
-      filePath: expect.any(String),
-      fileName: expect.any(String),
-      isDirectory: expect.any(Boolean),
+      nodeId: fileNodeId,
+      fileName: 'doc.pdf',
+      isDirectory: false,
+      displayPath: expect.any(String),
       isExpired: false,
     });
+    expect(res.body.filePath).toBeUndefined();
   });
 
   it('returns 410 when share link is expired (info)', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-expired-${Date.now()}`,
     });
-    await grantTestPermission(user.id, '/', 'admin');
-
-    const createRes = await request(app)
-      .post('/api/share-links')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ filePath: `/${user.username}/doc.pdf`, expiresInDays: 7 });
-    const linkToken = createRes.body.token;
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'doc.pdf',
+      content: 'pdf-bytes',
+      mimeType: 'application/pdf',
+    });
+    const linkToken = await createShareLinkForNode(token, fileNodeId);
 
     await ShareLink.update(linkToken, { expiresAt: new Date(0).toISOString() });
 
@@ -98,16 +129,17 @@ describe('GET /api/share/:token/info', () => {
 
 describe('GET /api/share/:token (download)', () => {
   it('returns 410 when share link is expired', async () => {
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-dl-expired-${Date.now()}`,
     });
-    await grantTestPermission(user.id, '/', 'admin');
-
-    const createRes = await request(app)
-      .post('/api/share-links')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ filePath: `/${user.username}/doc.pdf`, expiresInDays: 7 });
-    const linkToken = createRes.body.token;
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'doc.pdf',
+      content: 'pdf-bytes',
+      mimeType: 'application/pdf',
+    });
+    const linkToken = await createShareLinkForNode(token, fileNodeId);
 
     await ShareLink.update(linkToken, { expiresAt: new Date(0).toISOString() });
 
@@ -121,19 +153,19 @@ describe('GET /api/share/:token (download)', () => {
 describe('GET /api/share/:token/preview', () => {
   it('returns inline preview with correct content-type and body', async () => {
     const videoBytes = Buffer.from('video-bytes');
-    mockWebdav.getFileContents.mockResolvedValueOnce(videoBytes);
+    webdavMock.getFileContents.mockResolvedValueOnce(videoBytes);
 
-    const { user, token } = await createAuthenticatedTestUser({
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-preview-${Date.now()}`,
     });
-    await grantTestPermission(user.id, '/', 'admin');
-
-    const createRes = await request(app)
-      .post('/api/share-links')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ filePath: `/${user.username}/movie.mp4` });
-
-    const linkToken = createRes.body.token;
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'movie.mp4',
+      content: videoBytes,
+      mimeType: 'video/mp4',
+    });
+    const linkToken = await createShareLinkForNode(token, fileNodeId);
 
     const res = await request(app).get(`/api/share/${linkToken}/preview`);
 

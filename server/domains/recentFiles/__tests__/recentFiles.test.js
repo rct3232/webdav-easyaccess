@@ -1,5 +1,5 @@
 /**
- * Recent files routes integration tests.
+ * Recent files routes integration tests (nodeId contract).
  * @see docs/api.md, docs/spec/server/routes/recentFiles.md
  */
 const request = require('supertest');
@@ -7,20 +7,47 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
 } = require('../../../test-utils');
-const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createFileNodeService } = require('../../../service/fileNodeService');
+const { createFileNodesStore } = require('../../../store/fileNodesStore');
+const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createWebdavMock } = require('../../../testing/mocks/webdavMock');
+const WebdavBlobStore = require('../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+const composition = require('../../../service/composition');
 
 let app;
 let dbCleanup;
+let fileNodeService;
 
 beforeAll(async () => {
+  process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
+
+  fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+  const webdavMock = createWebdavMock();
+  const blobStore = new WebdavBlobStore(webdavMock);
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore,
+    fileNodeService,
+  });
+
   app = require('../../../index');
 });
 
 afterAll(async () => {
+  composition.resetComposition();
   await dbCleanup?.();
 });
+
+async function createUserWithFile() {
+  const { user, token } = await createAuthenticatedTestUser({
+    username: `recent-route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  });
+  const homeNode = await fileNodeService.createDirectory(null, user.username);
+  const fileNode = await fileNodeService.createFile(homeNode.id, 'file.pdf');
+  return { user, token, homeNode, fileNode };
+}
 
 describe('GET /api/recent-files', () => {
   it('returns empty array when no recent files', async () => {
@@ -44,175 +71,97 @@ describe('GET /api/recent-files', () => {
 });
 
 describe('POST /api/recent-files', () => {
-  it('adds file and returns list', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-add-${Date.now()}`,
-    });
+  it('adds file and returns enriched list', async () => {
+    const { user, token, fileNode } = await createUserWithFile();
 
     const res = await request(app)
       .post('/api/recent-files')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/docs/file.pdf', name: 'file.pdf', type: 'file' });
+      .send({ fileNodeId: fileNode.id });
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({
-      path: '/docs/file.pdf',
+      fileNodeId: fileNode.id,
       name: 'file.pdf',
       type: 'file',
     });
+    expect(res.body[0].displayPath).toBe(`/${user.username}/file.pdf`);
   });
 
-  it('returns 400 when path missing', async () => {
+  it('returns 400 when fileNodeId missing or invalid', async () => {
     const { token } = await createAuthenticatedTestUser({
       username: `recent-add2-${Date.now()}`,
     });
 
+    for (const body of [{}, { fileNodeId: 'not-a-number' }]) {
+      const res = await request(app)
+        .post('/api/recent-files')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.recentFiles.pathRequired);
+    }
+  });
+
+  it('returns an error when node does not exist', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `recent-add404-${Date.now()}`,
+    });
+
     const res = await request(app)
       .post('/api/recent-files')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'file.pdf' });
+      .send({ fileNodeId: 999999 });
 
-    expect(res.status).toBe(400);
-    expect(res.body.errorCode).toBeDefined();
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.notFound);
   });
 });
 
 describe('DELETE /api/recent-files', () => {
   it('clears all recent files', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-clear-${Date.now()}`,
-    });
+    const { token, fileNode } = await createUserWithFile();
     await request(app)
       .post('/api/recent-files')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/a.pdf' });
+      .send({ fileNodeId: fileNode.id });
 
     const res = await request(app)
       .delete('/api/recent-files')
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.messageCode).toBeDefined();
+    expect(res.body.messageCode).toBe(SERVER_MESSAGE_CODES.recentFiles.clearedSuccess);
 
     const listRes = await request(app)
       .get('/api/recent-files')
       .set('Authorization', `Bearer ${token}`);
     expect(listRes.status).toBe(200);
-    expect(Array.isArray(listRes.body)).toBe(true);
-    expect(listRes.body.length).toBe(0);
+    expect(listRes.body).toHaveLength(0);
   });
 
-  it('removes single path', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-remove-${Date.now()}`,
-    });
+  it('removes single entry by fileNodeId', async () => {
+    const { token, homeNode, fileNode } = await createUserWithFile();
+    const other = await fileNodeService.createFile(homeNode.id, 'other.pdf');
     await request(app)
       .post('/api/recent-files')
       .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/remove-me.pdf', name: 'remove-me.pdf' });
+      .send({ fileNodeId: fileNode.id });
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId: other.id });
 
     const res = await request(app)
-      .delete('/api/recent-files/' + encodeURIComponent('/remove-me.pdf'))
+      .delete(`/api/recent-files/${fileNode.id}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.some((f) => f.path === '/remove-me.pdf')).toBe(false);
-  });
-});
-
-describe('POST /api/recent-files/apply-moves', () => {
-  it('updates store with moved paths', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-apply-${Date.now()}`,
-    });
-    await request(app)
-      .post('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/old/a.pdf', name: 'a.pdf', type: 'file' });
-
-    const res = await request(app)
-      .post('/api/recent-files/apply-moves')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        moves: [{ oldPath: '/old/a.pdf', newPath: '/new/a.pdf' }],
-      });
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.some((f) => f.path === '/new/a.pdf')).toBe(true);
-    expect(res.body.some((f) => f.path === '/old/a.pdf')).toBe(false);
-
-    const listRes = await request(app)
-      .get('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body.some((f) => f.path === '/new/a.pdf')).toBe(true);
-  });
-
-  it('returns 400 when moves missing or not array', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-moves-val-${Date.now()}`,
-    });
-
-    for (const body of [{ moves: null }, {}, { moves: 'string' }]) {
-      const res = await request(app)
-        .post('/api/recent-files/apply-moves')
-        .set('Authorization', `Bearer ${token}`)
-        .send(body);
-
-      expect(res.status).toBe(400);
-      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.recentFiles.movesRequired);
-    }
-  });
-});
-
-describe('POST /api/recent-files/remove-paths', () => {
-  it('updates store by removing file and folder paths', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-remove-paths-${Date.now()}`,
-    });
-    await request(app)
-      .post('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/a.txt', name: 'a.txt', type: 'file' });
-    await request(app)
-      .post('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ path: '/folder', name: 'folder', type: 'folder' });
-
-    const res = await request(app)
-      .post('/api/recent-files/remove-paths')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ filePaths: ['/a.txt'], folderPaths: ['/folder'] });
-
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.some((f) => f.path === '/a.txt')).toBe(false);
-    expect(res.body.some((f) => f.path === '/folder')).toBe(false);
-
-    const listRes = await request(app)
-      .get('/api/recent-files')
-      .set('Authorization', `Bearer ${token}`);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body.some((f) => f.path === '/a.txt')).toBe(false);
-  });
-
-  it('returns 400 when filePaths or folderPaths not arrays', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `recent-remove-val-${Date.now()}`,
-    });
-
-    for (const body of [{ filePaths: 'x' }, { folderPaths: {} }, { filePaths: 1, folderPaths: [] }]) {
-      const res = await request(app)
-        .post('/api/recent-files/remove-paths')
-        .set('Authorization', `Bearer ${token}`)
-        .send(body);
-
-      expect(res.status).toBe(400);
-      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.recentFiles.pathsMustBeArrays);
-    }
+    expect(res.body.some((f) => f.fileNodeId === fileNode.id)).toBe(false);
+    expect(res.body.some((f) => f.fileNodeId === other.id)).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
  * Verifies create, findByToken, findByUserId, update, delete, incrementDownloadCount, isExpired.
  */
 const ShareLink = require('../ShareLink');
-const { createTestDatabase, createAuthenticatedTestUser } = require('../../test-utils');
+const { createTestDatabase, createAuthenticatedTestUser, createTestFileNode } = require('../../test-utils');
 
 describe('ShareLink model', () => {
   let dbCleanup;
@@ -21,31 +21,35 @@ describe('ShareLink model', () => {
   });
 
   describe('create', () => {
-    it('creates a share link and returns token, filePath, createdBy', async () => {
-      const result = await ShareLink.create('/docs/report.pdf', userId, 14);
+    it('creates a share link and returns token, nodeId, createdBy', async () => {
+      const { nodeId } = await createTestFileNode({ name: 'report.pdf' });
+      const result = await ShareLink.create(nodeId, userId, 14);
       expect(result).toMatchObject({
-        filePath: '/docs/report.pdf',
+        nodeId,
         createdBy: userId,
         downloadCount: 0,
       });
+      expect(result.filePath).toBeUndefined();
       expect(result.token).toBeDefined();
       expect(typeof result.token).toBe('string');
       expect(result.createdAt).toBeDefined();
     });
 
     it('creates link with null expiresInDays (no expiration)', async () => {
-      const result = await ShareLink.create('/docs/forever.txt', userId, null);
+      const { nodeId } = await createTestFileNode({ name: 'forever.txt' });
+      const result = await ShareLink.create(nodeId, userId, null);
       expect(result.expiresAt).toBeNull();
     });
   });
 
   describe('findByToken', () => {
     it('returns link when token exists', async () => {
-      const created = await ShareLink.create('/docs/find-me.pdf', userId, 7);
+      const { nodeId } = await createTestFileNode({ name: 'find-me.pdf' });
+      const created = await ShareLink.create(nodeId, userId, 7);
       const link = await ShareLink.findByToken(created.token);
       expect(link).toMatchObject({
         token: created.token,
-        filePath: '/docs/find-me.pdf',
+        nodeId,
         createdBy: userId,
       });
     });
@@ -58,8 +62,10 @@ describe('ShareLink model', () => {
 
   describe('findByUserId', () => {
     it('returns links created by user', async () => {
-      await ShareLink.create('/docs/user-link1.pdf', userId, 7);
-      await ShareLink.create('/docs/user-link2.pdf', userId, 7);
+      const node1 = await createTestFileNode({ name: 'user-link1.pdf' });
+      const node2 = await createTestFileNode({ name: 'user-link2.pdf' });
+      await ShareLink.create(node1.nodeId, userId, 7);
+      await ShareLink.create(node2.nodeId, userId, 7);
       const links = await ShareLink.findByUserId(userId);
       expect(links.length).toBeGreaterThanOrEqual(2);
       links.forEach((l) => expect(l.createdBy).toBe(userId));
@@ -68,15 +74,18 @@ describe('ShareLink model', () => {
 
   describe('update', () => {
     it('updates link and returns updated data', async () => {
-      const created = await ShareLink.create('/docs/update-me.pdf', userId, 7);
+      const { nodeId } = await createTestFileNode({ name: 'update-me.pdf' });
+      const created = await ShareLink.create(nodeId, userId, 7);
       const updated = await ShareLink.update(created.token, { expiresInDays: 30 });
       expect(updated).toBeDefined();
+      expect(updated.nodeId).toBe(nodeId);
     });
   });
 
   describe('incrementDownloadCount', () => {
     it('increments downloadCount', async () => {
-      const created = await ShareLink.create('/docs/download-me.pdf', userId, 7);
+      const { nodeId } = await createTestFileNode({ name: 'download-me.pdf' });
+      const created = await ShareLink.create(nodeId, userId, 7);
       expect(created.downloadCount).toBe(0);
       const after = await ShareLink.incrementDownloadCount(created.token);
       expect(after.downloadCount).toBe(1);
@@ -108,7 +117,8 @@ describe('ShareLink model', () => {
 
   describe('delete', () => {
     it('removes link so findByToken returns null', async () => {
-      const created = await ShareLink.create('/docs/delete-me.pdf', userId, 7);
+      const { nodeId } = await createTestFileNode({ name: 'delete-me.pdf' });
+      const created = await ShareLink.create(nodeId, userId, 7);
       await ShareLink.delete(created.token);
       const link = await ShareLink.findByToken(created.token);
       expect(link).toBeNull();

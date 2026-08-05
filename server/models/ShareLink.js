@@ -4,18 +4,18 @@ const crypto = require('crypto');
 class ShareLink {
   /**
    * 공유 링크 생성
-   * @param {string} filePath - 파일 경로
+   * @param {number} fileNodeId - 파일 노드 ID
    * @param {number} createdBy - 생성한 사용자 ID
    * @param {number|null} expiresInDays - 유효기간 (일수, null이면 무제한)
    * @returns {Promise<Object>} 생성된 링크 데이터
    */
-  static async create(filePath, createdBy, expiresInDays = 14) {
+  static async create(fileNodeId, createdBy, expiresInDays = 14) {
     // Access token 생성 (32바이트 랜덤)
     const token = crypto.randomBytes(32).toString('base64url');
     
     return await shareLinkStore.createShareLink({
       token,
-      filePath,
+      fileNodeId,
       createdBy,
       expiresInDays,
     });

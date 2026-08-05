@@ -50,6 +50,7 @@ This section is a reference summary of the existing endpoints that back the abov
 ### Files and Folders
 
 - **List:** `GET /api/files/list?nodeId=` — Returns folder contents with ACL info. `nodeId` is the parent directory node; omit for the root.
+- **Ancestors:** `GET /api/files/ancestors?nodeId=` — Returns the folder's ancestor chain for breadcrumbs: `{ ancestors: [{ nodeId, name }] }`, ordered root→current (current folder last, including itself). 400 if `nodeId` missing/invalid; 404 if the node does not exist.
 - **Download:** `GET /api/files/download?nodeId=` — Single file download (token or share token where supported). Optional `inline=true`.
 - **Upload:** `POST /api/files/upload` — Multipart `file`; form fields `parentNodeId`, `onConflict` (error/overwrite/skip), optional `relativePath`. Checks parent write permission.
 - **Rename:** `PUT /api/files/rename` — Body: `{ nodeId, newName }`.

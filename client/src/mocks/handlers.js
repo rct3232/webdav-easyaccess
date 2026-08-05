@@ -118,6 +118,24 @@ export const handlers = [
     return HttpResponse.json(isFolder ? folderItems : rootItems);
   }),
 
+  // --- Files: ancestor chain (breadcrumbs) — root→current, self last ---
+  http.get(`${API_BASE}/files/ancestors`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.files.invalidPath', 400);
+    }
+    const chains = {
+      1: [{ nodeId: 1, name: 'testuser' }],
+      2: [{ nodeId: 1, name: 'testuser' }, { nodeId: 2, name: 'docs' }],
+      3: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }],
+      4: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 4, name: 'sub.txt' }],
+      5: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 5, name: 'nested' }],
+    };
+    const ancestors = chains[nodeId] || [{ nodeId: Number(nodeId), name: 'folder' }];
+    return HttpResponse.json({ ancestors });
+  }),
+
   // --- Permissions (nodeId-based, matching server/domains/permissions/routes) ---
   http.get(`${API_BASE}/permissions/check`, ({ request }) => {
     const url = new URL(request.url);

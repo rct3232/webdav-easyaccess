@@ -119,6 +119,32 @@ router.get('/list', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, 
   res.json(itemsWithThumbnails);
 }));
 
+router.get('/ancestors', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+  const nodeId = parseNodeId(req.query.nodeId, 'nodeId');
+
+  const { fileNodeService, fileNodesStore } = getComposition();
+  const node = await fileNodeService.getNode(nodeId);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+  }
+
+  const chain = await fileNodesStore.getAncestorChain(nodeId);
+  const ancestorIds = chain.map((entry) => entry.ancestorId);
+  if (ancestorIds[ancestorIds.length - 1] !== nodeId) {
+    ancestorIds.push(nodeId);
+  }
+
+  const ancestors = [];
+  for (const ancestorId of ancestorIds) {
+    const ancestorNode = await fileNodeService.getNode(ancestorId);
+    if (ancestorNode) {
+      ancestors.push({ nodeId: ancestorNode.id, name: ancestorNode.name });
+    }
+  }
+
+  res.json({ ancestors });
+}));
+
 router.get('/download', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const nodeIdValue = req.query.nodeId;
   const inline = req.query.inline === 'true';

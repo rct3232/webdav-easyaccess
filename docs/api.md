@@ -41,6 +41,7 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/files/list` | Token or share | List folder contents. Query: `nodeId` (parent directory node; omit for root). |
+| GET | `/api/files/ancestors` | Token or share | Get the ancestor chain for breadcrumbs. Query: `nodeId`. Returns `{ ancestors: [{ nodeId, name }] }` ordered root→current (current folder last, including itself); 400 if `nodeId` missing/invalid; 404 if the node does not exist. |
 | GET | `/api/files/download` | Token or share | Download file. Query: `nodeId`; optional `inline` (true/false). |
 | POST | `/api/files/upload` | Token | Upload file. Multipart: `file`; form fields: `parentNodeId`, `onConflict` (error, overwrite, skip), optional `relativePath`. |
 | PUT | `/api/files/rename` | Token | Rename. Body: `{ nodeId, newName }`. |

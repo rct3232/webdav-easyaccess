@@ -145,6 +145,80 @@ describe('GET /api/files/list', () => {
   });
 });
 
+describe('GET /api/files/ancestors', () => {
+  it('returns a single-entry chain for a root node', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `files-ancestors-root-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
+
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ nodeId: homeNodeId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ancestors).toEqual([{ nodeId: homeNodeId, name: user.username }]);
+  });
+
+  it('returns the full chain root→self in order for a depth-N node', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `files-ancestors-deep-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
+
+    const sub = await fileNodeService.createDirectory(homeNodeId, 'sub');
+    const deep = await fileNodeService.createDirectory(sub.id, 'deep');
+
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ nodeId: deep.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ancestors).toEqual([
+      { nodeId: homeNodeId, name: user.username },
+      { nodeId: sub.id, name: 'sub' },
+      { nodeId: deep.id, name: 'deep' },
+    ]);
+  });
+
+  it('returns 400 when nodeId is missing', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `files-ancestors-400-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 404 when the node does not exist', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `files-ancestors-404-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ nodeId: 999 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.notFound);
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .query({ nodeId: 1 });
+
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/files/download', () => {
   it('returns file content for user with permission', async () => {
     const res = await request(app)

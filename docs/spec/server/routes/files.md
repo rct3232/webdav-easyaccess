@@ -17,7 +17,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 | Route Module | Source File | Mount Point | Endpoints |
 |-------------|-------------|-------------|-----------|
-| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, download, upload, rename, resolve-path |
+| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, ancestors, download, upload, rename, resolve-path |
 | Batch operations | `domains/files/routes/batch.js` | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel |
 | Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
 
@@ -30,6 +30,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 | Method | Path | Request Payload (nodeId only) | Response |
 |--------|------|------------------------------|----------|
 | GET | `/list` | Query: `nodeId` (required); `?nodeId=5`; missing/invalid → 400 | Each item: `{ nodeId, display_path, ... }` |
+| GET | `/ancestors` | Query: `nodeId` (required); missing/invalid → 400; 404 `files.notFound` if the node does not exist | `{ ancestors: [{ nodeId, name }] }` ordered root→current (current node last, including itself) |
 | GET | `/download` | Query: `nodeId` (required); `?nodeId=5`; 404 if not found | File buffer + `X-Node-ID` header |
 | POST | `/upload` | multipart + `parentNodeId`; file field; overwrite via `onConflict: 'overwrite'` against `(parent_id, name)` | `{ nodeId, display_path }`; `{ nodeId, skipped: true }` for skip |
 | PUT | `/rename` | Body: `{ nodeId, newName }` — `sourceNodeId` replaces prior design | `{ nodeId, new_display_path }` |
@@ -54,7 +55,7 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 
 | Module | Endpoints |
 |--------|-----------|
-| `crud.js` | list, download, upload, rename, move, copy, delete, check-conflicts, metadata |
+| `crud.js` | list, ancestors, download, upload, rename, move, copy, delete, check-conflicts, metadata |
 | `batch.js` | batch-move, batch-copy, batch-delete, bulk-operation/:jobId, cancel |
 | `preview.js` | preview-ticket, preview-stream, download-multiple, download-progress, thumbnail, thumbnails/batch |
 

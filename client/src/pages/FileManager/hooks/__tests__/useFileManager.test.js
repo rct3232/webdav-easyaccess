@@ -159,7 +159,7 @@ describe('useFileManager', () => {
     await renderAndResolveNormalLoad();
 
     expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
-      path: '/',
+      nodeId: null,
       options: expect.objectContaining({
         user: mockUser,
       }),

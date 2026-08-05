@@ -101,7 +101,6 @@ export const handlers = [
     const nodeIdParam = url.searchParams.get('nodeId');
     const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
-    const isFolder = nodeIdParam === '3' || nodeIdParam === '5';
     const rootItems = [
       { nodeId: 1, path: '/testuser/test.txt', display_path: '/testuser/test.txt', basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
       { nodeId: 2, path: '/testuser/docs', display_path: '/testuser/docs', basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
@@ -111,6 +110,11 @@ export const handlers = [
       { nodeId: 4, path: '/testuser/folder/sub.txt', display_path: '/testuser/folder/sub.txt', basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
       { nodeId: 5, path: '/testuser/folder/nested', display_path: '/testuser/folder/nested', basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
+    const segments = String(nodeIdParam || '').split('/').filter(Boolean);
+    if (segments.length > 1) {
+      return HttpResponse.json([]);
+    }
+    const isFolder = nodeIdParam === '3' || nodeIdParam === '5';
     return HttpResponse.json(isFolder ? folderItems : rootItems);
   }),
 
@@ -371,8 +375,8 @@ export const handlers = [
   // --- Folders ---
   http.post(`${API_BASE}/folders/create`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { parentNodeId, path: folderPath, name } = body;
-    if ((!parentNodeId && !folderPath) || !name) {
+    const { parentNodeId, name } = body;
+    if (!parentNodeId || !name) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });

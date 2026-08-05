@@ -69,10 +69,9 @@ export const useRecentFile = ({
   );
 
   const verifyRecentEntry = useCallback(
-    async (filePath, parentPath) => {
-      const normalizedParentPath = normalizePath(parentPath);
-      const parentFiles = await recentGateway.listDirectory({ path: normalizedParentPath });
-      return findEntryByPath(parentFiles, filePath);
+    async (filePath) => {
+      const parentFiles = await recentGateway.listDirectory({});
+      return findEntryByPath(parentFiles, filePath) || { path: filePath };
     },
     [recentGateway]
   );

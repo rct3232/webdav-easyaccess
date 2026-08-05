@@ -182,8 +182,20 @@ async function getUserShareLinks(userId) {
  */
 async function updateShareLink(token, updates) {
   const tokenStr = String(token);
-  const expiresAt = updates.expiresAt !== undefined ? updates.expiresAt : undefined;
-  const downloadCount = updates.downloadCount !== undefined ? Number(updates.downloadCount) : undefined;
+  const hasExpiresAt = updates.expiresAt !== undefined;
+  const hasDownloadCount = updates.downloadCount !== undefined;
+  const expiresAt = hasExpiresAt ? updates.expiresAt : null;
+  const downloadCount = hasDownloadCount ? Number(updates.downloadCount) : null;
+
+  const setClause = [];
+  const params = [];
+  const param = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (hasExpiresAt) setClause.push(`expires_at = ${param(expiresAt)}`);
+  if (hasDownloadCount) setClause.push(`download_count = ${param(downloadCount)}`);
 
   if (isPostgresqlBackend()) {
     try {
@@ -195,12 +207,13 @@ async function updateShareLink(token, updates) {
         if (existing.rows.length === 0) {
           throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
         }
+        if (setClause.length === 0) {
+          return mapShareLinkRow(existing.rows[0]);
+        }
         const updated = await client.query(
-          `UPDATE share_links
-              SET expires_at = COALESCE($2, expires_at),
-                  download_count = COALESCE($3, download_count)
-            WHERE token = $1 RETURNING *`,
-          [tokenStr, expiresAt, downloadCount]
+          `UPDATE share_links SET ${setClause.join(', ')}
+            WHERE token = $${params.length + 1} RETURNING *`,
+          [...params, tokenStr]
         );
         return mapShareLinkRow(updated.rows[0]);
       });
@@ -219,12 +232,13 @@ async function updateShareLink(token, updates) {
         if (existing.rows.length === 0) {
           throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
         }
+        if (setClause.length === 0) {
+          return mapShareLinkRow(existing.rows[0]);
+        }
+        const sqliteSet = setClause.map((c) => c.replace(/\$\d+/g, '?'));
         await client.query(
-          `UPDATE share_links
-              SET expires_at = COALESCE(?, expires_at),
-                  download_count = COALESCE(?, download_count)
-            WHERE token = ?`,
-          [expiresAt, downloadCount, tokenStr]
+          `UPDATE share_links SET ${sqliteSet.join(', ')} WHERE token = ?`,
+          [...params, tokenStr]
         );
         const updated = await client.query(
           `SELECT * FROM share_links WHERE token = ? LIMIT 1`,

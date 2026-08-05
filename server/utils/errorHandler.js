@@ -248,7 +248,8 @@ function conflictError(errorCode, params = undefined) {
 function mapServiceError(error, errorMap) {
   const errorCode = errorMap[error.message];
   if (errorCode) {
-    return validationError(errorCode);
+    const err = createError(errorCode, error.status || HTTP_STATUS.BAD_REQUEST);
+    return err;
   }
   throw error;
 }

@@ -72,6 +72,11 @@ export const getFolderPermissions = async (nodeId, fileNodeId) => {
  * @param {Object} params - { userId, nodeId, permission, target? } target 'file'이면 파일 권한
  */
 export const grantPermission = async ({ userId, nodeId, permission, target }) => {
+  if (target === 'file') {
+    await post('/permissions/file/grant', { userId, fileNodeId: nodeId, permission });
+    clearUserPermissionsCache(userId);
+    return;
+  }
   const body = { userId, nodeId, permission };
   if (target != null) body.target = target;
   await post('/permissions/grant', body);
@@ -79,10 +84,15 @@ export const grantPermission = async ({ userId, nodeId, permission, target }) =>
 };
 
 /**
- * 권한 철회 (폴더 또는 파일). 파일만 회수할 때는 scope: 'pathOnly' 전달.
- * @param {Object} params - { userId, nodeId, scope? }
+ * 권한 철회 (폴더 또는 파일). 파일은 target: 'file' 전달.
+ * @param {Object} params - { userId, nodeId, scope?, target? } target 'file'이면 파일 권한
  */
-export const revokePermission = async ({ userId, nodeId, scope }) => {
+export const revokePermission = async ({ userId, nodeId, scope, target }) => {
+  if (target === 'file') {
+    await del('/permissions/file/revoke', { params: { userId, fileNodeId: nodeId } });
+    clearUserPermissionsCache(userId);
+    return;
+  }
   const params = { userId, nodeId };
   if (scope != null) params.scope = scope;
   await del('/permissions/revoke', { params });

@@ -18,12 +18,12 @@ export function buildPendingRequestState({
     isDirectory
       ? requests.find(
           (request) =>
-            request.node_id === targetNodeId &&
+            request.file_node_id === targetNodeId &&
             request.requested_permission === permission
         )
       : requests.find(
           (request) =>
-            request.node_id === targetNodeId &&
+            request.file_node_id === targetNodeId &&
             request.requested_permission === permission
         );
 

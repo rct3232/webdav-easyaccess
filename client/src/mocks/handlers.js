@@ -102,20 +102,21 @@ export const handlers = [
     const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
     const rootItems = [
-      { nodeId: 1, path: '/testuser/test.txt', display_path: '/testuser/test.txt', basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 2, path: '/testuser/docs', display_path: '/testuser/docs', basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 3, path: '/testuser/folder', display_path: '/testuser/folder', basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 1, name: 'test.txt', type: 'file', display_path: '/testuser/test.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 2, name: 'docs', type: 'directory', display_path: '/testuser/docs', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 3, name: 'folder', type: 'directory', display_path: '/testuser/folder', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
     const folderItems = [
-      { nodeId: 4, path: '/testuser/folder/sub.txt', display_path: '/testuser/folder/sub.txt', basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 5, path: '/testuser/folder/nested', display_path: '/testuser/folder/nested', basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 4, name: 'sub.txt', type: 'file', display_path: '/testuser/folder/sub.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 5, name: 'nested', type: 'directory', display_path: '/testuser/folder/nested', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
     ];
-    const segments = String(nodeIdParam || '').split('/').filter(Boolean);
-    if (segments.length > 1) {
+    if (nodeIdParam === '3') {
+      return HttpResponse.json(folderItems);
+    }
+    if (nodeIdParam === '2' || nodeIdParam === '5') {
       return HttpResponse.json([]);
     }
-    const isFolder = nodeIdParam === '3' || nodeIdParam === '5';
-    return HttpResponse.json(isFolder ? folderItems : rootItems);
+    return HttpResponse.json(rootItems);
   }),
 
   // --- Files: legacy-URL resolver (nodeId-first navigation bootstrap) ---
@@ -337,7 +338,7 @@ export const handlers = [
     if (!nodeId || !newName) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, basename: newName, display_path: `/renamed/${newName}` });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, newName });
   }),
 
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---

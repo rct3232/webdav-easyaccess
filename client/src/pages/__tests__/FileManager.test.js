@@ -112,6 +112,7 @@ import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import FileManager from '../FileManager';
 import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
+import { clearUserPermissionsCache } from '../../services/permissionService';
 
 function ParamsReporter() {
   const params = useParams();
@@ -1060,6 +1061,9 @@ describe('FileManager', () => {
       }),
       http.get('/api/permission-requests/check-owner', () => HttpResponse.json({ ownerExists: true })),
       http.get('/api/permission-requests/outbox', () => HttpResponse.json([])),
+      http.get('/api/permissions/user/:userId', () => HttpResponse.json([
+        { nodeId: 2, permission: 'admin' },
+      ])),
       http.post('/api/permission-requests', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
         return HttpResponse.json({ id: `pr_${Date.now()}`, nodeId: body.nodeId, permission: body.permission || 'read', status: 'pending' });
@@ -1067,6 +1071,7 @@ describe('FileManager', () => {
     );
 
     const user = userEvent.setup();
+    clearUserPermissionsCache();
     await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
 
     await waitFor(() => {
@@ -1096,7 +1101,10 @@ describe('FileManager', () => {
       expect(within(dialog).queryByRole('progressbar')).not.toBeInTheDocument();
     }, { timeout: 5000 });
 
-    const requestReadBtn = within(dialog).getByRole('button', { name: /request read permission/i });
+    const requestReadBtn = await waitFor(
+      () => within(dialog).getByRole('button', { name: /request read permission/i }),
+      { timeout: 5000 }
+    );
     await user.click(requestReadBtn);
 
     await waitFor(() => {

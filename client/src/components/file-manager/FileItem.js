@@ -2,6 +2,7 @@ import React from 'react';
 import { Box } from '@mui/material';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
+import { getEntryKey } from '../../utils/fileViewUtils';
 import FileListItem, { getFileListItemContainerStyles } from './FileListItem';
 
 const FileItem = ({
@@ -49,7 +50,7 @@ const FileItem = ({
 
   return (
     <Box
-      key={file.path}
+      key={getEntryKey(file)}
       data-file-path={file.path}
       data-file-node-id={file.nodeId}
       {...dragHandlers}

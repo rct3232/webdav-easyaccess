@@ -168,8 +168,8 @@ export const useFileOperations = ({
 
       // 이름변경 성공 시 최근항목 업데이트
       try {
-        const renamedFile = result?.display_path != null
-          ? { ...file, display_path: result.display_path, basename: newName, name: newName }
+        const renamedFile = result?.newName != null
+          ? { ...file, name: result.newName, basename: result.newName, display_path: result.newName }
           : { ...file, basename: newName, name: newName };
         await applyRecentFilesAfterRename(nodeId, renamedFile.nodeId, renamedFile);
       } catch (err) {

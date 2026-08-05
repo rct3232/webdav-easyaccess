@@ -9,11 +9,11 @@ describe('buildPendingRequestState', () => {
     });
   });
 
-  it('matches folder requests by node_id', () => {
+  it('matches folder requests by file_node_id', () => {
     const result = buildPendingRequestState({
       requests: [
-        { id: 'r1', node_id: 1001, requested_permission: PERMISSIONS.READ },
-        { id: 'r2', node_id: 1001, requested_permission: PERMISSIONS.WRITE },
+        { id: 'r1', file_node_id: 1001, requested_permission: PERMISSIONS.READ },
+        { id: 'r2', file_node_id: 1001, requested_permission: PERMISSIONS.WRITE },
       ],
       targetNodeId: 1001,
       isDirectory: true,
@@ -25,10 +25,10 @@ describe('buildPendingRequestState', () => {
     });
   });
 
-  it('matches file requests by node_id', () => {
+  it('matches file requests by file_node_id', () => {
     const result = buildPendingRequestState({
       requests: [
-        { id: 'r1', node_id: 1001, requested_permission: PERMISSIONS.READ },
+        { id: 'r1', file_node_id: 1001, requested_permission: PERMISSIONS.READ },
       ],
       targetNodeId: 1001,
       isDirectory: false,

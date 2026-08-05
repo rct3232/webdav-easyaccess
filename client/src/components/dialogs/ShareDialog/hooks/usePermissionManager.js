@@ -1,9 +1,8 @@
 import { useState, useCallback } from 'react';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
-import { normalizePath } from '../../../../utils/pathUtils';
 
 /**
- * Hook for managing folder permissions in ShareDialog.
+ * Hook for managing node-based folder permissions in ShareDialog.
  */
 export const usePermissionManager = ({
   mode,
@@ -21,87 +20,86 @@ export const usePermissionManager = ({
   const [saving, setSaving] = useState(false);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
 
-  const handleAddUserPermission = useCallback((folderPath, targetUserId, permission, subfolderPaths = []) => {
+  const handleAddUserPermission = useCallback((nodeId, targetUserId, permission, subfolderNodeIds = []) => {
     setFolderPermissions(prev => {
       const newMap = new Map(prev);
-      if (!newMap.has(folderPath)) {
-        newMap.set(folderPath, new Map());
+      if (!newMap.has(nodeId)) {
+        newMap.set(nodeId, new Map());
       }
       // Clone the inner map to ensure immutability
-      const userPermMap = new Map(newMap.get(folderPath));
-      newMap.set(folderPath, userPermMap);
+      const userPermMap = new Map(newMap.get(nodeId));
+      newMap.set(nodeId, userPermMap);
       userPermMap.set(targetUserId, permission);
 
       // Apply to subfolders
-      subfolderPaths.forEach(subPath => {
-        const normalizedSubPath = normalizePath(subPath);
-        const subUserPermMap = new Map(newMap.get(normalizedSubPath) || new Map());
-        newMap.set(normalizedSubPath, subUserPermMap);
+      subfolderNodeIds.forEach(subNodeId => {
+        const subUserPermMap = new Map(newMap.get(subNodeId) || new Map());
+        newMap.set(subNodeId, subUserPermMap);
         subUserPermMap.set(targetUserId, permission);
       });
       return newMap;
     });
   }, []);
 
-  const handleRemoveUserPermission = useCallback((folderPath, targetUserId, subfolderPaths = []) => {
+  const handleRemoveUserPermission = useCallback((nodeId, targetUserId, subfolderNodeIds = []) => {
     setFolderPermissions(prev => {
       const newMap = new Map(prev);
       
-      const removePerm = (path) => {
-        const userPermMap = newMap.get(path);
+      const removePerm = (targetNodeId) => {
+        const userPermMap = newMap.get(targetNodeId);
         if (userPermMap) {
           const newUserPermMap = new Map(userPermMap);
           newUserPermMap.delete(targetUserId);
           if (newUserPermMap.size === 0) {
-            newMap.delete(path);
+            newMap.delete(targetNodeId);
           } else {
-            newMap.set(path, newUserPermMap);
+            newMap.set(targetNodeId, newUserPermMap);
           }
         }
       };
 
-      removePerm(folderPath);
+      removePerm(nodeId);
 
       // Remove from subfolders
-      subfolderPaths.forEach(subPath => {
-        removePerm(normalizePath(subPath));
+      subfolderNodeIds.forEach(subNodeId => {
+        removePerm(subNodeId);
       });
       return newMap;
     });
   }, []);
 
-  const handleToggleUserPermission = useCallback((folderPath, targetUserId, subfolderPaths = []) => {
+  const handleToggleUserPermission = useCallback((nodeId, targetUserId, subfolderNodeIds = []) => {
     setFolderPermissions(prev => {
       const newMap = new Map(prev);
       
-      const togglePerm = (path, forcePermission = null) => {
-        const userPermMap = newMap.get(path);
+      const togglePerm = (targetNodeId, forcePermission = null) => {
+        const userPermMap = newMap.get(targetNodeId);
         if (userPermMap) {
           const newUserPermMap = new Map(userPermMap);
           const currentPermission = newUserPermMap.get(targetUserId) || PERMISSIONS.READ;
           const newPermission = forcePermission || (currentPermission === PERMISSIONS.READ ? PERMISSIONS.WRITE : PERMISSIONS.READ);
           newUserPermMap.set(targetUserId, newPermission);
-          newMap.set(path, newUserPermMap);
+          newMap.set(targetNodeId, newUserPermMap);
           return newPermission;
         }
         return null;
       };
 
-      const newPerm = togglePerm(folderPath);
+      const newPerm = togglePerm(nodeId);
 
       // Toggle in subfolders with the same permission
       if (newPerm) {
-        subfolderPaths.forEach(subPath => {
-          togglePerm(normalizePath(subPath), newPerm);
+        subfolderNodeIds.forEach(subNodeId => {
+          togglePerm(subNodeId, newPerm);
         });
       }
       return newMap;
     });
   }, []);
 
-  const hasPermissionChanged = useCallback((folderPath) => {
-    const currentPerms = folderPermissions.get(folderPath) || new Map();
-    const initialPerms = initialFolderPermissions.get(folderPath) || new Map();
+  const hasPermissionChanged = useCallback((nodeId) => {
+    const currentPerms = folderPermissions.get(nodeId) || new Map();
+    const initialPerms = initialFolderPermissions.get(nodeId) || new Map();
 
     if (currentPerms.size !== initialPerms.size) return true;
     

@@ -129,7 +129,7 @@ describe('permissionService', () => {
       });
     });
 
-    it('includes target "file" for file-level grant', async () => {
+    it('posts to file grant route with fileNodeId for file-level grant', async () => {
       post.mockResolvedValueOnce(undefined);
 
       await grantPermission({
@@ -139,11 +139,10 @@ describe('permissionService', () => {
         target: 'file',
       });
 
-      expect(post).toHaveBeenCalledWith('/permissions/grant', {
+      expect(post).toHaveBeenCalledWith('/permissions/file/grant', {
         userId: 'u1',
-        nodeId: 20,
+        fileNodeId: 20,
         permission: 'read',
-        target: 'file',
       });
     });
 
@@ -180,7 +179,7 @@ describe('permissionService', () => {
       });
     });
 
-    it('includes scope pathOnly for file-level revoke', async () => {
+    it('includes scope pathOnly for directory revoke', async () => {
       del.mockResolvedValueOnce(undefined);
 
       await revokePermission({
@@ -194,6 +193,23 @@ describe('permissionService', () => {
           userId: 'u1',
           nodeId: 20,
           scope: 'pathOnly',
+        },
+      });
+    });
+
+    it('deletes file revoke route with fileNodeId for file-level revoke', async () => {
+      del.mockResolvedValueOnce(undefined);
+
+      await revokePermission({
+        userId: 'u1',
+        nodeId: 20,
+        target: 'file',
+      });
+
+      expect(del).toHaveBeenCalledWith('/permissions/file/revoke', {
+        params: {
+          userId: 'u1',
+          fileNodeId: 20,
         },
       });
     });

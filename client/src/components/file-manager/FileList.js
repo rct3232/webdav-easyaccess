@@ -9,6 +9,7 @@ import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileListSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
+import { getEntryKey } from '../../utils/fileViewUtils';
 import FileItem from './FileItem';
 
 const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
@@ -61,14 +62,14 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
       {files.map((file, index) => {
         const fileState = getFileState(file);
         const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = fileState;
-        const isDragging = draggedFile?.path === file.path;
-        const isDropTarget = dropTarget === file.path;
+        const isDragging = draggedFile?.nodeId != null && getEntryKey(draggedFile) === getEntryKey(file);
+        const isDropTarget = dropTarget != null && String(dropTarget) === String(getEntryKey(file));
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
 
         return (
           <FileItem
-            key={file.path}
+            key={getEntryKey(file)}
             file={file}
             index={index}
             onFileClick={onFileClick}

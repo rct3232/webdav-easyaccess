@@ -111,7 +111,7 @@ describe('explorerGateway', () => {
       { nodeId: 11, display_path: '/docs/.draft.txt', isHidden: true },
     ]);
     getUserPermissions.mockResolvedValueOnce([
-      { node_id: 10, permission: 'admin' },
+      { nodeId: 10, permission: 'admin' },
     ]);
 
     const result = await listDirectory({
@@ -140,8 +140,63 @@ describe('explorerGateway', () => {
     });
 
     expect(listFiles).toHaveBeenCalledWith(15, { shareToken: 'share-token' });
-    expect(result).toEqual([{ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }]);
+    expect(result).toEqual([
+      expect.objectContaining({ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }),
+    ]);
     expect(getUserPermissions).not.toHaveBeenCalled();
+  });
+
+  it('normalizes server-shaped file entries into the client shape', async () => {
+    listFiles.mockResolvedValueOnce([
+      {
+        nodeId: 30,
+        name: 'report.pdf',
+        type: 'file',
+        display_path: '/docs/report.pdf',
+        size: 120,
+        mimeType: 'application/pdf',
+        modifiedAt: '2024-05-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        isHidden: false,
+      },
+      {
+        nodeId: 31,
+        name: 'assets',
+        type: 'directory',
+        display_path: '/docs/assets',
+        size: 0,
+        mimeType: null,
+        modifiedAt: null,
+        hasReadPermission: true,
+        hasWritePermission: true,
+        isHidden: false,
+      },
+    ]);
+
+    const result = await listDirectory({
+      nodeId: 5,
+      options: { user: { id: '1', is_admin: true } },
+    });
+
+    expect(result[0]).toMatchObject({
+      nodeId: 30,
+      path: '/docs/report.pdf',
+      basename: 'report.pdf',
+      name: 'report.pdf',
+      mime: 'application/pdf',
+      lastmod: '2024-05-01T10:00:00Z',
+      size: 120,
+      type: 'file',
+      display_path: '/docs/report.pdf',
+    });
+    expect(result[1]).toMatchObject({
+      nodeId: 31,
+      path: '/docs/assets',
+      basename: 'assets',
+      mime: null,
+      lastmod: null,
+    });
   });
 
   it('maps permission checks into explorer access facts', async () => {

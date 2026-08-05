@@ -29,6 +29,8 @@ jest.mock('../../../services/fileService', () => ({
 }));
 
 const fileProps = {
+  nodeId: 5,
+  parentNodeId: 1,
   path: '/docs/readme.txt',
   basename: 'readme.txt',
   name: 'readme.txt',
@@ -39,6 +41,7 @@ const fileProps = {
 };
 
 const folderProps = {
+  nodeId: 2,
   path: '/docs',
   basename: 'docs',
   name: 'docs',
@@ -122,5 +125,23 @@ describe('FilePropertiesDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByText(/1\s*KB/i)).toBeInTheDocument();
+  });
+
+  it('for a file, fetches folder permissions with parent nodeId and the file nodeId', async () => {
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(getFolderPermissions).toHaveBeenCalledWith(1, 5);
+    });
+    expect(getFolderStats).not.toHaveBeenCalled();
+  });
+
+  it('for a directory, fetches folder permissions and stats by nodeId', async () => {
+    renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} file={folderProps} />
+    );
+    await waitFor(() => {
+      expect(getFolderPermissions).toHaveBeenCalledWith(2);
+      expect(getFolderStats).toHaveBeenCalledWith(2);
+    });
   });
 });

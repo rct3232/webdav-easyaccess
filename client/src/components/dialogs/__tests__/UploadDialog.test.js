@@ -16,7 +16,7 @@ jest.mock('../../../hooks/useResponsive', () => ({
 const defaultProps = {
   open: true,
   onClose: jest.fn(),
-  currentPath: '/uploads',
+  parentNodeId: 42,
   onUploadStart: jest.fn(),
 };
 
@@ -55,7 +55,7 @@ describe('UploadDialog', () => {
     expect(screen.getByText('test.txt')).toBeInTheDocument();
   });
 
-  it('calls onUploadStart with fileList and currentPath when Upload clicked', async () => {
+  it('calls onUploadStart with fileList and parentNodeId when Upload clicked', async () => {
     const user = userEvent.setup();
     const file = new File(['content'], 'doc.pdf', { type: 'application/pdf' });
     renderWithProviders(<UploadDialog {...defaultProps} />);
@@ -64,7 +64,7 @@ describe('UploadDialog', () => {
     await user.click(screen.getByRole('button', { name: /upload/i }));
     expect(defaultProps.onUploadStart).toHaveBeenCalledWith(
       expect.arrayContaining([expect.any(File)]),
-      '/uploads'
+      42
     );
   });
 

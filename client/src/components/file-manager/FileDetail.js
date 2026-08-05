@@ -17,7 +17,7 @@ import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { useResponsive } from '../../hooks/useResponsive';
-import { renderProcessingIcon } from '../../utils/fileViewUtils';
+import { renderProcessingIcon, getEntryKey } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { FileDetailSkeleton } from './FileSkeletons';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
@@ -94,14 +94,14 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
           ) : (
             files.map((file, index) => {
               const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-              const isDragging = draggedFile?.path === file.path;
-              const isDropTarget = dropTarget === file.path;
+              const isDragging = draggedFile?.nodeId != null && getEntryKey(draggedFile) === getEntryKey(file);
+              const isDropTarget = dropTarget != null && String(dropTarget) === String(getEntryKey(file));
               const dragHandlers = getDragHandlers(file, isDisabled);
               const dropHandlers = getDropHandlers(file, isDisabled);
 
               return (
                 <FileDetailRow
-                  key={`${file.path}-${index}`}
+                  key={getEntryKey(file)}
                   file={file}
                   index={index}
                   onFileClick={onFileClick}

@@ -648,7 +648,7 @@ const FileManagerView = ({
           <UploadDialog
             open={uploadDialogOpen}
             onClose={closeUploadDialog}
-            currentPath={currentPath}
+            parentNodeId={currentNodeId ?? null}
             onUploadStart={handleUploadStart}
           />
           <CreateFolderDialog
@@ -742,7 +742,7 @@ const FileManagerView = ({
         }}
         onDelete={isShareLinkMode ? undefined : (file) => {
           setContextMenu(null);
-          openBulkDeleteDialog([file.path]);
+          openBulkDeleteDialog([file.nodeId]);
         }}
       />
 
@@ -887,7 +887,7 @@ const FileManagerView = ({
           }}
           onDelete={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
-              openBulkDeleteDialog([actionSheetFile.path]);
+              openBulkDeleteDialog([actionSheetFile.nodeId]);
             }
           }}
           onShare={isShareLinkMode ? undefined : () => {

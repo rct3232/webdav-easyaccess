@@ -10,6 +10,18 @@ const hasAdminPermissionForNodeId = (itemNodeId, adminNodeIds) => {
   return adminNodeIds.has(itemNodeId);
 };
 
+const normalizeFileEntry = (item) => {
+  if (!item || item.nodeId == null) return item;
+  return {
+    ...item,
+    path: item.path ?? item.display_path ?? '',
+    basename: item.basename ?? item.name ?? '',
+    mime: item.mime ?? item.mimeType ?? null,
+    lastmod: item.lastmod ?? item.modifiedAt ?? null,
+    display_path: item.display_path ?? item.path ?? '',
+  };
+};
+
 export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   const resolvedOpts = typeof options === 'object' && !Array.isArray(options) ? options : {};
   const extracted = resolvedOpts.shareToken || resolvedOpts.user ? resolvedOpts : (options || {});
@@ -18,10 +30,10 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   const data = await listFiles(nodeId ?? null, shareToken ? { shareToken } : {});
 
   if (shareToken) {
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data) ? data.map(normalizeFileEntry) : [];
   }
 
-  let files = Array.isArray(data) ? data : [];
+  let files = Array.isArray(data) ? data.map(normalizeFileEntry) : [];
   const shouldShowHiddenFiles = typeof showHiddenFiles === 'boolean'
     ? showHiddenFiles
     : getShowHiddenFiles();
@@ -39,7 +51,7 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
     const adminNodeIds = new Set(
       (permissions || [])
         .filter((permission) => permission.permission === 'admin')
-        .map((permission) => permission.node_id)
+        .map((permission) => permission.nodeId)
     );
 
     return files.map((item) => (

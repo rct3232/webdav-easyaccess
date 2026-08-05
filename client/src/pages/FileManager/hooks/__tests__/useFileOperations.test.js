@@ -36,7 +36,7 @@ describe('useFileOperations', () => {
     jest.useFakeTimers();
     fileService.downloadFile.mockResolvedValue();
     fileService.downloadMultipleFiles.mockResolvedValue({});
-    fileService.renameFile.mockResolvedValue({ display_path: '/renamed/new.pdf' });
+    fileService.renameFile.mockResolvedValue({ messageCode: 'serverMessages.files.renameSuccess', nodeId: 1, newName: 'new.pdf' });
   });
 
   afterEach(() => {

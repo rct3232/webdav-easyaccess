@@ -281,6 +281,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
           onClose={() => setShareDialogOpen(false)}
           mode="share"
           folderPath={user?.username ? `/${user.username}` : null}
+          folderNodeId={user?.n ?? null}
           folderName={user?.username || t('mypage.homeDir')}
           user={user}
           onMessage={(msg) => {
@@ -331,7 +332,8 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                       </Typography>
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                      {r.target_type === 'file' ? t('mypage.file') : t('mypage.folder')}: {r.file_path ?? r.folder_path}
+                      {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
+                      {r.file_node_id != null ? `#${r.file_node_id}` : ''}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.requester')}: {r.requester_username || r.requester_id}
@@ -342,7 +344,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                       </Typography>
                     )}
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      {r.target_type === 'file' && r.file_path ? (
+                      {r.targetType === 'file' && r.file_node_id != null ? (
                         <Button
                           size="small"
                           variant="contained"
@@ -351,7 +353,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                             withRequestActionLoading(r.id, async () => {
                               await grantPermission({
                                 userId: r.requester_id,
-                                folderPath: r.file_path,
+                                nodeId: r.file_node_id,
                                 permission: r.requested_permission || PERMISSIONS.READ,
                                 target: 'file',
                               });
@@ -406,8 +408,17 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
           }}
           mode="review"
           permissionRequest={reviewPermissionRequest}
-          folderPath={reviewPermissionRequest?.folder_path || null}
-          folderName={reviewPermissionRequest?.folder_path?.split('/').filter(Boolean).pop() || t('mypage.folder')}
+          folderNodeId={reviewPermissionRequest?.file_node_id ?? null}
+          folderPath={
+            reviewPermissionRequest?.file_node_id != null
+              ? String(reviewPermissionRequest.file_node_id)
+              : null
+          }
+          folderName={
+            reviewPermissionRequest?.file_node_id != null
+              ? `#${reviewPermissionRequest.file_node_id}`
+              : t('mypage.folder')
+          }
           user={user}
           onMessage={(msg) => {
             setMessage({ type: msg.type, text: msg.text });
@@ -458,7 +469,8 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                       </Typography>
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                      {r.target_type === 'file' ? t('mypage.file') : t('mypage.folder')}: {r.file_path ?? r.folder_path}
+                      {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
+                      {r.file_node_id != null ? `#${r.file_node_id}` : ''}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.owner')}: {r.owner_username || r.owner_id}

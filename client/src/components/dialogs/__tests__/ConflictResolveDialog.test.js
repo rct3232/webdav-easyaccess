@@ -14,8 +14,8 @@ const defaultProps = {
   onClose: jest.fn(),
   onResolve: jest.fn(),
   conflicts: [
-    { path: '/dest/file1.txt', type: 'file' },
-    { path: '/dest/folder', type: 'directory' },
+    { sourceNodeId: 10, destinationParentNodeId: 2, conflictingNodeId: 30, name: 'file1.txt', type: 'file' },
+    { sourceNodeId: 11, destinationParentNodeId: 2, conflictingNodeId: 31, name: 'folder', type: 'directory' },
   ],
 };
 

@@ -515,9 +515,9 @@ export const grantFilePermission = async ({ userId, fileNodeId, permission }) =>
   await grantPermissionApi({ userId, nodeId: fileNodeId, permission, target: 'file' });
 };
 
-/** Revoke file-level permission. Delegates to unified permissionService (scope: 'pathOnly'). */
+/** Revoke file-level permission. Delegates to unified permissionService (target: 'file'). */
 export const revokeFilePermission = async ({ userId, fileNodeId }) => {
-  await revokePermissionApi({ userId, nodeId: fileNodeId, scope: 'pathOnly' });
+  await revokePermissionApi({ userId, nodeId: fileNodeId, target: 'file' });
 };
 
 /** Update file-level permission. Delegates to unified permissionService (target: 'file'). */

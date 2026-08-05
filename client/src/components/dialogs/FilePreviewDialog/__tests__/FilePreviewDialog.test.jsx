@@ -112,10 +112,10 @@ beforeEach(() => {
   onCloseMock.mockReset();
 });
 
-const imageFile = { name: 'test.jpg', basename: 'test.jpg', path: '/test/path.jpg' };
-const videoFile = { name: 'video.mp4', basename: 'video.mp4', path: '/test/video.mp4' };
-const pdfFile = { name: 'doc.pdf', basename: 'doc.pdf', path: '/test/doc.pdf' };
-const unsupportedFile = { name: 'file.xyz', basename: 'file.xyz', path: '/test/file.xyz' };
+const imageFile = { nodeId: 10, name: 'test.jpg', basename: 'test.jpg', path: '/test/path.jpg' };
+const videoFile = { nodeId: 20, name: 'video.mp4', basename: 'video.mp4', path: '/test/video.mp4' };
+const pdfFile = { nodeId: 30, name: 'doc.pdf', basename: 'doc.pdf', path: '/test/doc.pdf' };
+const unsupportedFile = { nodeId: 40, name: 'file.xyz', basename: 'file.xyz', path: '/test/file.xyz' };
 
 function renderDialog(file, extraProps = {}) {
   return render(
@@ -190,7 +190,7 @@ describe('FilePreviewDialog', () => {
     renderDialog(imageFile);
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 2]);
-    expect(downloadFileMock).toHaveBeenCalledWith('/test/path.jpg', {
+    expect(downloadFileMock).toHaveBeenCalledWith(10, {
       fileName: 'test.jpg',
       shareToken: null,
     });

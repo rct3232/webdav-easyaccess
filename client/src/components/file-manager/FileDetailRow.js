@@ -3,7 +3,7 @@ import { TableRow, TableCell, Box, Typography, Tooltip, CircularProgress } from 
 import { alpha } from '@mui/material/styles';
 import { MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
-import { renderProcessingIcon } from '../../utils/fileViewUtils';
+import { renderProcessingIcon, getEntryKey } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import { useLongPress } from '../../hooks/useLongPress';
@@ -57,7 +57,7 @@ const FileDetailRow = ({
 
   return (
     <TableRow
-      key={`${file.path}-${index}`}
+      key={getEntryKey(file)}
       data-file-path={file.path}
       data-file-node-id={file.nodeId}
       {...dragHandlers}

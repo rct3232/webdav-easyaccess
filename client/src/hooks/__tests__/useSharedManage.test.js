@@ -250,7 +250,7 @@ describe('useSharedManage', () => {
 
   it('handleCancelPendingRequest calls cancelPermissionRequest when pending request exists', async () => {
     sharePermissionGateway.listOutboxPermissionRequests.mockResolvedValue([
-      { id: 'req-1', node_id: 100, requested_permission: PERMISSIONS.READ },
+      { id: 'req-1', file_node_id: 100, requested_permission: PERMISSIONS.READ },
     ]);
     sharePermissionGateway.cancelPermissionRequest.mockResolvedValue();
 
@@ -271,12 +271,12 @@ describe('useSharedManage', () => {
     );
   });
 
-  it('maps pending file requests by node_id', async () => {
+  it('maps pending file requests by file_node_id', async () => {
     sharePermissionGateway.checkPermission
       .mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'path' })
       .mockResolvedValueOnce({ hasRead: true, hasWrite: false });
     sharePermissionGateway.listOutboxPermissionRequests.mockResolvedValue([
-      { id: 'req-file', node_id: 200, requested_permission: PERMISSIONS.WRITE },
+      { id: 'req-file', file_node_id: 200, requested_permission: PERMISSIONS.WRITE },
     ]);
 
     const { result } = await renderOpenUseSharedManage({

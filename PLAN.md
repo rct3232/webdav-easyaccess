@@ -426,6 +426,9 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 4.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
 | 4.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
 
+> **Phase 4 — Status: COMPLETE**
+> All Wave 1-5 tasks implemented and verified. Integration test suite (41 tests, 8 scenarios) covers full CRUD lifecycle against SQLite with mocked S3/WebDAV boundaries. Core services (fileNodeService, blobStorageService, uploadService), route handlers (nodeId payloads + responses), composition root, batch operations, permission legacy cleanup, and client migration all verified. Zero regressions introduced outside the files domain. Remaining pre-existing test failures: shareLinkStore (~16, Phase 5 Task 5.1), Settings model (~3, unrelated serialization bug).
+
 ---
 
 ### Phase 5: Sharing & RecentFiles → Node ID

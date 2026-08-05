@@ -7,3 +7,6 @@
 process.env.NODE_ENV = 'test';
 process.env.WEA_DISABLE_DEFAULT_ADMIN = 'true';
 process.env.WEA_STORAGE_BACKEND = process.env.WEA_STORAGE_BACKEND || 'sqlite';
+process.env.WEA_SKIP_BULK_WORKER = '1';
+
+jest.spyOn(console, 'log').mockImplementation(() => {});

@@ -630,3 +630,25 @@ After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migrat
 14. **Multi-backend test execution.** From Phase 8 onward, all server tests run against both SQLite and S3+PG backends. FsJSON backend tests are removed after Phase 7 cleanup. Test backend selection is controlled by `WEA_STORAGE_BACKEND` and `WEA_FILE_STORAGE` environment variables.
 15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards without modification.
 16. **Test data isolation per backend mode.** SQLite in-memory DB and MinIO buckets are initialized fresh by `global-setup.ts` for each test suite run and cleaned up by `global-teardown.ts`. No state sharing occurs between tests or backend modes.
+
+---
+
+## Side Task (branch `perf/test-suite-speedup`): Client Test Suite Speedup
+
+**Objective:** Reduce client test suite wall-clock time. Root cause: real-time retry backoff (1s→2s→4s) in `client/src/services/httpClient.js` on 5xx/network errors; `apiClient.test.js` alone consumed 45.1s of a 45.6s full-suite baseline.
+
+**Scope:** Client-side only. No test logic/assertions modified (incl. the 8 pre-existing failing suites).
+
+**Changes (all verified):**
+1. `client/src/services/httpClient.js` — additive `config.retryDelay` (default 1000) + module-level `RETRY_CONFIG` with exported `__setRetryConfigForTests()` test seam. Production defaults unchanged; `maxRetries=3` untouched.
+2. `client/src/setupTests.js` — calls `__setRetryConfigForTests({ retryDelay: 0 })` so all test-env retries wait 0ms (attempt count preserved).
+3. `client/src/jest-polyfills.js` — polyfilled `Blob.prototype.stream` (FileReader-based) because jsdom 16's Blob lacks `.stream()` and undici's Response (used by MSW) requires it; this surfaced when fast retries exposed `FileManager` bulk-download's previously backoff-masked blob-response failure.
+
+**Results:**
+- apiClient pattern: 45.0s → ~1.1–1.5s (target <10s).
+- Full client suite: 45.6s → ~32.5–40.5s (variance by machine load).
+- Failures identical to baseline: 8 failed suites / 23 failed / 1223 passed / 1246 total.
+- Retry attempt/call-count behavior preserved (`httpClient.test.js` 6/6; `5xx retry all fail` passes).
+- ESLint: 0 new issues (11 pre-existing, unchanged).
+
+**Out of scope:** remaining wall-clock is dominated by genuine rendering work in `FileManager.test.js` / `MyPage.test.js` (not retry backoff). Unrelated in-progress server-side changes (`server/jest.config.js`, `server/test-setup.js`, `operationProgress.js`) present in the shared working tree were left untouched.

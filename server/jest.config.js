@@ -13,6 +13,5 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'clover'],
-  verbose: true,
   modulePathIgnorePatterns: ['<rootDir>/stryker-tmp/'],
 };

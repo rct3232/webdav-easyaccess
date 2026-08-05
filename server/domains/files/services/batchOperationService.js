@@ -1,7 +1,6 @@
 'use strict';
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const { getComposition } = require('../../../service/composition');
 const { createOperationProgressStore } = require('../stores/operationProgress');
 
 /**
@@ -13,6 +12,7 @@ async function _processBulkJob(jobId) {
   const job = opStore.getJob(jobId);
   if (!job) return;
 
+  const { getComposition } = require('../../../service/composition');
   const { fileService, batchOperationService: batchOp } = getComposition();
 
   try {
@@ -66,6 +66,9 @@ async function _processBulkJob(jobId) {
  * @param {string} jobId — the job identifier returned by createJob
  */
 function scheduleBulkWorker(jobId) {
+  if (process.env.WEA_SKIP_BULK_WORKER === '1') {
+    return;
+  }
   setImmediate(() => {
     _processBulkJob(jobId).catch(err => {
       console.error(`[batchOperationService] Unhandled error in bulk worker ${jobId}:`, err);

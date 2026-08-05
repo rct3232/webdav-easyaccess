@@ -412,14 +412,16 @@ describe('POST /api/files/check-conflicts', () => {
     });
     await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
 
+    const sourceNode = await fileNodeService.createFile(homeNodeId, 'a.txt');
+
     const res = await request(app)
       .post('/api/files/check-conflicts')
       .set('Authorization', `Bearer ${token}`)
       .send({
         operations: [
           {
-            sourcePath: `/${user.username}/a.txt`,
-            destinationPath: `/${user.username}/b.txt`,
+            sourceNodeId: sourceNode.id,
+            destinationParentNodeId: homeNodeId,
             type: 'move',
           },
         ],

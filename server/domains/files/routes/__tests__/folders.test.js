@@ -63,7 +63,6 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.clearAllMocks();
-  composition.resetComposition();
 });
 
 afterAll(async () => {

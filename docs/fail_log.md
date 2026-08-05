@@ -175,6 +175,8 @@
 
 ### FilePreviewDialog.test.js — Case B (Test Error — stale path fixtures)
 
+> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview *loader* calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the *download* action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
+
 - **Area:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
 - **Classification:** Case B (Test Error)
 - **Summary:** 3 of 9 tests asserted path-string arguments (`mockGetFileBlob('/b.jpg', ...)`, `mockGetVideoPreviewStreamUrl('/v.mp4', ...)`) against a nodeId-based preview loader. After the Phase 4.8b nodeId migration, `usePreviewLoader` (`client/src/components/dialogs/FilePreviewDialog/hooks/usePreviewLoader.js:24,31`) calls `getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken })` and `getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal })`, and `fileService.getFileBlob(nodeId)` / `getVideoPreviewStreamUrl(nodeId)` (`fileService.js:57,79`) are nodeId-based. The fixtures carried only `path`, so the mock was invoked with `nodeId === undefined`. The implementation is correct; only the fixtures/assertions were stale.
@@ -192,3 +194,99 @@
 - **Spec cross-check:** `docs/spec/client/components/file-manager/FileActionSheet.md` §2.6/§2.7 state "Rename, move, delete only when fileWritePermission" / "hidden when !fileWritePermission". The implementation deliberately disables instead of hiding, and this is the established pattern: the desktop counterpart `FileContextMenu.js:66-136` applies the identical `disabled={!file.hasReadPermission}` / `disabled={!fileWritePermission}` semantics, and the spec §2.6 E2E selector contract requires the action rows (e.g. rename/delete) to be present in the DOM with stable `data-testid`. The spec's "hidden" wording is stale relative to the implemented (and consistently applied) disable-state design.
 - **Action taken:** None (test not changed). Fixing the tests to assert the disabled state (or removing the fixtures' permission fields) is a product/spec decision: either align `FileActionSheet.md` §2.6/§2.7 to the disable-state design and update the tests accordingly (recommended, consistent with FileContextMenu + E2E selector contract), or change the source to hide the rows (would contradict the sibling component). Both are outside the C1.7 nodeId-migration scope. Recording this incident per AGENTS.md §3.2; **recommendation**: update the spec to document the disable (not hide) behavior and rewrite the three hide-tests to assert `disabled` on the action rows, plus add `hasReadPermission: true` to the shared fixture for the download test.
 - **Verification:** Suite still fails 4/8 (unchanged baseline) — expected, per decision not to modify.
+
+---
+
+## 2026-08-05 — Audit wave 1 (GAP §10 A1–A5): live path-payload bugs
+
+### A1 — Single-file delete sent `file.path` to nodeId-only `batch-delete`
+
+- **Area:** `client/src/components/file-manager/FileManagerView.js:745,890`, `client/src/pages/FileManager/hooks/useExplorerCommands.js:437-442`
+- **Classification:** Case A (Source Error)
+- **Summary:** Desktop context-menu delete and mobile action-sheet delete called `openBulkDeleteDialog([file.path])`; `handleBulkDeleteConfirm` forwards those values as `nodeIds` to `batchDeleteFiles` → `POST /files/batch-delete` with path strings → server `parseNodeId` → 400.
+- **Action taken:** Both call sites → `[file.nodeId]` / `[actionSheetFile.nodeId]`.
+- **Verification:** `FileManagerView.test.js`, `useExplorerCommands.test.js` pass.
+
+### A2 — Preview download sent `targetFile.path` to nodeId-only `downloadFile` (corrects C1.7 record)
+
+- **Area:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js:207`, `FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx:193`
+- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview *loader* calls only.
+- **Action taken:** `FilePreviewDialog.js:207` → `downloadFile(targetFile.nodeId, …)`; both preview test files updated to nodeId fixtures/assertions.
+- **Verification:** `FilePreviewDialog.test.js` (9) + `FilePreviewDialog.test.jsx` (7) pass.
+
+### A3 — Pending-permission-request matcher keyed on non-existent `node_id`
+
+- **Area:** `client/src/utils/buildPendingRequestState.js:21,26`
+- **Classification:** Case A (Source Error)
+- **Summary:** Matcher read `request.node_id`; real server (`permissionRequestStore.js:34`) and MSW (`handlers.js:631`) return `file_node_id`. C1.5 aligned test fixtures to the implementation's wrong key → tests passed, live pending state never matched.
+- **Action taken:** Matcher → `request.file_node_id`; test + `useSharedManage.test.js` fixtures updated.
+- **Verification:** `buildPendingRequestState.test.js`, `useSharedManage.test.js` pass.
+
+### A4 — Grid/list/detail React keys path-keyed
+
+- **Area:** `FileGrid.js:80`, `FileList.js:71`, `FileDetail.js:104`, `FileGridItemContainer.js:52`, `FileItem.js:52`, `FileDetailRow.js:60`
+- **Classification:** Case B (Task 4.8i "keyed by file.nodeId" not fully applied)
+- **Action taken:** All six list/item keys → nodeId-primary `getEntryKey(file)`.
+- **Verification:** FileGrid/FileList/FileDetail suites pass.
+
+---
+
+## 2026-08-05 — Audit wave 2 (GAP §10.6 C1–C11): cross-cutting contract breaks masked by MSW
+
+A five-sweep audit (client path remnants, server residual paths, client↔server contract, docs drift,
+test drift) found the A1–A6 wave missed client↔server contract breaks that unit tests masked because MSW
+`handlers.js` mirrors the *client's* expectations instead of the *server's* responses. All classified
+Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (test env).
+
+### C1 — `/files/list` response shape mismatch (`name/display_path/mimeType/modifiedAt` vs `basename/path/mime/lastmod`)
+
+- **Area:** `client/src/services/explorerGateway.js`; `server/domains/files/services/fileService.js:53-66`
+- **Classification:** Case A + Case B (MSW returned client keys, masking)
+- **Summary:** Server sends `{name, display_path, mimeType, modifiedAt}`; client renderers read `file.basename/path/lastmod/mime` with no normalization → blank names/paths/dates against a real server; e2e `[data-file-path]` selectors break. MSW `handlers.js:105-111` returned client keys, so all tests passed.
+- **Action taken:** `normalizeFileEntry` in `explorerGateway.listDirectory` (server→client mapping); MSW list/rename handlers → server shapes; `useFileOperations.js` rename handling → server `newName`.
+- **Verification:** explorerGateway, fileService, useFileManager, FileGrid/List/Detail, FileManagerView, FileManager suites pass.
+
+### C2 — `explorerGateway.js:42` reads `permission.node_id`, server returns `nodeId`
+
+- **Classification:** Case A. `nodeId` used; admin-folder flag works. `explorerGateway.test.js` passes.
+
+### C3 — `ConflictResolveDialog` reads `conflict.path` (server sends `{name}`)
+
+- **Classification:** Case A — TypeError crash on real conflicts. Renders `conflict.name`; fixtures → server shape. 6/6 pass.
+
+### C4 — `FilePropertiesDialog` sends `file.path` as nodeId + `false` as fileNodeId arg
+
+- **Classification:** Case A — properties panel 400/404 for every file. nodeId-based calls; property rows fall back to `mimeType`/`modifiedAt`/`display_path`. 9/9 pass.
+
+### C5 — Legacy ShareDialog v1 path-based and live in MyPage
+
+- **Classification:** Case A — share/review/admin saves 400 or silently persist nothing.
+- **Action taken:** nodeId-keyed migration of `useShareDialog.js` (folder tree, permission Maps, root from `folderNodeId`/`targetNodeId`/`permissionRequest.file_node_id`/`resolvePath` fallback), `usePermissionManager.js`, `ShareFolderTree.js`, `ShareDialog.js`, `deriveShareFolderAccessView.js`. `adminPermissionSaveUseCase` computes a nodeId diff → per-nodeId `grantPermission`/`revokePermission` (bypasses the broken Phase 7 `PUT /users/:id/permissions`). MyPage callers pass `folderNodeId`.
+- **Verification:** useShareDialog, ShareDialog, ShareFolderTree, usePermissionManager, adminPermissionSaveUseCase, SharingContent, MyPage suites pass.
+
+### C6 — `SharingContent.js` reads removed `target_type`/`file_path`/`folder_path` (server returns `targetType`/`file_node_id`)
+
+- **Classification:** Case A — inbox/outbox empty paths; file-request approve dead (`nodeId: undefined`).
+- **Action taken:** Reads `targetType`/`file_node_id`; file-approve sends `{userId, nodeId: r.file_node_id, permission, target:'file'}`. Fixtures → server shape. SharingContent + MyPage suites pass.
+
+### C7 — `UploadDialog` passes `currentPath` to `handleUploadStart` (expects parentNodeId)
+
+- **Classification:** Case A — uploads 400. `parentNodeId` prop threaded via FileManagerView; `onUploadStart(files, parentNodeId)`. UploadDialog.test passes.
+
+### C8 — `useExplorerProgress` retryData key mismatch (`currentPath`/`startedPath` vs producer `parentNodeId`/`startedNodeId`)
+
+- **Classification:** Case A — upload retry targets wrong node; refresh gating never fires. Consumer aligned; fixtures updated. useExplorerProgress.test passes.
+
+### C9 — File-level grants routed to directory-only `POST /permissions/grant` (`target` ignored)
+
+- **Classification:** Case A — file grants 400. `grantPermission`/`revokePermission` route to `/permissions/file/grant`/`/permissions/file/revoke` when `target==='file'`. permissionService + shareTargetPermissionSaveUseCase suites pass.
+
+### C10 — Drop-target / `isDragging` compares `dropTarget` (nodeId) to `file.path`
+
+- **Classification:** Case A — drop highlight dead. Compare by `getEntryKey` in FileGrid/FileList/FileDetail; imports added. Suites pass; ESLint clean.
+
+### C11 — MSW mirrors client keys, masking the above
+
+- **Classification:** Case B (test env). MSW list/rename/permissions handlers repointed to server shapes.
+
+**Final wave-2 verification:** Client 1263 passed / 12 failed / 3 out-of-scope suites (apiClient ×2, FileActionSheet); server 1075 passed / 55 failed / 12 suites (unchanged baseline). Zero regressions.

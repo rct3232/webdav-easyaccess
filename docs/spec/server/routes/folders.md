@@ -20,12 +20,12 @@
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/create` | Token | Create folder. Body: path. |
-| GET | `/stats` | Token | Recursive folder statistics. Query: path. Returns fileCount, totalSize. |
+| POST | `/create` | Token | Create folder. Body: parentNodeId, name. |
+| GET | `/stats` | Token | Recursive folder statistics. Query: nodeId. Returns fileCount, totalSize. |
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser`, `normalizePathParam`, `checkMetaPathAccess`
+- `authenticateToken`, `requireUser`, `checkMetaPathAccess`
 
 ### 2.3.1 Test Mock Strategy
 
@@ -36,10 +36,10 @@
 
 ### 2.4 Request/Response Spec
 
-- **POST /create:** Body: `{ path }`. 200 or 201. Errors: 403 (meta path), 400, 404.
+- **POST /create:** Body: `{ parentNodeId, name }`. 200 or 201. Errors: 403 (meta path), 400, 404.
 - 동일 경로에 폴더 이미 존재: 409 (duplicate)
 - 부모 경로 없음: 404
-- **GET /stats:** Query `path` required. 200: `{ fileCount, totalSize }`. 403 when non-admin and canReadFolder fails. Uses checkMetaPathAccess, requireUser.
+- **GET /stats:** Query `nodeId` required. 200: `{ fileCount, totalSize }`. 403 when non-admin and canReadFolder fails. Uses checkMetaPathAccess, requireUser.
 
 ### 2.5 Related Documents
 
@@ -51,4 +51,4 @@
 - [ ] Meta path returns 403 for non-admin
 - [ ] 동일 폴더명 create → 409
 - [ ] 부모 경로 없음 → 404
-- [ ] GET /stats: requires auth; path required; returns fileCount, totalSize; 403 for non-admin when no read permission
+- [ ] GET /stats: requires auth; nodeId required; returns fileCount, totalSize; 403 for non-admin when no read permission

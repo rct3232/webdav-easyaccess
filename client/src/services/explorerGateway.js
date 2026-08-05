@@ -3,7 +3,6 @@ import { checkPermission, getUserPermissions, listFilePermissions } from './perm
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
-import { normalizePath, getBasename, getParentPath } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
 const hasAdminPermissionForNodeId = (itemNodeId, adminNodeIds) => {

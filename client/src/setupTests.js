@@ -6,6 +6,7 @@
  * @see docs/api.md
  */
 import './jest-polyfills.js';
+import { __setRetryConfigForTests } from './services/httpClient';
 
 jest.mock('react-pdf', () => {
   const React = require('react');
@@ -18,6 +19,8 @@ jest.mock('react-pdf', () => {
 import '@testing-library/jest-dom';
 import { setupServer } from 'msw/node';
 import { handlers } from './mocks/handlers';
+
+__setRetryConfigForTests({ retryDelay: 0 });
 
 export const server = setupServer(...handlers);
 

@@ -22,9 +22,10 @@ OperationProgressStore.prototype.getDownloadProgress = function (id) {
 };
 
 OperationProgressStore.prototype.cleanupDownloadProgress = function (id, ttlMs) {
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     this.downloadCache.delete(`dp:${id}`);
   }, ttlMs || DOWNLOAD_PROGRESS_TTL_MS);
+  if (typeof timer.unref === 'function') timer.unref();
 };
 
 OperationProgressStore.prototype.issuePreviewTicket = function (principalId, fileNodeId, ttlMs) {

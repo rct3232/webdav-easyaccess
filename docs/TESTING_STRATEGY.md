@@ -41,6 +41,9 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Service/unit tests:** For isolated service or adapter behavior, module-level mocks (`jest.mock`) are allowed and often preferred.
 - **Known guardrails from RCA:** In this repository, avoid broad MSW migration for cases already recorded in `.cursor/fail_log.md` (for example, Node/Jest compatibility around axios response propagation and `request.formData()` parsing in jsdom).
 - **Jest polyfill guardrail:** In jsdom + undici tests, expose only the minimum globals required for stable runtime. Do not instantiate `new MessageChannel()` only to infer constructor types, and avoid unnecessary global `MessageChannel` wiring when `MessagePort` alone is sufficient. These patterns can leave open `MESSAGEPORT` handles and block graceful Jest worker shutdown. If a temporary channel fallback is unavoidable, close/unref both ports immediately.
+- **Blob `.stream()` polyfill:** jsdom's `Blob` does not implement `.stream()`, but undici's `Response` (used by MSW) requires it. In `client/src/jest-polyfills.js`, polyfill `Blob.prototype.stream` (FileReader-based). Note: a slow retry backoff once masked a `TypeError: object.stream is not a function` in bulk-download tests — making failures fast exposes latent environment gaps, so keep polyfills complete even when tests appear to pass.
+- **Unhandled MSW request policy:** `onUnhandledRequest: 'warn'` leaves unhandled requests to fail as network errors, which then feed the client retry logic and can cost ~7s of real backoff time per test. Keep MSW handlers in sync with the contract (`api.md`, `shared-contracts.md`) so no request falls through, and prefer explicit fallback handlers over silent network errors.
+- **Avoid real-time waits in tests:** Do not rely on real retry backoff or sleep delays inside tests. Provide an injectable delay seam (e.g. `httpClient.js` exports `__setRetryConfigForTests({ retryDelay: 0 })`, wired in `setupTests.js`) that keeps the attempt/retry count but eliminates the 1s→2s→4s wait. This reduced the `apiClient` suite from ~45s to ~1.3s.
 - **React 18 act environment:** The shared Jest setup should declare `globalThis.IS_REACT_ACT_ENVIRONMENT = true` so React can treat RTL/jsdom runs as act-aware. If warnings remain after that, fix the specific test seam or missing async flush rather than suppressing console output.
 - **React 18 async update guardrail:** When a hook or page triggers async effects immediately after render, do not rely on instantly resolved mocks plus ad-hoc microtask flushing. Prefer controlling completion explicitly with deferred promises or equivalent test-owned async seams, then wait for the user-visible completion state (`findBy*`, `waitFor`, `waitForElementToBeRemoved`) before asserting. This keeps React updates inside act-aware boundaries.
 - **Avoid unrelated async noise in page tests:** If a page scenario is not verifying sidebar/tree/FAB chrome, replace those shell-only async seams with lighter doubles so page tests do not inherit extra `act(...)` warnings from unrelated subscriptions or background loads.
@@ -56,6 +59,9 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Auth:** Use test helpers (e.g. create a test user, issue a JWT) so routes can be called with a valid `Authorization` header without going through the real login flow.
 - **Route mock reuse:** Prefer shared server mock factories (for example, WebDAV and email) over repeated in-file mock object literals.
 - **Override pattern:** Use `createXMock(overrides)` and only override behavior required by each scenario.
+- **Disable bulk workers:** Set `process.env.WEA_SKIP_BULK_WORKER = '1'` in `server/test-setup.js` so the `setImmediate` batch worker never schedules during tests. Tests assert the batch API contract (202 + jobId) rather than worker completion, so skipping the worker avoids open handles and teardown stalls.
+- **Timer hygiene:** Unref non-essential timers that would otherwise hold the event loop open during tests (e.g. the 5-minute download-progress cleanup timer in `operationProgress.js` uses `.unref()`). This prevents Jest's "worker failed to exit gracefully / force exited" stall. Use `--detectOpenHandles` to confirm the leak source before editing.
+- **Console output policy:** In `server/test-setup.js`, silence `console.log` (`jest.spyOn(console, 'log').mockImplementation(() => {})`) to suppress per-request `requestLogger` noise, but preserve `console.warn` and `console.error` so tests that assert on deprecation warnings (e.g. `storage.test.js`) keep working. Tests that assert on `console.log` output must re-spy the implementation themselves (see `requestLogger.test.js`). Keep `verbose: false` in `jest.config.js` to reduce printed test-name overhead.
 
 ### Recommended factory pattern
 
@@ -165,6 +171,15 @@ Align with [TEST_GIT_GUIDE.md#coverage-goals](TEST_GIT_GUIDE.md#coverage-goals):
 Run from each directory: `cd client && npm run test:coverage` and `cd server && npm run test:coverage`. Don’t commit coverage artifacts; see TEST_GIT_GUIDE for what to commit and ignore.
 
 **Mutation testing (Stryker):** Prefer improving Mutation Score over chasing coverage numbers. Coverage can miss weak tests; mutation testing measures whether tests actually detect code changes. Run `cd client && npm run test:mutation` and `cd server && npm run test:mutation`. Start with small modules (e.g. `server/utils/errorHandler.js`) and expand the mutate scope gradually. See `stryker.config.json` in each package.
+
+---
+
+## Test Performance & Run Guidance
+
+- **Cold vs warm cache:** The first Jest run after a cache invalidation is substantially slower (a cold full client run can exceed 10 minutes). Base timing comparisons and timeout budgets on warm runs, not the first run.
+- **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites (e.g. `files.test.js`, ~2s standalone) can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
+- **Measure consistently:** When judging a performance regression, compare identical environment, worker count, and warm-cache state. Real-time retry backoff (see "Avoid real-time waits in tests") is the most common hidden cost in slow suites.
+- **Know the critical path:** In a parallelized suite, the wall-clock time is bounded by the slowest suite. Profile per-suite timing (Jest `--json` + duration aggregation) before optimizing; the slowest suite is usually a network/retry or heavy-rendering suite, not the largest one.
 
 ---
 

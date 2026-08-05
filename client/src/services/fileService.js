@@ -481,29 +481,29 @@ export const getDownloadProgress = async (downloadId, options = {}) => {
   return response.data;
 };
 
-/** Check effective permission for a path (folder or file). Delegates to unified permissionService. */
-export const checkPermission = async (path) => {
-  return checkPermissionApi(path);
+/** Check effective permission for a node (folder or file). Delegates to unified permissionService. */
+export const checkPermission = async (nodeId) => {
+  return checkPermissionApi(nodeId);
 };
 
-/** Check effective permission for a file path. Delegates to unified permissionService. */
-export const checkFilePermission = async (filePath) => {
-  return checkPermissionApi(filePath);
+/** Check effective permission for a file node. Delegates to unified permissionService. */
+export const checkFilePermission = async (fileNodeId) => {
+  return checkPermissionApi(fileNodeId);
 };
 
 /** Grant file-level permission. Delegates to unified permissionService (target: 'file'). */
-export const grantFilePermission = async ({ userId, filePath, permission }) => {
-  await grantPermissionApi({ userId, folderPath: filePath, permission, target: 'file' });
+export const grantFilePermission = async ({ userId, fileNodeId, permission }) => {
+  await grantPermissionApi({ userId, nodeId: fileNodeId, permission, target: 'file' });
 };
 
 /** Revoke file-level permission. Delegates to unified permissionService (scope: 'pathOnly'). */
-export const revokeFilePermission = async ({ userId, filePath }) => {
-  await revokePermissionApi({ userId, folderPath: filePath, scope: 'pathOnly' });
+export const revokeFilePermission = async ({ userId, fileNodeId }) => {
+  await revokePermissionApi({ userId, nodeId: fileNodeId, scope: 'pathOnly' });
 };
 
 /** Update file-level permission. Delegates to unified permissionService (target: 'file'). */
-export const updateFilePermission = async ({ userId, filePath, permission }) => {
-  await grantPermissionApi({ userId, folderPath: filePath, permission, target: 'file' });
+export const updateFilePermission = async ({ userId, fileNodeId, permission }) => {
+  await grantPermissionApi({ userId, nodeId: fileNodeId, permission, target: 'file' });
 };
 
 /** List current user's file-level permissions. Re-exported from permissionService. */

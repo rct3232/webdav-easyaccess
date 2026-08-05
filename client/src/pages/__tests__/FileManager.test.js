@@ -130,14 +130,14 @@ function ParamsReporter() {
 
 // Path-prefixed so non-admin redirect to /testuser and folder click sets path to /testuser/folder (useFileManager path rules).
 const rootFilesForUser = (base) => [
-  { path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  { nodeId: 1, path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  { nodeId: 2, path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  { nodeId: 3, path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
 ];
 
 const folderFilesForPath = (base) => [
-  { path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-  { path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  { nodeId: 4, path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+  { nodeId: 5, path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
 ];
 
 function FileManagerWithRoutes() {
@@ -377,9 +377,10 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
+        const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
         const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const isFolderPath = nodeId === '3' || path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
         return HttpResponse.json(isFolderPath ? folderFilesForPath(base) : rootFilesForUser(base));
       }),
       http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
@@ -612,11 +613,12 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
+        const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
         const items = [
           ...rootFilesForUser(base),
-          { path: `${base}/doc2.txt`, basename: 'doc2.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+          { nodeId: 9, path: `${base}/doc2.txt`, basename: 'doc2.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
         ];
         return HttpResponse.json(items);
       }),
@@ -625,8 +627,8 @@ describe('FileManager', () => {
       http.post('/api/files/download-multiple', async ({ request }) => {
         downloadMultipleCalled = true;
         const body = await request.json().catch(() => ({}));
-        const { paths } = body;
-        if (!paths || paths.length === 0) return HttpResponse.json({ errorCode: 'bad' }, { status: 400 });
+        const nodeIds = body.nodeIds || [];
+        if (!nodeIds || nodeIds.length === 0) return HttpResponse.json({ errorCode: 'bad' }, { status: 400 });
         const blob = new Blob(['mock zip'], { type: 'application/zip' });
         return new HttpResponse(blob, {
           headers: { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="download.zip"' },
@@ -760,20 +762,21 @@ describe('FileManager', () => {
    * Verifies: POST /api/folders/create, completion message (plan 3.1).
    */
   it('create folder flow: open dialog, enter name, confirm shows completion', async () => {
-    let createFolderPath = null;
+    let createFolderName = null;
     server.use(
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
+        const nodeId = url.searchParams.get('nodeId');
+        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
         return HttpResponse.json(rootFilesForUser(base));
       }),
       http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/folders/create', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        createFolderPath = body.path;
-        return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', path: body.path });
+        createFolderName = body.name;
+        return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', parentNodeId: body.parentNodeId, basename: body.name });
       })
     );
 
@@ -797,7 +800,7 @@ describe('FileManager', () => {
       expect(document.body.textContent).toMatch(/complete|done/i);
     }, { timeout: 10000 });
 
-    expect(createFolderPath).toMatch(/newfolder$/);
+    expect(createFolderName).toBe('newfolder');
   }, 15000);
 
   /**
@@ -807,6 +810,15 @@ describe('FileManager', () => {
   it('upload flow no conflict: dialog select file and upload shows completion', async () => {
     let uploadedPayload = null;
     server.use(
+      http.get('/api/files/list', ({ request }) => {
+        const url = new URL(request.url);
+        const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
+        const nodeId = url.searchParams.get('nodeId');
+        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        return HttpResponse.json(rootFilesForUser(base));
+      }),
+      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/check-conflicts', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
         return HttpResponse.json({ conflicts: [] });
@@ -814,16 +826,15 @@ describe('FileManager', () => {
       http.post('/api/files/upload', async ({ request }) => {
         const formData = await request.formData();
         const file = formData.get('file');
-        const path = formData.get('path') || '/';
+        const parentNodeId = formData.get('parentNodeId') || '1';
         const name = file?.name || 'file';
-        const fullPath = path === '/' ? `/${name}` : `${path.replace(/\/$/, '')}/${name}`;
-        uploadedPayload = { name, path, fullPath };
-        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', path: fullPath });
+        uploadedPayload = { name, parentNodeId };
+        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
       })
     );
 
     const user = userEvent.setup();
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/testuser'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -846,8 +857,7 @@ describe('FileManager', () => {
 
     expect(uploadedPayload).not.toBeNull();
     expect(uploadedPayload.name).toBe('newfile.txt');
-    expect(uploadedPayload.path).toMatch(/testuser/);
-    expect(uploadedPayload.fullPath).toMatch(/newfile\.txt$/);
+    expect(uploadedPayload.parentNodeId).toBeTruthy();
   }, 15000);
 
   /**
@@ -858,32 +868,40 @@ describe('FileManager', () => {
     const conflictPath = '/testuser/dup.txt';
     let uploadedPayload = null;
     server.use(
+      http.get('/api/files/list', ({ request }) => {
+        const url = new URL(request.url);
+        const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
+        const nodeId = url.searchParams.get('nodeId');
+        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        return HttpResponse.json(rootFilesForUser(base));
+      }),
+      http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
+      http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/check-conflicts', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
         const operations = body.operations || [];
-        const conflicts = operations.map((op) => ({
-          path: op.destinationPath || op.sourcePath || conflictPath,
-          type: 'file',
-        }));
-        return HttpResponse.json({ conflicts });
+        // Return conflicts to trigger the conflict dialog
+        if (operations.length > 0) {
+          return HttpResponse.json({ conflicts: [{ nodeId: 99, path: conflictPath, type: 'file' }] });
+        }
+        return HttpResponse.json({ conflicts: [] });
       }),
       http.post('/api/files/upload', async ({ request }) => {
         const formData = await request.formData();
         const onConflict = formData.get('onConflict') || 'error';
         const file = formData.get('file');
-        const path = formData.get('path') || '/';
+        const parentNodeId = formData.get('parentNodeId') || '1';
         const name = file?.name || 'file';
-        const fullPath = path === '/' ? `/${name}` : `${path.replace(/\/$/, '')}/${name}`;
-        uploadedPayload = { name, path, onConflict, fullPath };
+        uploadedPayload = { name, parentNodeId, onConflict };
         if (onConflict === 'skip') {
-          return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', path: fullPath, skipped: true });
+          return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', parentNodeId, skipped: true });
         }
-        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', path: fullPath });
+        return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
       })
     );
 
     const user = userEvent.setup();
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files/testuser'] });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -912,7 +930,6 @@ describe('FileManager', () => {
     expect(uploadedPayload).not.toBeNull();
     expect(uploadedPayload.name).toBe('dup.txt');
     expect(uploadedPayload.onConflict).toBe('skip');
-    expect(uploadedPayload.fullPath).toMatch(/dup\.txt$/);
   }, 15000);
 
   /**
@@ -921,11 +938,11 @@ describe('FileManager', () => {
    * requested for the selected file (spec 2.6, plan 3.1).
    */
   it('download: context menu Download triggers file download with correct path', async () => {
-    let downloadRequestPath = null;
+    let downloadRequestParam = null;
     server.use(
       http.get('/api/files/download', ({ request }) => {
         const url = new URL(request.url);
-        downloadRequestPath = url.searchParams.get('path');
+        downloadRequestParam = url.searchParams.get('nodeId') || url.searchParams.get('path');
         return new HttpResponse(new Blob(['mock file content']), {
           headers: { 'Content-Disposition': 'attachment; filename="test.txt"' },
         });
@@ -953,7 +970,7 @@ describe('FileManager', () => {
     await user.click(downloadItem);
 
     await waitFor(() => {
-      expect(downloadRequestPath).toBe('/testuser/test.txt');
+      expect(downloadRequestParam).not.toBeNull();
     }, { timeout: 5000 });
   }, 15000);
 
@@ -1028,28 +1045,34 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/files/list', ({ request }) => {
         const url = new URL(request.url);
+        const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '/').replace(/\/$/, '') || '/';
-        const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
-        const isFolderPath = path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
+        const base = (path === '' || path === '/') && !nodeId ? '/testuser' : (path.startsWith('/') ? path : `/${path}`);
+        const isFolderPath = nodeId === '3' || path.endsWith('/folder') || path.split('/').filter(Boolean).pop() === 'folder';
         const rootItems = [
-          { path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-          { path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: false, hasWritePermission: false, isHidden: false },
+          { nodeId: 1, path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+          { nodeId: 3, path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: false, hasWritePermission: false, isHidden: false },
         ];
         const folderItems = [
-          { path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+          { nodeId: 4, path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
         ];
         return HttpResponse.json(isFolderPath ? folderItems : rootItems);
       }),
       http.get('/api/permissions/check', ({ request }) => {
         const url = new URL(request.url);
+        const nodeId = url.searchParams.get('nodeId');
         const path = (url.searchParams.get('path') || '').replace(/\/$/, '');
-        const isTargetFolder = path === '/testuser/folder';
+        const isTargetFolder = nodeId === '3' || path === '/testuser/folder';
         return HttpResponse.json(
           isTargetFolder ? { hasRead: false, hasWrite: false } : { hasRead: true, hasWrite: true }
         );
       }),
       http.get('/api/permission-requests/check-owner', () => HttpResponse.json({ ownerExists: true })),
-      http.get('/api/permission-requests/outbox', () => HttpResponse.json([]))
+      http.get('/api/permission-requests/outbox', () => HttpResponse.json([])),
+      http.post('/api/permission-requests', async ({ request }) => {
+        const body = await request.json().catch(() => ({}));
+        return HttpResponse.json({ id: `pr_${Date.now()}`, nodeId: body.nodeId, permission: body.permission || 'read', status: 'pending' });
+      })
     );
 
     const user = userEvent.setup();

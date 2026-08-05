@@ -52,7 +52,7 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
             });
           }
 
-          await createFolder(folderPath);
+          await createFolder(currentPath, finalFolderName);
           reset();
           onComplete(folderPath, finalFolderName);
 

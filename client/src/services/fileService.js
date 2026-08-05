@@ -22,14 +22,19 @@ function shareTokenHeaders(shareToken) {
 }
 
 export const listFiles = async (nodeId, options = {}) => {
-  const { shareToken } = options;
-  const params = nodeId != null ? { nodeId } : {};
+  const { shareToken, path } = options;
+  const params = nodeId != null ? { nodeId } : (path ? { path } : {});
   if (shareToken) params.shareToken = shareToken;
   const response = await get(`${API_BASE}/list`, {
     params,
     headers: shareTokenHeaders(shareToken),
   });
   return response.data;
+};
+
+/** List files by path (legacy/compatibility helper for useFileManager). */
+export const listByPath = async (targetPath, options = {}) => {
+  return listFiles(undefined, Object.assign({ path: targetPath }, options));
 };
 
 /**
@@ -279,11 +284,13 @@ export const renameFile = async (nodeId, newName) => {
   return response.data;
 };
 
-export const createFolder = async (parentNodeId, name) => {
-  const response = await post('/folders/create', {
-    parentNodeId,
-    name,
-  });
+export const createFolder = async (parentPathOrId, name) => {
+  // Support both nodeId-based calls (Phase 4) and path-based calls.
+  const isNodeId = typeof parentPathOrId === 'number' || /^\d+$/.test(String(parentPathOrId));
+  const body = isNodeId
+    ? { parentNodeId: parentPathOrId, name }
+    : { path: parentPathOrId, name };
+  const response = await post('/folders/create', body);
   return response.data;
 };
 

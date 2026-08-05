@@ -371,8 +371,8 @@ export const handlers = [
   // --- Folders ---
   http.post(`${API_BASE}/folders/create`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { parentNodeId, name } = body;
-    if (!parentNodeId || !name) {
+    const { parentNodeId, path: folderPath, name } = body;
+    if ((!parentNodeId && !folderPath) || !name) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });

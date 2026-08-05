@@ -455,6 +455,35 @@ function createFileNodesStore() {
     }
   }
 
+  async function getDescendants(ancestorId) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `SELECT n.* FROM file_nodes n
+           JOIN node_ancestors a ON a.descendant_id = n.id
+           WHERE a.ancestor_id = $1`,
+          [Number(ancestorId)]
+        );
+        return res.rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        `SELECT n.* FROM file_nodes n
+         JOIN node_ancestors a ON a.descendant_id = n.id
+         WHERE a.ancestor_id = ?`,
+        [Number(ancestorId)]
+      );
+      return res.rows.map(mapNodeRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   async function getAncestorChain(descendantId) {
     if (isPg) {
       try {
@@ -832,6 +861,7 @@ function createFileNodesStore() {
     deleteAncestorByDescendant,
     deleteAncestorByAncestor,
     getDescendantIds,
+    getDescendants,
     getAncestorChain,
     isAncestor,
     getUserRootNode,

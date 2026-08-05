@@ -254,6 +254,77 @@ describe('createFileNodesStore', () => {
       expect(descendants).toContain(child.id);
     });
 
+    // V11b: getDescendants leaf (self-only)
+    it('returns only the node itself when it has only a self row', async () => {
+      const root = await store.createNode(null, `${testPrefix}desc-leaf`, 'file');
+
+      await store.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+      ]);
+
+      const descendants = await store.getDescendants(root.id);
+      expect(descendants.map((d) => d.id)).toEqual([root.id]);
+      expect(descendants[0]).toMatchObject({ name: `${testPrefix}desc-leaf`, type: 'file' });
+    });
+
+    // V11c: getDescendants depth-1 children
+    it('returns the node itself and direct children rows', async () => {
+      const root = await store.createNode(null, `${testPrefix}desc-children-root`, 'directory');
+      const childA = await store.createNode(root.id, `${testPrefix}desc-children-a`, 'file');
+      const childB = await store.createNode(root.id, `${testPrefix}desc-children-b`, 'file');
+
+      await store.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: childA.id, depth: 1 },
+        { ancestorId: root.id, descendantId: childB.id, depth: 1 },
+      ]);
+
+      const descendants = await store.getDescendants(root.id);
+      const ids = descendants.map((d) => d.id);
+      expect(ids).toContain(root.id);
+      expect(ids).toContain(childA.id);
+      expect(ids).toContain(childB.id);
+      expect(descendants.length).toBe(3);
+    });
+
+    // V11d: getDescendants depth-N subtree
+    it('returns full subtree rows for a depth-N tree', async () => {
+      const root = await store.createNode(null, `${testPrefix}desc-subtree-root`, 'directory');
+      const mid = await store.createNode(root.id, `${testPrefix}desc-subtree-mid`, 'directory');
+      const leaf = await store.createNode(mid.id, `${testPrefix}desc-subtree-leaf`, 'file');
+
+      await store.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: mid.id, depth: 1 },
+        { ancestorId: root.id, descendantId: leaf.id, depth: 2 },
+        { ancestorId: mid.id, descendantId: mid.id, depth: 0 },
+        { ancestorId: mid.id, descendantId: leaf.id, depth: 1 },
+        { ancestorId: leaf.id, descendantId: leaf.id, depth: 0 },
+      ]);
+
+      const descendants = await store.getDescendants(root.id);
+      const ids = descendants.map((d) => d.id);
+      expect(ids).toContain(root.id);
+      expect(ids).toContain(mid.id);
+      expect(ids).toContain(leaf.id);
+      expect(descendants.length).toBe(3);
+
+      const midLeaf = descendants.find((d) => d.id === leaf.id);
+      expect(midLeaf).toMatchObject({
+        parentId: mid.id,
+        name: `${testPrefix}desc-subtree-leaf`,
+        type: 'file',
+      });
+    });
+
+    // V11e: getDescendants with empty ancestor set
+    it('returns empty array when no ancestor rows exist', async () => {
+      const root = await store.createNode(null, `${testPrefix}desc-empty`, 'directory');
+
+      const descendants = await store.getDescendants(root.id);
+      expect(descendants).toEqual([]);
+    });
+
     // V12: getAncestorChain
     it('returns ordered chain from root to self', async () => {
       const root = await store.createNode(null, `${testPrefix}chain-root`, 'directory');

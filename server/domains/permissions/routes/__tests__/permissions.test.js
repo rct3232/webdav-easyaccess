@@ -628,4 +628,28 @@ describe('GET /api/permissions/file/list (nodeId)', () => {
     const matchingFiles = res.body.filter(item => item.file_node_id === fileNode1.id || item.file_node_id === fileNode2.id);
     expect(matchingFiles.length).toBeGreaterThanOrEqual(2);
   });
+
+  // Regression: parentNodeId filter calls fileNodesStore.getDescendants (G3)
+  it('returns 200 when filtering by parentNodeId (descendant filter)', async () => {
+    const user = await createAuthenticatedTestUser({ username: `file-list-filter-${Date.now()}` });
+    const parentDir = await createTestDirectory(null, `list-filter-parent-${Date.now()}`);
+    const nestedDir = await createTestDirectory(parentDir.id, `list-filter-nested-${Date.now()}`);
+    const fileNode1 = await createTestFile(parentDir.id, `list-filter-file-1-${Date.now()}.txt`);
+    const fileNode2 = await createTestFile(nestedDir.id, `list-filter-file-2-${Date.now()}.txt`);
+
+    await permissionStore.grantFilePermission(user.user.id, fileNode1.id, PERMISSIONS.READ);
+    await permissionStore.grantFilePermission(user.user.id, fileNode2.id, PERMISSIONS.WRITE);
+
+    const res = await request(app)
+      .get('/api/permissions/file/list')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ parentNodeId: parentDir.id });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    // Both direct child and nested descendant files are within the subtree
+    const ids = res.body.map(item => item.file_node_id);
+    expect(ids).toContain(fileNode1.id);
+    expect(ids).toContain(fileNode2.id);
+  });
 });

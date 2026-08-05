@@ -17,6 +17,7 @@ const defaultProps = {
   onClose: jest.fn(),
   onComplete: jest.fn(),
   currentPath: '/',
+  parentNodeId: 1,
 };
 
 describe('CreateFolderDialog', () => {

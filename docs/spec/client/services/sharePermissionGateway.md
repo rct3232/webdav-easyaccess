@@ -18,19 +18,27 @@
 
 ### 2.2 Main Functions
 
+All identifiers are nodeId-based (`nodeId` / `fileNodeId` are BIGINT `file_nodes.id` values, not path strings).
+
 | Function | Input | Return | Backing source |
 |----------|-------|--------|-----------------|
 | getUserPermissions | `(userId, options?)` | `Promise<Array>` | `permissionService.getUserPermissions` |
-| getFolderPermissions | `(path, includeSubfolders, filePath?)` | `Promise<Array>` | `permissionService.getFolderPermissions` |
-| checkPermission | `(path)` | `Promise<{ hasRead: boolean, hasWrite: boolean, source?: 'file'|'path' }>` | `permissionService.checkPermission` |
-| checkOwnerExists | `(path, { forFile })` | `Promise<{ ownerExists: boolean }>` | `permissionRequestService.checkOwnerExists` |
+| getFolderPermissions | `(nodeId, fileNodeId?)` | `Promise<Array>` | `permissionService.getFolderPermissions` |
+| checkPermission | `(nodeId)` | `Promise<{ hasRead: boolean, hasWrite: boolean, source?: 'file'\|'path' }>` | `permissionService.checkPermission` |
+| checkOwnerExists | `(nodeId)` | `Promise<{ ownerExists: boolean }>` | `permissionRequestService.checkOwnerExists` |
 | listOutboxPermissionRequests | `(params)` | `Promise<Array>` | `permissionRequestService.listOutboxPermissionRequests` |
 | createPermissionRequest | `(payload)` | `Promise<{ id?: string }>` | `permissionRequestService.createPermissionRequest` |
 | cancelPermissionRequest | `(id)` | `Promise<void>` | `permissionRequestService.cancelPermissionRequest` |
-| grantPermission | `({ userId, folderPath, permission, target? })` | `Promise<void>` | `permissionService.grantPermission` |
-| revokePermission | `({ userId, folderPath, includeSubfolders?, scope? })` | `Promise<void>` | `permissionService.revokePermission` |
+| grantPermission | `({ userId, nodeId, permission, target? })` | `Promise<void>` | `permissionService.grantPermission` |
+| revokePermission | `({ userId, nodeId, scope? })` | `Promise<void>` | `permissionService.revokePermission` |
 | approvePermissionRequest | `(id)` | `Promise<any>` | `permissionRequestService.approvePermissionRequest` |
 | updateUserPermissions | `(userId, permissions)` | `Promise<any>` | `userService.updateUserPermissions` |
+
+Notes:
+
+- `getFolderPermissions(nodeId, fileNodeId?)` lists users with access to a directory node; the optional `fileNodeId` restricts results to file-scoped permissions.
+- `grantPermission` with `target: 'file'` grants file-level permission; `revokePermission` with `scope: 'pathOnly'` revokes file-level permission only.
+- `checkOwnerExists(nodeId)` and `createPermissionRequest({ nodeId, permission })` send `nodeId` as the request identifier — no `folderPath` / `filePath` payloads.
 
 ### 2.3 Error Handling
 

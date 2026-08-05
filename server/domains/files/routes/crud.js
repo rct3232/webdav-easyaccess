@@ -12,7 +12,7 @@ const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../../../utils/errorHandler');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
-const { getConflicts, getConflictsByNodeIds } = require('../services/conflictResolver');
+const { getConflictsByNodeIds } = require('../services/conflictResolver');
 
 const { isSharePrincipal } = require('../../permissions/services/aclService');
 
@@ -40,14 +40,7 @@ router.post('/check-conflicts', authenticateToken, requireUser, checkMetaPathAcc
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
-  const hasNodeOps = operations.some(op => op.sourceNodeId != null || op.destinationParentNodeId != null);
-
-  let conflicts;
-  if (hasNodeOps) {
-    conflicts = await getConflictsByNodeIds(operations, { limit });
-  } else {
-    conflicts = await getConflicts(operations, { limit });
-  }
+  const conflicts = await getConflictsByNodeIds(operations, { limit });
   res.json({ conflicts });
 }));
 

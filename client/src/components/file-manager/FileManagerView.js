@@ -90,6 +90,7 @@ const FileManagerView = ({
   } = explorerSession;
   const {
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,
@@ -649,6 +650,7 @@ const FileManagerView = ({
             onClose={closeCreateFolderDialog}
             onComplete={handleCreateFolderComplete}
             currentPath={currentPath}
+            parentNodeId={currentNodeId ?? null}
             onProgress={updateProgress}
           />
         </>

@@ -137,7 +137,7 @@ describe('useRecentFile', () => {
     expect(result.current.pathHistoryRef.current.size).toBe(0);
   });
 
-  it('handleRecentFileError on 404 with recent file calls removeRecentFile and showError when file not in parent', async () => {
+  it('handleRecentFileError on 404 with recent file keeps entry when it cannot verify parent by path', async () => {
     explorerGateway.loadRecentFiles.mockResolvedValue([{ path: '/folder/missing.txt' }]);
     explorerGateway.listDirectory.mockResolvedValue([]);
 
@@ -155,13 +155,13 @@ describe('useRecentFile', () => {
     });
 
     await waitFor(() => {
-      expect(explorerGateway.removeRecentFile).toHaveBeenCalledWith('/folder/missing.txt');
-      expect(mockShowError).toHaveBeenCalledTimes(1);
-      expect(mockShowError).toHaveBeenCalledWith('errors.recentRemovedFromList');
+      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({});
+      expect(explorerGateway.removeRecentFile).not.toHaveBeenCalled();
+      expect(mockShowError).toHaveBeenCalledWith('errors.folderAccessDenied');
     });
   });
 
-  it('handleRecentFileError uses the provided recentGateway seam for verification and stale removal', async () => {
+  it('handleRecentFileError uses the provided recentGateway seam for verification without path listing', async () => {
     const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
     const recentGateway = createExplorerGatewayMock({
       listDirectory: jest.fn().mockResolvedValue([]),
@@ -182,10 +182,9 @@ describe('useRecentFile', () => {
       );
     });
 
-    expect(recentGateway.listDirectory).toHaveBeenCalledWith({ path: '/folder' });
-    expect(recentGateway.loadRecentFiles).toHaveBeenCalled();
-    expect(recentGateway.removeRecentFile).toHaveBeenCalledWith('/folder/missing.txt');
-    expect(mockShowError).toHaveBeenCalledWith('errors.recentRemovedFromList');
+    expect(recentGateway.listDirectory).toHaveBeenCalledWith({});
+    expect(recentGateway.removeRecentFile).not.toHaveBeenCalled();
+    expect(mockShowError).toHaveBeenCalledWith('errors.folderAccessDenied');
   });
 
   it('handleRecentFileError on 404 navigates to previousPath when available', async () => {
@@ -301,7 +300,7 @@ describe('useRecentFile', () => {
     });
 
     await waitFor(() => {
-      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({ path: '/folder' });
+      expect(explorerGateway.listDirectory).toHaveBeenCalledWith({});
       expect(mockSetPreviewDialogOpen).toHaveBeenCalledWith(true);
     });
   });

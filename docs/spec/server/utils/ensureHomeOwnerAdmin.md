@@ -36,12 +36,14 @@
 ### 2.5 Dependencies
 
 - User model (findAll)
-- Permission model (getPermissionDoc, grant, checkPermission)
-- `isOwnerPath` from `../../permissions/policy/permissionPolicy`
+- permissionStore (getPermissionDoc, grant, checkPermission)
 - `listDirectory` from `../../../utils/webdav`
 - storage (listDir, deletePath, exists, readFile, writeFile, ensureDir)
 - metaPaths constants and helpers
-- withLock for permission request cleanup
+- withLock + permissionRequestStore (PERMISSION_REQUESTS_PATH) for permission request cleanup
+- `normalizePath` and `PERMISSIONS` from `@webdav-easyaccess/shared`
+
+> **Removed:** `isOwnerPath` from `../../permissions/policy/permissionPolicy` — that export no longer exists. `ownerNodeResolver` now exposes the nodeId-based `isOwnerNode`, and this module does not use owner detection.
 
 ### 2.6 Verification Scenarios
 

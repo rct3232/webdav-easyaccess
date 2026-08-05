@@ -24,7 +24,8 @@
 | open | boolean | Y | - | Whether dialog is open |
 | onClose | function | Y | - | Close handler |
 | onComplete | function | Y | - | Called on success with (folderPath, folderName) |
-| currentPath | string | Y | - | Path where folder will be created |
+| currentPath | string | Y | - | Display path where folder will be created (used for the display folderPath in onComplete) |
+| parentNodeId | number\|null | Y | - | Parent folder nodeId sent to `createFolder` (`null` = root level) |
 | onProgress | function | N | - | Progress callback for progressItem updates |
 
 ### 2.3 Callback Signatures
@@ -67,7 +68,7 @@ Checklist for unit test writing:
 
 - [ ] Renders folder name input and create/cancel buttons
 - [ ] Validation: empty/invalid folder name shows error
-- [ ] createFolder API called on submit with correct path
+- [ ] createFolder API called on submit with `parentNodeId` and name
 - [ ] onComplete called with folderPath and folderName on success
 - [ ] onClose and reset called on cancel
 - [ ] Error from API shows via getServerErrorDisplay

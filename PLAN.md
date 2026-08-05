@@ -426,21 +426,23 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 4.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
 | 4.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
 
-> **Phase 4 — Status: COMPLETE (implementation), NOT COMPLETE (test coverage)**
-> All Wave 1-5 tasks are **implemented**. Integration test suite (41 tests, 8 scenarios) passes against SQLite with mocked S3/WebDAV boundaries. Core services, route handlers, composition root, batch operations, permission legacy cleanup, and client migration are code-complete.
+> **Phase 4 — Status: COMPLETE**
+> All Wave 1-6 tasks are **implemented and verified** (2026-08-05). Integration test suite (41 tests, 8 scenarios) passes against SQLite with mocked S3/WebDAV boundaries. Core services, route handlers, composition root, batch operations, permission legacy cleanup, and client migration (incl. Task 4.8i UI layer) are code-complete.
 >
-> **Remaining test failures (full suite, 2026-08-05):**
-> - **Server:** 14 failed suites / 78 failed tests / 1011 passed / 1090 total
->   - `files.test.js` (~18 failures) — Task 4.9 route tests not fully migrated; S3 config missing in default mode
->   - `folders.test.js` (~6 failures) — same root cause as files.test.js
+> **Fixed in this pass (fix/phase4-alignment):**
+> - **Batch worker circular dependency** (`batchOperationService.js` ↔ `composition.js`): lazy-require `getComposition()` inside `_processBulkJob`; `scheduleBulkWorker` now honors the existing `WEA_SKIP_BULK_WORKER` test flag. Batch-move/delete/copy workers now reach `completed` status (previously always crashed with `TypeError: getComposition is not a function`).
+> - **`/check-conflicts` is nodeId-only**: path-based `getConflicts` / `checkConflictsRecursive` / `handleSingleOpConflict` removed from `conflictResolver.js` (246 → 64 lines); `crud.js` always uses `getConflictsByNodeIds`.
+> - **Task 4.8i completed (client UI)**: `useFileManager` navigates by `currentNodeId` (path→nodeId session map), `createFolder(parentNodeId)`, `listDirectory({ nodeId })`, `listByPath` removed, MSW handlers nodeId-only.
+> - **Stale specs updated**: `models/Permission.md` (deleted-model end-state), `store/permissionStore.md`, client `sharePermissionGateway` / `permissionRequestService` / `useSharedManage` / `explorerGateway` / `folderTreeGateway` / `folderPickerGateway` / `useExplorerCommands` / `useDragAndDrop` / `useDropToUpload` / `fileService` / `useFileManager` / `CreateFolderDialog`, `features/core-service-layer.md`, `utils/ensureHomeOwnerAdmin.md`, `routes/files-test-plan.md`.
+>
+> **Remaining test failures (full suite, 2026-08-05, post-fix):**
+> - **Server:** 12 failed suites / 55 failed tests / 1032 passed / 1090 total
 >   - `recentFiles.test.js` (6), `recentFilesStore.test.js` (8) — Phase 5 scope
->   - `shareLinks.test.js` (~6), `sharePublic.test.js` (~4), `shareLinkStore.test.js` (5) — Phase 5 scope
+>   - `shareLinks.test.js` (6), `sharePublic.test.js` (4), `shareLinkStore.test.js` (5) — Phase 5 scope
 >   - `ShareLink.test.js` (7), `PermissionRequest.test.js` (3) — Phase 5 scope
->   - `auth.test.js` (5) — environmental (postgresqlNotConfigured)
->   - `admin.test.js` (1) — environmental (postgresqlNotConfigured)
->   - `lockManager.test.js` (5) — environmental (postgresqlNotConfigured)
->   - `settingsStore.test.js` (3), `Settings.test.js` (3) — pre-existing double-serialization bug
-> - **Client:** `FileManager.test.js` — 7 failures (UI layer not migrated to nodeId, Task 4.8i incomplete)
+>   - `auth.test.js` (5), `admin.test.js` (1), `lockManager.test.js` (5) — environmental (postgresqlNotConfigured)
+>   - `settingsStore.test.js` (2), `Settings.test.js` (3) — pre-existing double-serialization bug
+> - **Client:** 8 suites / 23 tests (pre-existing, out of 4.8i scope): `shareReviewUseCase.test.js`, `sharePermissionSaveUseCase.test.js`, `buildPendingRequestState.test.js` (stale path-payload assertions after Phase 4.8b), `useFolderPicker.test.js`, `FileActionSheet.test.js`, `FilePreviewDialog.test.js`, `apiClient.test.js`, `apiClient.msw-smoke.test.js`. Verified identical on the base commit (503678d) — zero new client failures introduced.
 
 ---
 

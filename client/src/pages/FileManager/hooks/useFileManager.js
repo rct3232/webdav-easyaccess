@@ -51,9 +51,33 @@ export const useFileManager = (user, options = {}) => {
   // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
   const [loading, setLoading] = useState(true);
   const [hasWritePermission, setHasWritePermission] = useState(false);
+  const [currentNodeId, setCurrentNodeId] = useState(null);
   const requestIdRef = useRef(0);
   const prevPathRef = useRef(currentPath);
   const permRequestIdRef = useRef(0);
+  const filesRef = useRef([]);
+  const nodeIdByPathRef = useRef(new Map());
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  const resolveCurrentNodeId = useCallback(() => {
+    const targetPath = currentPath;
+    if (!targetPath || targetPath === '/' || targetPath === '/__recent__' || targetPath === '/__shared__') {
+      return null;
+    }
+    if (nodeIdByPathRef.current.has(targetPath)) {
+      return nodeIdByPathRef.current.get(targetPath);
+    }
+    const matched = filesRef.current.find(
+      (f) => f?.type === 'directory' && (f.path === targetPath || f.display_path === targetPath)
+    );
+    if (matched && matched.nodeId != null) {
+      return matched.nodeId;
+    }
+    return null;
+  }, [currentPath]);
   
   // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
   useEffect(() => {
@@ -112,9 +136,12 @@ export const useFileManager = (user, options = {}) => {
           setFiles(sharedFiles);
         }
       } else {
+        const targetNodeId = resolveCurrentNodeId();
+        setCurrentNodeId(targetNodeId);
+        nodeIdByPathRef.current.set(targetPath, targetNodeId);
         try {
           const filteredData = await explorerGateway.listDirectory({
-            path: targetPath,
+            nodeId: targetNodeId ?? null,
             options: {
               shareToken,
               user,
@@ -158,7 +185,7 @@ export const useFileManager = (user, options = {}) => {
         onLoadCompleteRef.current?.();
       }
     }
-  }, [currentPath, user, shareToken]);
+  }, [currentPath, user, shareToken, resolveCurrentNodeId]);
 
   useEffect(() => {
     if (shareToken && linkInfo) return;
@@ -201,8 +228,9 @@ export const useFileManager = (user, options = {}) => {
         // 현재 경로의 쓰기 권한 확인
         const loadPermission = async () => {
           const permId = ++permRequestIdRef.current;
+          const targetNodeId = resolveCurrentNodeId();
           try {
-            const permission = await explorerGateway.getPathAccess({ path: currentPath });
+            const permission = await explorerGateway.getPathAccess({ nodeId: targetNodeId ?? null });
             // Ignore stale results: when redirecting / -> /username, older loadPermission('/') can complete after loadPermission('/username')
             if (permId !== permRequestIdRef.current) return;
             setHasWritePermission(permission.canWrite);
@@ -223,7 +251,7 @@ export const useFileManager = (user, options = {}) => {
         loadPermission();
       }
     }
-  }, [currentPath, user, shareToken]);
+  }, [currentPath, user, shareToken, loadFiles, resolveCurrentNodeId]);
 
   useEffect(() => {
     if (currentPath !== '/__recent__') return undefined;
@@ -231,11 +259,13 @@ export const useFileManager = (user, options = {}) => {
     return explorerGateway.subscribeToRecentFiles(() => {
       loadFiles();
     });
-  }, [currentPath, user, shareToken]);
+  }, [currentPath, user, shareToken, loadFiles]);
 
   return {
     currentPath,
     setCurrentPath,
+    currentNodeId,
+    setCurrentNodeId,
     files,
     loading,
     loadFiles,

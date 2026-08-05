@@ -16,7 +16,7 @@
 | 8 | `POST /api/files/batch-copy` | `/batch-copy` | 1 test | path-based (`sourcePath`, `destinationPath`) |
 | 9 | `GET /api/files/bulk-operation/:jobId` | `/bulk-operation/:jobId` | 1 test | N/A (polling) |
 | 10 | `PUT /api/files/rename` | `/rename` | 3 tests | path-based (`{ oldPath, newName }`) |
-| 11 | `POST /api/files/check-conflicts` | `/check-conflicts` | 1 test | path-based (`sourcePath`, `destinationPath`) |
+| 11 | `POST /api/files/check-conflicts` | `/check-conflicts` | 1 test | nodeId-based (`sourceNodeId`, `destinationParentNodeId`) |
 | 12 | `POST /api/files/metadata` | `/metadata` | 2 tests | paths array (`{ paths: [...] }`) |
 | 13 | `POST /api/files/download-multiple` | `/download-multiple` | 3 tests | paths array (`{ paths: [...] }`) |
 | 14 | `POST /api/files/bulk-operation/:jobId/cancel` | `/bulk-operation/:jobId/cancel` | 1 test | N/A (cancel) |

@@ -1,4 +1,4 @@
-import { checkConflicts, getFilesMetadata, listByPath, listFiles, uploadMultipleFiles } from './fileService';
+import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from './fileService';
 import { checkPermission, getUserPermissions, listFilePermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
@@ -10,22 +10,12 @@ const hasAdminPermissionForNodeId = (itemNodeId, adminNodeIds) => {
   return adminNodeIds.has(itemNodeId);
 };
 
-export const listDirectory = async ({ nodeId, path: targetPath, options = {} } = {}) => {
-  // Support both Phase 4 nodeId-based calls and legacy path-based calls from useFileManager.
-  // When called with { path, options: { shareToken, user } }, extract the nested values.
+export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   const resolvedOpts = typeof options === 'object' && !Array.isArray(options) ? options : {};
   const extracted = resolvedOpts.shareToken || resolvedOpts.user ? resolvedOpts : (options || {});
   const { shareToken, showHiddenFiles, user } = extracted;
 
-  const listParams = nodeId != null ? { nodeId } : (targetPath ? { path: targetPath } : {});
-  let data;
-  if (nodeId != null) {
-    data = await listFiles(nodeId, shareToken ? { shareToken } : {});
-  } else if (targetPath) {
-    data = await listByPath(targetPath, shareToken ? { shareToken } : {});
-  } else {
-    data = await listFiles(undefined, shareToken ? { shareToken } : {});
-  }
+  const data = await listFiles(nodeId ?? null, shareToken ? { shareToken } : {});
 
   if (shareToken) {
     return Array.isArray(data) ? data : [];

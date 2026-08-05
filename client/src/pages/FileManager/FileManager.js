@@ -82,6 +82,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const {
     currentPath,
     setCurrentPath,
+    currentNodeId,
     files: filesFromHook,
     loading,
     loadFiles,
@@ -96,10 +97,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
   const currentPathRef = useRef(null);
+  const currentNodeIdRef = useRef(null);
 
   useEffect(() => {
     currentPathRef.current = currentPath;
   }, [currentPath]);
+
+  useEffect(() => {
+    currentNodeIdRef.current = currentNodeId;
+  }, [currentNodeId]);
 
   const {
     sessionKey,
@@ -320,8 +326,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     shareToken,
     currentPath,
     currentPathRef,
+    currentNodeId,
+    currentNodeIdRef,
     refreshNow: loadFiles,
-    getCurrentPathNow: () => currentPathRef.current,
+    getCurrentNodeIdNow: () => currentNodeIdRef.current,
     hasWritePermission,
     selectedFiles,
     sortedFiles,
@@ -552,6 +560,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const controlsStateProps = useMemo(() => ({
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,
@@ -560,6 +569,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSearchQuery,
   }), [
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,

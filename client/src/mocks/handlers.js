@@ -118,10 +118,16 @@ export const handlers = [
     return HttpResponse.json(isFolder ? folderItems : rootItems);
   }),
 
-  // --- Permissions (required for FileManager path navigation and permission checks) ---
-  http.get(`${API_BASE}/permissions/check`, () => {
-    return HttpResponse.json({ hasRead: true, hasWrite: true });
+  // --- Permissions (nodeId-based, matching server/domains/permissions/routes) ---
+  http.get(`${API_BASE}/permissions/check`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(nodeId), hasRead: true, hasWrite: true, source: 'path' });
   }),
+
   http.get(`${API_BASE}/permissions/user/:userId`, ({ params }) => {
     const userId = params.userId;
     if (userId === '1') {
@@ -139,15 +145,85 @@ export const handlers = [
   http.get(`${API_BASE}/permissions/folder`, ({ request }) => {
     const url = new URL(request.url);
     const nodeId = url.searchParams.get('nodeId');
-    if (nodeId === '2') {
-      return HttpResponse.json([
-        { userId: '1', nodeId: 2, permission: 'admin' },
-        { userId: '2', nodeId: 2, permission: 'read' },
-      ]);
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
     }
+    const perms = [
+      { id: 1, username: 'testuser', email: 'user@example.com', is_admin: false, permission: 'admin', node_id: Number(nodeId) },
+      { id: 2, username: 'user2', email: 'user2@example.com', is_admin: false, permission: 'read', node_id: Number(nodeId) },
+    ];
+    if (fileNodeId) {
+      return HttpResponse.json(perms.map((p) => ({ ...p, file_permission: p.permission })));
+    }
+    return HttpResponse.json(perms);
+  }),
+
+  http.post(`${API_BASE}/permissions/grant`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, nodeId, permission } = body;
+    if (!userId || !nodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionGranted' });
+  }),
+
+  http.delete(`${API_BASE}/permissions/revoke`, ({ request }) => {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+    const nodeId = url.searchParams.get('nodeId');
+    const includeDescendants = url.searchParams.get('includeDescendants');
+    if (!userId || !nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    if (includeDescendants === 'true') {
+      return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked', deletedCount: 1 });
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked' });
+  }),
+
+  http.get(`${API_BASE}/permissions/file/list`, () => {
     return HttpResponse.json([
-      { userId: '1', nodeId: 20, permission: 'read' },
+      { file_node_id: 4, permission: 'read' },
+      { file_node_id: 5, permission: 'write' },
     ]);
+  }),
+
+  http.post(`${API_BASE}/permissions/file/grant`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, fileNodeId, permission } = body;
+    if (!userId || !fileNodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionGranted' });
+  }),
+
+  http.delete(`${API_BASE}/permissions/file/revoke`, ({ request }) => {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!userId || !fileNodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionRevoked' });
+  }),
+
+  http.get(`${API_BASE}/permissions/file/check`, ({ request }) => {
+    const url = new URL(request.url);
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!fileNodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(fileNodeId), hasRead: true, hasWrite: true, source: 'path' });
+  }),
+
+  http.patch(`${API_BASE}/permissions/file`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, fileNodeId, permission } = body;
+    if (!userId || !fileNodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionUpdated' });
   }),
 
   // --- Recent files (required for FolderTree / FileManager) ---
@@ -351,10 +427,13 @@ export const handlers = [
     return HttpResponse.json(results);
   }),
 
-  http.post(`${API_BASE}/files/thumbnails/batch`, async ({ request }) => {
+  http.post(`${API_BASE}/thumbnails/batch`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const nodeIds = body.nodeIds ?? [];
-    return HttpResponse.json({ thumbnails: nodeIds.map((n) => ({ nodeId: n, hash: null, url: null })) });
+    const nodeIds = body.nodeIds;
+    if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ thumbnails: nodeIds.map((n) => ({ nodeId: n, thumbnailUrl: null })) });
   }),
 
   // --- Video preview ticket/stream ---
@@ -477,7 +556,7 @@ export const handlers = [
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
   }),
 
-  // --- Permission requests ---
+  // --- Permission requests (nodeId-based, matching server/domains/permissions/routes/permissionRequests.js) ---
   http.get(`${API_BASE}/permission-requests/inbox`, () => {
     return HttpResponse.json(mockPermissionRequests.inbox);
   }),
@@ -486,51 +565,63 @@ export const handlers = [
   }),
   http.get(`${API_BASE}/permission-requests/check-owner`, ({ request }) => {
     const url = new URL(request.url);
-    const folderPath = url.searchParams.get('folderPath');
-    const filePath = url.searchParams.get('filePath');
-    if (!folderPath && !filePath) {
-      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    const nodeId = url.searchParams.get('nodeId') || url.searchParams.get('folderNodeId') || url.searchParams.get('fileNodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionRequests.pathRequired', 400);
     }
-    return HttpResponse.json({ hasOwner: true });
+    return HttpResponse.json({ ownerExists: true, ownerUsername: 'owner1' });
   }),
   http.post(`${API_BASE}/permission-requests`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { folderPath, filePath, permission, message } = body;
-    if (!folderPath && !filePath) {
-      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    const { nodeId, fileNodeId, permission, message } = body;
+    const targetNodeId = nodeId || fileNodeId;
+    if (!targetNodeId) {
+      return errorResponse('serverErrors.permissionRequests.folderOrFileRequired', 400);
     }
-    const id = `pr_${Date.now()}`;
+    if (permission !== 'read' && permission !== 'write') {
+      return errorResponse('serverErrors.permissionRequests.invalidPermission', 400);
+    }
     const req = {
-      id,
-      requester_id: '1',
-      owner_id: '2',
-      folder_path: folderPath || null,
-      file_path: filePath || null,
-      requested_permission: permission || 'read',
+      id: `pr_${Date.now()}`,
+      requester_id: 1,
+      requester_username: 'testuser',
+      owner_id: 2,
+      owner_username: 'owner1',
+      file_node_id: Number(targetNodeId),
+      requested_permission: permission,
       status: 'pending',
-      message: message || null,
+      message: typeof message === 'string' ? message : '',
       created_at: new Date().toISOString(),
+      resolved_at: null,
+      resolved_by: null,
+      targetType: null,
     };
     mockPermissionRequests.outbox.push(req);
-    return HttpResponse.json(req, { status: 201 });
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/approve`, ({ params }) => {
     const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
-    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
     req.status = 'approved';
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.approved' });
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/reject`, ({ params }) => {
     const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
-    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
     req.status = 'rejected';
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.rejected' });
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/cancel`, ({ params }) => {
-    const idx = mockPermissionRequests.outbox.findIndex((r) => r.id === params.id);
-    if (idx === -1) return errorResponse('serverErrors.permissionRequest.notFound', 404);
-    mockPermissionRequests.outbox.splice(idx, 1);
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.cancelled' });
+    const req = mockPermissionRequests.outbox.find((r) => r.id === params.id);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
+    req.status = 'cancelled';
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
 
   // --- Share links (authenticated) ---

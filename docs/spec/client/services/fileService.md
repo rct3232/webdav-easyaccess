@@ -19,27 +19,29 @@
 
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
-| listFiles | (path, options?) | Promise\<Array\> | GET /api/files/list |
-| getFilesMetadata | (paths, options?) | Promise\<Array\> | POST /api/files/metadata |
-| getFileBlob | (filePath, options?) | Promise\<Blob\> | GET /api/files/download. `options.signal` (AbortSignal) forwarded to request for cancellation. |
-| getVideoPreviewStreamUrl | (filePath, options?) | Promise\<string\> | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL) |
-| downloadFile | (filePath, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
-| uploadFileWithPath | (file, targetPath, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |
-| uploadMultipleFiles | (files, targetPath, onProgress, onConflict, options?) | Promise\<{ results, errors }\> | POST /api/files/upload (per file) |
-| renameFile | (oldPath, newName) | Promise\<Object\> | PUT /api/files/rename |
-| createFolder | (folderPath) | Promise\<Object\> | POST /api/folders/create |
-| checkConflicts | (operations, options?) | Promise\<Array\> | POST /api/files/check-conflicts |
-| downloadMultipleFiles | (paths, onProgress, options?) | Promise\<Object\> | POST /api/files/download-multiple |
+| listFiles | (nodeId) | Promise\<Array\> | GET /api/files/list |
+| getFilesMetadata | (nodeIds, options?) | Promise\<Array\> | POST /api/files/metadata |
+| getFileBlob | (nodeId, options?) | Promise\<Blob\> | GET /api/files/download. `options.signal` (AbortSignal) forwarded to request for cancellation. |
+| getVideoPreviewStreamUrl | (nodeId, options?) | Promise\<string\> | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL) |
+| downloadFile | (nodeId, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
+| uploadFileWithPath | (file, parentNodeId, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |
+| uploadMultipleFiles | (files, parentNodeId, onProgress, onConflict, options?) | Promise\<{ results, errors }\> | POST /api/files/upload (per file) |
+| renameFile | (nodeId, newName) | Promise\<Object\> | PUT /api/files/rename |
+| createFolder | (parentNodeId, name) | Promise\<Object\> | POST /api/folders/create |
+| checkConflicts | (operations with sourceNodeId/destinationParentNodeId, options?) | Promise\<Array\> | POST /api/files/check-conflicts |
+| downloadMultipleFiles | (nodeIds, onProgress, options?) | Promise\<Object\> | POST /api/files/download-multiple |
 | getDownloadProgress | (downloadId, options?) | Promise\<Object\> | GET /api/files/download-progress/:id |
-| batchDeleteFiles | (paths) | Promise\<{ jobId }\> | POST /api/files/batch-delete |
-| batchMoveFiles | (moves, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-move |
-| batchCopyFiles | (copies, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-copy |
+| batchDeleteFiles | (nodeIds) | Promise\<{ jobId }\> | POST /api/files/batch-delete |
+| batchMoveFiles | (moves with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-move |
+| batchCopyFiles | (copies with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-copy |
 | getBulkOperationStatus | (jobId) | Promise\<Object\> | GET /api/files/bulk-operation/:jobId |
 | cancelBulkOperation | (jobId) | Promise\<Object\> | POST /api/files/bulk-operation/:jobId/cancel |
-| requestThumbnailsBatch | (paths, options?) | Promise\<Object\> | POST /api/files/thumbnails/batch |
+| requestThumbnailsBatch | (nodeIds, options?) | Promise\<Object\> | POST /api/files/thumbnails/batch |
 | checkPermission | (path) | Promise\<Object\> | delegates to permissionService |
 | getWebDAVInfo | () | Promise\<Object\> | GET /api/webdav/info |
-| getFolderStats | (folderPath) | Promise\<object\> | GET /api/folders/stats (params: path) |
+| getFolderStats | (nodeId) | Promise\<object\> | GET /api/folders/stats (params: nodeId) |
+
+> **Note:** The 5 legacy permission helpers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) still use path-based parameters and require migration to nodeId-based APIs.
 
 - `shareToken` in options: listFiles, getFilesMetadata, getFileBlob, uploadFileWithPath, uploadMultipleFiles, checkConflicts, downloadMultipleFiles, getDownloadProgress, requestThumbnailsBatch. When set, uses `X-Share-Token` header and query params.
 - `downloadFile` is **authenticated user only** (no share token support). It accepts an optional `options` object for platform- and file-type–specific behavior (see § 2.3).

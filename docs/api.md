@@ -109,7 +109,7 @@ All permission endpoints are nodeId-based. Directory-level grants inherit to des
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/share-links` | Token | Create share link. Body: e.g. `filePath`, `expiresInDays`. |
+| POST | `/api/share-links` | Token | Create share link. Body: `{ fileNodeId, expiresInDays? }`. Response: `{ token, nodeId, fileName, fileType, isDirectory, displayPath, createdAt, expiresAt, downloadCount }`. |
 | GET | `/api/share-links` | Token | List own share links. |
 | GET | `/api/share-links/:token` | Token | Get share link details. |
 | PUT | `/api/share-links/:token` | Token | Update share link (e.g. expiry). |
@@ -136,11 +136,11 @@ These routes are for accessing shared files via a public link (token in path). A
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/recent-files` | Token | List recent files for current user. |
-| POST | `/api/recent-files` | Token | Add file to recent list. Body: `path`; optional `name`, `type`, `basename`. |
-| DELETE | `/api/recent-files/:filePath(*)` | Token | Remove one path from recent list (path may contain slashes). |
+| POST | `/api/recent-files` | Token | Add file to recent list. Body: `{ fileNodeId }`. Name/type derived from `file_nodes`. |
+| DELETE | `/api/recent-files/:fileNodeId` | Token | Remove one recent entry by numeric file node id. |
 | DELETE | `/api/recent-files` | Token | Clear all recent files. |
-| POST | `/api/recent-files/apply-moves` | Token | Update paths after bulk move. Body: e.g. array of moves. |
-| POST | `/api/recent-files/remove-paths` | Token | Remove paths after delete. Body: `filePaths`, `folderPaths` (arrays). |
+
+> The `apply-moves` and `remove-paths` endpoints are removed. Node ids are stable across rename/move/delete, so recent entries remain valid without post-operation synchronization.
 
 ---
 

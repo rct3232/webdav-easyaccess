@@ -8,8 +8,6 @@
 | Used in | FolderTree |
 | Related components | getFileIcon |
 
-> **Phase 5 note (stays path-based):** `RecentFilesSection` intentionally remains path-based through Phase 4/5. Recent entries carry a path, and clicks go through a temporary `resolve-path` shim — `POST /files/resolve-path { path } → { nodeId }` — which converts the recent item's path into a nodeId for navigation. The shim is removed in **Phase 5.4**, when the recent-files API returns nodeIds and this section moves to the nodeId end-state.
-
 ---
 
 ## 2. Implementation Spec
@@ -27,9 +25,9 @@
 | handleRecentToggle | function | Y | - | Toggle expand |
 | handleRecentClick | function | Y | - | Section header click |
 | currentPath | string | Y | - | Current path |
-| recentFilesList | array | Y | - | Recent files |
-| onPathClick | function | Y | - | Path click (folder) |
-| onFileClick | function | N | - | File click. If omitted, file click falls back to `onPathClick(parentPath)` |
+| recentFilesList | array | Y | - | Recent files (entries keyed/carried by nodeId) |
+| onNodeClick | function | Y | - | Node click (folder): `(nodeId) => void` |
+| onFileClick | function | N | - | File click: `(file) => void`, receives `{ ...entry, nodeId, isRecentFile: true }`. If omitted, file click falls back to parent-folder navigation via `onNodeClick` |
 
 ### 2.3 Callback Signatures
 
@@ -37,10 +35,8 @@
 |----------|--------------|-----------|
 | handleRecentToggle | Expand/collapse | - |
 | handleRecentClick | Section click | - |
-| onPathClick | Folder click | (path) |
-| onFileClick | File click | (file) |
-
-> **Click shim:** recent item clicks (folder navigation or the file-click fallback to the parent folder) are routed through the temporary `resolve-path` shim to obtain a nodeId for the nodeId-first navigation (removed in Phase 5.4).
+| onNodeClick | Folder click | (nodeId) |
+| onFileClick | File click | (file) — receives `{ ...entry, nodeId, isRecentFile: true }` |
 
 ### 2.4 Dependencies
 
@@ -62,9 +58,9 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Section click, expand
-- [ ] File/folder click (folder clicks resolve through the `resolve-path` shim)
+- [ ] File/folder click (folder clicks call `onNodeClick(nodeId)`)
 - [ ] Empty state
-- [ ] File click when onFileClick is undefined falls back to `onPathClick(parentPath)` (through the shim)
+- [ ] File click passes `{ ...entry, nodeId, isRecentFile: true }`; when `onFileClick` is undefined, it falls back to parent-folder navigation via `onNodeClick`
 - [ ] List shows max 10 items
 
 ### 2.9 UI Enhancements

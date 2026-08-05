@@ -56,6 +56,7 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | POST | `/api/files/bulk-operation/:jobId/cancel` | Token | Cancel bulk operation. |
 | POST | `/api/files/check-conflicts` | Token | Check name conflicts before paste. Body: `{ operations, limit }` (`limit` boolean, default true). |
 | POST | `/api/files/metadata` | Token or share | Get metadata for nodeIds. Body: `{ nodeIds }`. |
+| POST | `/api/files/resolve-path` | Token | Resolve a legacy path string to a nodeId. Body: `{ path }`. Returns `{ nodeId }`; 404 if the path does not resolve. |
 | POST | `/api/folders/create` | Token | Create folder. Body: `{ parentNodeId, name }`. |
 | GET | `/api/folders/stats` | Token | Recursive folder statistics. Query: `nodeId`. |
 

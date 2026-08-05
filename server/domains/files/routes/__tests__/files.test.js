@@ -448,6 +448,61 @@ describe('POST /api/files/metadata', () => {
   });
 });
 
+describe('POST /api/files/resolve-path', () => {
+  it('returns nodeId for a resolvable path', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `files-resolve-ok-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
+    const file = await fileNodeService.createFile(homeNodeId, 'resolve-me.txt');
+
+    const res = await request(app)
+      .post('/api/files/resolve-path')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ path: `/${user.username}/resolve-me.txt` });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ nodeId: file.id });
+  });
+
+  it('returns 404 when the path does not resolve', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `files-resolve-404-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
+
+    const res = await request(app)
+      .post('/api/files/resolve-path')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ path: `/${user.username}/does-not-exist.txt` });
+
+    expect(res.status).toBe(404);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.notFound);
+  });
+
+  it('returns 400 when path is missing from body', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `files-resolve-400-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .post('/api/files/resolve-path')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.files.invalidPath);
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app)
+      .post('/api/files/resolve-path')
+      .send({ path: '/any/legacy/path' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('POST /api/files/download-multiple', () => {
   it('returns 400 when paths is empty array', async () => {
     const { token } = await createAuthenticatedTestUser({

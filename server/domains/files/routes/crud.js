@@ -44,6 +44,23 @@ router.post('/check-conflicts', authenticateToken, requireUser, checkMetaPathAcc
   res.json({ conflicts });
 }));
 
+// Legacy-URL bootstrap resolver (nodeId-first navigation): resolves a path string to a nodeId.
+// Sole path-accepting endpoint; documented exception to the nodeId-only rule (PLAN.md Rule 13).
+router.post('/resolve-path', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { path } = req.body;
+  if (typeof path !== 'string' || path.length === 0) {
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
+  }
+
+  const { fileNodeService } = getComposition();
+  const node = await fileNodeService.resolvePath(path);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+  }
+
+  res.json({ nodeId: node.id });
+}));
+
 router.post('/metadata', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const nodeIds = req.body.nodeIds;
   if (!Array.isArray(nodeIds)) {

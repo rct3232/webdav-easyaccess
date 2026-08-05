@@ -17,7 +17,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 
 | Route Module | Source File | Mount Point | Endpoints |
 |-------------|-------------|-------------|-----------|
-| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, download, upload, rename |
+| CRUD operations | `domains/files/routes/crud.js` | `/api/files` | check-conflicts, metadata, list, download, upload, rename, resolve-path |
 | Batch operations | `domains/files/routes/batch.js` | `/api/files` | batch-delete, batch-move, batch-copy, bulk-operation/:jobId, :jobId/cancel |
 | Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
 
@@ -40,10 +40,13 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 | POST | `/batch-copy` | Body: `{ copies[] }`; copies = `{ sourceNodeId, destinationParentNodeId, newName? }` | jobId; results keyed by nodeId |
 | POST | `/batch-delete` | Body: `{ nodeIds[] }`; `nodeIds` array (no `paths`) | jobId; deleted nodeIds |
 | POST | `/download-multiple` | Body: `{ nodeIds[], downloadId }`; `nodeIds` array (no `paths`) | Unchanged (ZIP stream) |
+| POST | `/resolve-path` | Body: `{ path }` (string, required); 400 if missing/not a string | `{ nodeId }`; 404 `files.notFound` if the path does not resolve |
 
 ### 2.3 Phase 4 nodeId Contracts
 
 **All endpoints accept `nodeId` exclusively.** Path strings are display-only in responses and are never accepted in request payloads. Response objects include `nodeId` field for every file/folder entry.
+
+**Exception — `POST /resolve-path`:** the sole path-accepting endpoint. It is a legacy-URL/boostrap resolver (deep-link + share-link fallback for nodeId-first navigation) exposing `fileNodeService.resolvePath(path)`. It returns `{ nodeId }` for a resolvable path and 404 `files.notFound` otherwise. No other path-based endpoints may be added (PLAN.md Execution Rule 13).
 
 #### Route Module Mapping (Post-Phase 4)
 

@@ -87,3 +87,41 @@
 - **Observed failure:** Breadcrumb rendered blank/empty segments in shared folder views. MSW mock server returned `[]` for all file-list requests during client test execution, making every shared-folder UI test fail with "no files found" assertions. UserUtils tests threw type errors comparing strings against integers.
 - **Root cause:** W4.8/W4.10 migrated gateway interfaces to nodeId but missed three consumer sites: the Breadcrumb component's permission shape reader, the MSW handler URL param matchers, and the userUtils test fixture data shapes.
 - **Action taken:** Migrated `Breadcrumb.js` to read nodeId-based permission payloads (`perm.nodeId`, resolved display path via `getNodePath`). Updated MSW handlers to match nodeId query params and return nodeId-shaped responses. Rewrote userUtils test fixtures from path strings to nodeId integers. Commit: `888e2a5`. Implementation migration for client file-layer to complete nodeId payload contract: `e01f6ff`.
+
+---
+
+## 2026-08-05 — Phase 4 Post-Verification: Full Test Suite Audit
+
+### Server: 14 failed suites / 78 failed tests / 1011 passed / 1090 total
+
+| Suite | Failures | Classification | Root Cause |
+|---|---|---|---|
+| `domains/files/routes/__tests__/files.test.js` | ~18 | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
+| `domains/files/routes/__tests__/folders.test.js` | ~6 | Test migration incomplete (Task 4.9) | Same as files.test.js |
+| `domains/recentFiles/__tests__/recentFiles.test.js` | 6 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js` | 8 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
+| `domains/sharing/routes/__tests__/shareLinks.test.js` | ~6 | Phase 5 scope | `grantTestPermission` removed; sharing routes pending nodeId migration |
+| `domains/sharing/routes/__tests__/sharePublic.test.js` | ~4 | Phase 5 scope | Same as shareLinks.test.js |
+| `domains/sharing/__tests__/shareLinkStore.test.js` | 5 | Phase 5 scope | Pending nodeId migration |
+| `models/__tests__/ShareLink.test.js` | 7 | Phase 5 scope | Legacy path-based model tests |
+| `models/__tests__/PermissionRequest.test.js` | 3 | Phase 5 scope | Legacy path-based model tests |
+| `domains/auth/routes/__tests__/auth.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env (no PostgreSQL configured) |
+| `domains/admin/routes/__tests__/admin.test.js` | 1 | Environmental | `postgresqlNotConfigured` in test env |
+| `infrastructure/__tests__/lockManager.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env |
+| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3 | Pre-existing bug | Double-serialization bug in Settings model (unrelated to Phase 4) |
+| `models/__tests__/Settings.test.js` | 3 | Pre-existing bug | Same double-serialization bug |
+
+### Client: FileManager.test.js — 7 failures
+
+- **Area:** `client/src/components/__tests__/FileManager.test.js`
+- **Classification:** Test migration incomplete (Task 4.8i)
+- **Summary:** UI layer not yet migrated to nodeId payloads. FileManager tests still construct path-based file objects but the underlying services now expect nodeId keys.
+
+### Summary
+
+- **Phase 4 integration suite:** 41/41 pass (isolated, mocked boundaries)
+- **Total failures:** 78 server + 7 client = 85
+- **Failures attributable to Phase 4 incomplete migration:** ~24 (files.test.js + folders.test.js + FileManager.test.js)
+- **Failures in Phase 5 scope:** ~44 (sharing, recentFiles, legacy models)
+- **Environmental (postgresqlNotConfigured):** 11
+- **Pre-existing (Settings serialization):** 6

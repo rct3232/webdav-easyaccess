@@ -426,8 +426,21 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 4.9 | Update `domains/files/routes/__tests__/files.test.js`: replace WebDAV mock with fileNodeService + blobStorageService; assertions use nodeId-based payloads; run against SQLite-backed integration tests for full CRUD lifecycle | All route tests pass against DB backend (not FsJSON) |
 | 4.10 | Update `server/test-utils.js`: add `createTestFileNode()`, `grantTestPermissionByNodeId()` helpers alongside existing path-based functions for nodeId-first testing | Test utilities support nodeId operations natively |
 
-> **Phase 4 — Status: COMPLETE**
-> All Wave 1-5 tasks implemented and verified. Integration test suite (41 tests, 8 scenarios) covers full CRUD lifecycle against SQLite with mocked S3/WebDAV boundaries. Core services (fileNodeService, blobStorageService, uploadService), route handlers (nodeId payloads + responses), composition root, batch operations, permission legacy cleanup, and client migration all verified. Zero regressions introduced outside the files domain. Remaining pre-existing test failures: shareLinkStore (~16, Phase 5 Task 5.1), Settings model (~3, unrelated serialization bug).
+> **Phase 4 — Status: COMPLETE (implementation), NOT COMPLETE (test coverage)**
+> All Wave 1-5 tasks are **implemented**. Integration test suite (41 tests, 8 scenarios) passes against SQLite with mocked S3/WebDAV boundaries. Core services, route handlers, composition root, batch operations, permission legacy cleanup, and client migration are code-complete.
+>
+> **Remaining test failures (full suite, 2026-08-05):**
+> - **Server:** 14 failed suites / 78 failed tests / 1011 passed / 1090 total
+>   - `files.test.js` (~18 failures) — Task 4.9 route tests not fully migrated; S3 config missing in default mode
+>   - `folders.test.js` (~6 failures) — same root cause as files.test.js
+>   - `recentFiles.test.js` (6), `recentFilesStore.test.js` (8) — Phase 5 scope
+>   - `shareLinks.test.js` (~6), `sharePublic.test.js` (~4), `shareLinkStore.test.js` (5) — Phase 5 scope
+>   - `ShareLink.test.js` (7), `PermissionRequest.test.js` (3) — Phase 5 scope
+>   - `auth.test.js` (5) — environmental (postgresqlNotConfigured)
+>   - `admin.test.js` (1) — environmental (postgresqlNotConfigured)
+>   - `lockManager.test.js` (5) — environmental (postgresqlNotConfigured)
+>   - `settingsStore.test.js` (3), `Settings.test.js` (3) — pre-existing double-serialization bug
+> - **Client:** `FileManager.test.js` — 7 failures (UI layer not migrated to nodeId, Task 4.8i incomplete)
 
 ---
 

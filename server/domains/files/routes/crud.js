@@ -145,7 +145,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, checkMetaPathAcce
   await sendBufferAsChunks(res, buffer);
 }));
 
-router.post('/upload', authenticateToken, requireUser, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/upload', authenticateToken, requireAuth, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
@@ -204,7 +204,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, nodeId: result.nodeId, newName: result.newName });
 }));
 
-router.post('/move', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/move', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { nodeId, destinationParentNodeId } = req.body;
   if (!nodeId || !destinationParentNodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -221,7 +221,7 @@ router.post('/move', authenticateToken, requireUser, checkMetaPathAccess, asyncH
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.moveSuccess, nodeId: result.nodeId, newParentId: result.newParentId });
 }));
 
-router.post('/copy', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/copy', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { nodeId, destinationParentNodeId, newName } = req.body;
   if (!nodeId || !destinationParentNodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -244,7 +244,7 @@ router.post('/copy', authenticateToken, requireUser, checkMetaPathAccess, asyncH
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.copySuccess, sourceNodeId: result.sourceNodeId, copiedNodeId: result.copiedNodeId });
 }));
 
-router.delete('/delete', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.delete('/delete', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { nodeId } = req.body;
   if (!nodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);

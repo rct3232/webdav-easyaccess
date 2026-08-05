@@ -6,14 +6,14 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, forbiddenError, validationError, conflictError } = require('../../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const requireUser = require('../../../middleware/requireUser');
+const { requireAuth } = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 
 const permissionStore = require('../../../store/permissionStore');
 const { getComposition } = require('../../../service/composition');
 
 // Create folder
-router.post('/create', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/create', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { parentNodeId, name } = req.body;
   if (!name || !parentNodeId) {
     throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
@@ -62,7 +62,7 @@ router.post('/create', authenticateToken, requireUser, checkMetaPathAccess, asyn
 }));
 
 // Get folder recursive statistics
-router.get('/stats', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/stats', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const nodeIdValue = req.query.nodeId;
   if (!nodeIdValue) {
     throw validationError(SERVER_ERROR_CODES.folders.pathRequired);

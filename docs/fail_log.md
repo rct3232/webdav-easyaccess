@@ -125,3 +125,35 @@
 - **Failures in Phase 5 scope:** ~44 (sharing, recentFiles, legacy models)
 - **Environmental (postgresqlNotConfigured):** 11
 - **Pre-existing (Settings serialization):** 6
+
+---
+
+## 2026-08-05 — Phase 4 Post-Verification Fixes (fix/phase4-alignment)
+
+### G6 — Batch worker circular dependency: `getComposition is not a function`
+
+- **Area:** `server/domains/files/services/batchOperationService.js`, `server/service/composition.js`
+- **Classification:** Case A (Source Error)
+- **Summary:** `batchOperationService.js:4` destructured `getComposition` from `composition.js` at module load. Because `composition.js:10` itself requires `batchOperationService`, a circular require occurs: when `composition.js` is loaded first (via `routes/crud.js`), `batchOperationService`'s top-level destructure runs while `composition.js`'s `module.exports` is still empty → `getComposition` bound to `undefined`.
+- **Observed failure:** Every `POST /api/files/batch-move|batch-delete|batch-copy` returned 202+jobId immediately, but the `setImmediate` worker crashed with `TypeError: getComposition is not a function` (caught and logged via `console.error` at `batchOperationService.js:71`). Jobs never reached `completed`. Route tests passed because they assert only the 202 API contract, not the worker outcome — the bug was invisible to CI.
+- **Root cause:** Circular CommonJS require between composition root and the batch worker; destructuring at module scope captures the incomplete export object.
+- **Action taken:** Moved the `getComposition` require inside `_processBulkJob` (deferred to runtime, by which time `composition.js` is fully loaded). Also made `scheduleBulkWorker` honor the pre-existing `WEA_SKIP_BULK_WORKER=1` test flag (set by `files.test.js`/`files.integration.test.js` but previously unused) so the now-functional worker doesn't race Jest teardown. Verified with a real end-to-end job that reaches `completed`. Commit: `fix/phase4-alignment`.
+
+### G7 — Path-based conflict resolver removed (Task 4.8 "No path-based compatibility layer")
+
+- **Area:** `server/domains/files/services/conflictResolver.js`, `server/domains/files/routes/crud.js`, `server/domains/files/routes/__tests__/files.test.js`
+- **Classification:** Case A (Source Error — stale path-based branch)
+- **Summary:** `conflictResolver.js` retained path-based `getConflicts` / `checkConflictsRecursive` / `handleSingleOpConflict` operating on raw WebDAV remote listing via `createFileStoreAdapter()`. `crud.js` `/check-conflicts` branched to them when operations lacked nodeId — contradicting the "No path-based compatibility layer" end-state.
+- **Action taken:** Deleted the three path-based functions (+ helper `isDirectoryPath`, 246→64 lines). `crud.js` now always calls `getConflictsByNodeIds`. Route test updated to send `{ sourceNodeId, destinationParentNodeId }` payloads.
+
+### G8 — Client file-layer path remnants (Task 4.8i UI completion)
+
+- **Area:** `client/src/services/fileService.js`, `explorerGateway.js`, `pages/FileManager/hooks/useFileManager.js`, `FileManager.js`, `components/dialogs/CreateFolderDialog.js`, `mocks/handlers.js`
+- **Classification:** Case A (Source Error — path-based UI broken against nodeId-only server)
+- **Summary:** `/api/files/list` and `/api/folders/create` became nodeId-only, but the client UI still navigated by path (`listDirectory({ path })`, `createFolder(currentPath)`, `listByPath`), silently broken against the real server. MSW handlers accepted both shapes, masking the breakage in tests.
+- **Action taken:** `listFiles` path option and `listByPath` removed; `listDirectory({ nodeId })` nodeId-only; `useFileManager` tracks `currentNodeId` with a session path→nodeId map; `createFolder(parentNodeId, name)`; MSW handlers nodeId-only. Known limitations documented in the spec: deep-link below the resolved tree lists root until navigation; root-view create sends `parentNodeId: null` (server 400, pre-existing no-home-nodeId limitation).
+
+### Post-fix verification (full suite, 2026-08-05)
+
+- **Server:** 12 failed suites / 55 failed / 1032 passed / 1090 total — `files.test.js` (Task 4.9) and `folders.test.js` now pass; remaining failures are Phase 5 scope (recentFiles, sharing, legacy models), environmental (`postgresqlNotConfigured`), or the pre-existing Settings serialization bug. Identical to pre-change baseline → zero regressions.
+- **Client:** 8 suites / 23 tests still fail, verified byte-identical on base commit `503678d` (git stash comparison) → pre-existing, out of Phase 4 scope. FileManager/useFileManager/CreateFolderDialog/service-layer suites (231 tests) pass.

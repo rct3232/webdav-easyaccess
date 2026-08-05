@@ -22,7 +22,8 @@
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | open | boolean | Y | Dialog open state |
-| targetPath | string | Y | Target file/folder path |
+| targetNodeId | number | Y | Target file/folder node ID (`file_nodes.id`) |
+| parentNodeId | number \| null | N | Parent directory node ID; used for file targets to load parent-node permission state |
 | displayName | string | Y | Display name used in success messaging |
 | isDirectory | boolean | Y | Whether the target is a directory |
 | user | object | Y | Current user |
@@ -41,7 +42,7 @@
 | setConfirmDialogOpen | function | Confirm-dialog setter |
 | hasReadPermission | boolean | Effective read access |
 | hasWritePermission | boolean | Effective write access |
-| pathPermission | `'none' \| 'read' \| 'write' \| null` | Parent-path permission state for file targets |
+| pathPermission | `'none' \| 'read' \| 'write' \| null` | Parent-node permission state for file targets |
 | filePermissionLevel | `'read' \| 'write' \| null` | Direct file-level permission state |
 | pendingRequest | object | Pending request view state keyed by permission level |
 | ownerExists | boolean \| null | Whether a share owner still exists |
@@ -55,13 +56,12 @@
 - `deriveSharedAccessState` for pure derivation of `hasReadPermission`, `hasWritePermission`, `pathPermission`, and `filePermissionLevel`
 - `buildPendingRequestState` for mapping outbox request results into `pendingRequest` state
 - `shareManageMessageUtils` for reusable success/error message composition and hide-duration policy
-- `getParentPath`, `normalizePath`
 
 ### 2.5 Side Effects
 
-- On open, loads raw permission state via `sharePermissionGateway.checkPermission`
-- For file targets, also loads parent-path permission state
-- On open, loads `ownerExists` via `sharePermissionGateway.checkOwnerExists`
+- On open, loads raw permission state via `sharePermissionGateway.checkPermission(targetNodeId)`
+- For file targets, also loads parent-node permission state via `sharePermissionGateway.checkPermission(parentNodeId)`
+- On open, loads `ownerExists` via `sharePermissionGateway.checkOwnerExists(targetNodeId)`
 - On open, loads pending outbox requests via `sharePermissionGateway.listOutboxPermissionRequests`
 - Sends create/cancel/revoke mutations through `sharePermissionGateway`
 - May dispatch transient success/error messages via `onMessage`, but message text shaping and hide-after timing must stay behind the shared `shareManageMessageUtils` helper rather than hook-local branching
@@ -76,7 +76,7 @@
 
 - [ ] Admin user skips API reads and gets read/write access immediately
 - [ ] Directory target derives read/write access with `pathPermission === null`
-- [ ] File target derives `pathPermission` from the parent path and `filePermissionLevel` from file-level access
+- [ ] File target derives `pathPermission` from the parent node (`parentNodeId`) and `filePermissionLevel` from file-level access
 - [ ] `directHasReadPermission` overrides computed read access, including explicit `false`
 - [ ] Request success updates `pendingRequest` and shows success feedback
 - [ ] Cancel success clears the matching pending request and shows success feedback

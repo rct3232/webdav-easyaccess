@@ -183,5 +183,6 @@ Use [TESTING_STRATEGY.md](../TESTING_STRATEGY.md) for contract and mocking guida
 
 ## Scope notes
 
-- **S3 mode only** in Phase 2. WebDAV blob storage support deferred to Phase 3.
+- **Phase 2 delivered S3 mode only.** WebDAV blob storage support was deferred from Phase 2 to Phase 4 (not Phase 3), where `blobStorageService` was extended with a `WebdavBlobStore` adapter (Phase 4 Task 4.0). Blob mode is selected via `WEA_FILE_STORAGE=s3|webdav`.
+- **Phase 4 added a composition root** (`server/service/composition.js`): it builds `fileNodeService`, `blobStorageService`, `uploadService`, `aclService`, and `fileService` once at startup. The blob store (S3BlobStore vs WebdavBlobStore) and file storage mode (`fileStorageMode` from `WEA_FILE_STORAGE`, default `'s3'`) are resolved there and injected into the services, so no service reads backend-specific config directly.
 - **Version history** infrastructure is in place (`version_number` column in `object_map`) but single-version mode is enforced (always `version_number=1`). Multi-version support is a future expansion.

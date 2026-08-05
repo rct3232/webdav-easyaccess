@@ -25,11 +25,11 @@
 | revoke | (userId, nodeId, options?) => Promise\<{ success }\> | Revoke all permissions for user on directory node |
 | getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
 | checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
-| checkPermissionSync | (doc, nodeId, requiredPermission) => boolean | Synchronous directory permission check against loaded doc |
 | getPermissionDoc | (userId) => Promise\<object\> | Get raw permission document |
 | checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
 | getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |
 | hasPermissionsInPath | (nodeId) => Promise\<Array\> | Permissions on ancestors of node |
+| getPathEffectivePermission | (userId, nodeId) => Promise\<string \| null\> | Effective directory-level permission for a node via ancestor traversal (§2.7) |
 
 #### File Permissions
 
@@ -40,7 +40,8 @@
 | grantFilePermission | (userId, fileNodeId, permission) => Promise\<object\> | File-only permission; `fileNodeId` is BIGINT |
 | revokeFilePermission | (userId, fileNodeId) => Promise\<{ success }\> | Remove file permission |
 | getUserFilePermissions | (userId) => Promise\<Array\> | List file permissions for user |
-| checkFilePermissionSync | (doc, fileNodeId, requiredPermission) => boolean | Synchronous file permission check |
+
+> **Removed:** `checkPermissionSync` and `checkFilePermissionSync` — synchronous permission checks were deleted in Phase 4 (permissionPolicy/ACL legacy cleanup). All permission checks are async and nodeId-based.
 
 #### Share Token Permissions
 

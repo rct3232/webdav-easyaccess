@@ -7,7 +7,6 @@ const { execFile } = require('child_process');
 const ffmpeg = require('fluent-ffmpeg');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-const { getFileContents } = require('../../../utils/webdav');
 
 const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
 const FFMPEG_INIT_TIMEOUT_MS = parseInt(process.env.FFMPEG_INIT_TIMEOUT_MS) || 2000;
@@ -110,7 +109,7 @@ async function initFfmpegOnce() {
   return await ffmpegInitPromise;
 }
 
-async function generateVideoThumbnail(webdavPath) {
+async function generateVideoThumbnail(nodeId) {
   let tempVideoPath = null;
   let tempFramePath = null;
 
@@ -120,7 +119,14 @@ async function generateVideoThumbnail(webdavPath) {
       return null;
     }
 
-    const buffer = await getFileContents(webdavPath);
+    const { getComposition } = require('../../../service/composition');
+    const { blobStorageService, fileNodeService } = getComposition();
+    const node = await fileNodeService.getNode(nodeId);
+    if (!node) {
+      return null;
+    }
+
+    const buffer = await blobStorageService.downloadBlob(nodeId);
     if (!buffer || buffer.length === 0) {
       throw createError(SERVER_ERROR_CODES.thumbnail.videoDownloadFailed, 500);
     }
@@ -133,11 +139,11 @@ async function generateVideoThumbnail(webdavPath) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const videoHash = crypto.createHash('md5').update(webdavPath).digest('hex');
+    const videoHash = crypto.createHash('md5').update(String(nodeId)).digest('hex');
     tempVideoPath = path.resolve(path.join(tempDir, `${videoHash}_temp_video`));
     tempFramePath = path.resolve(path.join(tempDir, `${videoHash}_temp_frame.jpg`));
 
-    const ext = path.extname(webdavPath).toLowerCase();
+    const ext = path.extname(node.name).toLowerCase();
     tempVideoPath += ext || '.mp4';
 
     fs.writeFileSync(tempVideoPath, buffer);

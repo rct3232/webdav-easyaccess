@@ -47,7 +47,7 @@ function createFileService(options = {}) {
 
       let thumbnailUrl = null;
       if (isImageFile(child.name) || isVideoFile(child.name)) {
-        thumbnailUrl = getThumbnailUrl(display_path || `/${child.name}`);
+        thumbnailUrl = getThumbnailUrl(child.id);
       }
 
       results.push({

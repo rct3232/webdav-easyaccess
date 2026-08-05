@@ -1,4 +1,3 @@
-const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
@@ -23,12 +22,16 @@ function _getCache() {
   return _cacheAdapter;
 }
 
-function getThumbnailHash(webdavPath) {
-  return crypto.createHash('md5').update(webdavPath).digest('hex');
+function _cacheKey(nodeId) {
+  return `thumb:${nodeId}`;
 }
 
-function signThumbnailToken(webdavPath) {
-  const hash = getThumbnailHash(webdavPath);
+function getThumbnailHash(nodeId) {
+  return crypto.createHash('md5').update(String(nodeId)).digest('hex');
+}
+
+function signThumbnailToken(nodeId) {
+  const hash = getThumbnailHash(nodeId);
   return jwt.sign(
     { h: hash },
     THUMBNAIL_TOKEN_SECRET,
@@ -46,23 +49,22 @@ function verifyThumbnailToken(token, hash) {
   }
 }
 
-function getCachedThumbnail(webdavPath) {
-  return _getCache().get(`thumb:${webdavPath}`) || null;
+function getCachedThumbnail(nodeId) {
+  return _getCache().get(_cacheKey(nodeId)) || null;
 }
 
-function setCachedThumbnail(webdavPath, buffer, extension) {
+function setCachedThumbnail(nodeId, buffer, extension) {
   const cache = _getCache();
 
   if (cache.size >= MAX_CACHE_SIZE) {
-    const keysIterator = cache.keys();
-    const first = keysIterator.next();
+    const first = cache.keys().next();
     if (!first.done) {
       cache.delete(first.value);
     }
   }
 
   const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
-  cache.set(`thumb:${webdavPath}`, {
+  cache.set(_cacheKey(nodeId), {
     buffer,
     mimeType,
     extension,
@@ -73,32 +75,41 @@ function findCachedThumbnailByHash(hash) {
   const cache = _getCache();
   for (const [key, thumbnail] of cache.entries()) {
     if (!key.startsWith('thumb:')) continue;
-    const webdavPath = key.slice(6);
-    if (getThumbnailHash(webdavPath) === hash) {
-      return { webdavPath, thumbnail };
+    const nodeId = parseInt(key.slice(6), 10);
+    if (isNaN(nodeId)) continue;
+    if (getThumbnailHash(nodeId) === hash) {
+      return { nodeId, thumbnail };
     }
   }
   return null;
 }
 
-async function getThumbnail(webdavPath) {
-  const filename = path.basename(webdavPath);
+async function getNodeName(nodeId) {
+  const { getComposition } = require('../../../service/composition');
+  const { fileNodeService } = getComposition();
+  const node = await fileNodeService.getNode(nodeId);
+  return node ? node.name : null;
+}
 
-  if (isImageFile(filename)) {
-    const cached = getCachedThumbnail(webdavPath);
+async function getThumbnail(nodeId) {
+  const name = await getNodeName(nodeId);
+  if (!name) return null;
+
+  if (isImageFile(name)) {
+    const cached = getCachedThumbnail(nodeId);
     if (cached) return cached.buffer;
-    const result = await generateImageThumbnail(webdavPath);
+    const result = await generateImageThumbnail(nodeId);
     if (result) {
-      setCachedThumbnail(webdavPath, result.buffer, result.extension);
+      setCachedThumbnail(nodeId, result.buffer, result.extension);
       return result.buffer;
     }
     return null;
-  } else if (isVideoFile(filename)) {
-    const cached = getCachedThumbnail(webdavPath);
+  } else if (isVideoFile(name)) {
+    const cached = getCachedThumbnail(nodeId);
     if (cached) return cached.buffer;
-    const result = await generateVideoThumbnail(webdavPath);
+    const result = await generateVideoThumbnail(nodeId);
     if (result) {
-      setCachedThumbnail(webdavPath, result.buffer, result.extension);
+      setCachedThumbnail(nodeId, result.buffer, result.extension);
       return result.buffer;
     }
     return null;
@@ -107,43 +118,44 @@ async function getThumbnail(webdavPath) {
   return null;
 }
 
-function getThumbnailUrl(webdavPath) {
-  const cached = getCachedThumbnail(webdavPath);
+function getThumbnailUrl(nodeId) {
+  const cached = getCachedThumbnail(nodeId);
   if (cached) {
-    const hash = getThumbnailHash(webdavPath);
-    const token = signThumbnailToken(webdavPath);
+    const hash = getThumbnailHash(nodeId);
+    const token = signThumbnailToken(nodeId);
     return `/api/thumbnails/${hash}.${cached.extension}?token=${encodeURIComponent(token)}`;
   }
   return null;
 }
 
-function getThumbnailFromCache(webdavPath) {
-  return getCachedThumbnail(webdavPath);
+function getThumbnailFromCache(nodeId) {
+  return getCachedThumbnail(nodeId);
 }
 
-async function ensureThumbnail(webdavPath) {
+async function ensureThumbnail(nodeId) {
   try {
-    const cached = getCachedThumbnail(webdavPath);
+    const cached = getCachedThumbnail(nodeId);
     if (cached) {
-      return getThumbnailUrl(webdavPath);
+      return getThumbnailUrl(nodeId);
     }
 
-    const filename = path.basename(webdavPath);
+    const name = await getNodeName(nodeId);
+    if (!name) return null;
 
-    if (isImageFile(filename)) {
-      const result = await generateImageThumbnail(webdavPath);
+    if (isImageFile(name)) {
+      const result = await generateImageThumbnail(nodeId);
       if (result) {
-        setCachedThumbnail(webdavPath, result.buffer, result.extension);
-        return getThumbnailUrl(webdavPath);
+        setCachedThumbnail(nodeId, result.buffer, result.extension);
+        return getThumbnailUrl(nodeId);
       }
       return null;
-    } else if (isVideoFile(filename)) {
+    } else if (isVideoFile(name)) {
       const status = await initFfmpegOnce();
       if (!status.available) return null;
-      const result = await generateVideoThumbnail(webdavPath);
+      const result = await generateVideoThumbnail(nodeId);
       if (result) {
-        setCachedThumbnail(webdavPath, result.buffer, result.extension);
-        return getThumbnailUrl(webdavPath);
+        setCachedThumbnail(nodeId, result.buffer, result.extension);
+        return getThumbnailUrl(nodeId);
       }
       return null;
     }
@@ -177,68 +189,11 @@ async function limitConcurrency(tasks, concurrency = 10) {
   return Promise.all(results);
 }
 
-async function ensureThumbnailsBatch(webdavPaths) {
+async function ensureThumbnailsBatch(nodeIds) {
   const CONCURRENCY_LIMIT = parseInt(process.env.THUMBNAIL_CONCURRENCY_LIMIT) || 10;
-  const results = [];
-
-  const cachedResults = [];
-  const uncachedPaths = [];
-
-  for (const webdavPath of webdavPaths) {
-    const cached = getCachedThumbnail(webdavPath);
-    if (cached) {
-      cachedResults.push({
-        path: webdavPath,
-        thumbnailUrl: getThumbnailUrl(webdavPath),
-      });
-    } else {
-      uncachedPaths.push(webdavPath);
-    }
-  }
-
-  if (uncachedPaths.length > 0) {
-    const tasks = uncachedPaths.map((webdavPath) => async () => {
-      try {
-        const filename = path.basename(webdavPath);
-        let thumbnailUrl = null;
-
-        if (isImageFile(filename)) {
-          const result = await generateImageThumbnail(webdavPath);
-          if (result) {
-            setCachedThumbnail(webdavPath, result.buffer, result.extension);
-            thumbnailUrl = getThumbnailUrl(webdavPath);
-          }
-        } else if (isVideoFile(filename)) {
-          const status = await initFfmpegOnce();
-          if (status.available) {
-            const result = await generateVideoThumbnail(webdavPath);
-            if (result) {
-              setCachedThumbnail(webdavPath, result.buffer, result.extension);
-              thumbnailUrl = getThumbnailUrl(webdavPath);
-            }
-          }
-        }
-
-        return {
-          path: webdavPath,
-          thumbnailUrl,
-        };
-      } catch (error) {
-        console.error(`Error generating thumbnail for ${webdavPath}:`, error.message);
-        return {
-          path: webdavPath,
-          thumbnailUrl: null,
-        };
-      }
-    });
-
-    const generatedResults = await limitConcurrency(tasks, CONCURRENCY_LIMIT);
-    results.push(...cachedResults, ...generatedResults);
-  } else {
-    results.push(...cachedResults);
-  }
-
-  return results;
+  const tasks = nodeIds.map((nodeId) => () => ensureThumbnail(nodeId));
+  const urls = await limitConcurrency(tasks, CONCURRENCY_LIMIT);
+  return nodeIds.map((nodeId, index) => ({ nodeId, thumbnailUrl: urls[index] }));
 }
 
 module.exports = {
@@ -246,6 +201,8 @@ module.exports = {
   getThumbnail,
   getThumbnailUrl,
   getThumbnailFromCache,
+  getCachedThumbnail,
+  setCachedThumbnail,
   ensureThumbnail,
   ensureThumbnailsBatch,
   getThumbnailHash,

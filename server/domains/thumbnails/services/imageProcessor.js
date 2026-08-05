@@ -1,13 +1,14 @@
 const sharp = require('sharp');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError } = require('../../../utils/errorHandler');
-const { getFileContents } = require('../../../utils/webdav');
 
 const MAX_SIZE = parseInt(process.env.MAX_THUMBNAIL_SIZE) || 300;
 
-async function generateImageThumbnail(webdavPath) {
+async function generateImageThumbnail(nodeId) {
   try {
-    const buffer = await getFileContents(webdavPath);
+    const { getComposition } = require('../../../service/composition');
+    const { blobStorageService } = getComposition();
+    const buffer = await blobStorageService.downloadBlob(nodeId);
     if (!buffer || buffer.length === 0) {
       throw createError(SERVER_ERROR_CODES.thumbnail.downloadFailed, 500);
     }

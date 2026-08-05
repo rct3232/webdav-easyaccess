@@ -36,7 +36,7 @@
 | batchCopyFiles | (copies with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-copy |
 | getBulkOperationStatus | (jobId) | Promise\<Object\> | GET /api/files/bulk-operation/:jobId |
 | cancelBulkOperation | (jobId) | Promise\<Object\> | POST /api/files/bulk-operation/:jobId/cancel |
-| requestThumbnailsBatch | (nodeIds, options?) | Promise\<{ thumbnails: [{ nodeId, thumbnailUrl }] }\> | POST /api/thumbnails/batch `{ nodeIds }` (pending implementation: current client posts `{ nodeIds }` to `/files/thumbnails/batch`) |
+| requestThumbnailsBatch | (nodeIds, options?) | Promise\<{ thumbnails: [{ nodeId, thumbnailUrl }] }\> | POST /api/thumbnails/batch `{ nodeIds }` |
 | getWebDAVInfo | () | Promise\<Object\> | GET /api/webdav/info |
 | getFolderStats | (nodeId) | Promise\<object\> | GET /api/folders/stats (params: nodeId) |
 

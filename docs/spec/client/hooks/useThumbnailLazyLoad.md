@@ -40,12 +40,11 @@
 - IntersectionObserver observes visible image/video file elements keyed by `data-file-node-id`
 - requestThumbnailsBatch(nodeIds) (debounced DEBOUNCE_MS)
 - onThumbnailsLoaded(thumbnailMap), where `thumbnailMap` is `Map(nodeId → thumbnailUrl)` keyed by `file.nodeId`
-- (pending implementation: the current source still keys by `data-file-path` and passes `Map(path → thumbnailUrl)`)
 
 ### 2.6 Error Handling
 
 - console.error on fail
-- requestedNodeIdsRef prevents re-request (pending implementation: current source uses `requestedPathsRef`)
+- requestedNodeIdsRef prevents re-request
 
 ### 2.7 Verification Scenarios
 
@@ -58,4 +57,4 @@
 
 - pendingRequestRef prevents concurrent
 - ROOT_MARGIN for preload
-- `data-file-node-id` attributes supply the nodeIds for intersection observation (pending implementation)
+- `data-file-node-id` attributes supply the nodeIds for intersection observation

@@ -13,12 +13,13 @@ jest.mock('../../services/fileService', () => ({
 import * as fileService from '../../services/fileService';
 
 const imageFile = {
+  nodeId: 101,
   path: '/photos/img.jpg',
   basename: 'img.jpg',
   type: 'file',
   mime: 'image/jpeg',
 };
-const textFile = { path: '/doc.txt', basename: 'doc.txt', type: 'file', mime: 'text/plain' };
+const textFile = { nodeId: 102, path: '/doc.txt', basename: 'doc.txt', type: 'file', mime: 'text/plain' };
 
 describe('useThumbnailLazyLoad', () => {
   let mockObserve;
@@ -61,7 +62,7 @@ describe('useThumbnailLazyLoad', () => {
 
   it('does not call requestThumbnailsBatch when no image/video files', async () => {
     const div = document.createElement('div');
-    div.setAttribute('data-file-path', '/doc.txt');
+    div.setAttribute('data-file-node-id', '102');
     document.body.appendChild(div);
 
     renderHook(() => useThumbnailLazyLoad([textFile], jest.fn()));
@@ -85,11 +86,11 @@ describe('useThumbnailLazyLoad', () => {
   it('calls requestThumbnailsBatch and onThumbnailsLoaded when image file becomes visible', async () => {
     const onThumbnailsLoaded = jest.fn();
     fileService.requestThumbnailsBatch.mockResolvedValue({
-      thumbnails: [{ path: '/photos/img.jpg', thumbnailUrl: 'http://thumb/img.jpg' }],
+      thumbnails: [{ nodeId: 101, thumbnailUrl: 'http://thumb/img.jpg' }],
     });
 
     const div = document.createElement('div');
-    div.setAttribute('data-file-path', '/photos/img.jpg');
+    div.setAttribute('data-file-node-id', '101');
     document.body.appendChild(div);
 
     renderHook(() => useThumbnailLazyLoad([imageFile], onThumbnailsLoaded));
@@ -108,7 +109,7 @@ describe('useThumbnailLazyLoad', () => {
 
     await waitFor(() => {
       expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith(
-        ['/photos/img.jpg'],
+        [101],
         expect.any(Object)
       );
     });
@@ -117,19 +118,19 @@ describe('useThumbnailLazyLoad', () => {
       expect(onThumbnailsLoaded).toHaveBeenCalled();
       const [thumbnailMap] = onThumbnailsLoaded.mock.calls[0];
       expect(thumbnailMap).toBeInstanceOf(Map);
-      expect(thumbnailMap.get('/photos/img.jpg')).toBe('http://thumb/img.jpg');
+      expect(thumbnailMap.get(101)).toBe('http://thumb/img.jpg');
     });
   });
 
   it('debounces rapid intersection: single requestThumbnailsBatch after DEBOUNCE_MS', async () => {
-    const img1 = { path: '/a/img1.jpg', basename: 'img1.jpg', type: 'file', mime: 'image/jpeg' };
-    const img2 = { path: '/a/img2.jpg', basename: 'img2.jpg', type: 'file', mime: 'image/jpeg' };
+    const img1 = { nodeId: 201, path: '/a/img1.jpg', basename: 'img1.jpg', type: 'file', mime: 'image/jpeg' };
+    const img2 = { nodeId: 202, path: '/a/img2.jpg', basename: 'img2.jpg', type: 'file', mime: 'image/jpeg' };
     fileService.requestThumbnailsBatch.mockResolvedValue({ thumbnails: [] });
 
     const div1 = document.createElement('div');
-    div1.setAttribute('data-file-path', '/a/img1.jpg');
+    div1.setAttribute('data-file-node-id', '201');
     const div2 = document.createElement('div');
-    div2.setAttribute('data-file-path', '/a/img2.jpg');
+    div2.setAttribute('data-file-node-id', '202');
     document.body.appendChild(div1);
     document.body.appendChild(div2);
 
@@ -154,17 +155,17 @@ describe('useThumbnailLazyLoad', () => {
 
     await waitFor(() => {
       expect(fileService.requestThumbnailsBatch).toHaveBeenCalledTimes(1);
-      const [paths] = fileService.requestThumbnailsBatch.mock.calls[0];
-      expect(paths).toContain('/a/img1.jpg');
-      expect(paths).toContain('/a/img2.jpg');
+      const [nodeIds] = fileService.requestThumbnailsBatch.mock.calls[0];
+      expect(nodeIds).toContain(201);
+      expect(nodeIds).toContain(202);
     });
   });
 
-  it('does not request same path twice when element intersects multiple times', async () => {
+  it('does not request same nodeId twice when element intersects multiple times', async () => {
     fileService.requestThumbnailsBatch.mockResolvedValue({ thumbnails: [] });
 
     const div = document.createElement('div');
-    div.setAttribute('data-file-path', '/photos/img.jpg');
+    div.setAttribute('data-file-node-id', '101');
     document.body.appendChild(div);
 
     renderHook(() => useThumbnailLazyLoad([imageFile], jest.fn()));
@@ -199,7 +200,7 @@ describe('useThumbnailLazyLoad', () => {
     fileService.requestThumbnailsBatch.mockResolvedValue({ thumbnails: [] });
 
     const div = document.createElement('div');
-    div.setAttribute('data-file-path', '/photos/img.jpg');
+    div.setAttribute('data-file-node-id', '101');
     document.body.appendChild(div);
 
     renderHook(() =>

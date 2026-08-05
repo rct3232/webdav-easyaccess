@@ -116,4 +116,25 @@ describe('useExplorerSession', () => {
     expect(result.current.sortMode).toBe('modified');
     expect(setSortMode).toHaveBeenLastCalledWith('modified');
   });
+
+  it('handleThumbnailsLoaded merges thumbnailUrl keyed by file.nodeId', () => {
+    const files = [
+      { nodeId: 1, path: '/docs/a.jpg', basename: 'a.jpg', type: 'file', mime: 'image/jpeg' },
+      { nodeId: 2, path: '/docs/b.jpg', basename: 'b.jpg', type: 'file', mime: 'image/jpeg' },
+    ];
+
+    const { result } = renderHook(() => useExplorerSession({
+      currentPath: '/docs',
+      files,
+      isMobile: false,
+    }));
+
+    act(() => {
+      result.current.handleThumbnailsLoaded(new Map([[1, 'http://thumb/a.jpg']]));
+    });
+
+    const updated = result.current.files;
+    expect(updated.find((f) => f.nodeId === 1).thumbnailUrl).toBe('http://thumb/a.jpg');
+    expect(updated.find((f) => f.nodeId === 2).thumbnailUrl).toBeUndefined();
+  });
 });

@@ -34,6 +34,7 @@ import {
   getBulkOperationStatus,
   cancelBulkOperation,
   checkConflicts,
+  requestThumbnailsBatch,
 } from '../fileService';
 
 describe('fileService', () => {
@@ -404,6 +405,38 @@ describe('fileService', () => {
       post.mockRejectedValueOnce(err);
 
       await expect(cancelBulkOperation('nonexistent-job')).rejects.toThrow();
+    });
+  });
+
+  describe('requestThumbnailsBatch', () => {
+    it('posts { nodeIds } to /thumbnails/batch (apiClient prefixes /api)', async () => {
+      post.mockResolvedValueOnce({
+        data: { thumbnails: [{ nodeId: 7, thumbnailUrl: 'http://thumb/a.jpg' }] },
+      });
+
+      const result = await requestThumbnailsBatch([7, 8]);
+
+      expect(post).toHaveBeenCalledWith(
+        '/thumbnails/batch',
+        { nodeIds: [7, 8] },
+        expect.any(Object)
+      );
+      expect(result).toHaveProperty('thumbnails');
+      expect(result.thumbnails[0]).toMatchObject({ nodeId: 7 });
+    });
+
+    it('passes shareToken in body and headers when provided', async () => {
+      post.mockResolvedValueOnce({ data: { thumbnails: [] } });
+
+      await requestThumbnailsBatch([7], { shareToken: 'st' });
+
+      expect(post).toHaveBeenCalledWith(
+        '/thumbnails/batch',
+        { nodeIds: [7], shareToken: 'st' },
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Share-Token': 'st' }),
+        })
+      );
     });
   });
 

@@ -59,6 +59,7 @@ const FileDetailRow = ({
     <TableRow
       key={`${file.path}-${index}`}
       data-file-path={file.path}
+      data-file-node-id={file.nodeId}
       {...dragHandlers}
       {...dropHandlers}
       {...(isLongPressEnabled ? {

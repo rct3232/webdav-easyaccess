@@ -508,7 +508,7 @@ export { listFilePermissions } from './permissionService';
 
 export const requestThumbnailsBatch = async (nodeIds, options = {}) => {
   const { shareToken } = options;
-  const response = await post(`${API_BASE}/thumbnails/batch`, {
+  const response = await post('/thumbnails/batch', {
     nodeIds,
     ...(shareToken && { shareToken }),
   }, {

@@ -51,6 +51,7 @@ const FileGridItemContainer = ({
     <Box
       key={file.path}
       data-file-path={file.path}
+      data-file-node-id={file.nodeId}
       {...dragHandlers}
       {...dropHandlers}
       {...(isLongPressEnabled ? {

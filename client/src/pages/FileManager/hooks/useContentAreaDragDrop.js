@@ -1,19 +1,21 @@
 import { useCallback } from 'react';
-import { getParentPath } from '../../../utils/pathUtils';
 
 /**
  * Centralizes content-area drag/drop: guards (mobile, selection mode, write permission),
- * same-parent skip, data-file-path skip, and delegation to file-area handlers or internal move.
+ * same-parent skip (by parentNodeId), data-file-path skip, and delegation to file-area
+ * handlers or internal move.
  *
  * @param {Object} options
  * @param {boolean} options.isMobile - When true, all handlers no-op
  * @param {boolean} options.selectionMode - When true, all handlers no-op
  * @param {boolean} options.hasWritePermission - When false, all handlers no-op
- * @param {string} options.currentPath - Current folder path (target for drops)
- * @param {string|null} options.contentAreaDraggedPath - Path of file being dragged (internal); used for same-parent skip
- * @param {Function} options.setContentAreaDraggedPath - Setter for contentAreaDraggedPath
+ * @param {boolean} options.isShareLinkMode - Reserved for overlay logic in caller; hook may not use
+ * @param {number|null} options.currentNodeId - Current folder nodeId (target for drops)
+ * @param {number|null} options.contentAreaDraggedNodeId - NodeId of file being dragged (internal); used for same-parent skip
+ * @param {number|null} options.contentAreaDraggedParentNodeId - Parent nodeId of the dragged file (same-parent skip)
+ * @param {Function} options.setContentAreaDraggedNodeId - Setter for contentAreaDraggedNodeId
  * @param {Function} options.setContentAreaDragType - Setter for overlay type: 'external' | 'internal' | null
- * @param {Function} options.handleInternalFileDrop - (draggedPath, targetFolderPath) => void for internal move
+ * @param {Function} options.handleInternalFileDrop - (draggedNodeId, targetNodeId) => void for internal move
  * @param {Function} options.handleExplorerDrop - Passed to file-area drop for external uploads
  * @param {Function} options.handleFileAreaDragEnter - From useDropToUpload
  * @param {Function} options.handleFileAreaDragOver - From useDropToUpload
@@ -27,9 +29,11 @@ export function useContentAreaDragDrop(options) {
     isMobile,
     selectionMode,
     hasWritePermission,
-    currentPath,
-    contentAreaDraggedPath,
-    setContentAreaDraggedPath,
+    isShareLinkMode,
+    currentNodeId,
+    contentAreaDraggedNodeId,
+    contentAreaDraggedParentNodeId,
+    setContentAreaDraggedNodeId,
     setContentAreaDragType,
     handleInternalFileDrop,
     handleExplorerDrop,
@@ -48,13 +52,21 @@ export function useContentAreaDragDrop(options) {
     };
   }, []);
 
+  const isSameParentSkip = useCallback(
+    (isInternalTree) =>
+      isInternalTree &&
+      contentAreaDraggedNodeId != null &&
+      contentAreaDraggedParentNodeId != null &&
+      contentAreaDraggedParentNodeId === currentNodeId,
+    [contentAreaDraggedNodeId, contentAreaDraggedParentNodeId, currentNodeId]
+  );
+
   const handleContentAreaDragEnter = useCallback(
     (e) => {
       if (isMobile || selectionMode || !hasWritePermission) return;
 
       const { isExternal, isInternalTree } = getDragTypes(e);
-      const sameParentSkip = isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath;
-      if (sameParentSkip) {
+      if (isSameParentSkip(isInternalTree)) {
         return;
       }
       if (e.target.closest('[data-file-path]')) return;
@@ -68,8 +80,7 @@ export function useContentAreaDragDrop(options) {
       selectionMode,
       hasWritePermission,
       getDragTypes,
-      contentAreaDraggedPath,
-      currentPath,
+      isSameParentSkip,
       setContentAreaDragType,
       handleFileAreaDragEnter,
     ]
@@ -80,8 +91,7 @@ export function useContentAreaDragDrop(options) {
       if (isMobile || selectionMode || !hasWritePermission) return;
 
       const { isExternal, isInternalTree } = getDragTypes(e);
-      const sameParentSkip = isInternalTree && contentAreaDraggedPath && getParentPath(contentAreaDraggedPath) === currentPath;
-      if (sameParentSkip) {
+      if (isSameParentSkip(isInternalTree)) {
         return;
       }
       if (e.target.closest('[data-file-path]')) {
@@ -97,8 +107,7 @@ export function useContentAreaDragDrop(options) {
       selectionMode,
       hasWritePermission,
       getDragTypes,
-      contentAreaDraggedPath,
-      currentPath,
+      isSameParentSkip,
       handleFileAreaDragLeave,
       handleFileAreaDragOver,
     ]
@@ -132,33 +141,38 @@ export function useContentAreaDragDrop(options) {
 
       const types = e.dataTransfer?.types || [];
       const isExternal = types.includes('Files');
-      const internalPath = types.includes('text/plain') ? e.dataTransfer?.getData?.('text/plain') : null;
+      const internalNodeIdText = types.includes('text/plain')
+        ? e.dataTransfer?.getData?.('text/plain')
+        : null;
 
-      setContentAreaDraggedPath(null);
+      setContentAreaDraggedNodeId(null);
       setContentAreaDragType(null);
 
-      if (internalPath) {
+      if (internalNodeIdText) {
         e.preventDefault();
         e.stopPropagation();
         resetFileAreaDrag?.();
-        if (getParentPath(internalPath) === currentPath) return;
-        handleInternalFileDrop(internalPath, currentPath);
+        const draggedNodeId = Number(internalNodeIdText);
+        if (!Number.isFinite(draggedNodeId)) return;
+        if (contentAreaDraggedParentNodeId === currentNodeId) return;
+        handleInternalFileDrop(draggedNodeId, currentNodeId);
         return;
       }
 
       if (isExternal) {
-        handleFileAreaDrop(e, currentPath, handleExplorerDrop);
+        handleFileAreaDrop(e, currentNodeId, handleExplorerDrop);
       }
     },
     [
       isMobile,
       selectionMode,
       hasWritePermission,
-      setContentAreaDraggedPath,
+      setContentAreaDraggedNodeId,
       setContentAreaDragType,
       resetFileAreaDrag,
       handleInternalFileDrop,
-      currentPath,
+      currentNodeId,
+      contentAreaDraggedParentNodeId,
       handleFileAreaDrop,
       handleExplorerDrop,
     ]

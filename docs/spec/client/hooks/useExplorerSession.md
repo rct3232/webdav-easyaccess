@@ -52,7 +52,7 @@ Notes:
 | loadMoreRef | ref callback/object | Infinite-scroll sentinel for the view layer. |
 | hasMore | boolean | Whether more items can be revealed by the infinite-scroll seam. |
 | handleThumbnailsLoaded | `(thumbnailMap: Map<number, string>) => void` | Merge thumbnail URLs keyed by `file.nodeId` into the session-local file list without re-owning list loading. |
-| sessionKey | string | A stable key representing the explorer session boundary for downstream resets when the current nodeId changes. The hook exposes this token; the page shell / selection seam decides how to react to it. (pending implementation: the current source derives `sessionKey` from `currentPath`.) |
+| sessionKey | string | A stable key representing the explorer session boundary for downstream resets when the current nodeId changes. The hook exposes this token; the page shell / selection seam decides how to react to it. The key is derived from `currentNodeId` (`node:<id>`, `node:root` for the root level) or `view:recent` / `view:shared` for the virtual-root views. |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 

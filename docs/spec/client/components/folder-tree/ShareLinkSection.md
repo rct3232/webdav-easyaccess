@@ -8,7 +8,7 @@
 | Used in | FolderTree (share link view) |
 | Related components | BaseFolderTreeItem, folderTreeGateway |
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.5): share-link mode is keyed by the share root **nodeId**. The root nodeId comes from `linkInfo` when present; otherwise a temporary `resolve-path` fallback resolves the share root path to a nodeId (fallback removed in Phase 5, once `GET /share-link/:token` returns a nodeId). The current source still passes `shareRootPath`; that is transitional and is replaced below.
+> **Phase 4 nodeId end-state:** share-link mode is keyed by the share root **nodeId** (`shareRootNodeId` prop). When the root nodeId is absent (linkInfo does not yet carry it), a temporary `resolve-path` fallback resolves the share root path to a nodeId; the fallback is removed in Phase 5, once `GET /share-link/:token` returns a nodeId (task C2.5).
 
 ---
 
@@ -23,11 +23,11 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| shareRootNodeId | number | Y | - | Share root node id (target contract, pending implementation) |
+| shareRootNodeId | number | Y | - | Share root node id |
 | shareRootName | string | Y | - | Display name |
 | shareToken | string | N | - | Share token |
-| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
+| currentNodeId | number | Y | - | Current folder node id |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
 | isMobile | boolean | N | false | Mobile |
 
 ### 2.3 Callback Signatures
@@ -48,7 +48,7 @@
 ### 2.6 Conditional Rendering
 
 - Expands ancestor nodes when `currentNodeId` is under the share root
-- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })` (target contract, pending implementation)
+- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })` 
 
 ### 2.7 Verification Scenarios
 

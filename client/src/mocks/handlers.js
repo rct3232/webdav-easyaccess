@@ -118,6 +118,29 @@ export const handlers = [
     return HttpResponse.json(isFolder ? folderItems : rootItems);
   }),
 
+  // --- Files: legacy-URL resolver (nodeId-first navigation bootstrap) ---
+  http.post(`${API_BASE}/files/resolve-path`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const path = body.path;
+    if (typeof path !== 'string' || path.length === 0) {
+      return errorResponse('serverErrors.files.invalidPath', 400);
+    }
+    const pathToNodeId = {
+      '/': null,
+      '/testuser': 1,
+      '/testuser/test.txt': 1,
+      '/testuser/docs': 2,
+      '/testuser/folder': 3,
+      '/testuser/folder/sub.txt': 3,
+      '/testuser/folder/nested': 5,
+    };
+    const nodeId = pathToNodeId[path];
+    if (nodeId == null) {
+      return errorResponse('serverErrors.files.notFound', 404);
+    }
+    return HttpResponse.json({ nodeId });
+  }),
+
   // --- Files: ancestor chain (breadcrumbs) — root→current, self last ---
   http.get(`${API_BASE}/files/ancestors`, ({ request }) => {
     const url = new URL(request.url);

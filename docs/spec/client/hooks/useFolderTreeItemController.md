@@ -17,7 +17,7 @@
 - **Source:** `client/src/components/folder-tree/hooks/useFolderTreeItemController.js`
 - **Test file:** `client/src/components/folder-tree/hooks/__tests__/useFolderTreeItemController.test.js`
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.3): the controller migrates to nodeId-first state — `nodeId`, `currentNodeId`, `expandedNodeIds`, `onNodeClick(nodeId)`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = `String(nodeId)` (unifying with `useDragAndDrop`). `useDropToUpload` is wired with `nodeId` so `isFolderMode` activates. The current source still uses `path`/`currentPath`/`expandedPaths`; those are transitional and are replaced below.
+> **Phase 4 nodeId end-state:** the controller uses nodeId-first state — `nodeId`, `currentNodeId`, `expandedNodeIds`, `onNodeClick(nodeId)`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = `String(nodeId)` (unifying with `useDragAndDrop`). `useDropToUpload` is wired with `nodeId` so `isFolderMode` activates.
 
 ### 2.2 Input Parameters
 
@@ -27,8 +27,8 @@
 | name | string | N | Folder display name (used when `node` is not provided) |
 | node | object | N | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }` |
 | level | number | N | Indent level (kept for API completeness; controller may not use) |
-| currentNodeId | number | Y | Current explorer node id for auto-expansion/highlighting (target contract, pending implementation) |
-| expandedNodeIds | Set | Y | Expanded node id set (target contract, pending implementation) |
+| currentNodeId | number | Y | Current explorer node id for auto-expansion/highlighting |
+| expandedNodeIds | Set | Y | Expanded node id set |
 | onToggleExpand | function | Y | Toggle expanded state for a node id: `(nodeId) => void` |
 | onNodeClick | function | Y | Folder click callback: `(nodeId) => void` (called when enabled) |
 | hasReadPermission | boolean | N | Defaults to true |
@@ -52,7 +52,7 @@
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| nodeId | number | Resolved folder node id (target contract, pending implementation) |
+| nodeId | number | Resolved folder node id |
 | name | string | Resolved folder display name |
 | isHidden | boolean | Resolved hidden flag |
 | hasReadPermission | boolean | Resolved read permission |
@@ -79,9 +79,9 @@
 ### 2.4 Dependencies
 
 - Services called:
-  - `client/src/services/folderTreeGateway.listFolderChildren` (target contract: called with `nodeId`, pending implementation)
+  - `client/src/services/folderTreeGateway.listFolderChildren` (called with `nodeId`)
 - Other hooks:
-  - `client/src/hooks/useDropToUpload` (target contract: wired with `nodeId` so `isFolderMode` activates, pending implementation)
+  - `client/src/hooks/useDropToUpload` (wired with `nodeId` so `isFolderMode` activates)
 - Ownership note:
   - Permission derivation, lazy child loading, tree-update reconciliation, and tree-item DnD wiring belong here rather than in `BaseFolderTreeItem`.
 
@@ -91,7 +91,7 @@
   - the item is expanded (`expandedNodeIds.has(nodeId)`),
   - children have not been loaded (`!hasLoaded`),
   - and no load is currently running (`!loading`).
-- Auto-expands ancestors when `currentNodeId` is under the item's node subtree (target contract, pending implementation).
+- Ancestor auto-expansion is owned by `useFolderTreeController` (its `expandedNodeIds` includes the current node's ancestor node ids from the shell-provided `ancestors`); the item expands according to `expandedNodeIds`.
 - Reconciles children when `treeUpdateTrigger` changes:
   - `created`: inserts a new child under `parentNodeId === nodeId` and expands if needed
   - `deleted`: removes a child by `nodeId`
@@ -112,8 +112,8 @@
 - [ ] `treeUpdateTrigger.type === 'deleted'` removes the matching child by `nodeId`.
 - [ ] `treeUpdateTrigger.type === 'refresh'` reloads when expanded or when `isHome` is true.
 - [ ] Node permission fields win over fallback permission derivation from `sharedFoldersMap`.
-- [ ] Drag start writes `e.dataTransfer.setData('text/plain', String(nodeId))` only when the item is enabled and not mobile; drag end notifies the host cleanup callback (target contract, pending implementation).
-- [ ] `useDropToUpload` receives `nodeId` so `isFolderMode` activates for folder-tree drops (target contract, pending implementation).
+- [ ] Drag start writes `e.dataTransfer.setData('text/plain', String(nodeId))` only when the item is enabled and not mobile; drag end notifies the host cleanup callback.
+- [ ] `useDropToUpload` receives `nodeId` so `isFolderMode` activates for folder-tree drops.
 
 ### 2.8 Edge Cases
 

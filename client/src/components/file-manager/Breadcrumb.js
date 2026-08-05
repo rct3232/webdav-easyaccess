@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Chip, IconButton } from '@mui/material';
 import {
@@ -9,178 +9,85 @@ import {
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
-import { getUserPermissions } from '../../services/permissionService';
 import { normalizePath } from '../../utils/pathUtils';
-import { filterOutUserOwnFolders } from '../../utils/userUtils';
 
 /**
- * Path breadcrumb navigation component
- * Displays current path as clickable chips for easy navigation
- * When shareRootPath is set, uses share mode: root = share folder, segments = path within share
+ * NodeId breadcrumb: renders the current folder's ancestor chain
+ * (ancestors: [{ nodeId, name }] from the GET /files/list ancestors response) as chips.
+ * Share mode keeps its path-segment behavior (C2.5 migrates share mode separately).
  */
-const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFolderTreeOpen, shareRootPath, shareRootName, showFolderTreeToggle }) => {
+const Breadcrumb = ({
+  ancestors = [],
+  onNodeClick,
+  user,
+  onToggleFolderTree,
+  isFolderTreeOpen,
+  shareRootPath,
+  shareRootName,
+  showFolderTreeToggle,
+  currentPath = '',
+}) => {
   const { t } = useTranslation();
   const scrollContainerRef = useRef(null);
-  const [sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
 
-  // 공유된 폴더 권한 정보 로드 (로그인한 사용자만; 공유 링크 뷰에서는 user 없음 → 호출 안 함)
-  useEffect(() => {
-    if (!user?.id || user?.is_admin || !currentPath || currentPath === '/') {
-      const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-      if (currentPath.startsWith(homePath)) {
-        setSharedPermissionNodeIds(new Set());
-        return;
-      }
-    }
-    const loadSharedFolders = async () => {
-      try {
-        const data = await getUserPermissions(user.id);
-        const sharedFolders = filterOutUserOwnFolders(data || [], user);
+  const isShareMode = Boolean(shareRootPath);
+  const isRecentView = !isShareMode && currentPath === '/__recent__';
+  const isSharedView = !isShareMode && currentPath === '/__shared__';
 
-        const permissionNodeIds = new Set();
-        sharedFolders.forEach(perm => {
-          if (perm.nodeId != null) {
-            permissionNodeIds.add(perm.nodeId);
-          }
-        });
-
-        setSharedPermissionNodeIds(permissionNodeIds);
-      } catch (error) {
-        console.error('Failed to load shared folders:', error);
-        setSharedPermissionNodeIds(new Set());
-      }
-    };
-
-    loadSharedFolders();
-  }, [user, currentPath]);
-
-  // Parse path segments - FileTree처럼 표시 (유저 폴더 제외, 공유 폴더는 직접 권한이 있는 경로만)
-  const getPathSegments = () => {
-    // Share link mode: path from shareRootPath
-    if (shareRootPath) {
-      const normRoot = normalizePath(shareRootPath);
-      const normCurrent = normalizePath(currentPath);
-      if (normCurrent === normRoot || !normCurrent.startsWith(normRoot)) {
-        return [];
-      }
-      const suffix = normCurrent.slice(normRoot.endsWith('/') ? normRoot.length : normRoot.length + 1);
-      if (!suffix) return [];
-      const parts = suffix.split('/').filter(Boolean);
-      const segments = [];
-      let builtPath = normRoot.endsWith('/') ? normRoot.slice(0, -1) : normRoot;
-      parts.forEach((part) => {
-        builtPath = builtPath === '/' ? `/${part}` : `${builtPath}/${part}`;
-        segments.push({ name: part, path: builtPath });
-      });
-      return segments;
-    }
-
-    if (currentPath === '/__shared__' || currentPath === '/__recent__') {
+  // Share mode: keep the existing path-segment rendering (do not regress; C2.5).
+  const shareSegments = (() => {
+    if (!isShareMode) return [];
+    const normRoot = normalizePath(shareRootPath);
+    const normCurrent = normalizePath(currentPath);
+    if (normCurrent === normRoot || !normCurrent.startsWith(normRoot)) {
       return [];
     }
-
-    if (!currentPath || currentPath === '/') {
-      return [];
-    }
-
-    // 공유됨 뷰인지 확인
-    if (currentPath.startsWith('/__shared__')) {
-      // 공유됨 이후의 경로만 추출
-      const sharedPath = currentPath.replace('/__shared__', '');
-      if (!sharedPath || sharedPath === '/') {
-        return [];
-      }
-      const parts = sharedPath.split('/').filter(Boolean);
-      const segments = [];
-      let builtPath = '/__shared__';
-
-      parts.forEach((part) => {
-        builtPath += `/${part}`;
-        segments.push({
-          name: part,
-          path: builtPath,
-        });
-      });
-
-      return segments;
-    }
-
-    // 일반 경로 처리 - 유저 홈 폴더 제외
-    const homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
-    if (currentPath === homePath) {
-      return [];
-    }
-
-    // 공유된 폴더인지 확인 (유저 홈 폴더로 시작하지 않는 경로)
-    if (!user?.is_admin && !currentPath.startsWith(homePath)) {
-      // FolderPickerDialog의 breadcrumb 로직과 동일하게 처리
-      // 권한이 없는 부모 경로만 제외하고, 권한이 있는 경로는 계층 구조 유지
-      const normalizedCurrentPath = normalizePath(currentPath);
-      const pathParts = normalizedCurrentPath.split('/').filter(Boolean);
-      
-      // nodeId-based permissions don't provide a direct path mapping,
-      // so show all segments for shared folders (fallback behavior)
-      return pathParts.map((part, index) => ({
-        name: part,
-        path: '/' + pathParts.slice(0, index + 1).join('/'),
-      }));
-    }
-
-    // 유저 홈 폴더 하위 경로 처리
-    if (!currentPath.startsWith(homePath)) {
-      return [];
-    }
-
-    // 홈 경로 이후의 부분만 추출
-    const relativePath = currentPath.substring(homePath.length);
-    if (!relativePath || relativePath === '/') {
-      return [];
-    }
-
-    const parts = relativePath.split('/').filter(Boolean);
+    const suffix = normCurrent.slice(normRoot.endsWith('/') ? normRoot.length : normRoot.length + 1);
+    if (!suffix) return [];
+    const parts = suffix.split('/').filter(Boolean);
     const segments = [];
-    let builtPath = homePath;
-
+    let builtPath = normRoot.endsWith('/') ? normRoot.slice(0, -1) : normRoot;
     parts.forEach((part) => {
-      builtPath += `/${part}`;
-      segments.push({
-        name: part,
-        path: builtPath,
-      });
+      builtPath = builtPath === '/' ? `/${part}` : `${builtPath}/${part}`;
+      segments.push({ name: part, path: builtPath });
     });
-
     return segments;
-  };
+  })();
 
-  const segments = getPathSegments();
-  const isRecentView = !shareRootPath && currentPath === '/__recent__';
-  const isSharedView = !shareRootPath && (currentPath === '/__shared__' || currentPath.startsWith('/__shared__') || (!user?.is_admin && currentPath && currentPath !== '/' && !currentPath.startsWith(`/${user?.username || ''}`) && !isRecentView));
-  
-  let homeIcon, homeLabel, homePath;
+  // Non-share: ancestor chain from the server-provided ancestors response (self last).
+  const chainSegments = isShareMode
+    ? []
+    : (ancestors || []).map((a) => ({ nodeId: a.nodeId, name: a.name }));
+
+  const segments = isShareMode ? shareSegments : chainSegments;
+
+  let homeIcon;
+  let homeLabel;
+  let homeClickTarget;
   if (isRecentView) {
     homeIcon = <AccessTimeIcon />;
     homeLabel = t('nav.recentShort');
-    homePath = '/__recent__';
-  } else if (shareRootPath) {
+    homeClickTarget = '/__recent__';
+  } else if (isShareMode) {
     homeIcon = <ShareIcon />;
     homeLabel = shareRootName || normalizePath(shareRootPath).split('/').filter(Boolean).pop() || t('nav.sharedFolder');
-    homePath = normalizePath(shareRootPath);
+    homeClickTarget = normalizePath(shareRootPath);
   } else if (isSharedView) {
     homeIcon = <ShareIcon />;
     homeLabel = t('nav.shared');
-    homePath = '/__shared__';
+    homeClickTarget = '/__shared__';
   } else {
     homeIcon = <HomeIcon />;
     homeLabel = user?.is_admin ? t('nav.all') : t('nav.home');
-    homePath = user?.is_admin ? '/' : `/${user?.username || ''}`;
+    homeClickTarget = user?.rootNodeId ?? null;
   }
 
-  // Auto-scroll to the right when currentPath changes
+  // Auto-scroll to the right when the location changes
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
     }
-  }, [currentPath]);
+  }, [currentPath, ancestors]);
 
   return (
     <Box
@@ -211,7 +118,7 @@ const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFold
         <Chip
           icon={homeIcon}
           label={homeLabel}
-          onClick={() => onPathClick(homePath)}
+          onClick={() => onNodeClick(homeClickTarget)}
           clickable
           color={segments.length === 0 ? 'primary' : 'default'}
           sx={{
@@ -221,13 +128,13 @@ const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFold
             flexShrink: 0,
           }}
         />
-        
+
         {segments.map((segment, index) => (
-          <React.Fragment key={segment.path}>
+          <React.Fragment key={segment.nodeId != null ? segment.nodeId : segment.path}>
             <ChevronRightIcon sx={{ mx: 0.5, color: 'text.secondary', flexShrink: 0 }} />
             <Chip
               label={segment.name}
-              onClick={() => onPathClick(segment.path)}
+              onClick={() => onNodeClick(segment.nodeId != null ? segment.nodeId : segment.path)}
               clickable
               color={index === segments.length - 1 ? 'primary' : 'default'}
               sx={{
@@ -240,7 +147,7 @@ const Breadcrumb = ({ currentPath, onPathClick, user, onToggleFolderTree, isFold
           </React.Fragment>
         ))}
       </Box>
-      
+
       {(!shareRootPath || showFolderTreeToggle) && onToggleFolderTree && (
       <IconButton
         data-testid="breadcrumb-folder-tree-toggle"

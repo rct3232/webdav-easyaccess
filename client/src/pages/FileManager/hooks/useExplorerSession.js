@@ -10,12 +10,17 @@ import {
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
 export const useExplorerSession = ({
-  currentPath,
+  currentNodeId,
+  view = 'folder',
   files: filesFromListing,
   initialSearchQuery = '',
   isMobile = false,
 } = {}) => {
-  const sessionKey = useMemo(() => currentPath || '/', [currentPath]);
+  const sessionKey = useMemo(() => {
+    if (view === 'recent') return 'view:recent';
+    if (view === 'shared') return 'view:shared';
+    return currentNodeId == null ? 'node:root' : `node:${currentNodeId}`;
+  }, [view, currentNodeId]);
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);

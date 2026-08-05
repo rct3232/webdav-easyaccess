@@ -96,6 +96,9 @@ function setupMocks({ loading = false, files = [] } = {}) {
   useFileManager.mockReturnValue({
     currentPath: '/',
     setCurrentPath: jest.fn(),
+    currentNodeId: null,
+    setCurrentNodeId: jest.fn(),
+    ancestors: [],
     files,
     loading,
     loadFiles: jest.fn(),

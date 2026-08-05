@@ -1,5 +1,5 @@
 /**
- * useFileManager tests.
+ * useFileManager tests (nodeId end-state).
  * @see docs/spec/client/hooks/useFileManager.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -24,10 +24,16 @@ jest.mock('../../../../services/explorerGateway', () => {
 });
 import explorerGateway from '../../../../services/explorerGateway';
 
-const mockUser = { id: '1', username: 'testuser', is_admin: false };
+jest.mock('../../../../services/fileService', () => ({
+  resolvePath: jest.fn(),
+  getAncestors: jest.fn(),
+}));
+import { resolvePath, getAncestors } from '../../../../services/fileService';
+
+const mockUser = { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 };
 const defaultListedFiles = [
-  { path: '/a.txt', basename: 'a.txt', type: 'file', hasReadPermission: true, hasWritePermission: true },
-  { path: '/folder', basename: 'folder', type: 'directory', hasReadPermission: true, hasWritePermission: true },
+  { nodeId: 10, path: '/testuser/a.txt', basename: 'a.txt', type: 'file', hasReadPermission: true, hasWritePermission: true },
+  { nodeId: 11, path: '/testuser/folder', basename: 'folder', type: 'directory', hasReadPermission: true, hasWritePermission: true },
 ];
 const defaultPathAccess = { canRead: true, canWrite: true, raw: {} };
 
@@ -140,40 +146,91 @@ describe('useFileManager', () => {
     explorerGateway.getEntriesMetadata.mockResolvedValue([]);
     explorerGateway.loadSharedEntries.mockResolvedValue([]);
     explorerGateway.subscribeToRecentFiles.mockReturnValue(jest.fn());
+    resolvePath.mockResolvedValue({ nodeId: 3 });
+    getAncestors.mockResolvedValue({ ancestors: [] });
   });
 
-  it('returns currentPath, files, loading, and other state', async () => {
+  it('parses /files as home and lists the user root nodeId', async () => {
     const { result } = await renderAndResolveNormalLoad();
 
+    expect(result.current.currentNodeId).toBe(1);
     expect(result.current.currentPath).toBe('/');
     expect(result.current.loading).toBe(false);
-    expect(typeof result.current.setCurrentPath).toBe('function');
-    expect(typeof result.current.loadFiles).toBe('function');
-
     expect(result.current.files).toHaveLength(2);
-    expect(result.current.files[0]).toMatchObject({ path: '/a.txt', basename: 'a.txt', type: 'file' });
+    expect(result.current.files[0]).toMatchObject({ path: '/testuser/a.txt', basename: 'a.txt', type: 'file' });
     expect(result.current.hasWritePermission).toBe(true);
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      nodeId: 1,
+      options: expect.objectContaining({ user: mockUser }),
+    });
+    expect(getAncestors).not.toHaveBeenCalled();
   });
 
-  it('loads files via explorerGateway for normal path', async () => {
-    await renderAndResolveNormalLoad();
+  it('parses /files/node/<id> as a real folder and fetches ancestors for the breadcrumb', async () => {
+    getAncestors.mockResolvedValue({
+      ancestors: [
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 2, name: 'docs' },
+      ],
+    });
 
+    const { result } = await renderAndResolveNormalLoad('node/2');
+
+    expect(result.current.currentNodeId).toBe(2);
     expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
-      nodeId: null,
-      options: expect.objectContaining({
-        user: mockUser,
-      }),
+      nodeId: 2,
+      options: expect.objectContaining({ user: mockUser }),
+    });
+    await waitFor(() => {
+      expect(getAncestors).toHaveBeenCalledWith(2);
+      expect(result.current.ancestors).toEqual([
+        { nodeId: 1, name: 'testuser' },
+        { nodeId: 2, name: 'docs' },
+      ]);
+    });
+    expect(result.current.currentPath).toBe('/testuser/docs');
+  });
+
+  it('redirects legacy path URLs through resolve-path', async () => {
+    resolvePath.mockResolvedValue({ nodeId: 3 });
+
+    renderWithPath('testuser/folder');
+
+    await waitFor(() => {
+      expect(resolvePath).toHaveBeenCalledWith('/testuser/folder');
+      expect(mockNavigate).toHaveBeenCalledWith('/files/node/3', { replace: true });
     });
   });
 
-  it('setCurrentPath navigates when not in share mode', async () => {
+  it('falls back to the root listing when a legacy path URL fails to resolve (404)', async () => {
+    const notFound = new Error('not found');
+    notFound.response = { status: 404 };
+    resolvePath.mockRejectedValue(notFound);
+
+    renderWithPath('unknown/path');
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/files', { replace: true });
+    });
+  });
+
+  it('setCurrentNodeId navigates by nodeId (home -> /files, folder -> node URL)', async () => {
     const { result } = await renderAndResolveNormalLoad();
 
     act(() => {
-      result.current.setCurrentPath('/subfolder');
+      result.current.setCurrentNodeId(null);
     });
+    expect(mockNavigate).toHaveBeenCalledWith('/files');
 
-    expect(mockNavigate).toHaveBeenCalledWith('/files/subfolder');
+    act(() => {
+      result.current.setCurrentNodeId(1);
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/files');
+
+    act(() => {
+      result.current.setCurrentNodeId(5);
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/files/node/5');
   });
 
   it('share mode uses shareCurrentPath from linkInfo', () => {
@@ -187,6 +244,7 @@ describe('useFileManager', () => {
     );
 
     expect(result.current.currentPath).toBe('/shared/root');
+    expect(result.current.currentNodeId).toBe(null);
   });
 
   it('__recent__ path loads recent files', async () => {
@@ -202,7 +260,7 @@ describe('useFileManager', () => {
 
   it('__shared__ path loads shared folders through explorerGateway', async () => {
     const sharedEntries = [
-      { path: '/other/dir', basename: 'dir', type: 'directory', hasReadPermission: true },
+      { nodeId: 21, path: '/other/dir', basename: 'dir', type: 'directory', hasReadPermission: true },
     ];
 
     const { result } = await renderAndResolveSharedLoad(sharedEntries);

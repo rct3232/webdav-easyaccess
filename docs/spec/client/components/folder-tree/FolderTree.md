@@ -18,20 +18,18 @@
 - **Source:** `client/src/components/folder-tree/FolderTree.js`
 - **Test file:** `client/src/components/folder-tree/__tests__/FolderTree.test.js`
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.3): the tree migrates to nodeId-first props — `currentNodeId`, `onNodeClick(nodeId)`, `expandedNodeIds`. The current source still passes `currentPath`/`onPathClick`; those are transitional and are replaced below.
-
 ### 2.2 Props
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
+| currentNodeId | number | Y | - | Current folder node id |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
 | onFileClick | function | N | - | File click (recent). Recent entries remain path-based until Phase 5 |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
 | hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
-| onInternalFileDrop | function | N | - | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager (target contract, pending implementation) |
+| onInternalFileDrop | function | N | - | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager |
 | isMobile | boolean | N | false | Mobile |
 | shareLinkSection | ReactNode | N | - | Share link section |
 
@@ -59,14 +57,14 @@
 
 ### 2.6 Conditional Rendering
 
-- Admin: home root node (target contract, pending implementation)
-- Non-admin: user home node (target contract, pending implementation)
+- Admin: home root node 
+- Non-admin: user home node 
 - Shared/recent sections expandable
 - shareLinkSection when provided
 
 ### 2.7 Verification Scenarios
 
-- [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id (target contract, pending implementation).
+- [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.
 - [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent clicks stay path-based until Phase 5.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).

@@ -37,7 +37,7 @@ export const useFileViewCommon = ({
   onDropPermissionDenied,
   onDragStart,
   onDragEnd,
-  internalDraggedPath,
+  internalDraggedNodeId,
   selectionMode,
   selectedFiles,
   onFileCheck,
@@ -64,7 +64,7 @@ export const useFileViewCommon = ({
     onDropPermissionDenied,
     onDragStart,
     onDragEnd,
-    internalDraggedPath
+    internalDraggedNodeId
   );
   
   /**

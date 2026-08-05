@@ -40,8 +40,6 @@
 | selectRange | function | Select range from anchor to given index: (fromIndex, toIndex) |
 | enterSelectionMode | function | Enter selection mode (e.g. on mobile long-press) |
 
-> **Note (pending implementation):** Selection is keyed by `file.nodeId`; the current source still keys by `file.path` and will be migrated together with its consumers.
-
 ### 2.4 handleFileClickSelection Semantics
 
 - **Single click:** Enter selection mode, select only this file (clear others). Store as `lastSelectedIndex`.

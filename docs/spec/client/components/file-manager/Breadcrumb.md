@@ -37,8 +37,6 @@
 | onNodeClick | Ancestor chip click | (nodeId) |
 | onToggleFolderTree | Toggle click | - |
 
-> **Note (pending implementation):** The current source still derives segments from `currentPath` and loads shared-permission paths via `getUserPermissions`; the ancestor-chain render with nodeId clicks is the end-state.
-
 ### 2.4 Dependencies
 
 - **imports:** the `ancestors` chain provided in the `GET /files/list` response (server builds it via the ancestor-chain helper)

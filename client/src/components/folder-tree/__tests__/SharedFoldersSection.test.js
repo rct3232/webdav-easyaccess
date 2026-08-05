@@ -1,6 +1,6 @@
 /**
  * SharedFoldersSection tests.
- * Verifies observable outcomes per spec: non-admin with shared folders renders; admin/empty returns null; expand, path click.
+ * Verifies observable outcomes per spec: non-admin with shared folders renders; admin/empty returns null; expand, node click.
  * @see docs/spec/client/components/folder-tree/SharedFoldersSection.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -9,10 +9,10 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import SharedFoldersSection from '../SharedFoldersSection';
 
-jest.mock('../BaseFolderTreeItem', () => ({ node, onPathClick, onToggleExpand }) => (
+jest.mock('../BaseFolderTreeItem', () => ({ node, onNodeClick, onToggleExpand }) => (
   <div data-testid="base-folder-tree-item">
-    <button onClick={() => onPathClick(node.path)}>{node.name}</button>
-    <button onClick={() => onToggleExpand(node.path)}>Expand</button>
+    <button onClick={() => onNodeClick(node.nodeId)}>{node.name}</button>
+    <button onClick={() => onToggleExpand(node.nodeId)}>Expand</button>
   </div>
 ));
 
@@ -26,15 +26,15 @@ const defaultProps = {
   sharedExpanded: false,
   handleSharedToggle: jest.fn(),
   handleSharedClick: jest.fn(),
-  currentPath: '/',
+  currentNodeId: null,
   buildSharedFolderTree: () => [
-    { path: '/__shared__/docs', name: 'docs' },
-    { path: '/__shared__/project', name: 'project' },
+    { nodeId: 10, name: 'docs' },
+    { nodeId: 20, name: 'project' },
   ],
-  handleSharedFolderClick: jest.fn(),
-  expandedPaths: new Set(),
-  handleToggleExpand: jest.fn(),
-  user: { id: '1', username: 'user', is_admin: false },
+  onNodeClick: jest.fn(),
+  expandedNodeIds: new Set(),
+  onToggleExpand: jest.fn(),
+  user: { id: '1', username: 'user', is_admin: false, rootNodeId: 1 },
 };
 
 describe('SharedFoldersSection', () => {
@@ -85,11 +85,11 @@ describe('SharedFoldersSection', () => {
     expect(screen.getByRole('button', { name: 'project' })).toBeInTheDocument();
   });
 
-  it('calls handleSharedFolderClick when folder clicked', () => {
+  it('calls onNodeClick with the shared folder nodeId when clicked', () => {
     renderWithProviders(
       <SharedFoldersSection {...defaultProps} sharedExpanded={true} />
     );
     fireEvent.click(screen.getByRole('button', { name: 'docs' }));
-    expect(defaultProps.handleSharedFolderClick).toHaveBeenCalledWith('/__shared__/docs');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(10);
   });
 });

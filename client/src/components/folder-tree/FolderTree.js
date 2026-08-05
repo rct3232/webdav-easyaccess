@@ -8,9 +8,12 @@ import RecentFilesSection from './RecentFilesSection';
 import ShareLinkSection from './ShareLinkSection';
 import useFolderTreeController from './hooks/useFolderTreeController';
 
+const EMPTY_ANCESTORS = [];
+
 const FolderTree = ({
-  currentPath,
-  onPathClick,
+  currentNodeId,
+  currentPath = '',
+  onNodeClick,
   onFileClick,
   user,
   treeUpdateTrigger,
@@ -19,14 +22,15 @@ const FolderTree = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
-  internalDraggedPath,
+  internalDraggedNodeId,
   isMobile = false,
   shareLinkSection,
+  ancestors = EMPTY_ANCESTORS,
 }) => {
   const { t } = useTranslation();
   const {
-    homePath,
-    expandedPaths,
+    homeNodeId,
+    expandedNodeIds,
     onToggleExpand,
     sharedFolders,
     sharedExpanded,
@@ -38,7 +42,7 @@ const FolderTree = ({
     handleRecentToggle,
     handleRecentClick,
     recentFilesList,
-  } = useFolderTreeController({ currentPath, user, onPathClick });
+  } = useFolderTreeController({ currentNodeId, currentPath, user, onNodeClick, ancestors });
 
   return (
     <Box
@@ -55,23 +59,25 @@ const FolderTree = ({
         <List dense sx={{ py: 1 }}>
           {shareLinkSection && (
             <ShareLinkSection
+              shareRootNodeId={shareLinkSection.shareRootNodeId}
               shareRootPath={shareLinkSection.shareRootPath}
               shareRootName={shareLinkSection.shareRootName}
               shareToken={shareLinkSection.shareToken}
-              currentPath={currentPath}
-              onShareLinkPathClick={shareLinkSection.onShareLinkPathClick}
+              currentNodeId={currentNodeId}
+              onNodeClick={onNodeClick}
               isMobile={isMobile}
             />
           )}
           {(!shareLinkSection || user) && (
             <>
               <BaseFolderTreeItem
-                path={homePath}
+                node={{ nodeId: homeNodeId, name: user?.is_admin ? t('nav.home') : user?.username || t('nav.home') }}
+                path={undefined}
                 name={user?.is_admin ? t('nav.home') : user?.username || t('nav.home')}
                 level={0}
-                currentPath={currentPath}
-                onPathClick={onPathClick}
-                expandedPaths={expandedPaths}
+                currentNodeId={currentNodeId}
+                onNodeClick={onNodeClick}
+                expandedNodeIds={expandedNodeIds}
                 onToggleExpand={onToggleExpand}
                 user={user}
                 isHome={true}
@@ -81,7 +87,7 @@ const FolderTree = ({
                 onInternalFileDrop={onInternalFileDrop}
                 onInternalDragStart={onInternalDragStart}
                 onInternalDragEnd={onInternalDragEnd}
-                internalDraggedPath={internalDraggedPath}
+                internalDraggedNodeId={internalDraggedNodeId}
                 isMobile={isMobile}
                 icon={<HomeIcon fontSize="small" />}
               />
@@ -91,18 +97,18 @@ const FolderTree = ({
                 sharedExpanded={sharedExpanded}
                 handleSharedToggle={handleSharedToggle}
                 handleSharedClick={handleSharedClick}
-                currentPath={currentPath}
+                currentNodeId={currentNodeId}
                 buildSharedFolderTree={buildSharedFolderTree}
-                handleSharedFolderClick={handleSharedFolderClick}
-                expandedPaths={expandedPaths}
-                handleToggleExpand={onToggleExpand}
+                onNodeClick={handleSharedFolderClick}
+                expandedNodeIds={expandedNodeIds}
+                onToggleExpand={onToggleExpand}
                 user={user}
                 treeUpdateTrigger={treeUpdateTrigger}
                 onExplorerDrop={onExplorerDrop}
                 onInternalFileDrop={onInternalFileDrop}
                 onInternalDragStart={onInternalDragStart}
                 onInternalDragEnd={onInternalDragEnd}
-                internalDraggedPath={internalDraggedPath}
+                internalDraggedNodeId={internalDraggedNodeId}
                 isMobile={isMobile}
               />
 
@@ -112,7 +118,7 @@ const FolderTree = ({
                 handleRecentClick={handleRecentClick}
                 currentPath={currentPath}
                 recentFilesList={recentFilesList}
-                onPathClick={onPathClick}
+                onNodeClick={onNodeClick}
                 onFileClick={onFileClick}
               />
             </>

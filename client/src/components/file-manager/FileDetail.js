@@ -23,7 +23,7 @@ import { FileDetailSkeleton } from './FileSkeletons';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import FileDetailRow from './FileDetailRow';
 
-const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
@@ -61,7 +61,7 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
     onDropPermissionDenied,
     onDragStart,
     onDragEnd,
-    internalDraggedPath,
+    internalDraggedNodeId,
     selectionMode,
     selectedFiles,
     onFileCheck,

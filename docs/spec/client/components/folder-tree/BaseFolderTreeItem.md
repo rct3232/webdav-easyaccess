@@ -20,17 +20,15 @@
 
 ### 2.2 Props
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.3): the item navigates and expands by nodeId — `currentNodeId`, `onNodeClick(nodeId)`, `expandedNodeIds`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = nodeId. The current source still uses `path`/`currentPath`/`expandedPaths`; those are transitional and are replaced below.
-
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | path | string | N* | - | Path fallback (* or node; transitional — superseded by `node.nodeId`) |
 | name | string | N* | - | Name (* or node) |
 | node | object | N* | - | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }` (* or path/name) |
 | level | number | N | 0 | Indent level |
-| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
-| expandedNodeIds | Set | Y | - | Expanded node id set (target contract, pending implementation) |
+| currentNodeId | number | Y | - | Current folder node id |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
+| expandedNodeIds | Set | Y | - | Expanded node id set |
 | onToggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` |
 | hasReadPermission | boolean | N | true | Read permission |
 | hasWritePermission | boolean | N | true | Write permission |
@@ -77,7 +75,7 @@
 - Recursive children when expanded
 - Permission from node or sharedFoldersMap
 - Loading: FileTreeSkeleton
-- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and the controller-provided `onDragStart` sets `e.dataTransfer.setData('text/plain', String(nodeId))` (and optionally a custom type) so the file manager can accept drops from the tree (target contract, pending implementation).
+- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and the controller-provided `onDragStart` sets `e.dataTransfer.setData('text/plain', String(nodeId))` (and optionally a custom type) so the file manager can accept drops from the tree.
 
 ### 2.7 Verification Scenarios
 

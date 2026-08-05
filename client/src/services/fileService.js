@@ -33,6 +33,28 @@ export const listFiles = async (nodeId, options = {}) => {
 };
 
 /**
+ * Resolve a legacy path string to a nodeId (nodeId-first navigation bootstrap).
+ * @param {string} path - Absolute path (e.g. "/testuser/docs")
+ * @returns {Promise<{ nodeId: number }>}
+ */
+export const resolvePath = async (path) => {
+  const response = await post(`${API_BASE}/resolve-path`, { path });
+  return response.data;
+};
+
+/**
+ * Fetch the ancestor chain (root → current, self last) for a nodeId.
+ * @param {number} nodeId - Folder nodeId
+ * @returns {Promise<{ ancestors: Array<{ nodeId: number, name: string }> }>}
+ */
+export const getAncestors = async (nodeId) => {
+  const response = await get(`${API_BASE}/ancestors`, {
+    params: { nodeId },
+  });
+  return response.data;
+};
+
+/**
  * Fetch metadata (size, lastmod, mime) for nodeIds. Returns [] for empty input.
  * @param {number[]} nodeIds - nodeId array
  * @returns {Promise<Array<{ nodeId: number, size: number, lastmod: string|null, mime: string|null }>>}

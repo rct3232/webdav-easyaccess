@@ -42,12 +42,12 @@ describe('useExplorerSession', () => {
 
   it('filters files by case-insensitive name matching', () => {
     const files = [
-      { path: '/docs/Report.txt', basename: 'Report.txt' },
-      { path: '/docs/photo.jpg', basename: 'photo.jpg' },
+      { nodeId: 5, path: '/docs/Report.txt', basename: 'Report.txt' },
+      { nodeId: 6, path: '/docs/photo.jpg', basename: 'photo.jpg' },
     ];
 
     const { result } = renderHook(() => useExplorerSession({
-      currentPath: '/docs',
+      currentNodeId: 5,
       files,
       isMobile: false,
     }));
@@ -57,30 +57,51 @@ describe('useExplorerSession', () => {
     });
 
     expect(result.current.displayedFiles).toEqual([
-      { path: '/docs/Report.txt', basename: 'Report.txt' },
+      { nodeId: 5, path: '/docs/Report.txt', basename: 'Report.txt' },
     ]);
   });
 
-  it('changes sessionKey when currentPath changes so the shell can reset selection', () => {
+  it('changes sessionKey when currentNodeId changes so the shell can reset selection', () => {
     const { result, rerender } = renderHook(
-      ({ currentPath }) => useExplorerSession({
-        currentPath,
+      ({ currentNodeId }) => useExplorerSession({
+        currentNodeId,
         files: EMPTY_FILES,
         isMobile: false,
       }),
-      { initialProps: { currentPath: '/docs' } }
+      { initialProps: { currentNodeId: 5 } }
     );
 
-    expect(result.current.sessionKey).toBe('/docs');
+    expect(result.current.sessionKey).toBe('node:5');
 
-    rerender({ currentPath: '/images' });
+    rerender({ currentNodeId: 6 });
 
-    expect(result.current.sessionKey).toBe('/images');
+    expect(result.current.sessionKey).toBe('node:6');
+  });
+
+  it('derives distinct session keys for the virtual-root views', () => {
+    const { result: recentResult, rerender: rerenderRecent } = renderHook(
+      ({ view }) => useExplorerSession({ currentNodeId: null, view, files: EMPTY_FILES }),
+      { initialProps: { view: 'recent' } }
+    );
+    expect(recentResult.current.sessionKey).toBe('view:recent');
+
+    rerenderRecent({ view: 'shared' });
+    expect(recentResult.current.sessionKey).toBe('view:shared');
+  });
+
+  it('uses node:root as the session key for root-level listings', () => {
+    const { result } = renderHook(() => useExplorerSession({
+      currentNodeId: null,
+      files: EMPTY_FILES,
+      isMobile: false,
+    }));
+
+    expect(result.current.sessionKey).toBe('node:root');
   });
 
   it('forces detail mode back to list on mobile to preserve current UX', () => {
     const { result } = renderHook(() => useExplorerSession({
-      currentPath: '/docs',
+      currentNodeId: 5,
       files: EMPTY_FILES,
       isMobile: true,
     }));
@@ -90,7 +111,7 @@ describe('useExplorerSession', () => {
 
   it('persists current view and sort mode through the existing localStorage policy', () => {
     renderHook(() => useExplorerSession({
-      currentPath: '/docs',
+      currentNodeId: 5,
       files: EMPTY_FILES,
       isMobile: false,
     }));
@@ -102,7 +123,7 @@ describe('useExplorerSession', () => {
 
   it('owns sort mode internally without external injection', () => {
     const { result } = renderHook(() => useExplorerSession({
-      currentPath: '/docs',
+      currentNodeId: 5,
       files: EMPTY_FILES,
       isMobile: false,
     }));
@@ -124,7 +145,7 @@ describe('useExplorerSession', () => {
     ];
 
     const { result } = renderHook(() => useExplorerSession({
-      currentPath: '/docs',
+      currentNodeId: 5,
       files,
       isMobile: false,
     }));

@@ -11,7 +11,7 @@ import { FileListSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
 import FileItem from './FileItem';
 
-const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const theme = useTheme();
@@ -29,7 +29,7 @@ const FileList = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     onDropPermissionDenied,
     onDragStart,
     onDragEnd,
-    internalDraggedPath,
+    internalDraggedNodeId,
     selectionMode,
     selectedFiles,
     onFileCheck,

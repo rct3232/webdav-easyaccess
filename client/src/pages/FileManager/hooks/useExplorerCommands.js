@@ -56,7 +56,7 @@ export function useExplorerCommands({
 
   const handleOperationComplete = useCallback((info = {}) => {
     const payload = typeof info === 'string'
-      ? { opType: 'delete', deletedFolderPath: info }
+      ? { opType: 'delete' }
       : (info || {});
 
     const opType = payload.opType || payload.type || 'refresh';
@@ -66,14 +66,14 @@ export function useExplorerCommands({
       ? getCurrentNodeIdNow()
       : currentNodeIdRef?.current;
 
-    const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
-      ? payload.deletedFolderPaths
-      : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
+    const deletedNodeIds = Array.isArray(payload.deletedNodeIds)
+      ? payload.deletedNodeIds
+      : (payload.deletedNodeId ? [payload.deletedNodeId] : []);
 
-    deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
+    deletedNodeIds.filter(Boolean).forEach((nodeId) => {
       setTreeUpdateTrigger({
         type: 'deleted',
-        folderPath,
+        nodeId,
         timestamp: Date.now(),
       });
     });
@@ -89,7 +89,7 @@ export function useExplorerCommands({
       refreshNow();
     }
 
-    if (deletedFolderPaths.length > 0) {
+    if (deletedNodeIds.length > 0) {
       setTimeout(() => {
         setTreeUpdateTrigger({
           type: 'refresh',

@@ -19,7 +19,7 @@
 
 ### 2.2 Props
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.3): shared-folder items are keyed and navigated by nodeId (the permissions API already returns nodeId). The current source still builds synthetic `/__shared__/<nodeId>` paths; that is transitional and is replaced below. The section header selection on the `/__shared__` virtual-root route is unchanged (decision D1 keeps virtual roots path-based).
+> **Phase 4 nodeId end-state:** shared-folder items are keyed and navigated by nodeId (the permissions API already returns nodeId). The section header selection on the `/__shared__` virtual-root route is unchanged (decision D1 keeps virtual roots path-based).
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
@@ -27,10 +27,10 @@
 | sharedExpanded | boolean | Y | - | Section expanded |
 | handleSharedToggle | function | Y | - | Toggle expand |
 | handleSharedClick | function | Y | - | Section header click |
-| currentNodeId | number | Y | - | Current folder node id (item highlighting) (target contract, pending implementation) |
+| currentNodeId | number | Y | - | Current folder node id (item highlighting) |
 | buildSharedFolderTree | function | Y | - | Build tree of `{ nodeId, name, children, parentNodeId, permission, hasReadPermission }` nodes |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
-| expandedNodeIds | Set | Y | - | Expanded node id set (target contract, pending implementation) |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
+| expandedNodeIds | Set | Y | - | Expanded node id set |
 | onToggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Reload trigger |

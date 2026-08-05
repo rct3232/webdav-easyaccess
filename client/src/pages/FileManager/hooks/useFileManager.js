@@ -1,122 +1,189 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import explorerGateway from '../../../services/explorerGateway';
+import { resolvePath, getAncestors } from '../../../services/fileService';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { normalizePath } from '../../../utils/pathUtils';
+
+const VIRTUAL_RECENT = '__recent__';
+const VIRTUAL_SHARED = '__shared__';
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
   const { '*' : urlPath } = useParams();
   const navigate = useNavigate();
-  
+
   const onLoadCompleteRef = useRef(onLoadComplete);
   const onLoadErrorRef = useRef(onLoadError);
+
+  const isShareMode = Boolean(shareToken && linkInfo);
 
   const shareRootPath = useMemo(
     () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
     [linkInfo]
   );
 
-  const currentPathFromUrl = useMemo(() => {
-    const path = urlPath ? `/${urlPath}` : '/';
-    return normalizePath(path);
-  }, [urlPath]);
-
   const [shareCurrentPath, setShareCurrentPath] = useState(() =>
-    shareToken && linkInfo ? normalizePath(linkInfo.filePath || '/') : ''
+    isShareMode ? normalizePath(linkInfo.filePath || '/') : ''
   );
 
   useEffect(() => {
-    if (shareToken && linkInfo && shareRootPath) {
+    if (isShareMode && shareRootPath) {
       setShareCurrentPath(shareRootPath);
     }
-  }, [shareToken, linkInfo, shareRootPath]);
+  }, [isShareMode, shareRootPath]);
 
-  const currentPath = shareToken && linkInfo ? shareCurrentPath : currentPathFromUrl;
+  // Normalize the /files splat into a view key.
+  // Real folders: /files/node/<nodeId>; virtual roots: /files/__recent__ / /files/__shared__;
+  // legacy path URLs (e.g. /files/<username>/a/b) are bootstrapped through resolve-path.
+  const urlView = useMemo(() => {
+    const normalized = urlPath ? urlPath.replace(/\/+$/, '') : '';
+    if (!normalized) {
+      return { kind: 'home', path: '/' };
+    }
+    const segments = normalized.split('/');
+    const first = segments[0];
+    if (first === 'node') {
+      const id = Number(segments[1]);
+      return {
+        kind: 'node',
+        nodeId: Number.isInteger(id) && id > 0 ? id : null,
+        path: `/${normalized}`,
+      };
+    }
+    if (first === VIRTUAL_RECENT) return { kind: 'recent', path: '/__recent__' };
+    if (first === VIRTUAL_SHARED) return { kind: 'shared', path: '/__shared__' };
+    return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
+  }, [urlPath]);
 
+  const homeNodeId = user?.rootNodeId ?? null;
+
+  // currentNodeId is the source of truth for the explorer location.
+  // null = root / virtual-root level (share mode always lists via shareToken).
+  const currentNodeId = useMemo(() => {
+    if (isShareMode) return null;
+    if (urlView.kind === 'node') return urlView.nodeId;
+    if (urlView.kind === 'home') return homeNodeId;
+    return null;
+  }, [isShareMode, urlView, homeNodeId]);
+
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [hasWritePermission, setHasWritePermission] = useState(false);
+  const [ancestors, setAncestors] = useState([]);
+  const requestIdRef = useRef(0);
+  const permRequestIdRef = useRef(0);
+  const filesRef = useRef([]);
+  const prevLocationRef = useRef(null);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    onLoadCompleteRef.current = onLoadComplete;
+    onLoadErrorRef.current = onLoadError;
+  }, [onLoadComplete, onLoadError]);
+
+  // Derived display path only (breadcrumbs/labels); not a navigation or lookup key.
+  const currentPath = useMemo(() => {
+    if (isShareMode) return shareCurrentPath;
+    if (urlView.kind === 'recent') return '/__recent__';
+    if (urlView.kind === 'shared') return '/__shared__';
+    if (urlView.kind === 'node' && ancestors.length > 0) {
+      return normalizePath('/' + ancestors.map((a) => a.name || '').join('/'));
+    }
+    return urlView.path || '/';
+  }, [isShareMode, shareCurrentPath, urlView, ancestors]);
+
+  const currentPathRef = useRef(currentPath);
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+
+  // nodeId-first navigation setter: home (null/rootNodeId) -> /files, else /files/node/<id>.
+  const setCurrentNodeId = useCallback(
+    (nodeId) => {
+      if (isShareMode) return;
+      if (nodeId == null || nodeId === homeNodeId) {
+        navigate('/files');
+      } else {
+        navigate(`/files/node/${nodeId}`);
+      }
+    },
+    [isShareMode, homeNodeId, navigate]
+  );
+
+  // Legacy path setter kept for recent-file flows and share mode (Phase 5 keeps recent path-based).
   const setCurrentPath = useCallback(
     (path) => {
       const normalizedPath = normalizePath(path);
-      if (shareToken && linkInfo) {
+      if (isShareMode) {
         setShareCurrentPath(normalizedPath);
       } else {
         const navigatePath = normalizedPath === '/' ? '' : normalizedPath.substring(1);
         navigate(`/files/${navigatePath}`);
       }
     },
-    [shareToken, linkInfo, navigate]
+    [isShareMode, navigate]
   );
 
-  const [files, setFiles] = useState([]);
-  // loading: 파일 목록 로딩 중인지 여부 (초기 로딩 및 새로고침 모두 포함)
-  const [loading, setLoading] = useState(true);
-  const [hasWritePermission, setHasWritePermission] = useState(false);
-  const [currentNodeId, setCurrentNodeId] = useState(null);
-  const requestIdRef = useRef(0);
-  const prevPathRef = useRef(currentPath);
-  const permRequestIdRef = useRef(0);
-  const filesRef = useRef([]);
-  const nodeIdByPathRef = useRef(new Map());
-  const pathByNodeIdRef = useRef(new Map());
-
+  // Legacy path URL bootstrap: resolve-path -> redirect to the nodeId URL.
   useEffect(() => {
-    filesRef.current = files;
-  }, [files]);
+    if (isShareMode || urlView.kind !== 'legacy') return undefined;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const data = await resolvePath(urlView.legacyPath);
+        if (cancelled) return;
+        if (data?.nodeId != null) {
+          navigate(`/files/node/${data.nodeId}`, { replace: true });
+        } else {
+          navigate('/files', { replace: true });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        // 404 / resolution failure -> fall back to the root-level listing.
+        navigate('/files', { replace: true });
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShareMode, urlView, navigate]);
 
-  const resolveCurrentNodeId = useCallback(() => {
-    const targetPath = currentPath;
-    if (!targetPath || targetPath === '/' || targetPath === '/__recent__' || targetPath === '/__shared__') {
-      return null;
-    }
-    if (nodeIdByPathRef.current.has(targetPath)) {
-      return nodeIdByPathRef.current.get(targetPath);
-    }
-    const matched = filesRef.current.find(
-      (f) => f?.type === 'directory' && (f.path === targetPath || f.display_path === targetPath)
-    );
-    if (matched && matched.nodeId != null) {
-      return matched.nodeId;
-    }
-    return null;
-  }, [currentPath]);
-
-  const resolveNodeIdFromPath = useCallback((path) => {
-    const targetPath = normalizePath(path);
-    if (!targetPath || targetPath === '/') return null;
-    if (nodeIdByPathRef.current.has(targetPath)) {
-      const mapped = nodeIdByPathRef.current.get(targetPath);
-      if (mapped != null) return mapped;
-    }
-    const matched = filesRef.current.find(
-      (f) => f?.type === 'directory' && (f.path === targetPath || f.display_path === targetPath)
-    );
-    return matched?.nodeId != null ? matched.nodeId : null;
-  }, []);
-
-  const resolvePathFromNodeId = useCallback((nodeId) => {
-    if (nodeId == null) return null;
-    if (pathByNodeIdRef.current.has(nodeId)) {
-      return pathByNodeIdRef.current.get(nodeId) || null;
-    }
-    const matched = filesRef.current.find((f) => f?.nodeId === nodeId);
-    return matched?.path ?? matched?.display_path ?? null;
-  }, []);
-  
-  // onLoadComplete ref 업데이트 (의존성 배열에 포함하지 않기 위해)
+  // Ancestor chain for the breadcrumb (C2.2). Skipped for virtual views and home.
   useEffect(() => {
-    onLoadCompleteRef.current = onLoadComplete;
-    onLoadErrorRef.current = onLoadError;
-  }, [onLoadComplete, onLoadError]);
+    if (isShareMode || urlView.kind === 'recent' || urlView.kind === 'shared' || urlView.kind === 'home') {
+      setAncestors([]);
+      return undefined;
+    }
+    if (currentNodeId == null) {
+      setAncestors([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const data = await getAncestors(currentNodeId);
+        if (!cancelled) setAncestors(data?.ancestors || []);
+      } catch (error) {
+        if (!cancelled) setAncestors([]);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShareMode, urlView.kind, currentNodeId]);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
-    const targetPath = currentPath;
     try {
-      // 최근 파일 뷰인 경우 특별 처리
-      if (targetPath === '/__recent__') {
+      if (urlView.kind === 'recent') {
         const recentFilesList = await explorerGateway.loadRecentFiles();
-        // 최근 파일을 파일 목록 형식으로 변환
         const recentFilesAsList = recentFilesList.map((recentFile) => {
           const fileName = recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1);
           return {
@@ -128,8 +195,8 @@ export const useFileManager = (user, options = {}) => {
             lastmod: null,
             lastmodified: recentFile.lastAccessed,
             hasReadPermission: true,
-            hasWritePermission: false, // 최근 파일은 읽기 전용으로 표시
-            isRecentFile: true, // 최근 파일임을 표시
+            hasWritePermission: false,
+            isRecentFile: true,
           };
         });
         const fileEntries = recentFilesAsList.filter((entry) => entry.type === 'file');
@@ -153,18 +220,14 @@ export const useFileManager = (user, options = {}) => {
         if (requestId === requestIdRef.current) {
           setFiles(recentFilesAsList);
         }
-      } else if (targetPath === '/__shared__') {
+      } else if (urlView.kind === 'shared') {
         const sharedFiles = await explorerGateway.loadSharedEntries({ user });
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }
       } else {
-        const targetNodeId = resolveCurrentNodeId();
-        setCurrentNodeId(targetNodeId);
-        nodeIdByPathRef.current.set(targetPath, targetNodeId);
-        if (targetNodeId != null) {
-          pathByNodeIdRef.current.set(targetNodeId, targetPath);
-        }
+        if (!isShareMode && urlView.kind === 'legacy') return;
+        const targetNodeId = isShareMode ? null : currentNodeId;
         try {
           const filteredData = await explorerGateway.listDirectory({
             nodeId: targetNodeId ?? null,
@@ -173,140 +236,100 @@ export const useFileManager = (user, options = {}) => {
               user,
             },
           });
-          // 모든 항목 표시 (직접 권한이 없는 디렉토리는 비활성화 상태로 표시)
           if (requestId === requestIdRef.current) {
-            (filteredData || []).forEach((item) => {
-              if (item?.nodeId == null) return;
-              const itemPath = item.path || item.display_path;
-              if (itemPath) {
-                nodeIdByPathRef.current.set(normalizePath(itemPath), item.nodeId);
-                pathByNodeIdRef.current.set(item.nodeId, itemPath);
-              }
-            });
             setFiles(filteredData);
           }
         } catch (error) {
-          // 403 에러 등 권한 관련 에러 처리
           if (error.response?.status === HTTP_STATUS.FORBIDDEN) {
             console.error('Access denied:', error);
             if (requestId === requestIdRef.current) {
               setFiles([]);
             }
-            // 에러는 상위 컴포넌트에서 처리하도록 전달
             throw error;
           }
           throw error;
         }
       }
     } catch (error) {
-      // onLoadError 콜백 호출
       if (onLoadErrorRef.current) {
         try {
-          await onLoadErrorRef.current(error, targetPath);
+          await onLoadErrorRef.current(error, currentPathRef.current);
         } catch (callbackError) {
           console.error('[useFileManager] Error in onLoadError callback:', callbackError);
         }
       }
-      // 403 에러가 아닌 경우에만 빈 배열로 설정
       if (error.response?.status !== HTTP_STATUS.FORBIDDEN && requestId === requestIdRef.current) {
         setFiles([]);
       }
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
-        // 로딩 완료 시 콜백 호출
-        // ref를 사용하여 의존성 배열에 포함하지 않음 (무한 루프 방지)
         onLoadCompleteRef.current?.();
       }
     }
-  }, [currentPath, user, shareToken, resolveCurrentNodeId]);
+  }, [urlView.kind, isShareMode, currentNodeId, user, shareToken]);
+
+  // Location key drives the listing reload; the display path (ancestors) must not retrigger it.
+  const locationKey = isShareMode
+    ? `share:${shareCurrentPath}`
+    : `${urlView.kind}:${currentNodeId}`;
 
   useEffect(() => {
-    if (shareToken && linkInfo) return;
-    if (user && !user.is_admin) {
-      const userFolder = `/${user.username}`;
-      // 특수 경로는 리다이렉트하지 않음
-      if (currentPath === '/__shared__' || currentPath === '/__recent__') {
-        return;
-      }
-      // 공유된 폴더 접근을 허용하기 위해 경로 제한 완화
-      // 단, 루트 경로(/)만 자신의 폴더로 리다이렉트
-      if (currentPath === '/') {
-        setCurrentPath(userFolder);
-      }
-      // 다른 경로는 서버에서 권한 체크를 하므로 허용
+    if (!locationKey) return undefined;
+    if (prevLocationRef.current !== locationKey) {
+      setFiles([]);
+      prevLocationRef.current = locationKey;
     }
-  }, [shareToken, linkInfo, user, currentPath, setCurrentPath]);
 
-  useEffect(() => {
-    if (currentPath) {
-      // Clear current list only when navigating to a different path.
-      // Keep the list intact for refreshes (loadFiles called without path change).
-      if (prevPathRef.current !== currentPath) {
-        setFiles([]);
-      }
-      prevPathRef.current = currentPath;
+    if (!isShareMode && urlView.kind === 'legacy') return undefined;
 
-      loadFiles();
-      // 특수 경로는 쓰기 권한 체크 불필요 (읽기 전용 뷰)
-      if (currentPath === '/__shared__' || currentPath === '/__recent__') {
-        setHasWritePermission(false);
-      } else {
-        // user가 설정되지 않았으면 권한 체크 건너뛰기
-        if (!user) {
-          // 초기 로딩 중이므로 권한 체크 대기
-          // user가 설정되면 이 useEffect가 다시 실행됨
-          return;
+    loadFiles();
+
+    if (urlView.kind === 'recent' || urlView.kind === 'shared') {
+      setHasWritePermission(false);
+      return undefined;
+    }
+    if (!user) return undefined;
+
+    const loadPermission = async () => {
+      const permId = ++permRequestIdRef.current;
+      const targetNodeId = isShareMode ? null : currentNodeId;
+      try {
+        const permission = await explorerGateway.getPathAccess({ nodeId: targetNodeId ?? null });
+        if (permId !== permRequestIdRef.current) return;
+        setHasWritePermission(permission.canWrite);
+      } catch (error) {
+        console.error('Failed to check permission:', error);
+        if (permId !== permRequestIdRef.current) return;
+        if (user?.is_admin) {
+          setHasWritePermission(true);
+        } else {
+          setHasWritePermission(false);
         }
-        
-        // 현재 경로의 쓰기 권한 확인
-        const loadPermission = async () => {
-          const permId = ++permRequestIdRef.current;
-          const targetNodeId = resolveCurrentNodeId();
-          try {
-            const permission = await explorerGateway.getPathAccess({ nodeId: targetNodeId ?? null });
-            // Ignore stale results: when redirecting / -> /username, older loadPermission('/') can complete after loadPermission('/username')
-            if (permId !== permRequestIdRef.current) return;
-            setHasWritePermission(permission.canWrite);
-          } catch (error) {
-            console.error('Failed to check permission:', error);
-            if (permId !== permRequestIdRef.current) return;
-            // 에러 발생 시 기본값: 관리자는 true, 일반 사용자는 자신의 폴더인지 확인
-            // 단, 권한 체크 실패 시에는 보안을 위해 false로 설정하는 것이 안전함
-            if (user?.is_admin) {
-              setHasWritePermission(true);
-            } else {
-              const userFolder = `/${user?.username || ''}`;
-              // 자신의 폴더인 경우에만 기본값으로 쓰기 권한 부여
-              setHasWritePermission(currentPath === userFolder || currentPath === userFolder + '/' || currentPath.startsWith(userFolder + '/'));
-            }
-          }
-        };
-        loadPermission();
       }
-    }
-  }, [currentPath, user, shareToken, loadFiles, resolveCurrentNodeId]);
+    };
+    loadPermission();
+    return undefined;
+  }, [locationKey, urlView.kind, isShareMode, currentNodeId, user, shareToken, loadFiles]);
 
   useEffect(() => {
-    if (currentPath !== '/__recent__') return undefined;
+    if (urlView.kind !== 'recent') return undefined;
 
     return explorerGateway.subscribeToRecentFiles(() => {
       loadFiles();
     });
-  }, [currentPath, user, shareToken, loadFiles]);
+  }, [urlView.kind, user, shareToken, loadFiles]);
 
   return {
     currentPath,
     setCurrentPath,
     currentNodeId,
     setCurrentNodeId,
+    ancestors,
     files,
     loading,
     loadFiles,
     hasWritePermission,
-    resolveNodeIdFromPath,
-    resolvePathFromNodeId,
-    onLoadErrorRef, // 외부에서 onLoadError를 업데이트하기 위해 반환
+    onLoadErrorRef,
   };
 };
-

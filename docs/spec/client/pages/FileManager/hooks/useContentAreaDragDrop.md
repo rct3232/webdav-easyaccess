@@ -51,7 +51,7 @@
 
 ### 2.4 Dependencies
 
-- `parentNodeId` comparison for same-parent skip (no path parsing; pending implementation: current source imports `getParentPath` from `pathUtils`)
+- `parentNodeId` comparison for same-parent skip (no path parsing)
 - No direct service calls; delegates to passed-in handlers
 
 ### 2.5 Side Effects
@@ -66,7 +66,7 @@
 - **DragLeave:** When external or internal, if `!e.currentTarget.contains(e.relatedTarget)` then `setContentAreaDragType(null)`; then `handleFileAreaDragLeave(e)`.
 - **Drop:** Clear state: `setContentAreaDraggedNodeId(null)`, `setContentAreaDragType(null)`. If internal (`text/plain` data): `e.preventDefault()`, `e.stopPropagation()`, `resetFileAreaDrag?.()`. The `text/plain` payload is the dragged file's nodeId string; parse it as `Number(text)`. When internal drop: if the dragged node's `parentNodeId === currentNodeId` (same folder), do not call handleInternalFileDrop; otherwise call `handleInternalFileDrop(Number(text), currentNodeId)`. If external: `handleFileAreaDrop(e, currentNodeId, handleExplorerDrop)`.
 
-> **Note (pending implementation):** The current source still keys the drag by path — `contentAreaDraggedPath` / `currentPath` — and compares `getParentPath(internalPath) === currentPath`; the nodeId end-state reads `text/plain` as the nodeId string and compares `parentNodeId`.
+> **Note:** The drag is keyed by nodeId — `contentAreaDraggedNodeId` / `currentNodeId` — and the same-parent skip compares the dragged node's `parentNodeId` with `currentNodeId`.
 
 ### 2.6 Error Handling
 

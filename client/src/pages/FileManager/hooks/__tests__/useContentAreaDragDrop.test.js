@@ -23,9 +23,11 @@ function createDefaultOptions(overrides = {}) {
     isMobile: false,
     selectionMode: false,
     hasWritePermission: true,
-    currentPath: '/folder',
-    contentAreaDraggedPath: null,
-    setContentAreaDraggedPath: jest.fn(),
+    isShareLinkMode: false,
+    currentNodeId: 10,
+    contentAreaDraggedNodeId: null,
+    contentAreaDraggedParentNodeId: null,
+    setContentAreaDraggedNodeId: jest.fn(),
     setContentAreaDragType: jest.fn(),
     handleInternalFileDrop: jest.fn(),
     handleExplorerDrop: jest.fn(),
@@ -107,10 +109,11 @@ describe('useContentAreaDragDrop', () => {
   });
 
   describe('same-parent skip', () => {
-    it('does not call delegates when internal drag is within same folder', () => {
+    it('does not call delegates when internal drag is within the same folder (parentNodeId === currentNodeId)', () => {
       const opts = createDefaultOptions({
-        currentPath: '/folder',
-        contentAreaDraggedPath: '/folder/file.txt',
+        currentNodeId: 10,
+        contentAreaDraggedNodeId: 42,
+        contentAreaDraggedParentNodeId: 10,
       });
       const { result } = renderHook(() => useContentAreaDragDrop(opts));
       const e = createMockEvent({ dataTransfer: { types: ['text/plain'] } });
@@ -186,8 +189,8 @@ describe('useContentAreaDragDrop', () => {
       expect(opts.handleFileAreaDragOver).toHaveBeenCalledWith(e);
     });
 
-    it('Drop clears state and calls handleFileAreaDrop with currentPath and handleExplorerDrop', () => {
-      const opts = createDefaultOptions();
+    it('Drop clears state and calls handleFileAreaDrop with currentNodeId and handleExplorerDrop', () => {
+      const opts = createDefaultOptions({ currentNodeId: 10 });
       const { result } = renderHook(() => useContentAreaDragDrop(opts));
       const e = createMockEvent({
         dataTransfer: { types: ['Files'], getData: () => '' },
@@ -197,26 +200,29 @@ describe('useContentAreaDragDrop', () => {
         result.current.handleContentAreaDrop(e);
       });
 
-      expect(opts.setContentAreaDraggedPath).toHaveBeenCalledWith(null);
+      expect(opts.setContentAreaDraggedNodeId).toHaveBeenCalledWith(null);
       expect(opts.setContentAreaDragType).toHaveBeenCalledWith(null);
       expect(opts.handleFileAreaDrop).toHaveBeenCalledWith(
         e,
-        opts.currentPath,
+        10,
         opts.handleExplorerDrop
       );
       expect(opts.handleInternalFileDrop).not.toHaveBeenCalled();
     });
   });
 
-  describe('internal drag (text/plain)', () => {
-    it('Drop clears state, calls handleInternalFileDrop and resetFileAreaDrag; does not call handleFileAreaDrop', () => {
-      const opts = createDefaultOptions();
+  describe('internal drag (text/plain = nodeId)', () => {
+    it('Drop clears state, calls handleInternalFileDrop(Number(text), currentNodeId) and resetFileAreaDrag', () => {
+      const opts = createDefaultOptions({
+        currentNodeId: 10,
+        contentAreaDraggedNodeId: 42,
+        contentAreaDraggedParentNodeId: 5,
+      });
       const { result } = renderHook(() => useContentAreaDragDrop(opts));
-      const internalPath = '/other/file.txt';
       const e = createMockEvent({
         dataTransfer: {
           types: ['text/plain'],
-          getData: (t) => (t === 'text/plain' ? internalPath : ''),
+          getData: (t) => (t === 'text/plain' ? '42' : ''),
         },
       });
 
@@ -224,24 +230,24 @@ describe('useContentAreaDragDrop', () => {
         result.current.handleContentAreaDrop(e);
       });
 
-      expect(opts.setContentAreaDraggedPath).toHaveBeenCalledWith(null);
+      expect(opts.setContentAreaDraggedNodeId).toHaveBeenCalledWith(null);
       expect(opts.setContentAreaDragType).toHaveBeenCalledWith(null);
-      expect(opts.handleInternalFileDrop).toHaveBeenCalledWith(
-        internalPath,
-        opts.currentPath
-      );
+      expect(opts.handleInternalFileDrop).toHaveBeenCalledWith(42, 10);
       expect(opts.resetFileAreaDrag).toHaveBeenCalled();
       expect(opts.handleFileAreaDrop).not.toHaveBeenCalled();
     });
 
-    it('does not call handleInternalFileDrop when internal drop is within the same folder (same-parent)', () => {
-      const opts = createDefaultOptions({ currentPath: '/folder' });
+    it('does not call handleInternalFileDrop when internal drop is within the same folder (parentNodeId === currentNodeId)', () => {
+      const opts = createDefaultOptions({
+        currentNodeId: 10,
+        contentAreaDraggedNodeId: 42,
+        contentAreaDraggedParentNodeId: 10,
+      });
       const { result } = renderHook(() => useContentAreaDragDrop(opts));
-      const internalPath = '/folder/file.txt';
       const e = createMockEvent({
         dataTransfer: {
           types: ['text/plain'],
-          getData: (t) => (t === 'text/plain' ? internalPath : ''),
+          getData: (t) => (t === 'text/plain' ? '42' : ''),
         },
       });
 
@@ -249,7 +255,7 @@ describe('useContentAreaDragDrop', () => {
         result.current.handleContentAreaDrop(e);
       });
 
-      expect(opts.setContentAreaDraggedPath).toHaveBeenCalledWith(null);
+      expect(opts.setContentAreaDraggedNodeId).toHaveBeenCalledWith(null);
       expect(opts.setContentAreaDragType).toHaveBeenCalledWith(null);
       expect(e.preventDefault).toHaveBeenCalled();
       expect(e.stopPropagation).toHaveBeenCalled();
@@ -259,13 +265,17 @@ describe('useContentAreaDragDrop', () => {
     });
 
     it('Drop works when resetFileAreaDrag is omitted', () => {
-      const opts = createDefaultOptions();
+      const opts = createDefaultOptions({
+        currentNodeId: 10,
+        contentAreaDraggedNodeId: 7,
+        contentAreaDraggedParentNodeId: 3,
+      });
       delete opts.resetFileAreaDrag;
       const { result } = renderHook(() => useContentAreaDragDrop(opts));
       const e = createMockEvent({
         dataTransfer: {
           types: ['text/plain'],
-          getData: () => '/x/y.txt',
+          getData: () => '7',
         },
       });
 
@@ -274,10 +284,7 @@ describe('useContentAreaDragDrop', () => {
           result.current.handleContentAreaDrop(e);
         });
       }).not.toThrow();
-      expect(opts.handleInternalFileDrop).toHaveBeenCalledWith(
-        '/x/y.txt',
-        opts.currentPath
-      );
+      expect(opts.handleInternalFileDrop).toHaveBeenCalledWith(7, 10);
     });
   });
 

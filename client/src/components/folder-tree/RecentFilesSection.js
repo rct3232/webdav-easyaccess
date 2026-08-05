@@ -17,21 +17,57 @@ import {
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
+import { resolvePath } from '../../services/fileService';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import useObservedElementWidth from './hooks/useObservedElementWidth';
 
+/**
+ * Path-based recent section (Phase 5 note: stays path-based).
+ * Clicks are routed through the temporary resolve-path shim so the nodeId-first
+ * navigation can consume them (shim removed in Phase 5.4).
+ */
 const RecentFilesSection = ({
   recentExpanded,
   handleRecentToggle,
   handleRecentClick,
   currentPath,
   recentFilesList,
-  onPathClick,
+  onNodeClick,
   onFileClick,
 }) => {
   const { t } = useTranslation();
   const { setObservedElement, width: containerWidth } = useObservedElementWidth(200);
+
+  // Temporary resolve-path shim (removed in Phase 5.4).
+  const navigateResolvedPath = async (path) => {
+    try {
+      const data = await resolvePath(path);
+      if (data?.nodeId != null) {
+        onNodeClick(data.nodeId);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to resolve recent item path:', error);
+    }
+  };
+
+  const handleRecentItemClick = (recentFile) => {
+    if (recentFile.type === 'directory') {
+      navigateResolvedPath(recentFile.path);
+      return;
+    }
+    if (onFileClick) {
+      onFileClick({
+        ...recentFile,
+        basename: recentFile.name,
+        isRecentFile: true,
+      });
+      return;
+    }
+    const parentPath = recentFile.path.substring(0, recentFile.path.lastIndexOf('/')) || '/';
+    navigateResolvedPath(parentPath);
+  };
 
   // Padding/Margins total: ListItemButton pl:3(24px) + Icon(24px) + Icon mr:0.5(4px) + default right padding(~16px) = ~68px
   // We use 72px for a bit more safety margin.
@@ -128,22 +164,7 @@ const RecentFilesSection = ({
             (recentFilesList ?? []).slice(0, 10).map((recentFile) => (
               <ListItem key={recentFile.path} disablePadding>
                 <ListItemButton
-                  onClick={() => {
-                    if (recentFile.type === 'directory') {
-                      onPathClick(recentFile.path);
-                    } else {
-                      if (onFileClick) {
-                        onFileClick({
-                          ...recentFile,
-                          basename: recentFile.name,
-                          isRecentFile: true,
-                        });
-                      } else {
-                        const parentPath = recentFile.path.substring(0, recentFile.path.lastIndexOf('/')) || '/';
-                        onPathClick(parentPath);
-                      }
-                    }
-                  }}
+                  onClick={() => handleRecentItemClick(recentFile)}
                   sx={{
                     pl: 3,
                     py: 0.5,

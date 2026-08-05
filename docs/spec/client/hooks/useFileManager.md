@@ -36,8 +36,6 @@
 | loadFiles | () => Promise | Reload files |
 | onLoadErrorRef | ref | Ref for onLoadError callback (for external updates) |
 
-> **Note (pending implementation):** The current source still treats `currentPath` as the source of truth and maintains a session-local `path → nodeId` map (`nodeIdByPathRef`); the nodeId end-state removes that map and makes `currentNodeId` the source of truth.
-
 ### 2.4 Boundaries
 
 - **Final target owns**
@@ -64,7 +62,6 @@
   - **Virtual roots:** `/files/__recent__` and `/files/__shared__` URLs are unchanged; they map to the recent-files and shared-folder views (no nodeId).
   - **Legacy path URLs** (e.g. `/files/<username>/<subpath>`): resolved via `POST /files/resolve-path { path } → { nodeId }` (server S3) and redirected to `/files/node/<nodeId>`; if resolution fails, fall back to the root-level listing. The client keeps no persistent path→nodeId mapping for this; the session-local `path → nodeId` map is removed in the nodeId end-state.
   - Router upgrades that change relative splat resolution (React Router v6 `future.v7_relativeSplatPath`, and React Router v7 baseline behavior) must not change the user-visible nodeId contract above.
-  - (pending implementation: the current source still reads the splat as a normalized path, keeps `currentPath` as the source of truth, and resolves nodeIds from the last listing plus a session-local `path → nodeId` map.)
 - **Must route explorer IO through:** `explorerGateway` (directory listing, path access checks, recent-file load/remove subscription helpers, metadata enrichment, and shared-entry loading when special collections need them).
 - **Must not use directly in the final target:** file service modules, permission service modules, recent-files repositories/notifiers, or browser storage helpers.
 - Transitional compatibility may still exist while the extraction is incomplete, but the spec target is the non-overlapping end state above.
@@ -90,7 +87,6 @@
 - Navigate by nodeId in non-share mode (or coordinate with the navigation seam during the transition).
 - While viewing `__recent__`, subscribe to recent-file change notifications through `explorerGateway` so listing reloads remain localized to the listing seam.
 - Forward explorer session ownership upward: callers such as `FileManager` obtain sort/view/search state from `useExplorerSession`, not from this hook.
-- (pending implementation: the current source keys everything off `currentPath` and resolves nodeIds from the last listing plus a session-local `path → nodeId` map; the nodeId-first rewrite removes the map and makes `currentNodeId` the source of truth.)
 
 ### 2.7 Error Handling
 

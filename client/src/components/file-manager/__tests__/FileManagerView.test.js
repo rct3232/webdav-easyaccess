@@ -9,10 +9,6 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
 
-jest.mock('../../../services/permissionService', () => ({
-  getUserPermissions: jest.fn(),
-}));
-
 jest.mock('../../../services/folderTreeGateway', () => ({
   __esModule: true,
   default: {
@@ -29,7 +25,6 @@ jest.mock('../../../services/recentFilesNotifier', () => ({
   onRecentFilesChange: jest.fn(),
 }));
 
-import { getUserPermissions } from '../../../services/permissionService';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
@@ -252,7 +247,6 @@ function createProps(overrides = {}) {
 describe('FileManagerView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    getUserPermissions.mockResolvedValue([]);
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
     folderTreeGateway.listFolderChildren.mockResolvedValue([]);
     getRecentFiles.mockResolvedValue([]);
@@ -264,7 +258,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 
@@ -285,7 +278,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 
@@ -301,7 +293,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 

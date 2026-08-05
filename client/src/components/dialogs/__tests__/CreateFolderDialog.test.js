@@ -55,14 +55,14 @@ describe('CreateFolderDialog', () => {
     });
   });
 
-  it('calls createFolder API and onComplete with folderPath and folderName on success', async () => {
+  it('calls createFolder API and onComplete with folderPath, folderName and created nodeId on success', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateFolderDialog {...defaultProps} currentPath="/" />);
     const input = screen.getByLabelText(/folder name/i);
     await user.type(input, 'newfolder');
     await user.click(screen.getByRole('button', { name: /create/i }));
     await waitFor(() => {
-      expect(defaultProps.onComplete).toHaveBeenCalledWith('/newfolder', 'newfolder');
+      expect(defaultProps.onComplete).toHaveBeenCalledWith('/newfolder', 'newfolder', expect.any(Number));
     });
   });
 
@@ -77,7 +77,8 @@ describe('CreateFolderDialog', () => {
     await waitFor(() => {
       expect(defaultProps.onComplete).toHaveBeenCalledWith(
         '/parent/child/subfolder',
-        'subfolder'
+        'subfolder',
+        expect.any(Number)
       );
     });
   });

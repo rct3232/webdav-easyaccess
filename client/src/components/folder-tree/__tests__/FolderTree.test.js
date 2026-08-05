@@ -1,6 +1,6 @@
 /**
  * FolderTree tests.
- * Verifies observable outcomes: home item, path click, create/upload.
+ * Verifies observable outcomes: home item, nodeId click, recent notification reload.
  * Mocks services only (recentFiles, permissionService, fileService, localStorage).
  * @see docs/spec/client/components/folder-tree/FolderTree.md
  * @see docs/TESTING_STRATEGY.md
@@ -29,6 +29,7 @@ jest.mock('../../../services/fileService', () => {
   const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
   return createFileServiceMock({
     listFiles: jest.fn().mockResolvedValue([]),
+    resolvePath: jest.fn().mockResolvedValue({ nodeId: 3 }),
   });
 });
 jest.mock('../../../utils/localStorage', () => {
@@ -39,14 +40,16 @@ jest.mock('../../../utils/localStorage', () => {
 });
 
 const defaultProps = {
+  currentNodeId: null,
   currentPath: '/',
-  onPathClick: jest.fn(),
+  onNodeClick: jest.fn(),
   onFileClick: jest.fn(),
-  user: { id: '1', username: 'testuser', is_admin: false },
+  user: { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 },
   treeUpdateTrigger: null,
   hasWritePermission: true,
   onExplorerDrop: jest.fn(),
   isMobile: false,
+  ancestors: [],
 };
 
 describe('FolderTree', () => {
@@ -74,13 +77,13 @@ describe('FolderTree', () => {
     });
   });
 
-  it('calls onPathClick when home clicked', async () => {
+  it('calls onNodeClick with the home nodeId when home clicked', async () => {
     renderWithProviders(<FolderTree {...defaultProps} />);
     await waitFor(() => {
       expect(screen.getByText('testuser')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText('testuser'));
-    expect(defaultProps.onPathClick).toHaveBeenCalledWith('/testuser');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(1);
   });
 
   it('reloads recent section entries when recent-file notifications fire', async () => {
@@ -108,5 +111,4 @@ describe('FolderTree', () => {
       expect(screen.getByText('new.txt')).toBeInTheDocument();
     });
   });
-
 });

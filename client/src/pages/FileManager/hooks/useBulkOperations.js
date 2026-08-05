@@ -162,9 +162,13 @@ export const useBulkOperations = (
           activeIntervalsRef.current.delete(intervalId);
           clearInterval(intervalId);
           const deletedFolders = [];
+          const deletedNodeIds = [];
           succeededNodeIds.forEach(nid => {
             const file = files.find(f => f.nodeId === nid);
-            if (file?.type === 'directory') deletedFolders.push(file.display_path || nid);
+            if (file?.type === 'directory') {
+              deletedNodeIds.push(nid);
+              deletedFolders.push(file.display_path || nid);
+            }
           });
           const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'));
           const currentMsg = jobStatus === 'cancelled'
@@ -195,16 +199,16 @@ export const useBulkOperations = (
             } catch (err) {
               console.error('Failed to clean up recent files after bulk delete:', err);
             }
-            deletedFolders.forEach(folderPath => {
-              setTreeUpdateTrigger({ type: 'deleted', folderPath, timestamp: Date.now() });
+            deletedNodeIds.forEach(nodeId => {
+              setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() });
             });
-            if (deletedFolders.length > 0) {
+            if (deletedNodeIds.length > 0) {
               setTimeout(() => setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() }), 500);
             }
           }
           clearProcessing(nodeIds);
           if (onOperationComplete) {
-            onOperationComplete({ opType: 'delete', startedNodeId, deletedFolderPaths: deletedFolders });
+            onOperationComplete({ opType: 'delete', startedNodeId, deletedNodeIds, deletedFolderPaths: deletedFolders });
           }
           if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
             setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);

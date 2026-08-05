@@ -443,6 +443,9 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 >   - `auth.test.js` (5), `admin.test.js` (1), `lockManager.test.js` (5) — environmental (postgresqlNotConfigured)
 >   - `settingsStore.test.js` (2), `Settings.test.js` (3) — pre-existing double-serialization bug
 > - **Client:** 8 suites / 23 tests (pre-existing, out of 4.8i scope): `shareReviewUseCase.test.js`, `sharePermissionSaveUseCase.test.js`, `buildPendingRequestState.test.js` (stale path-payload assertions after Phase 4.8b), `useFolderPicker.test.js`, `FileActionSheet.test.js`, `FilePreviewDialog.test.js`, `apiClient.test.js`, `apiClient.msw-smoke.test.js`. Verified identical on the base commit (503678d) — zero new client failures introduced.
+>
+> **Phase 4 completion (gap closure) — see [GAP_CLOSURE_PLAN.md](GAP_CLOSURE_PLAN.md).**
+> A post-completion alignment audit (2026-08-05) found remaining gaps: the thumbnails feature was left path-based on the server while the client is already nodeId-based (a live URL/payload contract break — the real server 404s the client batch call); the client DnD protocol, selection state, FolderPicker and MSW permission-request handlers still carried path-string remnants; `fileNodesStore.getDescendants` is missing (TypeError in `filePermissions.js`); and stale docs (`docs/features/permissions.md` "no inheritance" contradicts the closure table). These are addressed by a dedicated sub-plan (branch `fix/phase4-nodeid-gap-closure`) executed as Phase 4 completion **before** Phase 5. Downstream Phase 5/7/8 adjustments caused by that work are recorded inline in their sections below.
 
 ---
 
@@ -456,8 +459,10 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 5.1 | Refactor `shareLinkService.js`: create share stores `file_node_id`; lookup uses nodeId for permission checks via closure table (table already defined in Phase 0) | Share creation uses file_node_id only; shared access respects folder permissions via ancestor walk |
 | 5.2 | Update `shareAccessService.js` (`collectPathsUnderSharePath`, etc.): replace path-prefix string matching with closure table descendant query (`SELECT descendant_id FROM node_ancestors WHERE ancestor_id = shareNode.id`) | Share scope resolution correct for nested structures |
 | 5.3 | Refactor `domains/recentFiles/service.js`: access tracking uses nodeId; path display resolved via `getNodePath(nodeId)` at render time (table already defined in Phase 0) | Recent files list resolves correctly after rename/move; renamed files show updated names |
-| 5.4 | **Client:** Refactor `recentFilesRepository`: API payloads send `fileNode_id` instead of `path`. Remove path-mutation helpers (`updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`) from `client/src/utils/recentFiles.js` — nodeId references make them unnecessary (rename/move does not change the reference). | Recent entries survive renames automatically; no client-side path string manipulation |
-| 5.5 | **Client:** Refactor `shareLinkService`: createShareLink sends `fileNode_id` instead of `filePath`. Update share link UI components (`ExternalShareSection`, `ShareFolderTree`) to use nodeId-based state. | Share links created via nodeId; no path-string payloads |
+| 5.4 | **Client:** Refactor `recentFilesRepository`: API payloads send `fileNode_id` instead of `path`. Remove path-mutation helpers (`updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`) from `client/src/utils/recentFiles.js` — nodeId references make them unnecessary (rename/move does not change the reference). **Scope note (gap closure C2.1/C2.3):** also finish the client recent-files UI on nodeId — `RecentFilesSection` + the `/files/__recent__` view (synthetic entries must carry `nodeId` so metadata enrichment and selection work) — and remove the temporary `resolve-path` navigation shim added during Phase 4 gap closure. | Recent entries survive renames automatically; no client-side path string manipulation |
+| 5.5 | **Client:** Refactor `shareLinkService`: createShareLink sends `fileNode_id` instead of `filePath`. Update share link UI components (`ExternalShareSection`, `ShareFolderTree`) to use nodeId-based state. **Scope note (gap closure C2.3/C2.5):** `ShareLinkSection` was already migrated to nodeId by the Phase 4 gap closure — this task now covers only `ExternalShareSection` + `ShareFolderTree`. After 5.1 (`GET /share-link/:token` returns the root nodeId), drop the share-mode `resolve-path` fallback introduced in gap closure C2.5. | Share links created via nodeId; no path-string payloads |
+
+> **Phase 5 × gap-closure interplay:** Phase 4 gap closure (branch `fix/phase4-nodeid-gap-closure`) migrates the client folder tree, the `__recent__`/`__shared__` special views and navigation to a nodeId-first URL scheme **before** Phase 5. Phase 5 therefore completes only the remaining recent-files/share-link client surfaces on top of that foundation (see scope notes on 5.4/5.5). Server tasks 5.1–5.3 are unaffected.
 
 ---
 
@@ -495,10 +500,10 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 |------|-------------|--------|
 | 7.1 | Remove path-based branches from `recentFilesStore.js` | Recent files resolve via nodeId exclusively |
 | 7.2 | Delete `FsJsonMetadataAdapter.js` and all FsJSON-related code paths; remove 'fs' option from backend resolver | Backend config only accepts postgresql/sqlite |
-| 7.3 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`) from any remaining callers; verify Phase 4 Task 4.8d-4.8g completed all permission legacy cleanup | No path-string permission checks remain in source |
+| 7.3 | Remove path-based permission check helpers (`checkFolderPermission(path)`, `checkFilePermission(path)`) from any remaining callers; verify Phase 4 Task 4.8d-4.8g completed all permission legacy cleanup. **Gap-closure note:** the thumbnails nodeId migration (gap closure S1) already removed the last server-side path-based `checkFilePermission` callers — this task is primarily a verification pass. | No path-string permission checks remain in source |
 | 7.4 | Clean up `store/permissionStore.js` (reduce line count): remove `getPermissionDoc`, `getSharePermissionDoc`, cache Maps if not yet removed in Phase 4 Task 4.8e; store file is thin wrapper around direct SQL | Store file ≤ 300 lines |
 | 7.5 | **Client:** Delete path-mutation helpers from `client/src/utils/recentFiles.js`: `updateSubPathsOnPathChange`, `removeSubPathsOnFolderDelete`, `removeMultiplePaths` — no longer needed with nodeId references | Zero imports of removed helpers across client codebase |
-| 7.6 | **Client:** Remove any remaining path-string state from permission utilities: verify Phase 4 Tasks 4.8a-4.8b completed `buildPermissionDiff.js` nodeId migration; remove any residual path-based Maps or `startsWith` matching | Permission state uses nodeId exclusively; no path-string traversal remains |
+| 7.6 | **Client:** Remove any remaining path-string state from permission utilities: verify Phase 4 Tasks 4.8a-4.8b completed `buildPermissionDiff.js` nodeId migration; remove any residual path-based Maps or `startsWith` matching. **Gap-closure note:** the folder-tree nodeId migration (gap closure C2.3) and stale client-test fixes (C1.5) pre-complete most of this task — primarily a verification pass. | Permission state uses nodeId exclusively; no path-string traversal remains |
 
 ---
 
@@ -533,7 +538,7 @@ After Phase 8 is complete, Playwright E2E tests run in both backend modes:
 
 1. `docker-compose.e2e.yml` — MinIO + PostgreSQL added in Phase 0 Task 0.7
 2. `.env.e2e` — S3+PG configuration block added in Phase 0 Task 0.8; mode switching via `WEA_FILE_STORAGE` environment variable
-3. `playwright.config.ts` — extend existing desktop/mobile projects with S3+PG mode as an environment matrix: the same spec files re-run against both backends to serve as a regression guard
+3. `playwright.config.ts` — extend existing desktop/mobile projects with S3+PG mode as an environment matrix: the same spec files re-run against both backends to serve as a regression guard. **URL scheme note (gap closure C2.1):** after the nodeId-first URL migration, existing specs that navigate/assert real-folder path URLs (`/files/<path>`) must be updated to navigate by nodeId URLs resolved via `POST /files/resolve-path`; the virtual-root URLs `/files/__recent__` and `/files/__shared__` are intentionally kept unchanged to minimize churn.
 4. `e2e/global-setup.ts` — add PostgreSQL seed (`file_nodes`, root directory per user) + MinIO bucket creation logic; mode selection via `E2E_BACKEND_MODE=s3|webdav` environment variable
 
 **New E2E Scenarios (S3+PG only):**
@@ -551,7 +556,9 @@ After Phase 8 is complete, Playwright E2E tests run in both backend modes:
 
 **Impact on Existing E2E Scenarios:**
 
-Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios have identical API contracts, so they re-run in S3+PG mode as a regression guard. No modifications needed.
+Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios use identical API contracts, so they re-run in both modes as a regression guard. API payloads need **no** changes.
+
+**Client URL scheme (Phase 4 gap closure C2.1):** the nodeId-first URL migration changes the URL contract for real folders (`/files/<path>` → `/files/node/<id>`). The following specs must be updated to navigate by nodeId URLs (resolved via `POST /files/resolve-path` in setup) and to assert the new URL shape: `e2e/explorer-advanced.desktop.spec.ts`, `e2e/share-internal.spec.ts`, `e2e/share-public.spec.ts`. Virtual-root URLs `/files/__recent__` / `/files/__shared__` are retained unchanged. Loose regex assertions like `/\/files(?:\/.*)?$/` still match and need no edits.
 
 #### Final Gate
 
@@ -584,6 +591,9 @@ Phase 7 (Legacy Remove)
         ↓
 Phase 8 (Full Test Suite)
 ```
+
+Phase 4 completion sub-plan (gap closure, branch `fix/phase4-nodeid-gap-closure`) executes **before** Phase 5 —
+see [GAP_CLOSURE_PLAN.md](GAP_CLOSURE_PLAN.md) for the detailed task graph and downstream phase amendments.
 
 ---
 
@@ -626,9 +636,9 @@ After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migrat
 10. **Adapter isolation in service layer.** S3BlobStore, CacheAdapter, MetadataAdapter are internal implementation details. Service functions must not expose adapter types or storage-specific APIs to route handlers. Route handlers call only domain operations (uploadFile, listDirectory, etc.), never raw adapter methods.
 11. **Synchronous upload flow.** The upload sequence (DB INSERT → S3 PUT → DB UPDATE) runs synchronously within a single request. No background job queue for uploads. Failure at any step leaves traceable state (`sync_status`, `object_map.status`) for recovery.
 12. **FsJSON + webdav metadata deprecation.** FsJSON backend (`WEA_STORAGE_BACKEND=fs`) and webdav metadata backend (`WEA_STORAGE_BACKEND=webdav`) are both removed in Phase 0 (Task 0.6). All deployments must use PostgreSQL or SQLite for metadata storage. The `WEA_FILE_STORAGE=webdav` option for file content/blob storage remains supported — only the metadata layer is affected.
-13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase: permission clients (Phase 4 tasks 4.8a-4.8b) **and** the full file operations layer (Phase 4 task 4.8i — `fileService.js`, explorer gateways, bulk-operation hooks, dialogs, MSW mocks), plus Phase 5 tasks 5.4-5.5.
+13. **No path compatibility layer.** FsJSON is deprecated; all deployments use SQLite/PostgreSQL. Server endpoints accept `nodeId` exclusively in request payloads — no transitional period accepting both `path` and `nodeId`. Client API consumers are updated simultaneously within the same phase: permission clients (Phase 4 tasks 4.8a-4.8b) **and** the full file operations layer (Phase 4 task 4.8i — `fileService.js`, explorer gateways, bulk-operation hooks, dialogs, MSW mocks), plus Phase 5 tasks 5.4-5.5. The only path-accepting server endpoint is the explicit legacy-URL resolver `POST /files/resolve-path` (path → nodeId, bootstrap/redirect/display only) added during Phase 4 gap closure (task S3); it is not a file-operation endpoint.
 14. **Multi-backend test execution.** From Phase 8 onward, all server tests run against both SQLite and S3+PG backends. FsJSON backend tests are removed after Phase 7 cleanup. Test backend selection is controlled by `WEA_STORAGE_BACKEND` and `WEA_FILE_STORAGE` environment variables.
-15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards without modification.
+15. **E2E regression on new architecture.** Playwright E2E scenarios execute in both WebDAV+PG (legacy) and S3+PG (new) modes after Phase 8 Task 8.9-8.10. The `docker-compose.e2e.yml` orchestrates backend switching via environment variables; existing specs serve as regression guards, with only client-URL-scheme assertions updated for the Phase 4 gap-closure navigation change (see Phase 8 E2E strategy).
 16. **Test data isolation per backend mode.** SQLite in-memory DB and MinIO buckets are initialized fresh by `global-setup.ts` for each test suite run and cleaned up by `global-teardown.ts`. No state sharing occurs between tests or backend modes.
 
 ---

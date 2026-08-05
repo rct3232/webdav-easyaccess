@@ -1,50 +1,29 @@
 const { HTTP_STATUS, PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const ShareLink = require('../../../models/ShareLink');
 const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
-const { pathExists, listDirectory, getFileContents } = require('../../../utils/webdav');
 const { meetsRank } = require('../../permissions/policy/permissionRank');
+const { isOwnerNode } = require('../../permissions/policy/ownerNodeResolver');
 
-async function collectPathsUnderSharePath(rootPath) {
-  let items;
-  try {
-    items = await listDirectory(rootPath);
-  } catch (_) {
-    return [rootPath];
-  }
-  const paths = [rootPath];
-  const prefix = rootPath === '/' ? '' : rootPath;
-  for (const item of items) {
-    if (!item.basename || item.basename.trim() === '') continue;
-    const childPath = prefix ? `${prefix}/${item.basename}` : `/${item.basename}`;
-    paths.push(childPath);
-    const sub = await collectPathsUnderSharePath(childPath);
-    for (let i = 1; i < sub.length; i++) paths.push(sub[i]);
-  }
-  return paths;
+function getServices() {
+  const { getComposition } = require('../../../service/composition');
+  return getComposition();
 }
 
-async function collectDirectoryPathsUnderSharePath(rootPath) {
-  let items;
-  try {
-    items = await listDirectory(rootPath);
-  } catch (_) {
-    return [];
-  }
-  const paths = [rootPath];
-  const prefix = rootPath === '/' ? '' : rootPath;
-  for (const item of items) {
-    if (!item.basename || item.basename.trim() === '') continue;
-    const childPath = prefix ? `${prefix}/${item.basename}` : `/${item.basename}`;
-    const sub = await collectDirectoryPathsUnderSharePath(childPath);
-    if (sub.length > 0) {
-      paths.push(childPath);
-      for (let i = 1; i < sub.length; i++) paths.push(sub[i]);
-    }
-  }
-  return paths;
+async function getFileNode(link) {
+  const nodeId = link.nodeId != null ? Number(link.nodeId) : Number(link.fileNodeId);
+  if (!Number.isFinite(nodeId)) return null;
+  const { fileNodeService } = getServices();
+  return fileNodeService.getNode(nodeId);
+}
+
+/**
+ * Resolve the shared node id for a link, or null when the node no longer exists.
+ */
+async function getShareNodeId(link) {
+  const node = await getFileNode(link);
+  return node ? Number(node.id) : null;
 }
 
 async function resolveShareLink(token) {
@@ -63,29 +42,24 @@ async function getShareLinkMetadata(token) {
   if (result.error) return result;
 
   const { link } = result;
-  const exists = await pathExists(link.filePath);
-  if (!exists) {
+  const node = await getFileNode(link);
+  if (!node) {
     return { error: 'notFound', status: HTTP_STATUS.NOT_FOUND, code: 'fileNotFound' };
   }
 
-  const fileName = link.filePath.split('/').pop();
+  const { fileNodeService } = getServices();
+  const displayPath = await fileNodeService.getNodePath(node.id);
+  const fileName = node.name;
   const fileType = getFileType(fileName);
-
-  let isDirectory = false;
-  try {
-    const shareDoc = await permissionStore.getSharePermissionDoc(token);
-    if (shareDoc) {
-      isDirectory = Boolean(shareDoc.isDirectory);
-    }
-  } catch (_) {}
 
   return {
     data: {
       token: link.token,
-      filePath: link.filePath,
+      nodeId: Number(node.id),
       fileName,
       fileType,
-      isDirectory,
+      isDirectory: node.type === 'directory',
+      displayPath,
       createdAt: link.createdAt,
       expiresAt: link.expiresAt,
       downloadCount: link.downloadCount,
@@ -98,17 +72,23 @@ async function checkUserSharePermission(token, userId) {
   const result = await resolveShareLink(token);
   if (result.error) return result;
 
-  const folderPath = normalizePath(result.link.filePath);
-  const pathsToCheck = await collectPathsUnderSharePath(folderPath);
+  const shareNodeId = await getShareNodeId(result.link);
+  if (shareNodeId === null) {
+    return { error: 'notFound', status: HTTP_STATUS.NOT_FOUND, code: 'fileNotFound' };
+  }
+
+  const { fileNodeService } = getServices();
+  const descendantIds = await fileNodeService.getDescendantIds(shareNodeId);
+  const nodeIdsToCheck = [shareNodeId, ...descendantIds];
 
   let hasSufficientPermission = true;
-  let firstMissingPath = null;
+  let firstMissingNodeId = null;
 
-  for (const p of pathsToCheck) {
-    const effective = await permissionStore.getEffectivePermission(userId, p);
+  for (const nodeId of nodeIdsToCheck) {
+    const effective = await permissionStore.getEffectivePermission(userId, nodeId);
     if (!effective || !meetsRank(effective, PERMISSIONS.READ)) {
       hasSufficientPermission = false;
-      firstMissingPath = p;
+      firstMissingNodeId = nodeId;
       break;
     }
   }
@@ -116,7 +96,7 @@ async function checkUserSharePermission(token, userId) {
   return {
     data: {
       hasSufficientPermission,
-      ...(hasSufficientPermission ? {} : { path: firstMissingPath ?? folderPath }),
+      ...(hasSufficientPermission ? {} : { nodeId: firstMissingNodeId ?? shareNodeId }),
     },
   };
 }
@@ -126,7 +106,11 @@ async function addToMyPermissions(token, userId) {
   if (result.error) return result;
 
   const { link } = result;
-  const folderPath = normalizePath(link.filePath);
+  const shareNodeId = await getShareNodeId(link);
+  if (shareNodeId === null) {
+    return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
+  }
+
   const createdBy = link.createdBy;
   if (!createdBy) {
     return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
@@ -138,20 +122,22 @@ async function addToMyPermissions(token, userId) {
   }
 
   const isAdmin = Boolean(creatorUser.is_admin);
-  const isOwner = folderPath === `/${creatorUser.username}` || folderPath.startsWith(`/${creatorUser.username}/`);
+  const isOwner = await isOwnerNode(createdBy, shareNodeId);
   if (!isAdmin && !isOwner) {
-    const hasAdmin = await permissionStore.checkPermission(createdBy, folderPath, PERMISSIONS.ADMIN);
+    const hasAdmin = await permissionStore.checkPermission(createdBy, shareNodeId, PERMISSIONS.ADMIN);
     if (!hasAdmin) {
       return { error: 'forbidden', status: HTTP_STATUS.FORBIDDEN, code: 'cannotAddShare' };
     }
   }
 
-  const dirPaths = await collectDirectoryPathsUnderSharePath(folderPath);
-  const pathsToGrant = dirPaths.length > 0 ? dirPaths : [folderPath];
-  for (const p of pathsToGrant) {
-    const effective = await permissionStore.getEffectivePermission(userId, p);
-    if (effective && meetsRank(effective, PERMISSIONS.READ)) continue;
-    await permissionStore.grant(userId, p, PERMISSIONS.READ);
+  const node = await getFileNode(link);
+  const effective = await permissionStore.getEffectivePermission(userId, shareNodeId);
+  if (!effective || !meetsRank(effective, PERMISSIONS.READ)) {
+    if (node && node.type === 'file') {
+      await permissionStore.grantFilePermission(userId, shareNodeId, PERMISSIONS.READ);
+    } else {
+      await permissionStore.grant(userId, shareNodeId, PERMISSIONS.READ);
+    }
   }
 
   return { data: { messageCode: 'addedToShared' } };
@@ -162,14 +148,18 @@ async function previewFile(token) {
   if (result.error) return result;
 
   const { link } = result;
-  const exists = await pathExists(link.filePath);
-  if (!exists) {
+  const node = await getFileNode(link);
+  if (!node) {
     return { error: 'notFound', status: HTTP_STATUS.NOT_FOUND, code: 'fileNotFound' };
   }
 
   try {
-    const buffer = await getFileContents(link.filePath);
-    const fileName = link.filePath.split('/').pop();
+    const { blobStorageService } = getServices();
+    const buffer = await blobStorageService.downloadBlob(node.id);
+    if (!buffer) {
+      return { error: 'previewFail', status: HTTP_STATUS.INTERNAL_SERVER_ERROR, code: 'previewFail' };
+    }
+    const fileName = node.name;
     const contentType = getContentType(fileName);
 
     return {
@@ -189,21 +179,24 @@ async function downloadFile(token) {
   if (result.error) return result;
 
   const { link } = result;
-  const exists = await pathExists(link.filePath);
-  if (!exists) {
+  const node = await getFileNode(link);
+  if (!node) {
     return { error: 'notFound', status: HTTP_STATUS.NOT_FOUND, code: 'fileNotFound' };
   }
 
   try {
-    const buffer = await getFileContents(link.filePath);
-    const fileName = link.filePath.split('/').pop();
+    const { blobStorageService } = getServices();
+    const buffer = await blobStorageService.downloadBlob(node.id);
+    if (!buffer) {
+      return { error: 'downloadFail', status: HTTP_STATUS.INTERNAL_SERVER_ERROR, code: 'downloadFail' };
+    }
 
     await ShareLink.incrementDownloadCount(token);
 
     return {
       data: {
         buffer,
-        fileName,
+        fileName: node.name,
       },
     };
   } catch (error) {

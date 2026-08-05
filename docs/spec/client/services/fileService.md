@@ -36,12 +36,11 @@
 | batchCopyFiles | (copies with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-copy |
 | getBulkOperationStatus | (jobId) | Promise\<Object\> | GET /api/files/bulk-operation/:jobId |
 | cancelBulkOperation | (jobId) | Promise\<Object\> | POST /api/files/bulk-operation/:jobId/cancel |
-| requestThumbnailsBatch | (nodeIds, options?) | Promise\<Object\> | POST /api/files/thumbnails/batch |
-| checkPermission | (path) | Promise\<Object\> | delegates to permissionService |
+| requestThumbnailsBatch | (nodeIds, options?) | Promise\<{ thumbnails: [{ nodeId, thumbnailUrl }] }\> | POST /api/thumbnails/batch `{ nodeIds }` (pending implementation: current client posts `{ nodeIds }` to `/files/thumbnails/batch`) |
 | getWebDAVInfo | () | Promise\<Object\> | GET /api/webdav/info |
 | getFolderStats | (nodeId) | Promise\<object\> | GET /api/folders/stats (params: nodeId) |
 
-> **Note:** The 5 legacy permission helpers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) still use path-based parameters and require migration to nodeId-based APIs.
+> **Note (pending implementation):** The 5 legacy permission helpers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) are **removed** from this service contract. They are legacy permission helpers that belong to `permissionService`; `fileService` exposes only nodeId-based file/folder operations. The current source still exports nodeId-based wrappers over `permissionService`; those exports will be dropped in the end-state cleanup.
 
 - `shareToken` in options: listFiles, getFilesMetadata, getFileBlob, uploadFileWithPath, uploadMultipleFiles, checkConflicts, downloadMultipleFiles, getDownloadProgress, requestThumbnailsBatch. When set, uses `X-Share-Token` header and query params.
 - `downloadFile` is **authenticated user only** (no share token support). It accepts an optional `options` object for platform- and file-type–specific behavior (see § 2.3).
@@ -85,6 +84,7 @@ Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` o
 - [ ] On iOS + single file: when `navigator.canShare({ files: [file] })` returns true, share path is used (share sheet); otherwise fallback (typedBlob + &lt;a download&gt;) is used
 - [ ] Non-iOS: download uses default blob + &lt;a download&gt;; folder/multi-file download unchanged
 - [ ] createFolder calls POST /api/folders/create with parentNodeId and name
+- [ ] requestThumbnailsBatch posts `{ nodeIds }` to POST /api/thumbnails/batch and maps the response `{ thumbnails: [{ nodeId, thumbnailUrl }] }` by nodeId
 - [ ] uploadMultipleFiles calls onProgress, returns results/errors
 - [ ] batchMove/batchCopy return jobId; status polled via getBulkOperationStatus
 - [ ] downloadMultipleFiles triggers download, onProgress called

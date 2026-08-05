@@ -23,7 +23,7 @@
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| currentPath | string | Y | Normalized current folder path that the explorer is showing. |
+| currentNodeId | number \| null | Y | Current folder nodeId that the explorer is showing (`null` = root / virtual root). |
 | files | Array<object> | Y | Current directory entries already loaded (source of truth from higher-level listing logic). |
 | initialSearchQuery | string | N | Initial search query. Defaults to empty string. |
 | isMobile | boolean | N | Used only for preserving current mobile view-mode restrictions (behavior must remain unchanged). |
@@ -51,8 +51,8 @@ Notes:
 | displayedFiles | Array<object> | Final list that the view consumes (search + sort + infinite-scroll shaping + any display shaping that is currently local-state-derived). |
 | loadMoreRef | ref callback/object | Infinite-scroll sentinel for the view layer. |
 | hasMore | boolean | Whether more items can be revealed by the infinite-scroll seam. |
-| handleThumbnailsLoaded | `(thumbnailMap: Map<string, string>) => void` | Merge thumbnail URLs into the session-local file list without re-owning list loading. |
-| sessionKey | string | A stable key representing the explorer session boundary for downstream resets when `currentPath` changes. The hook exposes this token; the page shell / selection seam decides how to react to it. |
+| handleThumbnailsLoaded | `(thumbnailMap: Map<number, string>) => void` | Merge thumbnail URLs keyed by `file.nodeId` into the session-local file list without re-owning list loading. |
+| sessionKey | string | A stable key representing the explorer session boundary for downstream resets when the current nodeId changes. The hook exposes this token; the page shell / selection seam decides how to react to it. (pending implementation: the current source derives `sessionKey` from `currentPath`.) |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 
@@ -63,7 +63,7 @@ Notes:
   - Preference-backed persistence for sort/view mode through a storage adapter/helper boundary.
   - Session-local file shaping needed for view updates that do not re-fetch data (for example thumbnail URL merges).
   - Derived display list that the view consumes, including infinite-scroll shaping.
-  - Exposes a path-change boundary token (`sessionKey`) used by the shell/selection seam for selection reset.
+  - Exposes a node-change boundary token (`sessionKey`) used by the shell/selection seam for selection reset.
 - **Does not own**
   - Fetching/listing files (belongs to listing logic / gateway usage outside this hook).
   - Recent-file subscriptions or repository access when `__recent__` is active.
@@ -92,7 +92,7 @@ Verify observable outcomes (“what”), not internal implementation:
 
 - [ ] When `searchQuery` changes, `displayedFiles` updates using the same name-matching behavior as today.
 - [ ] When `sortMode` changes, the ordering matches current behavior for each supported sort mode.
-- [ ] When `currentPath` changes, `sessionKey` changes (or otherwise signals a reset boundary) so the shell/selection seam can reset selection as today.
+- [ ] When `currentNodeId` changes, `sessionKey` changes (or otherwise signals a reset boundary) so the shell/selection seam can reset selection as today.
 - [ ] Mobile view-mode restrictions remain unchanged (if mobile disallows certain modes today, it still does).
 - [ ] Thumbnail updates merged through `handleThumbnailsLoaded` update rendered file data without requiring a full re-fetch.
 - [ ] Preference persistence for sort/view mode keeps the same observable behavior without exposing direct browser-storage requirements in the hook contract.

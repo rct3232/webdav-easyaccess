@@ -8,6 +8,8 @@
 | Used in | FolderTree (share link view) |
 | Related components | BaseFolderTreeItem, folderTreeGateway |
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.5): share-link mode is keyed by the share root **nodeId**. The root nodeId comes from `linkInfo` when present; otherwise a temporary `resolve-path` fallback resolves the share root path to a nodeId (fallback removed in Phase 5, once `GET /share-link/:token` returns a nodeId). The current source still passes `shareRootPath`; that is transitional and is replaced below.
+
 ---
 
 ## 2. Implementation Spec
@@ -21,18 +23,18 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| shareRootPath | string | Y | - | Share root path |
+| shareRootNodeId | number | Y | - | Share root node id (target contract, pending implementation) |
 | shareRootName | string | Y | - | Display name |
 | shareToken | string | N | - | Share token |
-| currentPath | string | Y | - | Current path |
-| onShareLinkPathClick | function | Y | - | Path click |
+| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
 | isMobile | boolean | N | false | Mobile |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onShareLinkPathClick | Path click | (path) |
+| onNodeClick | Node click | (nodeId) |
 
 ### 2.4 Dependencies
 
@@ -45,17 +47,17 @@
 
 ### 2.6 Conditional Rendering
 
-- Expands parent paths when currentPath under root
-- Loads root children through `folderTreeGateway.listFolderChildren({ path, listFilesOptions: { shareToken } })`
+- Expands ancestor nodes when `currentNodeId` is under the share root
+- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })` (target contract, pending implementation)
 
 ### 2.7 Verification Scenarios
 
-- [ ] Path click
-- [ ] Expand when currentPath in tree
+- [ ] Node click
+- [ ] Expand when current node in tree
 - [ ] Root children loaded
-- [ ] Root children request is routed through `folderTreeGateway` with the provided `shareToken`
+- [ ] Root children request is routed through `folderTreeGateway` with the provided `shareToken` and the share root `nodeId`
 
 ### 2.8 Edge Cases
 
-- shareRootPath normalized
-- currentPath outside root – no segments
+- share root nodeId absent: falls back to a temporary `resolve-path` shim (removed in Phase 5); returns null when neither `shareRootNodeId` nor `shareToken` is provided
+- currentNodeId outside root – no segments

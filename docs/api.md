@@ -40,44 +40,52 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/files/list` | Token or share | List folder contents. Query: `path`. |
-| GET | `/api/files/download` | Token or share | Download file. Query: `path`; optional `inline` (true/false). |
-| POST | `/api/files/upload` | Token | Upload file. Multipart: `file`; body: `path`, `relativePath`, `onConflict` (error, overwrite, skip). |
-| PUT | `/api/files/rename` | Token | Rename. Body: e.g. `oldPath`, `newName`. |
-| POST | `/api/files/batch-move` | Token | Move items. Body: `moves` (array of `{ sourcePath, destinationPath }`), optional `onConflict` (error, overwrite, skip). Returns 202 + `jobId`. |
-| POST | `/api/files/batch-copy` | Token | Copy items. Body: `copies` (array of `{ sourcePath, destinationPath }`), optional `onConflict`. Returns 202 + `jobId`. |
-| POST | `/api/files/batch-delete` | Token | Delete items. Body: e.g. `paths`. |
-| POST | `/api/files/download-multiple` | Token or share | ZIP multiple files/folders. Body: `paths`; optional `downloadId`. |
+| GET | `/api/files/list` | Token or share | List folder contents. Query: `nodeId` (parent directory node; omit for root). |
+| GET | `/api/files/download` | Token or share | Download file. Query: `nodeId`; optional `inline` (true/false). |
+| POST | `/api/files/upload` | Token | Upload file. Multipart: `file`; form fields: `parentNodeId`, `onConflict` (error, overwrite, skip), optional `relativePath`. |
+| PUT | `/api/files/rename` | Token | Rename. Body: `{ nodeId, newName }`. |
+| POST | `/api/files/move` | Token | Move one node. Body: `{ nodeId, destinationParentNodeId }`. |
+| POST | `/api/files/copy` | Token | Copy one node. Body: `{ nodeId, destinationParentNodeId }`, optional `newName`. |
+| DELETE | `/api/files/delete` | Token | Delete one node. Body: `{ nodeId }`. |
+| POST | `/api/files/batch-move` | Token | Move items. Body: `{ moves: [{ sourceNodeId, destinationParentNodeId }] }`, optional `onConflict` (error, overwrite, skip). Returns 202 + `jobId`. |
+| POST | `/api/files/batch-copy` | Token | Copy items. Body: `{ copies: [{ sourceNodeId, destinationParentNodeId, newName }] }`, optional `onConflict`. Returns 202 + `jobId`. |
+| POST | `/api/files/batch-delete` | Token | Delete items. Body: `{ nodeIds }`. Returns 202 + `jobId`. |
+| POST | `/api/files/download-multiple` | Token or share | ZIP multiple files/folders. Body: `{ nodeIds }`; optional `downloadId`. |
 | GET | `/api/files/download-progress/:id` | Token or share | Progress of ZIP download. |
 | GET | `/api/files/bulk-operation/:jobId` | Token | Bulk job status. |
 | POST | `/api/files/bulk-operation/:jobId/cancel` | Token | Cancel bulk operation. |
-| GET | `/api/files/thumbnail/:hash` | Token | Single thumbnail image. |
-| POST | `/api/files/thumbnails/batch` | Token or share | Batch thumbnails. Body: e.g. `paths` or items with path/hash. |
-| GET | `/api/thumbnails/:hash.:ext` | Query `token` required | Thumbnail by hash and extension. Query: `?token=` (signed token from batch API). |
-| POST | `/api/files/check-conflicts` | Token | Check name conflicts before paste. Body: `operations` (array), optional `limit` (boolean, default true). |
-| POST | `/api/files/metadata` | Token or share | Get file metadata. Body: e.g. `paths`. |
-| POST | `/api/folders/create` | Token | Create folder. Body: `path`. |
+| POST | `/api/files/check-conflicts` | Token | Check name conflicts before paste. Body: `{ operations, limit }` (`limit` boolean, default true). |
+| POST | `/api/files/metadata` | Token or share | Get metadata for nodeIds. Body: `{ nodeIds }`. |
+| POST | `/api/folders/create` | Token | Create folder. Body: `{ parentNodeId, name }`. |
+| GET | `/api/folders/stats` | Token | Recursive folder statistics. Query: `nodeId`. |
 
-Path parameters are normalized by middleware. All paths that accept `path`, `sourcePath`, `destinationPath`, or similar are checked for the reserved `/.wea` path (non-admin access blocked).
+All file/folder endpoints identify resources by `nodeId`/`parentNodeId`; path strings are not accepted. The reserved `/.wea` path is blocked for non-admin via `checkMetaPathAccess`.
+
+## Thumbnails
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/thumbnails/batch` | Token or share | Batch thumbnails. Body: `{ nodeIds }`. Returns `{ thumbnails: [{ nodeId, thumbnailUrl }] }`. |
+| GET | `/api/thumbnails/:hash.:ext` | Query `token` required | Thumbnail by hash and extension. Query: `?token=` (signed token from batch API, short expiry). |
 
 ---
 
 ## Permissions
 
+All permission endpoints are nodeId-based. Directory-level grants inherit to descendants via the `node_ancestors` closure table; file-level grants override inherited directory permissions.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/permissions/grant` | Token | Grant folder or file permission. Body: `folderPath`, `userId`, `permission`; optional `target` ('file' for file-level). |
-| DELETE | `/api/permissions/revoke` | Token | Revoke permission. Query: `userId`, `folderPath`; optional `includeSubfolders`, `scope` ('pathOnly' for file-level). |
-| GET | `/api/permissions/user/:userId` | Token | List permissions for a user. |
-| GET | `/api/permissions/folder` | Token | List permissions for a folder. Query: `path`; optional `includeSubfolders`, `filePath`. |
-| GET | `/api/permissions/check` | Token | Check current user permission for a path. Query: `path`. |
-| POST | `/api/permissions/file/grant` | Token | Grant file-level permission. Body: `filePath`, `userId`, `permission`. |
-| DELETE | `/api/permissions/file/revoke` | Token | Revoke file-level permission. Query: `userId`, `filePath`. |
-| PATCH | `/api/permissions/file` | Token | Update file-level permission. Body: `userId`, `filePath`, `permission`. |
-| GET | `/api/permissions/file/check` | Token | Check file permission. Query: `path`. |
-| GET | `/api/permissions/file/list` | Token | List file permissions. Query: `folderPath` (optional). |
-
-Path params are normalized; `/.wea` is blocked for non-admin.
+| POST | `/api/permissions/grant` | Token | Grant directory permission. Body: `{ userId, nodeId, permission }` (`nodeId` must reference a directory node). |
+| DELETE | `/api/permissions/revoke` | Token | Revoke directory permission. Query: `userId`, `nodeId`; optional `includeDescendants` (true to also revoke grants on descendant nodes). |
+| GET | `/api/permissions/user/:userId` | Token | List permissions for a user. Returns `[{ nodeId, permission }]`. |
+| GET | `/api/permissions/folder` | Token | List permissions for a folder. Query: `nodeId`; optional `includeDescendants`, `fileNodeId`. |
+| GET | `/api/permissions/check` | Token | Check current user effective permission. Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
+| POST | `/api/permissions/file/grant` | Token | Grant file-level permission. Body: `{ userId, fileNodeId, permission }`. |
+| DELETE | `/api/permissions/file/revoke` | Token | Revoke file-level permission. Query: `userId`, `fileNodeId`. |
+| PATCH | `/api/permissions/file` | Token | Update file-level permission. Body: `{ userId, fileNodeId, permission }`. |
+| GET | `/api/permissions/file/check` | Token | Check file permission. Query: `fileNodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
+| GET | `/api/permissions/file/list` | Token | List file permissions. Query: `parentNodeId` (optional; filters to files under that node). |
 
 ---
 
@@ -85,10 +93,10 @@ Path params are normalized; `/.wea` is blocked for non-admin.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/permission-requests` | Token | Create request (requester). Body: `folderPath` or `filePath`, `permission`; optional `message`. |
+| POST | `/api/permission-requests` | Token | Create request (requester). Body: `nodeId` (or `fileNodeId`), `permission`; optional `message`. |
 | GET | `/api/permission-requests/inbox` | Token | Incoming requests (for owners). |
 | GET | `/api/permission-requests/outbox` | Token | Outgoing requests (for requesters). |
-| GET | `/api/permission-requests/check-owner` | Token | Check if path has an owner. Query: `folderPath` or `filePath`. |
+| GET | `/api/permission-requests/check-owner` | Token | Check if a node has an owner. Query: `nodeId`. |
 | POST | `/api/permission-requests/:id/approve` | Token | Approve (owner). |
 | POST | `/api/permission-requests/:id/reject` | Token | Reject (owner). |
 | POST | `/api/permission-requests/:id/cancel` | Token | Cancel own request (requester). |

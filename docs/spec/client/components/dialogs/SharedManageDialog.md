@@ -23,7 +23,8 @@
 |------|------|----------|---------|-------------|
 | open | boolean | Y | - | Dialog open |
 | onClose | function | Y | - | Close handler |
-| targetPath | string | Y | - | Path to manage |
+| targetNodeId | number | Y | - | Node id to manage |
+| parentNodeId | number | N | - | Parent node id (used for file-level `pathPermission` derivation) |
 | displayName | string | Y | - | Display name |
 | isDirectory | boolean | Y | - | Is directory |
 | user | object | Y | - | Current user |

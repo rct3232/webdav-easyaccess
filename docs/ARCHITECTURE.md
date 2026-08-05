@@ -104,43 +104,43 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
 ### 1.3 Middleware Pipeline
 
-For routes that require it, a standardized middleware chain runs for security and data normalization. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth, User Loader, Path Normalizer, or Meta Path Guard.
+For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth, User Loader, or Meta Path Guard.
 
 ```
-Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader → Path Normalizer → Meta Path Guard] (per route) → Route Handler → Error Handler
+Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader → Meta Path Guard] (per route) → Route Handler → Error Handler
 ```
 
 #### Core Middleware
 1.  **authenticateToken** (`server/utils/auth.js`): Validates `Authorization: Bearer <JWT>` header and sets `req.user.id`.
 2.  **requireUser** (`server/middleware/requireUser.js`): Loads user details from Metadata Store into `req.user.full`.
-3.  **normalizePathParam** (`server/middleware/normalizePathParam.js`): Normalizes path-related query and body fields (`path`, `sourcePath`, `destinationPath`, `oldPath`, `folderPath`) to POSIX style and removes duplicate slashes.
+3.  **parseNodeId** (`server/middleware/validateNodeIdParam.js`): Parses and validates opaque `nodeId` / `parentNodeId` / `fileNodeId` payload fields inside route handlers; invalid nodeIds are rejected rather than normalized.
 4.  **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`): Blocks non-admin access to reserved path `/.wea`.
 5.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
 ### 1.4 Permission Policy (ACL)
 
-The system runs its own **ACL (Access Control List)** independent of WebDAV server permissions.
+The system runs its own **ACL (Access Control List)** independent of WebDAV server permissions. Permissions are stored on nodes (`file_node_id` BIGINT); directory-level grants inherit to descendants through the `node_ancestors` closure table.
 
 ```mermaid
 flowchart TD
-    A["Request (User, Path)"] --> B{"Admin?"}
+    A["Request (User, NodeId)"] --> B{"Admin?"}
     B -->|"Yes"| C["Allow All"]
-    B -->|"No"| D{"Owner Path? (/{username}/...)"}
+    B -->|"No"| D{"Owner of node?<br/>isOwnerNode(userId, nodeId)"}
     D -->|"Yes"| C
-    D -->|"No"| E{"Action Type?"}
-    E -->|"Read"| F["Check direct permission on path or file's parent"]
-    E -->|"Write"| G["Check Direct Permissions"]
-    F --> H{"Has 'read' or higher?"}
-    G --> I{"Has 'write' or higher?"}
+    D -->|"No"| E{"Node type?"}
+    E -->|"Directory"| F["checkFolderPermission: closure-table ancestor walk (depth 0..N)"]
+    E -->|"File"| G["checkFilePermission: file-specific grant first, then ancestor walk"]
+    F --> H{"Effective 'read'/'write' or higher?"}
+    G --> I{"Effective 'read'/'write' or higher?"}
     H -->|"Yes"| C
     H -->|"No"| J["403 Forbidden"]
     I -->|"Yes"| C
     I -->|"No"| J
 ```
 
-*   **Direct Read**: Read is checked on that folder or the file's direct parent only. No inheritance from ancestor paths.
-*   **Direct Write**: Write permission applies only when explicitly granted on that folder (no inheritance).
-*   **Owner exception**: `/{username}` is treated as the user's home directory and always grants full access.
+*   **Closure-table inheritance**: a directory grant applies to the node itself (depth 0) and is inherited by all descendants (depth 1..N) via `node_ancestors`; grant/revoke on a folder affects the whole subtree.
+*   **File grant precedence**: a file-specific grant (`permissions_user_files`) overrides any inherited directory-level permission on that file node.
+*   **Owner exception**: a user owns their home root node and every descendant of it (resolved via `isOwnerNode`); the owner has full access without explicit grants.
 *   **Permission enum**: `read < write < admin` (source of truth: `shared/constants.js`; DB enforcement in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`).
 
 ---
@@ -263,7 +263,7 @@ sequenceDiagram
     end
 ```
 
-*   **Endpoints**: `GET /api/thumbnails/:hash.:ext` (token in query required) and `GET /api/files/thumbnail/:hash` (JWT) for single thumbnail; `POST /api/files/thumbnails/batch` for batch.
+*   **Endpoints**: `POST /api/thumbnails/batch` (body `{ nodeIds }`, returns `{ thumbnails: [{ nodeId, thumbnailUrl }] }`) for viewport batch loading; `GET /api/thumbnails/:hash.:ext` (signed token in query required) for a single thumbnail.
 *   **Performance**:
     *   Thumbnails are cached in server memory (max 1000).
     *   Clients request multiple thumbnails in viewport via batch API.
@@ -277,7 +277,7 @@ Directory move/delete can be complex depending on WebDAV server behavior. The sy
     1.  Recursively traverse the target folder tree.
     2.  Check **current user ACL** at each step.
     3.  Move/copy/delete only items the user is allowed to access.
-    4.  After completion, update or revoke ACL data (`/.wea/permissions/...`) according to new paths.
+    4.  After completion, permission metadata is preserved because grants reference stable nodeIds; the `node_ancestors` closure table is rebuilt for moved subtrees.
 
 ---
 

@@ -17,41 +17,43 @@
 - **Source:** `client/src/components/folder-tree/hooks/useFolderTreeController.js`
 - **Test file:** `client/src/components/folder-tree/hooks/__tests__/useFolderTreeController.test.js`
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.3): the controller migrates to nodeId-first state — `expandedNodeIds`, `currentNodeId`, `onNodeClick(nodeId)` — and shared folders are keyed by nodeId (the permissions API already returns nodeId). The current source still uses `expandedPaths`/`currentPath`/`onPathClick`; those are transitional and are replaced below. Virtual roots `/__shared__` and `/__recent__` remain unchanged (decision D1).
+
 ### 2.2 Input Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| currentPath | string | Y | Current explorer path (drives which sections should be marked expanded). |
+| currentNodeId | number | Y | Current explorer node id (drives which sections/nodes should be marked expanded). Virtual-root routes (`__shared__`/`__recent__`) keep their route-based selection per D1 (target contract, pending implementation). |
 | user | object | Y | Current user (drives whether shared/recent sections can load). |
-| onPathClick | function | Y | Called when the controller wants to navigate via the host (e.g. toggle “__shared__” to that route). |
+| onNodeClick | function | Y | Called when the controller wants to navigate via the host: `(nodeId) => void`. Also used to navigate to the `__shared__`/`__recent__` virtual-root routes (target contract, pending implementation). |
 
 ### 2.3 Return Value / State
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| homePath | string | Host “home” folder path (admin -> `/`, others -> `/${username}`). |
-| expandedPaths | Set<string> | Expanded folder paths for the main tree and shared section items. |
-| onToggleExpand | (path: string) => void | Toggles expansion for an individual folder path. |
-| sharedFolders | Array<{ folder_path: string, permission: string }> | Shared-folder permission entries (filtered) used by the shared tree builder. |
+| homeNodeId | number | Host "home" folder node id (admin -> root node id, others -> user home node id) (target contract, pending implementation). |
+| expandedNodeIds | Set<number> | Expanded folder node ids for the main tree and shared section items (target contract, pending implementation). |
+| onToggleExpand | (nodeId: number) => void | Toggles expansion for an individual folder node id. |
+| sharedFolders | Array<{ nodeId: number, permission: string }> | Shared-folder permission entries (filtered), keyed by nodeId, used by the shared tree builder. |
 | sharedExpanded | boolean | Whether the “__shared__” section is expanded. |
 | handleSharedToggle | (e: any) => void | Stops propagation and toggles “__shared__” expanded state (and navigates to `/__shared__` when expanding). |
 | handleSharedClick | () => void | Navigates to `/__shared__`. |
-| handleSharedFolderClick | (folderPath: string) => void | Navigates to a specific shared subfolder path. |
-| buildSharedFolderTree | () => Array<{ path: string, name: string, children: any[], parentPath: string | null, permission: string, hasReadPermission: boolean }> | Derived shared-tree structure consumed by `SharedFoldersSection`. Phase 4 keeps this derived builder inside the controller; extraction to a standalone pure helper is future work. |
+| handleSharedFolderClick | (nodeId: number) => void | Navigates to a specific shared folder by nodeId (target contract, pending implementation). |
+| buildSharedFolderTree | () => Array<{ nodeId: number, name: string, children: any[], parentNodeId: number \| null, permission: string, hasReadPermission: boolean }> | Derived shared-tree structure consumed by `SharedFoldersSection`. Nodes are keyed by nodeId; the interim synthetic `/__shared__/<nodeId>` path entries are removed (pending implementation in C2.3). Extraction to a standalone pure helper is future work. |
 | recentExpanded | boolean | Whether the “__recent__” section is expanded. |
 | handleRecentToggle | (e: any) => void | Stops propagation and toggles “__recent__” expanded state. |
 | handleRecentClick | () => void | Navigates to `/__recent__`. |
-| recentFilesList | Array<any> | Current recent files list consumed by `RecentFilesSection`. |
+| recentFilesList | Array<any> | Current recent files list consumed by `RecentFilesSection` (path-based until Phase 5). |
 
 ### 2.4 Dependencies
 
 - Services called / IO boundaries:
   - `getRecentFiles` from `client/src/services/recentFilesRepository`
   - `onRecentFilesChange` from `client/src/services/recentFilesNotifier`
-  - `folderTreeGateway.getUserSharedFolderPermissions` from `client/src/services/folderTreeGateway`
+  - `folderTreeGateway.getUserSharedFolderPermissions` from `client/src/services/folderTreeGateway` (returns nodeId-keyed permission entries)
 - Pure utilities:
-  - `normalizePath` for shared-tree building
-  - `getUserBaseFolder` to compute the user home path
+  - `normalizePath` only where path normalization still applies (virtual-root checks; no longer used to build synthetic shared-folder paths — target contract, pending implementation)
+  - `getUserBaseFolder` to compute the user home node id (target contract, pending implementation)
 
 ### 2.5 Side Effects
 
@@ -60,14 +62,14 @@
   - Subscribes to recent-file updates via `onRecentFilesChange`, reloading on updates
   - Clears recent files when `user` becomes falsy
 - On mount / whenever `user` changes:
-  - Loads shared-folder permissions for non-admin users
+  - Loads shared-folder permissions for non-admin users (nodeId-keyed entries)
   - Clears shared-folder permissions for admin users
-- Whenever `currentPath`, `user homePath`, or `sharedFolders` changes:
-  - Recomputes `expandedPaths` to include the path prefixes and `homePath`
-  - Sets `sharedExpanded` to `true` when `currentPath` is `/__shared__` or within a shared folder prefix
-  - Sets `recentExpanded` to `true` when `currentPath` is `/__recent__`
+- Whenever `currentNodeId`, `user homeNodeId`, or `sharedFolders` changes:
+  - Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId` (target contract, pending implementation)
+  - Sets `sharedExpanded` to `true` when the current location is the `/__shared__` virtual root or within a shared folder node subtree
+  - Sets `recentExpanded` to `true` when the current location is `/__recent__`
 - Manual toggles:
-  - `handleSharedToggle` and `handleRecentToggle` allow the user to collapse/expand sections after auto-expansion has been derived from path state
+  - `handleSharedToggle` and `handleRecentToggle` allow the user to collapse/expand sections after auto-expansion has been derived from location state
 
 ### 2.6 Error Handling
 
@@ -88,16 +90,16 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 - Shared folders load for non-admin users, and do not load for admin users.
 - Repository-provided empty recent results still keep `recentFilesList` array-safe.
 - Shared-folder load failure falls back to `[]`.
-- `expandedPaths` includes `homePath` and each prefix segment of `currentPath` when `currentPath` is set.
-- Falsy `currentPath` leaves `expandedPaths` with only `homePath`.
-- Setting `currentPath` to `/__shared__` sets `sharedExpanded` to `true`.
-- Setting `currentPath` to a shared-folder prefix sets `sharedExpanded` to `true`.
-- Setting `currentPath` to `/__recent__` sets `recentExpanded` to `true`.
-- `handleSharedToggle` toggles `sharedExpanded` and calls `onPathClick('/__shared__')` when transitioning to expanded.
-- `handleRecentClick` and `handleSharedFolderClick` navigate through the host callback with the expected path.
+- `expandedNodeIds` includes `homeNodeId` and the current node's ancestor node ids when `currentNodeId` is set (target contract, pending implementation).
+- Falsy `currentNodeId` leaves `expandedNodeIds` with only `homeNodeId`.
+- Setting the current location to `/__shared__` sets `sharedExpanded` to `true`.
+- Setting the current location to a shared folder node subtree sets `sharedExpanded` to `true`.
+- Setting the current location to `/__recent__` sets `recentExpanded` to `true`.
+- `handleSharedToggle` toggles `sharedExpanded` and calls `onNodeClick` for the `/__shared__` route when transitioning to expanded.
+- `handleRecentClick` and `handleSharedFolderClick` navigate through the host callback with the expected location (virtual-root route / nodeId).
 
 ### 2.8 Edge Cases
 
-- `currentPath` is empty/falsy: `expandedPaths` contains only `homePath`.
-- Shared permissions entries may contain paths with or without trailing slashes: shared-tree building normalizes paths.
+- `currentNodeId` is empty/falsy: `expandedNodeIds` contains only `homeNodeId`.
+- Shared permission entries are keyed by nodeId; the shared-tree builder no longer normalizes synthetic paths. Shared folders with the same nodeId must not duplicate.
 

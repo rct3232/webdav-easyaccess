@@ -19,17 +19,19 @@
 
 ### 2.2 Props
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.3): shared-folder items are keyed and navigated by nodeId (the permissions API already returns nodeId). The current source still builds synthetic `/__shared__/<nodeId>` paths; that is transitional and is replaced below. The section header selection on the `/__shared__` virtual-root route is unchanged (decision D1 keeps virtual roots path-based).
+
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| sharedFolders | array | Y | - | Shared folder list |
+| sharedFolders | array | Y | - | Shared folder list, each entry `{ nodeId, permission, name }` keyed by nodeId |
 | sharedExpanded | boolean | Y | - | Section expanded |
 | handleSharedToggle | function | Y | - | Toggle expand |
 | handleSharedClick | function | Y | - | Section header click |
-| currentPath | string | Y | - | Current path |
-| buildSharedFolderTree | function | Y | - | Build tree |
-| handleSharedFolderClick | function | Y | - | Folder click |
-| expandedPaths | Set | Y | - | Expanded paths |
-| handleToggleExpand | function | Y | - | Toggle expand |
+| currentNodeId | number | Y | - | Current folder node id (item highlighting) (target contract, pending implementation) |
+| buildSharedFolderTree | function | Y | - | Build tree of `{ nodeId, name, children, parentNodeId, permission, hasReadPermission }` nodes |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
+| expandedNodeIds | Set | Y | - | Expanded node id set (target contract, pending implementation) |
+| onToggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Reload trigger |
 | onExplorerDrop | function | N | - | Drop |
@@ -41,8 +43,8 @@
 |----------|--------------|-----------|
 | handleSharedToggle | Expand/collapse | - |
 | handleSharedClick | Section click | - |
-| handleSharedFolderClick | Folder click | (path) |
-| handleToggleExpand | Folder expand | (path) |
+| onNodeClick | Folder click | (nodeId) |
+| onToggleExpand | Folder expand | (nodeId) |
 
 ### 2.4 Dependencies
 
@@ -56,13 +58,13 @@
 ### 2.6 Conditional Rendering
 
 - Returns null when user?.is_admin or sharedFolders.length === 0
-- Selected when currentPath === '/__shared__'
+- Section header selected on the `/__shared__` virtual-root route (unchanged per D1)
 - Collapse for children
 
 ### 2.7 Verification Scenarios
 
 - [ ] Renders when non-admin and shared folders exist
-- [ ] Expand, path click
+- [ ] Expand, node click
 - [ ] Returns null for admin
 
 ### 2.8 Edge Cases

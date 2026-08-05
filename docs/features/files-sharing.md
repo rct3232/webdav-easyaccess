@@ -6,7 +6,7 @@ This document describes the product behavior around browsing and operating on fi
 
 ## Overview
 
-Users manage files and folders through a node_id-based API. The server enforces ACL (direct read/direct write) on every request; list/read require permission on the folder (or the file's parent), and write operations require write (or admin) on the target folder. Batch operations (move/copy/delete) use selective transfer/delete logic: the server traverses trees, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Since node_ids are stable across rename/move operations, no post-operation synchronization of recent files is needed. Thumbnails are generated server-side and cached. Sharing features provide time-limited public access to a file or folder (share links) and controlled access via permissions. Recent files are stored per user using node_id references.
+Users manage files and folders through a nodeId-based API. The server enforces ACL on every request; list/read require effective read permission on the target node, write operations require write (or admin) on the target folder, and directory-level permissions are inherited by descendants through the `node_ancestors` closure table. Batch operations (move/copy/delete) use selective transfer/delete logic: the server traverses trees, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Since nodeIds are stable across rename/move operations, no post-operation synchronization of recent files is needed. Thumbnails are generated server-side and cached. Sharing features provide time-limited public access to a file or folder (share links) and controlled access via permissions. Recent files are stored per user using nodeId references.
 
 ---
 
@@ -49,38 +49,42 @@ This section is a reference summary of the existing endpoints that back the abov
 
 ### Files and Folders
 
-- **List:** `GET /api/files/list?path=...` — Returns folder contents with ACL info. Path normalized; `/.wea` blocked for non-admin.
-- **Download:** `GET /api/files/download?path=...` — Single file download (token or share token where supported).
-- **Upload:** `POST /api/files/upload` — Multipart `file`, body/query `path`. Checks parent write permission.
-- **Rename:** `PUT /api/files/rename` — Body: e.g. `oldPath`, `newName`.
-- **Batch move:** `POST /api/files/batch-move` — Body: e.g. `sourcePaths`, `destinationPath` or `moves[]`. ACL updated for moved items (node_ids stable, no path-based rewrite needed).
-- **Batch copy:** `POST /api/files/batch-copy` — Body: e.g. `sourcePaths`, `destinationPath` or `copies[]`. Conflict handling (e.g. `onConflict`) as per api.
-- **Batch delete:** `POST /api/files/batch-delete` — Body: e.g. `paths`. Only items the user is allowed to delete; permission metadata cleaned up.
-- **Create folder:** `POST /api/folders/create` — Body: `path`.
-- **Check conflicts:** `POST /api/files/check-conflicts` — Body: e.g. `paths`, `destinationPath`. Used before paste.
-- **Metadata:** `POST /api/files/metadata` — Body: e.g. `paths`.
-- **Download multiple (ZIP):** `POST /api/files/download-multiple`, `GET /api/files/download-progress/:id`.
+- **List:** `GET /api/files/list?nodeId=` — Returns folder contents with ACL info. `nodeId` is the parent directory node; omit for the root.
+- **Download:** `GET /api/files/download?nodeId=` — Single file download (token or share token where supported). Optional `inline=true`.
+- **Upload:** `POST /api/files/upload` — Multipart `file`; form fields `parentNodeId`, `onConflict` (error/overwrite/skip), optional `relativePath`. Checks parent write permission.
+- **Rename:** `PUT /api/files/rename` — Body: `{ nodeId, newName }`.
+- **Move (single):** `POST /api/files/move` — Body: `{ nodeId, destinationParentNodeId }`.
+- **Copy (single):** `POST /api/files/copy` — Body: `{ nodeId, destinationParentNodeId }`, optional `newName`.
+- **Delete (single):** `DELETE /api/files/delete` — Body: `{ nodeId }`.
+- **Batch move:** `POST /api/files/batch-move` — Body: `{ moves: [{ sourceNodeId, destinationParentNodeId }], onConflict }`. Returns 202 + `jobId`. ACL updated for moved items (nodeIds stable, no path-based rewrite needed).
+- **Batch copy:** `POST /api/files/batch-copy` — Body: `{ copies: [{ sourceNodeId, destinationParentNodeId, newName }], onConflict }`. Returns 202 + `jobId`.
+- **Batch delete:** `POST /api/files/batch-delete` — Body: `{ nodeIds }`. Only items the user is allowed to delete; permission metadata cleaned up. Returns 202 + `jobId`.
+- **Create folder:** `POST /api/folders/create` — Body: `{ parentNodeId, name }`.
+- **Folder stats:** `GET /api/folders/stats?nodeId=` — Recursive file/folder counts and total size.
+- **Check conflicts:** `POST /api/files/check-conflicts` — Body: `{ operations, limit }`. Used before paste.
+- **Metadata:** `POST /api/files/metadata` — Body: `{ nodeIds }`.
+- **Download multiple (ZIP):** `POST /api/files/download-multiple` — Body: `{ nodeIds, downloadId }`; `GET /api/files/download-progress/:id`.
 - **Bulk operation progress:** `GET /api/files/bulk-operation/:jobId`, `POST /api/files/bulk-operation/:jobId/cancel`.
 
-All path parameters are normalized by middleware; `path`, `sourcePath`, `destinationPath`, `oldPath`, `folderPath` are normalized. Access to `/.wea` is blocked for non-admin (see [ARCHITECTURE.md](../ARCHITECTURE.md) and [permissions.md](permissions.md)).
+All file/folder endpoints identify resources by `nodeId` / `parentNodeId`; path strings are not used. Access to the reserved `/.wea` path is blocked for non-admin (see [ARCHITECTURE.md](../ARCHITECTURE.md) and [permissions.md](permissions.md)).
 
 ### Thumbnails and Preview
 
-- **Single:** `GET /api/files/thumbnail/:hash` or `GET /api/thumbnails/:hash.:ext` (optional token for shared content).
-- **Batch:** `POST /api/files/thumbnails/batch` — Body: e.g. `paths` or items with path/hash. Used for viewport-based loading.
+- **Batch:** `POST /api/thumbnails/batch` — Body: `{ nodeIds }`. Returns `{ thumbnails: [{ nodeId, thumbnailUrl }] }`. Used for viewport-based loading.
+- **Single:** `GET /api/thumbnails/:hash.:ext?token=` — Signed token from the batch API (short expiry); query `token` required.
 - Thumbnails: server-side resize (Sharp); video frame extraction via FFmpeg. Cached in memory (LRU, max 1000). See ARCHITECTURE §3.1.
 
 ### Permissions (grant/revoke)
 
-- Grant: `POST /api/permissions/grant` — Body: `{ fileNodeId, userId, permission }`.
-- Revoke: `DELETE /api/permissions/revoke` — Query: `userId`, `fileNodeId`.
-- Folder/file list and check: `GET /api/permissions/folder?path=...`, `GET /api/permissions/check?path=...`, and file-level endpoints as in [api.md](../api.md).
+- Grant: `POST /api/permissions/grant` — Body: `{ userId, nodeId, permission }` (directory). File-level grant: `POST /api/permissions/file/grant` with `{ userId, fileNodeId, permission }`.
+- Revoke: `DELETE /api/permissions/revoke` — Query: `userId`, `nodeId`; optional `includeDescendants`. File-level revoke: `DELETE /api/permissions/file/revoke` (Query: `userId`, `fileNodeId`).
+- Folder/file list and check: `GET /api/permissions/folder?nodeId=`, `GET /api/permissions/check?nodeId=`, `GET /api/permissions/file/check?fileNodeId=`, and file-level endpoints as in [api.md](../api.md).
 
 ### Permission Requests
 
-- Create: `POST /api/permission-requests` — Body: `{ fileNodeId, permission }`, optional `message`.
+- Create: `POST /api/permission-requests` — Body: `{ nodeId, permission }` (or `fileNodeId` for a file-level request), optional `message`.
 - Inbox/outbox: `GET /api/permission-requests/inbox`, `GET /api/permission-requests/outbox`.
-- Check owner: `GET /api/permission-requests/check-owner?fileNodeId=...`.
+- Check owner: `GET /api/permission-requests/check-owner?nodeId=...`.
 - Actions: `POST /api/permission-requests/:id/approve`, `POST /api/permission-requests/:id/reject`, `POST /api/permission-requests/:id/cancel`.
 
 ### Share links (authenticated)
@@ -117,19 +121,19 @@ sequenceDiagram
     participant ACL as ACL Check
     participant W as WebDAV
 
-    C->>S: GET /api/files/list?path=/foo
-    S->>ACL: Check read on /foo (resolved to fileNodeId)
+    C->>S: GET /api/files/list?nodeId=123
+    S->>ACL: checkFolderPermission(userId, 123, read)
     alt No read
         ACL-->>S: 403
         S-->>C: 403 Forbidden
     else Read allowed
-        S->>W: List /foo
+        S->>W: List directory
         W-->>S: Items
         S-->>C: 200 [items with ACL info]
     end
 
-    C->>S: POST /api/files/upload (path=/foo)
-    S->>ACL: Check write on /foo (resolved to fileNodeId)
+    C->>S: POST /api/files/upload (parentNodeId=123)
+    S->>ACL: checkFolderPermission(userId, 123, write)
     alt No write
         ACL-->>S: 403
         S-->>C: 403 Forbidden
@@ -141,9 +145,9 @@ sequenceDiagram
 
 ### Batch move and ACL / recent files
 
-1. Client sends `POST /api/files/batch-move` with `moves` (or sourcePaths + destinationPath).
-2. Server runs selective transfer: traverse source trees, check current user ACL at each node_id, move only allowed items. Since node_ids are stable, permission metadata requires no path-based rewriting.
-3. No recent-files synchronization needed — node_ids remain valid after rename/move operations.
+1. Client sends `POST /api/files/batch-move` with `moves: [{ sourceNodeId, destinationParentNodeId }]`.
+2. Server runs selective transfer: traverse source trees, check current user ACL at each nodeId, move only allowed items. Since nodeIds are stable, permission metadata requires no path-based rewriting.
+3. No recent-files synchronization needed — nodeIds remain valid after rename/move operations.
 
 ### Share link (public)
 

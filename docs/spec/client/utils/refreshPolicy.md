@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either started path or target path; other ops refresh only when still on the started path. |
+| Role | Decide whether to refresh the current directory listing after an async operation completes, preventing stale-closure refreshes when the user navigates elsewhere. Used by command orchestration (see `docs/spec/client/hooks/useExplorerCommands.md`). Move/copy can refresh when the user is on either the started nodeId or target nodeId; other ops refresh only when still on the started nodeId. |
 
 ---
 
@@ -19,26 +19,28 @@
 
 | Function | (input) => return |
 |----------|-------------------|
-| shouldRefreshAfterOperation | ({ opType, startedPath, currentPathNow, targetPath }) => boolean |
+| shouldRefreshAfterOperation | ({ opType, startedNodeId, currentNodeIdNow, targetNodeId }) => boolean |
+
+> **Note (pending implementation):** The current source still accepts `startedPath` / `currentPathNow` / `targetPath` and normalizes via `pathUtils.normalizePath`; the nodeId rename is the end-state.
 
 ### 2.3 Dependencies
 
-- pathUtils.normalizePath (for path comparison)
+- None (nodeIds compare by identity; no path normalization)
 
 ### 2.4 Rules
 
-- **move/copy:** refresh if `currentPathNow === startedPath` OR `currentPathNow === targetPath`
-- **other ops (delete, etc.):** refresh only if `currentPathNow === startedPath`
-- Paths are normalized before comparison
+- **move/copy:** refresh if `currentNodeIdNow === startedNodeId` OR `currentNodeIdNow === targetNodeId`
+- **other ops (delete, etc.):** refresh only if `currentNodeIdNow === startedNodeId`
+- NodeIds are compared by identity
 
 ### 2.5 Verification Scenarios
 
-- [ ] move: same path → true; navigated to target → true; navigated elsewhere → false
+- [ ] move: same nodeId → true; navigated to target nodeId → true; navigated elsewhere → false
 - [ ] copy: same behavior as move
-- [ ] delete/refresh: same path → true; navigated away → false
-- [ ] targetPath null for move/copy → no target match
+- [ ] delete/refresh: same nodeId → true; navigated away → false
+- [ ] targetNodeId null for move/copy → no target match
 
 ### 2.6 Edge Cases
 
 - opType null/undefined → treated as 'refresh'
-- Empty paths normalized consistently
+- null/undefined nodeIds handled consistently (no accidental equality match unless both values are identical)

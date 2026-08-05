@@ -30,9 +30,9 @@
 | toggleFileSelection | (file: object) => void | Y | Selection toggle callback. |
 | handleFileClickSelection | (file: object, event: object, index: number) => void | Y | Desktop selection-click handler from `useSelection`. |
 | enterSelectionMode | () => void | Y | Enters selection mode for long-press. |
-| setSelectedFiles | (set: Set<string>) => void | Y | Setter for selected file paths. |
+| setSelectedFiles | (set: Set<number>) => void | Y | Setter for selected file nodeIds (keyed by `file.nodeId`). |
 | navigateToExplorerPath | (path: string) => Promise<void> \| void | Y | Generic explorer navigation from `useExplorerNavigation`. |
-| openExplorerFolder | (path: string) => Promise<void> \| void | Y | Folder-open entry point from `useExplorerNavigation`. |
+| openExplorerFolder | (nodeId: number) => Promise<void> \| void | Y | Folder-open entry point from `useExplorerNavigation` (by nodeId). |
 | openPreviewDialog | () => void | Y | Opens preview dialog. |
 | setSelectedFile | (file: object) => void | Y | Sets currently previewed / context-selected file. |
 | setContextMenu | (state: object) => void | Y | Shell-owned desktop context-menu setter. |
@@ -65,6 +65,8 @@
   - Progress drawer state.
   - Share-link overlay modal state (login, add-to-my-permissions, leave-share confirm).
 
+> **Note:** Selection, long-press, and double-click detection are keyed by `file.nodeId` (pending implementation: the current source keys them by `file.path`). Recent-file click branches (`file.isRecentFile`) remain path-based until Phase 5 and use the `resolve-path` navigation shim.
+
 ### 2.5 Dependencies
 
 - Pure helpers: `canPreview`, `normalizePath`, file-type/path helpers
@@ -89,12 +91,12 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 
 - [ ] Desktop single click, double click, Ctrl/Meta click, and Shift click keep current observable selection/open behavior.
 - [ ] Mobile tap and long-press keep current open/select behavior.
-- [ ] Recent-file directory and file clicks preserve current path tracking, fallback, and preview behavior.
+- [ ] Recent-file directory and file clicks preserve current path tracking, fallback, and preview behavior (recent-file branches are path-based until Phase 5).
 - [ ] Share-link mode path clicks bypass generic explorer navigation only in the same product-defined cases as today.
 - [ ] More button opens the same desktop/mobile affordance without entering selection mode.
 
 ### 2.9 Edge Cases
 
 - Empty file/path input is a no-op.
-- Same-path / invalid recent-file path handling preserves current error behavior.
+- Same-path / invalid recent-file path handling preserves current error behavior (recent-file branches are path-based until Phase 5).
 - Double-click detection resets after a confirmed open so later clicks do not re-trigger stale state.

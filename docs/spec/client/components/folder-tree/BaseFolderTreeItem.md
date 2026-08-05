@@ -20,23 +20,25 @@
 
 ### 2.2 Props
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.3): the item navigates and expands by nodeId — `currentNodeId`, `onNodeClick(nodeId)`, `expandedNodeIds`, `onToggleExpand(nodeId)` — and the drag source writes `text/plain` = nodeId. The current source still uses `path`/`currentPath`/`expandedPaths`; those are transitional and are replaced below.
+
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| path | string | N* | - | Path (* or node) |
+| path | string | N* | - | Path fallback (* or node; transitional — superseded by `node.nodeId`) |
 | name | string | N* | - | Name (* or node) |
-| node | object | N* | - | Node { path, name } (* or path/name) |
+| node | object | N* | - | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }` (* or path/name) |
 | level | number | N | 0 | Indent level |
-| currentPath | string | Y | - | Current path |
-| onPathClick | function | Y | - | Path click |
-| expandedPaths | Set | Y | - | Expanded paths |
-| onToggleExpand | function | Y | - | Toggle expand |
+| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
+| expandedNodeIds | Set | Y | - | Expanded node id set (target contract, pending implementation) |
+| onToggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` |
 | hasReadPermission | boolean | N | true | Read permission |
 | hasWritePermission | boolean | N | true | Write permission |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
-| onInternalFileDrop | function | N | - | Internal drag drop: (draggedPath, targetFolderPath) when file/folder dropped from file manager |
-| onInternalDragStart | function | N | - | Called when drag starts: (path) => void. Lets host know dragged path (e.g. to hide content-area overlay when drop would be no-op). |
-| onInternalDragEnd | function | N | - | Called when drag ends: () => void. Clears host state tied to tree drag. |
-| internalDraggedPath | string | N | - | Internal drag source path used by drop no-op logic |
+| onInternalFileDrop | function | N | - | Internal drag drop: `(draggedNodeId, targetNodeId)` when file/folder dropped from file manager |
+| onInternalDragStart | function | N | - | Called when drag starts: `(nodeId) => void`. Lets host know the dragged node id (e.g. to hide content-area overlay when drop would be no-op). |
+| onInternalDragEnd | function | N | - | Called when drag ends: `() => void`. Clears host state tied to tree drag. |
+| internalDraggedNodeId | number | N | - | Internal drag source node id used by drop no-op logic |
 | isMobile | boolean | N | false | Mobile |
 | icon | ReactNode | N | - | Custom icon |
 | openIcon | ReactNode | N | - | Open icon |
@@ -44,7 +46,7 @@
 | treeUpdateTrigger | any | N | - | Reload trigger |
 | isHome | boolean | N | false | Is home |
 | renderChild | function | N | - | Render child |
-| sharedFoldersMap | Map | N | - | Shared folders map |
+| sharedFoldersMap | Map | N | - | Shared folders map keyed by nodeId |
 | isHidden | boolean | N | false | Hidden item |
 | user | object | N | - | Current user |
 | useHiddenFilesFilter | boolean | N | true | Filter hidden |
@@ -55,10 +57,10 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onPathClick | Folder click | (path) |
-| onToggleExpand | Expand/collapse | (path) |
+| onNodeClick | Folder click | (nodeId) |
+| onToggleExpand | Expand/collapse | (nodeId) |
 | onExplorerDrop | Drop (OS files) | - |
-| onInternalFileDrop | Internal drop (file manager) | (draggedPath, targetFolderPath) |
+| onInternalFileDrop | Internal drop (file manager) | (draggedNodeId, targetNodeId) |
 
 ### 2.4 Dependencies
 
@@ -75,11 +77,11 @@
 - Recursive children when expanded
 - Permission from node or sharedFoldersMap
 - Loading: FileTreeSkeleton
-- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and the controller-provided `onDragStart` sets `e.dataTransfer.setData('text/plain', path)` (and optionally a custom type) so the file manager can accept drops from the tree.
+- **Drag source:** When not `isMobile` and not disabled, the item is `draggable={true}` and the controller-provided `onDragStart` sets `e.dataTransfer.setData('text/plain', String(nodeId))` (and optionally a custom type) so the file manager can accept drops from the tree (target contract, pending implementation).
 
 ### 2.7 Verification Scenarios
 
-- [ ] Expand, path click
+- [ ] Expand, node click
 - [ ] Drop handler
 - [ ] Permission-based disable
 
@@ -90,5 +92,5 @@
 ### 2.9 Edge Cases
 
 - path/name or node – either required
-- sharedFoldersMap overrides permission
+- sharedFoldersMap overrides permission (keyed by nodeId)
 - **Permission (cross-DnD):** When used as drop target, hasWritePermission is already enforced by `useDropToUpload` inside `useFolderTreeItemController` (no-write nodes are not highlighted, no onInternalFileDrop). When used as drag source, draggable is off when isDisabled (no read).

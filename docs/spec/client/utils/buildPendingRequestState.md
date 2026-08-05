@@ -26,7 +26,7 @@
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | requests | array | N | Raw outbox list |
-| targetPath | string | Y | Current target path |
+| targetNodeId | number | Y | Current target nodeId |
 | isDirectory | boolean | Y | Whether the target is a folder |
 
 ### 2.4 Output
@@ -35,12 +35,11 @@
 
 ### 2.5 Dependencies
 
-- `normalizePath`
 - `PERMISSIONS`
 
 ### 2.6 Verification Scenarios
 
-- [ ] Folder target matches `folder_path`
-- [ ] File target matches `file_path`
-- [ ] Missing/non-array input returns an empty pending state
+- [ ] Requests are matched by `request.node_id === targetNodeId` (same matching for folder and file targets)
+- [ ] Missing `targetNodeId` or non-array `requests` returns an empty pending state
 - [ ] Read and write requests are tracked independently
+- [ ] Request shape: `{ node_id, requested_permission, id }`

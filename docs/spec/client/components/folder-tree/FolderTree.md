@@ -18,18 +18,20 @@
 - **Source:** `client/src/components/folder-tree/FolderTree.js`
 - **Test file:** `client/src/components/folder-tree/__tests__/FolderTree.test.js`
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.3): the tree migrates to nodeId-first props — `currentNodeId`, `onNodeClick(nodeId)`, `expandedNodeIds`. The current source still passes `currentPath`/`onPathClick`; those are transitional and are replaced below.
+
 ### 2.2 Props
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| currentPath | string | Y | - | Current path |
-| onPathClick | function | Y | - | Path click |
-| onFileClick | function | N | - | File click (recent) |
+| currentNodeId | number | Y | - | Current folder node id (target contract, pending implementation) |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` (target contract, pending implementation) |
+| onFileClick | function | N | - | File click (recent). Recent entries remain path-based until Phase 5 |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
 | hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
-| onInternalFileDrop | function | N | - | Internal drag: (draggedPath, targetFolderPath) when dropped from file manager |
+| onInternalFileDrop | function | N | - | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager (target contract, pending implementation) |
 | isMobile | boolean | N | false | Mobile |
 | shareLinkSection | ReactNode | N | - | Share link section |
 
@@ -37,10 +39,10 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onPathClick | Folder click | (path) |
+| onNodeClick | Folder click | (nodeId) |
 | onFileClick | Recent file click | (file) |
 | onExplorerDrop | Drop (OS files) | - |
-| onInternalFileDrop | Internal drop (file manager) | (draggedPath, targetFolderPath) |
+| onInternalFileDrop | Internal drop (file manager) | (draggedNodeId, targetNodeId) |
 
 ### 2.4 Dependencies
 
@@ -57,18 +59,18 @@
 
 ### 2.6 Conditional Rendering
 
-- Admin: home at /
-- Non-admin: user home path
+- Admin: home root node (target contract, pending implementation)
+- Non-admin: user home node (target contract, pending implementation)
 - Shared/recent sections expandable
 - shareLinkSection when provided
 
 ### 2.7 Verification Scenarios
 
-- [ ] Clicking a folder calls `onPathClick(path)` with the clicked folder’s path.
-- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section.
+- [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id (target contract, pending implementation).
+- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent clicks stay path-based until Phase 5.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).
-- [ ] Internal DnD drop calls `onInternalFileDrop(draggedPath, targetFolderPath)` only for valid targets (permission/no-op rules remain unchanged).
+- [ ] Internal DnD drop calls `onInternalFileDrop(draggedNodeId, targetNodeId)` only for valid targets (permission/no-op rules remain unchanged).
 
 ### 2.8 Edge Cases
 

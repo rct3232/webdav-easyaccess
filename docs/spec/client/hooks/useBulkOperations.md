@@ -20,14 +20,14 @@
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| selectedFiles | Set | Y | Selected paths |
+| selectedNodeIds | Set | Y | Selected file nodeIds |
 | files | array | Y | File list |
 | onOperationComplete | function | Y | Complete callback |
 | setTreeUpdateTrigger | function | Y | Tree refresh |
 | setDropMessage | function | N | Drop message |
 | setSelectedFiles | function | Y | Set selection |
 | setSelectionMode | function | Y | Set selection mode |
-| getCurrentPath | function | Y | Current path |
+| getCurrentNodeId | function | Y | Current folder nodeId |
 | options | object | N | markProcessing, clearProcessing, shareToken |
 
 ### 2.3 Return Value / State
@@ -40,7 +40,7 @@
 | handleBulkCopy | () => void | Open copy picker |
 | handleBulkDelete | (retryData?, onConfirm?) => void | Delete |
 | handleBulkDownload | () => Promise | Download |
-| handleFolderPickerSelect | (destinationPath, retryData?) => Promise | Pick folder, triggers move/copy |
+| handleFolderPickerSelect | (destinationParentNodeId, retryData?) => Promise | Pick folder, triggers move/copy |
 | handleRetry | (progressId) => Promise | Retry failed operation |
 | handleCancelBulkOperation | (progressId) => Promise | Cancel bulk job |
 | dismissFailedItems | () => void | Dismiss failed items |
@@ -61,7 +61,7 @@
 - **Does not own in target architecture**
   - Top-level explorer command ownership for FileManager page shell
   - Search/sort/view session state
-  - Path navigation orchestration
+  - Navigation orchestration (nodeId-based, `useExplorerNavigation`)
   - Progress drawer/list ownership as an explorer-core concern
   - Product overlay policies such as share-link restrictions
 

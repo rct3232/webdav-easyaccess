@@ -8,6 +8,8 @@
 | Used in | FolderTree |
 | Related components | getFileIcon |
 
+> **Phase 5 note (stays path-based):** `RecentFilesSection` intentionally remains path-based through Phase 4/5. Recent entries carry a path, and clicks go through a temporary `resolve-path` shim — `POST /files/resolve-path { path } → { nodeId }` — which converts the recent item's path into a nodeId for navigation (pending implementation in C2.3). The shim is removed in **Phase 5.4**, when the recent-files API returns nodeIds and this section moves to the nodeId end-state.
+
 ---
 
 ## 2. Implementation Spec
@@ -38,6 +40,8 @@
 | onPathClick | Folder click | (path) |
 | onFileClick | File click | (file) |
 
+> **Click shim:** recent item clicks (folder navigation or the file-click fallback to the parent folder) are routed through the temporary `resolve-path` shim to obtain a nodeId for the nodeId-first navigation (pending implementation in C2.3; removed in Phase 5.4).
+
 ### 2.4 Dependencies
 
 - **imports:** `getFileIcon`, `pixelMiddleTruncate`, a width-observation hook for prepared container width
@@ -58,9 +62,9 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Section click, expand
-- [ ] File/folder click
+- [ ] File/folder click (folder clicks resolve through the `resolve-path` shim — pending implementation in C2.3)
 - [ ] Empty state
-- [ ] File click when onFileClick is undefined falls back to `onPathClick(parentPath)`
+- [ ] File click when onFileClick is undefined falls back to `onPathClick(parentPath)` (through the shim)
 - [ ] List shows max 10 items
 
 ### 2.9 UI Enhancements

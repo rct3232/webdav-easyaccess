@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite`. `fs` and `webdav` are deprecated (fall back to sqlite/postgresql respectively). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. Also provides legacy filesystem helpers (`ensureDir`, `readFile`, `writeFile`, `deletePath`, `listDir`) for FsJSON metadata — these are deprecated and will be removed in Phase 7. |
+| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite` only (FsJSON `fs` and legacy `webdav` metadata backends were removed in Phase 7). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. |
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; `fs`/`filesystem` → warns + returns `'sqlite'`; `webdav` or any other value → warns + returns `'postgresql'`; empty/undefined → warns + returns `'postgresql'` (default) |
+| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; any other value (including removed `fs`/`filesystem`/`webdav`) → warns + returns `'postgresql'`; empty/undefined → warns + returns `'postgresql'` (default) |
 | isSqliteBackend | () => boolean | Returns `true` if `getBackend() === 'sqlite'` |
 
 #### PostgreSQL Helpers
@@ -40,22 +40,13 @@
 | withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
 | closeSqliteDb | () => void | Close SQLite database |
 
-#### Legacy Filesystem Helpers (deprecated — Phase 7 removal target)
+#### Legacy Filesystem Helpers
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| getFsBaseDir | () => string | WEA_FS_DIR or WEA_METADATA_DIR or os.tmpdir() |
-| ensureDir | (dirPath) => Promise\<void\> | Create directory recursively |
-| ensureDirSafe | (dirPath) => Promise\<void\> | Create directory with safe path validation |
-| exists | (filePath) => Promise\<boolean\> | Check if path exists |
-| readFile | (filePath) => Promise\<Buffer\> | Read file contents |
-| writeFile | (filePath, data) => Promise\<void\> | Write file contents |
-| deletePath | (targetPath) => Promise\<void\> | Delete file or directory |
-| listDir | (dirPath) => Promise\<Array\> | List directory contents |
+**Removed in Phase 7:** `getFsBaseDir`, `webdavToFsPath`, `ensureDir`, `ensureDirSafe`, `exists`, `readFile`, `writeFile`, `deletePath`, `listDir` — FsJSON metadata support is removed; `storage.js` no longer exposes filesystem helpers.
 
 ### 2.3 Dependencies
 
-- fs, fs/promises, os, path
+- fs, path
 - pg (Pool), backend-specific SQL helpers
 - errorHandler (`createError`, `mapDatabaseError`), SERVER_ERROR_CODES
 
@@ -65,10 +56,10 @@ These two environment variables are **completely independent**:
 
 | Variable | Purpose | Values | Handled By |
 |----------|---------|--------|------------|
-| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `postgresql` (default), `sqlite`, `fs` (deprecated), `webdav` (deprecated) | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3`, `webdav` (default) | Phase 1 S3 adapter (not yet implemented) |
+| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `postgresql` (default), `sqlite` | `storage.js:getBackend()` |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3`, `webdav` (default) | Phase 1 S3 adapter |
 
-Deprecating `WEA_STORAGE_BACKEND=fs` or `webdav` only affects the metadata layer. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized value warns and falls back to `postgresql`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
 ### 2.4 PostgreSQL Infrastructure Contract
 
@@ -106,7 +97,7 @@ Permission contract source of truth for `postgresql` backend:
 ### 2.7 Verification Scenarios
 
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
-- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns sqlite
+- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns postgresql (fs removed in Phase 7)
 - [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns postgresql
 - [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns postgresql (default)
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)

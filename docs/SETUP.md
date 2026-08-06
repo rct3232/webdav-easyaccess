@@ -48,8 +48,7 @@ cp .env.example .env
 | **JWT_SECRET** | Yes | Secret key for token signing (must change in production!) | - |
 | **PORT** | No | Server port | `5001` |
 | **CORS_ORIGINS** | No | Allowed browser origins (comma-separated) | `*` (with warning) |
-| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`webdav`, `fs`, or `postgresql`) | `webdav` |
-| **WEA_FS_DIR** | No | Local storage path when using `fs` backend | OS temp dir under `webdav-easyaccess-meta` |
+| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`postgresql` or `sqlite`) | `postgresql` |
 | **WEA_PG_HOST** | No | PostgreSQL host when using `postgresql` backend | - |
 | **WEA_PG_PORT** | No | PostgreSQL port when using `postgresql` backend | `5432` |
 | **WEA_PG_DATABASE** | No | PostgreSQL database name when using `postgresql` backend | - |
@@ -69,20 +68,16 @@ cp .env.example .env
 
 ## 3. Metadata Storage Configuration
 
-The system supports file-backed metadata and PostgreSQL-backed metadata with the same store interfaces.
+The system supports PostgreSQL-backed and SQLite-backed metadata with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
 
-1.  **WebDAV backend (`webdav`)**:
-    *   Stores all data under `/.wea` on the WebDAV server.
-    *   Data persists across server restarts and reinstalls, tied to the storage.
-2.  **Filesystem backend (`fs`)**:
-    *   Stores data on the application server's local disk.
-    *   Recommended when WebDAV response times are slow.
-    *   Set `WEA_STORAGE_BACKEND=fs` and `WEA_FS_DIR=/path/to/data`.
-3.  **PostgreSQL backend (`postgresql`)**:
+1.  **PostgreSQL backend (`postgresql`)** (default):
     *   Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
     *   Recommended for stronger consistency and high-concurrency metadata operations.
     *   Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
     *   Keep WebDAV settings configured for actual file content operations; PostgreSQL stores metadata only.
+2.  **SQLite backend (`sqlite`)**:
+    *   Stores metadata in a local SQLite database file (development/testing).
+    *   Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
 
 ### PostgreSQL Initialization (v2)
 
@@ -139,7 +134,6 @@ Options:
 - `--apply`: execute migration in a single transaction (upsert-based). Creates metadata tables automatically if they do not exist.
 - `--full-sync`: with `--apply`, truncates the migrated metadata tables and re-inserts from the source so the DB exactly matches the source. Use with care; removes any rows not present in the source.
 - `--report-file=<path>`: write JSON validation report to file.
-- `--fs-dir=<path>`: optional metadata root for `fs` source (sets `WEA_FS_DIR` for this run).
 
 Validation report includes:
 

@@ -25,7 +25,6 @@
 | revoke | (userId, nodeId, options?) => Promise\<{ success }\> | Revoke all permissions for user on directory node |
 | getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
 | checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
-| getPermissionDoc | (userId) => Promise\<object\> | Get raw permission document |
 | checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
 | getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |
 | hasPermissionsInPath | (nodeId) => Promise\<Array\> | Permissions on ancestors of node |
@@ -49,8 +48,9 @@
 |--------|-----------|-------------|
 | grantSharePermission | (token, nodeId) => Promise\<object\> | Share-token grant; `nodeId` is BIGINT referencing `file_nodes.id`; node type (`file`/`directory`) derivable from `file_nodes.type` |
 | revokeSharePermission | (token) => Promise\<{ success }\> | Revoke share token |
-| getSharePermissionDoc | (token, opts?) => Promise\<object \| null\> | Share doc (cached) |
 | checkSharePermission | (token, nodeId, requiredPermission) => Promise\<boolean\> | Share token permission check against node; ancestor inheritance via closure table (§2.7) |
+
+> **Removed in Phase 7:** `getPermissionDoc` and `getSharePermissionDoc` — raw permission-document accessors; callers use nodeId-based queries directly. `shareCache` Map removed with them.
 
 #### Admin / Lifecycle
 
@@ -103,7 +103,7 @@ Constraint/index details are canonical in:
 - [ ] grantFilePermission validates parent and rank; revokeFilePermission removes entry
 - [ ] getEffectivePermission: file perm overrides ancestor directory perm
 - [ ] checkSharePermission for directory vs file node
-- [ ] Cache bypass and TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables)
+- [ ] Cache TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables) applies to `getUserPermissions` only
 - [ ] PostgreSQL: duplicate grant upserts/replaces permission without duplicate rows
 - [ ] PostgreSQL: permission check constraint rejects invalid values
 - [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true

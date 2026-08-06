@@ -88,7 +88,6 @@ The adapter layer sits between domains and physical storage, providing interchan
 **Metadata adapter implementations:**
 - `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (production default)
 - `SqliteMetadataAdapter` — SQLite via better-sqlite3 (development/testing)
-- `FsJsonMetadataAdapter` — JSON files under `/.wea/` (legacy WebDAV/filesystem backend)
 
 ### 1.2 Infrastructure Layer
 
@@ -96,7 +95,7 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
 | Module | File | Responsibility |
 |--------|------|---------------|
-| Lock Manager | `lockManager.js` | Distributed locking for metadata writes. Supports file-based (webdav/fs), PostgreSQL, and SQLite backends with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
+| Lock Manager | `lockManager.js` | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
 | Health Routes | `healthRoutes.js` | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`. |
 | WebDAV Routes | `webdavRoutes.js` | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required. |
 | WebDAV Test | `webdavTest.js` | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result. |

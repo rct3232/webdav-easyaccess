@@ -7,7 +7,7 @@
 | Role | IO boundary for persisting and reading user-specific “recent files” on the server. Provides server-backed operations and returns observable updated recent lists (unless silenced). |
 | Used by | Explorer/tree controllers and file operation flows that need recent list updates. |
 | Does not own | Pub-sub subscriptions and change notification fan-out (that belongs to `recentFilesNotifier`). |
-| Does not own | Pure path mutation planning rules (that belongs to `client/src/utils/recentFiles.js` after the split). |
+| Does not own | Pure path mutation planning rules. `client/src/utils/recentFiles.js` was removed (Phase 5); recent entries are keyed by `nodeId`/`fileNodeId` and survive renames/moves without client-side path rewrites. |
 
 ---
 

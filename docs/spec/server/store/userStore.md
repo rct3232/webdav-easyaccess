@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | User persistence: CRUD users and identity lookups by id/username/email. Uses file JSON/index in `webdav`/`fs`, and normalized `users` table in `postgresql` backend. |
+| Role | User persistence: CRUD users and identity lookups by id/username/email. Uses the normalized `users` table in `postgresql`/`sqlite` backends. FsJSON file/index storage removed in Phase 7. |
 
 ---
 
@@ -33,9 +33,7 @@
 
 ### 2.3 Storage Paths
 
-- Index: `/.wea/users/_index.json` (nextId, byId, byUsername)
-- User files: `/.wea/users/{username}.json`
-- Email index: `/.wea/index/email/{sha256(email)}.txt` → username
+- None — users are DB rows (`users` table) only. FsJSON `/.wea/users/*` and `/.wea/index/email/*` removed in Phase 7.
 
 ### 2.4 PostgreSQL v2 Table Mapping
 
@@ -56,9 +54,7 @@
 
 ### 2.6 Dependencies
 
-- storage (ensureDir, exists, readFile, writeFile, deletePath, listDir)
-- metaPaths (META_ROOT, USERS_DIR, USERS_INDEX_PATH, userPathByUsername, emailIndexPathByEmailHash, sha256HexLower)
-- locks.withLock
+- PostgresqlMetadataAdapter / SqliteMetadataAdapter (via store adapter)
 - errorHandler.createError, SERVER_ERROR_CODES
 
 ### 2.7 Verification Scenarios
@@ -67,6 +63,5 @@
 - [ ] findByUsername, findByEmail, findById return user or undefined
 - [ ] findAll returns array sorted by created_at desc
 - [ ] updateStatus, updateEmail, updatePassword, deleteUser mutate correctly
-- [ ] Corrupt index → reset and write fallback
 - [ ] PostgreSQL: unique constraint violations map to duplicate username/email errors
 - [ ] PostgreSQL: updateEmail persists canonical email + email_hash in same transaction

@@ -1,17 +1,12 @@
 /**
  * RecentFilesSection tests.
- * Verifies section click/expand, file/folder click (resolve-path shim), empty state per spec.
+ * Verifies section click/expand, file/folder click by nodeId, empty state per spec.
  * @see docs/spec/client/components/folder-tree/RecentFilesSection.md
  */
 import React from 'react';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import RecentFilesSection from '../RecentFilesSection';
-
-jest.mock('../../../services/fileService', () => ({
-  resolvePath: jest.fn(),
-}));
-import { resolvePath } from '../../../services/fileService';
 
 const defaultProps = {
   recentExpanded: false,
@@ -26,7 +21,6 @@ const defaultProps = {
 describe('RecentFilesSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    resolvePath.mockResolvedValue({ nodeId: 3 });
   });
 
   it('section click invokes handleRecentClick', () => {
@@ -55,30 +49,27 @@ describe('RecentFilesSection', () => {
 
   it('shows file list when recentFilesList has items and expanded', () => {
     const files = [
-      { path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
-      { path: '/docs/folder', name: 'folder', type: 'directory' },
+      { nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
+      { nodeId: 2, path: '/docs/folder', name: 'folder', type: 'directory' },
     ];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     expect(screen.getByText('a.pdf')).toBeInTheDocument();
     expect(screen.getByText('folder')).toBeInTheDocument();
   });
 
-  it('folder click resolves the path through the resolve-path shim and calls onNodeClick', async () => {
-    const files = [{ path: '/docs/folder', name: 'folder', type: 'directory' }];
+  it('folder click calls onNodeClick with the entry nodeId', () => {
+    const files = [{ nodeId: 5, path: '/docs/folder', name: 'folder', type: 'directory' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     fireEvent.click(screen.getByText('folder'));
-    await waitFor(() => {
-      expect(resolvePath).toHaveBeenCalledWith('/docs/folder');
-      expect(defaultProps.onNodeClick).toHaveBeenCalledWith(3);
-    });
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(5);
   });
 
-  it('file click invokes onFileClick', () => {
-    const files = [{ path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
+  it('file click invokes onFileClick with the nodeId entry', () => {
+    const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     fireEvent.click(screen.getByText('a.pdf'));
     expect(defaultProps.onFileClick).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/docs/a.pdf', name: 'a.pdf', basename: 'a.pdf', isRecentFile: true })
+      expect.objectContaining({ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', basename: 'a.pdf', isRecentFile: true })
     );
   });
 
@@ -88,19 +79,17 @@ describe('RecentFilesSection', () => {
     expect(screen.getByText(/No recent items/)).toBeInTheDocument();
   });
 
-  it('file click when onFileClick undefined resolves the parent path through the shim', async () => {
-    const files = [{ path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
+  it('file click without onFileClick does not navigate (no path shim)', () => {
+    const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
     const props = { ...defaultProps, recentExpanded: true, recentFilesList: files, onFileClick: undefined };
     renderWithProviders(<RecentFilesSection {...props} />);
     fireEvent.click(screen.getByText('a.pdf'));
-    await waitFor(() => {
-      expect(resolvePath).toHaveBeenCalledWith('/docs');
-      expect(defaultProps.onNodeClick).toHaveBeenCalledWith(3);
-    });
+    expect(defaultProps.onNodeClick).not.toHaveBeenCalled();
   });
 
   it('list limited to 10 items', () => {
     const files = Array.from({ length: 15 }, (_, i) => ({
+      nodeId: i + 1,
       path: `/folder/file${i}.txt`,
       name: `file${i}.txt`,
       type: 'file',
@@ -113,7 +102,7 @@ describe('RecentFilesSection', () => {
 
   it('truncates very long filenames in the middle', () => {
     const longName = 'this-is-a-very-long-filename-that-should-be-truncated.docx';
-    const files = [{ path: '/long.docx', name: longName, type: 'file' }];
+    const files = [{ nodeId: 99, path: '/long.docx', name: longName, type: 'file' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
 
     const truncatedElement = screen.getByLabelText(longName);

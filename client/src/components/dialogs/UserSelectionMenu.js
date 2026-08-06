@@ -46,7 +46,7 @@ const UserSelectionMenu = ({
     currentIsUserBaseFolder,
     reviewRequesterOption,
   } = deriveShareFolderAccessView({
-    folderPath: folderMenuPath,
+    nodeId: folderMenuPath,
     folderPermissions,
     isAdminMode,
     userId,

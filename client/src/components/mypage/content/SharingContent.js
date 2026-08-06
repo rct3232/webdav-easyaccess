@@ -531,7 +531,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" sx={{ wordBreak: 'break-all', mb: 0.5 }}>
-                        {link.filePath.split('/').pop()}
+                        {link.fileName || link.displayPath?.split('/').pop() || ''}
                       </Typography>
                       <Typography
                         component="span"

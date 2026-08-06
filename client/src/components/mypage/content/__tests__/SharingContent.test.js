@@ -45,7 +45,8 @@ const outboxRequest = (overrides = {}) => ({
 
 const shareLink = (overrides = {}) => ({
   token: 'link-t1',
-  filePath: '/testuser/docs/doc.pdf',
+  nodeId: 42,
+  displayPath: '/testuser/docs/doc.pdf',
   fileName: 'doc.pdf',
   expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
   isExpired: false,

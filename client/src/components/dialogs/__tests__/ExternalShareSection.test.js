@@ -22,7 +22,7 @@ const defaultProps = {
   createShareLink: jest.fn(),
   getShareLinkUrl: jest.fn((token) => `https://example.com/share/${token}`),
   onOpenShareLink: jest.fn(),
-  filePath: '/docs/file.pdf',
+  fileNodeId: 42,
   fileName: 'file.pdf',
   onMessage: jest.fn(),
 };
@@ -68,7 +68,7 @@ describe('ExternalShareSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /create link/i }));
     await waitFor(() => {
       expect(defaultProps.createShareLink).toHaveBeenCalledWith(
-        '/docs/file.pdf',
+        42,
         14
       );
     });

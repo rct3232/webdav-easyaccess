@@ -17,15 +17,14 @@ import {
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
-import { resolvePath } from '../../services/fileService';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import useObservedElementWidth from './hooks/useObservedElementWidth';
 
 /**
- * Path-based recent section (Phase 5 note: stays path-based).
- * Clicks are routed through the temporary resolve-path shim so the nodeId-first
- * navigation can consume them (shim removed in Phase 5.4).
+ * Recent-files section keyed by stable nodeId.
+ * Directory clicks navigate via `onNodeClick(nodeId)`; file clicks pass the
+ * entry (which already carries `nodeId`) through `onFileClick`.
  */
 const RecentFilesSection = ({
   recentExpanded,
@@ -39,22 +38,9 @@ const RecentFilesSection = ({
   const { t } = useTranslation();
   const { setObservedElement, width: containerWidth } = useObservedElementWidth(200);
 
-  // Temporary resolve-path shim (removed in Phase 5.4).
-  const navigateResolvedPath = async (path) => {
-    try {
-      const data = await resolvePath(path);
-      if (data?.nodeId != null) {
-        onNodeClick(data.nodeId);
-      }
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to resolve recent item path:', error);
-    }
-  };
-
   const handleRecentItemClick = (recentFile) => {
     if (recentFile.type === 'directory') {
-      navigateResolvedPath(recentFile.path);
+      onNodeClick(recentFile.nodeId);
       return;
     }
     if (onFileClick) {
@@ -63,10 +49,7 @@ const RecentFilesSection = ({
         basename: recentFile.name,
         isRecentFile: true,
       });
-      return;
     }
-    const parentPath = recentFile.path.substring(0, recentFile.path.lastIndexOf('/')) || '/';
-    navigateResolvedPath(parentPath);
   };
 
   // Padding/Margins total: ListItemButton pl:3(24px) + Icon(24px) + Icon mr:0.5(4px) + default right padding(~16px) = ~68px
@@ -162,7 +145,7 @@ const RecentFilesSection = ({
             </ListItem>
           ) : (
             (recentFilesList ?? []).slice(0, 10).map((recentFile) => (
-              <ListItem key={recentFile.path} disablePadding>
+              <ListItem key={recentFile.nodeId} disablePadding>
                 <ListItemButton
                   onClick={() => handleRecentItemClick(recentFile)}
                   sx={{

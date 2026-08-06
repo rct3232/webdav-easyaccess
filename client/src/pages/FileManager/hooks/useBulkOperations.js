@@ -10,10 +10,7 @@ import {
   cancelBulkOperation,
 } from '../../../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
-import {
-  applyRecentFilesAfterBulkDelete,
-  applyRecentFilesAfterBulkMove,
-} from '../../../services/recentFilesRepository';
+import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 const POLL_INTERVAL_MS = 400;
 
@@ -192,12 +189,9 @@ export const useBulkOperations = (
 
           if (successCount > 0) {
             try {
-              await applyRecentFilesAfterBulkDelete({
-                nodeIds: succeededNodeIds,
-                folderPaths: deletedFolders,
-              });
+              notifyRecentFilesChange();
             } catch (err) {
-              console.error('Failed to clean up recent files after bulk delete:', err);
+              console.error('Failed to refresh recent files after bulk delete:', err);
             }
             deletedNodeIds.forEach(nodeId => {
               setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() });
@@ -398,19 +392,9 @@ export const useBulkOperations = (
           if (successCount > 0) {
             if (action === 'move') {
               try {
-                const moves = succeeded.map(({ sourceNodeId, destinationParentNodeId: destParentId }) => {
-                  const file = files.find(f => f.nodeId === sourceNodeId);
-                  return {
-                    oldNodeId: sourceNodeId,
-                    newParentNodeId: destParentId,
-                    file: file || { type: 'file', name: '', basename: '' },
-                  };
-                });
-                if (moves.length > 0) {
-                  await applyRecentFilesAfterBulkMove(moves);
-                }
+                notifyRecentFilesChange();
               } catch (err) {
-                console.error('Failed to update recent files after bulk move:', err);
+                console.error('Failed to refresh recent files after bulk move:', err);
               }
             }
           }

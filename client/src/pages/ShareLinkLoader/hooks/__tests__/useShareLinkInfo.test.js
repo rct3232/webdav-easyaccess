@@ -3,7 +3,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useTranslation } from 'react-i18next';
 
 import { getPublicShareLinkInfo } from '../../../../services/shareLinkService';
-import { resolvePath } from '../../../../services/fileService';
 import { getServerErrorDisplay } from '../../../../utils/errorUtils';
 import { useShareLinkInfo } from '../useShareLinkInfo';
 
@@ -13,10 +12,6 @@ jest.mock('react-i18next', () => ({
 
 jest.mock('../../../../services/shareLinkService', () => ({
   getPublicShareLinkInfo: jest.fn(),
-}));
-
-jest.mock('../../../../services/fileService', () => ({
-  resolvePath: jest.fn(),
 }));
 
 jest.mock('../../../../utils/errorUtils', () => ({
@@ -30,10 +25,12 @@ describe('useShareLinkInfo', () => {
     useTranslation.mockReturnValue({ t: (key) => key });
   });
 
-  it('loads directory link info successfully', async () => {
+  it('loads directory link info successfully (nodeId always present)', async () => {
     getPublicShareLinkInfo.mockResolvedValue({
+      nodeId: 42,
       fileName: 'shared-folder',
       isDirectory: true,
+      displayPath: '/shared/folder',
     });
 
     const { result } = renderHook(() => useShareLinkInfo('folder-token'));
@@ -46,38 +43,16 @@ describe('useShareLinkInfo', () => {
 
     expect(result.current.error).toBeNull();
     expect(result.current.linkInfo).toEqual({
+      nodeId: 42,
       fileName: 'shared-folder',
       isDirectory: true,
+      displayPath: '/shared/folder',
     });
   });
 
-  it('resolves the share root nodeId via resolve-path when the user is authenticated', async () => {
-    sessionStorage.setItem('token', 'jwt-token');
+  it('passes through the server-provided nodeId for directory links', async () => {
     getPublicShareLinkInfo.mockResolvedValue({
-      filePath: '/shared/folder',
-      fileName: 'folder',
-      isDirectory: true,
-    });
-    resolvePath.mockResolvedValue({ nodeId: 42 });
-
-    const { result } = renderHook(() => useShareLinkInfo('folder-token'));
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    expect(resolvePath).toHaveBeenCalledWith('/shared/folder');
-    expect(result.current.linkInfo).toEqual({
-      filePath: '/shared/folder',
-      fileName: 'folder',
-      isDirectory: true,
       nodeId: 42,
-    });
-  });
-
-  it('does not resolve via resolve-path when the viewer is unauthenticated', async () => {
-    getPublicShareLinkInfo.mockResolvedValue({
-      filePath: '/shared/folder',
       fileName: 'folder',
       isDirectory: true,
     });
@@ -88,9 +63,8 @@ describe('useShareLinkInfo', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(resolvePath).not.toHaveBeenCalled();
     expect(result.current.linkInfo).toEqual({
-      filePath: '/shared/folder',
+      nodeId: 42,
       fileName: 'folder',
       isDirectory: true,
     });

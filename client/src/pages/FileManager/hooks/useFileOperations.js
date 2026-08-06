@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { downloadFile, downloadMultipleFiles, renameFile } from '../../../services/fileService';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../../../utils/processingUtils';
-import { applyRecentFilesAfterRename } from '../../../services/recentFilesRepository';
+import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 /**
  * Common file operations hook
@@ -166,15 +166,12 @@ export const useFileOperations = ({
 
       const result = await renameFile(nodeId, newName);
 
-      // 이름변경 성공 시 최근항목 업데이트
+      // 이름변경 성공 시 최근항목 새로고침 (nodeId는 rename 이후에도 안정적)
       try {
-        const renamedFile = result?.newName != null
-          ? { ...file, name: result.newName, basename: result.newName, display_path: result.newName }
-          : { ...file, basename: newName, name: newName };
-        await applyRecentFilesAfterRename(nodeId, renamedFile.nodeId, renamedFile);
+        notifyRecentFilesChange();
       } catch (err) {
-        // 최근항목 업데이트 실패는 무시 (치명적이지 않음)
-        console.error('Failed to update recent files after rename:', err);
+        // 최근항목 새로고침 실패는 무시 (치명적이지 않음)
+        console.error('Failed to refresh recent files after rename:', err);
       }
 
       if (onActionComplete) {

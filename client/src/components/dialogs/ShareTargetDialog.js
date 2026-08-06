@@ -481,7 +481,7 @@ const ShareTargetDialog = ({
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
               onOpenShareLink={openUrlInNewTab}
-              filePath={file.path || ''}
+              fileNodeId={file.nodeId}
               fileName={displayName}
               onMessage={onMessage}
             />

@@ -4,7 +4,7 @@ import { deriveShareFolderAccessView } from '../deriveShareFolderAccessView';
 describe('deriveShareFolderAccessView', () => {
   it('filters to the target user in admin mode and marks admin-owned root state', () => {
     const result = deriveShareFolderAccessView({
-      folderPath: '/alice',
+      nodeId: '/alice',
       folderPermissions: new Map([
         [
           '/alice',
@@ -34,7 +34,7 @@ describe('deriveShareFolderAccessView', () => {
 
   it('filters out current user and admin users in non-admin mode', () => {
     const result = deriveShareFolderAccessView({
-      folderPath: '/docs',
+      nodeId: '/docs',
       folderPermissions: new Map([
         [
           '/docs',
@@ -62,7 +62,7 @@ describe('deriveShareFolderAccessView', () => {
 
   it('derives addable users and review requester state for select-user menus', () => {
     const result = deriveShareFolderAccessView({
-      folderPath: '/docs',
+      nodeId: '/docs',
       folderPermissions: new Map([
         ['/docs', new Map([['u1', PERMISSIONS.READ]])],
       ]),

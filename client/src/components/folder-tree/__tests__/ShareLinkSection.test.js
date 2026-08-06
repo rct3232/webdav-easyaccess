@@ -18,11 +18,6 @@ jest.mock('../../../services/folderTreeGateway', () => ({
 
 import folderTreeGateway from '../../../services/folderTreeGateway';
 
-jest.mock('../../../services/fileService', () => ({
-  resolvePath: jest.fn(),
-}));
-import { resolvePath } from '../../../services/fileService';
-
 const defaultProps = {
   shareRootNodeId: 7,
   shareRootPath: '/share-root',
@@ -43,7 +38,6 @@ describe('ShareLinkSection', () => {
         hasWritePermission: false,
       },
     ]);
-    resolvePath.mockResolvedValue({ nodeId: 7 });
   });
 
   it('returns null when no shareRootNodeId and no shareToken', () => {
@@ -91,25 +85,6 @@ describe('ShareLinkSection', () => {
     );
     await waitFor(() => {
       expect(screen.getByText('docs')).toBeInTheDocument();
-    });
-  });
-
-  it('falls back to resolve-path when shareRootNodeId is absent', async () => {
-    renderWithProviders(
-      <ShareLinkSection
-        {...defaultProps}
-        shareRootNodeId={undefined}
-        currentNodeId={null}
-      />
-    );
-
-    await waitFor(() => {
-      expect(resolvePath).toHaveBeenCalledWith('/share-root');
-    });
-    await waitFor(() => {
-      expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith(
-        expect.objectContaining({ nodeId: 7 })
-      );
     });
   });
 });

@@ -16,12 +16,12 @@ jest.mock('../../../../services/fileService', () => ({
   renameFile: jest.fn(),
 }));
 
-jest.mock('../../../../services/recentFilesRepository', () => ({
-  applyRecentFilesAfterRename: jest.fn(),
+jest.mock('../../../../services/recentFilesNotifier', () => ({
+  notifyRecentFilesChange: jest.fn(),
 }));
 
 import * as fileService from '../../../../services/fileService';
-import * as recentFilesRepository from '../../../../services/recentFilesRepository';
+import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
 
 const mockOnProgress = jest.fn();
 const mockOnClose = jest.fn();
@@ -124,7 +124,7 @@ describe('useFileOperations', () => {
     });
 
     expect(fileService.renameFile).toHaveBeenCalledWith(1, 'new.pdf');
-    expect(recentFilesRepository.applyRecentFilesAfterRename).toHaveBeenCalled();
+    expect(notifyRecentFilesChange).toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
   });
 
@@ -215,8 +215,8 @@ describe('useFileOperations', () => {
     expect(mockOnClose).toHaveBeenCalled();
   });
 
-  it('handleFileRename keeps success UX when recent-file sync unexpectedly throws', async () => {
-    recentFilesRepository.applyRecentFilesAfterRename.mockImplementationOnce(() => {
+  it('handleFileRename keeps success UX when recent-file refresh unexpectedly throws', async () => {
+    notifyRecentFilesChange.mockImplementationOnce(() => {
       throw new Error('unexpected recent sync failure');
     });
     const file = { nodeId: 1, basename: 'doc.pdf', type: 'file' };

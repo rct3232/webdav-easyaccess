@@ -40,9 +40,6 @@ export function createRecentFilesRepositoryMock(overrides = {}) {
     addRecentFile: jest.fn().mockResolvedValue([]),
     removeRecentFile: jest.fn().mockResolvedValue([]),
     clearRecentFiles: jest.fn().mockResolvedValue(undefined),
-    applyRecentFilesAfterRename: jest.fn().mockResolvedValue([]),
-    applyRecentFilesAfterBulkDelete: jest.fn().mockResolvedValue([]),
-    applyRecentFilesAfterBulkMove: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }

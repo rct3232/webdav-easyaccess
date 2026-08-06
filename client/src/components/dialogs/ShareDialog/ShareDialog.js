@@ -35,7 +35,7 @@ const ShareDialog = ({
   onApprove = null,
   onMessage = null,
   enableExternalShare = false,
-  filePath = null,
+  fileNodeId = null,
   fileName = null,
 }) => {
   const { isMobile } = useResponsive();
@@ -180,7 +180,7 @@ const ShareDialog = ({
           {enableExternalShare ? t('dialogs.externalShareTitle') : dialogTitle}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
-          {enableExternalShare && filePath && (
+          {enableExternalShare && fileNodeId != null && (
             <ExternalShareSection
               externalShareLink={externalShareLink}
               setExternalShareLink={setExternalShareLink}
@@ -195,7 +195,7 @@ const ShareDialog = ({
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
               onOpenShareLink={openUrlInNewTab}
-              filePath={filePath}
+              fileNodeId={fileNodeId}
               fileName={fileName}
               onMessage={onMessage}
             />

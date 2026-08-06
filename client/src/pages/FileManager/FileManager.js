@@ -40,7 +40,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
-    () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
+    () => (linkInfo ? normalizePath(linkInfo.displayPath || '/') : ''),
     [linkInfo]
   );
   const shareRootName = useMemo(
@@ -433,8 +433,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   // NodeId-first navigation entry used by the folder tree and breadcrumb.
   // Accepts a nodeId (number), a virtual-root route ('/__shared__' | '/__recent__'),
-  // or null (home). Share mode navigates by nodeId (path targets resolve via
-  // resolve-path for authenticated viewers; path fallback keeps breadcrumb display).
+  // or null (home). Share mode navigates exclusively by nodeId; legacy path
+  // targets are only handled outside share mode via resolve-path.
   const handleFolderTreeNodeClick = useCallback(async (target) => {
     if (isShareLinkMode) {
       if (typeof target === 'number') {
@@ -444,21 +444,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       }
       if (typeof target === 'string' && target) {
         const normalizedPath = normalizePath(target);
-        if (user) {
-          try {
-            const data = await resolvePath(normalizedPath);
-            if (data?.nodeId != null) {
-              setCurrentNodeId(data.nodeId);
-              setCurrentPath(normalizedPath);
-              if (isMobile) setDrawerOpen(false);
-              return;
-            }
-          } catch (error) {
-            // fall through to the display-path fallback
-          }
+        if (normalizedPath === '/__shared__' || normalizedPath === '/__recent__') {
+          setCurrentPath(normalizedPath);
+          if (isMobile) setDrawerOpen(false);
         }
-        setCurrentPath(normalizedPath);
-        if (isMobile) setDrawerOpen(false);
       }
       return;
     }
@@ -475,7 +464,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       return;
     }
     navigateToExplorerNode(target);
-  }, [isShareLinkMode, isMobile, user, setCurrentPath, setDrawerOpen, setCurrentNodeId, navigateToExplorerPath, navigateToExplorerNode]);
+  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId, navigateToExplorerPath, navigateToExplorerNode]);
 
   const {
     handlePathClick,

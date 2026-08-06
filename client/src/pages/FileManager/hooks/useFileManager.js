@@ -19,19 +19,12 @@ export const useFileManager = (user, options = {}) => {
   const isShareMode = Boolean(shareToken && linkInfo);
 
   const shareRootPath = useMemo(
-    () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
+    () => (linkInfo ? normalizePath(linkInfo.displayPath || linkInfo.filePath || '/') : ''),
     [linkInfo]
   );
 
-  // Share root nodeId (C2.5): linkInfo.nodeId when available (Phase 5); otherwise a
-  // one-time resolve-path resolution of linkInfo.filePath for authenticated viewers
-  // (fallback removed in Phase 5 once GET /share-link/:token returns a nodeId).
-  const [shareRootNodeId, setShareRootNodeId] = useState(() =>
-    isShareMode ? (linkInfo?.nodeId ?? null) : null
-  );
-
   const [shareCurrentPath, setShareCurrentPath] = useState(() =>
-    isShareMode ? normalizePath(linkInfo.filePath || '/') : ''
+    isShareMode ? normalizePath(linkInfo.displayPath || linkInfo.filePath || '/') : ''
   );
 
   // Current share folder, keyed by nodeId (null = share root listed via shareToken).
@@ -44,25 +37,6 @@ export const useFileManager = (user, options = {}) => {
       setShareCurrentPath(shareRootPath);
     }
   }, [isShareMode, shareRootPath]);
-
-  // Resolve the share root nodeId once when linkInfo does not carry it.
-  useEffect(() => {
-    if (!isShareMode || shareRootNodeId != null) return undefined;
-    if (!user || !shareRootPath) return undefined;
-    let cancelled = false;
-    resolvePath(shareRootPath)
-      .then((data) => {
-        if (cancelled || data?.nodeId == null) return;
-        setShareRootNodeId(data.nodeId);
-        setShareCurrentNodeId((prev) => (prev == null ? data.nodeId : prev));
-      })
-      .catch(() => {
-        // Path-based fallback (root listing via shareToken) remains.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isShareMode, shareRootNodeId, user, shareRootPath]);
 
   // Normalize the /files splat into a view key.
   // Real folders: /files/node/<nodeId>; virtual roots: /files/__recent__ / /files/__shared__;
@@ -223,9 +197,12 @@ export const useFileManager = (user, options = {}) => {
       if (urlView.kind === 'recent') {
         const recentFilesList = await explorerGateway.loadRecentFiles();
         const recentFilesAsList = recentFilesList.map((recentFile) => {
-          const fileName = recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1);
+          const fileName = recentFile.name || recentFile.basename
+            || (recentFile.path ? recentFile.path.substring(recentFile.path.lastIndexOf('/') + 1) : '');
           return {
-            path: recentFile.path,
+            nodeId: recentFile.nodeId,
+            path: recentFile.path || recentFile.displayPath || '',
+            displayPath: recentFile.displayPath || recentFile.path || '',
             basename: fileName,
             name: fileName,
             type: recentFile.type || 'file',
@@ -237,14 +214,14 @@ export const useFileManager = (user, options = {}) => {
             isRecentFile: true,
           };
         });
-        const fileEntries = recentFilesAsList.filter((entry) => entry.type === 'file');
+        const fileEntries = recentFilesAsList.filter((entry) => entry.type === 'file' && entry.nodeId != null);
         if (fileEntries.length > 0) {
           try {
             const metaList = await explorerGateway.getEntriesMetadata({ entries: fileEntries });
-            const metaByPath = new Map(metaList.map((m) => [m.path, m]));
+            const metaByNodeId = new Map(metaList.map((m) => [m.nodeId, m]));
             recentFilesAsList.forEach((entry) => {
-              if (entry.type !== 'file') return;
-              const meta = metaByPath.get(entry.path);
+              if (entry.type !== 'file' || entry.nodeId == null) return;
+              const meta = metaByNodeId.get(entry.nodeId);
               if (meta) {
                 entry.size = meta.size != null ? meta.size : 0;
                 entry.lastmod = meta.lastmod ?? null;

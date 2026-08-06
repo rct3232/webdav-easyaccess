@@ -65,7 +65,7 @@ describe('useShareLinkOverlay', () => {
     expect(props.navigate).toHaveBeenCalledWith('/files/node/5');
   });
 
-  it('routes to the legacy path route when linkInfo carries no nodeId', async () => {
+  it('routes to the root path when linkInfo carries no nodeId', async () => {
     const props = createDefaultProps({
       linkInfo: { filePath: '/shared/root', isDirectory: true },
     });
@@ -77,7 +77,7 @@ describe('useShareLinkOverlay', () => {
       expect(result.current.addToSharedModalOpen).toBe(false);
     });
 
-    expect(props.navigate).toHaveBeenCalledWith('/files/shared/root');
+    expect(props.navigate).toHaveBeenCalledWith('/');
   });
 
   it('confirms add-to-shared, keeps loading state, and routes to the shared directory by nodeId on success', async () => {

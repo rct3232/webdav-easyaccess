@@ -83,6 +83,20 @@ export function useExplorerInteraction({
 
     if (file.type === 'directory') {
       if (file.isRecentFile) {
+        if (file.nodeId != null) {
+          trackRecentFileClick?.(file.nodeId);
+          try {
+            await openExplorerFolder(file.nodeId);
+          } catch (error) {
+            clearTracking?.(file.nodeId);
+            if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
+              handleRecentFileError?.(error, file.nodeId);
+            } else {
+              showErrorFromError(error, showError, t);
+            }
+          }
+          return;
+        }
         const filePath = file.path;
         if (!filePath || filePath === '/' || filePath.trim() === '') {
           handleRecentFileError?.({ message: t('errors.invalidPath') }, filePath);
@@ -126,6 +140,20 @@ export function useExplorerInteraction({
     }
 
     if (file.isRecentFile) {
+      if (file.nodeId != null) {
+        trackRecentFileClick?.(file.nodeId);
+        try {
+          await openPreviewForFile(file, setSelectedFile, openPreviewDialog);
+        } catch (error) {
+          clearTracking?.(file.nodeId);
+          if (error.response?.status === HTTP_STATUS.NOT_FOUND) {
+            handleRecentFileError?.(error, file.nodeId);
+          } else {
+            showErrorFromError(error, showError, t);
+          }
+        }
+        return;
+      }
       const filePath = normalizePath(file.path);
       const fileName = file.basename || file.name;
 

@@ -15,17 +15,15 @@ import {
   ExpandMore as ExpandMoreIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
-import { resolvePath } from '../../services/fileService';
 import folderTreeGateway from '../../services/folderTreeGateway';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 
 /**
  * 공유 링크를 __shared__ / __recent__ 처럼 FolderTree 안의 한 섹션으로 표시
- * (nodeId-first; shareRootNodeId가 없으면 임시 resolve-path shim으로 회귀 — Phase 5에서 제거)
+ * (nodeId-first; share root is always addressed by nodeId in Phase 5)
  */
 const ShareLinkSection = ({
   shareRootNodeId,
-  shareRootPath,
   shareRootName,
   shareToken,
   currentNodeId,
@@ -33,34 +31,11 @@ const ShareLinkSection = ({
   isMobile = false,
 }) => {
   const { t } = useTranslation();
-  const [rootNodeId, setRootNodeId] = useState(shareRootNodeId ?? null);
+  const rootNodeId = shareRootNodeId ?? null;
   const [shareLinkExpanded, setShareLinkExpanded] = useState(true);
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [rootChildren, setRootChildren] = useState([]);
   const [loadingRoot, setLoadingRoot] = useState(false);
-
-  // Temporary resolve-path fallback (removed in Phase 5 once GET /share-link/:token returns a nodeId).
-  useEffect(() => {
-    if (shareRootNodeId != null) {
-      setRootNodeId(shareRootNodeId);
-      return undefined;
-    }
-    if (!shareRootPath || !shareToken) {
-      setRootNodeId(null);
-      return undefined;
-    }
-    let cancelled = false;
-    resolvePath(shareRootPath)
-      .then((data) => {
-        if (!cancelled && data?.nodeId != null) setRootNodeId(data.nodeId);
-      })
-      .catch(() => {
-        if (!cancelled) setRootNodeId(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shareRootNodeId, shareRootPath, shareToken]);
 
   const handleToggleExpand = useCallback((nodeId) => {
     setExpandedNodeIds((prev) => {

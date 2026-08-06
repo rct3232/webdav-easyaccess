@@ -5,6 +5,10 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import useFolderTreeController from '../useFolderTreeController';
 
+import { getRecentFiles } from '../../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
+import folderTreeGateway from '../../../../services/folderTreeGateway';
+
 jest.mock('../../../../services/recentFilesRepository', () => {
   const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
   return createRecentFilesRepositoryMock();
@@ -19,10 +23,6 @@ jest.mock('../../../../services/folderTreeGateway', () => {
   const { createFolderTreeGatewayMock } = require('../../../../testing/mocks/serviceMocks');
   return createFolderTreeGatewayMock();
 });
-
-import { getRecentFiles } from '../../../../services/recentFilesRepository';
-import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
-import folderTreeGateway from '../../../../services/folderTreeGateway';
 
 const renderControllerHook = (initialProps) =>
   renderHook((props) => useFolderTreeController(props), { initialProps });

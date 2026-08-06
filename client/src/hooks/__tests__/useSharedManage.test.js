@@ -7,6 +7,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSharedManage } from '../useSharedManage';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
+import * as sharePermissionGateway from '../../services/sharePermissionGateway';
+
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -20,8 +22,6 @@ jest.mock('../../services/sharePermissionGateway', () => ({
   cancelPermissionRequest: jest.fn(),
   revokePermission: jest.fn(),
 }));
-
-import * as sharePermissionGateway from '../../services/sharePermissionGateway';
 
 const mockUser = { id: '1', username: 'user1', is_admin: false };
 const mockAdminUser = { id: 'admin', username: 'admin', is_admin: true };

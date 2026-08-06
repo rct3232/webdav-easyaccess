@@ -7,6 +7,14 @@ import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShareDialog } from '../useShareDialog';
 import { usePermissionManager } from '../usePermissionManager';
+
+import * as userService from '../../../../../services/userService';
+import * as permissionService from '../../../../../services/permissionService';
+import * as fileService from '../../../../../services/fileService';
+import * as permissionRequestService from '../../../../../services/permissionRequestService';
+import { sharePermissionSaveUseCase } from '../../../../../services/sharePermissionSaveUseCase';
+import { adminPermissionSaveUseCase } from '../../../../../services/adminPermissionSaveUseCase';
+import { shareReviewUseCase } from '../../../../../services/shareReviewUseCase';
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -40,14 +48,6 @@ jest.mock('../../../../../services/adminPermissionSaveUseCase', () => ({
 jest.mock('../../../../../services/shareReviewUseCase', () => ({
   shareReviewUseCase: jest.fn(),
 }));
-
-import * as userService from '../../../../../services/userService';
-import * as permissionService from '../../../../../services/permissionService';
-import * as fileService from '../../../../../services/fileService';
-import * as permissionRequestService from '../../../../../services/permissionRequestService';
-import { sharePermissionSaveUseCase } from '../../../../../services/sharePermissionSaveUseCase';
-import { adminPermissionSaveUseCase } from '../../../../../services/adminPermissionSaveUseCase';
-import { shareReviewUseCase } from '../../../../../services/shareReviewUseCase';
 
 const mockOnMessage = jest.fn();
 const mockOnSave = jest.fn();

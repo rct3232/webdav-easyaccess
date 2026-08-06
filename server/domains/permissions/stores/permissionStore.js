@@ -1,9 +1,8 @@
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const { getPermissionRank: permissionRankFromModule, meetsRank } = require('../policy/permissionRank');
+const { meetsRank } = require('../policy/permissionRank');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
 const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('../../../store/storage');
-const { withLock } = require('../../../store/locks');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const userStore = require('../../../store/userStore');
 
@@ -887,10 +886,6 @@ async function hasPermissionsInPath(nodeId) {
   }
 
   return results;
-}
-
-function permissionRank(p) {
-  return permissionRankFromModule(p);
 }
 
 module.exports = {

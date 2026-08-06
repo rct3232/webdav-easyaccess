@@ -6,11 +6,6 @@
  */
 import { get, post } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-}));
-
 import {
   createPermissionRequest,
   listInboxPermissionRequests,
@@ -20,6 +15,11 @@ import {
   cancelPermissionRequest,
   checkOwnerExists,
 } from '../permissionRequestService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+}));
 
 describe('permissionRequestService', () => {
   beforeEach(() => {

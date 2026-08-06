@@ -3,6 +3,15 @@
  */
 import { normalizePath } from '../../utils/pathUtils';
 
+import { get, post, del } from '../apiClient';
+import { notifyRecentFilesChange } from '../recentFilesNotifier';
+import {
+  getRecentFiles,
+  addRecentFile,
+  removeRecentFile,
+  clearRecentFiles,
+} from '../recentFilesRepository';
+
 jest.mock('../apiClient', () => ({
   get: jest.fn(),
   post: jest.fn(),
@@ -12,15 +21,6 @@ jest.mock('../apiClient', () => ({
 jest.mock('../recentFilesNotifier', () => ({
   notifyRecentFilesChange: jest.fn(),
 }));
-
-import { get, post, del } from '../apiClient';
-import { notifyRecentFilesChange } from '../recentFilesNotifier';
-import {
-  getRecentFiles,
-  addRecentFile,
-  removeRecentFile,
-  clearRecentFiles,
-} from '../recentFilesRepository';
 
 describe('recentFilesRepository', () => {
   beforeEach(() => {

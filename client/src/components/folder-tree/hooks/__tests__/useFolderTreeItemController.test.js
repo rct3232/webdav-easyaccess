@@ -7,6 +7,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import useFolderTreeItemController from '../useFolderTreeItemController';
 
+import folderTreeGateway from '../../../../services/folderTreeGateway';
+import { useDropToUpload } from '../../../../hooks/useDropToUpload';
+
 jest.mock('../../../../services/folderTreeGateway', () => {
   const { createFolderTreeGatewayMock } = require('../../../../testing/mocks/serviceMocks');
   return createFolderTreeGatewayMock();
@@ -15,9 +18,6 @@ jest.mock('../../../../services/folderTreeGateway', () => {
 jest.mock('../../../../hooks/useDropToUpload', () => ({
   useDropToUpload: jest.fn(),
 }));
-
-import folderTreeGateway from '../../../../services/folderTreeGateway';
-import { useDropToUpload } from '../../../../hooks/useDropToUpload';
 
 const createProps = (overrides = {}) => ({
   node: { nodeId: 10, name: 'root' },

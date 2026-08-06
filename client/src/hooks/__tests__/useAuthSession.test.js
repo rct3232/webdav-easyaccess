@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
+import * as authService from '../../services/authService';
+import { useAuthSession } from '../useAuthSession';
+
 jest.mock('../../services/authService', () => ({
   getMe: jest.fn(),
   login: jest.fn(),
   register: jest.fn(),
 }));
-
-import * as authService from '../../services/authService';
-import { useAuthSession } from '../useAuthSession';
 
 describe('useAuthSession', () => {
   beforeEach(() => {

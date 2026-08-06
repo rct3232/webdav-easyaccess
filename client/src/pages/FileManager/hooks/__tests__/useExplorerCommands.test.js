@@ -5,6 +5,14 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 
+import explorerGateway from '../../../../services/explorerGateway';
+import { useBulkOperations } from '../useBulkOperations';
+import { useFileOperations } from '../useFileOperations';
+import { showErrorFromError } from '../../../../utils/errorUtils';
+import { validateFileName } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../../../../utils/validationMessage';
+import { useExplorerCommands } from '../useExplorerCommands';
+
 jest.mock('../../../../services/explorerGateway', () => {
   const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
   return {
@@ -38,14 +46,6 @@ jest.mock('@webdav-easyaccess/shared/validation', () => ({
 jest.mock('../../../../utils/validationMessage', () => ({
   getValidationMessage: jest.fn((error) => `validation:${error}`),
 }));
-
-import explorerGateway from '../../../../services/explorerGateway';
-import { useBulkOperations } from '../useBulkOperations';
-import { useFileOperations } from '../useFileOperations';
-import { showErrorFromError } from '../../../../utils/errorUtils';
-import { validateFileName } from '@webdav-easyaccess/shared/validation';
-import { getValidationMessage } from '../../../../utils/validationMessage';
-import { useExplorerCommands } from '../useExplorerCommands';
 
 function createBulkState(overrides = {}) {
   return {

@@ -6,13 +6,6 @@
  */
 import { get, post, put, del } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-  del: jest.fn(),
-}));
-
 import {
   getPendingUsers,
   getUsers,
@@ -25,6 +18,13 @@ import {
   cleanupOrphaned,
   ensureHomeOwnerAdmin,
 } from '../adminService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  del: jest.fn(),
+}));
 
 describe('adminService', () => {
   beforeEach(() => {

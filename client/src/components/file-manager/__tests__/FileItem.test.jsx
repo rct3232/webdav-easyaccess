@@ -7,6 +7,8 @@ import React from 'react';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 
+import FileItem from '../FileItem';
+
 jest.mock('../../../hooks/useLongPress', () => ({
   useLongPress: () => ({
     onTouchStart: () => {},
@@ -25,8 +27,6 @@ jest.mock('../hooks/useLongPressSelect', () => ({
     onLongPressSelect: null,
   }),
 }));
-
-import FileItem from '../FileItem';
 
 const mockFile = {
   path: '/test.pdf',

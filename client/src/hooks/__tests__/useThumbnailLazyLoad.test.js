@@ -6,12 +6,12 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useThumbnailLazyLoad } from '../useThumbnailLazyLoad';
 
+import * as fileService from '../../services/fileService';
+
 jest.mock('../../services/fileService', () => {
   const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
   return createFileServiceMock();
 });
-
-import * as fileService from '../../services/fileService';
 
 const imageFile = {
   nodeId: 101,

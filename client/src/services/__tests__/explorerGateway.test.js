@@ -3,6 +3,23 @@
  * @see docs/spec/client/services/explorerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
+import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
+import { getShowHiddenFiles } from '../../utils/localStorage';
+import { checkPermission, getUserPermissions, listFilePermissions } from '../permissionService';
+import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
+import { onRecentFilesChange } from '../recentFilesNotifier';
+import explorerGateway, {
+  canNavigateToNode,
+  checkConflictsForExplorer,
+  getEntriesMetadata,
+  getPathAccess,
+  listDirectory,
+  loadRecentFiles,
+  loadSharedEntries,
+  removeExplorerRecentFile,
+  uploadToPath,
+} from '../explorerGateway';
+
 jest.mock('../fileService', () => {
   const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
   return createFileServiceMock();
@@ -29,23 +46,6 @@ jest.mock('../../utils/localStorage', () => {
     getShowHiddenFiles: jest.fn(() => false),
   });
 });
-
-import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
-import { getShowHiddenFiles } from '../../utils/localStorage';
-import { checkPermission, getUserPermissions, listFilePermissions } from '../permissionService';
-import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
-import { onRecentFilesChange } from '../recentFilesNotifier';
-import explorerGateway, {
-  canNavigateToNode,
-  checkConflictsForExplorer,
-  getEntriesMetadata,
-  getPathAccess,
-  listDirectory,
-  loadRecentFiles,
-  loadSharedEntries,
-  removeExplorerRecentFile,
-  uploadToPath,
-} from '../explorerGateway';
 
 describe('explorerGateway', () => {
   beforeEach(() => {

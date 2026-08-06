@@ -9,6 +9,11 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import ShareTargetDialog from '../ShareTargetDialog';
 
+import { getApprovedUsers } from '../../../services/userService';
+import sharePermissionGateway from '../../../services/sharePermissionGateway';
+import { shareTargetPermissionSaveUseCase } from '../../../services/shareTargetPermissionSaveUseCase';
+import { useSharedManage } from '../../../hooks/useSharedManage';
+
 jest.mock('../../../hooks/useResponsive', () => {
   const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
   return createUseResponsiveModuleMock();
@@ -55,11 +60,6 @@ jest.mock('../SharedManageBody', () => {
     default: MockSharedManageBody,
   };
 });
-
-import { getApprovedUsers } from '../../../services/userService';
-import sharePermissionGateway from '../../../services/sharePermissionGateway';
-import { shareTargetPermissionSaveUseCase } from '../../../services/shareTargetPermissionSaveUseCase';
-import { useSharedManage } from '../../../hooks/useSharedManage';
 
 const adminFile = {
   path: '/testuser/docs/file.pdf',

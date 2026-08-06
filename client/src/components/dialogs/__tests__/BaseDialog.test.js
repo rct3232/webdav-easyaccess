@@ -9,12 +9,12 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import BaseDialog from '../BaseDialog';
 
+import { useResponsive } from '../../../hooks/useResponsive';
+
 jest.mock('../../../hooks/useResponsive', () => {
   const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
   return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
 });
-
-import { useResponsive } from '../../../hooks/useResponsive';
 
 const defaultProps = {
   open: true,

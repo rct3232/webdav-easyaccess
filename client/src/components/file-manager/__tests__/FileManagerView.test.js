@@ -9,6 +9,10 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
 
+import folderTreeGateway from '../../../services/folderTreeGateway';
+import { getRecentFiles } from '../../../services/recentFilesRepository';
+import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
+
 jest.mock('../../../services/folderTreeGateway', () => {
   const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
   return createFolderTreeGatewayMock();
@@ -23,10 +27,6 @@ jest.mock('../../../services/recentFilesNotifier', () => {
   const { createRecentFilesNotifierMock } = require('../../../testing/mocks/serviceMocks');
   return createRecentFilesNotifierMock();
 });
-
-import folderTreeGateway from '../../../services/folderTreeGateway';
-import { getRecentFiles } from '../../../services/recentFilesRepository';
-import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 function createProps(overrides = {}) {
   const baseProps = {

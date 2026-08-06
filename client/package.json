@@ -32,7 +32,18 @@
   "eslintConfig": {
     "extends": [
       "react-app"
-    ]
+    ],
+    "env": {
+      "es2021": true
+    },
+    "rules": {
+      "no-restricted-globals": [
+        "error",
+        "event",
+        "fdescribe",
+        "fit"
+      ]
+    }
   },
   "browserslist": {
     "production": [

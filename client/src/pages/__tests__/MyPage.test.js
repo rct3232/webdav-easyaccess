@@ -5,12 +5,6 @@
  * Uses server.use to control inbox/outbox responses (per RCA).
  * @see docs/spec/client/pages/MyPage.md
  */
-jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
-jest.mock('../../hooks/useResponsive', () => {
-  const { createUseResponsiveModuleMock } = require('../../testing/mocks/useResponsiveMock');
-  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
-});
-
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -19,6 +13,12 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { renderWithProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import MyPage from '../MyPage';
+
+jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
+jest.mock('../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
+});
 
 /** Select Sharing category, then a sub-item (inbox/outbox/links). Non-admin user sees Sharing. Uses label pattern; count is shown via Badge. */
 const selectSharingAndItem = async (user, labelPattern) => {

@@ -6,6 +6,8 @@
 import { renderHook, act } from '@testing-library/react';
 import { useMessage } from '../useMessage';
 
+import { getServerErrorDisplay } from '../../utils/errorUtils';
+
 jest.mock('../../i18n', () => ({
   __esModule: true,
   default: { t: (key) => key },
@@ -14,8 +16,6 @@ jest.mock('../../i18n', () => ({
 jest.mock('../../utils/errorUtils', () => ({
   getServerErrorDisplay: jest.fn((data, t) => (data?.errorCode ? t(data.errorCode, data.params) : t('errors.unknown'))),
 }));
-
-import { getServerErrorDisplay } from '../../utils/errorUtils';
 
 describe('useMessage', () => {
   beforeEach(() => {

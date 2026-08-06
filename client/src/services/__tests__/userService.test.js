@@ -6,17 +6,17 @@
  */
 import { get, put } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  put: jest.fn(),
-}));
-
 import {
   getApprovedUsers,
   updateEmail,
   updatePassword,
   updateUserPermissions,
 } from '../userService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  put: jest.fn(),
+}));
 
 describe('userService', () => {
   beforeEach(() => {

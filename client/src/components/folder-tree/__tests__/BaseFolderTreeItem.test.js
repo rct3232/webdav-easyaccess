@@ -9,12 +9,12 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import BaseFolderTreeItem from '../BaseFolderTreeItem';
 
+import folderTreeGateway from '../../../services/folderTreeGateway';
+
 jest.mock('../../../services/folderTreeGateway', () => {
   const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
   return createFolderTreeGatewayMock();
 });
-
-import folderTreeGateway from '../../../services/folderTreeGateway';
 
 jest.mock('../../../hooks/useDropToUpload', () => ({
   useDropToUpload: () => ({

@@ -5,6 +5,11 @@
  */
 import { renderHook, act } from '@testing-library/react';
 
+import { sortFiles } from '../../../../utils/fileUtils';
+import { getSortMode, getViewMode, setViewMode, setSortMode } from '../../../../utils/localStorage';
+import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
+import { useExplorerSession } from '../useExplorerSession';
+
 jest.mock('../../../../utils/fileUtils', () => ({
   sortFiles: jest.fn((files) => files),
 }));
@@ -19,11 +24,6 @@ jest.mock('../../../../utils/localStorage', () => ({
 jest.mock('../../../../hooks/useInfiniteScroll', () => ({
   useInfiniteScroll: jest.fn(),
 }));
-
-import { sortFiles } from '../../../../utils/fileUtils';
-import { getSortMode, getViewMode, setViewMode, setSortMode } from '../../../../utils/localStorage';
-import { useInfiniteScroll } from '../../../../hooks/useInfiniteScroll';
-import { useExplorerSession } from '../useExplorerSession';
 
 const EMPTY_FILES = [];
 

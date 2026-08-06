@@ -5,16 +5,16 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 
-jest.mock('../../../../services/shareLinkService', () => ({
-  addShareLinkToMyPermissions: jest.fn(),
-  checkMyPermissionForShare: jest.fn(),
-}));
-
 import {
   addShareLinkToMyPermissions,
   checkMyPermissionForShare,
 } from '../../../../services/shareLinkService';
 import { useShareLinkOverlay } from '../useShareLinkOverlay';
+
+jest.mock('../../../../services/shareLinkService', () => ({
+  addShareLinkToMyPermissions: jest.fn(),
+  checkMyPermissionForShare: jest.fn(),
+}));
 
 function createDefaultProps(overrides = {}) {
   return {

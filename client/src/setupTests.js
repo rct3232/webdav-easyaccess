@@ -8,6 +8,9 @@
 import './jest-polyfills.js';
 import { __setRetryConfigForTests } from './services/httpClient';
 import { __setBatchDelayForTests, __resetHandlersState, handlers } from './mocks/handlers';
+import '@testing-library/jest-dom';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 
 jest.mock('react-pdf', () => {
   const React = require('react');
@@ -17,9 +20,6 @@ jest.mock('react-pdf', () => {
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' } },
   };
 });
-import '@testing-library/jest-dom';
-import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
 
 __setRetryConfigForTests({ retryDelay: 0 });
 __setBatchDelayForTests(0);

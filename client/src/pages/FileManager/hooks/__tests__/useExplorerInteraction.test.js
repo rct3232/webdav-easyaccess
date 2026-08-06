@@ -5,6 +5,10 @@
  */
 import { renderHook, act } from '@testing-library/react';
 
+import { canPreview } from '../../../../utils/fileUtils';
+import explorerGateway from '../../../../services/explorerGateway';
+import { useExplorerInteraction } from '../useExplorerInteraction';
+
 jest.mock('../../../../utils/fileUtils', () => {
   const { createFileUtilsMock } = require('../../../../testing/mocks/serviceMocks');
   return createFileUtilsMock();
@@ -17,10 +21,6 @@ jest.mock('../../../../services/explorerGateway', () => {
     default: createExplorerGatewayMock(),
   };
 });
-
-import { canPreview } from '../../../../utils/fileUtils';
-import explorerGateway from '../../../../services/explorerGateway';
-import { useExplorerInteraction } from '../useExplorerInteraction';
 
 function createDefaultProps(overrides = {}) {
   return {

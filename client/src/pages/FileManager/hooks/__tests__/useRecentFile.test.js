@@ -5,6 +5,8 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useRecentFile } from '../useRecentFile';
+
+import explorerGateway from '../../../../services/explorerGateway';
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -23,8 +25,6 @@ jest.mock('../../../../utils/fileUtils', () => {
   const { createFileUtilsMock } = require('../../../../testing/mocks/serviceMocks');
   return createFileUtilsMock();
 });
-
-import explorerGateway from '../../../../services/explorerGateway';
 
 const mockSetCurrentPath = jest.fn();
 const mockShowError = jest.fn();

@@ -4,8 +4,6 @@
  * @see docs/spec/client/components/mypage/MyPageContentArea.md
  * @see docs/TESTING_STRATEGY.md
  */
-jest.mock('../../../components/dialogs/FilePreviewDialog', () => () => null);
-
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,6 +11,8 @@ import { http, HttpResponse } from 'msw';
 import { renderWithProviders } from '../../../test-utils';
 import { server } from '../../../setupTests';
 import MyPageContentArea from '../MyPageContentArea';
+
+jest.mock('../../../components/dialogs/FilePreviewDialog', () => () => null);
 
 const mockUser = {
   id: '1',

@@ -4,6 +4,17 @@
  * @see docs/TESTING_STRATEGY.md
  * @see docs/spec/client/pages/FileManager.md 2.6
  */
+import React from 'react';
+import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Routes, Route, createMemoryRouter, RouterProvider, Outlet, useParams } from 'react-router-dom';
+import { http, HttpResponse } from 'msw';
+import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
+import { server } from '../../setupTests';
+import FileManager from '../FileManager';
+import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
+import { clearUserPermissionsCache } from '../../services/permissionService';
+
 jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
   __esModule: true,
   default: function MockFilePreviewDialog({ open, file, onClose }) {
@@ -102,17 +113,6 @@ jest.mock('../FileManager/hooks/useExplorerNavigation', () => ({
     };
   },
 }));
-
-import React from 'react';
-import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { Routes, Route, createMemoryRouter, RouterProvider, Outlet, useParams } from 'react-router-dom';
-import { http, HttpResponse } from 'msw';
-import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
-import { server } from '../../setupTests';
-import FileManager from '../FileManager';
-import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
-import { clearUserPermissionsCache } from '../../services/permissionService';
 
 function ParamsReporter() {
   const params = useParams();

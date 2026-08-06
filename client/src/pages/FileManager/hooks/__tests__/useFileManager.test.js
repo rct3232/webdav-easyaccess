@@ -7,6 +7,8 @@ import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useFileManager } from '../useFileManager';
+import explorerGateway from '../../../../services/explorerGateway';
+import { resolvePath, getAncestors } from '../../../../services/fileService';
 
 const mockNavigate = jest.fn();
 
@@ -22,13 +24,11 @@ jest.mock('../../../../services/explorerGateway', () => {
     default: createExplorerGatewayMock(),
   };
 });
-import explorerGateway from '../../../../services/explorerGateway';
 
 jest.mock('../../../../services/fileService', () => {
   const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
   return createFileServiceMock();
 });
-import { resolvePath, getAncestors } from '../../../../services/fileService';
 
 const mockUser = { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 };
 const defaultListedFiles = [

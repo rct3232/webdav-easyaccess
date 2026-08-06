@@ -7,6 +7,12 @@
  * @see docs/spec/client/components/dialogs/FilePreviewDialog.md
  */
 
+import React from 'react';
+import { screen, waitFor, fireEvent, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { renderWithProviders } from '../../../../test-utils';
+import FilePreviewDialog from '../FilePreviewDialog';
+
 jest.mock('plyr', () => {
   return function MockPlyr() {
     return {
@@ -43,12 +49,6 @@ jest.mock('../../../../services/fileService', () => {
     downloadFile: (...args) => mockDownloadFile(...args),
   });
 });
-
-import React from 'react';
-import { screen, waitFor, fireEvent, act, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '../../../../test-utils';
-import FilePreviewDialog from '../FilePreviewDialog';
 
 const mockGetFileBlob = jest.fn();
 const mockGetVideoPreviewStreamUrl = jest.fn();

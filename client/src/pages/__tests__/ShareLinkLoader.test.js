@@ -4,12 +4,20 @@
  * @see docs/spec/client/pages/ShareLinkLoader.md
  */
 import React from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { Routes, Route } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../setupTests';
 import { renderWithProviders } from '../../test-utils';
 import ShareLinkLoader from '../ShareLinkLoader';
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 jest.mock('../FileManager', () => function MockFileManager({ shareToken, linkInfo }) {
   return (
@@ -38,16 +46,22 @@ function renderShareLinkLoader(initialEntries = ['/share/valid-token']) {
 
 describe('ShareLinkLoader', () => {
   it('shows loading state while fetching', async () => {
+    const pendingInfoRequest = createDeferred();
     server.use(
-      http.get('/api/share/:token/info', async () => {
-        await new Promise((r) => setTimeout(r, 100));
-        return HttpResponse.json({ token: 't1', filePath: '/a.pdf', fileName: 'a.pdf', isDirectory: false });
-      })
+      http.get('/api/share/:token/info', () =>
+        pendingInfoRequest.promise.then(() =>
+          HttpResponse.json({ token: 't1', filePath: '/a.pdf', fileName: 'a.pdf', isDirectory: false })
+        )
+      )
     );
     renderShareLinkLoader(['/share/valid-token']);
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
+
+    act(() => {
+      pendingInfoRequest.resolve();
+    });
 
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

@@ -7,13 +7,6 @@
  */
 import { get, post, put, del } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-  del: jest.fn(),
-}));
-
 import {
   createShareLink,
   getShareLinks,
@@ -25,6 +18,13 @@ import {
   checkMyPermissionForShare,
   addShareLinkToMyPermissions,
 } from '../shareLinkService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  del: jest.fn(),
+}));
 
 describe('shareLinkService', () => {
   const originalOrigin = window.location.origin;

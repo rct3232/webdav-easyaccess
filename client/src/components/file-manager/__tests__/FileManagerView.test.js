@@ -9,25 +9,24 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
 
-jest.mock('../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    getUserSharedFolderPermissions: jest.fn(),
-    listFolderChildren: jest.fn(),
-  },
-}));
-
-jest.mock('../../../services/recentFilesRepository', () => ({
-  getRecentFiles: jest.fn(),
-}));
-
-jest.mock('../../../services/recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(),
-}));
-
 import folderTreeGateway from '../../../services/folderTreeGateway';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
+
+jest.mock('../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
+
+jest.mock('../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
+
+jest.mock('../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
 function createProps(overrides = {}) {
   const baseProps = {

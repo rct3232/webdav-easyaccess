@@ -6,9 +6,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { useFileOperationProgress } from '../useFileOperationProgress';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 describe('useFileOperationProgress', () => {
   it('updateProgress adds item to progressItems', () => {

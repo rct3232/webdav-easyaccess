@@ -4,6 +4,7 @@
  * incrementDownloadCount, isLinkExpired against the real SQLite-backed store (nodeId contract).
  */
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createStorageMock } = require('@testing/mocks/storeMocks');
 const shareLinkStore = require('../../../store/shareLinkStore');
 const {
   createTestDatabase,
@@ -25,13 +26,10 @@ function createPostgresqlShareLinkStorageMock() {
   });
 
   const query = jest.fn(async (sql, params = []) => {
-    if (sql.includes('SELECT *') && sql.includes('FROM share_links') && sql.includes('WHERE token = $1')) {
-      const token = String(params[0]);
-      const link = rows.get(token);
-      return { rows: link ? [toRow(link)] : [], rowCount: link ? 1 : 0 };
-    }
+    const s = String(sql);
 
-    if (sql.includes('INSERT INTO share_links') && sql.includes('RETURNING *')) {
+    // createShareLink — INSERT ... RETURNING (only reached when the token does not already exist)
+    if (s.startsWith('INSERT INTO share_links')) {
       const [tokenRaw, fileNodeId, createdBy, expiresAt] = params;
       const token = String(tokenRaw);
       if (!rows.has(token)) {
@@ -47,16 +45,8 @@ function createPostgresqlShareLinkStorageMock() {
       return { rows: [toRow(rows.get(token))], rowCount: 1 };
     }
 
-    if (sql.includes('SELECT *') && sql.includes('FROM share_links') && sql.includes('WHERE created_by = $1')) {
-      const createdBy = Number(params[0]);
-      const ordered = Array.from(rows.values())
-        .filter((link) => Number(link.createdBy) === createdBy)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map(toRow);
-      return { rows: ordered, rowCount: ordered.length };
-    }
-
-    if (sql.includes('UPDATE share_links') && sql.includes('SET download_count = download_count + 1')) {
+    // incrementDownloadCount — keep the atomic read-modify-write on the counter
+    if (s.startsWith('UPDATE share_links') && s.includes('download_count = download_count + 1')) {
       const token = String(params[0]);
       const current = rows.get(token);
       if (!current) return { rows: [], rowCount: 0 };
@@ -65,21 +55,36 @@ function createPostgresqlShareLinkStorageMock() {
       return { rows: [toRow(current)], rowCount: 1 };
     }
 
-    if (sql.includes('DELETE FROM share_links') && sql.includes('WHERE token = $1')) {
+    // deleteShareLink — DELETE by token
+    if (s.startsWith('DELETE FROM share_links')) {
       const token = String(params[0]);
       const existed = rows.delete(token);
       return { rows: [], rowCount: existed ? 1 : 0 };
     }
 
-    throw new Error(`Unexpected SQL in shareLinkStore test mock: ${sql}`);
+    // getUserShareLinks — SELECT by created_by
+    if (s.includes('created_by')) {
+      const createdBy = Number(params[0]);
+      const ordered = Array.from(rows.values())
+        .filter((link) => Number(link.createdBy) === createdBy)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(toRow);
+      return { rows: ordered, rowCount: ordered.length };
+    }
+
+    // getShareLink — SELECT by token
+    const token = String(params[0]);
+    const link = rows.get(token);
+    return { rows: link ? [toRow(link)] : [], rowCount: link ? 1 : 0 };
   });
 
-  return {
+  return createStorageMock({
     state: { rows },
     getBackend: () => 'postgresql',
+    isSqliteBackend: () => false,
     getPgPool: () => ({ query }),
     withTransaction: async (callback) => callback({ query }),
-  };
+  });
 }
 
 function loadShareLinkStoreWithStorageMock(storageMock) {

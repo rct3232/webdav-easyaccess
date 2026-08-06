@@ -1,4 +1,4 @@
-const { getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
+const { getBackend, withTransaction, getPgPool, isSqliteBackend, withSqliteTransaction } = require('./storage');
 const { mapDatabaseError } = require('../utils/errorHandler');
 
 function isPostgresqlBackend() {
@@ -121,7 +121,8 @@ async function set(key, value) {
 
 async function getAll() {
   const s = await readSettings();
-  const { updated_at, ...rest } = s;
+  const rest = { ...s };
+  delete rest.updated_at;
   return rest;
 }
 

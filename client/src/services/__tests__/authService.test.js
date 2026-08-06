@@ -7,12 +7,12 @@
  */
 import { get, post } from '../apiClient';
 
+import { login, register, getMe } from '../authService';
+
 jest.mock('../apiClient', () => ({
   get: jest.fn(),
   post: jest.fn(),
 }));
-
-import { login, register, getMe } from '../authService';
 
 describe('authService', () => {
   beforeEach(() => {

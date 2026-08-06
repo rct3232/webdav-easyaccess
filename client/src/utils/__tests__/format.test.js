@@ -1,12 +1,12 @@
 /**
  * format tests: formatFileSize, formatDate, formatDateOnly
  */
+import { formatFileSize, formatDate, formatDateOnly } from '../format';
+
 jest.mock('../../i18n', () => ({
   __esModule: true,
   default: { language: 'en' },
 }));
-
-import { formatFileSize, formatDate, formatDateOnly } from '../format';
 
 describe('formatFileSize', () => {
   it('returns "0 B" for zero or falsy', () => {

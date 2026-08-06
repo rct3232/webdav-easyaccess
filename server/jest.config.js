@@ -3,6 +3,10 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.test.js'],
   setupFilesAfterEnv: ['<rootDir>/test-setup.js'],
+  moduleNameMapper: {
+    '^@server/(.*)$': '<rootDir>/$1',
+    '^@testing/(.*)$': '<rootDir>/testing/$1',
+  },
   collectCoverageFrom: [
     '**/*.js',
     '!**/node_modules/**',

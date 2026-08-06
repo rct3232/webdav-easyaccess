@@ -4,6 +4,17 @@
  * @see docs/TESTING_STRATEGY.md
  * @see docs/spec/client/pages/FileManager.md 2.6
  */
+import React from 'react';
+import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Routes, Route, createMemoryRouter, RouterProvider, Outlet, useParams } from 'react-router-dom';
+import { http, HttpResponse } from 'msw';
+import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
+import { server } from '../../setupTests';
+import FileManager from '../FileManager';
+import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
+import { clearUserPermissionsCache } from '../../services/permissionService';
+
 jest.mock('../../components/dialogs/FilePreviewDialog', () => ({
   __esModule: true,
   default: function MockFilePreviewDialog({ open, file, onClose }) {
@@ -103,17 +114,6 @@ jest.mock('../FileManager/hooks/useExplorerNavigation', () => ({
   },
 }));
 
-import React from 'react';
-import { screen, waitFor, render, act, within, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { Routes, Route, createMemoryRouter, RouterProvider, Outlet, useParams } from 'react-router-dom';
-import { http, HttpResponse } from 'msw';
-import { renderWithProviders, ThemeAndAuthProviders } from '../../test-utils';
-import { server } from '../../setupTests';
-import FileManager from '../FileManager';
-import { notifyRecentFilesChange } from '../../services/recentFilesNotifier';
-import { clearUserPermissionsCache } from '../../services/permissionService';
-
 function ParamsReporter() {
   const params = useParams();
   return <span data-testid="params">{JSON.stringify(params)}</span>;
@@ -198,9 +198,9 @@ describe('FileManager', () => {
       http.get('/api/recent-files', () => HttpResponse.json(recentEntries)),
       http.post('/api/files/metadata', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const paths = body.paths || [];
+        const nodeIds = body.nodeIds || [];
         return HttpResponse.json(
-          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+          nodeIds.map((nodeId) => ({ nodeId, size: 123, lastmod: null, mime: 'text/plain' }))
         );
       })
     );
@@ -254,10 +254,10 @@ describe('FileManager', () => {
       }),
       http.post('/api/files/metadata', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const paths = body.paths || [];
+        const nodeIds = body.nodeIds || [];
 
         return HttpResponse.json(
-          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+          nodeIds.map((nodeId) => ({ nodeId, size: 123, lastmod: null, mime: 'text/plain' }))
         );
       })
     );
@@ -934,7 +934,7 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/files/download', ({ request }) => {
         const url = new URL(request.url);
-        downloadRequestParam = url.searchParams.get('nodeId') || url.searchParams.get('path');
+        downloadRequestParam = url.searchParams.get('nodeId');
         return new HttpResponse(new Blob(['mock file content']), {
           headers: { 'Content-Disposition': 'attachment; filename="test.txt"' },
         });

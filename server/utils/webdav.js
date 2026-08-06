@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- WebDAV client reset diagnostic */
 const path = require('path');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');

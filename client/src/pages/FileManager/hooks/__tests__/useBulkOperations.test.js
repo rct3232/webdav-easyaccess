@@ -6,26 +6,23 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useBulkOperations } from '../useBulkOperations';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
-jest.mock('../../../../services/fileService', () => ({
-  batchMoveFiles: jest.fn(),
-  batchCopyFiles: jest.fn(),
-  batchDeleteFiles: jest.fn(),
-  downloadMultipleFiles: jest.fn(),
-  checkConflicts: jest.fn(),
-  getBulkOperationStatus: jest.fn(),
-  cancelBulkOperation: jest.fn(),
-}));
-
-jest.mock('../../../../services/recentFilesNotifier', () => ({
-  notifyRecentFilesChange: jest.fn(),
-}));
-
 import * as fileService from '../../../../services/fileService';
 import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
+
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+
+jest.mock('../../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
+
+jest.mock('../../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
 const mockSetTreeUpdateTrigger = jest.fn();
 const mockOnOperationComplete = jest.fn();
@@ -192,6 +189,32 @@ describe('useBulkOperations', () => {
       expect.objectContaining({ opType: 'move', targetParentNodeId: 99 })
     );
     expect(notifyRecentFilesChange).toHaveBeenCalled();
+  });
+
+  it('handleFolderPickerSelect with no conflicts triggers batch copy and completes operation', async () => {
+    const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+    act(() => {
+      result.current.handleBulkCopy();
+    });
+
+    await act(async () => {
+      await result.current.handleFolderPickerSelect(99);
+    });
+
+    expect(fileService.checkConflicts).toHaveBeenCalled();
+    expect(fileService.batchCopyFiles).toHaveBeenCalledWith(
+      expect.any(Array),
+      'error'
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(mockOnOperationComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ opType: 'copy', targetParentNodeId: 99 })
+    );
   });
 
   it('bulk move syncs recent files for only the succeeded subset when other items are skipped', async () => {

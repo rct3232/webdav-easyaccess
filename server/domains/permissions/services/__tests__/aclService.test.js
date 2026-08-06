@@ -29,11 +29,14 @@ describe('aclService (nodeId)', () => {
       findById: mockUserFindById,
     }));
 
-    jest.doMock('../../../../store/permissionStore', () => ({
-      checkPermission: mockPermissionCheckPermission,
-      getFilePermission: mockPermissionGetFilePermission,
-      checkSharePermission: mockPermissionCheckSharePermission,
-    }));
+    jest.doMock('../../../../store/permissionStore', () => {
+      const { createPermissionStoreMock } = require('@testing/mocks/storeMocks');
+      return createPermissionStoreMock({
+        checkPermission: mockPermissionCheckPermission,
+        getFilePermission: mockPermissionGetFilePermission,
+        checkSharePermission: mockPermissionCheckSharePermission,
+      });
+    });
 
     jest.doMock('@webdav-easyaccess/shared/pathUtils', () => ({
       normalizePath: (p) => p,

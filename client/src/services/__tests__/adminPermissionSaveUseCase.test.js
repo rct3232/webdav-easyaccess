@@ -1,3 +1,7 @@
+import sharePermissionGateway from '../sharePermissionGateway';
+import { adminPermissionSaveUseCase } from '../adminPermissionSaveUseCase';
+import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
+
 jest.mock('../sharePermissionGateway', () => ({
   __esModule: true,
   default: {
@@ -5,10 +9,6 @@ jest.mock('../sharePermissionGateway', () => ({
     revokePermission: jest.fn(),
   },
 }));
-
-import sharePermissionGateway from '../sharePermissionGateway';
-import { adminPermissionSaveUseCase } from '../adminPermissionSaveUseCase';
-import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
 describe('adminPermissionSaveUseCase', () => {
   beforeEach(() => {

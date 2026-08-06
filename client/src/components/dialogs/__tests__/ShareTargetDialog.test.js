@@ -9,13 +9,20 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import ShareTargetDialog from '../ShareTargetDialog';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+import { getApprovedUsers } from '../../../services/userService';
+import sharePermissionGateway from '../../../services/sharePermissionGateway';
+import { shareTargetPermissionSaveUseCase } from '../../../services/shareTargetPermissionSaveUseCase';
+import { useSharedManage } from '../../../hooks/useSharedManage';
 
-jest.mock('../../../services/userService', () => ({
-  getApprovedUsers: jest.fn(),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
+
+jest.mock('../../../services/userService', () => {
+  const { createUserServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createUserServiceMock();
+});
 
 jest.mock('../../../services/sharePermissionGateway', () => ({
   __esModule: true,
@@ -53,11 +60,6 @@ jest.mock('../SharedManageBody', () => {
     default: MockSharedManageBody,
   };
 });
-
-import { getApprovedUsers } from '../../../services/userService';
-import sharePermissionGateway from '../../../services/sharePermissionGateway';
-import { shareTargetPermissionSaveUseCase } from '../../../services/shareTargetPermissionSaveUseCase';
-import { useSharedManage } from '../../../hooks/useSharedManage';
 
 const adminFile = {
   path: '/testuser/docs/file.pdf',

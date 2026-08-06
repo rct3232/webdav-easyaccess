@@ -1,6 +1,6 @@
 'use strict';
 
-const { createS3Mock } = require('../../../../testing/mocks/s3Mock');
+const { createS3Mock } = require('@testing/mocks/s3Mock');
 
 let S3BlobStore;
 let currentMockS3;

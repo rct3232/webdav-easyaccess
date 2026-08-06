@@ -7,12 +7,6 @@
  */
 import { get, post, del } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  del: jest.fn(),
-}));
-
 import {
   getUserPermissions,
   clearUserPermissionsCache,
@@ -22,6 +16,12 @@ import {
   checkPermission,
   listFilePermissions,
 } from '../permissionService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  del: jest.fn(),
+}));
 
 describe('permissionService', () => {
   beforeEach(() => {

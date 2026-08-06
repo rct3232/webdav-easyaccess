@@ -6,22 +6,23 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileOperations } from '../useFileOperations';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
-jest.mock('../../../../services/fileService', () => ({
-  downloadFile: jest.fn(),
-  downloadMultipleFiles: jest.fn(),
-  renameFile: jest.fn(),
-}));
-
-jest.mock('../../../../services/recentFilesNotifier', () => ({
-  notifyRecentFilesChange: jest.fn(),
-}));
-
 import * as fileService from '../../../../services/fileService';
 import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
+
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+
+jest.mock('../../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
+
+jest.mock('../../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
 const mockOnProgress = jest.fn();
 const mockOnClose = jest.fn();
@@ -33,7 +34,6 @@ const mockOnProcessingEnd = jest.fn();
 describe('useFileOperations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.useFakeTimers();
     fileService.downloadFile.mockResolvedValue();
     fileService.downloadMultipleFiles.mockResolvedValue({});
     fileService.renameFile.mockResolvedValue({ messageCode: 'serverMessages.files.renameSuccess', nodeId: 1, newName: 'new.pdf' });

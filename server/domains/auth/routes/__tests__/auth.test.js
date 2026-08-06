@@ -12,10 +12,6 @@ const {
 const Settings = require('../../../../models/Settings');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-jest.mock('../../../../utils/email', () => ({
-  sendRegistrationPendingEmail: jest.fn().mockResolvedValue(undefined),
-}));
-
 let app;
 let dbCleanup;
 

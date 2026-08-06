@@ -1,3 +1,6 @@
+import sharePermissionGateway from '../sharePermissionGateway';
+import { sharePermissionSaveUseCase } from '../sharePermissionSaveUseCase';
+
 jest.mock('../sharePermissionGateway', () => ({
   __esModule: true,
   default: {
@@ -5,9 +8,6 @@ jest.mock('../sharePermissionGateway', () => ({
     grantPermission: jest.fn(),
   },
 }));
-
-import sharePermissionGateway from '../sharePermissionGateway';
-import { sharePermissionSaveUseCase } from '../sharePermissionSaveUseCase';
 
 describe('sharePermissionSaveUseCase', () => {
   beforeEach(() => {

@@ -10,9 +10,10 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import ShareDialog from '../ShareDialog';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 describe('ShareDialog', () => {
   const defaultProps = {

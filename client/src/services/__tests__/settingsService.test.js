@@ -6,11 +6,11 @@
  */
 import { get } from '../apiClient';
 
+import { getPublicSettings } from '../settingsService';
+
 jest.mock('../apiClient', () => ({
   get: jest.fn(),
 }));
-
-import { getPublicSettings } from '../settingsService';
 
 describe('settingsService', () => {
   beforeEach(() => {

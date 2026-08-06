@@ -4,6 +4,7 @@
  * - Logs one JSON line per request to stdout (console.log)
  * - Does NOT log Authorization header or request bodies
  */
+/* eslint-disable no-console -- access-logging is the module's purpose */
 
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];

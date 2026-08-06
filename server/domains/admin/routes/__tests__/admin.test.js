@@ -11,17 +11,11 @@ const {
   USER_STATUS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
-const permissionStore = require('../../../../store/permissionStore');
+const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
-var mockEmail;
 var mockWebdav;
-jest.mock('../../../../utils/email', () => {
-  const { createEmailMock } = require('../../../../testing/mocks/emailMock');
-  mockEmail = createEmailMock();
-  return mockEmail;
-});
 jest.mock('../../../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -36,7 +30,7 @@ beforeAll(async () => {
   process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
   const composition = require('../../../../service/composition');
   composition.__setCompositionForTests({
@@ -51,6 +45,8 @@ afterAll(async () => {
   process.env.WEA_STORAGE_BACKEND = previousBackend;
   process.env.WEA_FILE_STORAGE = previousFileStorage;
 });
+
+beforeEach(jest.clearAllMocks);
 
 describe('GET /api/admin/settings', () => {
   it('returns 403 when non-admin', async () => {

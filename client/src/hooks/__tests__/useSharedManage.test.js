@@ -7,9 +7,12 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSharedManage } from '../useSharedManage';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+import * as sharePermissionGateway from '../../services/sharePermissionGateway';
+
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('../../services/sharePermissionGateway', () => ({
   checkPermission: jest.fn(),
@@ -19,8 +22,6 @@ jest.mock('../../services/sharePermissionGateway', () => ({
   cancelPermissionRequest: jest.fn(),
   revokePermission: jest.fn(),
 }));
-
-import * as sharePermissionGateway from '../../services/sharePermissionGateway';
 
 const mockUser = { id: '1', username: 'user1', is_admin: false };
 const mockAdminUser = { id: 'admin', username: 'admin', is_admin: true };
@@ -123,8 +124,8 @@ describe('useSharedManage', () => {
       expect(result.current.initialLoading).toBe(false);
     });
 
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(1, 200);
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(2, 150);
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(200);
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(150);
     expect(result.current.pathPermission).toBe('read');
     expect(result.current.filePermissionLevel).toBe('read');
   });

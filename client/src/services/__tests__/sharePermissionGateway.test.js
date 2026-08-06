@@ -3,6 +3,24 @@
  * Verifies that gateway forwards to underlying services.
  * @see docs/spec/client/services/sharePermissionGateway.md
  */
+import * as permissionService from '../permissionService';
+import * as permissionRequestService from '../permissionRequestService';
+import * as userService from '../userService';
+
+import sharePermissionGateway, {
+  getUserPermissions,
+  getFolderPermissions,
+  checkPermission,
+  checkOwnerExists,
+  listOutboxPermissionRequests,
+  createPermissionRequest,
+  cancelPermissionRequest,
+  grantPermission,
+  revokePermission,
+  approvePermissionRequest,
+  updateUserPermissions,
+} from '../sharePermissionGateway';
+
 jest.mock('../permissionService', () => ({
   getUserPermissions: jest.fn(),
   getFolderPermissions: jest.fn(),
@@ -22,24 +40,6 @@ jest.mock('../permissionRequestService', () => ({
 jest.mock('../userService', () => ({
   updateUserPermissions: jest.fn(),
 }));
-
-import * as permissionService from '../permissionService';
-import * as permissionRequestService from '../permissionRequestService';
-import * as userService from '../userService';
-
-import sharePermissionGateway, {
-  getUserPermissions,
-  getFolderPermissions,
-  checkPermission,
-  checkOwnerExists,
-  listOutboxPermissionRequests,
-  createPermissionRequest,
-  cancelPermissionRequest,
-  grantPermission,
-  revokePermission,
-  approvePermissionRequest,
-  updateUserPermissions,
-} from '../sharePermissionGateway';
 
 describe('sharePermissionGateway', () => {
   beforeEach(() => {

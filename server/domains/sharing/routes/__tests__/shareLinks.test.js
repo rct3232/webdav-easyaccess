@@ -11,7 +11,7 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 
@@ -55,6 +55,8 @@ afterAll(async () => {
   delete process.env.WEA_SKIP_BULK_WORKER;
   await dbCleanup?.();
 });
+
+beforeEach(jest.clearAllMocks);
 
 describe('POST /api/share-links', () => {
   it('creates share link for a file node', async () => {

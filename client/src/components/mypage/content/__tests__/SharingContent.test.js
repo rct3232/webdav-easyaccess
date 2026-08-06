@@ -4,8 +4,6 @@
  * @see docs/spec/client/components/mypage/content/SharingContent.md
  * @see docs/TESTING_STRATEGY.md
  */
-jest.mock('../../../dialogs/FilePreviewDialog', () => () => null);
-
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -14,6 +12,8 @@ import { renderWithProviders } from '../../../../test-utils';
 import { server } from '../../../../setupTests';
 import MyPageContentPanel from '../../MyPageContentPanel';
 import SharingContent from '../SharingContent';
+
+jest.mock('../../../dialogs/FilePreviewDialog', () => () => null);
 
 const mockUser = { id: '1', username: 'testuser', email: 'user@example.com', is_admin: false, status: 'approved' };
 

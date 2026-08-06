@@ -6,6 +6,8 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFolderPicker } from '../useFolderPicker';
 
+import folderPickerGateway from '../../../../../services/folderPickerGateway';
+
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -18,8 +20,6 @@ jest.mock('../../../../../services/folderPickerGateway', () => ({
     getUserSharedFolderPermissions: jest.fn(),
   },
 }));
-
-import folderPickerGateway from '../../../../../services/folderPickerGateway';
 
 const mockUser = { id: '1', username: 'user1', is_admin: false, rootNodeId: 100 };
 const mockAdminUser = { id: 'admin', username: 'admin', is_admin: true };

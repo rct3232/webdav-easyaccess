@@ -2,14 +2,14 @@
  * shareReviewUseCase tests.
  * @see docs/spec/client/services/shareReviewUseCase.md
  */
+import { shareReviewUseCase } from '../shareReviewUseCase';
+import * as sharePermissionGateway from '../sharePermissionGateway';
+
 jest.mock('../sharePermissionGateway', () => ({
   revokePermission: jest.fn(),
   grantPermission: jest.fn(),
   approvePermissionRequest: jest.fn(),
 }));
-
-import { shareReviewUseCase } from '../shareReviewUseCase';
-import * as sharePermissionGateway from '../sharePermissionGateway';
 
 describe('shareReviewUseCase', () => {
   beforeEach(() => {

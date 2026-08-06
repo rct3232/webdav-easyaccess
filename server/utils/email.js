@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- email transport status logging and unconfigured fallback */
 let nodemailer;
 try {
   nodemailer = require('nodemailer');

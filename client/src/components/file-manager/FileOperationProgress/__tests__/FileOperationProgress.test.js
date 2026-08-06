@@ -8,9 +8,10 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test-utils';
 import FileOperationProgress from '../FileOperationProgress';
 
-jest.mock('../../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const mockItems = [
   { id: '1', type: 'download', status: 'completed', name: 'file1.txt' },

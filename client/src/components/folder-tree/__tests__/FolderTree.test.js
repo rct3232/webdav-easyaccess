@@ -11,14 +11,15 @@ import { renderWithProviders } from '../../../test-utils';
 import FolderTree from '../FolderTree';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
-jest.mock('../../../services/recentFilesRepository', () => ({
-  getRecentFiles: jest.fn().mockResolvedValue([]),
-}));
+jest.mock('../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
 
-jest.mock('../../../services/recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(() => () => {}),
-  notifyRecentFilesChange: jest.fn(),
-}));
+jest.mock('../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 jest.mock('../../../services/permissionService', () => {
   const { createPermissionServiceMock } = require('../../../testing/mocks/serviceMocks');
   return createPermissionServiceMock({

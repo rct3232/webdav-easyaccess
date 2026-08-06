@@ -5,25 +5,13 @@ const { createTestDatabase } = require('../../test-utils');
 const storage = require('../../store/storage');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createBlobStorageService } = require('../blobStorageService');
+const { createInMemoryBlobStore } = require('@testing/mocks/serviceMocks');
 
 describe('createBlobStorageService', () => {
   let dbCleanup;
   let fileNodesStore;
   let blobStore;
   let service;
-
-  function createInMemoryBlobStore() {
-    const data = new Map();
-    return {
-      uploadBlob: jest.fn((key, buffer) => {
-        data.set(key, Buffer.from(buffer));
-      }),
-      downloadBlob: jest.fn((key) => {
-        const buf = data.get(key);
-        return buf ? Promise.resolve(buf) : Promise.resolve(null);
-      }),
-    };
-  }
 
   beforeAll(async () => {
     const db = await createTestDatabase();

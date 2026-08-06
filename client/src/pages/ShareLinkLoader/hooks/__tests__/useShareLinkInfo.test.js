@@ -1,28 +1,29 @@
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { useTranslation } from 'react-i18next';
-
 import { getPublicShareLinkInfo } from '../../../../services/shareLinkService';
 import { getServerErrorDisplay } from '../../../../utils/errorUtils';
 import { useShareLinkInfo } from '../useShareLinkInfo';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: jest.fn(),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('../../../../services/shareLinkService', () => ({
   getPublicShareLinkInfo: jest.fn(),
 }));
 
-jest.mock('../../../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn(),
-}));
+jest.mock('../../../../utils/errorUtils', () => {
+  const { createErrorUtilsMock } = require('../../../../testing/mocks/serviceMocks');
+  return createErrorUtilsMock({
+    getServerErrorDisplay: jest.fn(),
+  });
+});
 
 describe('useShareLinkInfo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.removeItem('token');
-    useTranslation.mockReturnValue({ t: (key) => key });
   });
 
   it('loads directory link info successfully (nodeId always present)', async () => {

@@ -217,4 +217,65 @@ describe('permissionPolicy (nodeId)', () => {
     const result = await permissionPolicy.canRevokePermissionNode(1, 20, 2);
     expect(result).toBe(false);
   });
+
+  // canReadFileNode / canWriteFileNode (file-level checks via aclService)
+  it('canReadFileNode returns true for admin user', async () => {
+    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
+
+    const result = await permissionPolicy.canReadFileNode(1, 100);
+    expect(result).toBe(true);
+  });
+
+  it('canReadFileNode delegates to aclService.checkFilePermission for non-admin', async () => {
+    mockUserModel.findById.mockResolvedValue({ id: 2, username: 'alice', is_admin: false });
+    mockAclService.checkFilePermission.mockResolvedValue(true);
+
+    const result = await permissionPolicy.canReadFileNode(2, 100);
+    expect(result).toBe(true);
+    expect(mockAclService.checkFilePermission).toHaveBeenCalledWith(2, 100, PERMISSIONS.READ);
+  });
+
+  it('canWriteFileNode returns true for admin user', async () => {
+    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'admin', is_admin: true });
+
+    const result = await permissionPolicy.canWriteFileNode(1, 100);
+    expect(result).toBe(true);
+  });
+
+  it('canWriteFileNode delegates to aclService.checkFilePermission for non-admin', async () => {
+    mockUserModel.findById.mockResolvedValue({ id: 2, username: 'alice', is_admin: false });
+    mockAclService.checkFilePermission.mockResolvedValue(true);
+
+    const result = await permissionPolicy.canWriteFileNode(2, 100);
+    expect(result).toBe(true);
+    expect(mockAclService.checkFilePermission).toHaveBeenCalledWith(2, 100, PERMISSIONS.WRITE);
+  });
+
+  // getUserOrNull helper
+  it('getUserOrNull returns the user when found', async () => {
+    mockUserModel.findById.mockResolvedValue({ id: 1, username: 'alice' });
+
+    const result = await permissionPolicy.getUserOrNull(1);
+    expect(result).toMatchObject({ id: 1, username: 'alice' });
+  });
+
+  it('getUserOrNull returns falsy when user not found', async () => {
+    mockUserModel.findById.mockResolvedValue(undefined);
+
+    const result = await permissionPolicy.getUserOrNull(999);
+    expect(result).toBeFalsy();
+  });
+
+  it('getUserOrNull returns null for falsy userId without calling findById', async () => {
+    const result = await permissionPolicy.getUserOrNull(null);
+    expect(result).toBeNull();
+    expect(mockUserModel.findById).not.toHaveBeenCalled();
+  });
+
+  it('getUserOrNull returns null when findById throws', async () => {
+    mockUserModel.findById.mockRejectedValue(new Error('DB error'));
+
+    const result = await permissionPolicy.getUserOrNull(1);
+    expect(result).toBeNull();
+  });
 });

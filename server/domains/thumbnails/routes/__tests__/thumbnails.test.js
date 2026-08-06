@@ -12,6 +12,7 @@ const {
   grantTestPermissionByNodeId,
   createTestFileNode,
 } = require('../../../../test-utils');
+const { initMetadataStore } = require('../../../../store/bootstrap');
 
 const mockVerifyThumbnailToken = jest.fn();
 const mockFindCachedThumbnailByHash = jest.fn();
@@ -30,9 +31,10 @@ let readableNodeId;
 let forbiddenNodeId;
 
 function waitForAppInit() {
-  // index.js fires initMetadataStore() at require-time; give it time to settle
-  // so its async schema re-init does not race the test DB cleanup.
-  return new Promise((resolve) => setTimeout(resolve, 2000));
+  // index.js fires initMetadataStore() at require-time. Await the same
+  // idempotent init (CREATE TABLE IF NOT EXISTS / existing-admin check) so its
+  // async schema re-init settles without a fixed real-time wait.
+  return initMetadataStore();
 }
 
 beforeAll(async () => {

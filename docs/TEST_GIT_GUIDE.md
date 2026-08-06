@@ -5,17 +5,23 @@
 ### 1. Test Code
 
 ```
-✓ client/src/__tests__/**/*.test.js
-✓ client/src/components/__tests__/**/*.test.js
+✓ client/src/components/**/__tests__/**/*.test.js
 ✓ client/src/contexts/__tests__/**/*.test.js
 ✓ client/src/hooks/__tests__/**/*.test.js
-✓ client/src/pages/__tests__/**/*.test.js
+✓ client/src/pages/**/__tests__/**/*.test.js
 ✓ client/src/services/__tests__/**/*.test.js
 ✓ client/src/utils/__tests__/**/*.test.js
-✓ server/models/__tests__/**/*.test.js
+✓ server/domains/<x>/routes/__tests__/**/*.test.js
+✓ server/domains/<x>/services/__tests__/**/*.test.js
+✓ server/domains/<x>/stores/__tests__/**/*.test.js
+✓ server/domains/<x>/policy/__tests__/**/*.test.js
+✓ server/domains/<x>/__tests__/**/*.test.js
+✓ server/infrastructure/__tests__/**/*.test.js
+✓ server/infrastructure/routes/__tests__/**/*.test.js
+✓ server/infrastructure/adapters/blobstore/__tests__/**/*.test.js
 ✓ server/middleware/__tests__/**/*.test.js
-✓ server/routes/__tests__/**/*.test.js
-✓ server/services/__tests__/**/*.test.js
+✓ server/models/__tests__/**/*.test.js
+✓ server/service/__tests__/**/*.test.js
 ✓ server/store/__tests__/**/*.test.js
 ✓ server/utils/__tests__/**/*.test.js
 ✓ e2e/**/*.spec.ts
@@ -29,7 +35,6 @@
 ✓ jest.config.js (server only; client uses Jest config in package.json)
 ✓ test-setup.js (server)
 ✓ server/test-utils.js
-✓ client/src/test-utils/ (or test-utils/index.js)
 ✓ setupTests.js (client)
 ✓ playwright.config.ts
 ✓ e2e/global-setup.ts
@@ -42,14 +47,14 @@
 
 ```
 ✓ client/src/mocks/handlers.js
-✓ client/src/mocks/server.js
-✓ client/src/test-utils/index.js
 ✓ server/test-utils.js
 ✓ e2e/helpers/**/*.ts
 ✓ e2e/fixtures/**/*
 ```
 
 **Reason**: Common utilities needed for writing tests.
+
+> Note: The MSW server (`setupServer`) is created in `client/src/setupTests.js` (see Test Configuration above); there is no separate `client/src/mocks/server.js`.
 
 ### 4. Test Documentation
 
@@ -267,8 +272,9 @@ jobs:
 
 ### Current Status
 
-- **Client**: 464 tests, 100% pass rate. Coverage: ~41% statements, ~42% lines. See `client/TEST_SUMMARY.md`.
-- **Server**: 373 tests, 100% pass rate. Coverage: ~89% statements, ~91% lines. Core modules 95–100%. See `server/TEST_SUMMARY.md`.
+- **Client**: 1254 tests across 147 suites, 100% pass rate. See `client/TEST_SUMMARY.md`.
+- **Server**: 1119 tests across 66 suites, 100% pass rate (3 skipped). See `server/TEST_SUMMARY.md`.
+- Coverage figures are measured per run via `npm run test:coverage` and recorded in the respective `TEST_SUMMARY.md`.
 
 ### Recommended Targets
 

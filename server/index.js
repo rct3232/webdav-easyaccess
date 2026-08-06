@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- server startup/diagnostic logging */
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');

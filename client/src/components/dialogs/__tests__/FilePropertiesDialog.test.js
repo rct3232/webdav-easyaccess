@@ -11,22 +11,29 @@ import FilePropertiesDialog from '../FilePropertiesDialog';
 import { getFolderPermissions } from '../../../services/permissionService';
 import { getFolderStats } from '../../../services/fileService';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
-jest.mock('../../../services/permissionService', () => ({
-  getFolderPermissions: jest.fn().mockResolvedValue([]),
-  getUserPermissions: jest.fn().mockResolvedValue([]),
-  grantPermission: jest.fn().mockResolvedValue(),
-  revokePermission: jest.fn().mockResolvedValue(),
-  checkPermission: jest.fn().mockResolvedValue({}),
-  listFilePermissions: jest.fn().mockResolvedValue([]),
-}));
+jest.mock('../../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock({
+    getFolderPermissions: jest.fn().mockResolvedValue([]),
+    getUserPermissions: jest.fn().mockResolvedValue([]),
+    grantPermission: jest.fn().mockResolvedValue(),
+    revokePermission: jest.fn().mockResolvedValue(),
+    checkPermission: jest.fn().mockResolvedValue({}),
+    listFilePermissions: jest.fn().mockResolvedValue([]),
+  });
+});
 
-jest.mock('../../../services/fileService', () => ({
-  getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
-}));
+jest.mock('../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createFileServiceMock({
+    getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
+  });
+});
 
 const fileProps = {
   nodeId: 5,

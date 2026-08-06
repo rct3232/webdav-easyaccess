@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 const fs = require('fs');
 const path = require('path');
-const { convertPostgresToSqlite } = require('../../infrastructure/sqliteSchemaInit');
+const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
 
 function splitStatements(sql) {
   const statements = [];
@@ -196,15 +196,5 @@ describe('DDL Smoke Test', () => {
       const createdAtCol = info.find((c) => c.name === 'created_at');
       expect(createdAtCol.type).toBe('TEXT');
     });
-  });
-
-  describe('PostgreSQL path', () => {
-    if (!process.env.DOCKER_AVAILABLE) {
-      it.skip('requires DOCKER_AVAILABLE=1 to run PostgreSQL smoke test', () => {});
-    } else {
-      it('skipped in this context — Docker available but not exercised in local CI', () => {
-        console.log('PostgreSQL smoke test would spin up postgres:16 container here');
-      });
-    }
   });
 });

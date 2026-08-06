@@ -29,6 +29,10 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
     return 1;
   }
 
+  function toDateCutoff(days) {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }
+
   /**
    * Tier 1 — DB-driven orphan cleanup.
    * @returns {Promise<{ orphanedRows: number, deletedBlobs: number, deletedRows: number, errors: string[] }>}
@@ -88,7 +92,7 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
 
     let candidateKeys;
     try {
-      candidateKeys = await blobStore.listOrphanedKeys(olderThanDays);
+      candidateKeys = await blobStore.listOrphanedKeys(toDateCutoff(olderThanDays));
     } catch (error) {
       result.errors.push(`Failed to list orphaned S3 keys: ${error.message}`);
       return result;

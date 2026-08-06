@@ -12,7 +12,15 @@ function createFakeBlobStore({ listOrphaned = [] } = {}) {
       deleted.push(key);
       return Promise.resolve();
     }),
-    listOrphanedKeys: jest.fn(() => Promise.resolve(listOrphaned)),
+    listOrphanedKeys: jest.fn((olderThan) => {
+      const cutoff = olderThan instanceof Date ? olderThan.getTime() : olderThan;
+      return Promise.resolve(
+        listOrphaned
+          .map((entry) => (typeof entry === 'string' ? { key: entry } : entry))
+          .filter((entry) => !entry.lastModified || entry.lastModified.getTime() < cutoff)
+          .map((entry) => entry.key)
+      );
+    }),
     getDeleted: () => deleted,
   };
 }
@@ -162,6 +170,39 @@ describe('createGcService', () => {
       expect(results.tier2.untrackedKeys).toBe(1);
       expect(results.tier2.deletedKeys).toBe(1);
       expect(tier2BlobStore.getDeleted()).toContain(untrackedKey);
+      expect(tier2BlobStore.getDeleted()).not.toContain(activeKey);
+    });
+
+    it('passes a Date cutoff and ignores keys younger than the TTL', async () => {
+      const oldUntrackedKey = `t2-old-${Date.now()}`;
+      const freshUntrackedKey = `t2-fresh-${Date.now()}`;
+      const activeKey = `t2-active-2-${Date.now()}`;
+      const activeNode = await fileNodesStore.createNode(null, `t2-node-2-${Date.now()}`, 'file');
+      await insertObjectMapRow({ fileNodeId: activeNode.id, s3Key: activeKey, status: 'active' });
+
+      const now = Date.now();
+      const tier2BlobStore = createFakeBlobStore({
+        listOrphaned: [
+          { key: oldUntrackedKey, lastModified: new Date(now - 10 * 86400000) },
+          { key: freshUntrackedKey, lastModified: new Date(now - 60 * 1000) },
+          { key: activeKey, lastModified: new Date(now - 10 * 86400000) },
+        ],
+      });
+      gcService = createGcService({
+        blobStore: tier2BlobStore,
+        fileNodesStore,
+        fileStorageMode: 's3',
+      });
+
+      const results = await gcService.runGcCycle({ olderThanDays: 1 });
+
+      const cutoffArg = tier2BlobStore.listOrphanedKeys.mock.calls[0][0];
+      expect(cutoffArg).toBeInstanceOf(Date);
+      expect(results.tier2.scannedKeys).toBe(2);
+      expect(results.tier2.untrackedKeys).toBe(1);
+      expect(results.tier2.deletedKeys).toBe(1);
+      expect(tier2BlobStore.getDeleted()).toContain(oldUntrackedKey);
+      expect(tier2BlobStore.getDeleted()).not.toContain(freshUntrackedKey);
       expect(tier2BlobStore.getDeleted()).not.toContain(activeKey);
     });
 

@@ -35,7 +35,7 @@
 | onApprove | function | N | null | Approve handler |
 | onMessage | function | N | null | Message handler |
 | enableExternalShare | boolean | N | false | Show external share section |
-| filePath | string | N | null | File path (single file share) |
+| fileNodeId | number | N | null | File node id (single file share) |
 | fileName | string | N | null | File name |
 
 ### 2.3 Callback Signatures
@@ -83,9 +83,9 @@
 ### 2.8 Edge Cases
 
 - permissionRequest for review mode
-- filePath/fileName for single file share
+- fileNodeId/fileName for single file share
 - `mode='review'` with missing `permissionRequest` is undefined; parent flow should not open the dialog in that state
-- `filePath` present with missing `fileName` should rely on the upstream fallback or caller guarantee
+- `fileNodeId` present with missing `fileName` should rely on the upstream fallback or caller guarantee
 
 ### 2.9 API Error Behavior
 

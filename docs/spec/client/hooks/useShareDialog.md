@@ -26,7 +26,9 @@
 | userId | string | N | Target user id in admin mode |
 | username | string | N | Target username in admin mode |
 | startFromUserHome | boolean | N | Whether admin mode should anchor at the user's home folder |
-| folderPath | string | N | Root folder for share/review flows |
+| folderPath | string | N | Root folder path for share/review flows (display/bootstrap) |
+| folderNodeId | number | N | Root folder node id for share/review flows |
+| targetNodeId | number | N | Alias for the target node id (used when `folderNodeId` is absent) |
 | folderName | string | N | Display name for the selected folder |
 | permissionRequest | object | N | Request under review in review mode |
 | enableExternalShare | boolean | N | External share-only mode |
@@ -40,20 +42,21 @@
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| rootPath | string | Effective root path for the current mode |
+| rootPath | string | Effective root path for the current mode (display only; navigation resolves by nodeId) |
+| rootNodeId / baseFolderNodeId | number \| null | Resolved root / base-folder node ids for the current mode |
 | isAdminMode / isShareMode / isReviewMode | boolean | Mode flags for the dialog shell |
 | users | array | Approved-user list for add-user flows |
-| folderTree | `Map<string, object>` | Loaded folder tree nodes keyed by path |
-| expandedPaths | `Set<string>` | Expanded tree paths |
-| loadingPaths | `Set<string>` | Paths currently being loaded |
+| folderTree | `Map<number, object>` | Loaded folder tree nodes keyed by nodeId (path aliases retained for display) |
+| expandedNodeIds | `Set<number>` | Expanded tree node ids |
+| loadingNodeIds | `Set<number>` | Node ids currently being loaded |
 | loadingAllFolders | boolean | Full dialog tree initialization/loading state |
 | folderMenuAnchor | element \| null | Menu anchor element |
-| folderMenuPath | string \| null | Path whose menu is currently open |
+| folderMenuNodeId | number \| null | Node id whose menu is currently open |
 | folderMenuView | string | `'manage' \| 'selectUser'` |
 | externalShareLoading / externalShareLink / externalShareExpiresInDays / externalShareUnlimited / linkCopied | mixed | External-share section state |
-| loadFolderChildren | `(path) => Promise<Array>` | Lazy folder load function with in-flight deduplication |
-| toggleExpand | `(path) => Promise<void>` | Expand/collapse handler |
-| getAllSubfolderPaths | `(path) => string[]` | Helper for recursive permission application |
+| loadFolderChildren | `(nodeId) => Promise<Array>` | Lazy folder load function with in-flight deduplication |
+| toggleExpand | `(nodeId) => Promise<void>` | Expand/collapse handler |
+| getAllSubfolderNodeIds | `(nodeId) => number[]` | Helper for recursive permission application (node ids) |
 | getUserName | `(userId) => string` | Display-name resolver for tree/menu views |
 | handleAddUser / handleUserSelect / handleRemoveUser / handleTogglePermission | function | Menu-driven permission editing actions |
 | handleSave | `() => Promise<void>` | Mode-specific save/approve entry point |
@@ -62,20 +65,20 @@
 ### 2.4 Dependencies
 
 - `getApprovedUsers` (`userService`) for share/review add-user choices
-- `listFiles` (`fileService`) for folder-tree loading
+- `listFiles` + `resolvePath` (`fileService`) for folder-tree loading and root path→nodeId resolution
 - `sharePermissionGateway` for permission/request reads
 - `shareReviewUseCase` for review-mode approval persistence
 - `sharePermissionSaveUseCase` for share-mode permission persistence
 - `adminPermissionSaveUseCase` for admin-mode user-permission persistence
 - `buildPermissionDiff` only through save-oriented use-cases, not inline in the controller hook
-- `normalizePath`, `getUserBaseFolder`
+- `getUserBaseFolder`
 - `getServerErrorDisplay`
 
 ### 2.5 Side Effects
 
 - Loads users on open for share/review flows
 - Initializes folder tree and permission state on open
-- Loads child folders lazily and de-duplicates concurrent requests per path by reusing one in-flight Promise
+- Loads child folders lazily and de-duplicates concurrent requests per nodeId by reusing one in-flight Promise
 - Calls the appropriate save use-case based on mode:
   - admin mode -> `adminPermissionSaveUseCase`
   - share mode -> `sharePermissionSaveUseCase`
@@ -90,7 +93,7 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Opening in share/review mode loads users and the initial folder tree
-- [ ] Concurrent `loadFolderChildren(path)` calls reuse one request and resolve all callers
+- [ ] Concurrent `loadFolderChildren(nodeId)` calls reuse one request and resolve all callers
 - [ ] Admin save success calls `onSave`, shows success message, and closes
 - [ ] Share save success calls the share save use-case, shows success message, and closes
 - [ ] Review save success calls the review use-case, shows success message, calls `onApprove`, and closes
@@ -102,4 +105,4 @@
 - `rootPath` depends on mode and `startFromUserHome`
 - Review mode may need to inject the requester into the loaded permission state even when not already present
 - Folder menu state must reset back to `'manage'` on close
-- Concurrent folder loads must not poll `loadingPaths` or wait via timers for completion
+- Concurrent folder loads must not poll `loadingNodeIds` or wait via timers for completion

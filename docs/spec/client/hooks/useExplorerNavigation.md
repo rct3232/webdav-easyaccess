@@ -27,7 +27,7 @@
 | getPreviousNodeId | () => number \| null \| undefined | Y | Returns the last committed nodeId to support optimistic navigation rollback (typically backed by a ref in the shell). |
 | setCurrentNodeId | (nodeId: number \| null) => void | Y | Shell-owned nodeId setter (or equivalent routing setter) used to transition explorer location. |
 | onAfterNavigate | (nextNodeId: number \| null) => void | N | Hook for the shell to run follow-up behavior after navigation (e.g. close drawer, selection reset timing) while preserving current UX. |
-| onTrackNodeHistory | (nextNodeId: number \| null, previousNodeId: number \| null) => void | N | Optional callback to record optimistic navigation history used by existing rollback/error flows (e.g. recent-file navigation, which stays path-based until Phase 5). |
+| onTrackNodeHistory | (nextNodeId: number \| null, previousNodeId: number \| null) => void | N | Optional callback to record optimistic navigation history used by existing rollback/error flows (e.g. recent-file navigation, which is nodeId-first since Phase 5). |
 | canNavigateToNode | (nodeId: number) => boolean \| Promise<boolean> | N | Optional guard for permission/availability checks used to preserve current "permission denied" rollback behavior (renamed from `canNavigateToPath`). In FileManager this should normally be provided by `explorerGateway` (or a narrow adapter over it) rather than a shell-owned direct service import. When it returns false, navigation must roll back and reject with a forbidden-shaped error. |
 
 Notes:

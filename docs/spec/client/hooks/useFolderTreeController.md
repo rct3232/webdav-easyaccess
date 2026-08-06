@@ -43,7 +43,7 @@
 | recentExpanded | boolean | Whether the “__recent__” section is expanded. |
 | handleRecentToggle | (e: any) => void | Stops propagation and toggles “__recent__” expanded state. |
 | handleRecentClick | () => void | Navigates to `/__recent__`. |
-| recentFilesList | Array<any> | Current recent files list consumed by `RecentFilesSection` (path-based until Phase 5). |
+| recentFilesList | Array<any> | Current recent files list consumed by `RecentFilesSection` (nodeId-first since Phase 5). |
 
 ### 2.4 Dependencies
 

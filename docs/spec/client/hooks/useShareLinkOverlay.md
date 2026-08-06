@@ -70,7 +70,7 @@
 
 - May call share-link permission check/add APIs.
 - May auto-open the add-to-my-permissions modal after authenticated share-link entry.
-- May navigate to `/files/*` after success or leave-share confirmation. Directory routing after add-to-shared is nodeId-first (`/files/node/<linkInfo.nodeId>`); the legacy `/files/<path>` route is the fallback when `nodeId` is unavailable (C2.5, removed in Phase 5).
+- May navigate to `/files/*` after success or leave-share confirmation. Directory routing after add-to-shared is nodeId-first (`/files/node/<linkInfo.nodeId>`); the legacy `/files/<path>` fallback was removed in Phase 5.
 
 ### 2.7 Error Handling
 

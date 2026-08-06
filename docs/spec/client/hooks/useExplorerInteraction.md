@@ -65,7 +65,7 @@
   - Progress drawer state.
   - Share-link overlay modal state (login, add-to-my-permissions, leave-share confirm).
 
-> **Note:** Selection, long-press, and double-click detection are keyed by `file.nodeId` (pending implementation: the current source keys them by `file.path`). Recent-file click branches (`file.isRecentFile`) remain path-based until Phase 5 and use the `resolve-path` navigation shim.
+> **Note:** Selection, long-press, and double-click detection are keyed by `getEntryKey(file)` (`file.nodeId` when present, else `file.path`). Recent-file click branches (`file.isRecentFile`) are nodeId-first since Phase 5: when `file.nodeId` is present they navigate/open by nodeId and only fall back to the path-based branch for legacy entries that lack a nodeId.
 
 ### 2.5 Dependencies
 
@@ -91,12 +91,12 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 
 - [ ] Desktop single click, double click, Ctrl/Meta click, and Shift click keep current observable selection/open behavior.
 - [ ] Mobile tap and long-press keep current open/select behavior.
-- [ ] Recent-file directory and file clicks preserve current path tracking, fallback, and preview behavior (recent-file branches are path-based until Phase 5).
+- [ ] Recent-file directory and file clicks preserve current open/preview behavior: nodeId-first navigation when `file.nodeId` is present, with the path fallback reserved for entries without a nodeId.
 - [ ] Share-link mode path clicks bypass generic explorer navigation only in the same product-defined cases as today.
 - [ ] More button opens the same desktop/mobile affordance without entering selection mode.
 
 ### 2.9 Edge Cases
 
 - Empty file/path input is a no-op.
-- Same-path / invalid recent-file path handling preserves current error behavior (recent-file branches are path-based until Phase 5).
+- Recent-file entries lacking a nodeId use the path-based fallback branch and preserve current error behavior (nodeId entries never hit the path branch).
 - Double-click detection resets after a confirmed open so later clicks do not re-trigger stale state.

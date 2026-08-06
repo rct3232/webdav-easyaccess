@@ -4,10 +4,10 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Fetches public share-link info for `/share/:token` and normalizes loading + error state for the route shell. Enriches directory links with the share root `nodeId` (resolve-path fallback, C2.5). |
+| Role | Fetches public share-link info for `/share/:token` and normalizes loading + error state for the route shell. |
 | Used by components/pages | `client/src/pages/ShareLinkLoader.js` |
 
-> **Phase 4 nodeId end-state (C2.5):** for directory links, `linkInfo` is enriched with the share root `nodeId` once at share-view entry. When the API already carries `nodeId` it is kept as-is; otherwise `linkInfo.filePath` is resolved via `POST /files/resolve-path` for authenticated viewers (guarded by an access-token presence check so public share viewers are not redirected to login). The resolve-path fallback is removed in Phase 5 once `GET /share/:token/info` returns a nodeId.
+> **Phase 5 nodeId end-state:** `GET /api/share/:token/info` always returns a `nodeId` for the shared root, so the hook never needs to resolve a path. The Phase 4 gap-closure `resolve-path` fallback (C2.5) was removed in Phase 5; `useShareLinkInfo` only fetches link info and passes it through as-is.
 
 ---
 
@@ -33,18 +33,17 @@ Scope is page-local to `ShareLinkLoader`:
 | Key | Type | Meaning |
 |-----|------|---------|
 | loading | `boolean` | Current fetch-in-flight state. |
-| linkInfo | object \| null | Share metadata on success; includes `isDirectory` and, for directory links, the share root `nodeId` when resolvable (C2.5). |
+| linkInfo | object \| null | Share metadata on success; includes `nodeId`, `fileName`, `fileType`, `isDirectory`, and `displayPath` from the API. |
 | error | string \| null | Translated main error message on error. |
 
 ### 2.4 Dependencies
 
-- Services called: `getPublicShareLinkInfo(token)`, `resolvePath(filePath)` (directory links only, when `nodeId` absent and the viewer holds an access token), `getAccessToken()` (auth guard)
+- Services called: `getPublicShareLinkInfo(token)`
 - Other hooks: `useTranslation` (to provide/resolve message + hint keys)
 
 ### 2.5 Side Effects
 
 - Calls `getPublicShareLinkInfo(token)` when `token` changes.
-- For directory links without `nodeId`, calls `resolvePath(linkInfo.filePath)` once to attach the share root nodeId.
 - Ensures out-of-order async responses do not overwrite the latest state.
 
 ### 2.6 Error Handling
@@ -58,13 +57,12 @@ Scope is page-local to `ShareLinkLoader`:
 - [ ] Initial state while fetching: `loading === true`
 - [ ] Success: directory link info returns `loading === false` and `linkInfo.isDirectory === true`
 - [ ] Success: file link info returns `loading === false` and `linkInfo.isDirectory === false`
-- [ ] Authenticated directory link resolves the share root `nodeId` via `resolvePath` and exposes it on `linkInfo.nodeId`
-- [ ] Unauthenticated directory link leaves `linkInfo.nodeId` absent (no `resolvePath` call)
+- [ ] Directory link info passes through the server-provided `linkInfo.nodeId` unchanged (no `resolvePath` call)
 - [ ] Error state when fetch fails or token invalid: `loading === false` with a non-null `error` string
 
 ### 2.8 Edge Cases
 
 - Empty `token` never resolves to `success`.
 - Rapid token changes do not cause older responses to overwrite newer state.
-- `resolvePath` failure (unauthenticated viewer or unresolvable path) keeps `linkInfo` path-based; the path-based fallbacks in FileManager / ShareLinkSection remain.
+- `getPublicShareLinkInfo` failure (expired link, network error) keeps `linkInfo` null and surfaces a translated error message.
 

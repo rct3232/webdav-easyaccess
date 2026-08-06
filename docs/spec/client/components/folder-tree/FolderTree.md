@@ -24,7 +24,7 @@
 |------|------|----------|---------|-------------|
 | currentNodeId | number | Y | - | Current folder node id |
 | onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
-| onFileClick | function | N | - | File click (recent). Recent entries remain path-based until Phase 5 |
+| onFileClick | function | N | - | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
 | hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
@@ -65,7 +65,7 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.
-- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent clicks stay path-based until Phase 5.
+- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent entries are nodeId-first since Phase 5.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).
 - [ ] Internal DnD drop calls `onInternalFileDrop(draggedNodeId, targetNodeId)` only for valid targets (permission/no-op rules remain unchanged).

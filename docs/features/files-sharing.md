@@ -35,7 +35,7 @@ This project is refactoring the client so responsibilities are explicit and repl
   - Records a per-user list of recently accessed items using node_id references.
   - Is not a UI-only concern: it has server-backed persistence and dedicated update endpoints.
   - Explorer and sharing features should treat "recent files" as a separate capability they notify, not embed.
-  - Client callers should route server-backed recent-file mutations through `recentFilesRepository`, subscribe through `recentFilesNotifier`, and keep node_id-mutation planning inside the pure `recentFiles` helpers.
+  - Client callers should route server-backed recent-file mutations through `recentFilesRepository` and subscribe through `recentFilesNotifier`. Node ids are stable across rename/move, so no path-mutation planning helpers are needed.
   - UI refresh for `/__recent__` should be driven by notifier-triggered reloads after successful observable recent-file mutations, not by ad-hoc cross-feature state pokes.
   - `__recent__` is a browser-visible virtual collection layered on top of explorer behavior; its deeper synchronization rules still belong to repository/notifier and lower-layer tests.
 

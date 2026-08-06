@@ -2,7 +2,7 @@
 
 Branch: `refactor/phase-5-sharing-recentfiles` (from `dev`)
 Parent: [PLAN.md](PLAN.md) — Phase 5 (Sharing & RecentFiles → Node)
-Status: IN PROGRESS (2026-08-06)
+Status: COMPLETE (2026-08-06) — verified; pending merge to `dev`
 
 ---
 
@@ -81,12 +81,25 @@ The DB schema already uses `file_node_id`; this phase aligns all runtime code to
 
 ## 5. Verification
 
-1. Server: `npm run test:ci -w server` — the 7 Phase 5 suites pass; full-suite failures drop from 55 → ~14 (environmental auth/admin/lockManager 11 + Settings bug 3, out of scope).
-2. Client: `CI=true npx react-scripts test --watchAll=false` — no regression; remaining failures = documented out-of-scope 3 suites.
+1. Server: `npm run test:ci -w server` — the 7 Phase 5 suites pass; full-suite failures drop from 55 → 16 (environmental auth/admin/lockManager + Settings bug, out of scope).
+2. Client: `CI=true npx react-scripts test --watchAll=false` — no regression; remaining failures = documented out-of-scope 3 suites (apiClient ×2, FileActionSheet).
 3. Live: create share link via UI → no 500; recent-file click navigates by nodeId; `__recent__` grid shows size/mime (metadata enrichment fires).
 4. Zero path-string payloads remain in share-link/recent-files client layer; share-mode `resolve-path` shims removed.
 5. `docs/fail_log.md` updated with Phase 5 RCA records.
 6. Merge `refactor/phase-5-sharing-recentfiles` → `dev`, delete branch.
+
+## 7. Execution log (2026-08-06)
+
+- Tier 0 (D1-D10 + api.md): committed `8778eeb`; `files-sharing.md` verified consistent (no change).
+- S1 shareLinkStore + ShareLink model: committed `f131e1f`.
+- S2 shareLinkService → nodeId + getNodePath ordering fix: committed `7bfcd25`.
+- S3 shareAccessService → closure table: committed `344acb7`.
+- S4 recentFiles server → nodeId: committed `76fbcd3`.
+- Fixes from test rewrite (updateShareLink null-expiry, mapServiceError status): committed `d26d337`.
+- S5 server test rewrite (7 suites, 59 tests): committed `0d71745`.
+- C1-C5 client migration (recent-files + share-links + MSW + tests): committed `a47b750`.
+- fail_log RCA: committed `7db20f5`.
+- **Final counts:** server 1111 passed / 16 failed (env+Settings, baseline); client 1248 passed / 12 failed (3 out-of-scope suites, baseline).
 
 ## 6. Risks
 

@@ -13,13 +13,7 @@ const {
 const Settings = require('../../../../models/Settings');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
-var mockEmail;
 var mockWebdav;
-jest.mock('../../../../utils/email', () => {
-  const { createEmailMock } = require('@testing/mocks/emailMock');
-  mockEmail = createEmailMock();
-  return mockEmail;
-});
 jest.mock('../../../../utils/webdav', () => {
   const { createWebdavMock } = require('@testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
@@ -51,6 +45,8 @@ afterAll(async () => {
   process.env.WEA_STORAGE_BACKEND = previousBackend;
   process.env.WEA_FILE_STORAGE = previousFileStorage;
 });
+
+beforeEach(jest.clearAllMocks);
 
 describe('GET /api/admin/settings', () => {
   it('returns 403 when non-admin', async () => {

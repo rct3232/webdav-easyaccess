@@ -34,7 +34,6 @@ const mockOnProcessingEnd = jest.fn();
 describe('useFileOperations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.useFakeTimers();
     fileService.downloadFile.mockResolvedValue();
     fileService.downloadMultipleFiles.mockResolvedValue({});
     fileService.renameFile.mockResolvedValue({ messageCode: 'serverMessages.files.renameSuccess', nodeId: 1, newName: 'new.pdf' });

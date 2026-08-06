@@ -13,6 +13,14 @@ const mockFiles = new Map();
 const mockBulkJobs = new Map();
 let jobIdCounter = 0;
 
+// Controlled delay seam for batch-job completion. Tests may set this to 0 to
+// avoid real-time waits (docs/TESTING_STRATEGY.md "Avoid real-time waits").
+let bulkJobDelayMs = 50;
+
+export function __setBatchDelayForTests(ms) {
+  bulkJobDelayMs = ms;
+}
+
 // Mock state for permission requests and share links (tests may override via server.use)
 export const mockPermissionRequests = {
   inbox: [],
@@ -346,7 +354,7 @@ export const handlers = [
         job.progress = moves.length;
         job.results = moves.map((m) => ({ sourceNodeId: m.sourceNodeId, destinationParentNodeId: m.destinationParentNodeId, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
@@ -366,7 +374,7 @@ export const handlers = [
         job.progress = copies.length;
         job.results = copies.map((c) => ({ sourceNodeId: c.sourceNodeId, destinationParentNodeId: c.destinationParentNodeId, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
@@ -386,7 +394,7 @@ export const handlers = [
         job.progress = nodeIds.length;
         job.results = nodeIds.map((n) => ({ nodeId: n, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 

@@ -70,6 +70,8 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
+beforeEach(jest.clearAllMocks);
+
 describe('GET /api/share/:token/info', () => {
   it('returns 404 for invalid token', async () => {
     const res = await request(app).get('/api/share/invalid-token-xyz/info');

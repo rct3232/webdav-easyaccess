@@ -26,21 +26,22 @@ jest.mock('../../service/composition', () => ({
 
 const { isImageFile, isVideoFile } = require('../webdav');
 const { getComposition } = require('../../service/composition');
+const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
 const {
   getThumbnailHash,
   signThumbnailToken,
   verifyThumbnailToken,
   getThumbnailFromCache,
-  thumbnailCache,
   ensureThumbnail,
   setCachedThumbnail,
+  setCacheAdapter,
 } = require('../../domains/thumbnails/services/thumbnailService');
 
 const MAX_CACHE_SIZE = 1000;
 
 describe('thumbnail utilities', () => {
   beforeEach(() => {
-    thumbnailCache.clear();
+    setCacheAdapter(createCacheAdapter());
     jest.restoreAllMocks();
     getComposition.mockReset();
   });
@@ -96,14 +97,14 @@ describe('thumbnail utilities', () => {
     });
   });
 
-  describe('thumbnailCache set/get/eviction (keyed thumb:<nodeId>)', () => {
+  describe('thumbnail cache set/get/eviction via public API', () => {
     it('getThumbnailFromCache returns null for missing key', () => {
       expect(getThumbnailFromCache(999)).toBeNull();
     });
 
     it('stores and retrieves a cache entry with correct structure', () => {
       const buf = Buffer.from('data');
-      thumbnailCache.set('thumb:5', { buffer: buf, mimeType: 'image/jpeg', extension: 'jpg' });
+      setCachedThumbnail(5, buf, 'jpg');
       const cached = getThumbnailFromCache(5);
       expect(cached).not.toBeNull();
       expect(cached.buffer).toBe(buf);
@@ -113,16 +114,10 @@ describe('thumbnail utilities', () => {
 
     it('stores png entries with correct mime type', () => {
       const buf = Buffer.from('data');
-      thumbnailCache.set('thumb:6', { buffer: buf, mimeType: 'image/png', extension: 'png' });
+      setCachedThumbnail(6, buf, 'png');
       const cached = getThumbnailFromCache(6);
       expect(cached.mimeType).toBe('image/png');
       expect(cached.extension).toBe('png');
-    });
-
-    it('cache Map is shared module-level instance', () => {
-      thumbnailCache.set('thumb:7', { buffer: Buffer.from('x'), mimeType: 'image/jpeg', extension: 'jpg' });
-      expect(thumbnailCache.has('thumb:7')).toBe(true);
-      expect(getThumbnailFromCache(7)).not.toBeNull();
     });
 
     it('setCachedThumbnail evicts the oldest entry when cache reaches MAX_CACHE_SIZE', () => {
@@ -133,7 +128,7 @@ describe('thumbnail utilities', () => {
       expect(getThumbnailFromCache(MAX_CACHE_SIZE)).not.toBeNull();
     });
 
-    it('setCachedThumbnail stores {buffer, mimeType, extension} keyed thumb:<nodeId>', () => {
+    it('setCachedThumbnail stores {buffer, mimeType, extension}', () => {
       const buf = Buffer.from('data');
       setCachedThumbnail(8, buf, 'jpg');
       const cached = getThumbnailFromCache(8);
@@ -141,14 +136,13 @@ describe('thumbnail utilities', () => {
       expect(cached.buffer).toBe(buf);
       expect(cached.extension).toBe('jpg');
       expect(cached.mimeType).toBe('image/jpeg');
-      expect(thumbnailCache.has('thumb:8')).toBe(true);
     });
   });
 
   describe('ensureThumbnail with cache hit', () => {
     it('returns a nodeId-keyed thumbnail URL without fetching blob when cached', async () => {
       const nodeId = 42;
-      thumbnailCache.set('thumb:42', { buffer: Buffer.from('cached-data'), mimeType: 'image/jpeg', extension: 'jpg' });
+      setCachedThumbnail(42, Buffer.from('cached-data'), 'jpg');
 
       const result = await ensureThumbnail(nodeId);
 

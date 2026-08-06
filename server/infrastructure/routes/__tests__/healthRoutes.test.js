@@ -22,6 +22,8 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
+beforeEach(jest.clearAllMocks);
+
 describe('GET /api/health', () => {
   it('returns 200 with status ok and messageCode', async () => {
     const res = await request(app).get('/api/health');

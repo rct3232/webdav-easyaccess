@@ -56,6 +56,8 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
+beforeEach(jest.clearAllMocks);
+
 describe('POST /api/share-links', () => {
   it('creates share link for a file node', async () => {
     const { user, token, homeNodeId } = await createUserWithHomeNode({

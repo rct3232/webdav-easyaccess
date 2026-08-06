@@ -79,16 +79,18 @@ async function uploadFile(user, parentNodeId, filename, content) {
     .attach('file', Buffer.from(content), filename);
 }
 
-async function pollJob(user, jobId, ms = 5000) {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
+async function pollJob(user, jobId, maxPolls = 50) {
+  // No real-time waits (docs/TESTING_STRATEGY.md "Avoid real-time waits"):
+  // poll on setImmediate turns with a bounded iteration count. With
+  // WEA_SKIP_BULK_WORKER=1 the worker never runs, so jobs resolve immediately.
+  for (let i = 0; i < maxPolls; i++) {
     const res = await request(app)
       .get(`/api/files/bulk-operation/${jobId}`)
       .set('Authorization', `Bearer ${user.token}`);
     if (res.body && res.body.status !== 'running') return res;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setImmediate(r));
   }
-  throw new Error(`Job ${jobId} did not complete within ${ms}ms`);
+  throw new Error(`Job ${jobId} did not complete within ${maxPolls} polls`);
 }
 
 /* ─── Lifecycle ──────────────────────────────────────────────────────── */
@@ -110,6 +112,8 @@ afterAll(async () => {
    ======================================================================== */
 describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
   let user, homeNodeId, fileNodeId;
+
+  beforeEach(jest.clearAllMocks);
 
   beforeAll(async () => {
     currentMockS3 = createS3Mock();
@@ -183,6 +187,8 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
 describe('S5.0-SCENARIO-2: S3 mode rename', () => {
   let user, homeNodeId, fileNodeId;
 
+  beforeEach(jest.clearAllMocks);
+
   beforeAll(async () => {
     const suffix = Date.now();
     currentMockS3 = createS3Mock();
@@ -238,6 +244,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
   let user, homeNodeId, fileNodeId;
 
   beforeAll(async () => {
+    jest.clearAllMocks();
     const suffix = Date.now();
     webdavMock.getFileContents.mockResolvedValue(Buffer.from('webdav content'));
     webdavMock.putFileContents.mockResolvedValue(undefined);
@@ -314,6 +321,8 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
 describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
   let user, homeNodeId, sourceNodeId;
 
+  beforeEach(jest.clearAllMocks);
+
   beforeAll(async () => {
     const suffix = Date.now();
     currentMockS3 = createS3Mock();
@@ -365,6 +374,8 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
    ======================================================================== */
 describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   let user, homeNodeId, dirNodeId, file1Id, file2Id;
+
+  beforeEach(jest.clearAllMocks);
 
   beforeAll(async () => {
     const suffix = Date.now();
@@ -450,6 +461,8 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
 describe('S5.0-SCENARIO-6: Permission inheritance', () => {
   let adminUser, normalUser, sharedDirId, childFileId;
 
+  beforeEach(jest.clearAllMocks);
+
   beforeAll(async () => {
     const suffix = Date.now();
     currentMockS3 = createS3Mock();
@@ -521,6 +534,8 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
     ======================================================================== */
 describe('S5.0-SCENARIO-7: Batch operations', () => {
   let user, homeNodeId, nodeIds = [], targetDirId;
+
+  beforeEach(jest.clearAllMocks);
 
   beforeAll(async () => {
     const suffix = Date.now();
@@ -606,6 +621,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   let user, homeNodeId, fileNodeId;
 
   beforeAll(async () => {
+    jest.clearAllMocks();
     const suffix = Date.now();
     webdavMock.getFileContents.mockResolvedValue(Buffer.from('original webdav content'));
     webdavMock.putFileContents.mockResolvedValue(undefined);

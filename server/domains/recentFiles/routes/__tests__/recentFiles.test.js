@@ -40,6 +40,8 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
+beforeEach(jest.clearAllMocks);
+
 async function createUserWithFile() {
   const { user, token } = await createAuthenticatedTestUser({
     username: `recent-route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

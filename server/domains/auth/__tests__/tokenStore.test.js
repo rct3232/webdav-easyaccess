@@ -11,6 +11,7 @@ jest.mock('../../../store/userStore', () => {
 });
 
 beforeEach(() => {
+  jest.clearAllMocks();
   tokenStore.setCacheAdapter(createCacheAdapter());
 });
 

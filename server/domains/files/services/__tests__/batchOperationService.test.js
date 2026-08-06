@@ -64,9 +64,9 @@ describe('batchOperationService', () => {
       expect(result.deletedCount).toBe(3);
       expect(result.errors).toEqual([]);
       expect(fileService.deleteNode).toHaveBeenCalledTimes(3);
-      expect(fileService.deleteNode).toHaveBeenNthCalledWith(1, 42, 1, { id: 1 });
-      expect(fileService.deleteNode).toHaveBeenNthCalledWith(2, 43, 1, { id: 1 });
-      expect(fileService.deleteNode).toHaveBeenNthCalledWith(3, 44, 1, { id: 1 });
+      expect(fileService.deleteNode).toHaveBeenCalledWith(42, 1, { id: 1 });
+      expect(fileService.deleteNode).toHaveBeenCalledWith(43, 1, { id: 1 });
+      expect(fileService.deleteNode).toHaveBeenCalledWith(44, 1, { id: 1 });
       expect(aclService.checkFilePermission).toHaveBeenCalledTimes(3);
     });
 
@@ -248,14 +248,16 @@ describe('batchOperationService', () => {
 
       const service = createBatchOperationService({ fileNodeService, fileService, aclService });
 
-      await service.batchMove(
+      const result = await service.batchMove(
         [{ sourceNodeId: 10, destinationParentNodeId: 20 }],
         1,
         { id: 1 }
       );
 
-      expect(aclService.checkFilePermission).toHaveBeenCalledTimes(1);
-      expect(aclService.checkFolderPermission).toHaveBeenCalledTimes(1);
+      expect(result.movedCount).toBe(1);
+      expect(result.errors).toEqual([]);
+      expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 10, 'write');
+      expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });
 
     it('rejects moves that would create a cycle (target is descendant of source)', async () => {

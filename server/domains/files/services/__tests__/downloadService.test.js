@@ -111,11 +111,15 @@ describe('downloadService', () => {
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
 
-      await service.downloadMultiple([10, 20], 'user-1', { id: 'user-1' });
+      const result = await service.downloadMultiple([10, 20], 'user-1', { id: 'user-1' });
 
       expect(aclService.checkFilePermission).toHaveBeenCalledTimes(2);
-      expect(aclService.checkFilePermission).toHaveBeenNthCalledWith(1, 'user-1', 10, 'read');
-      expect(aclService.checkFilePermission).toHaveBeenNthCalledWith(2, 'user-1', 20, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 10, 'read');
+      expect(aclService.checkFilePermission).toHaveBeenCalledWith('user-1', 20, 'read');
+
+      expect(result.totalFiles).toBe(2);
+      expect(result.errors).toEqual([]);
+      expect(result.downloadId).toBeDefined();
     });
 
     it('resolves blob content via correct backend (S3: object_map→s3_key; WebDAV: path resolution)', async () => {

@@ -7,6 +7,10 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDropToUpload } from '../useDropToUpload';
 
 describe('useDropToUpload', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('returns isDraggingOver, uploadProgress, handlers in main mode', () => {
     const { result } = renderHook(() => useDropToUpload({}));
 
@@ -152,14 +156,16 @@ describe('useDropToUpload', () => {
       await result.current.handleDrop(e, 10, mockUploadCallback);
     });
 
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
     expect(mockUploadCallback).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ file, relativePath: 'test.txt' })]),
       10,
       expect.any(Function)
     );
     expect(onUploadComplete).toHaveBeenCalledWith(1);
-
-    jest.useRealTimers();
   });
 
   it('handleDrop on error calls onUploadError', async () => {

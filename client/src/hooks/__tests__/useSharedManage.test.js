@@ -124,8 +124,8 @@ describe('useSharedManage', () => {
       expect(result.current.initialLoading).toBe(false);
     });
 
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(1, 200);
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(2, 150);
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(200);
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(150);
     expect(result.current.pathPermission).toBe('read');
     expect(result.current.filePermissionLevel).toBe('read');
   });

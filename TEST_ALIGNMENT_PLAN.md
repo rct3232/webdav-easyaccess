@@ -97,3 +97,29 @@ Sequential constraint: B (factories) must land before C (which may extend/use th
 - Zero TESTING_STRATEGY violations from inventory categories 1–8 remain (audited).
 - `test:unit` / `test:integration` scripts actually exercise their intended scopes.
 - TEST_SUMMARY.md (both) match the real layout/counts.
+
+---
+
+## Status: COMPLETE (2026-08-06)
+
+All phases A–E implemented and verified on `refactor/test-suite-alignment` (9 commits, **not** merged to `dev`).
+
+| Phase | Result |
+|-------|--------|
+| A1 | jest aliases `@server/*`, `@testing/*` + 12 shared-mock imports migrated |
+| A2 | `test:unit` (excl. routes) / `test:integration` (routes) scopes fixed; 3 full-app tests relocated to `routes/__tests__` |
+| A3 | stryker `service/**` added |
+| B1–B5 | shared factories: server `storeMocks.js`/`serviceMocks.js` (new), `createWebdavMock` consolidation (6 files); client useResponsive (16) / i18n (8) / service mocks (15) |
+| C1 | MSW handlers synced to api.md + server routes (share-links, folders/stats, users, share public, thumbnails; restored legacy move/copy/delete); `__resetHandlersState` + 501 fallback; `/files/metadata` payload → nodeIds |
+| C2 | reset policy (`clearAllMocks`) in 9 server suites; dead email mocks removed |
+| C3 | real-time waits removed (batch-delay seam, deferred handlers, fake-timer flushes, setImmediate poll) |
+| C4 | black-box: thumbnail public-API cache; outcome-anchored download/batch assertions |
+| C5 | SQL-text state machines → operation-keyed mocks (permissionStore ×2, shareLinkStore, lockManager) |
+| D1 | tests relocated to source-adjacent `__tests__` (thumbnail, storage, settingsStore, userStore, ddlValidation); redundant permissionPolicy utils copy deleted |
+| D2 | server/client TEST_SUMMARY.md + TEST_GIT_GUIDE.md rewritten to actual layout |
+| D3 | duplicate pairs merged (client FileManager smoke, FilePreviewDialog; server pathUtils) |
+| D4 | `server/undefined/.wea` FsJSON residue removed (root cause: legacy `'undefined'` base dir; already gitignored) |
+
+**Verification (final):** server 66 suites / 1119 passed / 3 skipped; client 147 suites / 1254 passed / 0 failed; `test:integration` = 14 suites (3 full-app included), `test:unit` = 54 suites; lint 0 errors (53 pre-existing warnings, unchanged from dev).
+
+**Test-count delta explanation:** server −39 = pathUtils 25 (subsumed by sharedPathUtils) + permissionPolicy 22→8 merged (−14), exactly accounted; client −6 = FileManager smoke 4 + FilePreviewDialog net 2. No coverage loss.

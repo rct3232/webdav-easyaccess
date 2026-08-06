@@ -29,7 +29,6 @@
 | updateEmail | (userId, newEmail) => Promise\<{ success }\> | Update email, reindex |
 | updatePassword | (userId, passwordHash) => Promise\<{ success }\> | Update password, bump token_version |
 | deleteUser | (userId) => Promise\<{ success }\> | Remove user and email index |
-| ensureUserIndexFile | () => Promise\<void\> | Bootstrap index |
 
 ### 2.3 Storage Paths
 

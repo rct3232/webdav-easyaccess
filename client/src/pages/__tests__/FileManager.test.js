@@ -658,7 +658,7 @@ describe('FileManager', () => {
   }, 20000);
 
   /**
-   * Delete flow (client-ui.md): select items → Delete → confirm → batch-delete → remove-paths → completion.
+   * Delete flow (client-ui.md): select items → Delete → confirm → batch-delete → completion.
    * Verifies observable outcome: confirm dialog then completion/done (no implementation assertions).
    */
   it('delete flow: select items, confirm delete, shows completion', async () => {

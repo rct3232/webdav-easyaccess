@@ -36,7 +36,7 @@ Single modules in isolation (utils, models, middleware, store). External depende
 | `store/__tests__/permissionStore.test.js` | Permission store sync |
 | `store/__tests__/permissionRequestStore.test.js` | Permission request store |
 | `store/__tests__/shareLinkStore.test.js` | Share link store |
-| `store/__tests__/recentFilesStore.test.js` | Recent files store |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js` | Recent files store/service (nodeId) |
 | `store/__tests__/settingsStore.test.js` | Settings store |
 | `store/__tests__/bulkJobStore.test.js` | Bulk job store |
 | `store/__tests__/storage.test.js` | Storage operations |

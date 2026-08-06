@@ -32,7 +32,6 @@ describe('aclService (nodeId)', () => {
     jest.doMock('../../../../store/permissionStore', () => ({
       checkPermission: mockPermissionCheckPermission,
       getFilePermission: mockPermissionGetFilePermission,
-      getPermissionDoc: jest.fn(),
       checkSharePermission: mockPermissionCheckSharePermission,
     }));
 

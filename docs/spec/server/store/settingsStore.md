@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Global settings (e.g. `registration_enabled`). Stored as single JSON file in `webdav`/`fs`, and as key-value rows in `postgresql`. |
+| Role | Global settings (e.g. `registration_enabled`). Stored as key-value rows in `postgresql`/`sqlite`. FsJSON/WebDAV file fallback removed in Phase 7. |
 
 ---
 
@@ -19,15 +19,16 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| ensureSettingsFile | () => Promise\<void\> | Bootstrap file |
 | get | (key) => Promise\<*\> | Get value; undefined keys → null |
 | set | (key, value) => Promise\<{ success }\> | Set (values stringified) |
 | getAll | () => Promise\<object\> | All keys except updated_at |
 | isRegistrationEnabled | () => Promise\<boolean\> | get('registration_enabled') === 'true' |
 
+> **Removed in Phase 7:** `ensureSettingsFile` — FsJSON bootstrap file creation; settings are DB rows only.
+
 ### 2.3 Storage Paths
 
-- `/.wea/settings.json` (initial: registration_enabled: 'false')
+- None — settings are DB rows (`settings` table) only. FsJSON `/.wea/settings.json` removed in Phase 7.
 
 ### 2.4 PostgreSQL v2 Table Mapping
 
@@ -42,14 +43,11 @@
 
 ### 2.6 Dependencies
 
-- storage (ensureDir, exists, readFile, writeFile)
-- metaPaths (SETTINGS_PATH, META_ROOT)
-- locks.withLock for set
+- storage (getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction)
 
 ### 2.7 Verification Scenarios
 
 - [ ] get returns value or null for unknown key
-- [ ] set updates file; lock prevents concurrent writes
-- [ ] Corrupt file → reset to fallback (registration_enabled: 'false')
+- [ ] set upserts by key
 - [ ] isRegistrationEnabled true only when 'true' string
 - [ ] PostgreSQL: set upserts by `key` and preserves latest value

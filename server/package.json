@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "migrate:metadata:pg": "node scripts/migrateMetadataToPostgresql.js",
     "test": "NODE_OPTIONS=--max-old-space-size=8192 jest",
     "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/(utils|models|middleware)/**/*.test.js'",
     "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/**/*.test.js'",

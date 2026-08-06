@@ -19,13 +19,13 @@ describe('getBackend', () => {
     console.warn = originalConsoleWarn;
   });
 
-  it('returns sqlite for fs backend with deprecation warning', () => {
+  it('returns postgresql for fs backend with deprecation warning', () => {
     process.env.WEA_STORAGE_BACKEND = 'fs';
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('../../store/storage');
-    expect(storage.getBackend()).toBe('sqlite');
+    expect(storage.getBackend()).toBe('postgresql');
     expect(warnSpy).toHaveBeenCalledWith(
-      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to sqlite.'
+      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to postgresql.'
     );
     warnSpy.mockRestore();
   });

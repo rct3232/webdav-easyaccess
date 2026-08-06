@@ -12,7 +12,6 @@ function isPostgresqlBackend() {
 }
 
 const cache = new Map();
-const shareCache = new Map();
 const CACHE_TTL_MS =
   process.env.NODE_ENV === 'test'
     ? 0
@@ -42,7 +41,6 @@ async function grantSharePermission(token, nodeId) {
           [String(token), node, PERMISSIONS.READ]
         );
       });
-      shareCache.delete(token);
       return { token, nodeId: node };
     } catch (error) {
       throw mapDatabaseError(error);
@@ -63,7 +61,6 @@ async function grantSharePermission(token, nodeId) {
           [String(token), node, PERMISSIONS.READ]
         );
       });
-      shareCache.delete(token);
       return { token, nodeId: node };
     } catch (error) {
       throw mapDatabaseError(error);
@@ -79,7 +76,6 @@ async function revokeSharePermission(token) {
       await withTransaction(async (client) => {
         await client.query(`DELETE FROM permissions_shares WHERE token = $1`, [String(token)]);
       });
-      shareCache.delete(token);
       return { success: true };
     } catch (error) {
       throw mapDatabaseError(error);
@@ -91,81 +87,7 @@ async function revokeSharePermission(token) {
       await withSqliteTransaction(async (client) => {
         await client.query(`DELETE FROM permissions_shares WHERE token = ?`, [String(token)]);
       });
-      shareCache.delete(token);
       return { success: true };
-    } catch (error) {
-      throw mapDatabaseError(error);
-    }
-  }
-
-  throw new Error('No database backend configured');
-}
-
-async function getSharePermissionDoc(token, { bypassCache = false } = {}) {
-  if (CACHE_TTL_MS > 0) {
-    const cached = shareCache.get(String(token));
-    if (!bypassCache && cached && cached.expiresAt > Date.now()) {
-      return cached.data;
-    }
-  }
-
-  if (isPostgresqlBackend()) {
-    try {
-      const pool = getPgPool();
-      const res = await pool.query(
-        `SELECT token, file_node_id, permission, updated_at
-           FROM permissions_shares
-          WHERE token = $1
-          LIMIT 1`,
-        [String(token)]
-      );
-      if (res.rows.length === 0) return null;
-      const row = res.rows[0];
-      const normalized = {
-        nodeId: Number(row.file_node_id),
-        permission: PERMISSIONS.isValid(row.permission) ? row.permission : PERMISSIONS.READ,
-        updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
-      };
-      if (CACHE_TTL_MS > 0) {
-        shareCache.set(String(token), { expiresAt: Date.now() + CACHE_TTL_MS, data: normalized });
-      } else {
-        shareCache.delete(String(token));
-      }
-      return normalized;
-    } catch (error) {
-      throw mapDatabaseError(error);
-    }
-  }
-
-  if (isSqliteBackend()) {
-    try {
-      const db = getSqliteConnection();
-      const res = await new Promise((resolve, reject) => {
-        db.all(
-          `SELECT token, file_node_id, permission, updated_at
-             FROM permissions_shares
-            WHERE token = ?
-            LIMIT 1`,
-          [String(token)],
-          (err, rows) => {
-            if (err) reject(err);
-            else resolve({ rows: rows || [] });
-          }
-        );
-      });
-      if (res.rows.length === 0) return null;
-      const row = res.rows[0];
-      const normalized = {
-        nodeId: Number(row.file_node_id),
-        permission: PERMISSIONS.isValid(row.permission) ? row.permission : PERMISSIONS.READ,
-        updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
-      };
-      if (CACHE_TTL_MS > 0) {
-        shareCache.set(String(token), { expiresAt: Date.now() + CACHE_TTL_MS, data: normalized });
-      } else {
-        shareCache.delete(String(token));
-      }
-      return normalized;
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -533,80 +455,6 @@ async function checkPermission(userId, nodeId, requiredPermission) {
   }
 
   throw new Error('No database backend configured');
-}
-
-async function getPermissionDoc(userId) {
-  const uid = Number(userId);
-  const uidStr = String(uid);
-
-  if (CACHE_TTL_MS > 0) {
-    const cached = cache.get(uidStr);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.data;
-    }
-  }
-
-  let pathPerms, filePerms;
-
-  if (isPostgresqlBackend()) {
-    try {
-      const pool = getPgPool();
-      [pathPerms, filePerms] = await Promise.all([
-        pool.query(
-          `SELECT file_node_id, permission FROM permissions_user_paths WHERE user_id = $1`,
-          [uid]
-        ),
-        pool.query(
-          `SELECT file_node_id, permission FROM permissions_user_files WHERE user_id = $1`,
-          [uid]
-        ),
-      ]);
-    } catch (error) {
-      throw mapDatabaseError(error);
-    }
-  } else if (isSqliteBackend()) {
-    try {
-      const db = getSqliteConnection();
-      [pathPerms, filePerms] = await Promise.all([
-        new Promise((resolve, reject) => {
-          db.all(
-            `SELECT file_node_id, permission FROM permissions_user_paths WHERE user_id = ?`,
-            [uid],
-            (err, rows) => {
-              if (err) reject(err);
-              else resolve({ rows: rows || [] });
-            }
-          );
-        }),
-        new Promise((resolve, reject) => {
-          db.all(
-            `SELECT file_node_id, permission FROM permissions_user_files WHERE user_id = ?`,
-            [uid],
-            (err, rows) => {
-              if (err) reject(err);
-              else resolve({ rows: rows || [] });
-            }
-          );
-        }),
-      ]);
-    } catch (error) {
-      throw mapDatabaseError(error);
-    }
-  } else {
-    throw new Error('No database backend configured');
-  }
-
-  const doc = {
-    permissions: Object.fromEntries(pathPerms.rows.map(r => [Number(r.file_node_id), r.permission])),
-    file_permissions: Object.fromEntries(filePerms.rows.map(r => [Number(r.file_node_id), r.permission])),
-  };
-
-  if (CACHE_TTL_MS > 0) {
-    cache.set(uidStr, { expiresAt: Date.now() + CACHE_TTL_MS, data: doc });
-  } else {
-    cache.delete(uidStr);
-  }
-  return doc;
 }
 
 async function checkPermissions(userId, nodeIds, requiredPermission) {
@@ -1048,7 +896,6 @@ function permissionRank(p) {
 module.exports = {
   grantSharePermission,
   revokeSharePermission,
-  getSharePermissionDoc,
   checkSharePermission,
   grant,
   revoke,
@@ -1056,7 +903,6 @@ module.exports = {
   deleteUserPermissionsFile,
   getUserPermissions,
   checkPermission,
-  getPermissionDoc,
   checkPermissions,
   getFolderPermissions,
   hasPermissionsInPath,

@@ -21,7 +21,6 @@ export function buildShareManageSuccessMessage({
   permission,
   displayName,
   isDirectory,
-  targetPath,
   t,
 } = {}) {
   switch (kind) {
@@ -46,7 +45,7 @@ export function buildShareManageSuccessMessage({
         show: true,
         text: isDirectory
           ? t('sharedManage.revokeFolderSuccess', { name: displayName })
-          : t('sharedManage.revokeFileSuccess', { name: displayName || targetPath }),
+          : t('sharedManage.revokeFileSuccess', { name: displayName }),
         type: 'success',
       };
     default:

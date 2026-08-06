@@ -88,7 +88,6 @@ The adapter layer sits between domains and physical storage, providing interchan
 **Metadata adapter implementations:**
 - `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (production default)
 - `SqliteMetadataAdapter` — SQLite via better-sqlite3 (development/testing)
-- `FsJsonMetadataAdapter` — JSON files under `/.wea/` (legacy WebDAV/filesystem backend)
 
 ### 1.2 Infrastructure Layer
 
@@ -96,7 +95,7 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
 | Module | File | Responsibility |
 |--------|------|---------------|
-| Lock Manager | `lockManager.js` | Distributed locking for metadata writes. Supports file-based (webdav/fs), PostgreSQL, and SQLite backends with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
+| Lock Manager | `lockManager.js` | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`. |
 | Health Routes | `healthRoutes.js` | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`. |
 | WebDAV Routes | `webdavRoutes.js` | Diagnostic endpoints: `GET /api/webdav/test` (connectivity) and `GET /api/webdav/info` (URL display). No auth required. |
 | WebDAV Test | `webdavTest.js` | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result. |
@@ -170,16 +169,7 @@ This document intentionally omits full constraints/indexes. Treat
 
 #### Metadata Migration Path (One-shot)
 
-Legacy file metadata (`webdav`/`fs`) is migrated to normalized PostgreSQL tables through:
-
-- `server/scripts/migrateMetadataToPostgresql.js`
-
-Migration characteristics:
-
-- source backends: `webdav` or `fs` (`/.wea` layout).
-- target backend: PostgreSQL normalized schema.
-- supports `dry-run` mode (no writes) and `apply` mode (single transaction).
-- produces a validation report with source counts, migrated/skipped totals, warnings, and post-write row-count checks.
+> **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. New-architecture migration tooling is planned as Future Work (see PLAN.md).
 - command sequence and operator checks are maintained in `docs/SETUP.md`.
 
 #### Storage Layout (Remote/Local)

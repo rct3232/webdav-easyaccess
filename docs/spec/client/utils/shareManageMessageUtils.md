@@ -17,11 +17,11 @@
 
 ### 2.2 Function Signatures
 
-> **Phase 4 nodeId end-state** (pending implementation in C2.x): `buildShareManageSuccessMessage` uses `targetNodeId` instead of `targetPath`. The current source still accepts `targetPath`; that is transitional and is replaced below.
+> **Phase 7 note (nodeId end-state):** `buildShareManageSuccessMessage` no longer accepts `targetPath`; it uses `displayName`/`isDirectory` only.
 
 | Function | (input) => return |
 |----------|-------------------|
-| `buildShareManageSuccessMessage` | `({ kind, permission, displayName, isDirectory, targetNodeId, t }) => { show, text, type }` |
+| `buildShareManageSuccessMessage` | `({ kind, permission, displayName, isDirectory, t }) => { show, text, type }` |
 | `buildShareManageErrorMessage` | `({ error, fallbackKey, t }) => { show, text, type }` |
 | `getShareManageHideDuration` | `(type) => number` |
 | `HIDDEN_SHARE_MANAGE_MESSAGE` | hidden message payload |

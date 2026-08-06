@@ -13,7 +13,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/recentFilesStore.js`
-- **Test file:** `server/store/__tests__/recentFilesStore.test.js`
+- **Test file:** `server/domains/recentFiles/__tests__/recentFilesStore.test.js`
 
 ### 2.2 Main Methods
 
@@ -40,8 +40,6 @@
 ### 2.5 Dependencies
 
 - PostgresqlMetadataAdapter / SqliteMetadataAdapter
-- shared pathUtils.normalizePath
-- metaPaths.normalizeWebdavPath (legacy import, retained for backward compatibility until Phase 7 cleanup)
 
 ### 2.6 Verification Scenarios
 

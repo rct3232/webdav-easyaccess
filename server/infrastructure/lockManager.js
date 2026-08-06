@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const { getBackend, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction, ensureDir, writeFile, readFile, deletePath } = require('../store/storage');
+const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun, ensureDir, writeFile, readFile, deletePath } = require('../store/storage');
 const { LOCKS_DIR, lockPathByKey, sha256HexLower } = require('../store/metaPaths');
 const { nowIso, safeJsonParse } = require('../utils/sharedHelpers');
 
@@ -68,8 +68,7 @@ function createSqliteLockRelease(lockKey, token) {
     released = true;
 
     try {
-      const db = getSqliteConnection();
-      await db.query(
+      await sqliteRun(
         'DELETE FROM locks WHERE lock_name_hash = ? AND token = ?',
         [lockKey, token]
       );
@@ -178,12 +177,15 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
     const expiresAt = new Date(createdAt.getTime() + ttlMs);
 
     try {
-      return await withSqliteTransaction(async (client) => {
+      const lock = await withSqliteTransaction(async (client) => {
         await client.query(
           'DELETE FROM locks WHERE lock_name_hash = ? AND expires_at < CURRENT_TIMESTAMP',
           [lockKey]
         );
-        const insertResult = await client.query(
+        // client.query uses db.all() and never returns .changes, so use
+        // sqliteRun (same connection, inside the serialize transaction) for
+        // the INSERT to detect a successful acquire via changes > 0.
+        const insertResult = await sqliteRun(
           `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at)
            VALUES (?, ?, ?, ?, ?)`,
           [lockKey, token, owner, createdAt, expiresAt]
@@ -196,7 +198,9 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
             release: createSqliteLockRelease(lockKey, token),
           };
         }
+        return null;
       });
+      if (lock) return lock;
     } catch {
       // Insert failed (lock held); retry loop handles contention.
     }

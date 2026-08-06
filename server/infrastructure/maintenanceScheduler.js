@@ -10,6 +10,7 @@
  *   GC_ORPHAN_TTL_DAYS        - orphan age threshold (consumed by gcService)
  *   WEA_SKIP_GC_SCHEDULER     - test seam; any truthy value disables scheduling
  */
+/* eslint-disable no-console -- startup status reporting */
 
 function shouldSkip() {
   const skip = (process.env.WEA_SKIP_GC_SCHEDULER || '').toLowerCase();

@@ -197,14 +197,4 @@ describe('DDL Smoke Test', () => {
       expect(createdAtCol.type).toBe('TEXT');
     });
   });
-
-  describe('PostgreSQL path', () => {
-    if (!process.env.DOCKER_AVAILABLE) {
-      it.skip('requires DOCKER_AVAILABLE=1 to run PostgreSQL smoke test', () => {});
-    } else {
-      it('skipped in this context — Docker available but not exercised in local CI', () => {
-        console.log('PostgreSQL smoke test would spin up postgres:16 container here');
-      });
-    }
-  });
 });

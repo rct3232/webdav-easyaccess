@@ -9,7 +9,8 @@
     "domains/**/*.js",
     "infrastructure/**/*.js",
     "store/**/*.js",
-    "models/**/*.js"
+    "models/**/*.js",
+    "service/**/*.js"
   ],
   "ignorePatterns": [
     "**/__tests__/**",

@@ -5,7 +5,6 @@ export function deriveShareFolderAccessView({
   folderPermissions,
   isAdminMode,
   userId,
-  username,
   user,
   userInfoMap,
   users = [],
@@ -58,9 +57,8 @@ export function deriveShareFolderAccessView({
       }
     : null;
 
-  const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
   const currentIsUserBaseFolder =
-    isAdminMode && (nodeId === currentUserBaseFolder || (baseFolderNodeId != null && nodeId === baseFolderNodeId));
+    isAdminMode && baseFolderNodeId != null && nodeId === baseFolderNodeId;
   const isFolderWithAdminPermission =
     isAdminMode && currentFolderUserPerms.get(userId) === PERMISSIONS.ADMIN;
 

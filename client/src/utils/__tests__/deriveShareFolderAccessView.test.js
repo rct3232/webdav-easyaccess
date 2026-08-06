@@ -4,10 +4,10 @@ import { deriveShareFolderAccessView } from '../deriveShareFolderAccessView';
 describe('deriveShareFolderAccessView', () => {
   it('filters to the target user in admin mode and marks admin-owned root state', () => {
     const result = deriveShareFolderAccessView({
-      nodeId: '/alice',
+      nodeId: 101,
       folderPermissions: new Map([
         [
-          '/alice',
+          101,
           new Map([
             ['target', PERMISSIONS.ADMIN],
             ['other', PERMISSIONS.READ],
@@ -19,6 +19,7 @@ describe('deriveShareFolderAccessView', () => {
       username: 'alice',
       userInfoMap: new Map(),
       users: [],
+      baseFolderNodeId: 101,
       getUserName: (id) => (id === 'target' ? 'alice' : 'other'),
       hasPermissionChanged: () => true,
     });
@@ -34,10 +35,10 @@ describe('deriveShareFolderAccessView', () => {
 
   it('filters out current user and admin users in non-admin mode', () => {
     const result = deriveShareFolderAccessView({
-      nodeId: '/docs',
+      nodeId: 202,
       folderPermissions: new Map([
         [
-          '/docs',
+          202,
           new Map([
             ['me', PERMISSIONS.READ],
             ['admin1', PERMISSIONS.READ],
@@ -62,9 +63,9 @@ describe('deriveShareFolderAccessView', () => {
 
   it('derives addable users and review requester state for select-user menus', () => {
     const result = deriveShareFolderAccessView({
-      nodeId: '/docs',
+      nodeId: 303,
       folderPermissions: new Map([
-        ['/docs', new Map([['u1', PERMISSIONS.READ]])],
+        [303, new Map([['u1', PERMISSIONS.READ]])],
       ]),
       isAdminMode: false,
       user: { id: 'me' },

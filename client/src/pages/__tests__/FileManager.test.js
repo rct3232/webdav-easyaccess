@@ -672,7 +672,7 @@ describe('FileManager', () => {
       }),
       http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
-      http.post('/api/recent-files/remove-paths', async () => HttpResponse.json([]))
+      http.delete('/api/recent-files/:fileNodeId', async () => HttpResponse.json([]))
     );
 
     const user = userEvent.setup();
@@ -975,15 +975,15 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/recent-files', emptyRecent),
       http.post('/api/recent-files', emptyRecent),
-      http.delete('/api/recent-files/:path', emptyRecent),
-      http.post('/api/recent-files/apply-moves', emptyRecent),
+      http.delete('/api/recent-files/:fileNodeId', emptyRecent),
       http.put('/api/files/rename', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const oldPath = body.oldPath || '';
         const newName = (body.newName || '').trim();
-        const parent = oldPath.replace(/\/[^/]+$/, '') || '/';
-        const newPath = parent === '/' ? `/${newName}` : `${parent}/${newName}`;
-        return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', path: newPath });
+        return HttpResponse.json({
+          messageCode: 'serverMessages.files.renameSuccess',
+          nodeId: body.nodeId,
+          newName,
+        });
       })
     );
 

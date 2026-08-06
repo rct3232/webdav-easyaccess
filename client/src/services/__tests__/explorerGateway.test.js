@@ -3,32 +3,32 @@
  * @see docs/spec/client/services/explorerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-jest.mock('../fileService', () => ({
-  checkConflicts: jest.fn(),
-  getFilesMetadata: jest.fn(),
-  listFiles: jest.fn(),
-  uploadMultipleFiles: jest.fn(),
-}));
+jest.mock('../fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 
-jest.mock('../permissionService', () => ({
-  checkPermission: jest.fn(),
-  getUserPermissions: jest.fn(),
-  listFilePermissions: jest.fn(),
-}));
+jest.mock('../permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
 
-jest.mock('../recentFilesRepository', () => ({
-  addRecentFile: jest.fn(),
-  getRecentFiles: jest.fn(),
-  removeRecentFile: jest.fn(),
-}));
+jest.mock('../recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
 
-jest.mock('../recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(() => jest.fn()),
-}));
+jest.mock('../recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
-jest.mock('../../utils/localStorage', () => ({
-  getShowHiddenFiles: jest.fn(() => false),
-}));
+jest.mock('../../utils/localStorage', () => {
+  const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
+  return createLocalStorageUiMock({
+    getShowHiddenFiles: jest.fn(() => false),
+  });
+});
 
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
 import { getShowHiddenFiles } from '../../utils/localStorage';

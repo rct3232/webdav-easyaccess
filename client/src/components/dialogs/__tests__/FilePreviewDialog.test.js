@@ -14,11 +14,14 @@ const mockGetFileBlob = jest.fn();
 const mockGetVideoPreviewStreamUrl = jest.fn();
 const mockDownloadFile = jest.fn();
 
-jest.mock('../../../services/fileService', () => ({
-  getFileBlob: (...args) => mockGetFileBlob(...args),
-  getVideoPreviewStreamUrl: (...args) => mockGetVideoPreviewStreamUrl(...args),
-  downloadFile: (...args) => mockDownloadFile(...args),
-}));
+jest.mock('../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createFileServiceMock({
+    getFileBlob: (...args) => mockGetFileBlob(...args),
+    getVideoPreviewStreamUrl: (...args) => mockGetVideoPreviewStreamUrl(...args),
+    downloadFile: (...args) => mockDownloadFile(...args),
+  });
+});
 
 jest.mock('plyr', () => {
   return function MockPlyr() {
@@ -29,9 +32,10 @@ jest.mock('plyr', () => {
   };
 });
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const fileProps = {
   nodeId: 10,

@@ -8,17 +8,22 @@ import { listFiles } from '../fileService';
 import { getUserPermissions } from '../permissionService';
 import { getShowHiddenFiles } from '../../utils/localStorage';
 
-jest.mock('../fileService', () => ({
-  listFiles: jest.fn(),
-}));
+jest.mock('../fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 
-jest.mock('../permissionService', () => ({
-  getUserPermissions: jest.fn(),
-}));
+jest.mock('../permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
 
-jest.mock('../../utils/localStorage', () => ({
-  getShowHiddenFiles: jest.fn(),
-}));
+jest.mock('../../utils/localStorage', () => {
+  const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
+  return createLocalStorageUiMock({
+    getShowHiddenFiles: jest.fn(() => false),
+  });
+});
 
 describe('folderTreeGateway', () => {
   beforeEach(() => {

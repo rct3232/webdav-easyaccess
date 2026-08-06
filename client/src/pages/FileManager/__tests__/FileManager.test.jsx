@@ -37,7 +37,10 @@ jest.mock('../hooks/useShareLinkOverlay');
 jest.mock('../hooks/useContentAreaDragDrop');
 jest.mock('../hooks/useExplorerInteraction');
 jest.mock('../../../hooks/useDropToUpload');
-jest.mock('../../../hooks/useResponsive');
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
+});
 jest.mock('../../../hooks/useMessage');
 
 // Mock FileManagerView to render controlled content based on explorerSession props

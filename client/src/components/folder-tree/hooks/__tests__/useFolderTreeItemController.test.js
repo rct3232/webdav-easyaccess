@@ -7,12 +7,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import useFolderTreeItemController from '../useFolderTreeItemController';
 
-jest.mock('../../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    listFolderChildren: jest.fn(),
-  },
-}));
+jest.mock('../../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
 
 jest.mock('../../../../hooks/useDropToUpload', () => ({
   useDropToUpload: jest.fn(),

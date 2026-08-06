@@ -6,23 +6,20 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useBulkOperations } from '../useBulkOperations';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
-jest.mock('../../../../services/fileService', () => ({
-  batchMoveFiles: jest.fn(),
-  batchCopyFiles: jest.fn(),
-  batchDeleteFiles: jest.fn(),
-  downloadMultipleFiles: jest.fn(),
-  checkConflicts: jest.fn(),
-  getBulkOperationStatus: jest.fn(),
-  cancelBulkOperation: jest.fn(),
-}));
+jest.mock('../../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 
-jest.mock('../../../../services/recentFilesNotifier', () => ({
-  notifyRecentFilesChange: jest.fn(),
-}));
+jest.mock('../../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
 import * as fileService from '../../../../services/fileService';
 import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';

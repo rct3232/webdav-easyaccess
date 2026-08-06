@@ -15,7 +15,7 @@ jest.mock('sharp', () => jest.fn().mockImplementation(() => ({
   toBuffer: jest.fn().mockResolvedValue(Buffer.from('fake-thumbnail')),
 })));
 
-jest.mock('../webdav', () => ({
+jest.mock('@server/utils/webdav', () => ({
   isImageFile: jest.fn(),
   isVideoFile: jest.fn(),
 }));

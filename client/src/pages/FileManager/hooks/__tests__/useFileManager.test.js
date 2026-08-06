@@ -24,10 +24,10 @@ jest.mock('../../../../services/explorerGateway', () => {
 });
 import explorerGateway from '../../../../services/explorerGateway';
 
-jest.mock('../../../../services/fileService', () => ({
-  resolvePath: jest.fn(),
-  getAncestors: jest.fn(),
-}));
+jest.mock('../../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
 import { resolvePath, getAncestors } from '../../../../services/fileService';
 
 const mockUser = { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 };

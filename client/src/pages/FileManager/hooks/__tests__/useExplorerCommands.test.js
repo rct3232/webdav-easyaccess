@@ -5,13 +5,13 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 
-jest.mock('../../../../services/explorerGateway', () => ({
-  __esModule: true,
-  default: {
-    uploadToPath: jest.fn(),
-    checkConflicts: jest.fn(),
-  },
-}));
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return {
+    __esModule: true,
+    default: createExplorerGatewayMock(),
+  };
+});
 
 jest.mock('../useBulkOperations', () => ({
   useBulkOperations: jest.fn(),
@@ -21,12 +21,15 @@ jest.mock('../useFileOperations', () => ({
   useFileOperations: jest.fn(),
 }));
 
-jest.mock('../../../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn(() => 'server error'),
-  showErrorFromError: jest.fn((error, showError) => {
-    showError(error?.message || 'errors.unknown');
-  }),
-}));
+jest.mock('../../../../utils/errorUtils', () => {
+  const { createErrorUtilsMock } = require('../../../../testing/mocks/serviceMocks');
+  return createErrorUtilsMock({
+    getServerErrorDisplay: jest.fn(() => 'server error'),
+    showErrorFromError: jest.fn((error, showError) => {
+      showError(error?.message || 'errors.unknown');
+    }),
+  });
+});
 
 jest.mock('@webdav-easyaccess/shared/validation', () => ({
   validateFileName: jest.fn(() => null),

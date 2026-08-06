@@ -4,17 +4,18 @@ jest.mock('react-pdf', () => ({
   Page: ({ children }) => <div data-testid="react-pdf-page">{children}</div>,
 }));
 
-jest.mock('../../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
-}));
+jest.mock('../../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key) => key,
-    i18n: { language: 'en' },
-  }),
-  initReactI18next: { type: '3rdParty' },
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return {
+    ...createI18nModuleMock(),
+    initReactI18next: { type: '3rdParty' },
+  };
+});
 
 jest.mock('../hooks/usePreviewLoader', () => ({
   usePreviewLoader: () => ({

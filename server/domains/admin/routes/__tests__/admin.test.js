@@ -11,7 +11,7 @@ const {
   USER_STATUS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
-const permissionStore = require('../../../../store/permissionStore');
+const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
 var mockEmail;
 var mockWebdav;

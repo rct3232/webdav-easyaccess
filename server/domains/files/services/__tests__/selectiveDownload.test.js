@@ -4,14 +4,7 @@
  * @see docs/spec/server/services/selectiveDownload.md
  */
 const { selectiveCollectFiles } = require('../selectiveDownload');
-
-function createMockWebdav(overrides = {}) {
-  const defaults = {
-    listDirectory: jest.fn().mockResolvedValue([]),
-    deleteFile: jest.fn().mockResolvedValue(undefined),
-  };
-  return { ...defaults, ...overrides };
-}
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 
 const alwaysEnter = () => true;
 const alwaysInclude = () => true;
@@ -19,7 +12,7 @@ const alwaysInclude = () => true;
 describe('selectiveCollectFiles', () => {
   describe('delete single file with permission', () => {
     it('deletes the file and includes it in deletedPaths', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn().mockResolvedValue([
           { basename: 'file.txt', type: 'file' },
         ]),
@@ -41,7 +34,7 @@ describe('selectiveCollectFiles', () => {
       rootPath: '/root',
       canEnterDirectory: () => false,
       canIncludeFile: alwaysInclude,
-      webdav: createMockWebdav(),
+      webdav: createWebdavMock(),
     });
 
     expect(result.files).toHaveLength(0);
@@ -50,7 +43,7 @@ describe('selectiveCollectFiles', () => {
 
   describe('skip file without delete permission', () => {
     it('adds the file to skippedPaths and not deletedPaths', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn().mockResolvedValue([
           { basename: 'file.txt', type: 'file' },
         ]),
@@ -75,7 +68,7 @@ describe('selectiveCollectFiles', () => {
           rootPath: '/.wea',
           canEnterDirectory: alwaysEnter,
           canIncludeFile: alwaysInclude,
-          webdav: createMockWebdav(),
+          webdav: createWebdavMock(),
         })
       ).rejects.toThrow();
     });
@@ -87,7 +80,7 @@ describe('selectiveCollectFiles', () => {
         selectiveCollectFiles({
           rootPath: '/dir',
           canIncludeFile: alwaysInclude,
-          webdav: createMockWebdav(),
+          webdav: createWebdavMock(),
         })
       ).rejects.toThrow();
     });
@@ -104,7 +97,7 @@ describe('selectiveCollectFiles', () => {
 
   describe('recursive delete', () => {
     it('enters dir, deletes children, then deletes the dir itself', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn()
           .mockResolvedValueOnce([
             { basename: 'subdir', type: 'directory' },
@@ -127,7 +120,7 @@ describe('selectiveCollectFiles', () => {
 
   describe('partial skip in subtree', () => {
     it('does not delete the parent dir when a child is skipped', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn()
           .mockResolvedValueOnce([
             { basename: 'file1.txt', type: 'file' },
@@ -148,7 +141,7 @@ describe('selectiveCollectFiles', () => {
     });
 
     it('skips subdirectories denied by canEnterDirectory', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn()
           .mockResolvedValueOnce([
             { basename: 'allowed.txt', type: 'file' },
@@ -173,7 +166,7 @@ describe('selectiveCollectFiles', () => {
 
   describe('async callback support', () => {
     it('awaits Promise-returning canEnterDirectory', async () => {
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         listDirectory: jest.fn()
           .mockResolvedValueOnce([
             { basename: 'subdir', type: 'directory' },

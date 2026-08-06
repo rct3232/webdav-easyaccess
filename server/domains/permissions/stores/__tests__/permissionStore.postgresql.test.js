@@ -80,24 +80,30 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
       throw new Error(`Unexpected tx query: ${normalizedSql}`);
     });
 
-    jest.doMock('../../../../store/storage', () => ({
-      getBackend: () => 'postgresql',
-      getPgPool: () => ({ query: poolQuery }),
-      withTransaction: async (callback) => callback({ query: txQuery }),
-      ensureDir: jest.fn(),
-      exists: jest.fn(),
-      readFile: jest.fn(),
-      writeFile: jest.fn(),
-    }));
-    jest.doMock('../../../../infrastructure/lockManager', () => ({
-      withLock: async (_lockName, fn) => fn(),
-    }));
+    jest.doMock('../../../../store/storage', () => {
+      const { createStorageMock } = require('@testing/mocks/storeMocks');
+      return createStorageMock({
+        getBackend: () => 'postgresql',
+        isSqliteBackend: () => false,
+        getPgPool: () => ({ query: poolQuery }),
+        withTransaction: async (callback) => callback({ query: txQuery }),
+        ensureDir: jest.fn(),
+        exists: jest.fn(),
+        readFile: jest.fn(),
+        writeFile: jest.fn(),
+      });
+    });
+    jest.doMock('../../../../infrastructure/lockManager', () => {
+      const { createLockManagerMock } = require('@testing/mocks/storeMocks');
+      return createLockManagerMock();
+    });
     jest.doMock('../permissionExistenceIndex', () => ({
       invalidateExistenceIndexForAclMutation: jest.fn(),
     }));
-    jest.doMock('../../../../store/userStore', () => ({
-      findById: jest.fn(),
-    }));
+    jest.doMock('../../../../store/userStore', () => {
+      const { createUserStoreMock } = require('@testing/mocks/storeMocks');
+      return createUserStoreMock();
+    });
 
     let permissionStore;
     jest.isolateModules(() => {

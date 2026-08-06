@@ -1,18 +1,6 @@
 'use strict';
 
-function createAdapterMock(overrides = {}) {
-  return {
-    putFileContents: jest.fn().mockResolvedValue(undefined),
-    getFileContents: jest.fn().mockResolvedValue(Buffer.from('file content')),
-    deleteFile: jest.fn().mockResolvedValue({ success: true }),
-    getFileMetadata: jest.fn().mockResolvedValue({
-      size: 12,
-      lastmod: '2024-01-01T00:00:00.000Z',
-      mime: 'text/plain',
-    }),
-    ...overrides,
-  };
-}
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 
 describe('WebdavBlobStore', () => {
   let adapterMock;
@@ -20,7 +8,7 @@ describe('WebdavBlobStore', () => {
 
   beforeEach(() => {
     jest.resetModules();
-    adapterMock = createAdapterMock();
+    adapterMock = createWebdavMock();
     WebdavBlobStore = require('../WebdavBlobStore');
   });
 

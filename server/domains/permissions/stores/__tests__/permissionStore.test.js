@@ -269,17 +269,21 @@ describe('permissionStore (nodeId)', () => {
       }),
     }));
 
-    jest.doMock('../../../../store/locks', () => ({
-      withLock: async (_name, fn) => fn(),
-    }));
+    jest.doMock('../../../../store/locks', () => {
+      const { createLockManagerMock } = require('@testing/mocks/storeMocks');
+      return createLockManagerMock();
+    });
 
     jest.doMock('../permissionExistenceIndex', () => ({
       invalidateExistenceIndexForAclMutation: jest.fn(),
     }));
 
-    jest.doMock('../../../../store/userStore', () => ({
-      findById: jest.fn((id) => ({ id, username: `user${id}`, email: `u${id}@test.com`, is_admin: false })),
-    }));
+    jest.doMock('../../../../store/userStore', () => {
+      const { createUserStoreMock } = require('@testing/mocks/storeMocks');
+      return createUserStoreMock({
+        findById: jest.fn((id) => ({ id, username: `user${id}`, email: `u${id}@test.com`, is_admin: false })),
+      });
+    });
 
     jest.isolateModules(() => {
       permissionStore = require('../permissionStore');

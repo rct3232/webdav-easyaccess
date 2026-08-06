@@ -12,57 +12,19 @@
  */
 
 const { createFileService } = require('../fileService');
+const {
+  createFileNodeServiceMock,
+  createAclServiceMock,
+  createBlobStorageServiceMock,
+} = require('@testing/mocks/serviceMocks');
 
 // ─── Mock factories ────────────────────────────────────────────────
-
-function createMockFileNodeService(overrides = {}) {
-  const defaults = {
-    createFile: jest.fn().mockResolvedValue({ id: 10 }),
-    createDirectory: jest.fn().mockResolvedValue({ id: 20 }),
-    renameNode: jest.fn().mockResolvedValue(true),
-    moveNode: jest.fn().mockResolvedValue(true),
-    deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
-    listDirectory: jest.fn().mockResolvedValue([]),
-    getNodePath: jest.fn().mockResolvedValue('/some/path'),
-    getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
-    getDescendantIds: jest.fn().mockResolvedValue([1]),
-    updateSyncStatus: jest.fn().mockResolvedValue(true),
-  };
-  return { ...defaults, ...overrides };
-}
-
-function createMockBlobStorageService(overrides = {}) {
-  const defaults = {
-    downloadBlob: jest.fn().mockResolvedValue(Buffer.from('content')),
-    prepareUpload: jest.fn().mockResolvedValue({ s3Key: 'key-1' }),
-    completeUpload: jest.fn().mockResolvedValue(true),
-    overwriteBlob: jest.fn().mockResolvedValue(true),
-    deleteBlob: jest.fn().mockResolvedValue(true),
-    uploadToWebdav: jest.fn().mockResolvedValue(true),
-    getActiveS3Key: jest.fn().mockResolvedValue('key-1'),
-    duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
-    linkObject: jest.fn().mockResolvedValue(true),
-    countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
-    ensureExclusiveBlob: jest.fn().mockResolvedValue('key-exclusive'),
-    downloadBlobWebdav: jest.fn().mockResolvedValue(null),
-  };
-  return { ...defaults, ...overrides };
-}
 
 function createMockUploadService(overrides = {}) {
   const defaults = {
     uploadFile: jest.fn().mockResolvedValue({ nodeId: 10, size: 42, mimeType: 'text/plain' }),
     overwriteFile: jest.fn().mockResolvedValue({ nodeId: 10, size: 42, mimeType: 'text/plain' }),
     downloadFile: jest.fn().mockResolvedValue(Buffer.from('downloaded')),
-  };
-  return { ...defaults, ...overrides };
-}
-
-function createMockAclService(overrides = {}) {
-  const defaults = {
-    checkFolderPermission: jest.fn().mockResolvedValue(true),
-    checkFilePermission: jest.fn().mockResolvedValue(true),
-    isAdminUser: jest.fn().mockReturnValue(false),
   };
   return { ...defaults, ...overrides };
 }
@@ -77,14 +39,14 @@ describe('listDirectoryWithPermissions', () => {
       { id: 2, name: 'subdir', type: 'directory', size: null, mimeType: null, updatedAt: null },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
-    const aclService = createMockAclService();
+    const aclService = createAclServiceMock();
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -113,14 +75,14 @@ describe('listDirectoryWithPermissions', () => {
       { id: 2, name: 'dir', type: 'directory', size: null, mimeType: null, updatedAt: null },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
-    const aclService = createMockAclService();
+    const aclService = createAclServiceMock();
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -138,10 +100,10 @@ describe('listDirectoryWithPermissions', () => {
       { id: 1, name: 'secret.txt', type: 'file', size: 50, mimeType: 'text/plain', updatedAt: null },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn()
         .mockResolvedValueOnce(false) // read denied
         .mockResolvedValueOnce(false), // write denied
@@ -149,7 +111,7 @@ describe('listDirectoryWithPermissions', () => {
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -169,16 +131,16 @@ describe('listDirectoryWithPermissions', () => {
       { id: 2, name: 'b.txt', type: 'file', size: 20, mimeType: 'text/plain', updatedAt: null },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -196,14 +158,14 @@ describe('listDirectoryWithPermissions', () => {
   });
 
   it('returns empty array for leaf directory (no children)', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue([]),
     });
-    const aclService = createMockAclService();
+    const aclService = createAclServiceMock();
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -215,14 +177,14 @@ describe('listDirectoryWithPermissions', () => {
   });
 
   it('throws 404-style error when parent nodeId does not exist', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockRejectedValue(new Error('not found')),
     });
-    const aclService = createMockAclService();
+    const aclService = createAclServiceMock();
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -239,7 +201,7 @@ describe('listDirectoryWithPermissions', () => {
 
 describe('uploadFile — S3 mode', () => {
   it('creates file_node via uploadService.uploadFile and returns new nodeId', async () => {
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
     const uploadService = createMockUploadService({
@@ -247,8 +209,8 @@ describe('uploadFile — S3 mode', () => {
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
-      blobStorageService: createMockBlobStorageService(),
+      fileNodeService: createFileNodeServiceMock(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
       fileStorageMode: 's3',
@@ -264,7 +226,7 @@ describe('uploadFile — S3 mode', () => {
   });
 
   it('sets sync_status=active on successful upload', async () => {
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
     const uploadService = createMockUploadService({
@@ -272,8 +234,8 @@ describe('uploadFile — S3 mode', () => {
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
-      blobStorageService: createMockBlobStorageService(),
+      fileNodeService: createFileNodeServiceMock(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
       fileStorageMode: 's3',
@@ -288,7 +250,7 @@ describe('uploadFile — S3 mode', () => {
   });
 
   it('marks sync_status=pending_upload if TX1 succeeds but blob upload fails', async () => {
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
     const uploadService = createMockUploadService({
@@ -296,8 +258,8 @@ describe('uploadFile — S3 mode', () => {
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
-      blobStorageService: createMockBlobStorageService(),
+      fileNodeService: createFileNodeServiceMock(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
       fileStorageMode: 's3',
@@ -312,7 +274,7 @@ describe('uploadFile — S3 mode', () => {
   });
 
   it('rolls back file_nodes row if createNode throws in TX1', async () => {
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
     const uploadService = createMockUploadService({
@@ -320,8 +282,8 @@ describe('uploadFile — S3 mode', () => {
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
-      blobStorageService: createMockBlobStorageService(),
+      fileNodeService: createFileNodeServiceMock(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
       fileStorageMode: 's3',
@@ -341,11 +303,11 @@ describe('uploadFile — S3 mode', () => {
       { id: existingNodeId, name: 'hello.txt', type: 'file' },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
 
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -355,7 +317,7 @@ describe('uploadFile — S3 mode', () => {
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: uploadSvc,
       aclService,
       fileStorageMode: 's3',
@@ -375,11 +337,11 @@ describe('uploadFile — S3 mode', () => {
       { id: existingNodeId, name: 'hello.txt', type: 'file' },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
 
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -387,7 +349,7 @@ describe('uploadFile — S3 mode', () => {
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: uploadSvc,
       aclService,
       fileStorageMode: 's3',
@@ -407,17 +369,17 @@ describe('uploadFile — S3 mode', () => {
       { id: 99, name: 'hello.txt', type: 'file' },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
     });
 
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -432,13 +394,13 @@ describe('uploadFile — S3 mode', () => {
 
 describe('uploadFile — WebDAV mode', () => {
   it('creates file_node and performs synchronous WebDAV PUT in single flow', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 30 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -461,14 +423,14 @@ describe('uploadFile — WebDAV mode', () => {
   });
 
   it('marks sync_status=orphaned_node if WebDAV PUT fails after DB commit', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 31 }),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('connection refused')),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -494,16 +456,16 @@ describe('uploadFile — WebDAV mode', () => {
       { id: existingNodeId, name: 'hello.txt', type: 'file' },
     ];
 
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
       createFile: jest.fn(), // should NOT be called for overwrite
     });
 
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockResolvedValue(true),
     });
 
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -529,15 +491,15 @@ describe('uploadFile — WebDAV mode', () => {
 describe('downloadFile', () => {
   it('returns buffer for S3 mode via blobStorageService.downloadBlob', async () => {
     const expectedBuffer = Buffer.from('s3-content');
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(expectedBuffer),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
+      fileNodeService: createFileNodeServiceMock(),
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
@@ -553,15 +515,15 @@ describe('downloadFile', () => {
 
   it('returns buffer for WebDAV mode via blobStorageService.downloadBlob', async () => {
     const expectedBuffer = Buffer.from('webdav-content');
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(expectedBuffer),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
+      fileNodeService: createFileNodeServiceMock(),
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
@@ -576,15 +538,15 @@ describe('downloadFile', () => {
   });
 
   it('throws not-found when downloadBlob returns null (no active object_map)', async () => {
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(null),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
+      fileNodeService: createFileNodeServiceMock(),
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
@@ -603,14 +565,14 @@ describe('downloadFile', () => {
       err.status = 404;
       throw err;
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(false),
       checkFilePermission: jest.fn().mockResolvedValue(false),
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
-      blobStorageService: createMockBlobStorageService(),
+      fileNodeService: createFileNodeServiceMock(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       notFoundError: mockNotFound,
@@ -626,15 +588,15 @@ describe('downloadFile', () => {
 
   it('admin bypass: downloads without permission check', async () => {
     const expectedBuffer = Buffer.from('admin-download');
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(expectedBuffer),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
     const service = createFileService({
-      fileNodeService: createMockFileNodeService(),
+      fileNodeService: createFileNodeServiceMock(),
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
@@ -654,13 +616,13 @@ describe('downloadFile', () => {
 
 describe('renameNode', () => {
   it('updates name in file_nodes DB only for S3 mode (no storage operation)', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       renameNode: jest.fn().mockResolvedValue(true),
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
       listDirectory: jest.fn().mockResolvedValue([]),
     });
-    const blobStorageService = createMockBlobStorageService();
-    const aclService = createMockAclService({
+    const blobStorageService = createBlobStorageServiceMock();
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -682,7 +644,7 @@ describe('renameNode', () => {
   });
 
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       renameNode: jest.fn().mockResolvedValue(true),
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
       listDirectory: jest.fn().mockResolvedValue([]),
@@ -691,10 +653,10 @@ describe('renameNode', () => {
         .mockResolvedValueOnce('/files/new.txt'),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('MOVE failed')),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -715,14 +677,14 @@ describe('renameNode', () => {
   });
 
   it('throws if newName is empty, whitespace-only, or contains invalid characters', async () => {
-    const fileNodeService = createMockFileNodeService();
-    const aclService = createMockAclService({
+    const fileNodeService = createFileNodeServiceMock();
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -750,19 +712,19 @@ describe('renameNode', () => {
   });
 
   it('throws if new name conflicts with existing sibling node (pre-check)', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
       listDirectory: jest.fn().mockResolvedValue([
         { id: 20, name: 'existing.txt', type: 'file' },
       ]),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -776,18 +738,18 @@ describe('renameNode', () => {
   });
 
   it('admin bypass: skips permission check and proceeds directly', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       renameNode: jest.fn().mockResolvedValue(true),
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'old.txt', type: 'file', parent_id: 5 }),
       listDirectory: jest.fn().mockResolvedValue([]),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -804,17 +766,17 @@ describe('renameNode', () => {
 
 describe('moveNode', () => {
   it('updates parent_id and rebuilds closure table via fileNodeService.moveNode', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       moveNode: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -829,11 +791,11 @@ describe('moveNode', () => {
   });
 
   it('no storage operation for S3 mode (blob stays at same s3_key)', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       moveNode: jest.fn().mockResolvedValue(true),
     });
-    const blobStorageService = createMockBlobStorageService();
-    const aclService = createMockAclService({
+    const blobStorageService = createBlobStorageServiceMock();
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -857,14 +819,14 @@ describe('moveNode', () => {
   });
 
   it('attempts WebDAV MOVE for WebDAV mode, marks orphaned on failure', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       moveNode: jest.fn().mockResolvedValue(true),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('MOVE failed')),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -885,18 +847,18 @@ describe('moveNode', () => {
   });
 
   it('rejects move that would create a cycle (target is descendant of source)', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getDescendantIds: jest.fn().mockResolvedValue([50, 60]),
       moveNode: jest.fn().mockRejectedValue(new Error('cycle detected')),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -910,16 +872,16 @@ describe('moveNode', () => {
   });
 
   it('admin bypass: skips permission checks and proceeds directly', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       moveNode: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -936,18 +898,18 @@ describe('moveNode', () => {
 
 describe('deleteNode', () => {
   it('deletes leaf node via fileNodeService.deleteNode after write-permission gate', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'test.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -963,18 +925,18 @@ describe('deleteNode', () => {
   });
 
   it('enumerates descendants via getDescendantIds for directory nodes', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 5, name: 'dir', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([6, 7]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 3 }),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -990,18 +952,18 @@ describe('deleteNode', () => {
   });
 
   it('WebDAV mode: storage DELETE bottom-up (descendants + target), marks orphaned_node on per-node failure, DB delete proceeds', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 100, name: 'root', type: 'directory' }),
       getDescendantIds: jest.fn().mockResolvedValue([101]),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 2 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       deleteBlob: jest.fn()
         .mockRejectedValueOnce(new Error('WebDAV DELETE failed')) // child fails
         .mockResolvedValueOnce(true), // target succeeds
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -1026,13 +988,13 @@ describe('deleteNode', () => {
   });
 
   it('S3 mode: DB-only deletion, no blobStorageService calls', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 10, name: 'file.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
-    const blobStorageService = createMockBlobStorageService();
-    const aclService = createMockAclService({
+    const blobStorageService = createBlobStorageServiceMock();
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
     });
 
@@ -1055,18 +1017,18 @@ describe('deleteNode', () => {
   });
 
   it('admin bypass: skips permission check and proceeds with deletion', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       getNode: jest.fn().mockResolvedValue({ id: 42, name: 'admin.txt', type: 'file' }),
       getDescendantIds: jest.fn().mockResolvedValue([]),
       deleteNode: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       isAdminUser: jest.fn().mockReturnValue(true),
     });
 
     const service = createFileService({
       fileNodeService,
-      blobStorageService: createMockBlobStorageService(),
+      blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
       fileStorageMode: 's3',
@@ -1083,15 +1045,15 @@ describe('deleteNode', () => {
 
 describe('copyFile — S3 mode', () => {
   it('zero-copy: new file_node + object_map row referencing same s3_key when blob not shared', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 50 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       getActiveS3Key: jest.fn().mockResolvedValue('key-original'),
       countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1), // exclusive
       linkObject: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true), // read on source
       checkFolderPermission: jest.fn().mockResolvedValue(true), // write on dest parent
     });
@@ -1116,16 +1078,16 @@ describe('copyFile — S3 mode', () => {
   });
 
   it('duplicates blob to new key via blobStorageService.duplicateBlob when source blob is shared', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 51 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       getActiveS3Key: jest.fn().mockResolvedValue('key-shared'),
       countActiveObjectsByS3Key: jest.fn().mockResolvedValue(3), // shared
       duplicateBlob: jest.fn().mockResolvedValue('key-copy'),
       linkObject: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -1146,15 +1108,15 @@ describe('copyFile — S3 mode', () => {
   });
 
   it('checks read on source and write on destination parent before copying', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 52 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       getActiveS3Key: jest.fn().mockResolvedValue('key-1'),
       countActiveObjectsByS3Key: jest.fn().mockResolvedValue(1),
       linkObject: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(false), // read denied on source
       checkFolderPermission: jest.fn(),
     });
@@ -1179,14 +1141,14 @@ describe('copyFile — S3 mode', () => {
 
 describe('copyFile — WebDAV mode', () => {
   it('performs actual blob copy (download + uploadToWebdav) into destination parent', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 60 }),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(Buffer.from('copied-content')),
       uploadToWebdav: jest.fn().mockResolvedValue(true),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });
@@ -1211,15 +1173,15 @@ describe('copyFile — WebDAV mode', () => {
   });
 
   it('sets orphaned_node if upload fails after node creation, re-throws error', async () => {
-    const fileNodeService = createMockFileNodeService({
+    const fileNodeService = createFileNodeServiceMock({
       createFile: jest.fn().mockResolvedValue({ id: 61 }),
       updateSyncStatus: jest.fn().mockResolvedValue(true),
     });
-    const blobStorageService = createMockBlobStorageService({
+    const blobStorageService = createBlobStorageServiceMock({
       downloadBlob: jest.fn().mockResolvedValue(Buffer.from('data')),
       uploadToWebdav: jest.fn().mockRejectedValue(new Error('upload failed')),
     });
-    const aclService = createMockAclService({
+    const aclService = createAclServiceMock({
       checkFilePermission: jest.fn().mockResolvedValue(true),
       checkFolderPermission: jest.fn().mockResolvedValue(true),
     });

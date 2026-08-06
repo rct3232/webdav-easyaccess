@@ -9,11 +9,12 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import BaseDialog from '../BaseDialog';
 
-const mockUseResponsive = jest.fn();
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
+});
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => mockUseResponsive(),
-}));
+import { useResponsive } from '../../../hooks/useResponsive';
 
 const defaultProps = {
   open: true,
@@ -23,7 +24,7 @@ const defaultProps = {
 describe('BaseDialog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseResponsive.mockReturnValue({ isMobile: false });
+    useResponsive.mockReturnValue({ isMobile: false });
   });
 
   it('renders when open=true', () => {
@@ -108,7 +109,7 @@ describe('BaseDialog', () => {
   });
 
   it('renders with fullScreen when isMobile', () => {
-    mockUseResponsive.mockReturnValue({ isMobile: true });
+    useResponsive.mockReturnValue({ isMobile: true });
     renderWithProviders(
       <BaseDialog {...defaultProps} title="Mobile Title">
         <p>Content</p>

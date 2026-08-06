@@ -8,9 +8,10 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileDetail from '../FileDetail';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const mockFiles = [
   { path: '/doc.pdf', basename: 'doc.pdf', size: 1024, lastmod: '2025-01-15T10:00:00Z', type: 'file', mime: 'application/pdf' },

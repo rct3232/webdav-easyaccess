@@ -42,47 +42,48 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       db.run('PRAGMA foreign_keys = ON');
       db.run('PRAGMA defer_foreign_keys = ON');
 
-      jest.doMock('../../store/storage', () => ({
-        getBackend: () => 'sqlite',
-        isSqliteBackend: () => true,
-        getSqliteConnection: () => db,
-        sqliteQuery: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.all(sql, params || [], (err, rows) =>
-              err ? reject(err) : resolve({ rows: rows || [] }),
-            );
-          }),
-        sqliteRun: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.run(sql, params || [], function (err) {
-              if (err) reject(err);
-              else resolve({ changes: this.changes, lastID: this.lastID });
-            });
-          }),
-        withSqliteTransaction: async (callback) => {
-          await new Promise((resolve, reject) =>
-            db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
-          );
-          try {
-            const client = {
-              query: (sql, params) =>
-                new Promise((resolve, reject) => {
-                  db.all(sql, params || [], (err, rows) =>
-                    err ? reject(err) : resolve({ rows: rows || [] }),
-                  );
-                }),
-            };
-            const result = await callback(client);
+      jest.doMock('../../store/storage', () => {
+        const { createStorageMock } = require('@testing/mocks/storeMocks');
+        return createStorageMock({
+          getSqliteConnection: () => db,
+          sqliteQuery: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.all(sql, params || [], (err, rows) =>
+                err ? reject(err) : resolve({ rows: rows || [] }),
+              );
+            }),
+          sqliteRun: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.run(sql, params || [], function (err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes, lastID: this.lastID });
+              });
+            }),
+          withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
             );
-            return result;
-          } catch (e) {
-            await new Promise((resolve) => db.run('ROLLBACK', resolve));
-            throw e;
-          }
-        },
-      }));
+            try {
+              const client = {
+                query: (sql, params) =>
+                  new Promise((resolve, reject) => {
+                    db.all(sql, params || [], (err, rows) =>
+                      err ? reject(err) : resolve({ rows: rows || [] }),
+                    );
+                  }),
+              };
+              const result = await callback(client);
+              await new Promise((resolve, reject) =>
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              );
+              return result;
+            } catch (e) {
+              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              throw e;
+            }
+          },
+        });
+      });
 
       jest.isolateModules(() => {
         SchemaManager = require('../schemaManager');
@@ -150,47 +151,48 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       db.run('PRAGMA foreign_keys = ON');
       db.run('PRAGMA defer_foreign_keys = ON');
 
-      jest.doMock('../../store/storage', () => ({
-        getBackend: () => 'sqlite',
-        isSqliteBackend: () => true,
-        getSqliteConnection: () => db,
-        sqliteQuery: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.all(sql, params || [], (err, rows) =>
-              err ? reject(err) : resolve({ rows: rows || [] }),
-            );
-          }),
-        sqliteRun: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.run(sql, params || [], function (err) {
-              if (err) reject(err);
-              else resolve({ changes: this.changes, lastID: this.lastID });
-            });
-          }),
-        withSqliteTransaction: async (callback) => {
-          await new Promise((resolve, reject) =>
-            db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
-          );
-          try {
-            const client = {
-              query: (sql, params) =>
-                new Promise((resolve, reject) => {
-                  db.all(sql, params || [], (err, rows) =>
-                    err ? reject(err) : resolve({ rows: rows || [] }),
-                  );
-                }),
-            };
-            const result = await callback(client);
+      jest.doMock('../../store/storage', () => {
+        const { createStorageMock } = require('@testing/mocks/storeMocks');
+        return createStorageMock({
+          getSqliteConnection: () => db,
+          sqliteQuery: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.all(sql, params || [], (err, rows) =>
+                err ? reject(err) : resolve({ rows: rows || [] }),
+              );
+            }),
+          sqliteRun: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.run(sql, params || [], function (err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes, lastID: this.lastID });
+              });
+            }),
+          withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
             );
-            return result;
-          } catch (e) {
-            await new Promise((resolve) => db.run('ROLLBACK', resolve));
-            throw e;
-          }
-        },
-      }));
+            try {
+              const client = {
+                query: (sql, params) =>
+                  new Promise((resolve, reject) => {
+                    db.all(sql, params || [], (err, rows) =>
+                      err ? reject(err) : resolve({ rows: rows || [] }),
+                    );
+                  }),
+              };
+              const result = await callback(client);
+              await new Promise((resolve, reject) =>
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              );
+              return result;
+            } catch (e) {
+              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              throw e;
+            }
+          },
+        });
+      });
 
       jest.isolateModules(() => {
         SchemaManager = require('../schemaManager');
@@ -286,47 +288,48 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       db.run('PRAGMA foreign_keys = ON');
       db.run('PRAGMA defer_foreign_keys = ON');
 
-      jest.doMock('../../store/storage', () => ({
-        getBackend: () => 'sqlite',
-        isSqliteBackend: () => true,
-        getSqliteConnection: () => db,
-        sqliteQuery: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.all(sql, params || [], (err, rows) =>
-              err ? reject(err) : resolve({ rows: rows || [] }),
-            );
-          }),
-        sqliteRun: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.run(sql, params || [], function (err) {
-              if (err) reject(err);
-              else resolve({ changes: this.changes, lastID: this.lastID });
-            });
-          }),
-        withSqliteTransaction: async (callback) => {
-          await new Promise((resolve, reject) =>
-            db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
-          );
-          try {
-            const client = {
-              query: (sql, params) =>
-                new Promise((resolve, reject) => {
-                  db.all(sql, params || [], (err, rows) =>
-                    err ? reject(err) : resolve({ rows: rows || [] }),
-                  );
-                }),
-            };
-            const result = await callback(client);
+      jest.doMock('../../store/storage', () => {
+        const { createStorageMock } = require('@testing/mocks/storeMocks');
+        return createStorageMock({
+          getSqliteConnection: () => db,
+          sqliteQuery: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.all(sql, params || [], (err, rows) =>
+                err ? reject(err) : resolve({ rows: rows || [] }),
+              );
+            }),
+          sqliteRun: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.run(sql, params || [], function (err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes, lastID: this.lastID });
+              });
+            }),
+          withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
             );
-            return result;
-          } catch (e) {
-            await new Promise((resolve) => db.run('ROLLBACK', resolve));
-            throw e;
-          }
-        },
-      }));
+            try {
+              const client = {
+                query: (sql, params) =>
+                  new Promise((resolve, reject) => {
+                    db.all(sql, params || [], (err, rows) =>
+                      err ? reject(err) : resolve({ rows: rows || [] }),
+                    );
+                  }),
+              };
+              const result = await callback(client);
+              await new Promise((resolve, reject) =>
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              );
+              return result;
+            } catch (e) {
+              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              throw e;
+            }
+          },
+        });
+      });
 
       jest.isolateModules(() => {
         SchemaManager = require('../schemaManager');
@@ -403,47 +406,48 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
       db.run('PRAGMA foreign_keys = ON');
       db.run('PRAGMA defer_foreign_keys = ON');
 
-      jest.doMock('../../store/storage', () => ({
-        getBackend: () => 'sqlite',
-        isSqliteBackend: () => true,
-        getSqliteConnection: () => db,
-        sqliteQuery: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.all(sql, params || [], (err, rows) =>
-              err ? reject(err) : resolve({ rows: rows || [] }),
-            );
-          }),
-        sqliteRun: (sql, params = []) =>
-          new Promise((resolve, reject) => {
-            db.run(sql, params || [], function (err) {
-              if (err) reject(err);
-              else resolve({ changes: this.changes, lastID: this.lastID });
-            });
-          }),
-        withSqliteTransaction: async (callback) => {
-          await new Promise((resolve, reject) =>
-            db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
-          );
-          try {
-            const client = {
-              query: (sql, params) =>
-                new Promise((resolve, reject) => {
-                  db.all(sql, params || [], (err, rows) =>
-                    err ? reject(err) : resolve({ rows: rows || [] }),
-                  );
-                }),
-            };
-            const result = await callback(client);
+      jest.doMock('../../store/storage', () => {
+        const { createStorageMock } = require('@testing/mocks/storeMocks');
+        return createStorageMock({
+          getSqliteConnection: () => db,
+          sqliteQuery: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.all(sql, params || [], (err, rows) =>
+                err ? reject(err) : resolve({ rows: rows || [] }),
+              );
+            }),
+          sqliteRun: (sql, params = []) =>
+            new Promise((resolve, reject) => {
+              db.run(sql, params || [], function (err) {
+                if (err) reject(err);
+                else resolve({ changes: this.changes, lastID: this.lastID });
+              });
+            }),
+          withSqliteTransaction: async (callback) => {
             await new Promise((resolve, reject) =>
-              db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              db.run('BEGIN', (err) => (err ? reject(err) : resolve())),
             );
-            return result;
-          } catch (e) {
-            await new Promise((resolve) => db.run('ROLLBACK', resolve));
-            throw e;
-          }
-        },
-      }));
+            try {
+              const client = {
+                query: (sql, params) =>
+                  new Promise((resolve, reject) => {
+                    db.all(sql, params || [], (err, rows) =>
+                      err ? reject(err) : resolve({ rows: rows || [] }),
+                    );
+                  }),
+              };
+              const result = await callback(client);
+              await new Promise((resolve, reject) =>
+                db.run('COMMIT', (err) => (err ? reject(err) : resolve())),
+              );
+              return result;
+            } catch (e) {
+              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              throw e;
+            }
+          },
+        });
+      });
 
       jest.isolateModules(() => {
         SchemaManager = require('../schemaManager');

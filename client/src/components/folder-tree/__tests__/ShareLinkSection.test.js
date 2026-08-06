@@ -9,12 +9,10 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import ShareLinkSection from '../ShareLinkSection';
 
-jest.mock('../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    listFolderChildren: jest.fn(),
-  },
-}));
+jest.mock('../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
 
 import folderTreeGateway from '../../../services/folderTreeGateway';
 

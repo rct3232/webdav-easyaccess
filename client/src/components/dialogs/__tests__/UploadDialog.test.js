@@ -9,9 +9,10 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import UploadDialog from '../UploadDialog';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const defaultProps = {
   open: true,

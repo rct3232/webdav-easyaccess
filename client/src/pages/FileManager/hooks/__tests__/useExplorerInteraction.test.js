@@ -5,16 +5,18 @@
  */
 import { renderHook, act } from '@testing-library/react';
 
-jest.mock('../../../../utils/fileUtils', () => ({
-  canPreview: jest.fn(() => true),
-}));
+jest.mock('../../../../utils/fileUtils', () => {
+  const { createFileUtilsMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFileUtilsMock();
+});
 
-jest.mock('../../../../services/explorerGateway', () => ({
-  __esModule: true,
-  default: {
-    addRecentFile: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return {
+    __esModule: true,
+    default: createExplorerGatewayMock(),
+  };
+});
 
 import { canPreview } from '../../../../utils/fileUtils';
 import explorerGateway from '../../../../services/explorerGateway';

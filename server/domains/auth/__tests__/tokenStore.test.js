@@ -5,9 +5,10 @@
 const { createCacheAdapter } = require('../../../infrastructure/adapters/cache');
 const tokenStore = require('../tokenStore');
 
-jest.mock('../../../store/userStore', () => ({
-  findById: jest.fn(),
-}));
+jest.mock('../../../store/userStore', () => {
+  const { createUserStoreMock } = require('@testing/mocks/storeMocks');
+  return createUserStoreMock();
+});
 
 beforeEach(() => {
   tokenStore.setCacheAdapter(createCacheAdapter());

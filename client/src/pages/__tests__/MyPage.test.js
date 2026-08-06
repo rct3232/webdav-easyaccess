@@ -6,9 +6,10 @@
  * @see docs/spec/client/pages/MyPage.md
  */
 jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
-jest.mock('../../hooks/useResponsive', () => ({
-  useResponsive: jest.fn(),
-}));
+jest.mock('../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
+});
 
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';

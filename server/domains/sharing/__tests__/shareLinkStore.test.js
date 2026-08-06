@@ -4,6 +4,7 @@
  * incrementDownloadCount, isLinkExpired against the real SQLite-backed store (nodeId contract).
  */
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { createStorageMock } = require('@testing/mocks/storeMocks');
 const shareLinkStore = require('../../../store/shareLinkStore');
 const {
   createTestDatabase,
@@ -74,12 +75,13 @@ function createPostgresqlShareLinkStorageMock() {
     throw new Error(`Unexpected SQL in shareLinkStore test mock: ${sql}`);
   });
 
-  return {
+  return createStorageMock({
     state: { rows },
     getBackend: () => 'postgresql',
+    isSqliteBackend: () => false,
     getPgPool: () => ({ query }),
     withTransaction: async (callback) => callback({ query }),
-  };
+  });
 }
 
 function loadShareLinkStoreWithStorageMock(storageMock) {

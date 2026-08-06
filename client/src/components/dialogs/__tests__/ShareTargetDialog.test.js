@@ -9,13 +9,15 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '../../../test-utils';
 import ShareTargetDialog from '../ShareTargetDialog';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
-jest.mock('../../../services/userService', () => ({
-  getApprovedUsers: jest.fn(),
-}));
+jest.mock('../../../services/userService', () => {
+  const { createUserServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createUserServiceMock();
+});
 
 jest.mock('../../../services/sharePermissionGateway', () => ({
   __esModule: true,

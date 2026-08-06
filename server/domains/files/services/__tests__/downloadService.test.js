@@ -8,30 +8,11 @@
 
 // ─── Mock factories ────────────────────────────────────────────────
 
-function createMockFileNodeService(overrides = {}) {
-  const defaults = {
-    getNodePath: jest.fn().mockResolvedValue('/files/test.txt'),
-    getNodeIdByName: jest.fn().mockResolvedValue(null),
-    getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, name: `file_${nodeId}.txt` })),
-  };
-  return { ...defaults, ...overrides };
-}
-
-function createMockBlobStorageService(overrides = {}) {
-  const defaults = {
-    downloadBlob: jest.fn()
-      .mockImplementation(async (nodeId) => Buffer.from(`content-${nodeId}`)),
-    downloadBlobWebdav: jest.fn().mockResolvedValue(null),
-  };
-  return { ...defaults, ...overrides };
-}
-
-function createMockAclService(overrides = {}) {
-  const defaults = {
-    checkFilePermission: jest.fn().mockResolvedValue(true),
-  };
-  return { ...defaults, ...overrides };
-}
+const {
+  createFileNodeServiceMock,
+  createAclServiceMock,
+  createBlobStorageServiceMock,
+} = require('@testing/mocks/serviceMocks');
 
 // ─── Mock archiver ─────────────────────────────────────────────────
 
@@ -60,11 +41,11 @@ const { createDownloadService } = require('../downloadService');
 describe('downloadService', () => {
   describe('downloadMultiple', () => {
     it('assembles ZIP stream for valid nodeIds with read permission', async () => {
-      const fileNodeService = createMockFileNodeService({
+      const fileNodeService = createFileNodeServiceMock({
         getNodePath: jest.fn().mockResolvedValue('/files/doc.txt'),
       });
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -83,9 +64,9 @@ describe('downloadService', () => {
     });
 
     it('excludes files where user lacks read permission and records in errors[]', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(false),
@@ -104,9 +85,9 @@ describe('downloadService', () => {
     });
 
     it('returns 403-style error when ALL files fail permission check', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn()
           .mockResolvedValueOnce(false)
           .mockResolvedValueOnce(false),
@@ -120,9 +101,9 @@ describe('downloadService', () => {
     });
 
     it('performs async permission check per file (not sync checker)', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn()
           .mockResolvedValueOnce(true)
           .mockResolvedValueOnce(true),
@@ -138,11 +119,11 @@ describe('downloadService', () => {
     });
 
     it('resolves blob content via correct backend (S3: object_map→s3_key; WebDAV: path resolution)', async () => {
-      const fileNodeService = createMockFileNodeService({
+      const fileNodeService = createFileNodeServiceMock({
         getNodePath: jest.fn().mockResolvedValue('/files/test.txt'),
       });
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
@@ -154,9 +135,9 @@ describe('downloadService', () => {
     });
 
     it('generates downloadId for progress tracking', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
@@ -169,9 +150,9 @@ describe('downloadService', () => {
     });
 
     it('streams ZIP without buffering entire archive in memory', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
@@ -188,9 +169,9 @@ describe('downloadService', () => {
 
   describe('getDownloadProgress', () => {
     it('returns { completed, total, percentage } for active downloadId', async () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService({
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock({
         checkFilePermission: jest.fn().mockResolvedValue(true),
       });
 
@@ -206,9 +187,9 @@ describe('downloadService', () => {
     });
 
     it('returns null for expired/unknown downloadId', () => {
-      const fileNodeService = createMockFileNodeService();
-      const blobStorageService = createMockBlobStorageService();
-      const aclService = createMockAclService();
+      const fileNodeService = createFileNodeServiceMock();
+      const blobStorageService = createBlobStorageServiceMock();
+      const aclService = createAclServiceMock();
 
       const service = createDownloadService({ fileNodeService, blobStorageService, aclService });
 

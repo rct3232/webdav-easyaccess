@@ -1,15 +1,15 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getPublicSettings } from '../../../../services/settingsService';
 import { useRegisterForm } from '../useRegisterForm';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: jest.fn(),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('react-router-dom', () => ({
   useNavigate: jest.fn(),
@@ -30,7 +30,6 @@ describe('useRegisterForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useNavigate.mockReturnValue(navigateMock);
-    useTranslation.mockReturnValue({ t: (key) => key });
     useAuth.mockReturnValue({ register: registerMock });
     getPublicSettings.mockResolvedValue({ email_enabled: true });
   });

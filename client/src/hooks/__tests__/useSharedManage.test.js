@@ -7,9 +7,10 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSharedManage } from '../useSharedManage';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('../../services/sharePermissionGateway', () => ({
   checkPermission: jest.fn(),

@@ -4,18 +4,7 @@
  * @see docs/spec/server/services/selectiveTransfer.md
  */
 const { selectiveTransfer } = require('../selectiveTransfer');
-
-function createMockWebdav(overrides = {}) {
-  const defaults = {
-    pathExists: jest.fn().mockResolvedValue(false),
-    createDirectory: jest.fn().mockResolvedValue(undefined),
-    listDirectory: jest.fn().mockResolvedValue([]),
-    moveFile: jest.fn().mockResolvedValue(undefined),
-    copyFile: jest.fn().mockResolvedValue(undefined),
-    deleteFile: jest.fn().mockResolvedValue(undefined),
-  };
-  return { ...defaults, ...overrides };
-}
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 
 const alwaysEnter = () => true;
 const alwaysTransfer = () => true;
@@ -25,7 +14,7 @@ describe('selectiveTransfer', () => {
     it('throws when listDirectory fails (source not found)', async () => {
       const notFoundError = new Error('Directory not found');
       notFoundError.status = 404;
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         pathExists: jest.fn().mockResolvedValue(true),
         listDirectory: jest.fn().mockRejectedValue(notFoundError),
       });
@@ -49,7 +38,7 @@ describe('selectiveTransfer', () => {
     it('throws when copy fails with ENOSPC', async () => {
       const enospcError = new Error('ENOSPC: no space left on device');
       enospcError.code = 'ENOSPC';
-      const webdav = createMockWebdav({
+      const webdav = createWebdavMock({
         pathExists: jest.fn().mockResolvedValue(false),
         createDirectory: jest.fn().mockResolvedValue(undefined),
         listDirectory: jest.fn().mockResolvedValue([

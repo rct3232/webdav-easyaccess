@@ -127,7 +127,21 @@ async function closePgPool() {
 }
 
 function getSqliteConnection() {
-  if (sqliteDb) return sqliteDb;
+  const dbPath = process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../data/webdav.db');
+
+  // Reuse the cached connection only when it targets the same file and is
+  // still open. Cross-suite test runs change WEA_SQLITE_PATH between suites;
+  // reusing a stale (closed or different-path) handle causes
+  // SQLITE_MISUSE "Database handle is closed".
+  if (sqliteDb && sqliteDb.__weaPath === dbPath && !sqliteDb.__weaClosed) {
+    return sqliteDb;
+  }
+
+  if (sqliteDb) {
+    try { sqliteDb.close(); } catch { /* ignore */ }
+    sqliteDb = null;
+  }
+
   let sqlite3;
   try {
     sqlite3 = require('sqlite3').verbose();
@@ -139,7 +153,6 @@ function getSqliteConnection() {
     );
   }
 
-  const dbPath = process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../data/webdav.db');
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -150,6 +163,8 @@ function getSqliteConnection() {
       console.error('Failed to open SQLite database:', err.message);
     }
   });
+  sqliteDb.__weaPath = dbPath;
+  sqliteDb.__weaClosed = false;
 
   sqliteDb.run('PRAGMA journal_mode = WAL', () => {});
   sqliteDb.run('PRAGMA foreign_keys = ON', () => {});

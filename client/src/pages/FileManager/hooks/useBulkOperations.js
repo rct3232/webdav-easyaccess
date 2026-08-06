@@ -36,9 +36,10 @@ export const useBulkOperations = (
   const activeIntervalsRef = useRef(new Set());
 
   useEffect(() => {
+    const intervals = activeIntervalsRef.current;
     return () => {
-      activeIntervalsRef.current.forEach(intervalId => clearInterval(intervalId));
-      activeIntervalsRef.current.clear();
+      intervals.forEach(intervalId => clearInterval(intervalId));
+      intervals.clear();
     };
   }, []);
 
@@ -418,7 +419,7 @@ export const useBulkOperations = (
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     activeIntervalsRef.current.add(intervalId);
     poll();
-  }, [selectedNodeIds, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentNodeId, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files, t]);
+  }, [selectedNodeIds, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentNodeId, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, t]);
 
   /**
    * Handle folder picker selection with conflict check

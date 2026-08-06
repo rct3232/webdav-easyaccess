@@ -191,6 +191,32 @@ describe('useBulkOperations', () => {
     expect(notifyRecentFilesChange).toHaveBeenCalled();
   });
 
+  it('handleFolderPickerSelect with no conflicts triggers batch copy and completes operation', async () => {
+    const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+    act(() => {
+      result.current.handleBulkCopy();
+    });
+
+    await act(async () => {
+      await result.current.handleFolderPickerSelect(99);
+    });
+
+    expect(fileService.checkConflicts).toHaveBeenCalled();
+    expect(fileService.batchCopyFiles).toHaveBeenCalledWith(
+      expect.any(Array),
+      'error'
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(mockOnOperationComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ opType: 'copy', targetParentNodeId: 99 })
+    );
+  });
+
   it('bulk move syncs recent files for only the succeeded subset when other items are skipped', async () => {
     fileService.getBulkOperationStatus.mockResolvedValue({
       status: 'completed',

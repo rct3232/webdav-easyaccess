@@ -128,7 +128,7 @@ export function useFolderPicker({
       loadFolders(initialNodeId, 'home');
     }
     prevOpenRef.current = open;
-  }, [open, currentNodeId, action, user, homeNodeId, homeLabel, loadFolders, loadSharedFolders, checkWritePermission]);
+  }, [open, currentNodeId, action, user, homeNodeId, homeLabel, sharedLabel, loadFolders, loadSharedFolders, checkWritePermission]);
 
   const handleFolderClick = useCallback((folder) => {
     if (folder.hasReadPermission === false) return;

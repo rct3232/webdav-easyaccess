@@ -5,6 +5,8 @@ const { createBlobStore } = require('../infrastructure/adapters/blobstore/index'
 const { createFileNodeService } = require('./fileNodeService');
 const { createBlobStorageService } = require('./blobStorageService');
 const { createUploadService } = require('./uploadService');
+const { createGcService } = require('./gcService');
+const { createFailSafeService } = require('./failSafeService');
 const aclService = require('../domains/permissions/services/aclService');
 const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
@@ -52,6 +54,17 @@ function createComposition(overrides = {}) {
     aclService: effectiveAclService,
   });
 
+  const gcService = overrides.gcService || createGcService({
+    blobStore,
+    fileNodesStore,
+    fileStorageMode,
+  });
+
+  const failSafeService = overrides.failSafeService || createFailSafeService({
+    fileNodeService,
+    fileNodesStore,
+  });
+
   return {
     fileNodesStore,
     blobStore,
@@ -62,6 +75,8 @@ function createComposition(overrides = {}) {
     fileService,
     batchOperationService,
     downloadService,
+    gcService,
+    failSafeService,
   };
 }
 

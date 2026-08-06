@@ -159,6 +159,15 @@ initMetadataStore().then(async () => {
           .then(() => console.log('✓ Permission cleanup (home-owner admin) completed'))
           .catch(err => console.error('Permission cleanup on startup failed:', err));
       });
+      setImmediate(() => {
+        const { getComposition } = require('./service/composition');
+        const { runStartupFailSafeRecovery, startGcScheduler } = require('./infrastructure/maintenanceScheduler');
+        const composition = getComposition();
+        runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
+          .then(() => {})
+          .catch(err => console.error('Fail-safe recovery on startup failed:', err));
+        startGcScheduler({ gcService: composition.gcService });
+      });
     });
   }
 }).catch(err => {

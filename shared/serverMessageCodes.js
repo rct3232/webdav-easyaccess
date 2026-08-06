@@ -54,6 +54,9 @@ const SERVER_ERROR_CODES = {
     permissionUpdateFail: P('serverErrors.admin', 'permissionUpdateFail'),
     cleanupFail: P('serverErrors.admin', 'cleanupFail'),
     orphanCleanupFail: P('serverErrors.admin', 'orphanCleanupFail'),
+    gcFailed: P('serverErrors.admin', 'gcFailed'),
+    repairSyncInvalidAction: P('serverErrors.admin', 'repairSyncInvalidAction'),
+    repairSyncNodeNotFound: P('serverErrors.admin', 'repairSyncNodeNotFound'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -198,6 +201,8 @@ const SERVER_MESSAGE_CODES = {
     userDeleted: P('serverMessages.admin', 'userDeleted'),
     permissionUpdated: P('serverMessages.admin', 'permissionUpdated'),
     orphanCleanupDone: P('serverMessages.admin', 'orphanCleanupDone'),
+    gcDone: P('serverMessages.admin', 'gcDone'),
+    repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

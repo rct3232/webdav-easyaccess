@@ -13,6 +13,8 @@ async function cleanupOrphanedData() {
     deletedEmailIndexFiles: 0,
     cleanedPermissionRequests: 0,
     errors: [],
+    gc: null,
+    orphanedNodes: [],
   };
 
   const allUsers = await User.findAll();
@@ -167,6 +169,28 @@ async function cleanupOrphanedData() {
       });
     } catch (error) {
       results.errors.push(`Failed to clean permission requests: ${error.message}`);
+    }
+  }
+
+  // 5. Run one GC cycle for orphaned blobs (S3 mode; no-op in WebDAV mode)
+  {
+    try {
+      const { getComposition } = require('../../../service/composition');
+      const { gcService } = getComposition();
+      results.gc = await gcService.runGcCycle();
+    } catch (error) {
+      results.errors.push(`Failed to run garbage collection: ${error.message}`);
+    }
+  }
+
+  // 6. Report nodes stuck in sync_status='orphaned_node' for manual review
+  {
+    try {
+      const { getComposition } = require('../../../service/composition');
+      const { failSafeService } = getComposition();
+      results.orphanedNodes = await failSafeService.scanOrphanedNodes();
+    } catch (error) {
+      results.errors.push(`Failed to scan orphaned nodes: ${error.message}`);
     }
   }
 

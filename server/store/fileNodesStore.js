@@ -771,6 +771,143 @@ function createFileNodesStore() {
   }
 
   /* ------------------------------------------------------------------ */
+  /*  GC support queries                                                 */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Return object_map rows orphaned longer than `olderThanDays` days.
+   * @param {number} olderThanDays - Only rows older than this age are returned.
+   * @returns {Promise<Array<Object>>} object_map rows (raw snake_case columns).
+   */
+  async function getOrphanedObjects(olderThanDays) {
+    const days = Math.max(0, Number(olderThanDays) || 0);
+
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `SELECT * FROM object_map
+           WHERE status = 'orphaned'
+             AND created_at < NOW() - ($1 || ' days')::interval`,
+          [String(days)]
+        );
+        return res.rows;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        `SELECT * FROM object_map
+         WHERE status = 'orphaned'
+           AND created_at < datetime('now', ?)`,
+        [`-${days} days`]
+      );
+      return res.rows;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  /**
+   * Return the s3_keys of every currently-active object_map row.
+   * @returns {Promise<Array<string>>}
+   */
+  async function getAllActiveS3Keys() {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL`
+        );
+        return res.rows.map((r) => String(r.s3_key));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        `SELECT s3_key FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL`
+      );
+      return res.rows.map((r) => String(r.s3_key));
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  /**
+   * Delete object_map rows by id (used after their S3 blobs are reclaimed).
+   * @param {Array<number>} ids
+   * @returns {Promise<{ changes: number }>}
+   */
+  async function deleteObjectMapRows(ids) {
+    if (!ids || ids.length === 0) {
+      return { changes: 0 };
+    }
+
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const placeholders = buildInPlaceholders(ids.length);
+        const res = await pool.query(
+          `DELETE FROM object_map WHERE id IN (${placeholders})`,
+          ids.map(Number)
+        );
+        return { changes: res.rowCount };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      let totalChanges = 0;
+      for (const id of ids) {
+        const res = await storage.sqliteRun(
+          'DELETE FROM object_map WHERE id = ?',
+          [Number(id)]
+        );
+        totalChanges += res.changes;
+      }
+      return { changes: totalChanges };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+  /**
+   * Return all file_nodes rows with a given sync_status.
+   * @param {string} status - 'active' | 'pending_upload' | 'orphaned_node'
+   * @returns {Promise<Array<Object>>} mapped node rows
+   */
+  async function getNodesBySyncStatus(status) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          'SELECT * FROM file_nodes WHERE sync_status = $1',
+          [String(status)]
+        );
+        return res.rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        'SELECT * FROM file_nodes WHERE sync_status = ?',
+        [String(status)]
+      );
+      return res.rows.map(mapNodeRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
+
+  /* ------------------------------------------------------------------ */
   /*  filecache operations                                               */
   /* ------------------------------------------------------------------ */
 
@@ -874,6 +1011,10 @@ function createFileNodesStore() {
     countActiveObjectsByS3Key,
     upsertCache,
     deleteCache,
+    getOrphanedObjects,
+    getAllActiveS3Keys,
+    deleteObjectMapRows,
+    getNodesBySyncStatus,
   };
 }
 

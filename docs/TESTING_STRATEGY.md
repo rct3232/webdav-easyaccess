@@ -26,6 +26,7 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 ### Schema-first principle
 
 - **Use only schema-derived or validated mocks:** Mocks (including MSW handlers) must be validated against the defined contract (e.g. `docs/api.md`, `docs/shared-contracts.md`). Hand-written mocks that diverge from the contract lead to false confidence. When the contract changes, update mocks accordingly.
+- **Mock–adapter parity:** When a shared adapter contract exists (e.g. `docs/spec/server/store/blobstore.md`), the adapter's own tests and the consuming service's mock must be written against that same contract. A mock that ignores an argument the real adapter honors is a test gap, not just a code smell — on a contract change, update both sides together so they cannot silently diverge.
 
 ### Mock management policy (required)
 
@@ -34,6 +35,16 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Use shared factories for repeated dependencies:** When the same mock shape appears in 3+ files, move it to a shared factory/helper.
 - **Reset policy:** Use `jest.clearAllMocks()` in `beforeEach` by default. Use `jest.resetAllMocks()` only when previous mock implementations must be fully reset. Use `jest.restoreAllMocks()` when spies on real methods are used.
 - **Document decisions in fail log:** If a mocking approach causes regressions or infra incompatibility, record RCA in `.cursor/fail_log.md` and update this strategy/spec docs before broad migration.
+
+### Adapter mock contract fidelity
+
+- **Mocks must enforce the documented argument contract:** When an adapter method's contract defines a typed or thresholded parameter (e.g. `listOrphanedKeys(olderThan: Date)`), the mock must not accept arguments unconditionally. Apply the same semantics as the real adapter — filter, validate, or throw on a wrong-type argument — so a call-site violation (wrong type, wrong unit) fails the test instead of passing silently.
+- **Judgment call vs. logic-heavy mocks:** If the adapter contract's essence is a filter/threshold, the mock should mirror it minimally (this is contract fidelity, not speculative logic). For fixed-value adapters, keep the mock logic-free and rely on argument-type assertions instead.
+- **If implementing the semantics is too heavy:** Assert on the received argument's type/shape in the test body (see "Mock inspection is limited": argument assertions are the behavior under test when they pin the adapter contract).
+
+### Service→adapter contract-conformance tests
+
+- **Pin the argument type/units a service passes to each adapter method:** Add one test per seam asserting the exact argument shape (e.g. "`listOrphanedKeys` is called with a `Date` cutoff derived from the TTL days"). This catches unit/type mismatches (days vs `Date`, ms vs s, numeric vs string ids) that outcome-only tests miss. Adapter mock must honor the same contract (previous subsection) so wrong-argument calls fail loudly.
 
 ### Client
 
@@ -142,6 +153,10 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New shared contract
 
 - When changing [shared-contracts.md](shared-contracts.md) (e.g. error format, validation return shape), update client display logic, server responses, and any tests that assert on those contracts.
+
+### New service → adapter call
+
+- Add a contract-conformance test asserting the argument types/units passed to the adapter match its documented signature (e.g. a `Date` cutoff, milliseconds, numeric id). Keep the adapter mock faithful to that contract so wrong-argument calls fail loudly.
 
 ---
 

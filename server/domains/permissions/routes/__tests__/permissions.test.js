@@ -15,7 +15,7 @@ const permissionStore = require('../../stores/permissionStore');
 
 var mockWebdav;
 jest.mock('../../../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });

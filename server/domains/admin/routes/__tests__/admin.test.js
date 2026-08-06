@@ -16,12 +16,12 @@ const permissionStore = require('../../../../store/permissionStore');
 var mockEmail;
 var mockWebdav;
 jest.mock('../../../../utils/email', () => {
-  const { createEmailMock } = require('../../../../testing/mocks/emailMock');
+  const { createEmailMock } = require('@testing/mocks/emailMock');
   mockEmail = createEmailMock();
   return mockEmail;
 });
 jest.mock('../../../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
@@ -36,7 +36,7 @@ beforeAll(async () => {
   process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
   const composition = require('../../../../service/composition');
   composition.__setCompositionForTests({

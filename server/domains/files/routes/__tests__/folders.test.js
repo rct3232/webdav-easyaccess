@@ -10,7 +10,7 @@ const {
 } = require('../../../../test-utils');
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
-const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 

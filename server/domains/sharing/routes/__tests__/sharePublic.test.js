@@ -13,7 +13,7 @@ const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const ShareLink = require('../../../../models/ShareLink');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 

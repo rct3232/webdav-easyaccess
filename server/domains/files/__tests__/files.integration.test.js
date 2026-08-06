@@ -12,8 +12,8 @@ process.env.WEA_SQLITE_PATH = `/tmp/wea-integ-${crypto.randomUUID()}.db`;
 process.env.WEA_SKIP_BULK_WORKER = '1';
 
 /* ─── Hoisted mocks ────────────────────────────────────────────────────── */
-const { createS3Mock } = require('../../../testing/mocks/s3Mock');
-const { createWebdavMock } = require('../../../testing/mocks/webdavMock');
+const { createS3Mock } = require('@testing/mocks/s3Mock');
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
 
 let currentMockS3;
 

@@ -526,12 +526,7 @@ async function rejectByOwnerId(userId, resolvedBy = null) {
   );
 }
 
-async function ensurePermissionRequestsFile() {
-  // No-op: FsJSON deprecated. PostgreSQL/SQLite manage schema via DDL.
-}
-
 module.exports = {
-  ensurePermissionRequestsFile,
   createRequest,
   getById,
   listInbox,

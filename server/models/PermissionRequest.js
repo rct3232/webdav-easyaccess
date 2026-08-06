@@ -1,10 +1,6 @@
 const permissionRequestStore = require('../domains/permissions/stores/permissionRequestStore');
 
 class PermissionRequest {
-  static async ensureFile() {
-    return await permissionRequestStore.ensurePermissionRequestsFile();
-  }
-
   static async create(payload) {
     return await permissionRequestStore.createRequest(payload);
   }

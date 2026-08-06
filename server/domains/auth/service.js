@@ -4,7 +4,7 @@ const User = require('../../models/User');
 const Settings = require('../../models/Settings');
 const { generateToken } = require('../../utils/auth');
 const { sendRegistrationPendingEmail } = require('../../utils/email');
-const { ensureDefaultAdmin, ensureDirs } = require('../../store/bootstrap');
+const { ensureDefaultAdmin } = require('../../store/bootstrap');
 const tokenStore = require('./tokenStore');
 const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
 
@@ -141,7 +141,6 @@ async function loginUser({ username, password }, req) {
     const adminExists = await User.findByUsername('admin');
     if (!adminExists) {
       try {
-        await ensureDirs();
         await ensureDefaultAdmin();
       } catch (recoveryError) {
         console.error('[Auth] Failed to auto-recreate admin account:', recoveryError);

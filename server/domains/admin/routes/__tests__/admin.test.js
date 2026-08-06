@@ -32,7 +32,7 @@ const previousBackend = process.env.WEA_STORAGE_BACKEND;
 const previousFileStorage = process.env.WEA_FILE_STORAGE;
 
 beforeAll(async () => {
-  process.env.WEA_STORAGE_BACKEND = 'fs';
+  process.env.WEA_STORAGE_BACKEND = 'sqlite';
   process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
@@ -209,11 +209,9 @@ describe('POST /api/admin/cleanup/orphaned', () => {
     expect(res.body.messageCode).toBeDefined();
     expect(res.body.results).toBeDefined();
     expect(res.body.results).toMatchObject({
-      deletedPermissionFiles: expect.any(Number),
-      deletedUserFiles: expect.any(Number),
-      deletedEmailIndexFiles: expect.any(Number),
-      cleanedPermissionRequests: expect.any(Number),
       errors: expect.any(Array),
+      gc: expect.anything(),
+      orphanedNodes: expect.any(Array),
     });
   });
 });

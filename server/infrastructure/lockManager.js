@@ -1,15 +1,10 @@
 const crypto = require('crypto');
 
-const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun, ensureDir, writeFile, readFile, deletePath } = require('../store/storage');
-const { LOCKS_DIR, lockPathByKey, sha256HexLower } = require('../store/metaPaths');
-const { nowIso, safeJsonParse } = require('../utils/sharedHelpers');
+const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun } = require('../store/storage');
+const { lockPathByKey, sha256HexLower } = require('../store/metaPaths');
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function getErrorStatus(err) {
-  return err?.status || err?.response?.status;
 }
 
 function makeTimeoutError(lockName, lockPath, waitMs) {
@@ -18,29 +13,6 @@ function makeTimeoutError(lockName, lockPath, waitMs) {
   err.lockName = lockName;
   err.lockPath = lockPath;
   return err;
-}
-
-function createFileLockRelease(lockPath, token) {
-  let released = false;
-  return async () => {
-    if (released) return;
-    released = true;
-
-    try {
-      // Delete only if current lock token is still ours.
-      const current = await readFile(lockPath);
-      const currentObj = safeJsonParse(Buffer.from(current).toString('utf8'));
-      if (currentObj?.token && currentObj.token !== token) return;
-    } catch {
-      // If read fails, still attempt best-effort delete.
-    }
-
-    try {
-      await deletePath(lockPath);
-    } catch {
-      // Best effort: ignore.
-    }
-  };
 }
 
 function createPostgresqlLockRelease(lockKey, token) {
@@ -76,64 +48,6 @@ function createSqliteLockRelease(lockKey, token) {
       // Best effort: ignore.
     }
   };
-}
-
-async function acquireFileBackendLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs) {
-  // Best-effort ensure lock directory exists.
-  try {
-    await ensureDir(LOCKS_DIR);
-  } catch {
-    // ignore "already exists" and transient errors
-  }
-
-  const deadline = Date.now() + waitMs;
-  while (true) {
-    const createdAt = nowIso();
-    const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-    const payload = Buffer.from(JSON.stringify({ token, owner, createdAt, expiresAt }), 'utf8');
-
-    try {
-      await writeFile(lockPath, payload, {
-        overwrite: false,
-        ifNoneMatchStar: true,
-        contentType: 'application/json; charset=utf-8',
-      });
-      return {
-        token,
-        lockPath,
-        release: createFileLockRelease(lockPath, token),
-      };
-    } catch (err) {
-      const status = getErrorStatus(err);
-      const isAlreadyLocked = status === 412 || status === 409;
-      if (!isAlreadyLocked) {
-        throw err;
-      }
-
-      // Stale lockfile cleanup.
-      try {
-        const buf = await readFile(lockPath);
-        const lockObj = safeJsonParse(Buffer.from(buf).toString('utf8'));
-        if (lockObj?.expiresAt) {
-          const exp = Date.parse(lockObj.expiresAt);
-          if (Number.isFinite(exp) && exp < Date.now()) {
-            try {
-              await deletePath(lockPath);
-            } catch {
-              // ignore races
-            }
-          }
-        }
-      } catch {
-        // Ignore read errors; retry loop handles contention.
-      }
-
-      if (Date.now() >= deadline) {
-        throw makeTimeoutError(lockName, lockPath, waitMs);
-      }
-      await sleep(retryDelayMs);
-    }
-  }
 }
 
 async function acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs) {
@@ -215,7 +129,6 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
 /**
  * Acquire a distributed lock with backend-specific strategy.
  *
- * webdav/fs: lock file + If-None-Match + stale lockfile TTL cleanup.
  * postgresql: lock row + stale row cleanup + ON CONFLICT retry.
  * sqlite: lock row + stale row cleanup + INSERT-or-fail retry.
  *
@@ -246,7 +159,7 @@ async function acquireLock(lockName, options = {}) {
     return acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
   }
 
-  return acquireFileBackendLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
+  throw new Error(`No lock strategy for backend: ${backend}`);
 }
 
 async function withLock(lockName, fn, options = {}) {

@@ -18,7 +18,7 @@ Both services are pure background/ops concerns — they expose no user-facing fi
 Two-tier orphan cleanup. Both tiers execute inside a single GC cycle; Tier 1 runs first (fast, DB-targeted), Tier 2 follows (slower, S3 `ListObjectsV2`-based).
 
 - **Tier 1 (DB-driven):** `object_map` rows with `status='orphaned'` that are older than the orphan TTL → the corresponding S3 blob is deleted and the row is removed. These are known orphans created by version supersession (`overwriteBlob` / `prepareUpload`) and by `deleteBlob` marking.
-- **Tier 2 (S3 scan):** `blobStore.listOrphanedKeys(olderThan)` diffed against the set of `s3_key` values still referenced by `object_map` rows with `status='active'`. Keys present only in S3 (TX2 failures, manual row deletion, copy-on-write leftovers) are deleted.
+- **Tier 2 (S3 scan):** `blobStore.listOrphanedKeys(olderThan)` (adapter contract: `olderThan` is a **`Date`** cutoff — see `docs/spec/server/store/blobstore.md`) diffed against the set of `s3_key` values still referenced by `object_map` rows with `status='active'`. Keys present only in S3 (TX2 failures, manual row deletion, copy-on-write leftovers) are deleted. gcService converts the day-based TTL into a Date cutoff (`now - days * 86400000`) before calling the adapter.
 
 GC only applies to S3 file storage. In WebDAV blob mode no `object_map` rows are created (blob storage service skips them) and the WebDAV adapter's `listOrphanedKeys()` returns `[]`, so both tiers are no-ops.
 
@@ -78,9 +78,10 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 4. `deletedRows` reflects rows removed from `object_map`.
 
 **Tier 2 algorithm (S3 mode only; `skipped=true` otherwise):**
-1. `blobStore.listOrphanedKeys(olderThan)` → candidate keys.
-2. `fileNodesStore.getAllActiveS3Keys()` → active-key set.
-3. Diff → keys present only in S3 → `blobStore.deleteBlob(key)`.
+1. Convert the day-based threshold to a Date cutoff: `olderThan = new Date(Date.now() - days * 86400000)`.
+2. `blobStore.listOrphanedKeys(olderThan)` → candidate keys (S3 `LastModified < olderThan`).
+3. `fileNodesStore.getAllActiveS3Keys()` → active-key set.
+4. Diff → keys present only in S3 → `blobStore.deleteBlob(key)`.
 
 Tier 1 always runs (in WebDAV mode it simply finds no rows). Both tiers are best-effort: per-key errors are collected in `errors` and do not abort the cycle.
 

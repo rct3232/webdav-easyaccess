@@ -69,7 +69,9 @@ Internal factory function (also exported). Builds the full dependency graph from
   aclService,              // permission/ACL evaluation service
   fileService,             // high-level file operations (Phase 3)
   batchOperationService,   // bulk move/copy/delete operations (Phase 4)
-  downloadService          // streaming download service (Phase 4)
+  downloadService,         // streaming download service (Phase 4)
+  gcService,               // two-tier orphaned-blob garbage collection (Phase 6)
+  failSafeService          // orphaned_node scan + repair (Phase 6)
 }
 ```
 
@@ -103,14 +105,18 @@ fileStorageMode ───┘                       │                        �
                                           │
                                           ├─→ batchOperationService (depends on fileNodeService, fileService, aclService)
                                           │
-                                          └─→ downloadService (depends on fileNodeService, blobStorageService, aclService)
+                                          ├─→ downloadService (depends on fileNodeService, blobStorageService, aclService)
+                                          │
+                                          ├─→ gcService (depends on blobStore, fileNodesStore, fileStorageMode)
+                                          │
+                                          └─→ failSafeService (depends on fileNodeService, fileNodesStore)
 ```
 
 ---
 
 ## 3. Verification Scenarios
 
-- [ ] First call to `getComposition()` returns a non-null object with all 9 keys present
+- [ ] First call to `getComposition()` returns a non-null object with all 11 keys present
 - [ ] Second call to `getComposition()` returns the same instance (`===`)
 - [ ] `resetComposition()` followed by `getComposition()` produces a new instance (`!==` previous)
 - [ ] `__setCompositionForTests({ blobStore: mock })` yields composition containing `mock`

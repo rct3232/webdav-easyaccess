@@ -487,6 +487,9 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 6.6a | Create `service/__tests__/gcService.test.js` (Tier 1): seed object_map with orphaned rows + corresponding S3 mock entries; run GC; verify S3 deleteBlob called for orphans only, active blobs untouched | Orphan count drops to zero; active blob keys preserved in S3 mock store |
 | 6.6b | Create `service/__tests__/gcService.test.js` (Tier 2): add extra keys to S3 mock that have no object_map rows; run GC; verify listOrphanedKeys + deleteBlob called for untracked keys, active blobs untouched | Untracked S3 blobs cleaned up alongside DB-orphaned blobs |
 
+> **Phase 6 — Status: COMPLETE**
+> All GC + fail-safe tasks (6.1a–6.6b) are implemented and verified (2026-08-06). `server/service/gcService.js` (two-tier cycle: DB-driven orphaned `object_map` → blob delete + row purge; S3 `listOrphanedKeys` reconciliation against the active key set) and `server/service/failSafeService.js` (orphaned_node scan + repair: `retry-delete` / `force-active`; startup report without auto-delete) are wired into the composition root. Admin endpoints `POST /api/admin/maintenance/gc` and `POST /api/admin/maintenance/repair-sync` added; `cleanup/orphaned` now also runs one GC cycle and reports orphaned nodes (additive result keys). Optional cron (`GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, test seam `WEA_SKIP_GC_SCHEDULER`) + startup fail-safe hook in `index.js`. New store methods in `fileNodesStore.js` (getOrphanedObjects, getAllActiveS3Keys, deleteObjectMapRows, getNodesBySyncStatus). Verification: 57 tests across gcService (Tier 1/Tier 2/TTL), failSafeService, maintenanceScheduler, composition, and admin maintenance route tests; full server suite green (69 suites / 1164 tests, 3 skipped). Work sits on branch `refactor/phase-6-gc-failsafe`; **not** merged to `dev`.
+
 ---
 
 ### Phase 7: Legacy Application Code Cleanup

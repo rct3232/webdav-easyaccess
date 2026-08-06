@@ -68,6 +68,15 @@ This spec does not duplicate full DDL text.
 | `activateObject(s3Key)` | UPDATE SET status='active' WHERE s3_key=? AND status='pending' | `{ changes }` |
 | `orphanObject(s3Key)` | UPDATE SET status='orphaned' WHERE s3_key=? AND status IN ('active', 'pending') | `{ changes }` |
 
+#### GC support methods (Phase 6)
+
+| Method | SQL Pattern | Returns |
+|--------|-------------|---------|
+| `getOrphanedObjects(olderThanDays)` | SELECT * WHERE status='orphaned' AND created_at < NOW() - interval / `datetime('now','-N days')` | rows[] |
+| `getAllActiveS3Keys()` | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL | string[] |
+| `deleteObjectMapRows(ids)` | DELETE WHERE id IN (...); SQLite per-row via `sqliteRun` | `{ changes }` |
+| `getNodesBySyncStatus(status)` | SELECT * FROM file_nodes WHERE sync_status=? | mapped rows[] |
+
 #### filecache Methods
 
 | Method | SQL Pattern | Returns |

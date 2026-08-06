@@ -171,7 +171,9 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. Query: `path` (optional, default `/`). |
 | PUT | `/api/admin/users/:id/permissions` | Token + Admin | Set user folder permissions. |
 | POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin. |
-| POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. |
+| POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle and reports `orphaned_node` status. |
+| POST | `/api/admin/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (orphaned blob cleanup). |
+| POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. |
 
 ---
 

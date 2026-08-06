@@ -54,7 +54,16 @@ System maintenance operations. Service: `domains/admin/services/cleanupService.j
 |--------|------|------|-------------|
 | GET | `/folders/list` | Token + Admin | List folders for permission UI (single level). |
 | POST | `/permissions/ensure-home-owner-admin` | Token + Admin | Upgrade home-path permissions to admin. |
-| POST | `/cleanup/orphaned` | Token + Admin | Clean orphaned metadata files and permission requests. |
+| POST | `/cleanup/orphaned` | Token + Admin | Clean orphaned metadata files and permission requests. Also runs one GC cycle and reports `orphaned_node` status (see §2.2.3.1). |
+| POST | `/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 scan) for orphaned blobs. Service: `server/service/gcService.js`. |
+| POST | `/maintenance/repair-sync` | Token + Admin | Manually resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Service: `server/service/failSafeService.js`. |
+
+#### 2.2.3.1 `cleanup/orphaned` response shape (additive keys)
+
+The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deletedEmailIndexFiles`, `cleanedPermissionRequests`, `errors`) are unchanged. Two additive keys are present:
+
+- `gc: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } }`
+- `orphanedNodes: Array<{ nodeId, path }>`
 
 ### 2.3 Middleware Used
 
@@ -81,7 +90,9 @@ System maintenance operations. Service: `domains/admin/services/cleanupService.j
 
 - **GET /folders/list:** 200: folder list (sorted by name)
 - **POST /permissions/ensure-home-owner-admin:** 200: `{ success: true, updatedUsers, upgradedPaths, grantedPaths, errors }`
-- **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors } }`
+- **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors, gc: { tier1, tier2 }, orphanedNodes } }`
+- **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
+- **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action.
 
 ### 2.5 Service Layers
 

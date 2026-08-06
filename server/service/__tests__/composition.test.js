@@ -19,6 +19,8 @@ const EXPECTED_MEMBERS = [
   'fileService',
   'batchOperationService',
   'downloadService',
+  'gcService',
+  'failSafeService',
 ];
 
 /**

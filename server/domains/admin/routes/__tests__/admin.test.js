@@ -7,6 +7,7 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   createTestUser,
+  createTestFileNode,
   USER_STATUS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
@@ -214,5 +215,138 @@ describe('POST /api/admin/cleanup/orphaned', () => {
       cleanedPermissionRequests: expect.any(Number),
       errors: expect.any(Array),
     });
+  });
+});
+
+describe('POST /api/admin/maintenance/gc', () => {
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-gc-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/gc')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 200 with messageCode and two-tier results shape when admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-gc-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/gc')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBeDefined();
+    expect(res.body.results).toBeDefined();
+    expect(res.body.results.tier1).toMatchObject({
+      orphanedRows: expect.any(Number),
+      deletedBlobs: expect.any(Number),
+      deletedRows: expect.any(Number),
+      errors: expect.any(Array),
+    });
+    expect(res.body.results.tier2).toMatchObject({
+      scannedKeys: expect.any(Number),
+      untrackedKeys: expect.any(Number),
+      deletedKeys: expect.any(Number),
+      skipped: expect.any(Boolean),
+      errors: expect.any(Array),
+    });
+  });
+});
+
+describe('POST /api/admin/maintenance/repair-sync', () => {
+  const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-repair-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1, action: 'force-active' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 400 for an invalid action', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-bad-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1, action: 'delete-now' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 404 for a missing node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-missing-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 999999, action: 'force-active' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('force-active resolves an orphaned node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-force-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `repair-force-${Date.now()}` });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'force-active' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBeDefined();
+    expect(res.body.result).toMatchObject({ nodeId, action: 'force-active', status: 'resolved' });
+
+    const after = await store.getNode(nodeId);
+    expect(after.syncStatus).toBe('active');
+  });
+
+  it('retry-delete removes an orphaned node from the DB', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-delete-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `repair-del-${Date.now()}` });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'retry-delete' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ nodeId, action: 'retry-delete', status: 'resolved' });
+    expect(await store.getNode(nodeId)).toBeNull();
   });
 });

@@ -137,7 +137,7 @@ function createMockSQLiteClient() {
       return { rows: [{ permission: row.permission }] };
     }
 
-    // SELECT FROM permissions_shares WHERE token (getSharePermissionDoc, no JOIN)
+    // SELECT FROM permissions_shares WHERE token (share lookup, no JOIN)
     if (normed.includes('SELECT') && normed.includes('FROM permissions_shares') && !normed.includes('node_ancestors')) {
       const tokenVal = params[0];
       const row = state.shares.find(r => r.token === tokenVal);

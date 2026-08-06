@@ -106,8 +106,10 @@ describe('permissionStore (postgresql) admin permission round-trip', () => {
 
     const testNodeId = 42;
     await permissionStore.grant(77, testNodeId, PERMISSIONS.ADMIN);
-    const doc = await permissionStore.getPermissionDoc(77);
+    const perms = await permissionStore.getUserPermissions(77);
 
-    expect(doc.permissions[testNodeId]).toBe(PERMISSIONS.ADMIN);
+    expect(perms).toEqual([
+      expect.objectContaining({ file_node_id: testNodeId, permission: PERMISSIONS.ADMIN }),
+    ]);
   });
 });

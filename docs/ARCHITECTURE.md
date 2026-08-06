@@ -169,16 +169,7 @@ This document intentionally omits full constraints/indexes. Treat
 
 #### Metadata Migration Path (One-shot)
 
-Legacy file metadata (`webdav`/`fs`) is migrated to normalized PostgreSQL tables through:
-
-- `server/scripts/migrateMetadataToPostgresql.js`
-
-Migration characteristics:
-
-- source backends: `webdav` or `fs` (`/.wea` layout).
-- target backend: PostgreSQL normalized schema.
-- supports `dry-run` mode (no writes) and `apply` mode (single transaction).
-- produces a validation report with source counts, migrated/skipped totals, warnings, and post-write row-count checks.
+> **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. New-architecture migration tooling is planned as Future Work (see PLAN.md).
 - command sequence and operator checks are maintained in `docs/SETUP.md`.
 
 #### Storage Layout (Remote/Local)

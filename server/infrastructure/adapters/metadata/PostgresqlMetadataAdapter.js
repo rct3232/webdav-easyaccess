@@ -30,10 +30,6 @@ function PostgresqlMetadataAdapter() {
   // Lazy require to ensure Jest mocks on store/storage are picked up
   const { getPgPool, withTransaction } = require('../../../store/storage');
   return {
-    async ensureUserIndexFile() {
-      // No-op for PostgreSQL; schema is managed externally
-    },
-
     async findByUsername(username) {
       try {
         const pool = getPgPool();

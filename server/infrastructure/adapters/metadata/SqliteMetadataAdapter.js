@@ -30,10 +30,6 @@ function SqliteMetadataAdapter() {
   // Lazy require to ensure Jest mocks on store/storage are picked up
   const { getSqliteConnection, withSqliteTransaction } = require('../../../store/storage');
   return {
-    async ensureUserIndexFile() {
-      // No-op for SQLite; schema is managed externally
-    },
-
     async findByUsername(username) {
       try {
         const db = getSqliteConnection();

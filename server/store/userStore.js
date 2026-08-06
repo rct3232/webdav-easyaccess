@@ -10,7 +10,6 @@ function getAdapter() {
 }
 
 module.exports = {
-  get ensureUserIndexFile() { return getAdapter().ensureUserIndexFile; },
   get findByUsername() { return getAdapter().findByUsername; },
   get findByEmail() { return getAdapter().findByEmail; },
   get findById() { return getAdapter().findById; },

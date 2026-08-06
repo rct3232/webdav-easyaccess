@@ -112,40 +112,7 @@ Permission contract source of truth:
 
 ### One-shot Metadata Migration (fs/webdav -> postgresql)
 
-After schema initialization, migrate legacy metadata (`/.wea`) into PostgreSQL with the one-shot migrator:
-
-```bash
-cd server
-node scripts/migrateMetadataToPostgresql.js --source-backend=fs --dry-run --report-file=./migration-report.json
-node scripts/migrateMetadataToPostgresql.js --source-backend=fs --apply --report-file=./migration-report.json
-```
-
-For WebDAV-backed metadata source:
-
-```bash
-cd server
-node scripts/migrateMetadataToPostgresql.js --source-backend=webdav --dry-run --report-file=./migration-report.json
-```
-
-Options:
-
-- `--source-backend=fs|webdav` (required): source metadata backend to read from.
-- `--dry-run` (default): analyze source and generate validation report without DB writes.
-- `--apply`: execute migration in a single transaction (upsert-based). Creates metadata tables automatically if they do not exist.
-- `--full-sync`: with `--apply`, truncates the migrated metadata tables and re-inserts from the source so the DB exactly matches the source. Use with care; removes any rows not present in the source.
-- `--report-file=<path>`: write JSON validation report to file.
-
-Validation report includes:
-
-- source entity counts per domain table.
-- migrated/skipped counts and warning details.
-- post-write DB row counts (for `--apply`) and expected-vs-actual checks.
-
-Recommended sequence:
-
-1. run `--dry-run`, resolve warnings.
-2. run `--apply`.
-3. run server with `WEA_STORAGE_BACKEND=postgresql` and verify core APIs.
+> **Removed in Phase 7.** The FsJSON/webdav metadata backends were removed; `server/scripts/migrateMetadataToPostgresql.js` was deleted. Migration tooling for the new S3+PG architecture is planned as Future Work (see PLAN.md).
 
 ### Transaction and Concurrency Notes (postgresql)
 

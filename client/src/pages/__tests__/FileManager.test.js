@@ -198,9 +198,9 @@ describe('FileManager', () => {
       http.get('/api/recent-files', () => HttpResponse.json(recentEntries)),
       http.post('/api/files/metadata', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const paths = body.paths || [];
+        const nodeIds = body.nodeIds || [];
         return HttpResponse.json(
-          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+          nodeIds.map((nodeId) => ({ nodeId, size: 123, lastmod: null, mime: 'text/plain' }))
         );
       })
     );
@@ -254,10 +254,10 @@ describe('FileManager', () => {
       }),
       http.post('/api/files/metadata', async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const paths = body.paths || [];
+        const nodeIds = body.nodeIds || [];
 
         return HttpResponse.json(
-          paths.map((path) => ({ path, size: 123, lastmod: null, mime: 'text/plain' }))
+          nodeIds.map((nodeId) => ({ nodeId, size: 123, lastmod: null, mime: 'text/plain' }))
         );
       })
     );
@@ -934,7 +934,7 @@ describe('FileManager', () => {
     server.use(
       http.get('/api/files/download', ({ request }) => {
         const url = new URL(request.url);
-        downloadRequestParam = url.searchParams.get('nodeId') || url.searchParams.get('path');
+        downloadRequestParam = url.searchParams.get('nodeId');
         return new HttpResponse(new Blob(['mock file content']), {
           headers: { 'Content-Disposition': 'attachment; filename="test.txt"' },
         });

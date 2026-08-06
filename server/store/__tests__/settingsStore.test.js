@@ -2,8 +2,8 @@
  * settingsStore tests.
  * Verifies get, set, getAll, isRegistrationEnabled. CRUD and error cases.
  */
-const settingsStore = require('../../../../store/settingsStore');
-const { createTestDatabase } = require('../../../../test-utils');
+const settingsStore = require('@server/store/settingsStore');
+const { createTestDatabase } = require('@server/test-utils');
 
 describe('settingsStore', () => {
   let dbCleanup;

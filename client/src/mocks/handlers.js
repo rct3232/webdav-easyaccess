@@ -1,6 +1,8 @@
 /**
  * MSW handlers aligned with docs/api.md and actual server routes.
- * Routes use batch-move, batch-copy, batch-delete, PUT /rename - NOT the legacy move/delete paths.
+ * File mutations use the batch endpoints (batch-move/batch-copy/batch-delete,
+ * PUT /rename) as well as the single-node POST /files/move, POST /files/copy,
+ * DELETE /files/delete routes exposed by server/domains/files/routes/crud.js.
  * @see docs/api.md
  * @see docs/shared-contracts.md
  */
@@ -39,6 +41,26 @@ export const mockAdminUsers = {
   ],
 };
 
+// Restore module-level mock state between tests so POST-handler mutations
+// (bulk jobs, permission requests, share links, admin users) do not leak.
+// Wired into client/src/setupTests.js beforeEach (docs/TESTING_STRATEGY.md).
+export function __resetHandlersState() {
+  mockFiles.clear();
+  mockBulkJobs.clear();
+  jobIdCounter = 0;
+  mockPermissionRequests.inbox.length = 0;
+  mockPermissionRequests.outbox.length = 0;
+  mockShareLinks.length = 0;
+  for (const key of Object.keys(mockAdminSettings)) {
+    delete mockAdminSettings[key];
+  }
+  mockAdminSettings.registration_enabled = 'false';
+  mockAdminUsers.pending.splice(0, mockAdminUsers.pending.length,
+    { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false });
+  mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
+    { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
+}
+
 function nextJobId() {
   jobIdCounter += 1;
   return `job_${jobIdCounter}_${Date.now()}`;
@@ -51,6 +73,10 @@ function errorResponse(errorCode, status = 400, params = {}) {
     { status }
   );
 }
+
+// Public share tokens considered valid by the shared /share/:token/* mocks
+// (mirrors the invalid/expired 404 behaviour of the /info handler).
+const publicShareIsValid = (token) => token !== 'invalid' && token !== 'expired';
 
 export const handlers = [
   // --- Auth ---
@@ -327,7 +353,7 @@ export const handlers = [
     return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
   }),
 
-  // --- Files: rename (PUT /files/rename, NOT POST /files/move) ---
+  // --- Files: rename (PUT /files/rename) ---
   http.put(`${API_BASE}/files/rename`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const { nodeId, newName } = body;
@@ -335,6 +361,37 @@ export const handlers = [
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, newName });
+  }),
+
+  // --- Files: single-node move (POST /files/move, body: { nodeId, destinationParentNodeId }) ---
+  // server/domains/files/routes/crud.js + api.md "Files and Folders".
+  http.post(`${API_BASE}/files/move`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId, destinationParentNodeId } = body;
+    if (!nodeId || !destinationParentNodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.files.moveSuccess', nodeId, newParentId: destinationParentNodeId });
+  }),
+
+  // --- Files: single-node copy (POST /files/copy, body: { nodeId, destinationParentNodeId, newName? }) ---
+  http.post(`${API_BASE}/files/copy`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId, destinationParentNodeId } = body;
+    if (!nodeId || !destinationParentNodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.files.copySuccess', sourceNodeId: nodeId, copiedNodeId: `${nodeId}_copy` });
+  }),
+
+  // --- Files: single-node delete (DELETE /files/delete, body: { nodeId }) ---
+  http.delete(`${API_BASE}/files/delete`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId } = body;
+    if (!nodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.files.deleteSuccess', nodeId, deletedCount: 1 });
   }),
 
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---
@@ -499,6 +556,18 @@ export const handlers = [
     return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });
   }),
 
+  // --- Folders: recursive stats (GET /folders/stats?nodeId=) ---
+  // server/domains/files/routes/folders.js + api.md "Files and Folders".
+  // Mirrors the server shape { nodeId, name, totalFiles, totalFolders, totalSize }.
+  http.get(`${API_BASE}/folders/stats`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.folders.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(nodeId), name: 'folder', totalFiles: 2, totalFolders: 1, totalSize: 0 });
+  }),
+
   // --- Health, settings, webdav ---
   http.get(`${API_BASE}/health`, () => {
     return HttpResponse.json({ status: 'ok', messageCode: 'serverMessages.api.healthOk' });
@@ -523,6 +592,32 @@ export const handlers = [
 
   http.get(`${API_BASE}/users/approved`, () => {
     return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
+  }),
+
+  // --- Users: self-service mutations (PUT /users/:id/password|email|permissions) ---
+  // server/domains/admin/routes/users.js + api.md "Users".
+  http.put(`${API_BASE}/users/:id/password`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body.password) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.passwordUpdated' });
+  }),
+
+  http.put(`${API_BASE}/users/:id/email`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body.email) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.emailUpdated' });
+  }),
+
+  http.put(`${API_BASE}/users/:id/permissions`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body.permissions)) {
+      return errorResponse('serverErrors.admin.invalidPermissionList', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.permissionUpdated' });
   }),
 
   // --- Admin ---
@@ -692,7 +787,25 @@ export const handlers = [
     const idx = mockShareLinks.findIndex((l) => l.token === params.token);
     if (idx === -1) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
     mockShareLinks.splice(idx, 1);
-    return HttpResponse.json({ messageCode: 'serverMessages.share.deleted' });
+    return HttpResponse.json({ messageCode: 'serverMessages.shareLinks.shareLinkDeleted' });
+  }),
+
+  // --- Share links: get/update one link (GET/PUT /share-links/:token) ---
+  // server/domains/sharing/routes/shareLinks.js + api.md "Share Links (authenticated)".
+  http.get(`${API_BASE}/share-links/:token`, ({ params }) => {
+    const link = mockShareLinks.find((l) => l.token === params.token);
+    if (!link) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    return HttpResponse.json(link);
+  }),
+
+  http.put(`${API_BASE}/share-links/:token`, async ({ request, params }) => {
+    const link = mockShareLinks.find((l) => l.token === params.token);
+    if (!link) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    const body = await request.json().catch(() => ({}));
+    if (body.expiresInDays) {
+      link.expiresAt = new Date(Date.now() + body.expiresInDays * 86400000).toISOString();
+    }
+    return HttpResponse.json(link);
   }),
 
   // --- Share (public) ---
@@ -721,4 +834,45 @@ export const handlers = [
   http.post(`${API_BASE}/share/:token/add-to-my-permissions`, () =>
     HttpResponse.json({ messageCode: 'serverMessages.share.addedToShared' })
   ),
+
+  // --- Share (public): download + preview (GET /share/:token, /share/:token/preview) ---
+  // server/domains/sharing/routes/sharePublic.js + api.md "Share (public)".
+  http.get(`${API_BASE}/share/:token`, ({ params }) => {
+    if (!publicShareIsValid(params.token)) {
+      return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    }
+    return new HttpResponse(new Blob(['mock shared file content']), {
+      headers: {
+        'Content-Disposition': `attachment; filename="shared.bin"`,
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+  }),
+
+  http.get(`${API_BASE}/share/:token/preview`, ({ params }) => {
+    if (!publicShareIsValid(params.token)) {
+      return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    }
+    return new HttpResponse(new Blob(['mock shared preview content']), {
+      headers: {
+        'Content-Disposition': `inline; filename="shared.bin"`,
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+  }),
+
+  // --- Thumbnails: single image fetch (GET /thumbnails/:hash.:ext?token=) ---
+  // server/domains/thumbnails/routes.js + api.md "Thumbnails".
+  http.get(`${API_BASE}/thumbnails/:hash.:ext`, ({ request }) => {
+    const url = new URL(request.url);
+    if (!url.searchParams.get('token')) {
+      return errorResponse('serverErrors.thumbnails.invalidOrExpiredToken', 401);
+    }
+    return new HttpResponse(new Blob(['mock thumbnail'], { type: 'image/jpeg' }), {
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'Cache-Control': 'public, max-age=31536000',
+      },
+    });
+  }),
 ];

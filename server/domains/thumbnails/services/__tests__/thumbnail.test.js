@@ -20,13 +20,13 @@ jest.mock('@server/utils/webdav', () => ({
   isVideoFile: jest.fn(),
 }));
 
-jest.mock('../../service/composition', () => ({
+jest.mock('@server/service/composition', () => ({
   getComposition: jest.fn(),
 }));
 
-const { isImageFile, isVideoFile } = require('../webdav');
-const { getComposition } = require('../../service/composition');
-const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
+const { isImageFile, isVideoFile } = require('@server/utils/webdav');
+const { getComposition } = require('@server/service/composition');
+const { createCacheAdapter } = require('@server/infrastructure/adapters/cache');
 const {
   getThumbnailHash,
   signThumbnailToken,
@@ -35,7 +35,7 @@ const {
   ensureThumbnail,
   setCachedThumbnail,
   setCacheAdapter,
-} = require('../../domains/thumbnails/services/thumbnailService');
+} = require('@server/domains/thumbnails/services/thumbnailService');
 
 const MAX_CACHE_SIZE = 1000;
 

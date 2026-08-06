@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 const fs = require('fs');
 const path = require('path');
-const { convertPostgresToSqlite } = require('../../infrastructure/sqliteSchemaInit');
+const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
 
 function splitStatements(sql) {
   const statements = [];

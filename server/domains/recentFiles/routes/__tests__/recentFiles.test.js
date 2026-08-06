@@ -6,13 +6,13 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-} = require('../../../test-utils');
-const { createFileNodeService } = require('../../../service/fileNodeService');
-const { createFileNodesStore } = require('../../../store/fileNodesStore');
+} = require('@server/test-utils');
+const { createFileNodeService } = require('@server/service/fileNodeService');
+const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
-const WebdavBlobStore = require('../../../infrastructure/adapters/blobstore/WebdavBlobStore');
-const composition = require('../../../service/composition');
+const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
+const composition = require('@server/service/composition');
 
 let app;
 let dbCleanup;
@@ -32,7 +32,7 @@ beforeAll(async () => {
     fileNodeService,
   });
 
-  app = require('../../../index');
+  app = require('@server/index');
 });
 
 afterAll(async () => {

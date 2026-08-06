@@ -3,9 +3,9 @@
  * No auth required. @see docs/features/admin-infrastructure.md
  */
 const request = require('supertest');
-const { createTestDatabase } = require('../../test-utils');
+const { createTestDatabase } = require('@server/test-utils');
 
-jest.mock('../webdavTest', () => ({
+jest.mock('@server/infrastructure/webdavTest', () => ({
   testConnection: jest.fn().mockResolvedValue({ success: true }),
 }));
 
@@ -15,7 +15,7 @@ let dbCleanup;
 beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../index');
+  app = require('@server/index');
 });
 
 afterAll(async () => {

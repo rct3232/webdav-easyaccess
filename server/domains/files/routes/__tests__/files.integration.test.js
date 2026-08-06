@@ -26,12 +26,12 @@ jest.mock('@aws-sdk/client-s3', () => {
 });
 
 /* ─── Imports (after hoisted mocks) ───────────────────────────────────── */
-const storage = require('../../../store/storage');
+const storage = require('@server/store/storage');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermissionByNodeId,
-} = require('../../../test-utils');
+} = require('@server/test-utils');
 const request = require('supertest');
 
 let app; // Express app (lazy-loaded)
@@ -58,16 +58,16 @@ function wireS3Mock(s3Instance) {
 }
 
 async function useS3Mode() {
-  const S3BlobStore = require('../../../infrastructure/adapters/blobstore/S3BlobStore');
+  const S3BlobStore = require('@server/infrastructure/adapters/blobstore/S3BlobStore');
   const store = new S3BlobStore({ fileStorageMode: 's3' });
-  const comp = require('../../../service/composition');
+  const comp = require('@server/service/composition');
   comp.__setCompositionForTests({ fileStorageMode: 's3', blobStore: store });
 }
 
 async function useWebdavMode() {
-  const WebdavBlobStore = require('../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+  const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
   const store = new WebdavBlobStore(webdavMock);
-  const comp = require('../../../service/composition');
+  const comp = require('@server/service/composition');
   comp.__setCompositionForTests({ fileStorageMode: 'webdav', blobStore: store });
 }
 
@@ -98,7 +98,7 @@ beforeAll(async () => {
   wireS3Mock();
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../../index');
+  app = require('@server/index');
 });
 
 afterAll(async () => {
@@ -118,7 +118,7 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
 
     const suffix = Date.now();
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `s3crud-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `s3crud-home-${suffix}`);
     homeNodeId = homeDir.id;
   });
@@ -190,7 +190,7 @@ describe('S5.0-SCENARIO-2: S3 mode rename', () => {
     await useS3Mode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `s3rename-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `s3rename-home-${suffix}`);
     homeNodeId = homeDir.id;
 
@@ -244,7 +244,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
     await useWebdavMode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `webdavcrud-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `webdavcrud-home-${suffix}`);
     homeNodeId = homeDir.id;
   });
@@ -321,7 +321,7 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     await useS3Mode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `s3cow-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `s3cow-home-${suffix}`);
     homeNodeId = homeDir.id;
 
@@ -373,7 +373,7 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     await useS3Mode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `s3cascade-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `s3cascade-home-${suffix}`);
     homeNodeId = homeDir.id;
   });
@@ -461,7 +461,7 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
   });
 
   it('admin creates a shared directory and uploads a file inside', async () => {
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const adminHomeDir = await fns.createDirectory(null, `permadmin-home-${Date.now()}`);
 
     const dirRes = await request(app)
@@ -529,7 +529,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     await useS3Mode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `batchops-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `batchops-home-${suffix}`);
     homeNodeId = homeDir.id;
 
@@ -612,7 +612,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
     await useWebdavMode();
 
     user = await createAuthenticatedTestUser({ isAdmin: true, username: `webdavfail-${suffix}` });
-    const fns = require('../../../service/composition').getComposition().fileNodeService;
+    const fns = require('@server/service/composition').getComposition().fileNodeService;
     const homeDir = await fns.createDirectory(null, `webdavfail-home-${suffix}`);
     homeNodeId = homeDir.id;
   });

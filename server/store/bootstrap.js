@@ -1,5 +1,4 @@
 const bcrypt = require('bcryptjs');
-const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 
 const {
   META_ROOT,
@@ -13,7 +12,6 @@ const { ensureDir, isSqliteBackend } = require('./storage');
 const { initSqliteSchema } = require('../scripts/initSqliteSchema');
 const userStore = require('./userStore');
 const settingsStore = require('./settingsStore');
-const permissionStore = require('./permissionStore');
 const permissionRequestStore = require('../domains/permissions/stores/permissionRequestStore');
 
 async function ensureDirs() {
@@ -39,13 +37,8 @@ async function ensureDefaultAdmin() {
     isAdmin: true,
   });
 
-  // Keep compatibility with prior behavior where admin had explicit root permission
-  try {
-    await permissionStore.grant(admin.id, '/', PERMISSIONS.ADMIN);
-  } catch {
-    // best-effort
-  }
-
+  // Admin users bypass ACL checks (is_admin), so no explicit root grant is
+  // needed. The previous path-based grant ('/') was a no-op on nodeId stores.
   // Keep console output consistent with previous behavior
   // eslint-disable-next-line no-console
   console.log('Default admin account created. Please change the default password after first login.');

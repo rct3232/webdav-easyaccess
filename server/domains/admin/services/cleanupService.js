@@ -1,10 +1,8 @@
 'use strict';
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const User = require('../../../models/User');
 const permissionStore = require('../../../store/permissionStore');
 
-const { listDirectory } = require('../../../utils/webdav');
 const storage = require('../../../store/storage');
 const metaPaths = require('../../../store/metaPaths');
 
@@ -176,9 +174,11 @@ async function cleanupOrphanedData() {
 }
 
 /**
- * Ensure every user has admin on all paths under their home.
- * - Action 1: Upgrade existing permission entries (read/write -> admin) for home paths.
- * - Action 2: List first-level dirs under each user's home and grant admin where missing.
+ * Ensure every user has admin on their home directory node.
+ * With the closure table, granting admin on the home node covers all
+ * descendants, so a single grant per user replaces the previous
+ * path-walk grant/upgrade loop (which was a silent no-op: permissionStore
+ * requires nodeIds and rejected path strings).
  * @returns {{ updatedUsers: number, upgradedPaths: number, grantedPaths: number, errors: string[] }}
  */
 async function ensureHomeOwnerAdminForAllUsers() {
@@ -197,6 +197,11 @@ async function ensureHomeOwnerAdminForAllUsers() {
     return result;
   }
 
+  const { createFileNodesStore } = require('../../../store/fileNodesStore');
+  const { createFileNodeService } = require('../../../service/fileNodeService');
+  const fileNodesStore = createFileNodesStore();
+  const fileNodeService = createFileNodeService({ fileNodesStore });
+
   const nonAdminUsers = users.filter((u) => !u.is_admin);
   const userSet = new Set();
 
@@ -204,53 +209,22 @@ async function ensureHomeOwnerAdminForAllUsers() {
     if (!user.id || !user.username) continue;
 
     try {
-      // Action 1: upgrade existing entries under home to admin
-      const doc = await permissionStore.getPermissionDoc(user.id);
-      const perms = doc?.permissions || {};
-      for (const [folderPath, permission] of Object.entries(perms)) {
-        const normalized = normalizePath(folderPath);
-        const userRoot = `/${user.username}`;
-        if (normalized !== userRoot && !normalized.startsWith(`${userRoot}/`)) continue;
-        if (permission === PERMISSIONS.ADMIN) continue;
-        try {
-          await permissionStore.grant(user.id, folderPath, PERMISSIONS.ADMIN);
-          result.upgradedPaths += 1;
-          userSet.add(user.id);
-        } catch (grantErr) {
-          result.errors.push(`Upgrade ${user.username} ${folderPath}: ${grantErr.message}`);
-        }
+      // Resolve the user's home node (create when missing).
+      let homeNode = await fileNodeService.resolvePath(`/${user.username}`);
+      if (!homeNode) {
+        homeNode = await fileNodeService.createDirectory(null, user.username);
       }
-
-      // Action 2: list first-level dirs under home and grant admin where missing
-      const homePath = normalizePath(`/${user.username}`, { isDirectory: true });
-      let items = [];
-      try {
-        items = await listDirectory(homePath);
-      } catch (listErr) {
-        result.errors.push(`List ${homePath}: ${listErr.message}`);
+      if (!homeNode) {
+        result.errors.push(`Create home node for ${user.username}`);
         continue;
       }
 
-      for (const item of items || []) {
-        if (!item?.basename || item.type !== 'directory') continue;
-        const dirPath = homePath === '/' ? `/${item.basename}` : `${homePath.replace(/\/$/, '')}/${item.basename}`;
-        const normalizedDir = normalizePath(dirPath);
-        let hasAdmin = false;
-        try {
-          hasAdmin = await permissionStore.checkPermission(user.id, normalizedDir, PERMISSIONS.ADMIN);
-        } catch (checkErr) {
-          result.errors.push(`Check ${user.username} ${normalizedDir}: ${checkErr.message}`);
-          continue;
-        }
-        if (hasAdmin) continue;
-        try {
-          await permissionStore.grant(user.id, normalizedDir, PERMISSIONS.ADMIN);
-          result.grantedPaths += 1;
-          userSet.add(user.id);
-        } catch (grantErr) {
-          result.errors.push(`Grant ${user.username} ${normalizedDir}: ${grantErr.message}`);
-        }
-      }
+      const hasAdmin = await permissionStore.checkPermission(user.id, homeNode.id, PERMISSIONS.ADMIN);
+      if (hasAdmin) continue;
+
+      await permissionStore.grant(user.id, homeNode.id, PERMISSIONS.ADMIN);
+      result.grantedPaths += 1;
+      userSet.add(user.id);
     } catch (err) {
       result.errors.push(`User ${user.username}: ${err.message}`);
     }

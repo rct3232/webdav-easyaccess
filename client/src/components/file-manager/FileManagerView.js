@@ -931,12 +931,13 @@ const FileManagerView = ({
             <ShareDialog
               open={shareDialogOpen}
               onClose={closeShareDialog}
+              folderNodeId={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
               folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
               folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
               user={user}
               onMessage={setDropMessage}
               enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
-              filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+              fileNodeId={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
               fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
             />
           )}

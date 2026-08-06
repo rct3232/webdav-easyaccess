@@ -84,7 +84,7 @@ function createFileNodeService({ fileNodesStore }) {
   async function getNodePath(nodeId) {
     const chain = await fileNodesStore.getAncestorChain(nodeId);
     const pathParts = [];
-    for (const entry of [...chain].reverse()) {
+    for (const entry of chain) {
       const node = await fileNodesStore.getNode(entry.ancestorId);
       if (node) pathParts.push(node.name);
     }

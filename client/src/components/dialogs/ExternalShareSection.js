@@ -31,12 +31,12 @@ const ExternalShareSection = ({
   createShareLink,
   getShareLinkUrl,
   onOpenShareLink,
-  filePath,
+  fileNodeId,
   fileName,
   onMessage,
 }) => {
   const { t } = useTranslation();
-  const displayName = fileName || filePath?.split('/').pop() || '';
+  const displayName = fileName || '';
   return (
     <Box sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
       <Typography variant="subtitle2" gutterBottom>
@@ -103,7 +103,7 @@ const ExternalShareSection = ({
               setExternalShareLoading(true);
               try {
                 const link = await createShareLink(
-                  filePath,
+                  fileNodeId,
                   externalShareUnlimited ? null : externalShareExpiresInDays
                 );
                 setExternalShareLink(link);

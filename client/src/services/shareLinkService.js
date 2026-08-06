@@ -3,14 +3,14 @@ import { get, post, put, del } from './apiClient';
 const API_BASE = '/share-links';
 
 /**
- * 공유 링크 생성
- * @param {string} filePath - 파일 경로
- * @param {number|null} expiresInDays - 유효기간 (일수, null이면 무제한)
- * @returns {Promise<Object>} 생성된 링크 데이터
+ * Create a share link for a file node.
+ * @param {number} fileNodeId - ID of the target file node
+ * @param {number|null} expiresInDays - Validity period (days, null for unlimited)
+ * @returns {Promise<Object>} Created link data (nodeId shape)
  */
-export const createShareLink = async (filePath, expiresInDays = 14) => {
+export const createShareLink = async (fileNodeId, expiresInDays = 14) => {
   const response = await post(API_BASE, {
-    filePath,
+    fileNodeId,
     expiresInDays,
   });
   return response.data;
@@ -83,10 +83,10 @@ export const getPublicShareLinkInfo = async (token) => {
 };
 
 /**
- * Check if current user has sufficient (read or higher) permission on the share link path.
+ * Check if current user has sufficient (read or higher) permission on the share link node.
  * Requires authentication.
  * @param {string} token - Share link token
- * @returns {Promise<{ hasSufficientPermission: boolean, path?: string }>}
+ * @returns {Promise<{ hasSufficientPermission: boolean, nodeId?: number }>}
  */
 export const checkMyPermissionForShare = async (token) => {
   const response = await get(`/share/${token}/check-my-permission`);

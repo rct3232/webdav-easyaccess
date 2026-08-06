@@ -1,46 +1,15 @@
 /**
  * shareLinkStore tests.
  * Verifies createShareLink, getShareLink, getUserShareLinks, updateShareLink, deleteShareLink,
- * incrementDownloadCount, isLinkExpired.
+ * incrementDownloadCount, isLinkExpired against the real SQLite-backed store (nodeId contract).
  */
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const shareLinkStore = require('../../../store/shareLinkStore');
-const { createTestDatabase, createAuthenticatedTestUser } = require('../../../test-utils');
-
-function tokenFromShareLinkPath(filePath) {
-  const match = String(filePath || '').match(/\/\.wea\/share-links\/(.+)\.json$/);
-  return match ? match[1] : null;
-}
-
-function createFsShareLinkStorageMock() {
-  const links = new Map();
-  return {
-    state: { links },
-    getBackend: () => 'fs',
-    ensureDirSafe: jest.fn(async () => {}),
-    ensureDir: jest.fn(async () => {}),
-    exists: jest.fn(async (filePath) => links.has(tokenFromShareLinkPath(filePath))),
-    readFile: jest.fn(async (filePath) => {
-      const token = tokenFromShareLinkPath(filePath);
-      const link = links.get(token);
-      if (!link) {
-        const err = new Error('ENOENT');
-        err.code = 'ENOENT';
-        throw err;
-      }
-      return Buffer.from(JSON.stringify(link));
-    }),
-    writeFile: jest.fn(async (filePath, payload) => {
-      const token = tokenFromShareLinkPath(filePath);
-      links.set(token, JSON.parse(String(payload)));
-    }),
-    deletePath: jest.fn(async (filePath) => {
-      links.delete(tokenFromShareLinkPath(filePath));
-    }),
-    listDir: jest.fn(async () =>
-      Array.from(links.keys()).map((token) => ({ basename: `${token}.json`, type: 'file' }))
-    ),
-  };
-}
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  createTestFileNode,
+} = require('../../../test-utils');
 
 function createPostgresqlShareLinkStorageMock() {
   const rows = new Map();
@@ -48,7 +17,7 @@ function createPostgresqlShareLinkStorageMock() {
 
   const toRow = (link) => ({
     token: link.token,
-    file_path: link.filePath,
+    file_node_id: link.fileNodeId,
     created_by: link.createdBy,
     created_at: link.createdAt,
     expires_at: link.expiresAt,
@@ -63,12 +32,12 @@ function createPostgresqlShareLinkStorageMock() {
     }
 
     if (sql.includes('INSERT INTO share_links') && sql.includes('RETURNING *')) {
-      const [tokenRaw, filePath, createdBy, expiresAt] = params;
+      const [tokenRaw, fileNodeId, createdBy, expiresAt] = params;
       const token = String(tokenRaw);
       if (!rows.has(token)) {
         rows.set(token, {
           token,
-          filePath,
+          fileNodeId: Number(fileNodeId),
           createdBy: Number(createdBy),
           createdAt: new Date(Date.UTC(2025, 0, 1, 0, 0, createdAtSeq++)).toISOString(),
           expiresAt: expiresAt || null,
@@ -87,13 +56,11 @@ function createPostgresqlShareLinkStorageMock() {
       return { rows: ordered, rowCount: ordered.length };
     }
 
-    if (sql.includes('UPDATE share_links') && sql.includes('SET file_path = $2')) {
+    if (sql.includes('UPDATE share_links') && sql.includes('SET download_count = download_count + 1')) {
       const token = String(params[0]);
       const current = rows.get(token);
       if (!current) return { rows: [], rowCount: 0 };
-      current.filePath = params[1];
-      current.expiresAt = params[2] || null;
-      current.downloadCount = Number(params[3] || 0);
+      current.downloadCount += 1;
       rows.set(token, current);
       return { rows: [toRow(current)], rowCount: 1 };
     }
@@ -102,15 +69,6 @@ function createPostgresqlShareLinkStorageMock() {
       const token = String(params[0]);
       const existed = rows.delete(token);
       return { rows: [], rowCount: existed ? 1 : 0 };
-    }
-
-    if (sql.includes('UPDATE share_links') && sql.includes('SET download_count = download_count + 1')) {
-      const token = String(params[0]);
-      const current = rows.get(token);
-      if (!current) return { rows: [], rowCount: 0 };
-      current.downloadCount += 1;
-      rows.set(token, current);
-      return { rows: [toRow(current)], rowCount: 1 };
     }
 
     throw new Error(`Unexpected SQL in shareLinkStore test mock: ${sql}`);
@@ -125,50 +83,27 @@ function createPostgresqlShareLinkStorageMock() {
 }
 
 function loadShareLinkStoreWithStorageMock(storageMock) {
-  // Directly instantiate the appropriate metadata adapter with mocked storage.
-  const backend = storageMock.getBackend();
-
-  let AdapterModulePath;
-  if (backend === 'postgresql') {
-    AdapterModulePath = '../../../infrastructure/adapters/metadata/PostgresqlMetadataAdapter';
-  } else if (backend === 'sqlite') {
-    AdapterModulePath = '../../../infrastructure/adapters/metadata/SqliteMetadataAdapter';
-  } else {
-    AdapterModulePath = '../../../infrastructure/adapters/metadata/FsJsonMetadataAdapter';
-  }
-
-  let adapter;
+  let isolatedStore;
   jest.isolateModules(() => {
-    // Mock storage at the path relative to this test file (resolves to server/store/storage.js)
     jest.doMock('../../../store/storage', () => storageMock);
-    const AdapterFactory = require(AdapterModulePath);
-    adapter = AdapterFactory();
+    isolatedStore = require('../../../store/shareLinkStore');
   });
   jest.dontMock('../../../store/storage');
-
-  return adapter;
-}
-
-function projectShareLink(link) {
-  if (!link) return null;
-  return {
-    token: link.token,
-    filePath: link.filePath,
-    createdBy: Number(link.createdBy),
-    downloadCount: Number(link.downloadCount),
-    hasExpiresAt: Boolean(link.expiresAt),
-  };
+  return isolatedStore;
 }
 
 describe('shareLinkStore', () => {
   let dbCleanup;
   let userId;
+  let fileNodeId;
 
   beforeAll(async () => {
     const db = await createTestDatabase();
     dbCleanup = db.cleanup;
     const { user } = await createAuthenticatedTestUser();
     userId = user.id;
+    const node = await createTestFileNode({ name: 'store-fixture.pdf' });
+    fileNodeId = node.nodeId;
   });
 
   afterAll(async () => {
@@ -176,24 +111,25 @@ describe('shareLinkStore', () => {
   });
 
   describe('createShareLink / getShareLink', () => {
-    it('creates and retrieves link by token', async () => {
+    it('creates and retrieves link by token with nodeId', async () => {
       const link = await shareLinkStore.createShareLink({
         token: 'test-token-abc',
-        filePath: '/docs/store-link.pdf',
+        fileNodeId,
         createdBy: userId,
         expiresInDays: 7,
       });
       expect(link).toMatchObject({
         token: 'test-token-abc',
-        filePath: '/docs/store-link.pdf',
+        nodeId: fileNodeId,
         createdBy: userId,
         downloadCount: 0,
       });
+      expect(link.filePath).toBeUndefined();
 
       const retrieved = await shareLinkStore.getShareLink('test-token-abc');
       expect(retrieved).toMatchObject({
         token: 'test-token-abc',
-        filePath: '/docs/store-link.pdf',
+        nodeId: fileNodeId,
         createdBy: userId,
       });
     });
@@ -208,20 +144,21 @@ describe('shareLinkStore', () => {
     it('returns links created by user', async () => {
       await shareLinkStore.createShareLink({
         token: 'user-link-1',
-        filePath: '/a.pdf',
+        fileNodeId,
         createdBy: userId,
         expiresInDays: 7,
       });
       const links = await shareLinkStore.getUserShareLinks(userId);
       expect(links.some((l) => l.token === 'user-link-1')).toBe(true);
+      expect(links.every((l) => l.createdBy === userId)).toBe(true);
     });
   });
 
   describe('updateShareLink', () => {
-    it('updates link', async () => {
+    it('updates downloadCount without touching file_node_id', async () => {
       await shareLinkStore.createShareLink({
         token: 'update-token',
-        filePath: '/x.pdf',
+        fileNodeId,
         createdBy: userId,
         expiresInDays: 7,
       });
@@ -229,6 +166,16 @@ describe('shareLinkStore', () => {
         downloadCount: 5,
       });
       expect(updated.downloadCount).toBe(5);
+      expect(updated.nodeId).toBe(fileNodeId);
+    });
+
+    it('rejects with 404 shareLinkNotFound for unknown token', async () => {
+      await expect(
+        shareLinkStore.updateShareLink('unknown-token-xyz', { downloadCount: 1 })
+      ).rejects.toMatchObject({
+        status: 404,
+        errorCode: SERVER_ERROR_CODES.share.shareLinkNotFound,
+      });
     });
   });
 
@@ -236,7 +183,7 @@ describe('shareLinkStore', () => {
     it('increments count', async () => {
       await shareLinkStore.createShareLink({
         token: 'inc-token',
-        filePath: '/inc.pdf',
+        fileNodeId,
         createdBy: userId,
         expiresInDays: 7,
       });
@@ -255,81 +202,25 @@ describe('shareLinkStore', () => {
       past.setDate(past.getDate() - 1);
       expect(shareLinkStore.isLinkExpired({ expiresAt: past.toISOString() })).toBe(true);
     });
+
+    it('returns false when expiresAt is in future', () => {
+      const future = new Date();
+      future.setDate(future.getDate() + 1);
+      expect(shareLinkStore.isLinkExpired({ expiresAt: future.toISOString() })).toBe(false);
+    });
   });
 
   describe('deleteShareLink', () => {
     it('removes link', async () => {
       await shareLinkStore.createShareLink({
         token: 'delete-token',
-        filePath: '/del.pdf',
+        fileNodeId,
         createdBy: userId,
         expiresInDays: 7,
       });
       await shareLinkStore.deleteShareLink('delete-token');
       const link = await shareLinkStore.getShareLink('delete-token');
       expect(link).toBeNull();
-    });
-  });
-
-  describe('backend parity (fs vs postgresql)', () => {
-    async function runSharedScenario(backend) {
-      const storageMock = backend === 'postgresql'
-        ? createPostgresqlShareLinkStorageMock()
-        : createFsShareLinkStorageMock();
-      const isolatedStore = loadShareLinkStoreWithStorageMock(storageMock);
-
-      await isolatedStore.createShareLink({
-        token: 'parity-token-a',
-        filePath: '/parity/a.txt',
-        createdBy: 101,
-        expiresInDays: 2,
-      });
-      await isolatedStore.createShareLink({
-        token: 'parity-token-b',
-        filePath: '/parity/b.txt',
-        createdBy: 101,
-        expiresInDays: 5,
-      });
-      await isolatedStore.createShareLink({
-        token: 'parity-token-c',
-        filePath: '/parity/c.txt',
-        createdBy: 202,
-        expiresInDays: 7,
-      });
-
-      const fetchedA = await isolatedStore.getShareLink('parity-token-a');
-      const linksByUser = await isolatedStore.getUserShareLinks(101);
-      const updatedA = await isolatedStore.updateShareLink('parity-token-a', {
-        filePath: '/parity/a-updated.txt',
-        downloadCount: 3,
-      });
-      const incrementedA = await isolatedStore.incrementDownloadCount('parity-token-a');
-      const unknown = await isolatedStore.getShareLink('parity-unknown');
-      await isolatedStore.deleteShareLink('parity-token-b');
-      const deleted = await isolatedStore.getShareLink('parity-token-b');
-
-      return {
-        fetchedA: projectShareLink(fetchedA),
-        user101Tokens: linksByUser.map((link) => link.token),
-        updatedA: projectShareLink(updatedA),
-        incrementedA: projectShareLink(incrementedA),
-        unknown,
-        deleted,
-      };
-    }
-
-    it('keeps observable behavior aligned for fs and postgresql backends', async () => {
-      const fsResult = await runSharedScenario('fs');
-      const pgResult = await runSharedScenario('postgresql');
-
-      expect(fsResult.fetchedA).toEqual(pgResult.fetchedA);
-      expect([...fsResult.user101Tokens].sort()).toEqual([...pgResult.user101Tokens].sort());
-      expect(fsResult.updatedA).toEqual(pgResult.updatedA);
-      expect(fsResult.incrementedA).toEqual(pgResult.incrementedA);
-      expect(fsResult.unknown).toBeNull();
-      expect(pgResult.unknown).toBeNull();
-      expect(fsResult.deleted).toBeNull();
-      expect(pgResult.deleted).toBeNull();
     });
   });
 
@@ -340,7 +231,7 @@ describe('shareLinkStore', () => {
 
       await isolatedStore.createShareLink({
         token: 'pg-concurrency-token',
-        filePath: '/race/shared.pdf',
+        fileNodeId: 42,
         createdBy: 777,
         expiresInDays: 7,
       });

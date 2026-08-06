@@ -271,35 +271,23 @@ export const handlers = [
   // --- Recent files (required for FolderTree / FileManager) ---
   http.get(`${API_BASE}/recent-files`, () => HttpResponse.json([])),
 
-  http.post(`${API_BASE}/recent-files/apply-moves`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body?.moves)) {
-      return errorResponse('serverErrors.recentFiles.movesRequired', 400);
-    }
-    return HttpResponse.json([]);
-  }),
-
-  http.post(`${API_BASE}/recent-files/remove-paths`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body?.filePaths) || !Array.isArray(body?.folderPaths)) {
-      return errorResponse('serverErrors.recentFiles.pathsMustBeArrays', 400);
-    }
-    return HttpResponse.json([]);
-  }),
-
   http.post(`${API_BASE}/recent-files`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    if (!body?.path) {
+    if (body?.fileNodeId == null) {
       return errorResponse('serverErrors.recentFiles.pathRequired', 400);
     }
-    return HttpResponse.json([]);
+    return HttpResponse.json([
+      { fileNodeId: body.fileNodeId, name: `file-${body.fileNodeId}`, type: 'file', lastAccessed: new Date().toISOString(), displayPath: `/file-${body.fileNodeId}` },
+    ]);
   }),
 
   http.delete(`${API_BASE}/recent-files`, () =>
     HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
   ),
 
-  http.delete(`${API_BASE}/recent-files/:encodedPath`, () => HttpResponse.json([])),
+  http.delete(`${API_BASE}/recent-files/:fileNodeId`, ({ params }) =>
+    HttpResponse.json([])
+  ),
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
@@ -672,16 +660,18 @@ export const handlers = [
   }),
   http.post(`${API_BASE}/share-links`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { filePath, expiresInDays } = body;
-    if (!filePath) {
-      return errorResponse('serverErrors.share.filePathRequired', 400);
+    const { fileNodeId, expiresInDays } = body;
+    if (fileNodeId == null) {
+      return errorResponse('serverErrors.share.pathRequired', 400);
     }
     const token = `sl_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const link = {
       token,
-      filePath,
-      fileName: filePath.split('/').pop() || 'file',
+      nodeId: fileNodeId,
+      fileName: `file-${fileNodeId}`,
       fileType: 'file',
+      isDirectory: false,
+      displayPath: `/file-${fileNodeId}`,
       createdAt: new Date().toISOString(),
       expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null,
       downloadCount: 0,
@@ -704,14 +694,23 @@ export const handlers = [
     }
     return HttpResponse.json({
       token: params.token,
-      filePath: '/user/docs/file.pdf',
+      nodeId: 2,
       fileName: 'file.pdf',
       fileType: 'pdf',
       isDirectory: false,
+      displayPath: '/testuser/docs/file.pdf',
       createdAt: new Date().toISOString(),
       expiresAt: null,
       downloadCount: 0,
       isExpired: false,
     });
   }),
+
+  http.get(`${API_BASE}/share/:token/check-my-permission`, () =>
+    HttpResponse.json({ hasSufficientPermission: true })
+  ),
+
+  http.post(`${API_BASE}/share/:token/add-to-my-permissions`, () =>
+    HttpResponse.json({ messageCode: 'serverMessages.share.addedToShared' })
+  ),
 ];

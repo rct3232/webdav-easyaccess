@@ -19,7 +19,7 @@
 
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
-| createShareLink | (filePath, expiresInDays?) | Promise\<Object\> | POST /api/share-links |
+| createShareLink | (fileNodeId, expiresInDays?) | Promise\<Object\> | POST /api/share-links |
 | getShareLinks | () | Promise\<Array\> | GET /api/share-links |
 | getShareLink | (token) | Promise\<Object\> | GET /api/share-links/:token |
 | updateShareLink | (token, updates) | Promise\<Object\> | PUT /api/share-links/:token |
@@ -29,6 +29,11 @@
 | checkMyPermissionForShare | (token) | Promise\<{ hasSufficientPermission } \| null\> | GET /api/share/:token/check-my-permission |
 | addShareLinkToMyPermissions | (token) | Promise\<{ message }> | POST /api/share/:token/add-to-my-permissions |
 
+Wire contract:
+
+- `createShareLink(fileNodeId, expiresInDays?)` posts `{ fileNodeId, expiresInDays }` to `POST /api/share-links`.
+- `getPublicShareLinkInfo(token)` returns `{ token, nodeId, fileName, fileType, isDirectory, displayPath, createdAt, expiresAt, downloadCount }`. The response always carries `nodeId`, which the folder tree uses as `shareRootNodeId`.
+
 ### 2.3 Error Handling
 
 - getPublicShareLinkInfo uses fetch; throws with err.response.data for errorCode
@@ -37,7 +42,7 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] createShareLink returns link object
+- [ ] createShareLink(fileNodeId, expiresInDays) sends `{ fileNodeId, expiresInDays }` and returns link object
 - [ ] getShareLinkUrl returns correct URL
 - [ ] getPublicShareLinkInfo works without auth
 - [ ] checkMyPermissionForShare, addShareLinkToMyPermissions require auth

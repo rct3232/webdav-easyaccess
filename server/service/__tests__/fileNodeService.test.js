@@ -309,9 +309,7 @@ describe('createFileNodeService', () => {
       const file = await svc.createFile(c.id, 'file.txt');
 
       const path = await svc.getNodePath(file.id);
-      // NOTE: getNodePath currently reverses the ancestor chain incorrectly,
-      // producing segments from leaf-to-root instead of root-to-leaf.
-      expect(path).toBe('/file.txt/svc-c/svc-b/svc-a');
+      expect(path).toBe('/svc-a/svc-b/svc-c/file.txt');
 
       await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
     });

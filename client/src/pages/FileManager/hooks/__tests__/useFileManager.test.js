@@ -250,15 +250,12 @@ describe('useFileManager', () => {
     expect(result.current.currentPath).toBe('/shared/root');
   });
 
-  it('share mode resolves the share root nodeId via resolve-path when linkInfo lacks it', async () => {
-    const linkInfo = { filePath: '/shared/root' };
+  it('share mode uses displayPath from linkInfo for the breadcrumb and never calls resolve-path', async () => {
+    const linkInfo = { displayPath: '/shared/root', nodeId: 5 };
     resolvePath.mockResolvedValue({ nodeId: 5 });
 
     const { result } = renderWithPath('', { shareToken: 'token123', linkInfo });
 
-    await waitFor(() => {
-      expect(resolvePath).toHaveBeenCalledWith('/shared/root');
-    });
     await waitFor(() => {
       expect(result.current.currentNodeId).toBe(5);
     });
@@ -268,6 +265,7 @@ describe('useFileManager', () => {
         options: expect.objectContaining({ shareToken: 'token123' }),
       });
     });
+    expect(resolvePath).not.toHaveBeenCalled();
     expect(result.current.currentPath).toBe('/shared/root');
   });
 

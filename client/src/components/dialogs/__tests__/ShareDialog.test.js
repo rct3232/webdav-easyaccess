@@ -55,7 +55,7 @@ describe('ShareDialog', () => {
       <ShareDialog
         {...defaultProps}
         enableExternalShare
-        filePath="/file.pdf"
+        fileNodeId={1}
         fileName="file.pdf"
       />
     );

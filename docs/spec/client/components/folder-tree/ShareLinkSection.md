@@ -8,8 +8,6 @@
 | Used in | FolderTree (share link view) |
 | Related components | BaseFolderTreeItem, folderTreeGateway |
 
-> **Phase 4 nodeId end-state:** share-link mode is keyed by the share root **nodeId** (`shareRootNodeId` prop). When the root nodeId is absent (linkInfo does not yet carry it), a temporary `resolve-path` fallback resolves the share root path to a nodeId; the fallback is removed in Phase 5, once `GET /share-link/:token` returns a nodeId (task C2.5).
-
 ---
 
 ## 2. Implementation Spec
@@ -23,7 +21,7 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| shareRootNodeId | number | Y | - | Share root node id |
+| shareRootNodeId | number | Y | - | Share root node id (always present; link info carries nodeId) |
 | shareRootName | string | Y | - | Display name |
 | shareToken | string | N | - | Share token |
 | currentNodeId | number | Y | - | Current folder node id |
@@ -59,5 +57,5 @@
 
 ### 2.8 Edge Cases
 
-- share root nodeId absent: falls back to a temporary `resolve-path` shim (removed in Phase 5); returns null when neither `shareRootNodeId` nor `shareToken` is provided
+- `shareRootNodeId` is always present; the component returns null only when neither `shareRootNodeId` nor `shareToken` is provided
 - currentNodeId outside root – no segments

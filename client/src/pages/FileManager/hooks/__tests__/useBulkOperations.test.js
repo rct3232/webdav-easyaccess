@@ -20,13 +20,12 @@ jest.mock('../../../../services/fileService', () => ({
   cancelBulkOperation: jest.fn(),
 }));
 
-jest.mock('../../../../services/recentFilesRepository', () => ({
-  applyRecentFilesAfterBulkDelete: jest.fn(),
-  applyRecentFilesAfterBulkMove: jest.fn(),
+jest.mock('../../../../services/recentFilesNotifier', () => ({
+  notifyRecentFilesChange: jest.fn(),
 }));
 
 import * as fileService from '../../../../services/fileService';
-import * as recentFilesRepository from '../../../../services/recentFilesRepository';
+import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
 
 const mockSetTreeUpdateTrigger = jest.fn();
 const mockOnOperationComplete = jest.fn();
@@ -136,10 +135,7 @@ describe('useBulkOperations', () => {
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
       expect.objectContaining({ opType: 'delete' })
     );
-    expect(recentFilesRepository.applyRecentFilesAfterBulkDelete).toHaveBeenCalledWith({
-      nodeIds: [1, 2],
-      folderPaths: [],
-    });
+    expect(notifyRecentFilesChange).toHaveBeenCalled();
   });
 
   it('handleBulkDelete with onConfirm calls onConfirm without starting delete', async () => {
@@ -195,10 +191,7 @@ describe('useBulkOperations', () => {
     expect(mockOnOperationComplete).toHaveBeenCalledWith(
       expect.objectContaining({ opType: 'move', targetParentNodeId: 99 })
     );
-    expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
-      expect.objectContaining({ oldNodeId: 1, newParentNodeId: 99 }),
-      expect.objectContaining({ oldNodeId: 2, newParentNodeId: 99 }),
-    ]);
+    expect(notifyRecentFilesChange).toHaveBeenCalled();
   });
 
   it('bulk move syncs recent files for only the succeeded subset when other items are skipped', async () => {
@@ -236,9 +229,7 @@ describe('useBulkOperations', () => {
       jest.advanceTimersByTime(500);
     });
 
-    expect(recentFilesRepository.applyRecentFilesAfterBulkMove).toHaveBeenCalledWith([
-      expect.objectContaining({ oldNodeId: 1, newParentNodeId: 99 }),
-    ]);
+    expect(notifyRecentFilesChange).toHaveBeenCalled();
   });
 
   it('handleFolderPickerSelect with conflicts sets bulkConflictData', async () => {

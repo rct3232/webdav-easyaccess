@@ -153,7 +153,7 @@ const ShareFolderTree = ({
             isChanged,
             isFolderWithAdminPermission,
           } = deriveShareFolderAccessView({
-            folderPath: nodeId,
+            nodeId,
             folderPermissions,
             isAdminMode,
             userId,

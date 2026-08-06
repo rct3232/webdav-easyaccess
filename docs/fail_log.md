@@ -290,3 +290,24 @@ Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (t
 - **Classification:** Case B (test env). MSW list/rename/permissions handlers repointed to server shapes.
 
 **Final wave-2 verification:** Client 1263 passed / 12 failed / 3 out-of-scope suites (apiClient ×2, FileActionSheet); server 1075 passed / 55 failed / 12 suites (unchanged baseline). Zero regressions.
+
+---
+
+## 2026-08-06 — Phase 5 (Sharing & RecentFiles → Node ID)
+
+### Scope-fixed suites (server): 7 suites / 59 tests now pass
+
+- **Area:** `shareLinks.test.js`, `sharePublic.test.js`, `shareLinkStore.test.js`, `ShareLink.test.js`, `recentFiles.test.js`, `recentFilesStore.test.js`, `PermissionRequest.test.js`
+- **Classification:** Case B (test drift) + Case A (source migration). Legacy suites asserted `filePath`/`path` payloads and called the removed `grantTestPermission` against a nodeId-only server.
+- **Action taken:** Rewrote all 7 suites to the nodeId contract (`{ fileNodeId }` payloads, `nodeId`/`displayPath` assertions, `grantTestPermissionByNodeId`, composition setup per `files.test.js`). `apply-moves`/`remove-paths` tests removed (endpoints deleted).
+
+### Production fixes surfaced during test rewrite
+
+- **`shareLinkStore.updateShareLink`:** `COALESCE(?, expires_at)` made `expiresAt=null` a silent no-op (removing a link's expiration failed). Replaced with per-field explicit SET clauses so a null expiry is applied.
+- **`mapServiceError`:** always built a 400, downgrading the recent-files service's 404 `fileNotFound`. Now uses `createError(code, error.status || 400)`.
+- **`fileNodeService.getNodePath`:** reversed the ancestor chain (leaf→root). Corrected to root→leaf; updated V13 test. This bug would have produced wrong `displayPath` for the new share-link/recent-files API contract.
+
+### Verification
+
+- **Server:** 1111 passed / 16 failed / 3 skipped / 1130 total; 5 failed suites = Settings double-serialization (settingsStore, Settings) + environmental postgresqlNotConfigured (auth, admin, lockManager) — all out of scope. Down from 55 failed / 12 suites at Phase 5 start.
+- **Client:** 1248 passed / 12 failed / 149 suites; 3 failing suites = pre-existing out-of-scope (apiClient ×2, FileActionSheet). Zero new failures. Recent-files/share-link suites, MSW handlers, and shim-removal tests all pass.

@@ -23,11 +23,10 @@ export function useShareLinkOverlay({
   const addToSharedCheckDoneRef = useRef(null);
   const addToSharedRequestIdRef = useRef(0);
 
-  // C2.5: share-directory routing is nodeId-first. linkInfo.nodeId is populated at
-  // share-view entry (resolve-path fallback; removed in Phase 5). The legacy path
-  // route is kept as a fallback when no nodeId is available.
+  // Share-directory routing is nodeId-first. linkInfo.nodeId is always present
+  // for directories (Phase 5); '/' is a safe fallback for non-directory links.
   const shareDirectoryRoute = useMemo(
-    () => (linkInfo?.nodeId != null ? `/files/node/${linkInfo.nodeId}` : toFilesPath(linkInfo?.filePath)),
+    () => (linkInfo?.nodeId != null ? `/files/node/${linkInfo.nodeId}` : '/'),
     [linkInfo]
   );
 

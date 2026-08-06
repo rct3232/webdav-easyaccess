@@ -28,17 +28,27 @@ jest.mock('../../../../utils/webdav', () => {
 let app;
 let dbCleanup;
 const previousBackend = process.env.WEA_STORAGE_BACKEND;
+const previousFileStorage = process.env.WEA_FILE_STORAGE;
 
 beforeAll(async () => {
   process.env.WEA_STORAGE_BACKEND = 'fs';
+  process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
+  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+  const composition = require('../../../../service/composition');
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore: new WebdavBlobStore(createWebdavMock()),
+  });
   app = require('../../../../index');
 });
 
 afterAll(async () => {
   await dbCleanup?.();
   process.env.WEA_STORAGE_BACKEND = previousBackend;
+  process.env.WEA_FILE_STORAGE = previousFileStorage;
 });
 
 describe('GET /api/admin/settings', () => {
@@ -137,9 +147,12 @@ describe('POST /api/admin/users/:id/approve', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
 
+    const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+    const homeNode = await createFileNodesStore().getUserRootNode(pendingUser.id);
+    expect(homeNode).not.toBeNull();
     const hasAdmin = await permissionStore.checkPermission(
       pendingUser.id,
-      `/${pendingUser.username}`,
+      homeNode.id,
       'admin'
     );
     expect(hasAdmin).toBe(true);

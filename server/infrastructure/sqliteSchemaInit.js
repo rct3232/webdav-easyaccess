@@ -56,19 +56,41 @@ async function initSqliteSchema() {
   const db = storage.getSqliteConnection();
   const statements = splitStatements(sqliteDdl);
 
-  for (const statement of statements) {
-    await new Promise((resolve, reject) => {
-      db.run(statement, (err) => {
-        if (err) {
-          // eslint-disable-next-line no-console
-          console.error(`[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`, err.message);
-          reject(err);
-        } else {
-          resolve();
+  // Run every DDL statement serially inside a single connection. Using
+  // db.serialize() guarantees the run() calls are queued in order, which
+  // prevents coverage instrumentation from interleaving a later statement
+  // with a close from another suite.
+  await new Promise((resolve, reject) => {
+    db.serialize(() => {
+      let settled = false;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        if (err) reject(err);
+        else resolve();
+      };
+
+      let index = 0;
+      const next = () => {
+        if (index >= statements.length) {
+          finish();
+          return;
         }
-      });
+        const statement = statements[index];
+        index += 1;
+        db.run(statement, (err) => {
+          if (err) {
+            // eslint-disable-next-line no-console
+            console.error(`[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`, err.message);
+            finish(err);
+            return;
+          }
+          next();
+        });
+      };
+      next();
     });
-  }
+  });
 
   // eslint-disable-next-line no-console
   console.log('[init-sqlite-schema] Schema initialized successfully');

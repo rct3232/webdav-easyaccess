@@ -32,6 +32,12 @@ async function createTestDatabase() {
     const dbPath = `/tmp/wea-test-${crypto.randomUUID()}.db`;
     const prevSqlitePath = process.env.WEA_SQLITE_PATH;
 
+    // Close any connection left open by a previous suite sharing this
+    // worker process before pointing WEA_SQLITE_PATH at the new DB.
+    try {
+      await storage.closeSqliteDb();
+    } catch { /* ignore */ }
+
     process.env.WEA_SQLITE_PATH = dbPath;
     await initMetadataStore();
 

@@ -153,7 +153,7 @@ async function set(key, value) {
            DO UPDATE SET
              value = EXCLUDED.value,
              updated_at = CURRENT_TIMESTAMP`,
-          [String(key), JSON.stringify(String(value))]
+          [String(key), String(value)]
         );
       });
       return { success: true };

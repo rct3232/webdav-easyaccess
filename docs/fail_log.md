@@ -311,3 +311,59 @@ Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (t
 
 - **Server:** 1111 passed / 16 failed / 3 skipped / 1130 total; 5 failed suites = Settings double-serialization (settingsStore, Settings) + environmental postgresqlNotConfigured (auth, admin, lockManager) — all out of scope. Down from 55 failed / 12 suites at Phase 5 start.
 - **Client:** 1248 passed / 12 failed / 149 suites; 3 failing suites = pre-existing out-of-scope (apiClient ×2, FileActionSheet). Zero new failures. Recent-files/share-link suites, MSW handlers, and shim-removal tests all pass.
+
+---
+
+## 2026-08-06 — Pre-existing bug & test-failure fixes (fix/pre-existing-bugs-tests)
+
+All previously reported pre-existing failures are fixed; server and client
+suites are fully green.
+
+### Fixed
+
+1. **Settings double-serialization** (`settingsStore.js` SQLite path): `set()`
+   used `JSON.stringify(String(value))` on the TEXT column, persisting literal
+   quotes (`"\"true\""`); `isRegistrationEnabled() === 'true'` always failed →
+   registration permanently disabled (auth register 403). SQLite now stores
+   `String(value)`. (PostgreSQL JSONB path was already correct.)
+2. **lockManager SQLite** (`lockManager.js`): `acquireSqliteLock` read
+   `insertResult.changes` from a `db.all()`-based client.query (never returns
+   changes) → every acquire returned undefined; release called `db.query` on the
+   raw sqlite3 connection (no such method) → releases silently no-op'd. Both now
+   use `sqliteRun`; acquire returns null (not undefined) to continue the retry loop.
+3. **Admin A7 path→nodeId** (`userService.js`, `cleanupService.js`, `bootstrap.js`):
+   admin approve/create and home-owner bootstrap passed WebDAV path strings to
+   nodeId-only `permissionStore.grant/checkPermission` → NaN nodeId → 500/no-op.
+   `ensureUserHomeNode` resolves/creates the root node via fileNodeService and
+   grants by nodeId; `ensureHomeOwnerAdminForAllUsers` grants once on the home
+   node (closure table covers descendants); bootstrap drops the root grant
+   (admin bypasses ACL via is_admin). `admin.test.js` updated to nodeId assertion
+   + webdav composition setup.
+4. **FileActionSheet** (`FileActionSheet.js`): implementation rendered
+   rename/move/delete disabled, but spec (FileActionSheet.md §2.6) requires
+   conditional rendering (hide) when `!fileWritePermission`; download was
+   disabled when `hasReadPermission` undefined. Now rename/move/delete render
+   only with write permission; download/copy disable only when
+   `hasReadPermission === false`. Test updated to spec (hide semantics).
+5. **apiClient 401 excluded** (`apiClient.js` + tests + spec): implementation
+   rethrew 401 for excluded endpoints (login/register/share), but spec/tests
+   asserted null return — which would drop the server errorCode and degrade
+   login UX. Decision (user-approved): keep rethrowing excluded 401 (preserve
+   errorCode), refresh-failure path still resolves null + /login redirect.
+   Spec (apiClient.md) and the 3 excluded-401 tests updated accordingly.
+6. **test:ci sqlite isolation** (`storage.js`, `test-utils.js`,
+   `sqliteSchemaInit.js`): `getSqliteConnection` reused a cached handle ignoring
+   `WEA_SQLITE_PATH` changes between suites; `initSqliteSchema` ran DDL in a
+   plain loop that coverage instrumentation could interleave with a close →
+   SQLITE_MISUSE "Database handle is closed" + native process.exit in
+   healthRoutes/settings suites. Connection now reopens on path/close change;
+   createTestDatabase closes prior shared connections; DDL runs serially via
+   `db.serialize()`.
+
+### Verification
+
+- **Server**: 66 suites / 1127 passed / 3 skipped / 0 failed (both `npx jest`
+  and `npm run test:ci`).
+- **Client**: 149 suites / 1260 passed / 0 failed.
+- ESLint: 0 new issues (pre-existing warnings only).
+- Branch `fix/pre-existing-bugs-tests`; merged to `dev`, branch deleted.

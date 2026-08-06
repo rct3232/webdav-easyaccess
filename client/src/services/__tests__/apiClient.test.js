@@ -162,7 +162,7 @@ describe('apiClient', () => {
       window.location = origLocation;
     });
 
-    it('401 on login: returns null and does not redirect to /login', async () => {
+    it('401 on login: throws the 401 and does not redirect to /login', async () => {
       const origLocation = window.location;
       delete window.location;
       window.location = { href: origLocation.href };
@@ -173,14 +173,19 @@ describe('apiClient', () => {
         )
       );
 
-      const result = await post('/auth/login', { username: 'u', password: 'p' });
-
-      expect(result).toBeNull();
-      expect(window.location.href).not.toBe('/login');
-      window.location = origLocation;
+      try {
+        await post('/auth/login', { username: 'u', password: 'p' });
+        throw new Error('Expected reject');
+      } catch (err) {
+        expect(err.response?.status).toBe(401);
+        expect(err.response?.data?.errorCode).toBe('serverErrors.auth.invalidCredentials');
+        expect(window.location.href).not.toBe('/login');
+      } finally {
+        window.location = origLocation;
+      }
     });
 
-    it('401 on share check-my-permission: returns null and does not redirect to /login', async () => {
+    it('401 on share check-my-permission: throws the 401 and does not redirect to /login', async () => {
       sessionStorage.setItem('token', 'expired');
       sessionStorage.setItem('refreshToken', 'bad');
 
@@ -197,12 +202,16 @@ describe('apiClient', () => {
         )
       );
 
-      const result = await get('/share/abc/check-my-permission');
-
-      expect(result).toBeNull();
-      expect(window.location.href).not.toBe('/login');
-      window.location = origLocation;
-      sessionStorage.clear();
+      try {
+        await get('/share/abc/check-my-permission');
+        throw new Error('Expected reject');
+      } catch (err) {
+        expect(err.response?.status).toBe(401);
+        expect(window.location.href).not.toBe('/login');
+      } finally {
+        window.location = origLocation;
+        sessionStorage.clear();
+      }
     });
   });
 

@@ -135,7 +135,7 @@ const FileActionSheet = ({
             <ListItemButton
               component="button"
               data-testid="file-action-download"
-              disabled={!file.hasReadPermission}
+              disabled={file.hasReadPermission === false}
               onClick={() => handleAction(onDownload)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -146,11 +146,10 @@ const FileActionSheet = ({
             </ListItemButton>
           )}
 
-          {onRename && (
+          {fileWritePermission && onRename && (
             <ListItemButton
               component="button"
               data-testid="file-action-rename"
-              disabled={!fileWritePermission}
               onClick={() => handleAction(onRename)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -161,11 +160,10 @@ const FileActionSheet = ({
             </ListItemButton>
           )}
 
-          {onMove && (
+          {fileWritePermission && onMove && (
             <ListItemButton
               component="button"
               data-testid="file-action-move"
-              disabled={!fileWritePermission}
               onClick={() => handleAction(onMove)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -180,7 +178,7 @@ const FileActionSheet = ({
             <ListItemButton
               component="button"
               data-testid="file-action-copy"
-              disabled={!file.hasReadPermission}
+              disabled={file.hasReadPermission === false}
               onClick={() => handleAction(onCopy)}
               sx={{ minHeight: 56, borderRadius: 1 }}
             >
@@ -205,13 +203,12 @@ const FileActionSheet = ({
             </ListItemButton>
           )}
 
-          {onDelete && (
+          {fileWritePermission && onDelete && (
             <>
               <Divider sx={{ my: 1 }} />
               <ListItemButton
                 component="button"
                 data-testid="file-action-delete"
-                disabled={!fileWritePermission}
                 onClick={() => handleAction(onDelete)}
                 sx={{
                   minHeight: 56,

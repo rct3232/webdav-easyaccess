@@ -50,7 +50,7 @@ test('E2E-AUTH-005: Successful standard-user login lands in user-owned explorer 
   await ensureApprovedUser(request, 'user1', suffix);
   await loginAsUser(page, 'user1', suffix);
 
-  await expect(page).toHaveURL(new RegExp(`/files/user1_${suffix}$`));
+  await expect(page).toHaveURL(/\/files(?:\/node\/\d+)?$/);
   await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 });
 

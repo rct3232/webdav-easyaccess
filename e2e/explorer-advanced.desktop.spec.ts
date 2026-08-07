@@ -5,6 +5,7 @@ import { openFabAction } from './helpers/explorer';
 import { buildName } from './helpers/files';
 import { switchViewMode, setSortMode } from './helpers/explorer-advanced';
 import { doubleClickItem, ctrlClickItem, shiftClickItem, clickEmptyArea, rightClickItem } from './helpers/desktop-interactions';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -356,7 +357,7 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(page.locator('[data-file-path]')).toBeVisible();
   });
 
-  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
+  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page, request }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -369,15 +370,15 @@ test.describe('explorer advanced (desktop)', () => {
     await createTestFolder(page, folderB);
 
     // Upload file to folderA
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await createTestFile(page, conflictFileName);
 
     // Upload file to folderB
-    await page.goto(`/files/${folderB}`);
+    await gotoFilesPath(page, request, `/${folderB}`);
     await createTestFile(page, conflictFileName);
 
     // 3. Action: Move file from folderA to folderB
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await page.locator(`[data-file-path="/${folderA}/${conflictFileName}"]`).click();
 
     // Trigger bulk move

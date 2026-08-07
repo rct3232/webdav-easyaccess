@@ -15,7 +15,7 @@ const LATER_WAVES_FLAG = process.env.E2E_LATER_WAVES;
 // ============================================================
 test.describe('MyPage admin flows - desktop', () => {
   test('E2E-ADMIN-001: /admin redirects to admin MyPage category', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -31,7 +31,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-002: Admin sees user-management and system-settings categories', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -57,7 +57,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-003: Approve pending signup', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -106,7 +106,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-004: Reject pending signup', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -154,7 +154,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-005: Create user from admin UI', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -211,7 +211,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-006: Delete standard user from admin UI', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -259,7 +259,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-007: Toggle registration-related settings', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -285,7 +285,7 @@ test.describe('MyPage admin flows - desktop', () => {
   });
 
   test('E2E-ADMIN-008: Cleanup actions show confirmation and completion feedback', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'desktop') {
+    if (!testInfo.project.name.endsWith('-desktop')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -321,7 +321,7 @@ test.describe('MyPage admin flows - desktop', () => {
 test.describe('MyPage admin flows - mobile', () => {
   test.describe.serial(() => {
   test('E2E-ADMIN-001: /admin redirects to admin MyPage category (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -350,7 +350,7 @@ test.describe('MyPage admin flows - mobile', () => {
   });
 
   test('E2E-ADMIN-002: Admin sees user-management and system-settings categories (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -385,7 +385,7 @@ test.describe('MyPage admin flows - mobile', () => {
   });
 
   test('E2E-ADMIN-003: Approve pending signup (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -444,7 +444,7 @@ test.describe('MyPage admin flows - mobile', () => {
   });
 
   test('E2E-ADMIN-004: Reject pending signup (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -502,7 +502,7 @@ test.describe('MyPage admin flows - mobile', () => {
   });
 
   test('E2E-ADMIN-005: Create user from admin UI (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -576,7 +576,7 @@ test.describe('MyPage admin flows - mobile', () => {
   });
 
 test('E2E-ADMIN-006: Delete standard user from admin UI (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -629,7 +629,7 @@ test('E2E-ADMIN-006: Delete standard user from admin UI (mobile)', async ({ page
   });
 
   test('E2E-ADMIN-007: Toggle registration-related settings (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');
@@ -662,7 +662,7 @@ test('E2E-ADMIN-006: Delete standard user from admin UI (mobile)', async ({ page
   });
 
   test('E2E-ADMIN-008: Cleanup actions show confirmation and completion feedback (mobile)', async ({ page, request }, testInfo) => {
-    if (testInfo.project.name !== 'mobile') {
+    if (!testInfo.project.name.endsWith('-mobile')) {
       test.skip();
     }
     test.skip(!LATER_WAVES_FLAG, 'Wave 7 gated behind E2E_LATER_WAVES=1');

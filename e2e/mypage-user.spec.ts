@@ -3,7 +3,40 @@ import { expect, test } from '@playwright/test';
 import { buildName, readTestFileFixture } from './helpers/files';
 import { ensureApprovedUser, loginAsUser, getTestSuffix } from './helpers/auth';
 import { createShareLink } from './helpers/shareLinks';
+import { resolveNodeId } from './helpers/resolvePath';
 import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
+
+async function uploadFileToUserHome(
+  request: any,
+  bearerToken: string,
+  homePath: string,
+  fileName: string,
+) {
+  const parentNodeId = await resolveNodeId(request, bearerToken, homePath);
+  const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
+  const uploadRes = await request.post('/api/files/upload', {
+    headers: { Authorization: `Bearer ${bearerToken}` },
+    multipart: {
+      file: { name: fileName, mimeType: 'text/plain', buffer: fileBuffer },
+      parentNodeId: String(parentNodeId),
+      onConflict: 'overwrite',
+    },
+  });
+  if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
+}
+
+async function requestFileReadPermission(
+  request: any,
+  bearerToken: string,
+  filePath: string,
+) {
+  const fileNodeId = await resolveNodeId(request, bearerToken, filePath);
+  const reqRes = await request.post('/api/permission-requests', {
+    headers: { Authorization: `Bearer ${bearerToken}` },
+    data: { fileNodeId, permission: 'read' },
+  });
+  if (reqRes.status() !== 409) expect(reqRes.ok()).toBeTruthy();
+}
 
 test('E2E-MYPAGE-001: Authenticated user can open MyPage', async ({ page, request }, testInfo) => {
   const suffix = getTestSuffix(testInfo);
@@ -145,16 +178,7 @@ test('E2E-MYPAGE-006: Sharing inbox approve flow works', async ({ page, request 
   const targetFileName = buildName(testInfo, 'inbox-approve-file', '.txt');
   const targetFilePath = `/${user2Username}/${targetFileName}`;
 
-  const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
-  const uploadRes = await request.post('/api/files/upload', {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    multipart: {
-      file: { name: targetFileName, mimeType: 'text/plain', buffer: fileBuffer },
-      path: `/${user2Username}`,
-      onConflict: 'overwrite',
-    },
-  });
-  if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
+  await uploadFileToUserHome(request, adminToken, `/${user2Username}`, targetFileName);
 
   const user1Login = await request.post('/api/auth/login', {
     data: { username: user1Username, password: TEST_USERS.user1.password },
@@ -162,16 +186,12 @@ test('E2E-MYPAGE-006: Sharing inbox approve flow works', async ({ page, request 
   const user1Body = await user1Login.json();
   const user1Token = user1Body.token;
 
-  const reqRes = await request.post('/api/permission-requests', {
-    headers: { Authorization: `Bearer ${user1Token}` },
-    data: { filePath: targetFilePath, permission: 'read' },
-  });
-  if (reqRes.status() !== 409) expect(reqRes.ok()).toBeTruthy();
+  await requestFileReadPermission(request, user1Token, targetFilePath);
 
   await loginAsUser(page, 'user2', suffix2);
   await page.goto('/mypage');
 
-  if (testInfo.project.name === 'mobile') {
+  if (testInfo.project.name.endsWith('-mobile')) {
     await page.getByRole('button', { name: /My page/i }).click();
   }
   await page.getByRole('button', { name: /Share management/i }).click();
@@ -210,16 +230,7 @@ test('E2E-MYPAGE-007: Sharing inbox reject flow works', async ({ page, request }
   const rejectFileName = buildName(testInfo, 'inbox-reject-file', '.txt');
   const rejectFilePath = `/${user2Username}/${rejectFileName}`;
 
-  const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
-  const uploadRes = await request.post('/api/files/upload', {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    multipart: {
-      file: { name: rejectFileName, mimeType: 'text/plain', buffer: fileBuffer },
-      path: `/${user2Username}`,
-      onConflict: 'overwrite',
-    },
-  });
-  if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
+  await uploadFileToUserHome(request, adminToken, `/${user2Username}`, rejectFileName);
 
   const user1Login = await request.post('/api/auth/login', {
     data: { username: user1Username, password: TEST_USERS.user1.password },
@@ -227,16 +238,12 @@ test('E2E-MYPAGE-007: Sharing inbox reject flow works', async ({ page, request }
   const user1Body = await user1Login.json();
   const user1Token = user1Body.token;
 
-  const reqRes = await request.post('/api/permission-requests', {
-    headers: { Authorization: `Bearer ${user1Token}` },
-    data: { filePath: rejectFilePath, permission: 'read' },
-  });
-  if (reqRes.status() !== 409) expect(reqRes.ok()).toBeTruthy();
+  await requestFileReadPermission(request, user1Token, rejectFilePath);
 
   await loginAsUser(page, 'user2', suffix2);
   await page.goto('/mypage');
 
-  if (testInfo.project.name === 'mobile') {
+  if (testInfo.project.name.endsWith('-mobile')) {
     await page.getByRole('button', { name: /My page/i }).click();
   }
   await page.getByRole('button', { name: /Share management/i }).click();
@@ -273,16 +280,7 @@ test('E2E-MYPAGE-008: Sharing outbox cancel flow works', async ({ page, request 
   const cancelFileName = buildName(testInfo, 'outbox-cancel-file', '.txt');
   const cancelFilePath = `/${user2Username}/${cancelFileName}`;
 
-  const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
-  const uploadRes = await request.post('/api/files/upload', {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    multipart: {
-      file: { name: cancelFileName, mimeType: 'text/plain', buffer: fileBuffer },
-      path: `/${user2Username}`,
-      onConflict: 'overwrite',
-    },
-  });
-  if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
+  await uploadFileToUserHome(request, adminToken, `/${user2Username}`, cancelFileName);
 
   const user1Login = await request.post('/api/auth/login', {
     data: { username: user1Username, password: TEST_USERS.user1.password },
@@ -290,16 +288,12 @@ test('E2E-MYPAGE-008: Sharing outbox cancel flow works', async ({ page, request 
   const user1Body = await user1Login.json();
   const user1Token = user1Body.token;
 
-  const reqRes = await request.post('/api/permission-requests', {
-    headers: { Authorization: `Bearer ${user1Token}` },
-    data: { filePath: cancelFilePath, permission: 'read' },
-  });
-  if (reqRes.status() !== 409) expect(reqRes.ok()).toBeTruthy();
+  await requestFileReadPermission(request, user1Token, cancelFilePath);
 
   await loginAsUser(page, 'user1', suffix1);
   await page.goto('/mypage');
 
-  if (testInfo.project.name === 'mobile') {
+  if (testInfo.project.name.endsWith('-mobile')) {
     await page.getByRole('button', { name: /My page/i }).click();
   }
   await page.getByRole('button', { name: /Share management/i }).click();
@@ -330,11 +324,10 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
   const adminBody = await adminLogin.json();
   const adminToken = adminBody.token;
 
-  const folderRes = await request.post('/api/folders/create', {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { path: `/${user1Username}` },
-  });
-  if (folderRes.status() !== 409) expect(folderRes.ok()).toBeTruthy();
+  const user1HomePath = `/${user1Username}`;
+  // The user1 home node is created server-side at approval time; resolve it as the
+  // nodeId-based replacement for the old "ensure the home folder exists" create call.
+  await resolveNodeId(request, adminToken, user1HomePath);
 
   const user1Login = await request.post('/api/auth/login', {
     data: { username: user1Username, password: TEST_USERS.user1.password },
@@ -345,16 +338,7 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
   const shareFileName = buildName(testInfo, 'share-link-file', '.txt');
   const shareFilePath = `/${user1Username}/${shareFileName}`;
 
-  const fileBuffer = readTestFileFixture(TEST_FILES.smallText);
-  const uploadRes = await request.post('/api/files/upload', {
-    headers: { Authorization: `Bearer ${user1Token}` },
-    multipart: {
-      file: { name: shareFileName, mimeType: 'text/plain', buffer: fileBuffer },
-      path: `/${user1Username}`,
-      onConflict: 'overwrite',
-    },
-  });
-  if (uploadRes.status() !== 409) expect(uploadRes.ok()).toBeTruthy();
+  await uploadFileToUserHome(request, user1Token, user1HomePath, shareFileName);
 
   const shareLink = await createShareLink(request, {
     bearerToken: user1Token,
@@ -362,7 +346,7 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
     expiresInDays: 30,
   });
 
-  if (testInfo.project.name !== 'mobile') {
+  if (!testInfo.project.name.endsWith('-mobile')) {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   }
 
@@ -371,7 +355,7 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
   await loginAsUser(page, 'user1', suffix1);
   await page.goto('/mypage');
 
-  if (testInfo.project.name === 'mobile') {
+  if (testInfo.project.name.endsWith('-mobile')) {
     await page.getByRole('button', { name: /My page/i }).click();
   }
   await page.getByRole('button', { name: /Share management/i }).click();
@@ -394,7 +378,7 @@ test('E2E-MYPAGE-009: Share links list supports copy, extend, delete', async ({ 
 });
 
 test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', async ({ page, request }, testInfo) => {
-  if (testInfo.project.name !== 'mobile') {
+  if (!testInfo.project.name.endsWith('-mobile')) {
     test.skip();
   }
 
@@ -420,7 +404,7 @@ test('E2E-MYPAGE-011: Mobile menu button opens and closes the category drawer', 
 });
 
 test('E2E-MYPAGE-012: Selecting a category from the mobile drawer closes it and updates content', async ({ page, request }, testInfo) => {
-  if (testInfo.project.name !== 'mobile') {
+  if (!testInfo.project.name.endsWith('-mobile')) {
     test.skip();
   }
 

@@ -3,14 +3,11 @@ import { expect, test } from '@playwright/test';
 import { TEST_FILES } from './fixtures/test-data';
 import { loginAsAdmin } from './helpers/auth';
 import { openFabAction, openItemActions } from './helpers/explorer';
-import { buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { ADMIN_HOME_PATH, buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
-
-function toFilesRoute(filePath: string) {
-  return filePath === '/' ? '/files' : `/files${filePath}`;
-}
 
 async function uploadFile(
   page: Parameters<typeof openFabAction>[0],
@@ -78,13 +75,14 @@ async function waitForBulkOperationToComplete(
 
 async function openFolderRouteAndWaitForItems(
   page: Parameters<typeof openFabAction>[0],
+  request: Parameters<typeof gotoFilesPath>[1],
   folderPath: string,
   expectedItemPaths: string[],
 ) {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
-    await page.goto(toFilesRoute(folderPath));
+    await gotoFilesPath(page, request, folderPath);
 
     try {
       for (const itemPath of expectedItemPaths) {
@@ -113,8 +111,8 @@ async function bulkDeleteSelected(
 test('E2E-EXP-006: Rename item from platform-specific actions', async ({ page }, testInfo) => {
   const originalName = buildName(testInfo, 'flow-rename-source');
   const renamedName = buildName(testInfo, 'flow-renamed');
-  const originalPath = `/${originalName}`;
-  const renamedPath = `/${renamedName}`;
+  const originalPath = `${ADMIN_HOME_PATH}/${originalName}`;
+  const renamedPath = `${ADMIN_HOME_PATH}/${renamedName}`;
 
   await loginAsAdmin(page);
 
@@ -144,7 +142,7 @@ test('E2E-EXP-006: Rename item from platform-specific actions', async ({ page },
 
 test('E2E-EXP-008: Open previewable file', async ({ page }, testInfo) => {
   const imageFileName = buildName(testInfo, 'preview-image', '.jpg');
-  const imageFilePath = `/${imageFileName}`;
+  const imageFilePath = `${ADMIN_HOME_PATH}/${imageFileName}`;
 
   await loginAsAdmin(page);
   await uploadFile(page, {
@@ -163,7 +161,7 @@ test('E2E-EXP-008: Open previewable file', async ({ page }, testInfo) => {
 
 test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }, testInfo) => {
   const folderName = buildName(testInfo, 'bulk-select-folder');
-  const folderPath = `/${folderName}`;
+  const folderPath = `${ADMIN_HOME_PATH}/${folderName}`;
 
   await loginAsAdmin(page);
   await createFolder(page, folderName);
@@ -177,14 +175,14 @@ test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }
   await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
 });
 
-test('E2E-BULK-002: Move selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-002: Move selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
+  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-move-dest-folder');
-  const destFolderPath = `/${destFolderName}`;
+  const destFolderPath = `${ADMIN_HOME_PATH}/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
@@ -207,19 +205,19 @@ test('E2E-BULK-002: Move selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
   await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
 
-  await page.goto(toFilesRoute(destFolderPath));
+  await gotoFilesPath(page, request, destFolderPath);
   await expect(fileItem(page, destFile1Path)).toBeVisible();
   await expect(fileItem(page, destFile2Path)).toBeVisible();
 });
 
-test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-003: Copy selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
+  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-copy-dest-folder');
-  const destFolderPath = `/${destFolderName}`;
+  const destFolderPath = `${ADMIN_HOME_PATH}/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
@@ -243,7 +241,7 @@ test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toBeVisible();
   await expect(fileItem(page, srcFile2Path)).toBeVisible();
 
-  await openFolderRouteAndWaitForItems(page, destFolderPath, [
+  await openFolderRouteAndWaitForItems(page, request, destFolderPath, [
     destFile1Path,
     destFile2Path,
   ]);
@@ -252,8 +250,8 @@ test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, tes
 test('E2E-BULK-004: Delete selected items', async ({ page }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-delete-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-delete-src-2', '.txt');
-  const srcFile1Path = `/${srcFile1Name}`;
-  const srcFile2Path = `/${srcFile2Name}`;
+  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
+  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
 
   await loginAsAdmin(page);
   await uploadFile(page, {

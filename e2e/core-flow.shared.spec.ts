@@ -3,13 +3,10 @@ import { expect, test } from '@playwright/test';
 import { TEST_FILES } from './fixtures/test-data';
 import { loginAsAdmin } from './helpers/auth';
 import { breadcrumbChip, openFabAction } from './helpers/explorer';
-import { buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { ADMIN_HOME_PATH, buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
-
-function toFilesRoute(filePath: string) {
-  return filePath === '/' ? '/files' : `/files${filePath}`;
-}
 
 async function createFolder(page: Parameters<typeof openFabAction>[0], folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -48,7 +45,7 @@ test('E2E-EXP-004: Create folder from FAB', async ({ page }, testInfo) => {
   await loginAsAdmin(page);
   await createFolder(page, folderName);
 
-  await expect(fileItem(page, `/${folderName}`)).toBeVisible();
+  await expect(fileItem(page, `${ADMIN_HOME_PATH}/${folderName}`)).toBeVisible();
 });
 
 test('E2E-EXP-005: Upload file from dialog', async ({ page }, testInfo) => {
@@ -61,14 +58,14 @@ test('E2E-EXP-005: Upload file from dialog', async ({ page }, testInfo) => {
     buffer: textFixtureBuffer,
   });
 
-  await expect(fileItem(page, `/${fileName}`)).toBeVisible();
+  await expect(fileItem(page, `${ADMIN_HOME_PATH}/${fileName}`)).toBeVisible();
 });
 
-test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({ page }, testInfo) => {
+test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({ page, request }, testInfo) => {
   const parentFolderName = buildName(testInfo, 'direct-route-parent');
   const childFolderName = buildName(testInfo, 'direct-route-child');
   const markerFileName = buildName(testInfo, 'direct-route-marker', '.txt');
-  const parentFolderPath = `/${parentFolderName}`;
+  const parentFolderPath = `${ADMIN_HOME_PATH}/${parentFolderName}`;
   const childFolderPath = `${parentFolderPath}/${childFolderName}`;
   const markerFilePath = `${childFolderPath}/${markerFileName}`;
 
@@ -76,11 +73,11 @@ test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({ page
   await createFolder(page, parentFolderName);
   await expect(fileItem(page, parentFolderPath)).toBeVisible();
 
-  await page.goto(toFilesRoute(parentFolderPath));
+  await gotoFilesPath(page, request, parentFolderPath);
   await createFolder(page, childFolderName);
   await expect(fileItem(page, childFolderPath)).toBeVisible();
 
-  await page.goto(toFilesRoute(childFolderPath));
+  await gotoFilesPath(page, request, childFolderPath);
   await uploadFile(page, {
     fileName: markerFileName,
     mimeType: 'text/plain',
@@ -89,28 +86,28 @@ test('E2E-EXP-002: Direct route entry loads a nested folder path', async ({ page
   await expect(fileItem(page, markerFilePath)).toBeVisible();
 
   await page.goto('/files');
-  await page.goto(toFilesRoute(childFolderPath));
+  await gotoFilesPath(page, request, childFolderPath);
 
   await expect(fileItem(page, markerFilePath)).toBeVisible();
   await expect(breadcrumbChip(page, parentFolderName)).toBeVisible();
   await expect(breadcrumbChip(page, childFolderName)).toBeVisible();
 });
 
-test('E2E-EXP-003: Breadcrumb navigation changes current folder', async ({ page }, testInfo) => {
+test('E2E-EXP-003: Breadcrumb navigation changes current folder', async ({ page, request }, testInfo) => {
   const parentFolderName = buildName(testInfo, 'breadcrumb-parent');
   const childFolderName = buildName(testInfo, 'breadcrumb-child');
   const nestedFileName = buildName(testInfo, 'breadcrumb-marker', '.txt');
-  const parentFolderPath = `/${parentFolderName}`;
+  const parentFolderPath = `${ADMIN_HOME_PATH}/${parentFolderName}`;
   const childFolderPath = `${parentFolderPath}/${childFolderName}`;
   const nestedFilePath = `${childFolderPath}/${nestedFileName}`;
 
   await loginAsAdmin(page);
   await createFolder(page, parentFolderName);
 
-  await page.goto(toFilesRoute(parentFolderPath));
+  await gotoFilesPath(page, request, parentFolderPath);
   await createFolder(page, childFolderName);
 
-  await page.goto(toFilesRoute(childFolderPath));
+  await gotoFilesPath(page, request, childFolderPath);
   await uploadFile(page, {
     fileName: nestedFileName,
     mimeType: 'text/plain',

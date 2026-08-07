@@ -526,15 +526,81 @@ async function copyFile(sourcePath, destinationPath, progressCallback, overwrite
   }
 }
 
-async function createDirectory(path) {
-  const client = await getWebDAVClient();
-  try {
-    const normalizedPath = normalizePath(path);
-    await client.createDirectory(getRequestPath(normalizedPath));
-    return { success: true };
-  } catch (error) {
-    throw createError(SERVER_ERROR_CODES.webdav.createDirFailed, error.status || HTTP_STATUS.INTERNAL_SERVER_ERROR, { reason: error.message });
+/**
+ * Classify a WebDAV MKCOL failure as "resource already exists" so directory
+ * creation can be idempotent. Different servers report existing collections
+ * differently (405 Method Not Allowed, 301/302/303 redirects, or a message
+ * containing "already exists").
+ */
+function isAlreadyExistsError(error) {
+  if (!error) return false;
+  const status = error.status || error.response?.status;
+  // 405 is the most common "collection already exists" response across
+  // WebDAV servers (bytemark, Apache mod_dav, SabreDAV). Redirects are
+  // typically followed by the server to the existing resource.
+  if (status === 405 || status === 301 || status === 302 || status === 303) {
+    return true;
   }
+  return /already exists|method not allowed/i.test(String(error.message || ''));
+}
+
+/**
+ * Ensure a directory exists on the WebDAV server by issuing MKCOL for every
+ * missing path segment from root to deepest, tolerating already-existing
+ * collections.
+ *
+ * Root → deepest recursion is required because many WebDAV servers (bytemark
+ * included) reject MKCOL with 409 Conflict when the parent collection is
+ * missing. A 409 is therefore disambiguated with an existence probe before
+ * being treated as a real failure.
+ *
+ * @param {string} directoryPath - Absolute WebDAV path to ensure exists.
+ * @returns {Promise<{success: true}>}
+ */
+async function ensureDirectoryExists(directoryPath) {
+  const client = await getWebDAVClient();
+  const normalizedPath = normalizePath(directoryPath);
+  const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.length === 0) {
+    return { success: true };
+  }
+
+  let currentPath = '';
+  for (const segment of segments) {
+    currentPath = currentPath ? `${currentPath}/${segment}` : `/${segment}`;
+    const requestPath = getRequestPath(currentPath);
+    try {
+      await client.createDirectory(requestPath);
+    } catch (error) {
+      if (isAlreadyExistsError(error)) {
+        continue;
+      }
+      const status = error.status || error.response?.status;
+      if (status === HTTP_STATUS.CONFLICT) {
+        let exists = false;
+        try {
+          exists = await client.exists(requestPath);
+        } catch (existsError) {
+          // fall through and surface the original MKCOL failure
+        }
+        if (exists) {
+          continue;
+        }
+      }
+      throw createError(SERVER_ERROR_CODES.webdav.createDirFailed, status || HTTP_STATUS.INTERNAL_SERVER_ERROR, { reason: error.message });
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Create a directory, ensuring all missing parent segments are created too.
+ * Idempotent: succeeds when the collection already exists.
+ */
+async function createDirectory(path) {
+  return ensureDirectoryExists(path);
 }
 
 async function pathExists(path) {
@@ -625,6 +691,7 @@ module.exports = {
   moveFile,
   copyFile,
   createDirectory,
+  ensureDirectoryExists,
   pathExists,
   getFileMetadata,
   getRecursiveFolderStats,

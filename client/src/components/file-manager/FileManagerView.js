@@ -82,6 +82,7 @@ const FileManagerView = ({
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    setLeaveShareConfirmTargetNodeId,
     setLeaveShareConfirmTargetPath,
     handleLeaveShareConfirm,
   } = overlayState;
@@ -344,6 +345,7 @@ const FileManagerView = ({
                 currentPath={currentPath}
                 ancestors={ancestors}
                 onNodeClick={handleFolderTreeNodeClick}
+                onLeaveShareClick={isShareLinkMode ? handleLeaveSharePathClick : undefined}
                 onFileClick={handleFileClick}
                 user={user}
                 treeUpdateTrigger={treeUpdateTrigger}
@@ -404,6 +406,10 @@ const FileManagerView = ({
                   ancestors={ancestors}
                   onNodeClick={(target) => {
                     handleFolderTreeNodeClick(target);
+                    setDrawerOpen(false);
+                  }}
+                  onLeaveShareClick={(target) => {
+                    handleLeaveSharePathClick(target);
                     setDrawerOpen(false);
                   }}
                   onFileClick={(file) => {
@@ -695,6 +701,7 @@ const FileManagerView = ({
         open={leaveShareConfirmOpen}
         onClose={() => {
           setLeaveShareConfirmOpen(false);
+          setLeaveShareConfirmTargetNodeId(null);
           setLeaveShareConfirmTargetPath(null);
         }}
         onConfirm={handleLeaveShareConfirm}

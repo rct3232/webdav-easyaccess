@@ -63,7 +63,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.addDir.dirName}(?:/.*)?$`));
+    await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.addDir.nodeId}$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     await expect(fileItem(page, fixtures.addDir.innerFilePath)).toBeVisible();
   });
@@ -85,7 +85,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-cancel').click(); // close add-to-my-permissions modal
 
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       const toggle = page.locator('button[title="Open folder tree"]');
       if (await toggle.count()) {
         await toggle.click();
@@ -98,7 +98,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible(); // leave-share confirm
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.approvedUsername}(?:/.*)?$`));
+    await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.approvedUserHomeNodeId}$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     // After leaving share scope, the user is taken back to their own explorer home;
     // the shared directory path should no longer be part of the visible listing.
@@ -118,7 +118,7 @@ test.describe('public share link', () => {
 
     const fileLocator = page.locator(`[data-file-path="${fixtures.anonDir.innerFilePath}"]`);
 
-    if (testInfo.project.name === 'desktop') {
+    if (testInfo.project.name.endsWith('-desktop')) {
       // Desktop: 더블클릭으로 PreviewDialog 열림
       await fileLocator.dblclick();
     } else {

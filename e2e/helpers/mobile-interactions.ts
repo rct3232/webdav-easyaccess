@@ -64,25 +64,50 @@ export async function clickActionSheetItem(
 }
 
 /**
- * Perform a long press on a file/folder item on mobile
- * 
+ * Perform a long press on a file/folder item on mobile, retrying until the
+ * multi-select (bulk) toolbar appears. The press gesture is mouse-based and can
+ * intermittently fail to register on WebKit; each retry re-issues the press and
+ * waits briefly for the selection toolbar before giving up.
+ *
  * @param page Playwright page
  * @param filePath The file path to long press
+ * @param options.selectionTestId testid that marks selection mode
+ *   (default 'bulk-action-move')
+ * @param options.attempts number of press attempts (default 3)
+ * @param options.pressMs press hold duration in ms (default 700)
  */
-export async function longPressItem(page: Page, filePath: string): Promise<void> {
+export async function longPressItem(
+  page: Page,
+  filePath: string,
+  options: { selectionTestId?: string; attempts?: number; pressMs?: number } = {}
+): Promise<void> {
+  const selectionTestId = options.selectionTestId ?? 'bulk-action-move';
+  const attempts = options.attempts ?? 3;
+  const pressMs = options.pressMs ?? 700;
   const item = page.locator(`[data-file-path="${filePath}"]`);
   await expect(item).toBeVisible();
   await item.scrollIntoViewIfNeeded();
-  
-  const box = await item.boundingBox();
-  if (!box) throw new Error(`Could not get bounding box for item ${filePath}`);
-  
-  // Move to center of element
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  // Long press duration (e.g., 500ms)
-  await page.waitForTimeout(500);
-  await page.mouse.up();
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const box = await item.boundingBox();
+    if (!box) throw new Error(`Could not get bounding box for item ${filePath}`);
+
+    // Move to center of element
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(pressMs);
+    await page.mouse.up();
+
+    try {
+      await page.getByTestId(selectionTestId).waitFor({ state: 'visible', timeout: 2500 });
+      return;
+    } catch {
+      // Selection mode did not engage; re-issue the long-press.
+    }
+  }
+
+  // Surface the canonical failure to the caller if selection never engaged.
+  await expect(page.getByTestId(selectionTestId)).toBeVisible();
 }
 
 /**

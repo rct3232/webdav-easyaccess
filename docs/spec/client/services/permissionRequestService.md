@@ -30,6 +30,7 @@ All request targets are nodeId-based (`nodeId` is a BIGINT `file_nodes.id`; no `
 | checkOwnerExists | (nodeId) | Promise\<Object\> | GET /api/permission-requests/check-owner?nodeId=... |
 
 - Create: `nodeId` required; target type (file/directory) is derived server-side from `file_nodes.type`
+- Inbox/outbox rows are enriched server-side with `display_path` (target absolute path) and `target_name` (target node name); both are `null` when the target node no longer resolves. Consumers may fall back to the raw `file_node_id` for display.
 
 ### 2.3 Error Handling
 

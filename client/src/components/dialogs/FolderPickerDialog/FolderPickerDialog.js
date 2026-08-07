@@ -173,7 +173,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
                         <FolderIcon color={isDisabled ? 'disabled' : 'primary'} />
                       </ListItemIcon>
                       <ListItemText
-                        primary={folder.basename}
+                        primary={folder.basename || folder.name || ''}
                         primaryTypographyProps={{
                           sx: {
                             color: isDisabled ? 'text.disabled' : 'text.primary',

@@ -112,7 +112,7 @@ describe('postgres infrastructure helpers', () => {
       release: jest.fn(),
     };
     const connect = jest.fn().mockResolvedValue(client);
-    const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
+    const Pool = jest.fn(() => ({ connect, end: jest.fn(), on: jest.fn() }));
     jest.doMock('pg', () => ({ Pool }));
 
     let isolatedStorage;
@@ -143,7 +143,7 @@ describe('postgres infrastructure helpers', () => {
       release: jest.fn(),
     };
     const connect = jest.fn().mockResolvedValue(client);
-    const Pool = jest.fn(() => ({ connect, end: jest.fn() }));
+    const Pool = jest.fn(() => ({ connect, end: jest.fn(), on: jest.fn() }));
     jest.doMock('pg', () => ({ Pool }));
 
     let isolatedStorage;

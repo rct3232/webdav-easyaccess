@@ -45,10 +45,12 @@ Refresh token CRUD is managed by `server/domains/auth/tokenStore.js` using Cache
 
 ### 2.5 Request/Response Spec
 
-- **POST /register:** Body: `{ username, email, password }`. 201: `{ messageCode, status, user }`. Errors: 403 (registration disabled), 400 (required, usernameTaken, emailTaken), 500.
-- **POST /login:** Body: `{ username, password }`. 200: `{ token, refreshToken, user }`. Errors: 400, 401 (invalid credentials), 403 (pending/rejected), 429 (rate limit).
+User objects returned by the auth API carry a `rootNodeId` field that resolves the user's home directory node (`file_nodes` row named after the username) via `createFileNodesStore().getUserRootNode(userId)`. It is a number when the home node exists, otherwise `null` (e.g. a freshly registered, still-pending user has no home node until approval). The client treats `null` as "no home yet".
+
+- **POST /register:** Body: `{ username, email, password }`. 201: `{ messageCode, status, user }` where `user = { id, username, email, status, rootNodeId }` (`rootNodeId` is `null` for pending users). Errors: 403 (registration disabled), 400 (required, usernameTaken, emailTaken), 500.
+- **POST /login:** Body: `{ username, password }`. 200: `{ token, refreshToken, user }` where `user = { id, username, email, is_admin, status, rootNodeId }`. Errors: 400, 401 (invalid credentials), 403 (pending/rejected), 429 (rate limit).
 - **POST /refresh:** Body: `{ refreshToken }`. 200: `{ token }`. Errors: 401.
-- **GET /me:** 200: user object. Errors: 401, 404, 500.
+- **GET /me:** 200: user object including `id, username, email, is_admin, status, rootNodeId` (plus any `users` row fields). Errors: 401, 404, 500.
 
 ### 2.6 Related Documents
 

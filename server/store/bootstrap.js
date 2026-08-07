@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 
 const { isSqliteBackend } = require('./storage');
 const { initSqliteSchema } = require('../scripts/initSqliteSchema');
+const { applyPendingMigrations } = require('../infrastructure/schemaManager');
 const userStore = require('./userStore');
 
 async function ensureDefaultAdmin() {
@@ -30,6 +31,8 @@ async function ensureDefaultAdmin() {
 async function initMetadataStore() {
   if (isSqliteBackend()) {
     await initSqliteSchema();
+  } else {
+    await applyPendingMigrations('postgresql');
   }
   await ensureDefaultAdmin();
 }

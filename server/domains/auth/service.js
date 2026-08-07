@@ -5,6 +5,7 @@ const Settings = require('../../models/Settings');
 const { generateToken } = require('../../utils/auth');
 const { sendRegistrationPendingEmail } = require('../../utils/email');
 const { ensureDefaultAdmin } = require('../../store/bootstrap');
+const { createFileNodesStore } = require('../../store/fileNodesStore');
 const tokenStore = require('./tokenStore');
 const { createCacheAdapter } = require('../../infrastructure/adapters/cache');
 
@@ -59,6 +60,17 @@ function clearLoginFailures(key) {
   _getRateLimitCache().delete(`ratelimit:${key}`);
 }
 
+/**
+ * Resolve the user's home directory node id (root-level file_nodes row named
+ * after the username). Returns null when no home node exists yet.
+ * @param {number|string} userId
+ * @returns {Promise<number|null>}
+ */
+async function resolveUserRootNodeId(userId) {
+  const node = await createFileNodesStore().getUserRootNode(userId);
+  return node ? Number(node.id) : null;
+}
+
 async function registerUser({ username, email, password }) {
   const registrationEnabled = await Settings.isRegistrationEnabled();
   if (!registrationEnabled) {
@@ -109,7 +121,13 @@ async function registerUser({ username, email, password }) {
 
     return {
       status: USER_STATUS.PENDING,
-      user: { id: createdUser.id, username: createdUser.username, email: createdUser.email, status: createdUser.status },
+      user: {
+        id: createdUser.id,
+        username: createdUser.username,
+        email: createdUser.email,
+        status: createdUser.status,
+        rootNodeId: await resolveUserRootNodeId(createdUser.id),
+      },
     };
   } catch (error) {
     if (error.errorCode) throw error;
@@ -198,6 +216,7 @@ async function loginUser({ username, password }, req) {
       email: user.email,
       is_admin: user.is_admin,
       status: user.status,
+      rootNodeId: await resolveUserRootNodeId(user.id),
     },
   };
 }
@@ -228,7 +247,7 @@ async function getAuthenticatedUser(userId, tokenVersion) {
     err.status = 401;
     throw err;
   }
-  return user;
+  return { ...user, rootNodeId: await resolveUserRootNodeId(user.id) };
 }
 
 function revokeAllUserTokens(userId) {

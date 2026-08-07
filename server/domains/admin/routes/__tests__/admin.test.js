@@ -22,11 +22,9 @@ jest.mock('../../../../utils/webdav', () => {
 
 let app;
 let dbCleanup;
-const previousBackend = process.env.WEA_STORAGE_BACKEND;
 const previousFileStorage = process.env.WEA_FILE_STORAGE;
 
 beforeAll(async () => {
-  process.env.WEA_STORAGE_BACKEND = 'sqlite';
   process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
@@ -42,7 +40,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await dbCleanup?.();
-  process.env.WEA_STORAGE_BACKEND = previousBackend;
   process.env.WEA_FILE_STORAGE = previousFileStorage;
 });
 

@@ -61,7 +61,9 @@ export const useFileManager = (user, options = {}) => {
     return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
   }, [urlPath]);
 
-  const homeNodeId = user?.rootNodeId ?? null;
+  // Admin's home is the filesystem root (`/`), so its homeNodeId is null;
+  // regular users get their named home node. Mirrors useFolderTreeController.
+  const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
   // currentNodeId is the source of truth for the explorer location.
   // null = root / virtual-root level. In share mode it is the current share folder

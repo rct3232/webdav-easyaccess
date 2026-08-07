@@ -71,6 +71,7 @@ The FileManager page shell must continue to own these overlays and policies (unt
   - Limited operations (e.g. no upload/create; download-only bulk operations).
   - Optional login prompt / “add to my permissions” flows when applicable.
   - Composition of product overlay controllers such as `useShareLinkOverlay`.
+  - **Leave-share confirmation**: when an authenticated user attempts to leave the shared directory scope (e.g. by clicking the home / shared / recent entries of the folder tree in share-link mode), the shell must route the click through `useShareLinkOverlay.handleLeaveSharePathClick`, which opens the leave-share confirmation dialog. The actual navigation out of share mode (`/files/node/<nodeId>` for node id targets, `toFilesPath` route for path-string targets) happens only after the user confirms (`handleLeaveShareConfirm`).
 - **Virtual collections and product routing state**:
   - Special paths/collections such as `__recent__` and `__shared__` (product-defined).
   - Rules for deciding *when* those collections are active and which explorer flow they should invoke.
@@ -205,6 +206,7 @@ This section captures observable behavior that must remain unchanged as responsi
   - Upload/create flows are not available.
   - Bulk actions are restricted (download-only).
   - Optional login modal for “add to my permissions” flows remains available as today.
+  - Attempting to leave the shared directory scope (folder-tree home / shared / recent clicks) opens the leave-share confirmation dialog; navigation out of share mode occurs only on confirmation.
 
 ### 5.5 Scroll/overscroll behavior (mobile)
 
@@ -242,3 +244,4 @@ These scenarios should stay true throughout extraction steps (verify “what”,
 - [ ] Share-link mode:
   - [ ] Unauthenticated vs authenticated behaviors match current UX
   - [ ] Restricted operations remain restricted
+  - [ ] Leaving the shared directory scope (e.g. folder-tree home click) opens the leave-share confirmation; confirming navigates to the authenticated files route (`/files/node/<nodeId>`), canceling keeps the user in share mode

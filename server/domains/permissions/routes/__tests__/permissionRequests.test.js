@@ -11,6 +11,9 @@ const {
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const permissionStore = require('../../stores/permissionStore');
+const composition = require('../../../../service/composition');
+const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 
 let app;
 let dbCleanup;
@@ -18,14 +21,23 @@ let fileNodesStore;
 let fileNodeService;
 
 beforeAll(async () => {
+  process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
-  app = require('../../../../index');
   fileNodesStore = createFileNodesStore();
   fileNodeService = createFileNodeService({ fileNodesStore });
+  const webdavMock = createWebdavMock();
+  const blobStore = new WebdavBlobStore(webdavMock);
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore,
+    fileNodeService,
+  });
+  app = require('../../../../index');
 });
 
 afterAll(async () => {
+  composition.resetComposition();
   await dbCleanup?.();
 });
 
@@ -65,7 +77,10 @@ describe('POST /api/permission-requests (nodeId)', () => {
       owner_id: owner.user.id,
       requested_permission: PERMISSIONS.READ,
       status: 'pending',
+      file_node_id: ownerDir.id,
     });
+    expect(res.body.display_path).toBe(`/${owner.user.username}`);
+    expect(res.body.target_name).toBe(owner.user.username);
   });
 
   it('creates permission request with fileNodeId for files', async () => {
@@ -94,7 +109,10 @@ describe('POST /api/permission-requests (nodeId)', () => {
     expect(res.body).toMatchObject({
       id: expect.any(Number),
       status: 'pending',
+      file_node_id: testFile.id,
     });
+    expect(res.body.display_path).toBe(`/${owner.user.username}/${testFile.name}`);
+    expect(res.body.target_name).toBe(testFile.name);
   });
 
   it('returns 400 when nodeId and fileNodeId are both missing', async () => {
@@ -149,6 +167,10 @@ describe('GET /api/permission-requests/inbox (nodeId)', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(1);
+    const target = res.body.find((r) => r.file_node_id === ownerDir.id);
+    expect(target).toBeDefined();
+    expect(target.display_path).toBe(`/${owner.user.username}`);
+    expect(target.target_name).toBe(owner.user.username);
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -181,6 +203,10 @@ describe('GET /api/permission-requests/outbox (nodeId)', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(1);
+    const target = res.body.find((r) => r.file_node_id === ownerDir.id);
+    expect(target).toBeDefined();
+    expect(target.display_path).toBe(`/${owner.user.username}`);
+    expect(target.target_name).toBe(owner.user.username);
   });
 });
 

@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createGcService } = require('../gcService');
 
@@ -26,19 +25,17 @@ function createFakeBlobStore({ listOrphaned = [] } = {}) {
 }
 
 async function insertObjectMapRow({ fileNodeId, s3Key, status, daysAgo = 0 }) {
-  const createdClause = daysAgo > 0
-    ? `datetime('now', '-${daysAgo} days')`
-    : `datetime('now')`;
-  const res = await storage.sqliteRun(
+  const created = new Date(Date.now() - daysAgo * 86400000).toISOString();
+  const res = await dbRun(
     `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, created_at)
-     VALUES (?, ?, 's3', 1, ?, ${createdClause})`,
-    [fileNodeId, s3Key, status]
+     VALUES (?, ?, 's3', 1, ?, ?)`,
+    [fileNodeId, s3Key, status, created]
   );
   return res.lastID;
 }
 
 async function getObjectMapRowByKey(s3Key) {
-  const res = await storage.sqliteQuery(
+  const res = await dbQuery(
     'SELECT s3_key, status FROM object_map WHERE s3_key = ?',
     [s3Key]
   );
@@ -100,7 +97,7 @@ describe('createGcService', () => {
       expect(blobStore.getDeleted()).toEqual([orphanedKey]);
       expect(blobStore.getDeleted()).not.toContain(activeKey);
 
-      const activeRow = await storage.sqliteQuery(
+      const activeRow = await dbQuery(
         `SELECT s3_key, status FROM object_map WHERE s3_key = ?`,
         [activeKey]
       );

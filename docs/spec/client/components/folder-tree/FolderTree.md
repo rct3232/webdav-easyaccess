@@ -24,6 +24,7 @@
 |------|------|----------|---------|-------------|
 | currentNodeId | number | Y | - | Current folder node id |
 | onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
+| onLeaveShareClick | function | N | - | Share-mode folder click for non-share sections: `(nodeId: number \| path: string) => void`. When a `shareLinkSection` is present, the home / shared / recent sections call this instead of `onNodeClick`, so the hosting surface can open the leave-share confirmation. Falls back to `onNodeClick` when omitted. |
 | onFileClick | function | N | - | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
@@ -38,6 +39,7 @@
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
 | onNodeClick | Folder click | (nodeId) |
+| onLeaveShareClick | Non-share section folder click while a share-link section is present (home/shared/recent) | (nodeId: number) or (path: string) |
 | onFileClick | Recent file click | (file) |
 | onExplorerDrop | Drop (OS files) | - |
 | onInternalFileDrop | Internal drop (file manager) | (draggedNodeId, targetNodeId) |
@@ -65,6 +67,7 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.
+- [ ] When a share-link section is present, clicking the home / shared / recent entries calls `onLeaveShareClick` (node id or virtual-root path) instead of `onNodeClick`; the share-link section itself still calls `onNodeClick`.
 - [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent entries are nodeId-first since Phase 5.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).

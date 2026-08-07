@@ -15,6 +15,7 @@ const ShareLinkSingleFileView = ({ token, linkInfo }) => {
       path,
       name,
       basename: name,
+      nodeId: linkInfo?.nodeId,
       canPreview: name ? canPreview(name) : false,
     };
   }, [linkInfo]);

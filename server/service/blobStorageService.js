@@ -118,8 +118,7 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     const count = await fileNodesStore.countActiveObjectsByS3Key(row.s3_key);
     if (count > 1) {
       const newS3Key = await duplicateBlob(row.s3_key);
-      await fileNodesStore.orphanObject(row.s3_key);
-      await fileNodesStore.insertObject(fileNodeId, newS3Key, 'active');
+      await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active');
       return newS3Key;
     }
     return row.s3_key;
@@ -157,6 +156,37 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     await fileNodesStore.upsertCache(fileNodeId, buffer.length, mimeType || 'application/octet-stream', null);
   }
 
+  /**
+   * Ensure the physical storage directory for a node exists (WebDAV MKCOL).
+   *
+   * No-op in S3 mode so call sites can invoke it unconditionally. In WebDAV
+   * mode the resolved node path is MKCOL'd recursively (root → deepest,
+   * tolerating already-existing collections) via the blob store. On failure
+   * the node is marked sync_status='orphaned_node' as a fail-safe and the
+   * error is re-thrown so callers surface a failure response.
+   *
+   * @param {number} nodeId - ID of the directory node to materialize remotely.
+   * @returns {Promise<string|null>} resolved node path (WebDAV) or null (S3 no-op).
+   */
+  async function createDirectoryWebdav(nodeId) {
+    if (!isWebdavMode || !blobStore.createDirectory) {
+      return null;
+    }
+    const nodePath = await resolveWebdavPathOrNull(nodeId);
+    if (nodePath === null) {
+      throw new Error('Cannot resolve path for fileNodeId: ' + nodeId);
+    }
+    try {
+      await blobStore.createDirectory(nodePath);
+    } catch (error) {
+      if (fileNodeService) {
+        await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
+      }
+      throw error;
+    }
+    return nodePath;
+  }
+
   return {
     prepareUpload,
     completeUpload,
@@ -170,6 +200,7 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     ensureExclusiveBlob,
     uploadToWebdav,
     downloadBlobWebdav,
+    createDirectoryWebdav,
   };
 }
 

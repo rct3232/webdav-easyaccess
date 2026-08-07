@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../fileNodesStore');
 
 describe('createFileNodesStore', () => {
@@ -24,12 +23,12 @@ describe('createFileNodesStore', () => {
 
   describe('file_nodes', () => {
     afterEach(async () => {
-      const ids = await storage.sqliteQuery(
+      const ids = await dbQuery(
         `SELECT id FROM file_nodes WHERE name LIKE 'test-%' OR name LIKE 'fn-%'`
       );
       for (const row of ids.rows) {
         try {
-          await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [row.id]);
+          await dbRun('DELETE FROM file_nodes WHERE id = ?', [row.id]);
         } catch { /* ignore cascade errors */ }
       }
     });
@@ -67,6 +66,22 @@ describe('createFileNodesStore', () => {
       expect(children).toEqual([]);
     });
 
+    // Root listing: getChildren(null) returns top-level (parent_id IS NULL) nodes.
+    it('returns root-level nodes when parentId is null', async () => {
+      const rootA = await store.createNode(null, 'fn-root-a', 'directory');
+      const rootB = await store.createNode(null, 'fn-root-b', 'file');
+      const nested = await store.createNode(rootA.id, 'fn-root-nested', 'file');
+
+      const children = await store.getChildren(null);
+
+      const ids = children.map((c) => c.id);
+      expect(ids).toContain(rootA.id);
+      expect(ids).toContain(rootB.id);
+      expect(ids).not.toContain(nested.id);
+
+      await dbRun('DELETE FROM file_nodes WHERE name IN (?, ?, ?)', ['fn-root-a', 'fn-root-b', 'fn-root-nested']);
+    });
+
     // renameNode
     it('renames a node and refreshes updated_at', async () => {
       const created = await store.createNode(null, 'fn-rename-me', 'file');
@@ -97,23 +112,23 @@ describe('createFileNodesStore', () => {
       const child2 = await store.createNode(parent.id, 'test-cascade-child2', 'file');
 
       // Insert related rows in object_map and filecache to verify CASCADE
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, 'pending')`,
         [child1.id, 'test-cascade-key1']
       );
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO filecache (file_node_id, size, mime_type, content_hash, updated_at)
-         VALUES (?, 100, 'text/plain', null, datetime('now'))`,
-        [child2.id]
+         VALUES (?, 100, 'text/plain', null, ?)`,
+        [child2.id, new Date().toISOString()]
       );
 
       // Insert ancestor rows
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (?, ?, 0)`,
         [parent.id, parent.id]
       );
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (?, ?, 1)`,
         [parent.id, child1.id]
       );
@@ -132,21 +147,21 @@ describe('createFileNodesStore', () => {
       expect(child2Node).toBeNull();
 
       // Verify object_map rows are gone
-      const objMapRows = await storage.sqliteQuery(
+      const objMapRows = await dbQuery(
         `SELECT COUNT(*) as count FROM object_map WHERE file_node_id IN (?, ?)`,
         [child1.id, child2.id]
       );
       expect(objMapRows.rows[0].count).toBe(0);
 
       // Verify filecache rows are gone
-      const cacheRows = await storage.sqliteQuery(
+      const cacheRows = await dbQuery(
         `SELECT COUNT(*) as count FROM filecache WHERE file_node_id IN (?, ?)`,
         [child1.id, child2.id]
       );
       expect(cacheRows.rows[0].count).toBe(0);
 
       // Verify node_ancestors rows are gone
-      const ancestorRows = await storage.sqliteQuery(
+      const ancestorRows = await dbQuery(
         `SELECT COUNT(*) as count FROM node_ancestors WHERE ancestor_id IN (?, ?, ?) OR descendant_id IN (?, ?, ?)`,
         [parent.id, child1.id, child2.id, parent.id, child1.id, child2.id]
       );
@@ -182,18 +197,17 @@ describe('createFileNodesStore', () => {
   /* ------------------------------------------------------------------ */
   /*  node_ancestors                                                     */
   /* ------------------------------------------------------------------ */
-
   describe('node_ancestors', () => {
     const testPrefix = 'anc-';
 
     afterEach(async () => {
-      await storage.sqliteRun(
+      await dbRun(
         `DELETE FROM node_ancestors WHERE descendant_id IN (SELECT id FROM file_nodes WHERE name LIKE '${testPrefix}%')`
       );
-      await storage.sqliteRun(
+      await dbRun(
         `DELETE FROM node_ancestors WHERE ancestor_id IN (SELECT id FROM file_nodes WHERE name LIKE '${testPrefix}%')`
       );
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
+      await dbRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
     });
 
     // V9: insertAncestorRows bulk
@@ -209,7 +223,7 @@ describe('createFileNodesStore', () => {
 
       expect(result.changes).toBe(3);
 
-      const rows = await storage.sqliteQuery(
+      const rows = await dbQuery(
         `SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) ORDER BY ancestor_id, descendant_id`,
         [root.id, child.id]
       );
@@ -232,7 +246,7 @@ describe('createFileNodesStore', () => {
       expect(delResult.changes).toBe(2);
 
       // childB rows remain
-      const remainingRows = await storage.sqliteQuery(
+      const remainingRows = await dbQuery(
         `SELECT COUNT(*) as count FROM node_ancestors WHERE descendant_id = ?`,
         [childB.id]
       );
@@ -356,7 +370,7 @@ describe('createFileNodesStore', () => {
       const delResult = await store.deleteAncestorByAncestor([root.id]);
       expect(delResult.changes).toBe(1);
 
-      const remaining = await storage.sqliteQuery(
+      const remaining = await dbQuery(
         `SELECT COUNT(*) as count FROM node_ancestors WHERE descendant_id IN (?, ?)`,
         [root.id, child.id]
       );
@@ -392,7 +406,7 @@ describe('createFileNodesStore', () => {
     const testPrefix = 'obj-';
 
     afterEach(async () => {
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
+      await dbRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
     });
 
     // V13: upsertObjectMap creates pending entry
@@ -400,7 +414,7 @@ describe('createFileNodesStore', () => {
       const created = await store.createNode(null, `${testPrefix}pending-file`, 'file');
       await store.upsertObjectMap(created.id, 's3://bucket/pending-key', 'pending');
 
-      const activeObj = await storage.sqliteQuery(
+      const activeObj = await dbQuery(
         `SELECT * FROM object_map WHERE file_node_id = ? AND status = 'pending'`,
         [created.id]
       );
@@ -413,14 +427,14 @@ describe('createFileNodesStore', () => {
       const created = await store.createNode(null, `${testPrefix}orphan-file`, 'file');
 
       // First upsert creates an active row (version 1)
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, ?)`,
         [created.id, 's3://bucket/old-key', 'active']
       );
 
       // Verify it's active
-      let row = await storage.sqliteQuery(
+      let row = await dbQuery(
         `SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
         [created.id, 's3://bucket/old-key']
       );
@@ -433,7 +447,7 @@ describe('createFileNodesStore', () => {
       } catch { /* expected: unique constraint on (file_node_id, version_number) */ }
 
       // The orphaning UPDATE runs before the INSERT, so old row should be orphaned
-      row = await storage.sqliteQuery(
+      row = await dbQuery(
         `SELECT * FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
         [created.id, 's3://bucket/old-key']
       );
@@ -448,7 +462,7 @@ describe('createFileNodesStore', () => {
       const result = await store.activateObject('s3://bucket/activate-key');
       expect(result.changes).toBe(1);
 
-      const row = await storage.sqliteQuery(
+      const row = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         ['s3://bucket/activate-key']
       );
@@ -463,7 +477,7 @@ describe('createFileNodesStore', () => {
       const result = await store.orphanObject('s3://bucket/orphan-active-key');
       expect(result.changes).toBe(1);
 
-      const row = await storage.sqliteQuery(
+      const row = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         ['s3://bucket/orphan-active-key']
       );
@@ -531,7 +545,7 @@ describe('createFileNodesStore', () => {
     const testPrefix = 'fc-';
 
     afterEach(async () => {
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
+      await dbRun(`DELETE FROM file_nodes WHERE name LIKE '${testPrefix}%'`);
     });
 
     // V17: upsertCache inserts new row
@@ -541,7 +555,7 @@ describe('createFileNodesStore', () => {
 
       expect(result.changes).toBe(1);
 
-      const row = await storage.sqliteQuery(
+      const row = await dbQuery(
         `SELECT * FROM filecache WHERE file_node_id = ?`,
         [created.id]
       );
@@ -559,7 +573,7 @@ describe('createFileNodesStore', () => {
       const result = await store.upsertCache(created.id, 2048, 'application/pdf', 'hash-v2');
       expect(result.changes).toBe(1);
 
-      const row = await storage.sqliteQuery(
+      const row = await dbQuery(
         `SELECT * FROM filecache WHERE file_node_id = ?`,
         [created.id]
       );
@@ -591,7 +605,7 @@ describe('createFileNodesStore', () => {
       const result = await store.deleteCache(created.id);
       expect(result.changes).toBe(1);
 
-      const row = await storage.sqliteQuery(
+      const row = await dbQuery(
         `SELECT COUNT(*) as count FROM filecache WHERE file_node_id = ?`,
         [created.id]
       );

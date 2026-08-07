@@ -155,9 +155,9 @@ function createFileNodesStore() {
                   fc.size, fc.mime_type, fc.content_hash
            FROM file_nodes fn
            LEFT JOIN filecache fc ON fc.file_node_id = fn.id
-           WHERE fn.parent_id = $1
+           WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = $1'}
            ORDER BY fn.name`,
-          [parentId != null ? Number(parentId) : null]
+          parentId != null ? [Number(parentId)] : []
         );
         return res.rows.map(mapChildRow);
       } catch (error) {
@@ -172,9 +172,9 @@ function createFileNodesStore() {
                 fc.size, fc.mime_type, fc.content_hash
          FROM file_nodes fn
          LEFT JOIN filecache fc ON fc.file_node_id = fn.id
-         WHERE fn.parent_id = ?
+         WHERE ${parentId == null ? 'fn.parent_id IS NULL' : 'fn.parent_id = ?'}
          ORDER BY fn.name`,
-        [parentId != null ? Number(parentId) : null]
+        parentId != null ? [Number(parentId)] : []
       );
       return res.rows.map(mapChildRow);
     } catch (error) {
@@ -338,13 +338,16 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const placeholders = buildInPlaceholders(3 * rows.length);
+        const valueGroups = rows.map((_, i) => {
+          const base = i * 3;
+          return `($${base + 1}, $${base + 2}, $${base + 3})`;
+        }).join(', ');
         const values = [];
         for (const r of rows) {
           values.push(Number(r.ancestorId), Number(r.descendantId), Number(r.depth));
         }
         const res = await pool.query(
-          `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (${placeholders})`,
+          `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES ${valueGroups}`,
           values
         );
         return { changes: res.rowCount };

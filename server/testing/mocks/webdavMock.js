@@ -13,6 +13,7 @@ function createWebdavMock(overrides = {}) {
     moveFile: jest.fn().mockResolvedValue(undefined),
     copyFile: jest.fn().mockResolvedValue(undefined),
     createDirectory: jest.fn().mockResolvedValue(undefined),
+    ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
     getFileMetadata: jest.fn().mockResolvedValue({}),
     isImageFile: jest.fn(() => false),
     isVideoFile: jest.fn(() => false),

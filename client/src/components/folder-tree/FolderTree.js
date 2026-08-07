@@ -14,6 +14,7 @@ const FolderTree = ({
   currentNodeId,
   currentPath = '',
   onNodeClick,
+  onLeaveShareClick,
   onFileClick,
   user,
   treeUpdateTrigger,
@@ -28,6 +29,10 @@ const FolderTree = ({
   ancestors = EMPTY_ANCESTORS,
 }) => {
   const { t } = useTranslation();
+  // In share-link mode the home/shared/recent sections are outside the shared scope:
+  // route their clicks through onLeaveShareClick so the host can open the leave-share
+  // confirmation. The share-link section keeps onNodeClick (in-scope navigation).
+  const nonShareOnNodeClick = shareLinkSection ? (onLeaveShareClick || onNodeClick) : onNodeClick;
   const {
     homeNodeId,
     expandedNodeIds,
@@ -42,7 +47,7 @@ const FolderTree = ({
     handleRecentToggle,
     handleRecentClick,
     recentFilesList,
-  } = useFolderTreeController({ currentNodeId, currentPath, user, onNodeClick, ancestors });
+  } = useFolderTreeController({ currentNodeId, currentPath, user, onNodeClick: nonShareOnNodeClick, ancestors });
 
   return (
     <Box
@@ -76,7 +81,7 @@ const FolderTree = ({
                 name={user?.is_admin ? t('nav.home') : user?.username || t('nav.home')}
                 level={0}
                 currentNodeId={currentNodeId}
-                onNodeClick={onNodeClick}
+                onNodeClick={nonShareOnNodeClick}
                 expandedNodeIds={expandedNodeIds}
                 onToggleExpand={onToggleExpand}
                 user={user}
@@ -118,7 +123,7 @@ const FolderTree = ({
                 handleRecentClick={handleRecentClick}
                 currentPath={currentPath}
                 recentFilesList={recentFilesList}
-                onNodeClick={onNodeClick}
+                onNodeClick={nonShareOnNodeClick}
                 onFileClick={onFileClick}
               />
             </>

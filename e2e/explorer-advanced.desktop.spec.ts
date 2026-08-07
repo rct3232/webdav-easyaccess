@@ -2,9 +2,10 @@ import { expect, test } from '@playwright/test';
 
 import { loginAsAdmin } from './helpers/auth';
 import { openFabAction } from './helpers/explorer';
-import { buildName } from './helpers/files';
+import { buildName, fileItem } from './helpers/files';
 import { switchViewMode, setSortMode } from './helpers/explorer-advanced';
 import { doubleClickItem, ctrlClickItem, shiftClickItem, clickEmptyArea, rightClickItem } from './helpers/desktop-interactions';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -332,6 +333,10 @@ test.describe('explorer advanced (desktop)', () => {
     const fileName = buildName(testInfo, 'recent-test-file') + '.txt';
     await createTestFile(page, fileName);
 
+    // 2b. Open the file (double-click preview) so it is tracked as recent:
+    // recent tracking fires on file open/preview, not on creation or listing.
+    await doubleClickItem(page, `/${fileName}`);
+
     // 3. Navigate to the file's parent directory to track it as recent
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
@@ -352,11 +357,13 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(recentTreeButton).toBeVisible();
 
     // 7. Assertion: a recent file entry is visible in the listing
-    // The newly created file should appear in the recent files list
-    await expect(page.locator('[data-file-path]')).toBeVisible();
+    // The opened file appears in the recent files list. Recent entries are
+    // keyed by nodeId and render `data-file-path` from display_path; wait for
+    // the recent list to load (it is fetched after navigation).
+    await expect(fileItem(page, `/${fileName}`)).toBeVisible({ timeout: 20_000 });
   });
 
-  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
+  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page, request }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -369,15 +376,15 @@ test.describe('explorer advanced (desktop)', () => {
     await createTestFolder(page, folderB);
 
     // Upload file to folderA
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await createTestFile(page, conflictFileName);
 
     // Upload file to folderB
-    await page.goto(`/files/${folderB}`);
+    await gotoFilesPath(page, request, `/${folderB}`);
     await createTestFile(page, conflictFileName);
 
     // 3. Action: Move file from folderA to folderB
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await page.locator(`[data-file-path="/${folderA}/${conflictFileName}"]`).click();
 
     // Trigger bulk move

@@ -5,13 +5,10 @@ import { loginAsAdmin } from './helpers/auth';
 import { openFabAction } from './helpers/explorer';
 import { clickActionSheetItem, openActionSheet } from './helpers/mobile-interactions';
 import { buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
-
-function toFilesRoute(filePath: string) {
-  return filePath === '/' ? '/files' : `/files${filePath}`;
-}
 
 async function uploadFile(
   page: Parameters<typeof openFabAction>[0],
@@ -43,41 +40,59 @@ async function mobileLongPressFile(
   filePath: string,
 ) {
   const selector = `[data-file-path="${filePath}"]`;
-  await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) throw new Error(`File element not found: ${sel}`);
 
-    const rect = el.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
+  const pressOnce = async () => {
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error(`File element not found: ${sel}`);
 
-    const touch = {
-      clientX: x,
-      clientY: y,
-      pageX: x,
-      pageY: y,
-      screenX: x,
-      screenY: y,
-    };
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
 
-    const ev = new Event('touchstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(ev, 'touches', { value: [touch] });
-    Object.defineProperty(ev, 'targetTouches', { value: [touch] });
-    Object.defineProperty(ev, 'changedTouches', { value: [touch] });
-    el.dispatchEvent(ev);
-  }, selector);
+      const touch = {
+        clientX: x,
+        clientY: y,
+        pageX: x,
+        pageY: y,
+        screenX: x,
+        screenY: y,
+      };
 
-  await page.waitForTimeout(550);
+      const ev = new Event('touchstart', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [touch] });
+      Object.defineProperty(ev, 'targetTouches', { value: [touch] });
+      Object.defineProperty(ev, 'changedTouches', { value: [touch] });
+      el.dispatchEvent(ev);
+    }, selector);
 
-  await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) throw new Error(`File element not found: ${sel}`);
-    const ev = new Event('touchend', { bubbles: true, cancelable: true });
-    Object.defineProperty(ev, 'touches', { value: [] });
-    Object.defineProperty(ev, 'targetTouches', { value: [] });
-    Object.defineProperty(ev, 'changedTouches', { value: [] });
-    el.dispatchEvent(ev);
-  }, selector);
+    await page.waitForTimeout(700);
+
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error(`File element not found: ${sel}`);
+      const ev = new Event('touchend', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'touches', { value: [] });
+      Object.defineProperty(ev, 'targetTouches', { value: [] });
+      Object.defineProperty(ev, 'changedTouches', { value: [] });
+      el.dispatchEvent(ev);
+    }, selector);
+  };
+
+  // Retry until the multi-select (bulk) toolbar appears; the synthetic touch
+  // press can intermittently fail to register under load.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await pressOnce();
+    try {
+      await page.getByTestId('bulk-action-move').waitFor({ state: 'visible', timeout: 2500 });
+      return;
+    } catch {
+      // Selection mode did not engage; retry the long-press.
+    }
+  }
+
+  // Surface the canonical failure to the caller if selection never engaged.
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
 }
 
 async function selectTwoFilesMobile(
@@ -184,7 +199,7 @@ test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }
   await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
 });
 
-test('E2E-BULK-002: Move selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-002: Move selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
   const srcFile1Path = `/${srcFile1Name}`;
@@ -214,12 +229,12 @@ test('E2E-BULK-002: Move selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
   await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
 
-  await page.goto(toFilesRoute(destFolderPath));
+  await gotoFilesPath(page, request, destFolderPath);
   await expect(fileItem(page, destFile1Path)).toBeVisible();
   await expect(fileItem(page, destFile2Path)).toBeVisible();
 });
 
-test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-003: Copy selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
   const srcFile1Path = `/${srcFile1Name}`;
@@ -249,7 +264,7 @@ test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toBeVisible();
   await expect(fileItem(page, srcFile2Path)).toBeVisible();
 
-  await page.goto(toFilesRoute(destFolderPath));
+  await gotoFilesPath(page, request, destFolderPath);
   await expect(fileItem(page, destFile1Path)).toBeVisible();
   await expect(fileItem(page, destFile2Path)).toBeVisible();
 });

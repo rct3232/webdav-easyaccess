@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createFileNodeService } = require('../fileNodeService');
 
@@ -31,7 +30,7 @@ describe('createFileNodeService', () => {
       expect(node.name).toBe('svc-root-file.txt');
       expect(node.type).toBe('file');
 
-      const ancestors = await storage.sqliteQuery(
+      const ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [node.id]
       );
@@ -40,7 +39,7 @@ describe('createFileNodeService', () => {
       expect(ancestors.rows[0].descendant_id).toBe(node.id);
       expect(ancestors.rows[0].depth).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [node.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [node.id]);
     });
 
     // V2: createFile at depth 1 — ancestor chain includes parent + grandparent
@@ -50,7 +49,7 @@ describe('createFileNodeService', () => {
 
       expect(node.parentId).toBe(dir.id);
 
-      const ancestors = await storage.sqliteQuery(
+      const ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [node.id]
       );
@@ -60,7 +59,7 @@ describe('createFileNodeService', () => {
       expect(ancestors.rows[1].ancestor_id).toBe(dir.id);
       expect(ancestors.rows[1].depth).toBe(1);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
     });
 
     // V3: createFile duplicate name under same parent — UNIQUE constraint error thrown
@@ -72,7 +71,7 @@ describe('createFileNodeService', () => {
         svc.createFile(dir.id, 'svc-dup-file.txt')
       ).rejects.toThrow();
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
     });
 
     // V4: createDirectory — type='directory', same ancestor behavior as file
@@ -83,7 +82,7 @@ describe('createFileNodeService', () => {
       expect(childDir.type).toBe('directory');
       expect(childDir.parentId).toBe(parentDir.id);
 
-      const ancestors = await storage.sqliteQuery(
+      const ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [childDir.id]
       );
@@ -93,7 +92,7 @@ describe('createFileNodeService', () => {
       expect(ancestors.rows[1].ancestor_id).toBe(parentDir.id);
       expect(ancestors.rows[1].depth).toBe(1);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [parentDir.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [parentDir.id]);
     });
   });
 
@@ -107,26 +106,26 @@ describe('createFileNodeService', () => {
       const dir = await svc.createDirectory(null, 'svc-rename-dir');
       const file = await svc.createFile(dir.id, 'svc-original-name.txt');
 
-      const beforeAncestors = await storage.sqliteQuery(
+      const beforeAncestors = await dbQuery(
         'SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?',
         [file.id]
       );
 
       await svc.renameNode(file.id, 'svc-renamed-file.txt');
 
-      const updated = await storage.sqliteQuery(
+      const updated = await dbQuery(
         'SELECT name FROM file_nodes WHERE id = ?',
         [file.id]
       );
       expect(updated.rows[0].name).toBe('svc-renamed-file.txt');
 
-      const afterAncestors = await storage.sqliteQuery(
+      const afterAncestors = await dbQuery(
         'SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?',
         [file.id]
       );
       expect(afterAncestors.rows[0].cnt).toBe(beforeAncestors.rows[0].cnt);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
     });
   });
 
@@ -142,7 +141,7 @@ describe('createFileNodeService', () => {
       const child = await svc.createFile(oldParent.id, 'svc-move-child.txt');
 
       // Verify ancestor chain before move
-      let ancestors = await storage.sqliteQuery(
+      let ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [child.id]
       );
@@ -151,21 +150,21 @@ describe('createFileNodeService', () => {
       await svc.moveNode(child.id, newParent.id);
 
       // Verify ancestor chain after move
-      ancestors = await storage.sqliteQuery(
+      ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [child.id]
       );
       expect(ancestors.rows.some(r => r.ancestor_id === newParent.id)).toBe(true);
       expect(ancestors.rows.some(r => r.ancestor_id === oldParent.id)).toBe(false);
 
-      const updated = await storage.sqliteQuery(
+      const updated = await dbQuery(
         'SELECT parent_id FROM file_nodes WHERE id = ?',
         [child.id]
       );
       expect(updated.rows[0].parent_id).toBe(newParent.id);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [oldParent.id]);
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [newParent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [oldParent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [newParent.id]);
     });
 
     // V7: moveNode into own descendant — error thrown (cycle detection)
@@ -178,7 +177,7 @@ describe('createFileNodeService', () => {
         svc.moveNode(grandparent.id, child.id)
       ).rejects.toThrow(/Cannot move node into its own descendant/i);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [grandparent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [grandparent.id]);
     });
 
     // V8: moveNode to root (newParentId=null) — only self-row remains in ancestor chain
@@ -187,7 +186,7 @@ describe('createFileNodeService', () => {
       const child = await svc.createDirectory(parent.id, 'svc-move-root-child');
 
       // Verify child has 2 ancestor rows before move
-      let ancestors = await storage.sqliteQuery(
+      let ancestors = await dbQuery(
         'SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?',
         [child.id]
       );
@@ -196,7 +195,7 @@ describe('createFileNodeService', () => {
       await svc.moveNode(child.id, null);
 
       // After move to root, only self-row should remain
-      ancestors = await storage.sqliteQuery(
+      ancestors = await dbQuery(
         'SELECT * FROM node_ancestors WHERE descendant_id = ? ORDER BY depth',
         [child.id]
       );
@@ -204,7 +203,7 @@ describe('createFileNodeService', () => {
       expect(ancestors.rows[0].ancestor_id).toBe(child.id);
       expect(ancestors.rows[0].depth).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
     });
   });
 
@@ -220,19 +219,19 @@ describe('createFileNodeService', () => {
 
       await svc.deleteNode(child.id);
 
-      const node = await storage.sqliteQuery(
+      const node = await dbQuery(
         'SELECT * FROM file_nodes WHERE id = ?',
         [child.id]
       );
       expect(node.rows.length).toBe(0);
 
-      const ancestors = await storage.sqliteQuery(
+      const ancestors = await dbQuery(
         'SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?',
         [child.id]
       );
       expect(ancestors.rows[0].cnt).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
     });
 
     // V10: deleteNode directory with children — CASCADE removes entire subtree
@@ -246,7 +245,7 @@ describe('createFileNodeService', () => {
 
       // All nodes in subtree should be gone (CASCADE)
       for (const id of [rootDir.id, childFile.id, subDir.id, grandchildFile.id]) {
-        const row = await storage.sqliteQuery(
+        const row = await dbQuery(
           'SELECT * FROM file_nodes WHERE id = ?',
           [id]
         );
@@ -255,7 +254,7 @@ describe('createFileNodeService', () => {
 
       // Ancestor rows should also be cleaned up
       for (const id of [rootDir.id, childFile.id, subDir.id, grandchildFile.id]) {
-        const anc = await storage.sqliteQuery(
+        const anc = await dbQuery(
           'SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?',
           [id]
         );
@@ -283,7 +282,7 @@ describe('createFileNodeService', () => {
       expect(children[1].name).toBe('svc-beta-dir');
       expect(children[2].name).toBe('svc-zeta.txt');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [parent.id]);
     });
   });
 
@@ -298,7 +297,7 @@ describe('createFileNodeService', () => {
       const path = await svc.getNodePath(dir.id);
       expect(path).toBe('/svc-rootpath-dir');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [dir.id]);
     });
 
     // V13: getNodePath depth N — returns '/a/b/c/file.txt'
@@ -311,7 +310,7 @@ describe('createFileNodeService', () => {
       const path = await svc.getNodePath(file.id);
       expect(path).toBe('/svc-a/svc-b/svc-c/file.txt');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
     });
 
     // V14: resolvePath valid path — returns correct node
@@ -324,7 +323,7 @@ describe('createFileNodeService', () => {
       expect(resolved.id).toBe(file.id);
       expect(resolved.name).toBe('rfile.txt');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
     });
 
     // V15: resolvePath non-existent segment — returns null
@@ -333,7 +332,7 @@ describe('createFileNodeService', () => {
       const resolved = await svc.resolvePath('/svc-rpath-x/nonexistent.txt');
       expect(resolved).toBeNull();
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [a.id]);
     });
 
     // V16: resolvePath "/" — returns null

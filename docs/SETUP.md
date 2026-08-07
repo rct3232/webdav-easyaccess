@@ -81,7 +81,11 @@ The system supports PostgreSQL-backed and SQLite-backed metadata with the same s
 
 ### PostgreSQL Initialization (v2)
 
-When enabling `postgresql`, initialize the schema before running the server. The migration script (`--apply`) can create metadata tables automatically if they do not exist (by running `001_initial_normalized_schema.sql`). To create schema manually instead:
+The schema is applied **automatically at startup**. On a **fresh empty database**, the server boots and `initMetadataStore()` (`server/store/bootstrap.js`) runs `applyPendingMigrations('postgresql')` (`server/infrastructure/schemaManager.js`), which applies `server/store/postgresql/ddl/*.sql` in order and records each file in `_schema_migrations`. Subsequent boots detect all files as applied and are no-ops (idempotent).
+
+**Deployment contract: point the app only at a fresh empty database. Never point it at an existing/old DB.** No "already exists" tolerance is added — a misconfigured app aimed at a pre-existing (e.g. legacy path-based) database must fail loudly at boot rather than be silently recorded as migrated. Data migration into the new instance is handled out of band by the migration script (Future Work), which applies the schema (or boots the app once on the empty DB with `WEA_DISABLE_DEFAULT_ADMIN=true`) before importing data.
+
+To apply the DDL manually (equivalent to what startup does), instead:
 
 1.  Apply the initial normalized DDL:
     ```bash
@@ -92,18 +96,9 @@ When enabling `postgresql`, initialize the schema before running the server. The
       -d "$WEA_PG_DATABASE" \
       -f server/store/postgresql/ddl/001_initial_normalized_schema.sql
     ```
-2.  If your database was initialized before admin-permission alignment, apply the follow-up constraint migration:
-    ```bash
-    PGPASSWORD="$WEA_PG_PASSWORD" psql \
-      -h "$WEA_PG_HOST" \
-      -p "${WEA_PG_PORT:-5432}" \
-      -U "$WEA_PG_USER" \
-      -d "$WEA_PG_DATABASE" \
-      -f server/store/postgresql/ddl/002_allow_admin_permission_values.sql
-    ```
-3.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
+2.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
     *   `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
-4.  Start the server and confirm `/api/health` reports healthy metadata store access.
+3.  Start the server and confirm `/api/health` reports healthy metadata store access.
 
 Permission contract source of truth:
 

@@ -11,12 +11,28 @@ const { authenticateToken } = require('../../../utils/auth');
 const User = require('../../../models/User');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { createFileNodesStore } = require('../../../store/fileNodesStore');
+const { getComposition } = require('../../../service/composition');
 const { asyncHandler, createError, validationError } = require('../../../utils/errorHandler');
 
 const fileNodesStore = createFileNodesStore();
 
 function normalizePermission(p) {
   return p === PERMISSIONS.READ || p === PERMISSIONS.WRITE ? p : null;
+}
+
+async function enrichPermissionRequest(row) {
+  if (!row) return row;
+  const { fileNodeService } = getComposition();
+  const node = await fileNodeService.getNode(row.file_node_id);
+  if (!node) {
+    return { ...row, display_path: null, target_name: null };
+  }
+  const displayPath = await fileNodeService.getNodePath(node.id);
+  return {
+    ...row,
+    display_path: displayPath,
+    target_name: node.name,
+  };
 }
 
 function normalizeStatus(s) {
@@ -73,19 +89,19 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
 
   const created = await PermissionRequest.create(createPayload);
 
-  res.json(created);
+  res.json(await enrichPermissionRequest(created));
 }));
 
 router.get('/inbox', authenticateToken, asyncHandler(async (req, res) => {
   const status = req.query.status ? normalizeStatus(String(req.query.status)) : null;
   const list = await PermissionRequest.listInbox(req.user.id, status ? { status } : undefined);
-  res.json(list);
+  res.json(await Promise.all(list.map(enrichPermissionRequest)));
 }));
 
 router.get('/outbox', authenticateToken, asyncHandler(async (req, res) => {
   const status = req.query.status ? normalizeStatus(String(req.query.status)) : null;
   const list = await PermissionRequest.listOutbox(req.user.id, status ? { status } : undefined);
-  res.json(list);
+  res.json(await Promise.all(list.map(enrichPermissionRequest)));
 }));
 
 router.get('/check-owner', authenticateToken, asyncHandler(async (req, res) => {

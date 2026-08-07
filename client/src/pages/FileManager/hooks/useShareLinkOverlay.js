@@ -18,6 +18,7 @@ export function useShareLinkOverlay({
   const [addToSharedStatus, setAddToSharedStatus] = useState('loading');
   const [addToSharedConfirmLoading, setAddToSharedConfirmLoading] = useState(false);
   const [leaveShareConfirmOpen, setLeaveShareConfirmOpen] = useState(false);
+  const [leaveShareConfirmTargetNodeId, setLeaveShareConfirmTargetNodeId] = useState(null);
   const [leaveShareConfirmTargetPath, setLeaveShareConfirmTargetPath] = useState(null);
 
   const addToSharedCheckDoneRef = useRef(null);
@@ -91,21 +92,33 @@ export function useShareLinkOverlay({
     runSharePermissionBootstrap();
   }, [runSharePermissionBootstrap]);
 
-  const handleLeaveSharePathClick = useCallback((path) => {
-    setLeaveShareConfirmTargetPath(path);
+  const handleLeaveSharePathClick = useCallback((target) => {
+    if (typeof target === 'number') {
+      setLeaveShareConfirmTargetNodeId(target);
+      setLeaveShareConfirmTargetPath(null);
+    } else {
+      setLeaveShareConfirmTargetNodeId(null);
+      // null/undefined targets (e.g. admin "home" with no root node) resolve to the explorer home route.
+      setLeaveShareConfirmTargetPath(target == null ? '/' : target);
+    }
     setLeaveShareConfirmOpen(true);
   }, []);
 
   const handleLeaveShareConfirm = useCallback(() => {
-    if (!leaveShareConfirmTargetPath) return;
+    if (leaveShareConfirmTargetNodeId == null && !leaveShareConfirmTargetPath) return;
 
-    navigate(toFilesPath(leaveShareConfirmTargetPath));
+    if (leaveShareConfirmTargetNodeId != null) {
+      navigate(`/files/node/${leaveShareConfirmTargetNodeId}`);
+    } else {
+      navigate(toFilesPath(leaveShareConfirmTargetPath));
+    }
     setLeaveShareConfirmOpen(false);
+    setLeaveShareConfirmTargetNodeId(null);
     setLeaveShareConfirmTargetPath(null);
     if (typeof setDrawerOpen === 'function') {
       setDrawerOpen(false);
     }
-  }, [leaveShareConfirmTargetPath, navigate, setDrawerOpen]);
+  }, [leaveShareConfirmTargetNodeId, leaveShareConfirmTargetPath, navigate, setDrawerOpen]);
 
   return {
     addToSharedModalOpen,
@@ -116,6 +129,8 @@ export function useShareLinkOverlay({
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    leaveShareConfirmTargetNodeId,
+    setLeaveShareConfirmTargetNodeId,
     leaveShareConfirmTargetPath,
     setLeaveShareConfirmTargetPath,
     handleLeaveSharePathClick,

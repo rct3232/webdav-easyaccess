@@ -1,7 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { buildName, fileItem } from './helpers/files';
 import { ensureApprovedUser, loginAsUser, getTestSuffix } from './helpers/auth';
+import { getSessionToken, nodeUrl, resolveNodeId } from './helpers/resolvePath';
 import { TEST_USERS } from './fixtures/test-data';
 
 type InternalSharingFixtures = {
@@ -13,9 +14,11 @@ type InternalSharingFixtures = {
   requesterSuffix: string;
   targetFolderName: string;
   targetFolderPath: string;
+  targetNodeId: number;
   adminToken: string;
   requesterUserId: number;
   ownerHomePath: string;
+  ownerHomeNodeId: number;
 };
 
 async function loginByUsername(
@@ -29,9 +32,15 @@ async function loginByUsername(
 }
 
 async function createFolderViaApi(request: any, adminToken: string, folderPath: string) {
+  const segments = folderPath.split('/').filter(Boolean);
+  const name = segments[segments.length - 1];
+  const parentPath = `/${segments.slice(0, -1).join('/')}`;
+
+  const parentNodeId = await resolveNodeId(request, adminToken, parentPath);
+
   const res = await request.post('/api/folders/create', {
     headers: { Authorization: `Bearer ${adminToken}` },
-    data: { path: folderPath },
+    data: { parentNodeId, name },
   });
 
   // Idempotent prerequisite: if retries happen, conflict is acceptable.
@@ -41,27 +50,36 @@ async function createFolderViaApi(request: any, adminToken: string, folderPath: 
 }
 
 async function grantReadViaApi(request: any, adminToken: string, userId: number, folderPath: string) {
+  const nodeId = await resolveNodeId(request, adminToken, folderPath);
   const res = await request.post('/api/permissions/grant', {
     headers: { Authorization: `Bearer ${adminToken}` },
-    data: { userId, folderPath, permission: 'read' },
+    data: { userId, nodeId, permission: 'read' },
   });
   expect(res.ok()).toBeTruthy();
 }
 
 async function grantWriteViaApi(request: any, adminToken: string, userId: number, folderPath: string) {
+  const nodeId = await resolveNodeId(request, adminToken, folderPath);
   const res = await request.post('/api/permissions/grant', {
     headers: { Authorization: `Bearer ${adminToken}` },
-    data: { userId, folderPath, permission: 'write' },
+    data: { userId, nodeId, permission: 'write' },
   });
   expect(res.ok()).toBeTruthy();
 }
 
 async function revokeViaApi(request: any, adminToken: string, userId: number, folderPath: string) {
+  const nodeId = await resolveNodeId(request, adminToken, folderPath);
   const res = await request.delete('/api/permissions/revoke', {
     headers: { Authorization: `Bearer ${adminToken}` },
-    params: { userId, folderPath },
+    params: { userId, nodeId },
   });
   expect(res.ok()).toBeTruthy();
+}
+
+async function gotoFolderByPath(page: Page, request: any, serverPath: string) {
+  const bearerToken = await getSessionToken(page);
+  const nodeId = await resolveNodeId(request, bearerToken, serverPath);
+  await page.goto(nodeUrl(nodeId));
 }
 
 test.describe.serial('internal sharing request -> __shared__', () => {
@@ -92,7 +110,9 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     const requesterUserId = requesterLogin.user.id;
 
     await createFolderViaApi(request, adminToken, targetFolderPath);
-    await grantReadViaApi(request, adminToken, requesterUserId, ownerHomePath);
+
+    const targetNodeId = await resolveNodeId(request, adminToken, targetFolderPath);
+    const ownerHomeNodeId = await resolveNodeId(request, adminToken, ownerHomePath);
 
     fixtures = {
       ownerUsername,
@@ -103,16 +123,18 @@ test.describe.serial('internal sharing request -> __shared__', () => {
       requesterSuffix: suffix1,
       targetFolderName,
       targetFolderPath,
+      targetNodeId,
       adminToken,
       requesterUserId,
       ownerHomePath,
+      ownerHomeNodeId,
     };
   });
 
   test("E2E-OVERLAY-003: Request access to another user's content from protected UI", async ({ page, request }) => {
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
 
-    await page.goto(`/files/${fixtures.ownerUsername}`);
+    await gotoFolderByPath(page, request, fixtures.ownerHomePath);
 
     const targetItem = fileItem(page, fixtures.targetFolderPath);
     await expect(targetItem).toBeVisible({ timeout: 20_000 });
@@ -126,16 +148,13 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await requestReadBtn.click();
 
     await expect(dialog.getByText(/Read permission requested/i)).toBeVisible();
-
-    // Avoid creating an extra shared root entry for `/user2` by removing the temporary parent grant.
-    await revokeViaApi(request, fixtures.adminToken, fixtures.requesterUserId, fixtures.ownerHomePath);
   });
 
   test('E2E-OVERLAY-004: Owner approves a pending request and requester can open the shared content', async ({ page }, testInfo) => {
     await loginAsUser(page, fixtures.ownerUserKey, fixtures.ownerSuffix);
     await page.goto('/mypage');
 
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       await page.getByRole('button', { name: /My page/i }).click();
     }
 
@@ -162,7 +181,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
     await page.goto('/files/__shared__');
 
-    await expect(fileItem(page, fixtures.targetFolderPath)).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(`[data-file-node-id="${fixtures.targetNodeId}"]`)).toBeVisible({ timeout: 20_000 });
   });
 
   test('E2E-OVERLAY-005: Owner rejects a pending request and requester stays blocked from the target', async ({ page, request }, testInfo) => {
@@ -171,12 +190,9 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     const folderPath = `/${fixtures.ownerUsername}/${folderName}`;
     await createFolderViaApi(request, fixtures.adminToken, folderPath);
 
-    // To allow user1 to see the folder item in /files/user2, we must grant read access to the home folder
-    await grantReadViaApi(request, fixtures.adminToken, fixtures.requesterUserId, fixtures.ownerHomePath);
-
     // Request: user1 requests read permission
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
-    await page.goto(`/files/${fixtures.ownerUsername}`);
+    await gotoFolderByPath(page, request, fixtures.ownerHomePath);
     
     const targetItem = fileItem(page, folderPath);
     await expect(targetItem).toBeVisible({ timeout: 20_000 });
@@ -191,7 +207,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await loginAsUser(page, fixtures.ownerUserKey, fixtures.ownerSuffix);
     await page.goto('/mypage');
 
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       await page.getByRole('button', { name: /My page/i }).click();
     }
     await page.getByRole('button', { name: /Share management/i }).click();
@@ -206,8 +222,8 @@ test.describe.serial('internal sharing request -> __shared__', () => {
 
     // Verify: user1 still cannot access the folder content, but can see it as protected in the owner's home
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
-    
-    await page.goto(`/files/${fixtures.ownerUsername}`);
+
+    await gotoFolderByPath(page, request, fixtures.ownerHomePath);
     
     const targetItemVerification = fileItem(page, folderPath);
     await expect(targetItemVerification).toBeVisible({ timeout: 20_000 });
@@ -228,7 +244,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
 
     // Navigate: user1 goes to the folder
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
-    await page.goto(`/files/${folderPath}`);
+    await gotoFolderByPath(page, request, folderPath);
 
     // Verify FAB: "Create folder" and "Upload file" should be visible in the FAB menu
     const fab = page.getByTestId('file-actions-fab');
@@ -239,7 +255,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
 
     // Verify Actions: rename/delete/move in action sheet should not be disabled
     // Go up one level to see the folder as an item
-    await page.goto(`/files/${fixtures.ownerUsername}`);
+    await gotoFolderByPath(page, request, fixtures.ownerHomePath);
     const folderItem = fileItem(page, folderPath);
     await folderItem.getByLabel('More actions').click();
     
@@ -254,7 +270,7 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
     // On mobile, the folder tree is hidden by default and needs to be toggled open
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       const toggleBtn = page.locator('button[title="Open folder tree"]');
       const toggleCount = await toggleBtn.count();
       if (toggleCount > 0) {
@@ -280,8 +296,8 @@ test.describe.serial('internal sharing request -> __shared__', () => {
 
     // Verify: the shared folders list is rendered under the __shared__ view
     // The __shared__ view shows the user's granted shared folders (top-level permission paths)
-    // The owner home folder should appear as a shared entry
-    const sharedFolderItem = fileItem(page, fixtures.ownerHomePath);
+    // The approved target folder (not the owner home) should appear as a shared entry
+    const sharedFolderItem = page.locator(`[data-file-node-id="${fixtures.targetNodeId}"]`);
     await expect(sharedFolderItem).toBeVisible({ timeout: 20_000 });
   });
 
@@ -291,7 +307,7 @@ test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a neste
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
     // On mobile, the folder tree is hidden by default and needs to be toggled open
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       const toggleBtn = page.locator('button[title="Open folder tree"]');
       const toggleCount = await toggleBtn.count();
       if (toggleCount > 0) {
@@ -311,15 +327,15 @@ test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a neste
     // Verify we are in the __shared__ view
     await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
 
-    // The listing should show the owner's home folder as a shared entry
-    const sharedFolderItem = fileItem(page, fixtures.ownerHomePath);
+    // The listing should show the approved target folder as a shared entry
+    const sharedFolderItem = page.locator(`[data-file-node-id="${fixtures.targetNodeId}"]`);
     await expect(sharedFolderItem).toBeVisible({ timeout: 20_000 });
 
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       // On mobile, click the shared folder item in the listing to navigate
       await sharedFolderItem.click();
-      // Mobile navigates directly to the folder path
-      await expect(page).toHaveURL(new RegExp(`/files${fixtures.ownerHomePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      // Mobile navigates directly to the shared folder's nodeId URL
+      await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.targetNodeId}$`));
     } else {
       // On desktop, click the shared folder in the tree sidebar to navigate
       // Re-open the folder tree (it may have collapsed after Shared header click)
@@ -329,10 +345,12 @@ test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a neste
         await toggleBtn.click();
       }
       await expect(folderTree).toBeVisible({ timeout: 20_000 });
-      const sharedTreeItem = folderTree.getByRole('button', { name: fixtures.ownerUsername }).first();
+      const sharedTreeItem = folderTree
+        .getByRole('button', { name: `Shared (${fixtures.targetNodeId})` })
+        .first();
       await expect(sharedTreeItem).toBeVisible();
       await sharedTreeItem.click();
-      await expect(page).toHaveURL(new RegExp(`/files${fixtures.ownerHomePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.targetNodeId}$`));
     }
 
     // Verify: explorer shell is visible (breadcrumb present)
@@ -349,7 +367,7 @@ test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a neste
 
     // Navigate to the target folder as requester
     await loginAsUser(page, fixtures.requesterUserKey, fixtures.requesterSuffix);
-    await page.goto(`/files/${folderPath}`);
+    await gotoFolderByPath(page, request, folderPath);
 
     // Wait for the listing to load
     await page.waitForTimeout(2000);

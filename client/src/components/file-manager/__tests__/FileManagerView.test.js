@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
@@ -58,6 +58,8 @@ function createProps(overrides = {}) {
       handleAddToSharedConfirm: jest.fn(),
       leaveShareConfirmOpen: false,
       setLeaveShareConfirmOpen: jest.fn(),
+      leaveShareConfirmTargetNodeId: null,
+      setLeaveShareConfirmTargetNodeId: jest.fn(),
       leaveShareConfirmTargetPath: null,
       setLeaveShareConfirmTargetPath: jest.fn(),
       handleLeaveShareConfirm: jest.fn(),
@@ -334,5 +336,59 @@ describe('FileManagerView', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /add to shared/i }));
     expect(addProps.overlayState.openAddToSharedModal).toHaveBeenCalled();
+  });
+
+  it('renders the leave-share confirmation dialog and forwards confirm/cancel', async () => {
+    const props = createProps({
+      overlayState: {
+        ...createProps().overlayState,
+        leaveShareConfirmOpen: true,
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId('confirm-dialog-confirm')).toBeInTheDocument();
+    expect(screen.getByTestId('confirm-dialog-cancel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+    expect(props.overlayState.handleLeaveShareConfirm).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    expect(props.overlayState.setLeaveShareConfirmOpen).toHaveBeenCalledWith(false);
+    expect(props.overlayState.setLeaveShareConfirmTargetNodeId).toHaveBeenCalledWith(null);
+    expect(props.overlayState.setLeaveShareConfirmTargetPath).toHaveBeenCalledWith(null);
+  });
+
+  it('routes non-share folder-tree clicks through handleLeaveSharePathClick in share mode', async () => {
+    const props = createProps({
+      shareContext: {
+        ...createProps().shareContext,
+        isShareLinkMode: true,
+        shareToken: 'share-token',
+        shareRootNodeId: 10,
+      },
+      shellContext: {
+        ...createProps().shellContext,
+        isMobile: false,
+        user: { id: 'user-1', username: 'user1', rootNodeId: 7 },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    const tree = screen.getByTestId('folder-tree');
+    await waitFor(() => {
+      expect(within(tree).getByText('user1')).toBeInTheDocument();
+    });
+    fireEvent.click(within(tree).getByText('user1'));
+
+    expect(props.explorerHandlers.interaction.handleLeaveSharePathClick).toHaveBeenCalledWith(7);
   });
 });

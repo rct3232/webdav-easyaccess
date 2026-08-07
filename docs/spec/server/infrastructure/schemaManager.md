@@ -47,7 +47,7 @@ CREATE TABLE _schema_migrations (
 
 - **Idempotent**: Running twice produces no changes (second run detects all files as already applied)
 - **Checksum tracking**: Each file's SHA-256 is recorded; modified DDL files can be detected in future phases
-- **Called at startup**: Invoked from `storage.js` connection initialization
+- **Called at startup**: `applyPendingMigrations('postgresql')` is invoked from `server/store/bootstrap.js` `initMetadataStore()` for the non-SQLite branch, before `ensureDefaultAdmin()`. The SQLite path is unchanged and uses `initSqliteSchema()` (converter-based) instead — `applyPendingMigrations('sqlite')` is exercised only by its unit tests.
 
 ### 2.6 Dependencies
 
@@ -62,3 +62,10 @@ CREATE TABLE _schema_migrations (
 - [ ] Pending migration detection: only unapplied files execute
 - [ ] Idempotency: second call produces zero SQL executions
 - [ ] SHA-256 checksum recorded for each applied file
+- [ ] `initMetadataStore()` applies PG DDL at startup for the non-SQLite branch before `ensureDefaultAdmin()`; SQLite path behavior unchanged
+
+### 2.8 Deployment Contract (PostgreSQL)
+
+- **Fresh DB → one-time DDL apply**: On a fresh empty database, `initMetadataStore()` runs `applyPendingMigrations('postgresql')` at boot, applying `server/store/postgresql/ddl/*.sql` in order and recording each file in `_schema_migrations`. Subsequent boots detect all files as applied and are no-ops.
+- **Never point the app at an existing/old DB**: A misconfigured deployment aimed at a pre-existing (e.g. legacy path-based) database is **unsupported**. No "already exists" tolerance is added — any DDL failure or schema mismatch surfaces as a hard boot error rather than being silently recorded as migrated.
+- **Data migration is out of band**: the migration script applies the schema (or boots the app once on an empty DB with `WEA_DISABLE_DEFAULT_ADMIN=true`) before importing data; the new instance's DB is always fresh at cutover.

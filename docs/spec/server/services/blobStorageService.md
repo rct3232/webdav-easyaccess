@@ -33,6 +33,7 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     ensureExclusiveBlob(fileNodeId),
     uploadToWebdav(fileNodeId, buffer, mimeType),
     downloadBlobWebdav(fileNodeId),
+    createDirectoryWebdav(fileNodeId),
   };
 }
 ```
@@ -209,6 +210,30 @@ Downloads blob via WebDAV path. Guards on node existence.
 
 **Operations:** resolve path (guard node via `fileNodeService.getNode`) → `blobStore.downloadBlob(path)` or null.
 
+#### `createDirectoryWebdav(fileNodeId)`
+
+Ensures the physical storage directory for a node exists on the WebDAV server (MKCOL).
+Directory creation in WebDAV mode is otherwise DB-only (`fileNodeService.createDirectory`
+inserts a `file_nodes` row), so without this step subsequent `PUT`s target a non-existent
+remote path and fail (bytemark returns 403/409).
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileNodeId | number | yes | ID of the directory node to materialize remotely |
+
+**Returns:** string (resolved node path) in WebDAV mode; `null` in S3 mode (no-op).
+
+**Operations:** S3 mode → immediate `null` no-op. WebDAV mode → resolve path (guard node via
+`fileNodeService.getNode`, then `fileNodeService.getNodePath(fileNodeId)`) → `blobStore.createDirectory(path)`
+which MKCOLs root → deepest segment via `WebdavBlobStore.createDirectory` / `ensureDirectoryExists`,
+tolerating already-existing collections. On MKCOL failure the node is marked
+`sync_status='orphaned_node'` via `fileNodeService.updateSyncStatus(fileNodeId, 'orphaned_node')`
+(fail-safe) and the error is re-thrown so callers surface a failure response.
+
+> **Fail-safe contract:** identical to `uploadToWebdav` — a DB node that committed but whose
+> physical directory could not be materialized is left as `orphaned_node` for Phase 6
+> GC / `POST /api/admin/maintenance/repair-sync`, never silently ignored.
+
 #### `uploadToWebdav(fileNodeId, buffer, mimeType)`
 
 Uploads blob via WebDAV path. Guards on node existence.
@@ -239,6 +264,7 @@ Uploads blob via WebDAV path. Guards on node existence.
 | ensureExclusiveBlob | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation | returns null |
 | uploadToWebdav | n/a | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache |
 | downloadBlobWebdav | n/a | resolve path (guard node) → blobStore.downloadBlob(path) or null |
+| createDirectoryWebdav | returns null (no-op) | resolve path → blobStore.createDirectory(path) (recursive MKCOL); on failure mark orphaned_node + rethrow |
 
 ---
 
@@ -278,3 +304,6 @@ Single-version mode: `version_number` is always 1 in all INSERT operations. The 
 - [ ] ensureExclusiveBlob duplicates when count > 1
 - [ ] downloadBlobWebdav resolves path and downloads via blobStore
 - [ ] uploadToWebdav resolves path, uploads, and writes filecache
+- [ ] createDirectoryWebdav is a no-op (null) in S3 mode without touching blobStore
+- [ ] createDirectoryWebdav resolves path and calls blobStore.createDirectory(path) in WebDAV mode
+- [ ] createDirectoryWebdav marks orphaned_node + rethrows when MKCOL fails

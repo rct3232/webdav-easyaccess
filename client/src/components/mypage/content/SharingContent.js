@@ -333,7 +333,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                       {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
-                      {r.file_node_id != null ? `#${r.file_node_id}` : ''}
+                      {r.display_path || r.target_name || (r.file_node_id != null ? `#${r.file_node_id}` : '')}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.requester')}: {r.requester_username || r.requester_id}
@@ -409,15 +409,12 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
           mode="review"
           permissionRequest={reviewPermissionRequest}
           folderNodeId={reviewPermissionRequest?.file_node_id ?? null}
-          folderPath={
-            reviewPermissionRequest?.file_node_id != null
-              ? String(reviewPermissionRequest.file_node_id)
-              : null
-          }
+          folderPath={reviewPermissionRequest?.display_path ?? null}
           folderName={
-            reviewPermissionRequest?.file_node_id != null
+            reviewPermissionRequest?.target_name ||
+            (reviewPermissionRequest?.file_node_id != null
               ? `#${reviewPermissionRequest.file_node_id}`
-              : t('mypage.folder')
+              : t('mypage.folder'))
           }
           user={user}
           onMessage={(msg) => {
@@ -470,7 +467,7 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                     </Stack>
                     <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                       {r.targetType === 'file' ? t('mypage.file') : t('mypage.folder')}:{' '}
-                      {r.file_node_id != null ? `#${r.file_node_id}` : ''}
+                      {r.display_path || r.target_name || (r.file_node_id != null ? `#${r.file_node_id}` : '')}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('mypage.owner')}: {r.owner_username || r.owner_id}

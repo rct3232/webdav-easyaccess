@@ -111,29 +111,82 @@ describe('useShareLinkOverlay', () => {
     expect(props.navigate).toHaveBeenCalledWith('/files/node/5');
   });
 
-  it('opens leave-share confirmation and routes to files path after confirm', () => {
-    const props = createDefaultProps({
-      isShareLinkMode: false,
-      user: null,
-    });
+  it('opens leave-share confirmation for a node id target and routes by nodeId after confirm', () => {
+    const props = createDefaultProps();
 
     const { result } = renderHook(() => useShareLinkOverlay(props));
 
     act(() => {
-      result.current.handleLeaveSharePathClick('/docs');
+      result.current.handleLeaveSharePathClick(42);
     });
 
     expect(result.current.leaveShareConfirmOpen).toBe(true);
-    expect(result.current.leaveShareConfirmTargetPath).toBe('/docs');
+    expect(result.current.leaveShareConfirmTargetNodeId).toBe(42);
+    expect(result.current.leaveShareConfirmTargetPath).toBe(null);
 
     act(() => {
       result.current.handleLeaveShareConfirm();
     });
 
-    expect(props.navigate).toHaveBeenCalledWith('/files/docs');
+    expect(props.navigate).toHaveBeenCalledWith('/files/node/42');
     expect(props.setDrawerOpen).toHaveBeenCalledWith(false);
     expect(result.current.leaveShareConfirmOpen).toBe(false);
+    expect(result.current.leaveShareConfirmTargetNodeId).toBe(null);
     expect(result.current.leaveShareConfirmTargetPath).toBe(null);
+  });
+
+  it('opens leave-share confirmation for a path target and routes via toFilesPath after confirm', () => {
+    const props = createDefaultProps();
+
+    const { result } = renderHook(() => useShareLinkOverlay(props));
+
+    act(() => {
+      result.current.handleLeaveSharePathClick('/__shared__');
+    });
+
+    expect(result.current.leaveShareConfirmOpen).toBe(true);
+    expect(result.current.leaveShareConfirmTargetPath).toBe('/__shared__');
+    expect(result.current.leaveShareConfirmTargetNodeId).toBe(null);
+
+    act(() => {
+      result.current.handleLeaveShareConfirm();
+    });
+
+    expect(props.navigate).toHaveBeenCalledWith('/files/__shared__');
+    expect(result.current.leaveShareConfirmOpen).toBe(false);
+  });
+
+  it('normalizes a null/undefined leave-share target to the explorer home route', () => {
+    const props = createDefaultProps();
+
+    const { result } = renderHook(() => useShareLinkOverlay(props));
+
+    act(() => {
+      result.current.handleLeaveSharePathClick(null);
+    });
+
+    expect(result.current.leaveShareConfirmOpen).toBe(true);
+    expect(result.current.leaveShareConfirmTargetPath).toBe('/');
+
+    act(() => {
+      result.current.handleLeaveShareConfirm();
+    });
+
+    expect(props.navigate).toHaveBeenCalledWith('/files');
+    expect(result.current.leaveShareConfirmOpen).toBe(false);
+  });
+
+  it('does not navigate when leave-share is confirmed without a pending target', () => {
+    const props = createDefaultProps();
+
+    const { result } = renderHook(() => useShareLinkOverlay(props));
+
+    act(() => {
+      result.current.handleLeaveShareConfirm();
+    });
+
+    expect(props.navigate).not.toHaveBeenCalled();
+    expect(result.current.leaveShareConfirmOpen).toBe(false);
   });
 
   it('does not re-run bootstrap for the same share token after rerender', async () => {

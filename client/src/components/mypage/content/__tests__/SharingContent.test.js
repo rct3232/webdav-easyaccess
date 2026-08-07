@@ -149,6 +149,76 @@ describe('SharingContent', () => {
     }, { timeout: 3000 });
   });
 
+  it('inbox detail: renders resolved display_path for the target', async () => {
+    const req = inboxRequest({
+      id: 'pr-inbox-display',
+      display_path: '/testuser/docs/shared-folder',
+      target_name: 'shared-folder',
+    });
+    server.use(
+      http.get('/api/permission-requests/inbox', () => HttpResponse.json([req])),
+      http.get('/api/permission-requests/outbox', () => HttpResponse.json([]))
+    );
+
+    renderSharing({ selectedContentItem: 'inbox' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
+  it('inbox detail: falls back to target_name then #file_node_id when path absent', async () => {
+    const req = inboxRequest({
+      id: 'pr-inbox-name-only',
+      display_path: null,
+      target_name: 'shared-folder',
+    });
+    server.use(
+      http.get('/api/permission-requests/inbox', () => HttpResponse.json([req])),
+      http.get('/api/permission-requests/outbox', () => HttpResponse.json([]))
+    );
+
+    renderSharing({ selectedContentItem: 'inbox' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Folder:\s*shared-folder/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    const req2 = inboxRequest({
+      id: 'pr-inbox-raw',
+      display_path: null,
+      target_name: null,
+    });
+    server.use(
+      http.get('/api/permission-requests/inbox', () => HttpResponse.json([req2])),
+      http.get('/api/permission-requests/outbox', () => HttpResponse.json([]))
+    );
+
+    const { unmount } = renderSharing({ selectedContentItem: 'inbox' });
+    await waitFor(() => {
+      expect(screen.getByText(/Folder:\s*#101/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+    unmount();
+  });
+
+  it('outbox detail: renders resolved display_path for the target', async () => {
+    const req = outboxRequest({
+      id: 'pr-outbox-display',
+      display_path: '/testuser/docs/shared-folder',
+      target_name: 'shared-folder',
+    });
+    server.use(
+      http.get('/api/permission-requests/inbox', () => HttpResponse.json([])),
+      http.get('/api/permission-requests/outbox', () => HttpResponse.json([req]))
+    );
+
+    renderSharing({ selectedContentItem: 'outbox' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Folder:\s*\/testuser\/docs\/shared-folder/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
   it('inbox: reject request shows success feedback', async () => {
     const req = inboxRequest({ id: 'pr-inbox-reject', requester_username: 'bob' });
     server.use(

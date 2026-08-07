@@ -21,13 +21,17 @@ describe('folderPickerGateway', () => {
     jest.clearAllMocks();
   });
 
-  it('delegates directory listing to fileService.listFiles', async () => {
-    listFiles.mockResolvedValue([{ nodeId: 10, basename: 'a', type: 'directory' }]);
+  it('normalizes directory listing entries for the picker (basename fallback)', async () => {
+    listFiles.mockResolvedValue([
+      { nodeId: 10, name: 'a', type: 'directory' },
+      { nodeId: 11, basename: 'b', name: 'b', type: 'directory' },
+    ]);
 
     const result = await listFolderContents({ nodeId: 10, options: { shareToken: 'token-1' } });
 
     expect(listFiles).toHaveBeenCalledWith(10, { shareToken: 'token-1' });
-    expect(result).toEqual([{ nodeId: 10, basename: 'a', type: 'directory' }]);
+    expect(result[0]).toMatchObject({ nodeId: 10, basename: 'a', type: 'directory' });
+    expect(result[1]).toMatchObject({ nodeId: 11, basename: 'b', type: 'directory' });
   });
 
   it('delegates permission checking to permissionService.checkPermission', async () => {

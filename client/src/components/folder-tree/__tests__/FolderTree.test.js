@@ -87,6 +87,29 @@ describe('FolderTree', () => {
     expect(defaultProps.onNodeClick).toHaveBeenCalledWith(1);
   });
 
+  it('routes non-share section clicks through onLeaveShareClick when a share-link section is present', async () => {
+    const onLeaveShareClick = jest.fn();
+    renderWithProviders(
+      <FolderTree
+        {...defaultProps}
+        shareLinkSection={{
+          shareRootNodeId: 10,
+          shareRootPath: '/shared',
+          shareRootName: 'Shared',
+          shareToken: 'st',
+          onNodeClick: jest.fn(),
+        }}
+        onLeaveShareClick={onLeaveShareClick}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByText('testuser')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('testuser'));
+    expect(onLeaveShareClick).toHaveBeenCalledWith(1);
+    expect(defaultProps.onNodeClick).not.toHaveBeenCalledWith(1);
+  });
+
   it('reloads recent section entries when recent-file notifications fire', async () => {
     let notifyRecentChange;
     onRecentFilesChange.mockImplementationOnce((callback) => {

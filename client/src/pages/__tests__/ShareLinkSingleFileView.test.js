@@ -13,6 +13,7 @@ jest.mock('../../components/dialogs', () => ({
   FilePreviewDialog: ({ file, shareToken }) => (
     <div data-testid="file-preview-dialog">
       <span data-testid="file-name">{file?.name || ''}</span>
+      <span data-testid="file-node-id">{file?.nodeId || ''}</span>
       <span data-testid="share-token">{shareToken || ''}</span>
     </div>
   ),
@@ -20,7 +21,7 @@ jest.mock('../../components/dialogs', () => ({
 
 describe('ShareLinkSingleFileView', () => {
   it('renders single file preview with file name derived from linkInfo', () => {
-    const linkInfo = { filePath: '/user/docs/report.pdf', fileName: 'report.pdf' };
+    const linkInfo = { filePath: '/user/docs/report.pdf', fileName: 'report.pdf', nodeId: 42 };
     const token = 'share-token-123';
 
     renderWithProviders(<ShareLinkSingleFileView token={token} linkInfo={linkInfo} />);
@@ -36,5 +37,14 @@ describe('ShareLinkSingleFileView', () => {
     renderWithProviders(<ShareLinkSingleFileView token={token} linkInfo={linkInfo} />);
 
     expect(screen.getByTestId('share-token')).toHaveTextContent('my-token');
+  });
+
+  it('passes nodeId so preview can fetch the shared blob', () => {
+    const linkInfo = { filePath: '/a.pdf', fileName: 'a.pdf', nodeId: 7 };
+    const token = 'my-token';
+
+    renderWithProviders(<ShareLinkSingleFileView token={token} linkInfo={linkInfo} />);
+
+    expect(screen.getByTestId('file-node-id')).toHaveTextContent('7');
   });
 });

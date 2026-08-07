@@ -338,13 +338,16 @@ function createFileNodesStore() {
     if (isPg) {
       try {
         const pool = storage.getPgPool();
-        const placeholders = buildInPlaceholders(3 * rows.length);
+        const valueGroups = rows.map((_, i) => {
+          const base = i * 3;
+          return `($${base + 1}, $${base + 2}, $${base + 3})`;
+        }).join(', ');
         const values = [];
         for (const r of rows) {
           values.push(Number(r.ancestorId), Number(r.descendantId), Number(r.depth));
         }
         const res = await pool.query(
-          `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES (${placeholders})`,
+          `INSERT INTO node_ancestors (ancestor_id, descendant_id, depth) VALUES ${valueGroups}`,
           values
         );
         return { changes: res.rowCount };

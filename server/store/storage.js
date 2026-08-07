@@ -73,6 +73,13 @@ function getPgPool() {
   }
 
   pgPool = new Pool(resolvePgConfig());
+  pgPool.on('error', (err) => {
+    // node-pg emits 'error' for idle-client failures (e.g. PostgreSQL
+    // restart or dropped connection). Without a listener the event is
+    // unhandled and crashes the process.
+    // eslint-disable-next-line no-console
+    console.error('Unexpected error on idle PostgreSQL client:', err.message);
+  });
   return pgPool;
 }
 

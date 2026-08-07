@@ -45,6 +45,13 @@ router.post('/create', authenticateToken, requireAuth, checkMetaPathAccess, asyn
 
   const dir = await fileNodeService.createDirectory(parentNodeIdParsed, name);
 
+  // WebDAV blob-storage mode: the physical remote directory must exist for
+  // subsequent PUTs. No-op in S3 mode. On MKCOL failure the node is marked
+  // sync_status='orphaned_node' (fail-safe) and the error is mapped by the
+  // error handler — same pattern as uploadToWebdav in fileService.
+  const { blobStorageService } = getComposition();
+  await blobStorageService.createDirectoryWebdav(dir.id);
+
   try {
     await permissionStore.grant(userId, dir.id, PERMISSIONS.WRITE);
   } catch (permError) {

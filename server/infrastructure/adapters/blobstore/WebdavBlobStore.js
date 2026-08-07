@@ -14,6 +14,11 @@ class WebdavBlobStore {
     await this.webdav.putFileContents(filepath, buffer);
   }
 
+  async createDirectory(filepath) {
+    if (!filepath) throw new Error('WebDAV filepath is required');
+    await this.webdav.createDirectory(filepath);
+  }
+
   async downloadBlob(filepath) {
     try {
       const data = await this.webdav.getFileContents(filepath);

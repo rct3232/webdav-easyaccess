@@ -64,6 +64,11 @@ async function ensureHomeOwnerAdminForAllUsers() {
   const fileNodesStore = createFileNodesStore();
   const fileNodeService = createFileNodeService({ fileNodesStore });
 
+  // WebDAV blob-storage mode: the physical home directory must also exist on
+  // the WebDAV server for uploads to succeed. No-op in S3 mode.
+  const { getComposition } = require('../../../service/composition');
+  const { blobStorageService } = getComposition();
+
   const nonAdminUsers = users.filter((u) => !u.is_admin);
   const userSet = new Set();
 
@@ -79,6 +84,9 @@ async function ensureHomeOwnerAdminForAllUsers() {
       if (!homeNode) {
         result.errors.push(`Create home node for ${user.username}`);
         continue;
+      }
+      if (homeNode) {
+        await blobStorageService.createDirectoryWebdav(Number(homeNode.id));
       }
 
       const hasAdmin = await permissionStore.checkPermission(user.id, homeNode.id, PERMISSIONS.ADMIN);

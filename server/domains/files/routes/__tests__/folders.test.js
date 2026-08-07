@@ -30,7 +30,7 @@ async function grantHomePermission({ userId, homeNodeId, permission }) {
 
 let app;
 let dbCleanup;
-let homeNodeId, userId, userToken;
+let homeNodeId, userId, userToken, homeUsername;
 
 beforeAll(async () => {
   process.env.WEA_FILE_STORAGE = 'webdav';
@@ -51,6 +51,7 @@ beforeAll(async () => {
   userId = created.user.id;
   userToken = created.token;
   homeNodeId = created.homeNodeId;
+  homeUsername = created.user.username;
   await grantHomePermission({ userId, homeNodeId, permission: 'write' });
 });
 
@@ -58,6 +59,7 @@ beforeEach(() => {
   webdavMock.pathExists.mockResolvedValue(false);
   webdavMock.createDirectory.mockResolvedValue(undefined);
   webdavMock.createDirectory.mockClear();
+  webdavMock.ensureDirectoryExists.mockClear();
   webdavMock.getRecursiveFolderStats.mockResolvedValue({ fileCount: 5, totalSize: 1200 });
 });
 
@@ -88,6 +90,16 @@ describe('POST /api/folders/create', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
     expect(res.body.nodeId).toBeDefined();
+  });
+
+  it('MKCOLs the remote directory in WebDAV mode at the resolved node path', async () => {
+    const res = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ parentNodeId: homeNodeId, name: 'mkcol-dir' });
+
+    expect(res.status).toBe(200);
+    expect(webdavMock.createDirectory).toHaveBeenCalledWith(`/${homeUsername}/mkcol-dir`);
   });
 
   it('returns 409 when folder already exists', async () => {

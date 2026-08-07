@@ -16,7 +16,8 @@
  * @property {function(string, string, function=, boolean=, Object=): Promise<Object>} moveFile — Moves sourcePath → destinationPath. Returns {success}.
  * @property {function(string, string, function=, boolean=, Object=): Promise<Object>} copyFile — Copies sourcePath → destinationPath. Returns {success}.
  * @property {function(string, Object=): Promise<Object>} deleteFile — Deletes a file or directory. Options: {isDirectory?: boolean}. Returns {success}.
- * @property {function(string): Promise<void>} createDirectory — Creates a directory at the given path.
+ * @property {function(string): Promise<void>} createDirectory — Creates a directory at the given path, creating missing parent segments recursively and tolerating already-existing collections.
+ * @property {function(string): Promise<void>} ensureDirectoryExists — Ensures a directory exists at the given path (recursive MKCOL root → deepest, idempotent).
  * @property {function(string): Promise<boolean>} pathExists — Checks whether a path exists on remote storage.
  * @property {function(string): Promise<Object>} getFileMetadata — Gets file metadata without reading content. Returns {size, lastmod, mime}.
  */

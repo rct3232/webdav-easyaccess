@@ -1,8 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createBlobStorageService } = require('../blobStorageService');
 const { createInMemoryBlobStore } = require('@testing/mocks/serviceMocks');
@@ -42,7 +41,7 @@ describe('createBlobStorageService', () => {
       expect(typeof s3Key).toBe('string');
       expect(s3Key.length).toBe(36);
 
-      const objMapRow = await storage.sqliteQuery(
+      const objMapRow = await dbQuery(
         `SELECT * FROM object_map WHERE file_node_id = ?`,
         [node.id]
       );
@@ -50,20 +49,20 @@ describe('createBlobStorageService', () => {
       expect(objMapRow.rows[0].s3_key).toBe(s3Key);
       expect(objMapRow.rows[0].status).toBe('pending');
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     // V2: prepareUpload orphans previous active entry
     it('orphans any existing active object_map row for the same file node', async () => {
       const node = await fileNodesStore.createNode(null, 'prep-upload-orphan-test', 'file');
 
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, ?)`,
         [node.id, 'old-active-s3-key', 'active']
       );
 
-      const oldRow = await storage.sqliteQuery(
+      const oldRow = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         ['old-active-s3-key']
       );
@@ -73,14 +72,14 @@ describe('createBlobStorageService', () => {
         await service.prepareUpload(node.id);
       } catch { /* upsertObjectMap INSERT may fail on UNIQUE constraint; orphaning UPDATE still ran */ }
 
-      const orphanedRow = await storage.sqliteQuery(
+      const orphanedRow = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         ['old-active-s3-key']
       );
       expect(orphanedRow.rows[0].status).toBe('orphaned');
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
 
@@ -95,13 +94,13 @@ describe('createBlobStorageService', () => {
 
       await service.prepareUpload(node.id);
 
-      const beforeActive = await storage.sqliteQuery(
+      const beforeActive = await dbQuery(
         `SELECT status FROM object_map WHERE file_node_id = ? AND status = 'active'`,
         [node.id]
       );
       expect(beforeActive.rows.length).toBe(0);
 
-      const pendingRow = await storage.sqliteQuery(
+      const pendingRow = await dbQuery(
         `SELECT * FROM object_map WHERE file_node_id = ? AND status = 'pending'`,
         [node.id]
       );
@@ -109,13 +108,13 @@ describe('createBlobStorageService', () => {
 
       await service.completeUpload(s3Key, 1024, 'text/plain');
 
-      const afterActive = await storage.sqliteQuery(
+      const afterActive = await dbQuery(
         `SELECT status FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
         [node.id, s3Key]
       );
       expect(afterActive.rows[0].status).toBe('active');
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     // V4: completeUpload creates filecache row with correct size and mime_type
@@ -125,7 +124,7 @@ describe('createBlobStorageService', () => {
       const s3Key = await service.prepareUpload(node.id);
       await service.completeUpload(s3Key, 2048, 'application/pdf');
 
-      const cacheRow = await storage.sqliteQuery(
+      const cacheRow = await dbQuery(
         `SELECT * FROM filecache WHERE file_node_id = ?`,
         [node.id]
       );
@@ -133,7 +132,7 @@ describe('createBlobStorageService', () => {
       expect(cacheRow.rows[0].size).toBe(2048);
       expect(cacheRow.rows[0].mime_type).toBe('application/pdf');
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('throws when no object_map entry exists for the s3Key', async () => {
@@ -162,7 +161,7 @@ describe('createBlobStorageService', () => {
       expect(result).not.toBeNull();
       expect(Buffer.compare(result, testBuffer)).toBe(0);
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     // V6: downloadBlob with no active object returns null
@@ -173,7 +172,7 @@ describe('createBlobStorageService', () => {
 
       expect(result).toBeNull();
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
 
@@ -193,8 +192,8 @@ describe('createBlobStorageService', () => {
       const activeBefore = await fileNodesStore.getActiveObject(node.id);
       expect(activeBefore.s3_key).toBe(oldS3Key);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 2, ?)`,
         [node.id, oldS3Key, 'active']
@@ -203,7 +202,7 @@ describe('createBlobStorageService', () => {
       const newBuffer = Buffer.from('new content here');
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
 
-      const oldStatus = await storage.sqliteQuery(
+      const oldStatus = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         [oldS3Key]
       );
@@ -214,8 +213,8 @@ describe('createBlobStorageService', () => {
       expect(typeof newS3Key).toBe('string');
       expect(newS3Key.length).toBe(36);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('uploads the new buffer to blobStore', async () => {
@@ -225,8 +224,8 @@ describe('createBlobStorageService', () => {
       await blobStore.uploadBlob(oldS3Key, Buffer.from('old'));
       await service.completeUpload(oldS3Key, 3, 'text/plain');
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 2, ?)`,
         [node.id, oldS3Key, 'active']
@@ -239,8 +238,8 @@ describe('createBlobStorageService', () => {
       expect(downloaded).not.toBeNull();
       expect(Buffer.compare(downloaded, newBuffer)).toBe(0);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('handles overwrite when no active object exists', async () => {
@@ -254,8 +253,8 @@ describe('createBlobStorageService', () => {
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
       expect(activeAfter.s3_key).toBe(newS3Key);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
 
@@ -274,7 +273,7 @@ describe('createBlobStorageService', () => {
 
       await service.deleteBlob(node.id);
 
-      const orphanedRow = await storage.sqliteQuery(
+      const orphanedRow = await dbQuery(
         `SELECT status FROM object_map WHERE s3_key = ?`,
         [s3Key]
       );
@@ -282,7 +281,7 @@ describe('createBlobStorageService', () => {
 
       expect(await fileNodesStore.getActiveObject(node.id)).toBeNull();
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     // V10: deleteBlob with no active object is a no-op (no error)
@@ -291,7 +290,7 @@ describe('createBlobStorageService', () => {
 
       await expect(service.deleteBlob(node.id)).resolves.not.toThrow();
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
 
@@ -310,7 +309,7 @@ describe('createBlobStorageService', () => {
       const result = await service.getActiveS3Key(node.id);
       expect(result).toBe(s3Key);
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('returns null when no active object exists', async () => {
@@ -319,7 +318,7 @@ describe('createBlobStorageService', () => {
       const result = await service.getActiveS3Key(node.id);
       expect(result).toBeNull();
 
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
   });
 
@@ -450,6 +449,80 @@ describe('createBlobStorageService', () => {
         /Cannot resolve path/
       );
     });
+
+    it('createDirectoryWebdav resolves path and MKCOLs the directory via blobStore', async () => {
+      const mockBlobStore = {
+        uploadBlob: jest.fn(),
+        downloadBlob: jest.fn(),
+        deleteBlob: jest.fn(),
+        createDirectory: jest.fn().mockResolvedValue(undefined),
+      };
+      const mockFns = {
+        getNode: jest.fn().mockResolvedValue({ id: 1, name: 'sub' }),
+        getNodePath: jest.fn().mockResolvedValue('/user/sub'),
+      };
+      const svc = createWebdavService(mockFns, mockBlobStore);
+
+      const result = await svc.createDirectoryWebdav(1);
+
+      expect(mockFns.getNode).toHaveBeenCalledWith(1);
+      expect(mockFns.getNodePath).toHaveBeenCalledWith(1);
+      expect(mockBlobStore.createDirectory).toHaveBeenCalledWith('/user/sub');
+      expect(result).toBe('/user/sub');
+    });
+
+    it('createDirectoryWebdav marks orphaned_node and rethrows when MKCOL fails', async () => {
+      const mockBlobStore = {
+        uploadBlob: jest.fn(),
+        downloadBlob: jest.fn(),
+        deleteBlob: jest.fn(),
+        createDirectory: jest.fn().mockRejectedValue(new Error('MKCOL 409 Conflict')),
+      };
+      const mockFns = {
+        getNode: jest.fn().mockResolvedValue({ id: 1, name: 'sub' }),
+        getNodePath: jest.fn().mockResolvedValue('/user/sub'),
+        updateSyncStatus: jest.fn().mockResolvedValue(undefined),
+      };
+      const svc = createWebdavService(mockFns, mockBlobStore);
+
+      await expect(svc.createDirectoryWebdav(1)).rejects.toThrow(/MKCOL 409 Conflict/);
+      expect(mockFns.updateSyncStatus).toHaveBeenCalledWith(1, 'orphaned_node');
+    });
+
+    it('createDirectoryWebdav throws when path cannot be resolved', async () => {
+      const mockBlobStore = {
+        uploadBlob: jest.fn(),
+        downloadBlob: jest.fn(),
+        deleteBlob: jest.fn(),
+        createDirectory: jest.fn(),
+      };
+      const mockFns = {
+        getNode: jest.fn().mockResolvedValue(null),
+        getNodePath: jest.fn(),
+      };
+      const svc = createWebdavService(mockFns, mockBlobStore);
+
+      await expect(svc.createDirectoryWebdav(999)).rejects.toThrow(/Cannot resolve path/);
+      expect(mockBlobStore.createDirectory).not.toHaveBeenCalled();
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  createDirectoryWebdav (S3 no-op)                                   */
+  /* ------------------------------------------------------------------ */
+
+  describe('createDirectoryWebdav', () => {
+    it('is a no-op (returns null) in S3 mode without touching blobStore', async () => {
+      // The in-memory blob store has no createDirectory method — if the no-op
+      // guard regressed, this call would throw TypeError instead of resolving.
+      const node = await fileNodesStore.createNode(null, 'mkcol-s3-noop', 'directory');
+
+      const result = await service.createDirectoryWebdav(node.id);
+
+      expect(result).toBeNull();
+
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -461,7 +534,7 @@ describe('createBlobStorageService', () => {
       const node = await fileNodesStore.createNode(null, 'cow-count-test', 'file');
       const s3Key = crypto.randomUUID();
 
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, ?)`,
         [node.id, s3Key, 'active']
@@ -470,8 +543,8 @@ describe('createBlobStorageService', () => {
       const count = await service.countActiveObjectsByS3Key(s3Key);
       expect(count).toBe(1);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('duplicateBlob copies blob and returns new key', async () => {
@@ -502,8 +575,8 @@ describe('createBlobStorageService', () => {
       expect(obj).not.toBeNull();
       expect(obj.s3_key).toBe(s3Key);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('ensureExclusiveBlob duplicates when count > 1', async () => {
@@ -515,12 +588,14 @@ describe('createBlobStorageService', () => {
         return Promise.resolve();
       });
 
-      await storage.sqliteRun(
+      // Both nodes reference the same blob at version 1 (production copy flow:
+      // copyFile → linkObject inserts the shared key at v1 for the copy node).
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 2, ?)`,
+         VALUES (?, ?, 's3', 1, ?)`,
         [nodeA.id, sharedKey, 'active']
       );
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, ?)`,
         [nodeB.id, sharedKey, 'active']
@@ -531,22 +606,24 @@ describe('createBlobStorageService', () => {
       expect(newKey).not.toBe(sharedKey);
       expect(blobStore.copyBlob).toHaveBeenCalledWith(sharedKey, newKey);
 
+      // CoW invariant: nodeA is detached onto the duplicated blob (its old row
+      // orphaned, new version inserted), while nodeB keeps the shared blob.
       const activeA = await fileNodesStore.getActiveObject(nodeA.id);
       expect(activeA.s3_key).toBe(newKey);
 
-      // orphanObject orphans ALL rows for a given s3_key, so nodeB is also affected
       const activeB = await fileNodesStore.getActiveObject(nodeB.id);
-      expect(activeB).toBeNull();
+      expect(activeB).not.toBeNull();
+      expect(activeB.s3_key).toBe(sharedKey);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id IN (?, ?)`, [nodeA.id, nodeB.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id IN (?, ?)`, [nodeA.id, nodeB.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id IN (?, ?)`, [nodeA.id, nodeB.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id IN (?, ?)`, [nodeA.id, nodeB.id]);
     });
 
     it('ensureExclusiveBlob returns existing key when count === 1', async () => {
       const node = await fileNodesStore.createNode(null, 'cow-unique-test', 'file');
       const uniqueKey = crypto.randomUUID();
 
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, ?)`,
         [node.id, uniqueKey, 'active']
@@ -556,8 +633,8 @@ describe('createBlobStorageService', () => {
 
       expect(result).toBe(uniqueKey);
 
-      await storage.sqliteRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await storage.sqliteRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
 
     it('duplicateBlob throws in WebDAV mode', async () => {

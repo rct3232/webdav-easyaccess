@@ -18,9 +18,19 @@ function getFileNodeService() {
   return getComposition().fileNodeService;
 }
 
+function getBlobStorageService() {
+  const { getComposition } = require('../../../service/composition');
+  return getComposition().blobStorageService;
+}
+
 /**
  * Resolve or create the user's home directory node (root-level node named
  * after the username) and return its nodeId. Granting works on nodeIds only.
+ *
+ * In WebDAV blob-storage mode the physical home directory is also MKCOL'd on
+ * the WebDAV server (idempotent, recursive). On MKCOL failure the node is
+ * marked sync_status='orphaned_node' and the error propagates (loud fail-safe);
+ * S3 mode is unaffected (no-op).
  * @param {number} userId
  * @param {string} username
  * @returns {Promise<number|null>} home node id, or null if it cannot be created
@@ -30,6 +40,9 @@ async function ensureUserHomeNode(userId, username) {
   let node = await fileNodeService.resolvePath(`/${username}`);
   if (!node) {
     node = await fileNodeService.createDirectory(null, username);
+  }
+  if (node) {
+    await getBlobStorageService().createDirectoryWebdav(Number(node.id));
   }
   return node ? Number(node.id) : null;
 }

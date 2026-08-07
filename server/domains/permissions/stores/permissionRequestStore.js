@@ -364,7 +364,7 @@ async function updateStatus(id, { status, resolvedBy } = {}) {
           `UPDATE permission_requests
               SET status = $2,
                   resolved_at = CASE WHEN $2 = $3 THEN NULL ELSE NOW() END,
-                  resolved_by = CASE WHEN $2 = $3 THEN NULL ELSE $4 END
+                  resolved_by = CASE WHEN $2 = $3 THEN NULL ELSE $4::BIGINT END
             WHERE id = $1
             RETURNING *`,
           [

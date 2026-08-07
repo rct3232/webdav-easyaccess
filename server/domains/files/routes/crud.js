@@ -195,10 +195,19 @@ router.post('/upload', authenticateToken, requireAuth, checkMetaPathAccess, uplo
   } catch (e) {}
 
   const parentNodeIdValue = req.body.parentNodeId;
-  if (!parentNodeIdValue) {
+  const uploadUser = req.user.full;
+  // Root-level upload (parentNodeId null) is admin-only: the filesystem root
+  // `/` is the admin's home. Multipart form fields arrive as strings, so
+  // normalize "null"/"undefined" to null.
+  const isRootUpload =
+    parentNodeIdValue == null ||
+    parentNodeIdValue === '' ||
+    parentNodeIdValue === 'null' ||
+    parentNodeIdValue === 'undefined';
+  if (isRootUpload && !uploadUser.is_admin) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
-  const parentNodeId = parseNodeId(parentNodeIdValue, 'parentNodeId');
+  const parentNodeId = isRootUpload ? null : parseNodeId(parentNodeIdValue, 'parentNodeId');
   const { onConflict } = req.body;
 
   const mimeType = req.file.mimeType || originalFilename.mimetype || getContentType(originalFilename) || 'application/octet-stream';

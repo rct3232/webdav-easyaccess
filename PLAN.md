@@ -556,8 +556,8 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 >
 > **Phase 8 — Status: COMPLETE (all tasks verified 2026-08-07, branch `refactor/phase-8-verification`; NOT merged to `dev`)**
 > **Final verification numbers:**
-> - Server `test:ci` (SQLite): **67 suites / 1136 passed / 2 skipped / exit 0** (`test:ci:pg` now exits 0 after the startup-teardown fix).
-> - Server `test:ci:pg` (PostgreSQL, `--runInBand` + TRUNCATE isolation): **67 suites / 1136 passed / 2 skipped / exit 0** — the full suite runs on BOTH backends (Rule 14).
+> - Server `test:ci` (SQLite): **67 suites / 1137 passed / 2 skipped / exit 0** (`test:ci:pg` now exits 0 after the startup-teardown fix).
+> - Server `test:ci:pg` (PostgreSQL, `--runInBand` + TRUNCATE isolation): **67 suites / 1137 passed / 2 skipped / exit 0** — the full suite runs on BOTH backends (Rule 14).
 > - Client `test:ci`: **147 suites / 1265 passed / 0 failed**.
 > - Playwright E2E default wave, S3+PG (`test:e2e:s3`): **111 passed / 2 skipped / 0 failed** (8.11 PASS; incl. all E2E-S3PG-001..008).
 > - Playwright E2E default wave, WebDAV+PG (`test:e2e:webdav`): **95 passed / 18 skipped / 0 failed** (8.10 PASS; skips are by-design mobile-only + s3-only gating).
@@ -577,7 +577,7 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 >
 > **Infra:** PG schema auto-applied at startup (`bootstrap.js` non-SQLite branch → `applyPendingMigrations`), fresh-DB-only contract (no already-exists tolerance); `.env.e2e` fixed (AWS_REGION, host-reachable S3/PG) + `.env.e2e.webdav` + `E2E_BACKEND_MODE` scripts (`test:e2e:s3`/`test:e2e:webdav`); `server/testing/minioTestUtils.js` (ensure/emptyBucket) + `server/testing/dbUtils.js` (backend-neutral dbQuery/dbRun + truncateAllTables); composer-runner lifecycle (compose before server, TRUNCATE+seed, bucket empty); E2E seed creates admin home node.
 >
-> **Remaining notes for the user:** (1) The home view now renders ABSOLUTE display paths (e.g. `/admin/…`) — consistent with the documented contract and all other views, but a UX point worth reviewing before migration cutover. (2) Benign `GET /api/permissions/check?nodeId=null → 400` log noise during share-public flows (client sends an unresolved nodeId; server rejects cleanly; no test impact) — candidate follow-up. (3) E2E `E2E_LATER_WAVES=1` specs (`mypage-admin`, `explorer-advanced.*`) are not part of the default-wave gate and were not re-validated in this pass.
+> **Remaining notes for the user:** (1) **Admin root = filesystem root `/`** (user-confirmed): production never creates an admin home node (`cleanupService` skips admins), `useFolderTreeController`/`useFileManager` treat admin home as null, and `folders/create` + upload now accept `parentNodeId: null` for admin — so admin browses all users' home directories from `/`, while regular users (e.g. `user1`) have named home nodes `/user1_x` with "Home › user1_x › …" breadcrumbs and a username-labeled tree root. The E2E seed no longer creates a `/admin` node and the core-flow specs assert root-relative paths (`/flow-folder`). `display_path` remains absolute (includes the owning user's home node name) for non-root nodes. (2) Benign `GET /api/permissions/check?nodeId=null → 400` log noise during share-public flows (client sends an unresolved nodeId; server rejects cleanly; no test impact) — candidate follow-up. (3) E2E `E2E_LATER_WAVES=1` specs (`mypage-admin`, `explorer-advanced.*`) are not part of the default-wave gate and were not re-validated in this pass.
 
 #### Server-Side Tests
 

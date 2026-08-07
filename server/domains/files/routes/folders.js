@@ -15,16 +15,24 @@ const { getComposition } = require('../../../service/composition');
 // Create folder
 router.post('/create', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
   const { parentNodeId, name } = req.body;
-  if (!name || !parentNodeId) {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
-  const parentNodeIdParsed = parseInt(parentNodeId, 10);
-  if (isNaN(parentNodeIdParsed) || parentNodeIdParsed <= 0) {
-    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
-  }
-
   const user = req.user.full;
+
+  // Root-level creation (parentNodeId null) is admin-only: the filesystem root
+  // `/` is the admin's home, listing all users' home directories.
+  const isRootCreate =
+    parentNodeId == null || parentNodeId === '' || parentNodeId === 'null' || parentNodeId === 'undefined';
+  if (!name || (isRootCreate && !user.is_admin)) {
+    throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+  }
+
+  let parentNodeIdParsed = null;
+  if (!isRootCreate) {
+    parentNodeIdParsed = parseInt(parentNodeId, 10);
+    if (isNaN(parentNodeIdParsed) || parentNodeIdParsed <= 0) {
+      throw validationError(SERVER_ERROR_CODES.folders.pathRequired);
+    }
+  }
+
   const userId = req.user.id;
   const principalId = req.principalId;
 

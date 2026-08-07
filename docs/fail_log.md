@@ -525,3 +525,30 @@ classified Case A (Source Error) and fixed with user approval on branch
   fallback.
 - **Verification:** BULK-002/003 pass in both modes; folderPickerGateway unit
   test updated to assert normalization.
+
+---
+
+## 2026-08-07 — Admin root = filesystem root: root-level ops and listing gaps
+
+- **Area:** `server/domains/files/routes/folders.js`, `crud.js`,
+  `server/store/fileNodesStore.js` (`getChildren`),
+  `client/src/pages/FileManager/hooks/useFileManager.js`
+- **Classification:** Case A (Source Error) — the admin-home design (admin's
+  home is the filesystem root `/`) was already implemented in the client
+  (`useFolderTreeController` forces admin home to null, `cleanupService` never
+  creates an admin home node), but two server paths rejected/omitted root-level
+  operations:
+  1. `folders/create` and upload required a non-null `parentNodeId`, so an admin
+     acting at the root (`parentNodeId: null` / multipart `"null"`) got 400s.
+  2. `fileNodesStore.getChildren(null)` ran `WHERE parent_id = $1` with a null
+     param — `parent_id = NULL` never matches, so root-level nodes
+     (`parent_id IS NULL`) were invisible; the admin home view listed `[]`.
+- **Fix:** create/upload accept a root parent for `is_admin` users only
+  (normalizing `"null"`/`"undefined"` multipart strings); `getChildren` uses
+  `parent_id IS NULL` when the parent is null (both PG and SQLite);
+  `useFileManager.homeNodeId` is `is_admin ? null : rootNodeId` (consistent
+  with the folder tree). E2E seed no longer creates a `/admin` node and the
+  core-flow specs assert root-relative paths (`/flow-folder`).
+- **Verification:** unit test added for root listing; server SQLite + PG
+  (67/1137) and client (147/1265) green; full default-wave E2E passes in both
+  modes (S3 111 pass, WebDAV 95 pass, 0 failures).

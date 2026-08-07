@@ -66,6 +66,22 @@ describe('createFileNodesStore', () => {
       expect(children).toEqual([]);
     });
 
+    // Root listing: getChildren(null) returns top-level (parent_id IS NULL) nodes.
+    it('returns root-level nodes when parentId is null', async () => {
+      const rootA = await store.createNode(null, 'fn-root-a', 'directory');
+      const rootB = await store.createNode(null, 'fn-root-b', 'file');
+      const nested = await store.createNode(rootA.id, 'fn-root-nested', 'file');
+
+      const children = await store.getChildren(null);
+
+      const ids = children.map((c) => c.id);
+      expect(ids).toContain(rootA.id);
+      expect(ids).toContain(rootB.id);
+      expect(ids).not.toContain(nested.id);
+
+      await dbRun('DELETE FROM file_nodes WHERE name IN (?, ?, ?)', ['fn-root-a', 'fn-root-b', 'fn-root-nested']);
+    });
+
     // renameNode
     it('renames a node and refreshes updated_at', async () => {
       const created = await store.createNode(null, 'fn-rename-me', 'file');

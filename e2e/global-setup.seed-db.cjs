@@ -63,29 +63,9 @@ async function main() {
   let createdUsers = 0;
   let ensuredHomes = 0;
 
-  // The server's startup `ensureHomeOwnerAdminForAllUsers()` creates the
-  // admin's home node, but the seed's TRUNCATE above wipes it. Re-create it
-  // here (mirroring the base-user loop below) so the admin home view has a
-  // rootNodeId and create-folder/upload receive a real parentNodeId.
-  const admin = await userStore.findByUsername('admin');
-  if (admin) {
-    let adminHome = await fileNodeService.resolvePath('/admin');
-    if (!adminHome) {
-      adminHome = await fileNodeService.createDirectory(null, 'admin');
-    }
-    if (!adminHome) {
-      throw new Error('Failed to create home node for admin');
-    }
-    if (blobStore) {
-      await blobStore.createDirectory('/admin');
-    }
-    const hasAdminPerm = await permissionStore.checkPermission(admin.id, adminHome.id, 'admin');
-    if (!hasAdminPerm) {
-      await permissionStore.grant(admin.id, adminHome.id, 'admin');
-    }
-    ensuredHomes += 1;
-  }
-
+  // NOTE: no home node is created for the admin user — the admin's home is the
+  // filesystem root `/` (mirrors cleanupService.ensureHomeOwnerAdminForAllUsers,
+  // which skips is_admin users, and the client's `is_admin ? null : rootNodeId`).
   for (const { username, password, email } of users) {
     if (!username || !password || !email) {
       throw new Error(`Invalid seed user entry: ${JSON.stringify({ username, password, email })}`);

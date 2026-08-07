@@ -4,7 +4,7 @@ import { TEST_FILES } from './fixtures/test-data';
 import { loginAsAdmin } from './helpers/auth';
 import { openFabAction } from './helpers/explorer';
 import { clickActionSheetItem, openActionSheet } from './helpers/mobile-interactions';
-import { ADMIN_HOME_PATH, buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { buildName, fileItem, readTestFileFixture } from './helpers/files';
 import { gotoFilesPath } from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
@@ -117,8 +117,8 @@ async function bulkDeleteSelected(
 test('E2E-EXP-006: Rename item from platform-specific actions', async ({ page }, testInfo) => {
   const originalName = buildName(testInfo, 'flow-rename-source');
   const renamedName = buildName(testInfo, 'flow-renamed');
-  const originalPath = `${ADMIN_HOME_PATH}/${originalName}`;
-  const renamedPath = `${ADMIN_HOME_PATH}/${renamedName}`;
+  const originalPath = `/${originalName}`;
+  const renamedPath = `/${renamedName}`;
 
   await loginAsAdmin(page);
 
@@ -148,7 +148,7 @@ test('E2E-EXP-006: Rename item from platform-specific actions', async ({ page },
 
 test('E2E-EXP-008: Open previewable file', async ({ page }, testInfo) => {
   const imageFileName = buildName(testInfo, 'preview-image', '.jpg');
-  const imageFilePath = `${ADMIN_HOME_PATH}/${imageFileName}`;
+  const imageFilePath = `/${imageFileName}`;
 
   await loginAsAdmin(page);
   await uploadFile(page, {
@@ -167,7 +167,7 @@ test('E2E-EXP-008: Open previewable file', async ({ page }, testInfo) => {
 
 test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }, testInfo) => {
   const folderName = buildName(testInfo, 'bulk-select-folder');
-  const folderPath = `${ADMIN_HOME_PATH}/${folderName}`;
+  const folderPath = `/${folderName}`;
 
   await loginAsAdmin(page);
   await createFolder(page, folderName);
@@ -184,11 +184,11 @@ test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }
 test('E2E-BULK-002: Move selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
-  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
-  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-move-dest-folder');
-  const destFolderPath = `${ADMIN_HOME_PATH}/${destFolderName}`;
+  const destFolderPath = `/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
@@ -219,11 +219,11 @@ test('E2E-BULK-002: Move selected items to another folder', async ({ page, reque
 test('E2E-BULK-003: Copy selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
-  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
-  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
 
   const destFolderName = buildName(testInfo, 'bulk-copy-dest-folder');
-  const destFolderPath = `${ADMIN_HOME_PATH}/${destFolderName}`;
+  const destFolderPath = `/${destFolderName}`;
   const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
   const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
 
@@ -254,8 +254,8 @@ test('E2E-BULK-003: Copy selected items to another folder', async ({ page, reque
 test('E2E-BULK-004: Delete selected items', async ({ page }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-delete-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-delete-src-2', '.txt');
-  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
-  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
 
   await loginAsAdmin(page);
   await uploadFile(page, {
@@ -282,8 +282,8 @@ test('E2E-BULK-004: Delete selected items', async ({ page }, testInfo) => {
 test('E2E-BULK-006: Mobile multi-download is disabled', async ({ page }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-download-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-download-src-2', '.txt');
-  const srcFile1Path = `${ADMIN_HOME_PATH}/${srcFile1Name}`;
-  const srcFile2Path = `${ADMIN_HOME_PATH}/${srcFile2Name}`;
+  const srcFile1Path = `/${srcFile1Name}`;
+  const srcFile2Path = `/${srcFile2Name}`;
 
   await loginAsAdmin(page);
   await uploadFile(page, {

@@ -44,10 +44,12 @@
 | handleAddToSharedConfirm | () => Promise<void> | Confirms add-to-my-permissions flow and preserves current post-success navigation. |
 | leaveShareConfirmOpen | boolean | Whether the leave-share confirmation dialog is visible. |
 | setLeaveShareConfirmOpen | (open: boolean) => void | Setter for leave-share dialog visibility. |
-| leaveShareConfirmTargetPath | string \| null | Destination path selected before leaving share mode. |
+| leaveShareConfirmTargetNodeId | number \| null | Destination node id selected before leaving share mode (preferred; nodeId-first navigation). |
+| setLeaveShareConfirmTargetNodeId | (nodeId: number \| null) => void | Setter for the pending destination node id. |
+| leaveShareConfirmTargetPath | string \| null | Legacy destination path selected before leaving share mode (fallback when no node id was clicked, e.g. virtual-root targets). |
 | setLeaveShareConfirmTargetPath | (path: string \| null) => void | Setter for the pending destination path. |
-| handleLeaveSharePathClick | (path: string) => void | Opens leave-share confirmation for a target path. |
-| handleLeaveShareConfirm | () => void | Confirms leaving share mode and navigates to authenticated files route. |
+| handleLeaveSharePathClick | (target: number \| string) => void | Opens leave-share confirmation for a target node id (number) or path (string). |
+| handleLeaveShareConfirm | () => void | Confirms leaving share mode and navigates to the authenticated files route (nodeId-first). |
 
 ### 2.4 Responsibilities
 
@@ -70,7 +72,7 @@
 
 - May call share-link permission check/add APIs.
 - May auto-open the add-to-my-permissions modal after authenticated share-link entry.
-- May navigate to `/files/*` after success or leave-share confirmation. Directory routing after add-to-shared is nodeId-first (`/files/node/<linkInfo.nodeId>`); the legacy `/files/<path>` fallback was removed in Phase 5.
+- May navigate to `/files/*` after success or leave-share confirmation. Directory routing after add-to-shared is nodeId-first (`/files/node/<linkInfo.nodeId>`); leave-share confirmation is also nodeId-first (`/files/node/<targetNodeId>`) when the clicked destination carries a node id. The legacy `/files/<path>` fallback (via `toFilesPath`) is used only for path-string targets (e.g. virtual roots `/__shared__` / `/__recent__`).
 
 ### 2.7 Error Handling
 
@@ -84,7 +86,8 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - [ ] Authenticated share-link entry triggers the same add-to-my-permissions bootstrap behavior as today.
 - [ ] If the user already has sufficient permission, the modal closes and shared-directory navigation is nodeId-first when `linkInfo.nodeId` is present (`/files/node/<id>`).
 - [ ] Confirming add-to-my-permissions keeps the same success navigation and loading state, routing to the nodeId route when available.
-- [ ] Clicking a non-share tree path in share mode opens leave-share confirmation and confirmation routes to the authenticated files path.
+- [ ] Clicking a non-share tree target (node id or path) in share mode opens the leave-share confirmation dialog.
+- [ ] Confirming leave-share routes to the authenticated files path: node id targets route to `/files/node/<nodeId>`; path-string targets route via `toFilesPath`. Closing the dialog without confirming cancels navigation.
 
 ### 2.9 Edge Cases
 
@@ -92,3 +95,4 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - `linkInfo` without `nodeId` falls back to the legacy `/files/<path>` route for shared-directory navigation.
 - Repeated permission bootstrap for the same token is deduplicated.
 - Out-of-order async responses must not reopen or overwrite the latest modal state.
+- A `null`/undefined leave-share target (e.g. admin "home" whose home node id is null) is normalized to `/` so confirming still returns to the authenticated explorer home (`/files`).

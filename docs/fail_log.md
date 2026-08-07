@@ -367,3 +367,161 @@ suites are fully green.
 - **Client**: 149 suites / 1260 passed / 0 failed.
 - ESLint: 0 new issues (pre-existing warnings only).
 - Branch `fix/pre-existing-bugs-tests`; merged to `dev`, branch deleted.
+
+---
+
+## 2026-08-07 — Phase 8: core-flow E2E BULK-002/003 folder-picker destination selection
+
+- **Area:** `e2e/desktop-core-flow.spec.ts` (E2E-BULK-002/003),
+  `e2e/mobile-core-flow.spec.ts` (E2E-BULK-002/003)
+- **Classification:** Case A (Source Error — client folder picker renders
+  unnamed destination folders)
+- **Summary:** After the home-relative → absolute `display_path` prefixing fix,
+  the four BULK-002/003 tests progress past item selection but fail at
+  `openFolderPickerAndSelectDestination` (spec line 103): the picker dialog
+  opens at the admin root (breadcrumb "Root") and lists its folder nodes, but
+  every `ListItemButton` renders with **no accessible text**, so
+  `dialog.getByRole('button', { name: destinationFolderName, exact: true })`
+  never matches. Root cause: `folderPickerGateway.listFolderContents` returns the
+  raw `listFiles` shape (`{ nodeId, name, display_path, ... }` — no `basename`),
+  while `FolderPickerDialog.js` renders `ListItemText primary={folder.basename}`
+  → undefined label. The explorer path normalizes via `explorerGateway`
+  `normalizeFileEntry` (`basename: item.basename ?? item.name`); the picker
+  gateway intentionally "preserves raw shape" and never normalizes
+  (docs/spec/client/services/folderPickerGateway.md §2.2). Verified identical in
+  S3 and WebDAV modes. Pre-existing (predates the path fix; masked until the
+  path assertions were corrected). No spec-only workaround is possible because
+  the picker buttons are unnamed.
+- **Spec cross-check:** `FolderPickerDialog.md` and `folderPickerGateway.md` do
+  not pin the folder-item shape (`basename` vs `name`); `useFolderPicker` mocks
+  use `basename`, the live gateway returns `name`. Contract is under-specified.
+- **Action taken (reporting only):** Spec-only path-prefix fix completed
+  (19/23 core-flow tests pass per mode; full default waves: S3 107 passed / 4
+  failed / 2 skipped, WebDAV 91 passed / 4 failed / 18 skipped). The picker
+  defect is out of scope (no client source changes permitted by this task).
+  Recommended follow-up: normalize picker entries (`basename` fallback to
+  `name`) in `folderPickerGateway.listFolderContents` or
+  `FolderPickerDialog.js`, and/or anchor the admin picker at the admin home node
+  instead of the server root.
+
+---
+
+## 2026-08-06 — Phase 8: post-teardown startup continuations fail `--runInBand`
+
+- **Area:** `server/domains/admin/routes/__tests__/settings.test.js`,
+  `server/infrastructure/routes/__tests__/healthRoutes.test.js`
+- **Classification:** Case B (Test Error — teardown artifact)
+- **Summary:** Both suites `require('../../../../index')`; `server/index.js`
+  fires an unawaited `initMetadataStore().then(...)` startup chain at
+  require-time (SQLite schema init → ffmpeg probe → WebDAV connection probe).
+  Under `--runInBand` the suites finish before that chain settles, so its async
+  continuations run after Jest teardown → `ReferenceError: ... after the Jest
+  environment has been torn down` + "Cannot log after tests are done" → exit 1
+  despite all suites passing. Reproduced on SQLite with `--runInBand`
+  (pre-existing, independent of PG). Empirically confirmed `require.main ===
+  module` is false under Jest (app.listen/GC-scheduler block does not run) and
+  that "Cannot log after tests are done" alone produces exit 1.
+- **Action taken (test files only):** await `initMetadataStore()` +
+  `initFfmpegOnce()` (the shared/memoized init promises the startup chain awaits)
+  in `beforeAll` so the whole chain settles deterministically before teardown;
+  in `settings.test.js` additionally `jest.mock` `infrastructure/webdavTest` (same
+  pattern already used by `healthRoutes.test.js`) so the startup WebDAV probe
+  cannot hit the real server configured in `.env`. No production code or test
+  assertions changed.
+- **Verification:** SQLite `npm run test:ci` → 68 suites / 1132 passed / 2
+  skipped / exit 0. SQLite `--runInBand` → 67 suites / 1131 passed / 2 skipped /
+  exit 0. PG `npm run test:ci:pg` → 67 suites / 1131 passed / 2 skipped /
+  exit 0. ESLint clean on both files.
+
+---
+
+## 2026-08-07 — Phase 8: PostgreSQL suite, CoW, and E2E-driven production bugs
+
+Consolidated RCA for source bugs surfaced by the Phase 8 validation work (full
+suite now runs on both backends + full Playwright E2E in both modes). Each was
+classified Case A (Source Error) and fixed with user approval on branch
+`refactor/phase-8-verification` (not merged to `dev`).
+
+### 1. `fileNodesStore.insertAncestorRows` — PG multi-row VALUES syntax (42601)
+- **Area:** `server/store/fileNodesStore.js`
+- **Summary:** The PG branch built a flat `$1..$N` placeholder list for a
+  multi-row `INSERT INTO node_ancestors ... VALUES (...)`; PG rejects that with
+  42601, breaking ALL child-node create/move (closure-table inserts) on PG. Never
+  exercised because the PG path was previously un-runnable (no schema bootstrap).
+- **Fix:** group placeholders as `($1,$2,$3),($4,$5,$6),…` per row.
+- **Verification:** 11 previously-gated suites + `node_ancestors` describe now
+  pass on PG; gates removed; full PG suite green.
+
+### 2. `permissionRequestStore` — `resolved_by = CASE … $4` type inference (42804)
+- **Area:** `server/domains/permissions/stores/permissionRequestStore.js`
+- **Summary:** node-pg sends `$4` (nullable bigint) as text; PG cannot infer the
+  column type in the `ELSE $4` arm → 42804.
+- **Fix:** `$4::BIGINT`.
+- **Verification:** previously-gated 2 tests now pass.
+
+### 3. `blobStorageService.ensureExclusiveBlob` — CoW overwrite broken (409 + original corruption)
+- **Area:** `server/service/blobStorageService.js`
+- **Summary:** overwriting a copy-on-write copy (E2E-S3PG-004) failed with 409
+  and would also orphan the ORIGINAL node: `orphanObject(s3_key)` orphans ALL
+  sharers (not just this node), then `insertObject(..., version 1)` collided with
+  the node's existing v1 row (`UNIQUE(file_node_id, version_number)`). The unit
+  test encoded the wrong behavior ("nodeB is also affected").
+- **Fix:** replace with `upsertObjectMap(fileNodeId, newS3Key, 'active')`
+  (per-node orphan + next version); corrected the encoding unit test.
+- **Verification:** E2E-S3PG-004 passes; original content preserved.
+
+### 4. Auth responses missing `rootNodeId` (home-view CRUD 400s)
+- **Area:** `server/domains/auth/service.js`
+- **Summary:** login/register/`/me` user payloads lacked the user's home node id;
+  the client's home view computed `homeNodeId = user?.rootNodeId ?? null` →
+  create-folder/upload sent `parentNodeId: null` → 400. ~42 E2E failures.
+- **Fix:** attach `rootNodeId` (via `getUserRootNode`) to all three payloads.
+- **Verification:** home-view CRUD works in both E2E modes.
+
+### 5. WebDAV mode created directories DB-only (no MKCOL) — uploads 403
+- **Area:** `server/utils/webdav.js`, `server/service/blobStorageService.js`,
+  `folders.js`, `userService.js`, `cleanupService.js`, E2E seed
+- **Summary:** physical WebDAV directories never created; PUT into a missing
+  parent returned 403 — zero webdav-mode uploads succeeded.
+- **Fix:** recursive already-exists-tolerant `ensureDirectoryExists` (MKCOL
+  root→deepest), `createDirectoryWebdav(nodeId)` (S3 no-op, `orphaned_node`
+  fail-safe), wired into folder-create + home-node creation (service, cleanup,
+  seed).
+- **Verification:** webdav E2E `mypage-user`/`core-flow` green.
+
+### 6. Leave-share confirmation dead code (client)
+- **Area:** `client/src/pages/FileManager/*`, `useShareLinkOverlay.js`,
+  `FolderTree.js`, `FileManagerView.js`
+- **Summary:** `handleLeaveSharePathClick` was never invoked in the render tree;
+  leaving a shared folder navigated without the confirm dialog (E2E-SHARE-007).
+- **Fix:** wire the confirm dialog into share-mode folder-tree/drawer navigation;
+  confirm navigates nodeId-first.
+- **Verification:** E2E-SHARE-007 passes.
+
+### 7. Permission-request inbox/outbox showed `#<file_node_id>` instead of a path
+- **Area:** `server/domains/permissions/routes/permissionRequests.js`,
+  `client/.../mypage/content/SharingContent.js`
+- **Summary:** post-migration responses carried only `file_node_id`; the client
+  rendered the raw id (UX regression + 6 E2E failures).
+- **Fix:** server enriches inbox/outbox/create with `display_path`/`target_name`;
+  client renders path with `#id` fallback.
+- **Verification:** MYPAGE-006/007/008 pass.
+
+### 8. `pg.Pool` unhandled 'error' crashed the process
+- **Area:** `server/store/storage.js`
+- **Summary:** no `pool.on('error')` listener; a PG restart/drop (e.g. E2E
+  teardown `down -v`) crashed the server via an unhandled event.
+- **Fix:** register `pool.on('error', …)` (node-pg documented best practice).
+- **Verification:** teardown no longer crashes the run; production resilience to
+  PG restarts.
+
+### 9. `folderPickerGateway.listFolderContents` missing `basename` normalization
+- **Area:** `client/src/services/folderPickerGateway.js`,
+  `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
+- **Summary:** picker entries were the raw `listFiles` shape (no `basename`);
+  `FolderPickerDialog` renders `primary={folder.basename}` → unnamed buttons →
+  BULK-002/003 could not select a destination. (Detailed entry above, 373.)
+- **Fix:** gateway normalizes entries (explorer shape) + dialog `basename||name`
+  fallback.
+- **Verification:** BULK-002/003 pass in both modes; folderPickerGateway unit
+  test updated to assert normalization.

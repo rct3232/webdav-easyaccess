@@ -24,6 +24,12 @@
 | ensureHomeOwnerAdminForAllUsers | () => Promise\<object\> | Process all non-admin users; upgrade/grant admin under home |
 | cleanupOrphanedData | () => Promise\<object\> | Clean orphaned permission files, user metadata, email index, and permission requests |
 
+> **WebDAV mode (MKCOL-on-create):** for every resolved/created home `file_nodes` row the
+> function also calls `blobStorageService.createDirectoryWebdav(homeNode.id)` so the physical
+> home directory exists on the WebDAV server (recursive, idempotent; no-op in S3 mode). MKCOL
+> failures are collected in `result.errors[]` (the loop's per-user try/catch) after the node is
+> marked `orphaned_node` by the service. Same contract in `userService.ensureUserHomeNode`.
+
 ### 2.3 Input / Output — ensureHomeOwnerAdminForAllUsers
 
 - Returns `{ updatedUsers, upgradedPaths, grantedPaths, errors }`

@@ -487,8 +487,8 @@ Test files are created in `server/service/__tests__/` and `server/store/__tests_
 | 6.6a | Create `service/__tests__/gcService.test.js` (Tier 1): seed object_map with orphaned rows + corresponding S3 mock entries; run GC; verify S3 deleteBlob called for orphans only, active blobs untouched | Orphan count drops to zero; active blob keys preserved in S3 mock store |
 | 6.6b | Create `service/__tests__/gcService.test.js` (Tier 2): add extra keys to S3 mock that have no object_map rows; run GC; verify listOrphanedKeys + deleteBlob called for untracked keys, active blobs untouched | Untracked S3 blobs cleaned up alongside DB-orphaned blobs |
 
-> **Phase 6 — Status: COMPLETE**
-> All GC + fail-safe tasks (6.1a–6.6b) are implemented and verified (2026-08-06). `server/service/gcService.js` (two-tier cycle: DB-driven orphaned `object_map` → blob delete + row purge; S3 `listOrphanedKeys` reconciliation against the active key set) and `server/service/failSafeService.js` (orphaned_node scan + repair: `retry-delete` / `force-active`; startup report without auto-delete) are wired into the composition root. Admin endpoints `POST /api/admin/maintenance/gc` and `POST /api/admin/maintenance/repair-sync` added; `cleanup/orphaned` now also runs one GC cycle and reports orphaned nodes (additive result keys). Optional cron (`GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, test seam `WEA_SKIP_GC_SCHEDULER`) + startup fail-safe hook in `index.js`. New store methods in `fileNodesStore.js` (getOrphanedObjects, getAllActiveS3Keys, deleteObjectMapRows, getNodesBySyncStatus). Verification: 57 tests across gcService (Tier 1/Tier 2/TTL), failSafeService, maintenanceScheduler, composition, and admin maintenance route tests; full server suite green (69 suites / 1164 tests, 3 skipped). Work sits on branch `refactor/phase-6-gc-failsafe`; **not** merged to `dev`.
+> **Phase 6 — Status: COMPLETE** (merged to `dev` 2026-08-06)
+> All GC + fail-safe tasks (6.1a–6.6b) are implemented and verified (2026-08-06). `server/service/gcService.js` (two-tier cycle: DB-driven orphaned `object_map` → blob delete + row purge; S3 `listOrphanedKeys` reconciliation against the active key set) and `server/service/failSafeService.js` (orphaned_node scan + repair: `retry-delete` / `force-active`; startup report without auto-delete) are wired into the composition root. Admin endpoints `POST /api/admin/maintenance/gc` and `POST /api/admin/maintenance/repair-sync` added; `cleanup/orphaned` now also runs one GC cycle and reports orphaned nodes (additive result keys). Optional cron (`GC_INTERVAL_MS`, `GC_ORPHAN_TTL_DAYS`, test seam `WEA_SKIP_GC_SCHEDULER`) + startup fail-safe hook in `index.js`. New store methods in `fileNodesStore.js` (getOrphanedObjects, getAllActiveS3Keys, deleteObjectMapRows, getNodesBySyncStatus). Verification: 57 tests across gcService (Tier 1/Tier 2/TTL), failSafeService, maintenanceScheduler, composition, and admin maintenance route tests. Merged to `dev` (fast-forward).
 
 ---
 
@@ -509,7 +509,7 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 | 7.6 | **Client:** Remove any remaining path-string state from permission utilities: verify Phase 4 Tasks 4.8a-4.8b completed `buildPermissionDiff.js` nodeId migration; remove any residual path-based Maps or `startsWith` matching. **Gap-closure note:** the folder-tree nodeId migration (gap closure C2.3) and stale client-test fixes (C1.5) pre-complete most of this task — primarily a verification pass. | Permission state uses nodeId exclusively; no path-string traversal remains |
 
 > **Phase 7 — Status: COMPLETE**
-> All legacy cleanup tasks (7.1–7.6) are implemented and verified (2026-08-06). `recentFilesStore.js` was already nodeId-only (7.1 — verification + spec cleanup). FsJSON removed end-to-end (7.2): deleted `FsJsonMetadataAdapter.js`, removed `'fs'` from `getBackend()` (now postgresql/sqlite only), removed legacy filesystem helpers from `storage.js`, removed the file-lock path in `lockManager.js`, the FsJSON fallback in `settingsStore.js`/`bootstrap.js`/`cleanupService.js`, the obsolete `migrateMetadataToPostgresql.js` script, and trimmed `metaPaths.js` to lock-path helpers only. 7.3 verified no path-string permission checks remain. 7.4 removed `getPermissionDoc`/`getSharePermissionDoc`/`shareCache` from `permissionStore.js` (1069 → 915 lines; the `store/permissionStore.js` shim is 1 line, satisfying the ≤300-line target at the named path) and reworked `auth.js` share-token auth. 7.5 verified the client `recentFiles.js` helpers were already deleted in Phase 5 (zero imports). 7.6 removed residual client path-string state (`shareManageMessageUtils` `targetPath`, `deriveShareFolderAccessView` nodeId-vs-path compare, stale `FileManager.test.js` mocks, stale JSDoc). Work sits on branch `refactor/phase-7-legacy-cleanup`; **not** merged to `dev`.
+> All legacy cleanup tasks (7.1–7.6) are implemented and verified (2026-08-06). `recentFilesStore.js` was already nodeId-only (7.1 — verification + spec cleanup). FsJSON removed end-to-end (7.2): deleted `FsJsonMetadataAdapter.js`, removed `'fs'` from `getBackend()` (now postgresql/sqlite only), removed legacy filesystem helpers from `storage.js`, removed the file-lock path in `lockManager.js`, the FsJSON fallback in `settingsStore.js`/`bootstrap.js`/`cleanupService.js`, the obsolete `migrateMetadataToPostgresql.js` script, and trimmed `metaPaths.js` to lock-path helpers only. 7.3 verified no path-string permission checks remain. 7.4 removed `getPermissionDoc`/`getSharePermissionDoc`/`shareCache` from `permissionStore.js` (1069 → 915 lines; the `store/permissionStore.js` shim is 1 line, satisfying the ≤300-line target at the named path) and reworked `auth.js` share-token auth. 7.5 verified the client `recentFiles.js` helpers were already deleted in Phase 5 (zero imports). 7.6 removed residual client path-string state (`shareManageMessageUtils` `targetPath`, `deriveShareFolderAccessView` nodeId-vs-path compare, stale `FileManager.test.js` mocks, stale JSDoc). Merged to `dev` (merge commit `776f852`).
 >
 > **Verification:** server suite green — 68 suites / 1159 passed / 3 skipped (migration-script suite removed). Client suite green — 149 suites / 1260 passed / 0 failed (all previously-known client failures resolved by upstream Phase 4/6 work).
 
@@ -519,6 +519,65 @@ Big-bang note: the database schema has no legacy path columns (defined in final 
 
 **Dependencies:** Phases 0–7 complete
 **Risk Level:** Low — validation phase
+
+> **Phase 8 — Status: IN PROGRESS** (branch `refactor/phase-8-verification`, 2026-08-06)
+> Work is executed on the branch and will **not** be merged to `dev` until the user reviews and explicitly approves the merge.
+>
+> **Baseline (verified on `dev` 2026-08-06, commit `17efc48`):** server suite green — 66 suites / 1119 passed / 2 skipped (SQLite default via `test-setup.js`). `server/TEST_SUMMARY.md` (1122/3) and the Phase 7 note (68 suites / 1159) are stale vs. the live run.
+>
+> **Pre-flight audit findings that shape execution:**
+> 1. **PostgreSQL schema is never applied at startup** — `initMetadataStore()` (`server/store/bootstrap.js`) inits the SQLite schema only; `applyPendingMigrations('postgresql')` (`server/infrastructure/schemaManager.js`) exists but is called nowhere outside its own tests. A PG backend cannot boot (`relation "users" does not exist` → `process.exit(1)`). This is a hard prerequisite for tasks 8.1/8.2/8.4, E2E S3+PG, and Rule 14 full-suite-on-PG.
+> 2. **`.env.e2e` cannot boot the host-run E2E server in S3+PG mode**: `AWS_REGION` unset (`resolveS3Config()` throws, `blobstore/index.js:8`); `S3_ENDPOINT=http://minio-e2e:9000` and `WEA_PG_HOST=postgresql-e2e` are Docker-network hostnames unreachable from the host-run `e2e:server` process (host ports are 9010/5433).
+> 3. **No MinIO bucket creation** anywhere — `S3BlobStore` never creates the bucket; neither jest tests nor `global-setup.ts` ensure it exists.
+> 4. **E2E fixtures are stale vs. the nodeId-exclusive API** (Execution Rule 13): helpers still send `{filePath}`/`{path}` payloads (`e2e/helpers/shareLinks.ts`, `folders/create`, upload) that the server rejects; tight path-URL assertions at `auth.spec.ts:53`, `share-public.spec.ts:66,101`, `share-internal.spec.ts:322,335` break under the nodeId URL scheme. **This corrects the earlier claim (line 567) that "API payloads need no changes".**
+> 5. **Rule 14 full-suite-on-PG requires test-infrastructure work**: several tests hardcode `WEA_STORAGE_BACKEND='sqlite'` (e.g. `files.integration.test.js:9`) or assert via `storage.sqliteQuery`/`sqliteRun` directly (`fileNodesStore.test.js`, `fileNodeService.test.js`, `uploadService.test.js`, `gcService.test.js`, …). A backend-neutral query helper plus per-suite PG isolation (TRUNCATE / fresh DB) is required before the whole suite can run under PG.
+>
+> **Execution order (dependencies):**
+> ```
+> P0 docs + PLAN update
+>  ├→ P1 PG schema bootstrap wiring ──────────────┐
+>  ├→ P2 .env.e2e fix + .env.e2e.webdav + npm  ───┤
+>  ├→ P3 MinIO bucket creation helper ────────────┤
+>                                                ▼
+> [A] PG test infra (test-utils neutral + isolation) ─→ [B] PG integration tests 8.1–8.6
+> [C] E2E infra (global-setup mode switch + seed + bucket + playwright projects)
+>  └→ [D] E2E helper/spec nodeId migration + URL fixes ─→ [E] E2E-S3PG-001..008 spec
+> [F] Final gate: server test:ci (SQLite + PG), Playwright both modes
+> ```
+>
+> **Deployment/operating contract (user-confirmed 2026-08-06):** Production currently runs PostgreSQL (legacy path-based schema). After all phases complete, a **new instance** will be created with a **fresh empty PG database**; a data-migration script (Future Work) moves data from the existing instance (path-based) to the new one, then service switches over. Consequences:
+> - The new instance's DB is always fresh → startup DDL application is a clean one-time bootstrap (scenario A). **No "already exists" tolerance is added**: a misconfigured app pointed at an old DB must fail loudly at boot, not be silently recorded as migrated.
+> - The migration script must apply the schema via `applyPendingMigrations('postgresql')` (or the new app must boot once on the empty DB) **before** importing data, and data import must complete **before** the first real service boot (or with `WEA_DISABLE_DEFAULT_ADMIN=true`) to avoid admin/home-node bootstrap conflicts.
+> - The old instance keeps running old code against the old DB until cutover; the migration is a one-way export/transform/import. WebDAV→S3 blob migration is a physical copy, so the old blob store can be retired after validation.
+>
+> **Orchestration fix (2026-08-06):** E2E runner lifecycle reordered so compose is provisioned BEFORE the app server: `e2e:server:s3`/`e2e:server:webdav` now chain `scripts/e2e-wait-healthy.mjs` (`docker compose up -d` + poll `ps` until required containers are healthy, ~90s timeout) before starting the server. `e2e/global-setup.ts` no longer runs `down -v` (which wiped the PG volume out from under the already-running server and crashed its `pg.Pool`); it idempotently re-runs the wait helper, then resets data via TRUNCATE (preserving `_schema_migrations`) + seed (`e2e/global-setup.seed-db.cjs`), and empties + ensures the bucket in s3 mode. `global-teardown.ts` unchanged (`down -v` + empty bucket). This makes stock `npm run test:e2e:s3` / `test:e2e:webdav` self-sufficient.
+>
+> **Bug A2 (WebDAV directory-ensure, 2026-08-07):** WebDAV blob-storage mode created directories DB-only, so `uploadToWebdav` PUTs hit non-existent remote paths (bytemark 403) — zero uploads succeeded in webdav mode. Fixed by (1) recursive, already-exists-tolerant MKCOL helper `ensureDirectoryExists` in `server/utils/webdav.js` (root → deepest segments, 405/redirect tolerated, 409 disambiguated via existence probe); `createDirectory` now delegates to it; (2) `WebdavBlobStore.createDirectory` + `blobStorageService.createDirectoryWebdav(nodeId)` (S3 no-op; on MKCOL failure marks `orphaned_node` + rethrows); (3) wired into `folders.js` POST /create, `userService.ensureUserHomeNode`, `cleanupService.ensureHomeOwnerAdminForAllUsers`, and the E2E seed (`global-setup.seed-db.cjs`, webdav env passed from `global-setup.ts`). Specs updated (`routes/folders.md`, `services/blobStorageService.md`, `services/fileService.md`, `utils/webdav.md`, `utils/ensureHomeOwnerAdmin.md`). Unit suite 53/921 + integration 14/215 green.
+>
+> **Phase 8 — Status: COMPLETE (all tasks verified 2026-08-07, branch `refactor/phase-8-verification`; NOT merged to `dev`)**
+> **Final verification numbers:**
+> - Server `test:ci` (SQLite): **67 suites / 1136 passed / 2 skipped / exit 0** (`test:ci:pg` now exits 0 after the startup-teardown fix).
+> - Server `test:ci:pg` (PostgreSQL, `--runInBand` + TRUNCATE isolation): **67 suites / 1136 passed / 2 skipped / exit 0** — the full suite runs on BOTH backends (Rule 14).
+> - Client `test:ci`: **147 suites / 1265 passed / 0 failed**.
+> - Playwright E2E default wave, S3+PG (`test:e2e:s3`): **111 passed / 2 skipped / 0 failed** (8.11 PASS; incl. all E2E-S3PG-001..008).
+> - Playwright E2E default wave, WebDAV+PG (`test:e2e:webdav`): **95 passed / 18 skipped / 0 failed** (8.10 PASS; skips are by-design mobile-only + s3-only gating).
+>
+> **Production bugs found & fixed during this phase (each user-approved, all RCA-logged in `docs/fail_log.md`):**
+> 1. **PG multi-row VALUES** (`fileNodesStore.insertAncestorRows`): flat `$1..$N` → grouped `($1,$2,$3),…`; blocked all tree ops on PG (42601).
+> 2. **PG type inference** (`permissionRequestStore` `resolved_by = CASE … $4`): `$4::BIGINT` cast (42804).
+> 3. **CoW overwrite** (`blobStorageService.ensureExclusiveBlob`): `orphanObject(s3_key)` orphaned ALL sharers + `insertObject` v1 collided with the node's existing v1 → 409 on overwriting a copied file. Replaced with `upsertObjectMap(fileNodeId, newS3Key, 'active')` (per-node orphan + next version); the unit test that encoded the wrong behavior was corrected (E2E-S3PG-004).
+> 4. **`user.rootNodeId` missing** in login/register/`/me` responses → home-view CRUD sent `parentNodeId:null` (400). Auth now resolves the home node via `getUserRootNode`.
+> 5. **WebDAV MKCOL** (bug A2 above) — physical directory creation for folder + home nodes + seed.
+> 6. **leave-share confirmation dead code** (client): `handleLeaveSharePathClick` now wired into the folder-tree/drawer share-mode navigation (E2E-SHARE-007).
+> 7. **Permission-request target display**: inbox/outbox responses enriched with `display_path`/`target_name`; client renders path instead of `#<id>` (MYPAGE-006/007/008).
+> 8. **`pg.Pool` unhandled 'error'**: `pool.on('error')` handler added — PG restart/down no longer crashes the server (also required for E2E teardown).
+> 9. **FolderPicker `basename` missing**: `folderPickerGateway.listFolderContents` now normalizes entries (explorer shape) + dialog fallback — BULK-002/003 picker buttons had no accessible text.
+>
+> **Spec/fixture fixes (Case B, no product change):** E2E helper layer migrated to nodeId payloads + `/files/node/<id>` URLs (corrects the earlier "API payloads need no changes" claim); AUTH-005 landing assertion, OVERLAY-001/002/004 `__shared__` assertions → `data-file-node-id`, OVERLAY-003/005 fixture no longer grants home READ (inheritance hides the request button), core-flow specs updated from home-relative to absolute `display_path` (`/admin/…`), MyPage path-text assertions aligned.
+>
+> **Infra:** PG schema auto-applied at startup (`bootstrap.js` non-SQLite branch → `applyPendingMigrations`), fresh-DB-only contract (no already-exists tolerance); `.env.e2e` fixed (AWS_REGION, host-reachable S3/PG) + `.env.e2e.webdav` + `E2E_BACKEND_MODE` scripts (`test:e2e:s3`/`test:e2e:webdav`); `server/testing/minioTestUtils.js` (ensure/emptyBucket) + `server/testing/dbUtils.js` (backend-neutral dbQuery/dbRun + truncateAllTables); composer-runner lifecycle (compose before server, TRUNCATE+seed, bucket empty); E2E seed creates admin home node.
+>
+> **Remaining notes for the user:** (1) The home view now renders ABSOLUTE display paths (e.g. `/admin/…`) — consistent with the documented contract and all other views, but a UX point worth reviewing before migration cutover. (2) Benign `GET /api/permissions/check?nodeId=null → 400` log noise during share-public flows (client sends an unresolved nodeId; server rejects cleanly; no test impact) — candidate follow-up. (3) E2E `E2E_LATER_WAVES=1` specs (`mypage-admin`, `explorer-advanced.*`) are not part of the default-wave gate and were not re-validated in this pass.
 
 #### Server-Side Tests
 
@@ -564,7 +623,7 @@ After Phase 8 is complete, Playwright E2E tests run in both backend modes:
 
 **Impact on Existing E2E Scenarios:**
 
-Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios use identical API contracts, so they re-run in both modes as a regression guard. API payloads need **no** changes.
+Auth, Explorer CRUD, Bulk ops, Share flows, MyPage — all existing scenarios use identical API contracts, so they re-run in both modes as a regression guard. **Correction (2026-08-06):** the earlier claim that "API payloads need no changes" was wrong — the E2E helper/fixture layer still sends path-based payloads (`{filePath}` on share-link create, `folders/create {path}`, upload `path`) that the nodeId-exclusive server rejects. These helpers must be migrated to nodeId payloads (via `POST /files/resolve-path` for path→nodeId bootstrap) as part of Phase 8 before E2E can pass in either mode.
 
 **Client URL scheme (Phase 4 gap closure C2.1):** the nodeId-first URL migration changes the URL contract for real folders (`/files/<path>` → `/files/node/<id>`). The following specs must be updated to navigate by nodeId URLs (resolved via `POST /files/resolve-path` in setup) and to assert the new URL shape: `e2e/explorer-advanced.desktop.spec.ts`, `e2e/share-internal.spec.ts`, `e2e/share-public.spec.ts`. Virtual-root URLs `/files/__recent__` / `/files/__shared__` are retained unchanged. Loose regex assertions like `/\/files(?:\/.*)?$/` still match and need no edits.
 
@@ -627,6 +686,12 @@ After S3+PostgreSQL mode is fully operational (Phase 8 complete), build a migrat
 1. Exports existing data from old instance DB (users, permissions as node_ids, share links, settings) to new instance DB
 2. Iterates WebDAV directory tree → uploads each file to S3 → creates `file_nodes` + `object_map` entries in new DB
 3. Validates migration: blob count match, permission integrity check, share link accessibility verification
+
+**Deployment contract (user-confirmed 2026-08-06):** the new instance runs against a **fresh empty PostgreSQL database**. The migration script MUST:
+- apply the schema first via `applyPendingMigrations('postgresql')` (idempotent, records into `_schema_migrations`) so the new app's startup DDL apply is a no-op;
+- run the data import **before** the new app's first service boot (or with `WEA_DISABLE_DEFAULT_ADMIN=true`) so `ensureDefaultAdmin` / `ensureHomeOwnerAdminForAllUsers` bootstrap does not conflict with imported users/home nodes;
+- never run against the old instance's DB — the new app must not be pointed at a non-fresh DB (startup will fail loudly, which is the intended guard, not a bug);
+- be validated (blob count, permission integrity, share-link accessibility) before cutover; after cutover the old instance and its WebDAV blob store can be retired.
 
 ---
 

@@ -31,7 +31,8 @@
 | deleteFile | (path, options?) => Promise | Delete file/folder |
 | moveFile | (source, dest, progressCallback?, overwrite?, options?) => Promise | Move with fallback to streamed copy+delete |
 | copyFile | (source, dest, progressCallback?, overwrite?, options?) => Promise | Copy with fallback to streamed download+upload |
-| createDirectory | (path) => Promise | Create directory |
+| createDirectory | (path) => Promise | Create directory — recursive and idempotent (see §2.2.2) |
+| ensureDirectoryExists | (path) => Promise | Ensure a directory exists via recursive MKCOL root → deepest; tolerant of already-existing collections |
 | pathExists | (path) => Promise\<boolean\> | Check path exists (direct PROPFIND + directory-list fallback) |
 | getFileMetadata | (path) => Promise\<object\> | Get file metadata via parent directory listing |
 | getRequestPath | (path, baseUrl?, options?) => string | Build request path from normalized path |
@@ -55,7 +56,23 @@ This adapter layer enables:
 - Test injection of mock adapters
 - Consistent method signatures across implementations
 
-The adapter exposes the following interface methods: `listDirectory`, `getFileContents`, `putFileContents`, `moveFile`, `copyFile`, `deleteFile`, `createDirectory`, `pathExists`, `getFileMetadata`.
+The adapter exposes the following interface methods: `listDirectory`, `getFileContents`, `putFileContents`, `moveFile`, `copyFile`, `deleteFile`, `createDirectory`, `ensureDirectoryExists`, `pathExists`, `getFileMetadata`.
+
+### 2.2.2 MKCOL-on-create semantics (`createDirectory` / `ensureDirectoryExists`)
+
+Both functions delegate to the same recursive implementation: MKCOL each missing path
+segment from root to deepest, tolerating already-existing collections.
+
+- **Why recursion:** many WebDAV servers (bytemark included) reject MKCOL with `409 Conflict`
+  when the parent collection is missing. Creating root → deepest segments guarantees parents
+  exist before children.
+- **Already-exists tolerance:** `405 Method Not Allowed`, `301/302/303` redirects, or error
+  messages matching `already exists`/`method not allowed` are treated as success. A `409`
+  is disambiguated with a `client.exists()` probe before being treated as a real failure.
+- **Callers:** `WebdavFileStoreAdapter.createDirectory` (and thus `WebdavBlobStore.createDirectory`,
+  used by `blobStorageService.createDirectoryWebdav`), `selectiveTransfer`, and the
+  streamed move/copy fallbacks. The tolerance makes these callers' existing
+  "already exists" error swallowing redundant but harmless.
 
 ### 2.3 Input / Output
 

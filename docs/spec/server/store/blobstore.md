@@ -45,6 +45,8 @@ NoOpBlobStore implements the same signatures as no-op stubs for WebDAV mode.
 | AWS_SECRET_ACCESS_KEY | Secret access key | string | Yes (for s3 mode) |
 | S3_ENDPOINT | Custom endpoint (MinIO, etc.) | URL string | No |
 
+> **Bucket provisioning is external.** `S3BlobStore` does **not** auto-create its S3 bucket — doing so would add a round-trip off the request hot path. The bucket must exist before the server starts. Deployment and tests provision it via the shared helper `server/testing/minioTestUtils.js` (`ensureBucket()` / `emptyBucket()`), which is used by jest integration tests against real MinIO and by the Playwright E2E global-setup.
+
 ### 2.5 Dependencies
 
 - `@aws-sdk/client-s3` — AWS SDK v3 for S3 operations

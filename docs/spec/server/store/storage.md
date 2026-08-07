@@ -86,6 +86,8 @@ Canonical source for table definitions, constraints, and indexes:
 
 - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
+The schema is applied at startup: `server/store/bootstrap.js` `initMetadataStore()` calls `applyPendingMigrations('postgresql')` (see `docs/spec/server/infrastructure/schemaManager.md`) for the non-SQLite branch before `ensureDefaultAdmin()`. The DDL is intended for a **fresh empty database only** — a misconfigured app pointed at an existing/old DB must fail loudly at boot; no "already exists" tolerance is added.
+
 This spec intentionally does not duplicate full DDL text. Store modules consume this schema through
 backend selector functions while keeping route-level contracts unchanged.
 

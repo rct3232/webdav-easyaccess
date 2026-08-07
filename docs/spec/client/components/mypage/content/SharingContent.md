@@ -57,6 +57,8 @@
 - **selectedContentItem 'outbox':** Detail – Outbox permission requests (cancel).
 - **selectedContentItem 'links':** Detail – Share links (copy, extend, delete).
 
+The target label for inbox/outbox rows renders `mypage.file`/`mypage.folder` (based on `targetType`) followed by the resolved target: `r.display_path || r.target_name || '#<file_node_id>'`. The review `ShareDialog` is opened with `folderPath = r.display_path` and `folderName = r.target_name` (falling back to the previous `#<file_node_id>` form when not available).
+
 Parent MyPageContentArea passes `onBack` to MyPageContentPanel when in detail mode; Back sets selectedContentItem to null.
 
 ### 2.7 Verification Scenarios

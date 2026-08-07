@@ -6,9 +6,6 @@
  */
 
 /* ─── Environment MUST be set before ANY require() or jest.mock() ──────── */
-process.env.WEA_STORAGE_BACKEND = 'sqlite';
-const crypto = require('crypto');
-process.env.WEA_SQLITE_PATH = `/tmp/wea-integ-${crypto.randomUUID()}.db`;
 process.env.WEA_SKIP_BULK_WORKER = '1';
 
 /* ─── Hoisted mocks ────────────────────────────────────────────────────── */
@@ -26,11 +23,12 @@ jest.mock('@aws-sdk/client-s3', () => {
 });
 
 /* ─── Imports (after hoisted mocks) ───────────────────────────────────── */
-const storage = require('@server/store/storage');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
   grantTestPermissionByNodeId,
+  dbQuery,
+  dbRun,
 } = require('@server/test-utils');
 const request = require('supertest');
 
@@ -154,7 +152,7 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
   });
 
   it('DB: object_map has correct S3 key for the file', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT s3_key FROM object_map WHERE file_node_id = ?',
       [fileNodeId]
     );
@@ -163,7 +161,7 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
   });
 
   it('DB: file_nodes record exists with correct name and type', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       "SELECT name, type FROM file_nodes WHERE id = ?",
       [fileNodeId]
     );
@@ -173,7 +171,7 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
   });
 
   it('DB: closure table contains parent->child entry', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT ancestor_id, descendant_id FROM node_ancestors WHERE descendant_id = ?',
       [fileNodeId]
     );
@@ -216,7 +214,7 @@ describe('S5.0-SCENARIO-2: S3 mode rename', () => {
   });
 
   it('DB: file_nodes reflects new name after rename', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT name FROM file_nodes WHERE id = ?',
       [fileNodeId]
     );
@@ -224,7 +222,7 @@ describe('S5.0-SCENARIO-2: S3 mode rename', () => {
   });
 
   it('DB: object_map s3_key is unchanged (rename does not move blob)', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT s3_key FROM object_map WHERE file_node_id = ?',
       [fileNodeId]
     );
@@ -284,7 +282,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
   });
 
   it('DB: filecache has entry for the file (WebDAV mode)', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT size, mime_type FROM filecache WHERE file_node_id = ?',
       [fileNodeId]
     );
@@ -292,7 +290,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
   });
 
   it('DB: file_nodes record exists with correct name and type', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       "SELECT name, type FROM file_nodes WHERE id = ?",
       [fileNodeId]
     );
@@ -302,7 +300,7 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
   });
 
   it('DB: closure table contains parent->child entry', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT ancestor_id, descendant_id FROM node_ancestors WHERE descendant_id = ?',
       [fileNodeId]
     );
@@ -349,7 +347,7 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     const targetNodeId = res.body.copiedNodeId;
 
     // Both nodes should share the same s3_key in object_map
-    const dbResult = await storage.sqliteQuery(
+    const dbResult = await dbQuery(
       'SELECT file_node_id, s3_key FROM object_map WHERE file_node_id IN (?, ?)',
       [sourceNodeId, targetNodeId]
     );
@@ -414,14 +412,14 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     expect(res.status).toBe(200);
 
     // Verify parent dir is gone
-    const dirDb = await storage.sqliteQuery(
+    const dirDb = await dbQuery(
       'SELECT id FROM file_nodes WHERE id = ?',
       [dirNodeId]
     );
     expect(dirDb.rows).toHaveLength(0);
 
     // Verify children are also deleted
-    const filesDb = await storage.sqliteQuery(
+    const filesDb = await dbQuery(
       'SELECT id FROM file_nodes WHERE id IN (?, ?)',
       [file1Id, file2Id]
     );
@@ -429,7 +427,7 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   });
 
   it('DB: closure table entries for deleted nodes are cleaned up', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE ancestor_id = ? OR descendant_id IN (?, ?, ?)',
       [dirNodeId, dirNodeId, file1Id, file2Id]
     );
@@ -437,7 +435,7 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   });
 
   it('DB: object_map entries for deleted files are cleaned up', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
       [file1Id, file2Id]
     );
@@ -447,7 +445,7 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   it('S3: blobs are marked orphaned (not hard-deleted) in S3 mode', async () => {
     // In S3 mode, deleteNode does not call blobStore.deleteBlob;
     // blob cleanup is handled by a separate GC process.
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT status FROM object_map WHERE file_node_id IN (?, ?)',
       [file1Id, file2Id]
     );
@@ -498,7 +496,7 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
   });
 
   it('DB: closure table has ancestor->descendant path for child through dir', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id = ? AND ancestor_id = ?',
       [childFileId, sharedDirId]
     );
@@ -514,12 +512,12 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
   });
 
   it('revoking dir permission reflects in DB', async () => {
-    await storage.sqliteRun(
+    await dbRun(
       'DELETE FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
       [normalUser.user.id, sharedDirId]
     );
 
-    const permResult = await storage.sqliteQuery(
+    const permResult = await dbQuery(
       'SELECT COUNT(*) AS cnt FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
       [normalUser.user.id, sharedDirId]
     );
@@ -573,7 +571,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     expect(res.status).toBe(200);
 
     // Verify moved file's parent_id changed in DB
-    const dbResult = await storage.sqliteQuery(
+    const dbResult = await dbQuery(
       'SELECT parent_id FROM file_nodes WHERE id = ?',
       [nodeIds[0]]
     );
@@ -590,7 +588,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     }
 
     // Verify deleted files are gone from DB
-    const dbResult = await storage.sqliteQuery(
+    const dbResult = await dbQuery(
       'SELECT id FROM file_nodes WHERE id IN (?, ?)',
       [nodeIds[1], nodeIds[2]]
     );
@@ -598,7 +596,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
   });
 
   it('DB: object_map entries for deleted files are cleaned up', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT file_node_id FROM object_map WHERE file_node_id IN (?, ?)',
       [nodeIds[1], nodeIds[2]]
     );
@@ -606,7 +604,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
   });
 
   it('DB: closure table entries for deleted files are cleaned up', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
       [nodeIds[1], nodeIds[2], nodeIds[1], nodeIds[2]]
     );
@@ -641,7 +639,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: initial node is not orphaned', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       "SELECT sync_status FROM file_nodes WHERE id = ?",
       [fileNodeId]
     );
@@ -663,7 +661,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: node is marked as orphaned_node after failed re-upload', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       "SELECT sync_status FROM file_nodes WHERE id = ?",
       [fileNodeId]
     );
@@ -671,7 +669,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: node name was updated despite orphan status', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT name FROM file_nodes WHERE id = ?',
       [fileNodeId]
     );
@@ -679,7 +677,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: closure table entries still exist for orphaned node', async () => {
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       'SELECT * FROM node_ancestors WHERE descendant_id = ?',
       [fileNodeId]
     );
@@ -696,7 +694,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
 
     // The new file should not be orphaned
     const recoveredId = res.body.nodeId;
-    const result = await storage.sqliteQuery(
+    const result = await dbQuery(
       "SELECT sync_status FROM file_nodes WHERE id = ?",
       [recoveredId]
     );

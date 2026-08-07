@@ -4,11 +4,11 @@
  * using file_node_id references instead of path strings.
  */
 const crypto = require('crypto');
-const storage = require('../../../../store/storage');
 const permissionRequestStore = require('../permissionRequestStore');
 const { PERMISSION_REQUEST_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
   createTestDatabase,
+  dbRun,
 } = require('../../../../test-utils');
 
 function uid(prefix) {
@@ -30,29 +30,29 @@ describe('permissionRequestStore (nodeId)', () => {
 
     // Create users directly via SQL to avoid bootstrap admin issues
     ownerUsername = uid('owner');
-    const ownerRes = await storage.sqliteRun(
+    const ownerRes = await dbRun(
       `INSERT INTO users (username, email, email_hash, password, status, is_admin)
-       VALUES (?, ?, ?, ?, 'approved', 0)`,
+       VALUES (?, ?, ?, ?, 'approved', false)`,
       [ownerUsername, `${ownerUsername}@test.com`, 'hash_owner', 'pw']
     );
     ownerId = ownerRes.lastID;
 
     requesterUsername = uid('req');
-    const reqRes = await storage.sqliteRun(
+    const reqRes = await dbRun(
       `INSERT INTO users (username, email, email_hash, password, status, is_admin)
-       VALUES (?, ?, ?, ?, 'approved', 0)`,
+       VALUES (?, ?, ?, ?, 'approved', false)`,
       [requesterUsername, `${requesterUsername}@test.com`, 'hash_req', 'pw']
     );
     requesterId = reqRes.lastID;
 
     // Create file_nodes for testing
-    const fileRes = await storage.sqliteRun(
+    const fileRes = await dbRun(
       `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
       [uid('file'), 'file']
     );
     fileNodeId = fileRes.lastID;
 
-    const dirRes = await storage.sqliteRun(
+    const dirRes = await dbRun(
       `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
       [uid('dir'), 'directory']
     );
@@ -148,16 +148,16 @@ describe('permissionRequestStore (nodeId)', () => {
     });
 
     it('allows different requester for same nodeId (not a duplicate)', async () => {
-      const otherUserRes = await storage.sqliteRun(
+      const otherUserRes = await dbRun(
         `INSERT INTO users (username, email, email_hash, password, status, is_admin)
-         VALUES (?, ?, ?, ?, 'approved', 0)`,
+         VALUES (?, ?, ?, ?, 'approved', false)`,
         [uid('other'), `${uid('other')}@test.com`, 'hash_other', 'pw']
       );
       const otherId = otherUserRes.lastID;
       const otherUsername = uid('other');
 
       // Update username to match what we inserted
-      await storage.sqliteRun(
+      await dbRun(
         `UPDATE users SET username = ? WHERE id = ?`,
         [uid('otherer'), otherId]
       );
@@ -193,7 +193,7 @@ describe('permissionRequestStore (nodeId)', () => {
     });
 
     it('returns targetType=directory for a directory node', async () => {
-      const dirFileRes = await storage.sqliteRun(
+      const dirFileRes = await dbRun(
         `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
         [uid('dir2'), 'directory']
       );
@@ -267,7 +267,7 @@ describe('permissionRequestStore (nodeId)', () => {
     let approvableReqId;
 
     beforeAll(async () => {
-      const nodeResult = await storage.sqliteRun(
+      const nodeResult = await dbRun(
         `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
         [uid('approve'), 'file']
       );
@@ -339,14 +339,14 @@ describe('permissionRequestStore (nodeId)', () => {
   describe('rejectByOwnerId', () => {
     it('bulk rejects pending requests for an owner', async () => {
       // Create a fresh user and node to test reject in isolation
-      const otherUserRes = await storage.sqliteRun(
+      const otherUserRes = await dbRun(
         `INSERT INTO users (username, email, email_hash, password, status, is_admin)
-         VALUES (?, ?, ?, ?, 'approved', 0)`,
+         VALUES (?, ?, ?, ?, 'approved', false)`,
         [uid('freshreq'), `${uid('freshreq')}@test.com`, 'hash_fresh', 'pw']
       );
       const freshReqId = otherUserRes.lastID;
 
-      const nodeResult = await storage.sqliteRun(
+      const nodeResult = await dbRun(
         `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
         [uid('reject'), 'file']
       );

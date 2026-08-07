@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createAncestryHelper } = require('../_ancestryHelper');
 
@@ -25,11 +24,11 @@ describe('createAncestryHelper', () => {
   afterEach(async () => {
     if (createdNodeIds.length > 0) {
       const placeholders = createdNodeIds.map(() => '?').join(', ');
-      await storage.sqliteRun(
+      await dbRun(
         `DELETE FROM node_ancestors WHERE descendant_id IN (${placeholders}) OR ancestor_id IN (${placeholders})`,
         [...createdNodeIds, ...createdNodeIds]
       );
-      await storage.sqliteRun(
+      await dbRun(
         `DELETE FROM file_nodes WHERE id IN (${placeholders})`,
         createdNodeIds
       );
@@ -46,7 +45,7 @@ describe('createAncestryHelper', () => {
 
   // Fetch ancestor rows for a descendant ordered by depth ascending.
   async function ancestorRows(descendantId) {
-    const res = await storage.sqliteQuery(
+    const res = await dbQuery(
       `SELECT ancestor_id, descendant_id, depth
        FROM node_ancestors
        WHERE descendant_id = ?
@@ -170,7 +169,7 @@ describe('createAncestryHelper', () => {
       expect(descendants).toEqual(expect.arrayContaining([branch.id, leaf.id]));
 
       // The full closure set for the moved subtree is exact.
-      const res = await storage.sqliteQuery(
+      const res = await dbQuery(
         `SELECT ancestor_id, descendant_id, depth
          FROM node_ancestors
          WHERE descendant_id IN (?, ?)
@@ -192,7 +191,7 @@ describe('createAncestryHelper', () => {
 
       // Old ancestor chain is fully removed for every moved descendant.
       for (const id of [branch.id, leaf.id]) {
-        const oldRows = await storage.sqliteQuery(
+        const oldRows = await dbQuery(
           `SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ? AND ancestor_id = ?`,
           [id, oldParent.id]
         );
@@ -252,7 +251,7 @@ describe('createAncestryHelper', () => {
       await helper.cleanupAncestorsForDeletion(descendants);
 
       for (const id of descendants) {
-        const rows = await storage.sqliteQuery(
+        const rows = await dbQuery(
           `SELECT COUNT(*) AS cnt FROM node_ancestors WHERE descendant_id = ?`,
           [id]
         );

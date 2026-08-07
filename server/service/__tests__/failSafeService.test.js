@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createFileNodeService } = require('../fileNodeService');
 const { createFailSafeService } = require('../failSafeService');
@@ -172,12 +171,12 @@ describe('createFailSafeService', () => {
 
     it('getAllActiveS3Keys returns only active s3_keys', async () => {
       const node = await fileNodesStore.createNode(null, `keys-node-${Date.now()}`, 'file');
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, 'active')`,
         [node.id, `keys-active-${Date.now()}`]
       );
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 2, 'orphaned')`,
         [node.id, `keys-orphan-${Date.now()}`]
@@ -190,12 +189,12 @@ describe('createFailSafeService', () => {
 
     it('deleteObjectMapRows removes only the given rows', async () => {
       const node = await fileNodesStore.createNode(null, `del-node-${Date.now()}`, 'file');
-      const rowA = await storage.sqliteRun(
+      const rowA = await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 1, 'orphaned')`,
         [node.id, `del-a-${Date.now()}`]
       );
-      await storage.sqliteRun(
+      await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
          VALUES (?, ?, 's3', 2, 'orphaned')`,
         [node.id, `del-b-${Date.now()}`]
@@ -204,7 +203,7 @@ describe('createFailSafeService', () => {
       const res = await fileNodesStore.deleteObjectMapRows([rowA.lastID]);
 
       expect(res.changes).toBe(1);
-      const remaining = await storage.sqliteQuery(
+      const remaining = await dbQuery(
         'SELECT s3_key FROM object_map WHERE file_node_id = ?',
         [node.id]
       );

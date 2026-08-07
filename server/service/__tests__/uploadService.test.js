@@ -1,7 +1,6 @@
 'use strict';
 
-const { createTestDatabase } = require('../../test-utils');
-const storage = require('../../store/storage');
+const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { createFileNodeService } = require('../fileNodeService');
 const { createBlobStorageService } = require('../blobStorageService');
@@ -54,7 +53,7 @@ describe('createUploadService', () => {
       expect(result.mimeType).toBe(mimeType);
 
       // Node exists and is active
-      const node = await storage.sqliteQuery(
+      const node = await dbQuery(
         'SELECT * FROM file_nodes WHERE id = ?',
         [result.nodeId]
       );
@@ -64,7 +63,7 @@ describe('createUploadService', () => {
       expect(node.rows[0].sync_status).toBe('active');
 
       // object_map is active
-      const objMap = await storage.sqliteQuery(
+      const objMap = await dbQuery(
         'SELECT * FROM object_map WHERE file_node_id = ?',
         [result.nodeId]
       );
@@ -74,7 +73,7 @@ describe('createUploadService', () => {
       expect(activeRow.s3_key).toBe(result.s3Key);
 
       // filecache populated
-      const cache = await storage.sqliteQuery(
+      const cache = await dbQuery(
         'SELECT * FROM filecache WHERE file_node_id = ?',
         [result.nodeId]
       );
@@ -88,7 +87,7 @@ describe('createUploadService', () => {
       expect(s3Content).toBeDefined();
       expect(Buffer.compare(s3Content, content)).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [result.nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [result.nodeId]);
     });
   });
 
@@ -109,7 +108,7 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // No node created with this name
-      const nodes = await storage.sqliteQuery(
+      const nodes = await dbQuery(
         "SELECT * FROM file_nodes WHERE name = 'fail-tx1.txt'",
         []
       );
@@ -135,7 +134,7 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // Node was created (TX1 committed before S3 attempt)
-      const node = await storage.sqliteQuery(
+      const node = await dbQuery(
         "SELECT * FROM file_nodes WHERE name = 'fail-s3.txt'",
         []
       );
@@ -143,7 +142,7 @@ describe('createUploadService', () => {
       const nodeId = node.rows[0].id;
 
       // object_map is pending (not active, because TX2 never ran)
-      const objMap = await storage.sqliteQuery(
+      const objMap = await dbQuery(
         'SELECT * FROM object_map WHERE file_node_id = ?',
         [nodeId]
       );
@@ -158,7 +157,7 @@ describe('createUploadService', () => {
       // sync_status is still pending_upload (TX2 never ran to set active)
       expect(node.rows[0].sync_status).toBe('pending_upload');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
     });
   });
 
@@ -180,7 +179,7 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // Node was created by TX1
-      const node = await storage.sqliteQuery(
+      const node = await dbQuery(
         "SELECT * FROM file_nodes WHERE name = 'fail-tx2.txt'",
         []
       );
@@ -188,7 +187,7 @@ describe('createUploadService', () => {
       const nodeId = node.rows[0].id;
 
       // object_map stays pending (TX2 never activated it)
-      const objMap = await storage.sqliteQuery(
+      const objMap = await dbQuery(
         'SELECT * FROM object_map WHERE file_node_id = ?',
         [nodeId]
       );
@@ -205,7 +204,7 @@ describe('createUploadService', () => {
       expect(s3Blob).toBeDefined();
       expect(Buffer.compare(s3Blob, content)).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [nodeId]);
     });
   });
 
@@ -231,7 +230,7 @@ describe('createUploadService', () => {
       expect(overwriteResult.mimeType).toBe(newMimeType);
 
       // Old s3_key is orphaned
-      const oldObjMap = await storage.sqliteQuery(
+      const oldObjMap = await dbQuery(
         'SELECT status FROM object_map WHERE s3_key = ?',
         [origResult.s3Key]
       );
@@ -239,7 +238,7 @@ describe('createUploadService', () => {
       expect(oldObjMap.rows[0].status).toBe('orphaned');
 
       // New s3_key is active
-      const newObjMap = await storage.sqliteQuery(
+      const newObjMap = await dbQuery(
         'SELECT status FROM object_map WHERE s3_key = ?',
         [overwriteResult.s3Key]
       );
@@ -247,7 +246,7 @@ describe('createUploadService', () => {
       expect(newObjMap.rows[0].status).toBe('active');
 
       // filecache updated with new size and mime_type
-      const cache = await storage.sqliteQuery(
+      const cache = await dbQuery(
         'SELECT * FROM filecache WHERE file_node_id = ?',
         [origResult.nodeId]
       );
@@ -256,13 +255,13 @@ describe('createUploadService', () => {
       expect(cache.rows[0].mime_type).toBe(newMimeType);
 
       // sync_status is active
-      const updatedNode = await storage.sqliteQuery(
+      const updatedNode = await dbQuery(
         'SELECT sync_status FROM file_nodes WHERE id = ?',
         [origResult.nodeId]
       );
       expect(updatedNode.rows[0].sync_status).toBe('active');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
     });
   });
 
@@ -289,7 +288,7 @@ describe('createUploadService', () => {
       ).rejects.toThrow();
 
       // Original object_map row should still be active (ROLLBACK preserved it)
-      const objMap = await storage.sqliteQuery(
+      const objMap = await dbQuery(
         'SELECT status FROM object_map WHERE file_node_id = ? AND s3_key = ?',
         [origResult.nodeId, oldS3Key]
       );
@@ -297,13 +296,13 @@ describe('createUploadService', () => {
       expect(objMap.rows[0].status).toBe('active');
 
       // sync_status should still be active (TX1 rollback)
-      const node = await storage.sqliteQuery(
+      const node = await dbQuery(
         'SELECT sync_status FROM file_nodes WHERE id = ?',
         [origResult.nodeId]
       );
       expect(node.rows[0].sync_status).toBe('active');
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [origResult.nodeId]);
     });
   });
 
@@ -323,7 +322,7 @@ describe('createUploadService', () => {
       expect(downloaded).not.toBeNull();
       expect(Buffer.compare(downloaded, content)).toBe(0);
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
     });
   });
 
@@ -337,16 +336,16 @@ describe('createUploadService', () => {
       const uploadResult = await uploadSvc.uploadFile(null, 'null-download.txt', content, 'text/plain');
 
       // Delete the active object to simulate non-existent blob
-      await storage.sqliteRun(
+      await dbRun(
         'DELETE FROM object_map WHERE file_node_id = ?',
         [uploadResult.nodeId]
       );
-      await storage.sqliteRun('DELETE FROM filecache WHERE file_node_id = ?', [uploadResult.nodeId]);
+      await dbRun('DELETE FROM filecache WHERE file_node_id = ?', [uploadResult.nodeId]);
 
       const downloaded = await uploadSvc.downloadFile(uploadResult.nodeId);
       expect(downloaded).toBeNull();
 
-      await storage.sqliteRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
+      await dbRun('DELETE FROM file_nodes WHERE id = ?', [uploadResult.nodeId]);
     });
   });
 });

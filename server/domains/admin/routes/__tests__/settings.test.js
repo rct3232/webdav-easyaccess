@@ -4,6 +4,14 @@
  */
 const request = require('supertest');
 const { createTestDatabase } = require('../../../../test-utils');
+const { initMetadataStore } = require('../../../../store/bootstrap');
+const { initFfmpegOnce } = require('../../../../domains/thumbnails/services/videoProcessor');
+
+// index.js runs a startup WebDAV connection probe; without this mock it would
+// hit the real server configured in .env from an unawaited startup hook.
+jest.mock('../../../../infrastructure/webdavTest', () => ({
+  testConnection: jest.fn().mockResolvedValue({ success: true }),
+}));
 
 let app;
 let dbCleanup;
@@ -12,6 +20,10 @@ beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
   app = require('../../../../index');
+  // index.js fires initMetadataStore() + ffmpeg/webdav probes at require-time.
+  // Await the same shared init promises so startup settles before teardown.
+  await initMetadataStore();
+  await initFfmpegOnce();
 });
 
 afterAll(async () => {

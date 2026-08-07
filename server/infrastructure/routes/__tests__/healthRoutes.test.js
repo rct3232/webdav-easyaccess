@@ -4,6 +4,8 @@
  */
 const request = require('supertest');
 const { createTestDatabase } = require('@server/test-utils');
+const { initMetadataStore } = require('@server/store/bootstrap');
+const { initFfmpegOnce } = require('@server/domains/thumbnails/services/videoProcessor');
 
 jest.mock('@server/infrastructure/webdavTest', () => ({
   testConnection: jest.fn().mockResolvedValue({ success: true }),
@@ -16,6 +18,10 @@ beforeAll(async () => {
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
   app = require('@server/index');
+  // index.js fires initMetadataStore() + ffmpeg/webdav probes at require-time.
+  // Await the same shared init promises so startup settles before teardown.
+  await initMetadataStore();
+  await initFfmpegOnce();
 });
 
 afterAll(async () => {

@@ -15,8 +15,19 @@ const { initMetadataStore } = require('./store/bootstrap');
 const storage = require('./store/storage');
 const { createFileNodesStore } = require('./store/fileNodesStore');
 const { createAncestryHelper } = require('./service/_ancestryHelper');
+const { dbQuery, dbRun, truncateAllTables } = require('./testing/dbUtils');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
+
+/**
+ * True when the active test backend is SQLite. Use with Jest's
+ * describe.skipIf(...) / test.skipIf(...) to gate suites that can only run on
+ * SQLite (e.g. because a production PostgreSQL path is not yet functional).
+ * @returns {boolean}
+ */
+function isSqliteBackend() {
+  return storage.getBackend() === 'sqlite';
+}
 
 /**
  * Create an isolated test database.
@@ -55,13 +66,21 @@ async function createTestDatabase() {
     };
   }
 
-  // PostgreSQL path
+  // PostgreSQL path: apply the (idempotent) schema, then wipe every table so
+  // each suite starts clean. The shared pool is process-lifetime; suites run
+  // serially (--runInBand) which is what makes per-suite truncation safe.
   await initMetadataStore();
+  await truncateAllTables();
 
   return {
     dir: null,
     cleanup: async () => {
-      // PG is managed externally; no cleanup needed
+      // Suites run serially (--runInBand); closing the shared pool here lets
+      // the final suite release the event loop so Jest can exit cleanly. The
+      // pool is recreated lazily by the next suite that needs it.
+      try {
+        await storage.closePgPool();
+      } catch { /* ignore */ }
     },
   };
 }
@@ -240,8 +259,8 @@ async function createTestFileWithBlob({ userId, name, parentId, content, mimeTyp
   const fileResult = await createTestFileNode({ name, type: 'file', parentId });
   const s3Key = crypto.randomUUID();
 
-  // Insert object_map entry directly via sqliteRun.
-  await storage.sqliteRun(
+  // Insert object_map entry directly via the backend-neutral helper.
+  await dbRun(
     `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
      VALUES (?, ?, 's3', 1, 'active')`,
     [Number(fileResult.nodeId), s3Key]
@@ -274,4 +293,8 @@ module.exports = {
   createUserRootNode,
   createNestedStructure,
   createTestFileWithBlob,
+  // Backend-neutral DB helpers (dispatch on storage.getBackend())
+  dbQuery,
+  dbRun,
+  isSqliteBackend,
 };

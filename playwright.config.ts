@@ -10,12 +10,12 @@ const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
 const isQuiet = process.env.E2E_QUIET === '1';
 
 const desktopSpecMatch = laterWavesEnabled
-  ? /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop|s3-pg-integration)\.spec\.ts$/
-  : /(?:auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|s3-pg-integration)\.spec\.ts$/;
+  ? /(?:00-project-setup|auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.desktop|s3-pg-integration)\.spec\.ts$/
+  : /(?:00-project-setup|auth|share-public|core-flow\.shared|desktop-core-flow|mypage-user|share-internal|s3-pg-integration)\.spec\.ts$/;
 
 const mobileSpecMatch = laterWavesEnabled
-  ? /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile|s3-pg-integration)\.spec\.ts$/
-  : /(?:auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|s3-pg-integration)\.spec\.ts$/;
+  ? /(?:00-project-setup|auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|mypage-admin|explorer-advanced\.mobile|s3-pg-integration)\.spec\.ts$/
+  : /(?:00-project-setup|auth|share-public|core-flow\.shared|mobile-core-flow|mypage-user|share-internal|s3-pg-integration)\.spec\.ts$/;
 
 // Only the projects for the active E2E_BACKEND_MODE are defined, so
 // `npm run test:e2e:s3` (E2E_BACKEND_MODE=s3) runs the s3-* projects only and

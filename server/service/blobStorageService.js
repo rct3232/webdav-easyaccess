@@ -52,13 +52,9 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
     if (isWebdavMode) {
       return uploadToWebdav(fileNodeId, buffer);
     }
-    const current = await fileNodesStore.getActiveObject(fileNodeId);
-    if (current && current.s3_key) {
-      await fileNodesStore.orphanObject(current.s3_key);
-    }
     const newS3Key = crypto.randomUUID();
     await blobStore.uploadBlob(newS3Key, buffer);
-    await fileNodesStore.insertObject(fileNodeId, newS3Key, 'active');
+    await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active');
     return newS3Key;
   }
 

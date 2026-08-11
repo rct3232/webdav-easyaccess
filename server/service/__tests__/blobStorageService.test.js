@@ -181,8 +181,10 @@ describe('createBlobStorageService', () => {
   /* ------------------------------------------------------------------ */
 
   describe('overwriteBlob', () => {
-    // V7 + V8: overwriteBlob orphans old key and creates new active mapping
-    it('orphans the old s3_key and creates a new active object_map entry', async () => {
+    // V7 + V8: overwriteBlob uploads new blob and upserts a new active mapping
+    // (orphans the previous active row and bumps version_number to avoid the
+    // UNIQUE(file_node_id, version_number) collision).
+    it('orphans the old s3_key and creates a new active object_map entry at the next version', async () => {
       const node = await fileNodesStore.createNode(null, 'overwrite-blob-test', 'file');
 
       const oldS3Key = await service.prepareUpload(node.id);
@@ -191,13 +193,7 @@ describe('createBlobStorageService', () => {
 
       const activeBefore = await fileNodesStore.getActiveObject(node.id);
       expect(activeBefore.s3_key).toBe(oldS3Key);
-
-      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await dbRun(
-        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 2, ?)`,
-        [node.id, oldS3Key, 'active']
-      );
+      expect(activeBefore.version_number).toBe(1);
 
       const newBuffer = Buffer.from('new content here');
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
@@ -210,6 +206,7 @@ describe('createBlobStorageService', () => {
 
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
       expect(activeAfter.s3_key).toBe(newS3Key);
+      expect(activeAfter.version_number).toBe(2);
       expect(typeof newS3Key).toBe('string');
       expect(newS3Key.length).toBe(36);
 
@@ -223,13 +220,6 @@ describe('createBlobStorageService', () => {
       const oldS3Key = await service.prepareUpload(node.id);
       await blobStore.uploadBlob(oldS3Key, Buffer.from('old'));
       await service.completeUpload(oldS3Key, 3, 'text/plain');
-
-      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
-      await dbRun(
-        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 2, ?)`,
-        [node.id, oldS3Key, 'active']
-      );
 
       const newBuffer = Buffer.from('replaced content');
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
@@ -252,6 +242,36 @@ describe('createBlobStorageService', () => {
 
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
       expect(activeAfter.s3_key).toBe(newS3Key);
+      expect(activeAfter.version_number).toBe(1);
+
+      await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
+      await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
+    });
+
+    it('repeated overwrites increment the version without violating the UNIQUE constraint', async () => {
+      const node = await fileNodesStore.createNode(null, 'overwrite-blob-multi-test', 'file');
+
+      const firstKey = await service.prepareUpload(node.id);
+      await blobStore.uploadBlob(firstKey, Buffer.from('first'));
+      await service.completeUpload(firstKey, 5, 'text/plain');
+
+      for (let i = 2; i <= 3; i += 1) {
+        const buffer = Buffer.from(`content-${i}`);
+        const newKey = await service.overwriteBlob(node.id, buffer);
+        const active = await fileNodesStore.getActiveObject(node.id);
+        expect(active.s3_key).toBe(newKey);
+        expect(active.version_number).toBe(i);
+      }
+
+      const rows = await dbQuery(
+        `SELECT version_number, status FROM object_map WHERE file_node_id = ?`,
+        [node.id]
+      );
+      expect(rows.rows).toHaveLength(3);
+      const byVersion = Object.fromEntries(rows.rows.map((r) => [r.version_number, r.status]));
+      expect(byVersion[1]).toBe('orphaned');
+      expect(byVersion[2]).toBe('orphaned');
+      expect(byVersion[3]).toBe('active');
 
       await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
       await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);

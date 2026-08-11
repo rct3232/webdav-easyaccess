@@ -13,7 +13,7 @@
 ### 2.1 File Path
 
 - **Source:** `server/infrastructure/adapters/blobstore/S3BlobStore.js`
-- **NoOp stub:** `server/infrastructure/adapters/blobstore/NoOpBlobStore.js`
+- **WebDAV adapter:** `server/infrastructure/adapters/blobstore/WebdavBlobStore.js`
 - **Factory:** `server/infrastructure/adapters/blobstore/index.js`
 - **Test files:** `__tests__/S3BlobStore.test.js`, `__tests__/blobstoreFactory.test.js`
 
@@ -27,12 +27,12 @@
 | headBlob | (key: string) => Promise\<{contentLength, contentType}\> | Get metadata without downloading body |
 | listOrphanedKeys | (olderThan: Date) => Promise\<string[]\> | List keys older than threshold (for GC Tier 2) |
 
-NoOpBlobStore implements the same signatures as no-op stubs for WebDAV mode.
+WebdavBlobStore implements the same signatures, mapping blob keys to WebDAV paths (PUT/GET/DELETE). `createDirectory` maps to WebDAV MKCOL.
 
 ### 2.3 Backend Strategy
 
 - `WEA_FILE_STORAGE=s3` → S3BlobStore (real S3 operations via @aws-sdk/client-s3)
-- `WEA_FILE_STORAGE=webdav` → NoOpBlobStore (no-op stub, file content stored on WebDAV server)
+- `WEA_FILE_STORAGE=webdav` → WebdavBlobStore (real WebDAV client; file content stored on WebDAV server)
 
 ### 2.4 Configuration
 
@@ -66,7 +66,7 @@ No DDL duplication — `object_map` table is defined in `server/store/postgresql
 - [ ] listOrphanedKeys: handles pagination (IsTruncated)
 - [ ] listOrphanedKeys: handles empty bucket (Contents undefined)
 - [ ] Factory: WEA_FILE_STORAGE=s3 → S3BlobStore instance
-- [ ] Factory: WEA_FILE_STORAGE=webdav → NoOpBlobStore instance
+- [ ] Factory: WEA_FILE_STORAGE=webdav → WebdavBlobStore instance
 - [ ] Factory: missing required env vars → throws clear error
 
 ### 2.7 Error Cases

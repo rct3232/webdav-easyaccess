@@ -88,7 +88,7 @@ Downloads blob content for an active file node. Returns buffer or null if no act
 
 #### `overwriteBlob(fileNodeId, buffer)`
 
-Overwrites a file's content: orphans old key, uploads new blob, creates active mapping.
+Overwrites a file's content: uploads new blob, orphans previous active mapping, creates new active mapping at the next version number.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -97,7 +97,9 @@ Overwrites a file's content: orphans old key, uploads new blob, creates active m
 
 **Returns:** string — new s3Key (S3 mode)
 
-**Operations:** orphan old key → `blobStore.uploadBlob(newS3Key, buffer)` → INSERT active mapping (S3); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
+**Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active')` (orphans the node's previous active row and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
+
+> **Note:** this method is not used by the production upload/overwrite flow — route-level overwrites go through `uploadService.overwriteFile` (S3) or `uploadToWebdav` directly (WebDAV). It is retained as a service-level primitive.
 
 #### `deleteBlob(fileNodeId)`
 
@@ -255,7 +257,7 @@ Uploads blob via WebDAV path. Guards on node existence.
 | prepareUpload | orphan old + INSERT pending → return s3Key | returns null (no-op) |
 | completeUpload | UPDATE active + filecache | throws 'completeUpload is not applicable in WebDAV mode' |
 | downloadBlob | blobStore.downloadBlob(s3Key) | delegates to downloadBlobWebdav |
-| overwriteBlob | ensureExclusiveBlob (split shared) → orphan+upload+activate → return newKey | delegates to uploadToWebdav |
+| overwriteBlob | upload new blob → upsertObjectMap (orphan prev + insert next version) → return newKey | delegates to uploadToWebdav |
 | deleteBlob | mark orphaned in object_map | resolve path → blobStore.deleteBlob(path) |
 | getActiveS3Key | active s3_key or null | always null |
 | countActiveObjectsByS3Key | COUNT active object_map rows by s3_key | returns 0 |
@@ -295,7 +297,7 @@ Single-version mode: `version_number` is always 1 in all INSERT operations. The 
 - [ ] completeUpload throws in WebDAV mode
 - [ ] downloadBlob with active object returns buffer matching uploaded content
 - [ ] downloadBlob with no active object returns null
-- [ ] overwriteBlob orphans old key and creates new active mapping
+- [ ] overwriteBlob orphans old key and creates new active mapping at the next version (no UNIQUE collision)
 - [ ] deleteBlob marks active object orphaned (no S3 deletion)
 - [ ] deleteBlob with no active object is a no-op
 - [ ] deleteBlob in WebDAV mode resolves path and calls blobStore.deleteBlob

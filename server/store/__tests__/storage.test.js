@@ -19,24 +19,24 @@ describe('getBackend', () => {
     console.warn = originalConsoleWarn;
   });
 
-  it('returns postgresql for fs backend with deprecation warning', () => {
+  it('returns sqlite for fs backend with deprecation warning', () => {
     process.env.WEA_STORAGE_BACKEND = 'fs';
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
+    expect(storage.getBackend()).toBe('sqlite');
     expect(warnSpy).toHaveBeenCalledWith(
-      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to postgresql.'
+      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to sqlite.'
     );
     warnSpy.mockRestore();
   });
 
-  it('returns postgresql for webdav backend with deprecation warning', () => {
+  it('returns sqlite for webdav backend with deprecation warning', () => {
     process.env.WEA_STORAGE_BACKEND = 'webdav';
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
+    expect(storage.getBackend()).toBe('sqlite');
     expect(warnSpy).toHaveBeenCalledWith(
-      "DEPRECATION: WEA_STORAGE_BACKEND=webdav is deprecated. Falling back to postgresql."
+      "DEPRECATION: WEA_STORAGE_BACKEND=webdav is deprecated. Falling back to sqlite."
     );
     warnSpy.mockRestore();
   });
@@ -53,13 +53,13 @@ describe('getBackend', () => {
     expect(storage.getBackend()).toBe('sqlite');
   });
 
-  it('defaults to postgresql for empty/undefined value with deprecation warning', () => {
+  it('defaults to sqlite for empty/undefined value', () => {
     delete process.env.WEA_STORAGE_BACKEND;
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('postgresql');
+    expect(storage.getBackend()).toBe('sqlite');
     expect(warnSpy).toHaveBeenCalledWith(
-      "DEPRECATION: WEA_STORAGE_BACKEND=(default) is deprecated. Falling back to postgresql."
+      "DEPRECATION: WEA_STORAGE_BACKEND=(default) is deprecated. Falling back to sqlite."
     );
     warnSpy.mockRestore();
   });

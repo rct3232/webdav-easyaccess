@@ -51,7 +51,7 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 
 ### Metadata store and locking
 
-- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`postgresql` default, `sqlite`) with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
+- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`sqlite` default, `postgresql`) with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
 - **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.

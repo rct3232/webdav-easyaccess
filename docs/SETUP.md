@@ -70,14 +70,14 @@ cp .env.example .env
 
 The system supports PostgreSQL-backed and SQLite-backed metadata with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
 
-1.  **PostgreSQL backend (`postgresql`)** (default):
+1.  **SQLite backend (`sqlite`)** (default):
+    *   Stores metadata in a local SQLite database file (development/testing).
+    *   Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
+2.  **PostgreSQL backend (`postgresql`)**:
     *   Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
     *   Recommended for stronger consistency and high-concurrency metadata operations.
     *   Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
     *   Keep WebDAV settings configured for actual file content operations; PostgreSQL stores metadata only.
-2.  **SQLite backend (`sqlite`)**:
-    *   Stores metadata in a local SQLite database file (development/testing).
-    *   Set `WEA_STORAGE_BACKEND=sqlite` and `WEA_SQLITE_PATH=/path/to/webdav.db`.
 
 ### PostgreSQL Initialization (v2)
 

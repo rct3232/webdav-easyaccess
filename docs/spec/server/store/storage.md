@@ -21,7 +21,7 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; any other value (including removed `fs`/`filesystem`/`webdav`) → warns + returns `'postgresql'`; empty/undefined → warns + returns `'postgresql'` (default) |
+| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; any other value (including removed `fs`/`filesystem`/`webdav`) → warns + returns `'sqlite'`; empty/undefined → warns + returns `'sqlite'` (default) |
 | isSqliteBackend | () => boolean | Returns `true` if `getBackend() === 'sqlite'` |
 
 #### PostgreSQL Helpers
@@ -56,10 +56,10 @@ These two environment variables are **completely independent**:
 
 | Variable | Purpose | Values | Handled By |
 |----------|---------|--------|------------|
-| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `postgresql` (default), `sqlite` | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3`, `webdav` (default) | Phase 1 S3 adapter |
+| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `sqlite` (default), `postgresql` | `storage.js:getBackend()` |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav` | Phase 1 S3 adapter |
 
-`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized value warns and falls back to `postgresql`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized value warns and falls back to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
 ### 2.4 PostgreSQL Infrastructure Contract
 
@@ -99,9 +99,9 @@ Permission contract source of truth for `postgresql` backend:
 ### 2.7 Verification Scenarios
 
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
-- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns postgresql (fs removed in Phase 7)
-- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns postgresql
-- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns postgresql (default)
+- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns sqlite (fs removed in Phase 7)
+- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns sqlite
+- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns sqlite (default)
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)
 - [ ] getBackend: WEA_STORAGE_BACKEND=pg → postgresql (alias)
 - [ ] getBackend: WEA_STORAGE_BACKEND=sqlite → sqlite

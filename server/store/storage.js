@@ -11,8 +11,8 @@ function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (forced === 'sqlite') return 'sqlite';
-  console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to postgresql.`);
-  return 'postgresql';
+  console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to sqlite.`);
+  return 'sqlite';
 }
 
 function isSqliteBackend() {

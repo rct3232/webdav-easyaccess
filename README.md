@@ -103,7 +103,7 @@ npm start
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)
 - **WEA_DISABLE_DEFAULT_ADMIN**: Disable default admin auto-creation (`true`)
-- **WEA_STORAGE_BACKEND**: Metadata storage backend (`postgresql` default, `sqlite`)
+- **WEA_STORAGE_BACKEND**: Metadata storage backend (`sqlite` default, `postgresql`)
 - **CORS_ORIGINS / CORS_ORIGIN**: Allowed CORS origins (recommended in production; comma-separated)
 - **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: Login rate limit (best-effort, in-memory)
 - **WEBDAV_AUTH_TYPE**: `auto` / `basic` / `digest`

@@ -28,7 +28,7 @@ All file/folder references are nodeId-based (`nodeId`, `parentNodeId` are BIGINT
 | getPathAccess | `({ nodeId, options? })` | `Promise<{ canRead: boolean, canWrite: boolean, raw?: object }>` | Raw access facts via `permissionService.checkPermission(nodeId)`, with `canRead`/`canWrite` derived from `hasRead`/`hasWrite`. |
 | getEntriesMetadata | `({ entries, options? })` | `Promise<Array<object>>` | Enriches file entries with metadata via `fileService.getFilesMetadata(nodeIds)` (nodeIds collected from `entry.nodeId`). |
 | loadRecentFiles | `(options?: object)` | `Promise<Array<object>>` | Loads recent-file repository entries via `recentFilesRepository.getRecentFiles`. |
-| loadSharedEntries | `({ user, options? })` | `Promise<Array<object>>` | Loads the `__shared__` collection data: shared folder entries from `getUserPermissions` (deduped by `nodeId`), file-only shared entries from `listFilePermissions` (keyed by `file_node_id`), plus metadata enrichment. |
+| loadSharedEntries | `({ user, options? })` | `Promise<Array<object>>` | Loads the `__shared__` collection data from `GET /api/permissions/shared` (server excludes the user's own subtree and returns real `name`/`type`), splits into directory and file-only entries, dedupes by `nodeId`, and enriches file entries with metadata. |
 | addRecentFile | `(file: object, options?: object)` | `Promise<object>` | Records preview/open activity in the recent-files repository. |
 | removeRecentFile | `(path: string, options?: object)` | `Promise<object>` | Removes a recent-files repository entry (recent-files entries are still keyed by path; Node-ID migration of recent files is Phase 5 scope). |
 | subscribeToRecentFiles | `((callback: () => void)) => (() => void)` | `function` | Subscribes to recent-file change notifications for explorer listing hooks. |
@@ -64,7 +64,7 @@ Verify observable IO behavior from the caller perspective:
 - [ ] `getPathAccess({ nodeId })` preserves the current read/write capability facts used by explorer flows.
 - [ ] `getEntriesMetadata` preserves the current metadata enrichment behavior used when recent/shared-derived lists need extra entry data.
 - [ ] `loadRecentFiles`, `addRecentFile`, `removeRecentFile`, and `subscribeToRecentFiles` preserve the existing recent-files persistence and notifier behavior from the caller perspective.
-- [ ] `loadSharedEntries` preserves the current `__shared__` collection behavior for top-level folders, file-only entries, and file metadata enrichment.
+- [ ] `loadSharedEntries` preserves the current `__shared__` collection behavior for top-level folders, file-only entries, and file metadata enrichment, and uses real node names (`permission.name`) rather than `node-<id>` / `file-<id>` placeholders.
 - [ ] `checkConflicts` returns the same conflict entries as the current preflight conflict check for the same operations list.
 - [ ] `uploadToPath({ parentNodeId, files })` triggers the same conflict behavior and supports the same progress integration points as today.
 - [ ] Move/copy/delete/download flows dispatch nodeId-based operations through `useBulkOperations` rather than this gateway.

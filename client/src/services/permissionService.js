@@ -55,6 +55,16 @@ export const getUserPermissions = async (userId, options = {}) => {
 };
 
 /**
+ * 현재 사용자의 "공유된(shared-with-me)" 권한 목록 조회.
+ * 서버가 본인 소유 하위 트리를 제외하고 실명(name)/type을 포함해 반환한다.
+ * @returns {Promise<Array<{ nodeId, name, permission, type }>>}
+ */
+export const getSharedPermissions = async () => {
+  const response = await get('/permissions/shared');
+  return response.data;
+};
+
+/**
  * 폴더별 권한 목록 조회
  * @param {string} nodeId - 폴더 nodeId
  * @param {string} [fileNodeId] - 파일 nodeId (지정 시 각 항목에 file_permission 포함)

@@ -81,6 +81,7 @@ All permission endpoints are nodeId-based. Directory-level grants inherit to des
 | POST | `/api/permissions/grant` | Token | Grant directory permission. Body: `{ userId, nodeId, permission }` (`nodeId` must reference a directory node). |
 | DELETE | `/api/permissions/revoke` | Token | Revoke directory permission. Query: `userId`, `nodeId`; optional `includeDescendants` (true to also revoke grants on descendant nodes). |
 | GET | `/api/permissions/user/:userId` | Token | List permissions for a user. Returns `[{ nodeId, permission }]`. |
+| GET | `/api/permissions/shared` | Token | List current user's "shared with me" permissions (own subtree excluded). Returns `[{ nodeId, name, permission, type }]`. |
 | GET | `/api/permissions/folder` | Token | List permissions for a folder. Query: `nodeId`; optional `includeDescendants`, `fileNodeId`. |
 | GET | `/api/permissions/check` | Token | Check current user effective permission. Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
 | POST | `/api/permissions/file/grant` | Token | Grant file-level permission. Body: `{ userId, fileNodeId, permission }`. |
@@ -170,7 +171,7 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | DELETE | `/api/admin/users/:id` | Token + Admin | Delete user. |
 | GET | `/api/admin/folders/list` | Token + Admin | List folders for permission management. Query: `path` (optional, default `/`). |
 | PUT | `/api/admin/users/:id/permissions` | Token + Admin | Set user folder permissions. |
-| POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin. |
+| POST | `/api/admin/permissions/ensure-home-owner-admin` | Token + Admin | Ensure home folder owner has admin; remove redundant self-grants on users' own subtrees. |
 | POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle and reports `orphaned_node` status. |
 | POST | `/api/admin/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (orphaned blob cleanup). |
 | POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. |

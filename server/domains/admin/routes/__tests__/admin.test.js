@@ -8,7 +8,9 @@ const {
   createAuthenticatedTestUser,
   createTestUser,
   createTestFileNode,
+  createUserRootNode,
   USER_STATUS,
+  PERMISSIONS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
@@ -206,6 +208,51 @@ describe('POST /api/admin/cleanup/orphaned', () => {
       gc: expect.anything(),
       orphanedNodes: expect.any(Array),
     });
+  });
+});
+
+describe('POST /api/admin/permissions/ensure-home-owner-admin', () => {
+  it('removes redundant self-grants on the user own subtree while preserving home admin', async () => {
+    const user = await createAuthenticatedTestUser({ username: `clean-self-${Date.now()}` });
+    const home = await createUserRootNode({ userId: user.user.id });
+    const ownDir = await createTestFileNode({
+      name: `own-${Date.now()}`,
+      type: 'directory',
+      parentId: home.nodeId,
+    });
+    await permissionStore.grant(user.user.id, ownDir.nodeId, PERMISSIONS.WRITE);
+
+    const admin = await createAuthenticatedTestUser({
+      username: `clean-admin-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/permissions/ensure-home-owner-admin')
+      .set('Authorization', `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.removedSelfGrants).toBeGreaterThanOrEqual(1);
+
+    const perms = await permissionStore.getUserPermissions(user.user.id);
+    const ids = perms.map(p => p.file_node_id);
+    expect(ids).toContain(home.nodeId);       // home-root admin preserved
+    expect(ids).not.toContain(ownDir.nodeId); // descendant self-grant removed
+  });
+
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-ensure-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/permissions/ensure-home-owner-admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
   });
 });
 

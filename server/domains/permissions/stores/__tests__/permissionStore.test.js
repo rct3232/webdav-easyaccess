@@ -75,6 +75,22 @@ function createMockSQLiteClient() {
       );
     }
 
+    // DELETE ... WHERE user_id = ? AND file_node_id IN (SELECT ... node_ancestors ...) — removeOwnSubtreePermissions
+    if (s.startsWith('DELETE') && s.includes('node_ancestors')) {
+      const ownRootId = params[1];
+      const ownDescendantIds = new Set(
+        state.ancestors
+          .filter((a) => a.ancestor_id === ownRootId && a.depth > 0)
+          .map((a) => a.descendant_id)
+      );
+      const target = targetsUserPaths ? 'userPaths' : 'userFiles';
+      const before = state[target].length;
+      state[target] = state[target].filter(
+        (r) => !(r.user_id === params[0] && ownDescendantIds.has(r.file_node_id))
+      );
+      return { rows: [], changes: before - state[target].length };
+    }
+
     // DELETE — single row when two params (user_id + file_node_id), else all rows for the user/token
     if (s.startsWith('DELETE') && targetsUserPaths) {
       state.userPaths = params.length > 1
@@ -91,6 +107,26 @@ function createMockSQLiteClient() {
     if (s.startsWith('DELETE') && targetsShares) {
       state.shares = state.shares.filter((r) => r.token !== params[0]);
       return { rows: [], changes: 1 };
+    }
+
+    // SELECT ... JOIN file_nodes ... NOT IN (SELECT descendant_id ...) — getSharedPermissions
+    if (s.includes('file_nodes') && s.includes('NOT IN') && s.includes('node_ancestors')) {
+      const ownRootId = params[1];
+      const ownDescendantIds = new Set(
+        state.ancestors.filter((a) => a.ancestor_id === ownRootId).map((a) => a.descendant_id)
+      );
+      const rows = (targetsUserPaths ? state.userPaths : state.userFiles)
+        .filter((r) => r.user_id === params[0] && !ownDescendantIds.has(r.file_node_id))
+        .map((r) => {
+          const node = state.files.find((f) => f.id === r.file_node_id);
+          return {
+            file_node_id: r.file_node_id,
+            permission: r.permission,
+            name: node ? node.name : null,
+            type: node ? node.type : null,
+          };
+        });
+      return { rows };
     }
 
     // SELECT with ancestor JOIN — closure inheritance simulated at the data level
@@ -200,6 +236,7 @@ describe('permissionStore (nodeId)', () => {
         };
         return await cb(txClient);
       },
+      sqliteRun: async (sql, params) => mockClient.run(sql, params),
       getSqliteConnection: () => ({
         all: (sql, params, cb) => {
           const result = mockClient.resolveSync(sql, params);
@@ -320,5 +357,61 @@ describe('permissionStore (nodeId)', () => {
 
     const eff = await permissionStore.getEffectivePermission(userId, 3);
     expect(eff).toBe(PERMISSIONS.WRITE);
+  });
+
+  // V12: getSharedPermissions excludes own subtree and returns name/type
+  it('V12: getSharedPermissions excludes own subtree and returns name/type', async () => {
+    const { state } = mockClient;
+    // home root = 1; external dir = 7 (not under home); external file = 8 (under 7)
+    state.files.push(
+      { id: 7, parent_id: null, name: 'external', type: 'directory' },
+      { id: 8, parent_id: 7, name: 'doc.txt', type: 'file' }
+    );
+    state.ancestors.push(
+      { ancestor_id: 7, descendant_id: 7, depth: 0 },
+      { ancestor_id: 7, descendant_id: 8, depth: 1 },
+      { ancestor_id: 8, descendant_id: 8, depth: 0 }
+    );
+
+    // Own subtree rows (home root id=1, descendant id=2) and file id=3
+    await permissionStore.grant(userId, 1, PERMISSIONS.ADMIN);
+    await permissionStore.grant(userId, 2, PERMISSIONS.WRITE);
+    await permissionStore.grantFilePermission(userId, 3, PERMISSIONS.READ);
+    // External grants
+    await permissionStore.grant(userId, 7, PERMISSIONS.READ);
+    await permissionStore.grantFilePermission(userId, 8, PERMISSIONS.WRITE);
+
+    const shared = await permissionStore.getSharedPermissions(userId, 1);
+
+    expect(shared).toHaveLength(2);
+    expect(shared).toEqual(expect.arrayContaining([
+      { file_node_id: 7, name: 'external', permission: PERMISSIONS.READ, type: 'directory' },
+      { file_node_id: 8, name: 'doc.txt', permission: PERMISSIONS.WRITE, type: 'file' },
+    ]));
+  });
+
+  // V13: removeOwnSubtreePermissions removes descendant self-grants, keeps home-root
+  it('V13: removeOwnSubtreePermissions removes descendant self-grants, keeps home-root', async () => {
+    const { state } = mockClient;
+    state.files.push({ id: 7, parent_id: null, name: 'external', type: 'directory' });
+    state.ancestors.push({ ancestor_id: 7, descendant_id: 7, depth: 0 });
+
+    // Own rows: home root (1), descendants (2, file 3)
+    await permissionStore.grant(userId, 1, PERMISSIONS.ADMIN);
+    await permissionStore.grant(userId, 2, PERMISSIONS.WRITE);
+    await permissionStore.grantFilePermission(userId, 3, PERMISSIONS.READ);
+    // External row (kept)
+    await permissionStore.grant(userId, 7, PERMISSIONS.READ);
+
+    const result = await permissionStore.removeOwnSubtreePermissions(userId, 1);
+
+    expect(result).toEqual({ removedPaths: 1, removedFiles: 1 });
+
+    const remaining = await permissionStore.getUserPermissions(userId);
+    const remainingIds = remaining.map(r => r.file_node_id);
+    expect(remainingIds).toContain(1); // home-root admin preserved
+    expect(remainingIds).toContain(7); // external grant preserved
+    expect(remainingIds).not.toContain(2);
+    expect(remainingIds).not.toContain(3);
   });
 });

@@ -2,7 +2,7 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { meetsRank } = require('../policy/permissionRank');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
-const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('../../../store/storage');
+const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction, sqliteRun } = require('../../../store/storage');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const userStore = require('../../../store/userStore');
 
@@ -638,6 +638,124 @@ async function getUserFilePermissions(userId) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Shared-with-me Listing                                             */
+/* ------------------------------------------------------------------ */
+
+const buildSharedSql = (table, ph1, ph2, excludeOwn) => {
+  const exclusion = excludeOwn
+    ? ` AND p.file_node_id NOT IN (
+        SELECT descendant_id FROM node_ancestors WHERE ancestor_id = ${ph2}
+      )`
+    : '';
+  return `SELECT p.file_node_id, p.permission, n.name, n.type
+          FROM ${table} p
+          JOIN file_nodes n ON n.id = p.file_node_id
+          WHERE p.user_id = ${ph1}${exclusion}`;
+};
+
+/**
+ * List grants where the user is the grantee, excluding any node inside the
+ * user's own home subtree (home root + descendants) via the closure table.
+ * Each row includes the real node `name` and `type` from file_nodes.
+ * @param {number} userId
+ * @param {number|null} homeRootNodeId - user's home root node; when null no
+ *   own-subtree exclusion is applied.
+ */
+async function getSharedPermissions(userId, homeRootNodeId) {
+  const uid = Number(userId);
+  const root = homeRootNodeId != null ? Number(homeRootNodeId) : null;
+  const excludeOwn = root != null;
+
+  let pathPerms, filePerms;
+
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const params = excludeOwn ? [uid, root] : [uid];
+      [pathPerms, filePerms] = await Promise.all([
+        pool.query(buildSharedSql('permissions_user_paths', '$1', '$2', excludeOwn), params),
+        pool.query(buildSharedSql('permissions_user_files', '$1', '$2', excludeOwn), params),
+      ]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else if (isSqliteBackend()) {
+    try {
+      const db = getSqliteConnection();
+      const params = excludeOwn ? [uid, root] : [uid];
+      const run = (sql) =>
+        new Promise((resolve, reject) => {
+          db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve({ rows: rows || [] });
+          });
+        });
+      [pathPerms, filePerms] = await Promise.all([
+        run(buildSharedSql('permissions_user_paths', '?', '?', excludeOwn)),
+        run(buildSharedSql('permissions_user_files', '?', '?', excludeOwn)),
+      ]);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else {
+    throw new Error('No database backend configured');
+  }
+
+  return [
+    ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
+    ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
+  ];
+}
+
+const buildRemovalSql = (table, ph1, ph2) =>
+  `DELETE FROM ${table}
+   WHERE user_id = ${ph1} AND file_node_id IN (
+     SELECT descendant_id FROM node_ancestors WHERE ancestor_id = ${ph2} AND depth > 0
+   )`;
+
+/**
+ * Delete the user's permission rows on proper descendants (depth > 0) of their
+ * home root. Preserves the home-root ADMIN grant (depth 0).
+ * @returns {Promise<{ removedPaths: number, removedFiles: number }>}
+ */
+async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
+  const uid = Number(userId);
+  const root = Number(homeRootNodeId);
+  if (!Number.isFinite(root)) {
+    return { removedPaths: 0, removedFiles: 0 };
+  }
+
+  let removedPaths = 0;
+  let removedFiles = 0;
+
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const pathRes = await pool.query(buildRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
+      const fileRes = await pool.query(buildRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      removedPaths = pathRes.rowCount || 0;
+      removedFiles = fileRes.rowCount || 0;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else if (isSqliteBackend()) {
+    try {
+      const pathRes = await sqliteRun(buildRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
+      const fileRes = await sqliteRun(buildRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      removedPaths = pathRes.changes || 0;
+      removedFiles = fileRes.changes || 0;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else {
+    throw new Error('No database backend configured');
+  }
+
+  cache.delete(String(uid));
+  return { removedPaths, removedFiles };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Effective Permission Resolution                                    */
 /* ------------------------------------------------------------------ */
 
@@ -906,5 +1024,7 @@ module.exports = {
   grantFilePermission,
   revokeFilePermission,
   getUserFilePermissions,
+  getSharedPermissions,
+  removeOwnSubtreePermissions,
   getPathEffectivePermission,
 };

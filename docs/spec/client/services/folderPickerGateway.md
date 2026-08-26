@@ -25,14 +25,14 @@
 |----------|-------|--------|-------------------------|
 | `listFolderContents` | `({ nodeId, options? })` | `Promise<Array<object>>` | `GET /api/files/list?nodeId=...` |
 | `checkWritePermission` | `({ nodeId })` | `Promise<{ hasRead?: boolean, hasWrite?: boolean, source?: string }>` | `GET /api/permissions/check?nodeId=...` |
-| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ nodeId: number, permission: string }>>` | `GET /api/permissions/user/:userId` |
+| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>` | `GET /api/permissions/shared` |
 
 Notes:
 
 - All functions are nodeId-based — `nodeId` is a BIGINT `file_nodes.id`; no path strings.
 - `listFolderContents` must preserve the same raw directory-list entries shape as `fileService.listFiles` so the caller hook can apply its existing directory/breadcrumb logic without behavior change.
 - `checkWritePermission` must return the same structure as the current `checkPermission` usage in the picker hook (`permission.hasWrite`).
-- `getUserSharedFolderPermissions` must filter out folders that belong to the current user (`nodeId === user.rootNodeId`).
+- `getUserSharedFolderPermissions` returns the shared-with-me entries from `GET /api/permissions/shared`. The server already excludes the user's own home subtree; the gateway keeps `isUserOwnFolder` (`nodeId === user.rootNodeId`) as a defensive safety net and returns only `type === 'directory'` entries for the picker root.
 - Admin users return `[]` from `getUserSharedFolderPermissions` without calling the permissions service.
 
 ---
@@ -48,7 +48,7 @@ Notes:
 
 - Internal services/utilities:
   - `client/src/services/fileService` (`listFiles`)
-  - `client/src/services/permissionService` (`checkPermission`, `getUserPermissions`)
+  - `client/src/services/permissionService` (`checkPermission`, `getSharedPermissions`)
   - `client/src/utils/userUtils` (`filterOutUserOwnFolders`)
 
 ---
@@ -59,7 +59,7 @@ Verify from the caller perspective (observable outcome of picker):
 
 - [ ] `listFolderContents({ nodeId })` returns list entries equivalent to current `listFiles(nodeId)` usage.
 - [ ] `checkWritePermission({ nodeId })` returns an object compatible with the existing `permission.hasWrite` usage.
-- [ ] `getUserSharedFolderPermissions` returns only folders the user does not own.
+- [ ] `getUserSharedFolderPermissions` returns only shared folders (server excludes the user's own subtree; client keeps the root-level safety filter).
 - [ ] Admin users receive `[]` for `getUserSharedFolderPermissions`.
 - [ ] Gateway errors are propagated to the caller.
 

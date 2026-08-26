@@ -53,7 +53,7 @@ System maintenance operations. Service: `domains/admin/services/cleanupService.j
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/folders/list` | Token + Admin | List folders for permission UI (single level). |
-| POST | `/permissions/ensure-home-owner-admin` | Token + Admin | Upgrade home-path permissions to admin. |
+| POST | `/permissions/ensure-home-owner-admin` | Token + Admin | Ensure each non-admin user has admin on their home node and remove redundant self-grants on their own subtree. |
 | POST | `/cleanup/orphaned` | Token + Admin | Clean orphaned metadata files and permission requests. Also runs one GC cycle and reports `orphaned_node` status (see §2.2.3.1). |
 | POST | `/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 scan) for orphaned blobs. Service: `server/service/gcService.js`. |
 | POST | `/maintenance/repair-sync` | Token + Admin | Manually resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Service: `server/service/failSafeService.js`. |
@@ -89,7 +89,7 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 #### maintenance
 
 - **GET /folders/list:** 200: folder list (sorted by name)
-- **POST /permissions/ensure-home-owner-admin:** 200: `{ success: true, updatedUsers, upgradedPaths, grantedPaths, errors }`
+- **POST /permissions/ensure-home-owner-admin:** 200: `{ success: true, updatedUsers, upgradedPaths, grantedPaths, removedSelfGrants, errors }`
 - **POST /cleanup/orphaned:** 200: `{ messageCode, results: { deletedPermissionFiles, deletedUserFiles, deletedEmailIndexFiles, cleanedPermissionRequests, errors, gc: { tier1, tier2 }, orphanedNodes } }`
 - **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
 - **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action.
@@ -111,7 +111,7 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 | Function | Description |
 |----------|-------------|
 | `cleanupOrphanedData()` | Scans `.wea` meta directories for orphaned permission files, user files, email index entries, and stale permission requests. |
-| `ensureHomeOwnerAdminForAllUsers()` | Upgrades existing home-path permissions to admin; grants admin on first-level subdirectories where missing. |
+| `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). |
 
 ### 2.6 Related Documents
 

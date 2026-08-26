@@ -32,7 +32,7 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 | Approval | `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject` | Approve or reject signup; optional email (sendApprovalEmail, sendRejectionEmail). |
 | User management | `DELETE /api/admin/users/:id` | Delete user (cannot delete self or other admins). |
 | Permissions | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions` | List folders for permission UI; set user folder permissions. |
-| Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; clean orphaned metadata. |
+| Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata. |
 | Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync` | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.
@@ -93,7 +93,7 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 ### Admin: user permissions and cleanup
 
 - **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server updates `/.wea/permissions/users/<userId>.json`.
-- **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery).
+- **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery), and removes redundant self-grants the user holds on their own subtree (a one-time reconciliation for data created before self-grants were removed).
 - **Orphan cleanup:** `POST /api/admin/cleanup/orphaned` removes orphaned metadata (e.g. permissions/shares pointing to missing paths); response includes result summary.
 - **Garbage collection:** `POST /api/admin/maintenance/gc` runs a two-tier GC cycle (DB-driven orphaned `object_map` rows → S3 blob delete; S3 `ListObjectsV2` reconciliation against the active `s3_key` set). Optionally scheduled via `GC_INTERVAL_MS`; orphan age threshold via `GC_ORPHAN_TTL_DAYS`. Service contract: `docs/spec/server/services/gcService.md`.
 - **Fail-safe recovery:** `POST /api/admin/maintenance/repair-sync` resolves `file_nodes` stuck in `sync_status='orphaned_node'` (`retry-delete` or `force-active`). A startup hook scans and reports stuck nodes without auto-deleting. Service contract: `docs/spec/server/services/gcService.md`.

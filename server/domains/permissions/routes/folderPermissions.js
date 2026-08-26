@@ -138,6 +138,53 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
   res.json(filteredPermissions.filter(Boolean));
 }));
 
+// Shared-with-me permissions: grants where the current user is the grantee and
+// the node is NOT inside the user's own home subtree (own folders never appear
+// as "shared"). Includes real node name and type.
+router.get('/shared', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const requestingUser = await User.findById(userId);
+
+  if (!requestingUser) {
+    throw notFoundError(SERVER_ERROR_CODES.auth.userNotFound);
+  }
+  // Admins have no home root; the "shared with me" surface is not applicable.
+  if (requestingUser.is_admin) {
+    return res.json([]);
+  }
+
+  const homeRoot = await fileNodesStore.getUserRootNode(userId);
+  const rawPermissions = await permissionStore.getSharedPermissions(userId, homeRoot?.id ?? null);
+  const permissions = rawPermissions.map(p => ({
+    nodeId: p.file_node_id,
+    name: p.name,
+    permission: p.permission,
+    type: p.type,
+  }));
+
+  // Same existence-index filtering as /user/:userId
+  const filteredPermissions = await Promise.all(permissions.map(async (perm) => {
+    try {
+      const node = await fileNodesStore.getNode(perm.nodeId);
+      if (node) {
+        return perm;
+      }
+    } catch { /* ignore */ }
+
+    const state = getExistenceState(String(perm.nodeId));
+    if (state === 'exists') {
+      return perm;
+    }
+    if (state === 'missing') {
+      return null;
+    }
+    queueReconciliation(String(perm.nodeId));
+    return perm;
+  }));
+
+  res.json(filteredPermissions.filter(Boolean));
+}));
+
 // Get folder permissions (nodeId-based)
 router.get('/folder', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const nodeId = req.query.nodeId;

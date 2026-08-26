@@ -48,6 +48,7 @@ async function ensureHomeOwnerAdminForAllUsers() {
     updatedUsers: 0,
     upgradedPaths: 0,
     grantedPaths: 0,
+    removedSelfGrants: 0,
     errors: [],
   };
 
@@ -90,11 +91,16 @@ async function ensureHomeOwnerAdminForAllUsers() {
       }
 
       const hasAdmin = await permissionStore.checkPermission(user.id, homeNode.id, PERMISSIONS.ADMIN);
-      if (hasAdmin) continue;
+      if (!hasAdmin) {
+        await permissionStore.grant(user.id, homeNode.id, PERMISSIONS.ADMIN);
+        result.grantedPaths += 1;
+        userSet.add(user.id);
+      }
 
-      await permissionStore.grant(user.id, homeNode.id, PERMISSIONS.ADMIN);
-      result.grantedPaths += 1;
-      userSet.add(user.id);
+      // Remove redundant self-grants the user holds on their own subtree
+      // (depth > 0). The home-root ADMIN grant (depth 0) is preserved.
+      const removed = await permissionStore.removeOwnSubtreePermissions(user.id, homeNode.id);
+      result.removedSelfGrants += removed.removedPaths + removed.removedFiles;
     } catch (err) {
       result.errors.push(`User ${user.username}: ${err.message}`);
     }

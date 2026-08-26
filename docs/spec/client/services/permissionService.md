@@ -22,6 +22,7 @@
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
 | getUserPermissions | (userId, options?) | Promise\<Array\> | GET /api/permissions/user/:userId |
+| getSharedPermissions | () | Promise\<Array\> | GET /api/permissions/shared |
 | getFolderPermissions | (nodeId, fileNodeId?) | Promise\<Array\> | GET /api/permissions/folder?nodeId=... |
 | grantPermission | ({ userId, nodeId, permission, target? }) | Promise\<void\> | POST /api/permissions/grant |
 | revokePermission | ({ userId, nodeId, scope? }) | Promise\<void\> | DELETE /api/permissions/revoke |

@@ -105,9 +105,34 @@ Permission contract source of truth:
 - Runtime enum: `shared/constants.js` (`PERMISSIONS.ALL`)
 - Database checks: `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`permissions_*` permission constraints)
 
-### One-shot Metadata Migration (fs/webdav -> postgresql)
+### Data Migration: WebDAV → S3 (Phase D)
 
-> **Removed in Phase 7.** The FsJSON/webdav metadata backends were removed; `server/scripts/migrateMetadataToPostgresql.js` was deleted. Migration tooling for the new S3+PG architecture is planned as Future Work (see PLAN.md).
+> **Active — see `docs/spec/server/tools/webdav-s3-migration.md` for the full spec.**
+
+Migrates an existing production instance (legacy **path-based** PostgreSQL metadata + WebDAV blobs) into the new architecture (nodeId-based PostgreSQL + S3). Runs as a **standalone CLI** (`server/scripts/migrateWebdavToS3.js`) — the application must not be booted against the target DB until migration completes.
+
+**Prerequisites**
+
+1. Target PostgreSQL instance + **fresh empty database** (e.g. `CREATE DATABASE webdav-easyaccess`) + connection role must already exist — the tool creates tables, never the database.
+2. Source DB (read-only), target DB (write), WebDAV, and dedicated S3 bucket config set via `SOURCE_PG_*` / `TARGET_PG_*` / `WEBDAV_*` / `S3_*` environment variables.
+
+**Execution order**
+
+```bash
+# 1) DB-only migration (metadata + file tree + path→nodeId transform)
+node server/scripts/migrateWebdavToS3.js --phase=db-only --dry-run
+node server/scripts/migrateWebdavToS3.js --phase=db-only --apply
+
+# 2) Blob migration (WebDAV → S3) — resumable; re-run skips completed files
+node server/scripts/migrateWebdavToS3.js --phase=blobs --dry-run
+node server/scripts/migrateWebdavToS3.js --phase=blobs --apply --delete-mode=deferred
+```
+
+**Rules**
+
+- Dry-run is **mandatory** before every `--apply` run; a failed dry-run blocks execution (exit 1, nothing written).
+- Old-instance WebDAV files use one of three delete modes: `immediate`, `deferred`, or `never` (default).
+- After D2 validation, boot the new app against the migrated target DB; do not point the app at a non-fresh DB.
 
 ### Transaction and Concurrency Notes (postgresql)
 
@@ -121,8 +146,8 @@ Permission contract source of truth:
 Use this checklist for deployment/runtime validation only:
 
 - [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
-- [ ] Required DDL has been applied (`001`, and `002` only if your instance needs follow-up permission alignment). The migration script creates tables automatically when using `--apply` if they do not exist.
-- [ ] Migration runs `--dry-run` before `--apply`, and report warnings are resolved.
+- [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
+- [ ] Data migration (WebDAV → S3, Phase D) ran `--dry-run` before `--apply`, and report warnings are resolved.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.

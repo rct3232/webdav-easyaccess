@@ -13,7 +13,7 @@ export function deriveFolderPickerSharedState({ permissions } = {}) {
 
   const sharedFolders = Array.from(permissionMap.entries()).map(([nodeIdStr, permission]) => ({
     nodeId: parseInt(nodeIdStr, 10),
-    name: `Shared (${nodeIdStr})`,
+    name: permission?.name || `Shared (${nodeIdStr})`,
     type: 'directory',
     size: 0,
     lastmodified: null,

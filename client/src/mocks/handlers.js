@@ -218,6 +218,14 @@ export const handlers = [
     ]);
   }),
 
+  http.get(`${API_BASE}/permissions/shared`, () => {
+    return HttpResponse.json([
+      { nodeId: 2, name: 'Shared Docs', permission: 'admin', type: 'directory' },
+      { nodeId: 21, name: 'Reports', permission: 'write', type: 'directory' },
+      { nodeId: 30, name: 'report.txt', permission: 'read', type: 'file' },
+    ]);
+  }),
+
   http.get(`${API_BASE}/permissions/folder`, ({ request }) => {
     const url = new URL(request.url);
     const nodeId = url.searchParams.get('nodeId');

@@ -346,7 +346,7 @@ test('E2E-OVERLAY-002: Approved user navigates from __shared__ root into a neste
       }
       await expect(folderTree).toBeVisible({ timeout: 20_000 });
       const sharedTreeItem = folderTree
-        .getByRole('button', { name: `Shared (${fixtures.targetNodeId})` })
+        .getByRole('button', { name: fixtures.targetFolderName })
         .first();
       await expect(sharedTreeItem).toBeVisible();
       await sharedTreeItem.click();

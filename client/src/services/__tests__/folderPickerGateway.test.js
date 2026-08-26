@@ -5,7 +5,7 @@
  */
 import folderPickerGateway, { checkWritePermission, getUserSharedFolderPermissions, listFolderContents } from '../folderPickerGateway';
 import { listFiles } from '../fileService';
-import { checkPermission, getUserPermissions } from '../permissionService';
+import { checkPermission, getSharedPermissions } from '../permissionService';
 
 jest.mock('../fileService', () => ({
   listFiles: jest.fn(),
@@ -13,7 +13,7 @@ jest.mock('../fileService', () => ({
 
 jest.mock('../permissionService', () => ({
   checkPermission: jest.fn(),
-  getUserPermissions: jest.fn(),
+  getSharedPermissions: jest.fn(),
 }));
 
 describe('folderPickerGateway', () => {
@@ -43,17 +43,17 @@ describe('folderPickerGateway', () => {
     expect(result).toEqual({ hasWrite: false, source: 'nodeId' });
   });
 
-  it('filters out folders owned by the current user', async () => {
+  it('returns only directory entries with real names from shared permissions', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
-    getUserPermissions.mockResolvedValue([
-      { nodeId: 100, permission: 'write' },
-      { nodeId: 200, permission: 'read' },
+    getSharedPermissions.mockResolvedValue([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+      { nodeId: 200, name: 'file.txt', permission: 'read', type: 'file' },
     ]);
 
     const result = await getUserSharedFolderPermissions({ user });
 
-    expect(getUserPermissions).toHaveBeenCalledWith(user.id, undefined);
-    expect(Array.isArray(result)).toBe(true);
+    expect(getSharedPermissions).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([{ nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' }]);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {
@@ -62,7 +62,7 @@ describe('folderPickerGateway', () => {
     });
 
     expect(result).toEqual([]);
-    expect(getUserPermissions).not.toHaveBeenCalled();
+    expect(getSharedPermissions).not.toHaveBeenCalled();
   });
 
   it('propagates listFolderContents errors', async () => {
@@ -79,7 +79,7 @@ describe('folderPickerGateway', () => {
 
   it('propagates shared-folder permission errors for non-admin users', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
-    getUserPermissions.mockRejectedValue(new Error('permissions failed'));
+    getSharedPermissions.mockRejectedValue(new Error('permissions failed'));
 
     await expect(getUserSharedFolderPermissions({ user })).rejects.toThrow('permissions failed');
   });

@@ -15,6 +15,7 @@ import {
   revokePermission,
   checkPermission,
   listFilePermissions,
+  getSharedPermissions,
 } from '../permissionService';
 
 jest.mock('../apiClient', () => ({
@@ -244,6 +245,18 @@ describe('permissionService', () => {
       expect(result).toHaveProperty('hasWrite');
       expect(result).toHaveProperty('source');
       expect(result).toEqual(data);
+    });
+  });
+
+  describe('getSharedPermissions', () => {
+    it('returns array from GET /permissions/shared', async () => {
+      const shared = [{ nodeId: 10, name: 'Shared Docs', permission: 'read', type: 'directory' }];
+      get.mockResolvedValueOnce({ data: shared });
+
+      const result = await getSharedPermissions();
+
+      expect(get).toHaveBeenCalledWith('/permissions/shared');
+      expect(result).toEqual(shared);
     });
   });
 

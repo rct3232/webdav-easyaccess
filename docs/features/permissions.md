@@ -31,6 +31,7 @@ Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is
 - A user owns their **home root node** and every descendant of it in the `file_nodes` tree.
 - Ownership is resolved by nodeId via the closure table: `isOwnerNode(userId, nodeId)` returns `true` when the target node is the user's root node or `fileNodesStore.isAncestor(rootNodeId, nodeId)` holds (see `server/domains/permissions/policy/ownerNodeResolver.js`).
 - The owner has full access (read, write, and effectively admin) on owned nodes with **no explicit permission record** required.
+- **No self-grants:** Creating a folder under the user's own home does **not** write a permission row for the creator (the home-root `ADMIN` grant covers descendants via inheritance). Permission rows exist only for grants that carry external meaning (access given to other users or received from other users).
 
 ### Inheritance via the closure table
 
@@ -84,6 +85,7 @@ All permission endpoints are nodeId-based; no path strings are accepted.
 | POST | `/api/permissions/grant` | Body: `{ userId, nodeId, permission }` — `nodeId` must reference a directory node; applies to the folder and, via closure-table inheritance, its subtree. |
 | DELETE | `/api/permissions/revoke` | Query: `userId`, `nodeId`; optional `includeDescendants` (`true` also revokes grants stored on descendant nodes). |
 | GET | `/api/permissions/user/:userId` | Returns `[{ nodeId, permission }]`. |
+| GET | `/api/permissions/shared` | Returns `[{ nodeId, name, permission, type }]` — grants where the current user is the grantee **and the node is not inside their own subtree** (own home root + descendants are never "shared with me"). |
 | GET | `/api/permissions/folder` | Query: `nodeId`; optional `includeDescendants`, `fileNodeId`. |
 | GET | `/api/permissions/check` | Query: `nodeId`. Returns `{ nodeId, hasRead, hasWrite, source }`. |
 
@@ -126,6 +128,12 @@ These scenarios should be verified in both middleware/unit tests and API integra
 - ACL mutation flows invalidate affected index entries so subsequent reads converge quickly.
 - Conditional requests can return `304 Not Modified` when `If-None-Match` matches current permission/index freshness markers.
 - For full route-level semantics and env knobs, see `docs/spec/server/routes/permissions.md` and `docs/spec/server/utils/webdav.md`.
+
+## Shared-with-me listing semantics
+
+- The "shared with me" surface (`__shared__` sidebar tree and `/files/__shared__`) is backed by `GET /api/permissions/shared`, which returns only grants where the requesting user is the grantee **and the node is outside the user's own home subtree**.
+- Because folder creation no longer self-grants, and the listing additionally excludes the user's own subtree via the closure table, own folders (including existing historical self-grant rows) never appear as "shared".
+- Each entry carries its real `name` and `type`; the client must not fabricate `node-<id>` / `file-<id>` placeholder names.
 
 ## Client-side permissions request dedupe
 

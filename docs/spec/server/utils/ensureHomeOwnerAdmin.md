@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Ensure home owner admin: upgrade existing permissions under home to admin, grant admin on first-level dirs. Co-located with other admin maintenance logic in cleanupService. Used on startup and admin "권한정리" button. |
+| Role | Ensure home owner admin: grant admin on each user's home node, and remove redundant self-grants the user holds on their own subtree (home root + descendants). Co-located with other admin maintenance logic in cleanupService. Used on startup and admin "권한정리" button. |
 
 ---
 
@@ -32,9 +32,9 @@
 
 ### 2.3 Input / Output — ensureHomeOwnerAdminForAllUsers
 
-- Returns `{ updatedUsers, upgradedPaths, grantedPaths, errors }`
-- Action 1: Upgrade existing permission entries (read/write → admin) for paths under each user's home
-- Action 2: List first-level dirs under each user's home and grant admin where missing
+- Returns `{ updatedUsers, upgradedPaths, grantedPaths, removedSelfGrants, errors }`
+- Action 1: Ensure each non-admin user has an `admin` grant on their home node (grant when missing).
+- Action 2: Remove redundant self-grants the user holds on proper descendants of their home node (`permissions_user_paths` + `permissions_user_files` where the node is in the user's own subtree at depth > 0) via `permissionStore.removeOwnSubtreePermissions`. The home-root `admin` grant (depth 0) is preserved. `removedSelfGrants` reports the total rows deleted.
 
 ### 2.4 Input / Output — cleanupOrphanedData
 
@@ -55,8 +55,8 @@
 
 ### 2.6 Verification Scenarios
 
-- [ ] Upgrade existing read/write to admin under home
-- [ ] Grant admin on first-level dirs where missing
+- [ ] Ensure home admin is granted when missing
+- [ ] Redundant self-grants on the user's own subtree are removed (home-root admin preserved)
 - [ ] Errors collected in result.errors array
 - [ ] Non-admin users only; admin users skipped
 - [ ] Users without id or username skipped gracefully

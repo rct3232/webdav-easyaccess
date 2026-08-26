@@ -7,6 +7,7 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
+  createUserRootNode,
   PERMISSIONS,
 } = require('../../../../test-utils');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
@@ -653,5 +654,62 @@ describe('GET /api/permissions/file/list (nodeId)', () => {
     const ids = res.body.map(item => item.file_node_id);
     expect(ids).toContain(fileNode1.id);
     expect(ids).toContain(fileNode2.id);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/permissions/shared                                       */
+/* ------------------------------------------------------------------ */
+
+describe('GET /api/permissions/shared', () => {
+  beforeEach(() => {
+    mockWebdav.pathExists.mockReset();
+    mockWebdav.pathExists.mockResolvedValue(true);
+    resetPermissionExistenceIndex?.();
+  });
+
+  it('excludes the user own home subtree and returns real names/types for genuine shares', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `shared-owner-${Date.now()}` });
+    const recipient = await createAuthenticatedTestUser({ username: `shared-recipient-${Date.now()}` });
+
+    const ownerHome = await createUserRootNode({ userId: owner.user.id });
+    const recipientHome = await createUserRootNode({ userId: recipient.user.id });
+
+    // recipient shares a folder with owner (genuine share)
+    const sharedDir = await fileNodeService.createDirectory(recipientHome.nodeId, `shared-dir-${Date.now()}`);
+    await permissionStore.grant(owner.user.id, sharedDir.id, PERMISSIONS.WRITE);
+
+    // recipient grants a file to owner (genuine share)
+    const sharedFile = await fileNodeService.createFile(recipientHome.nodeId, `shared-file-${Date.now()}.txt`);
+    await permissionStore.grantFilePermission(owner.user.id, sharedFile.id, PERMISSIONS.READ);
+
+    // owner's own folder with a legacy self-grant (historical pollution) — must NOT appear
+    const ownDir = await fileNodeService.createDirectory(ownerHome.nodeId, `own-dir-${Date.now()}`);
+    await permissionStore.grant(owner.user.id, ownDir.id, PERMISSIONS.WRITE);
+
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(res.status).toBe(200);
+    const byId = new Map(res.body.map(p => [p.nodeId, p]));
+    expect(byId.has(sharedDir.id)).toBe(true);
+    expect(byId.get(sharedDir.id)).toMatchObject({ name: sharedDir.name, permission: 'write', type: 'directory' });
+    expect(byId.has(sharedFile.id)).toBe(true);
+    expect(byId.get(sharedFile.id)).toMatchObject({ name: sharedFile.name, type: 'file' });
+    // own subtree must never surface as shared
+    expect(byId.has(ownerHome.nodeId)).toBe(false);
+    expect(byId.has(ownDir.id)).toBe(false);
+  });
+
+  it('returns an empty array for admin users', async () => {
+    const admin = await createAuthenticatedTestUser({ grantRoot: true });
+
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { listFiles } from './fileService';
-import { getUserPermissions } from './permissionService';
+import { getSharedPermissions } from './permissionService';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
@@ -39,13 +39,14 @@ export const listFolderChildren = async ({
 
 /**
  * Load shared-folder permissions for the folder-tree “__shared__” section.
- * Filters out folders owned by the current user.
+ * The server already excludes the user's own subtree; the client keeps a
+ * root-level safety filter and returns only directory entries.
  */
 export const getUserSharedFolderPermissions = async ({ user, options } = {}) => {
   if (!user || !user.id || user.is_admin) return [];
-  const data = await getUserPermissions(user.id, options);
+  const data = await getSharedPermissions();
   const filtered = filterOutUserOwnFolders(data || [], user);
-  return Array.isArray(filtered) ? filtered : [];
+  return (Array.isArray(filtered) ? filtered : []).filter((perm) => perm.type === 'directory');
 };
 
 const folderTreeGateway = {

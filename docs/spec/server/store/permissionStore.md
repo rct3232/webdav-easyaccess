@@ -24,6 +24,8 @@
 | grant | (userId, nodeId, permission, options?) => Promise\<object\> | Grant directory permission; `nodeId` is BIGINT referencing `file_nodes.id` where `type='directory'` |
 | revoke | (userId, nodeId, options?) => Promise\<{ success }\> | Revoke all permissions for user on directory node |
 | getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
+| getSharedPermissions | (userId, homeRootNodeId?) => Promise\<Array\> | List grants where user is grantee, excluding nodes inside the user's own subtree (closure-table); each row includes `name` and `type` from `file_nodes` |
+| removeOwnSubtreePermissions | (userId, homeRootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on proper descendants of their home root (depth > 0); preserves the home-root ADMIN grant |
 | checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
 | checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
 | getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |

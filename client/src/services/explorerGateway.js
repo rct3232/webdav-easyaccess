@@ -1,5 +1,5 @@
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from './fileService';
-import { checkPermission, getUserPermissions, listFilePermissions } from './permissionService';
+import { checkPermission, getSharedPermissions, getUserPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
@@ -96,71 +96,54 @@ export const loadSharedEntries = async ({ user, options = {} } = {}) => {
     return [];
   }
 
-  const permissions = await getUserPermissions(user.id, options);
+  const permissions = await getSharedPermissions();
   const sharedFolders = filterOutUserOwnFolders(permissions || [], user);
 
   const seenNodeIds = new Set();
-  const folderEntries = sharedFolders.map((permission) => {
+  const folderEntries = [];
+  const fileEntries = [];
+
+  sharedFolders.forEach((permission) => {
     const nodeId = permission.nodeId;
-    if (seenNodeIds.has(nodeId)) return null;
+    if (seenNodeIds.has(nodeId)) return;
     seenNodeIds.add(nodeId);
-    return {
+    const base = {
       nodeId,
-      name: `node-${nodeId}`,
-      basename: `node-${nodeId}`,
-      type: 'directory',
+      name: permission.name || `node-${nodeId}`,
+      basename: permission.name || `node-${nodeId}`,
       size: 0,
       lastmodified: null,
       hasReadPermission: true,
       hasWritePermission: permission.permission === 'write' || permission.permission === 'admin',
       hasAdminPermission: permission.permission === 'admin',
     };
-  }).filter(Boolean);
-
-  let fileOnlyEntries = [];
-  try {
-    const filePermissions = await listFilePermissions();
-    if (Array.isArray(filePermissions) && filePermissions.length > 0) {
-      fileOnlyEntries = filePermissions
-        .filter(({ file_node_id: fileNodeId }) => !seenNodeIds.has(fileNodeId))
-        .map(({ file_node_id: fileNodeId, permission }) => ({
-          nodeId: fileNodeId,
-          name: `file-${fileNodeId}`,
-          basename: `file-${fileNodeId}`,
-          type: 'file',
-          size: 0,
-          lastmodified: null,
-          hasReadPermission: true,
-          hasWritePermission: permission === 'write' || permission === 'admin',
-          hasAdminPermission: permission === 'admin',
-        }));
+    if (permission.type === 'file') {
+      fileEntries.push({ ...base, type: 'file' });
+    } else {
+      folderEntries.push({ ...base, type: 'directory' });
     }
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load file-only shared permissions:', error);
+  });
+
+  if (fileEntries.length > 0) {
+    try {
+      const metadataList = await getEntriesMetadata({ entries: fileEntries });
+      const metadataByNodeId = new Map(metadataList.map((m) => [m.nodeId, m]));
+      fileEntries.forEach((entry, index) => {
+        const metadata = metadataByNodeId.get(entry.nodeId);
+        if (!metadata) return;
+        fileEntries[index] = {
+          ...entry,
+          size: metadata.size != null ? metadata.size : 0,
+          lastmod: metadata.lastmod ?? null,
+          mime: metadata.mime ?? null,
+        };
+      });
+    } catch (error) {
+      console.error('[explorerGateway] Failed to load metadata for shared file entries:', error);
+    }
   }
 
-  if (fileOnlyEntries.length === 0) {
-    return [...folderEntries];
-  }
-
-  try {
-    const metadataList = await getEntriesMetadata({ entries: fileOnlyEntries });
-    const metadataByNodeId = new Map(metadataList.map((m) => [m.nodeId, m]));
-    fileOnlyEntries = fileOnlyEntries.map((entry) => {
-      const metadata = metadataByNodeId.get(entry.nodeId);
-      if (!metadata) return entry;
-      return {
-        ...entry,
-        size: metadata.size != null ? metadata.size : 0,
-        lastmod: metadata.lastmod ?? null,
-        mime: metadata.mime ?? null,
-      };
-    });
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load metadata for shared file entries:', error);
-  }
-
-  return [...folderEntries, ...fileOnlyEntries];
+  return [...folderEntries, ...fileEntries];
 };
 
 export const checkConflictsForExplorer = async ({ operations, parentNodeId, files, options } = {}) => {

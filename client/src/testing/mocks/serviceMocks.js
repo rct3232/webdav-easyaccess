@@ -36,6 +36,7 @@ export function createPermissionServiceMock(overrides = {}) {
   return {
     clearUserPermissionsCache: jest.fn(),
     getUserPermissions: jest.fn(),
+    getSharedPermissions: jest.fn(),
     getFolderPermissions: jest.fn(),
     grantPermission: jest.fn(),
     revokePermission: jest.fn(),

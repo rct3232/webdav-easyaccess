@@ -127,16 +127,17 @@ Route module: `domains/files/routes/folders.js` — mounted at `/api/files`. Bot
 
 **Permission Gate:** Non-admin users checked via `aclService.checkFolderPermission(principalId, parentNodeId, PERMISSIONS.WRITE)` before creation. Admin users bypass.
 
-**Response:** `{ messageCode, nodeId, name, path }` — includes created directory's nodeId, name, and resolved display path via `fileNodeService.getNodePath(dir.id)`. A duplicate-name check against siblings returns 409 conflict. Created folder grants WRITE permission to the creator.
+**Response:** `{ messageCode, nodeId, name, path }` — includes created directory's nodeId, name, and resolved display path via `fileNodeService.getNodePath(dir.id)`. A duplicate-name check against siblings returns 409 conflict.
+
+> **No self-grant:** Folder creation no longer writes a `permissions_user_paths` row for the creator. The creator already owns the folder through the home-root `ADMIN` grant (closure-table ancestor inheritance) and the owner exception in [permissions.md](../../../features/permissions.md#owner-exception). Self-grants on own folders were removed because they are redundant ACL state that leaked into the "shared with me" listing.
 
 **Server Flow:**
 1. Validate `parentNodeId` (positive integer) and `name` (non-empty); 400 if missing/invalid
 2. Permission check on parent folder
 3. Check for name conflicts among siblings via `fileNodeService.listDirectory(parentNodeId)` — 409 if duplicate exists
 4. Call `fileNodeService.createDirectory(parentNodeId, name)` → returns new node with `.id`
-5. Grant WRITE permission to creator via `permissionStore.grant(userId, dir.id, PERMISSIONS.WRITE)` — `PermissionFacade` was deleted in Wave 4; the store is the direct grant authority
-6. Resolve display path via `fileNodeService.getNodePath(dir.id)`
-7. Return `{ nodeId: dir.id, name: dir.name, path: display_path }`
+5. Resolve display path via `fileNodeService.getNodePath(dir.id)`
+6. Return `{ nodeId: dir.id, name: dir.name, path: display_path }`
 
 #### GET `/stats` — Folder Statistics
 

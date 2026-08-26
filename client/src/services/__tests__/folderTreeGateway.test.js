@@ -5,7 +5,7 @@
  */
 import folderTreeGateway, { getUserSharedFolderPermissions, listFolderChildren } from '../folderTreeGateway';
 import { listFiles } from '../fileService';
-import { getUserPermissions } from '../permissionService';
+import { getSharedPermissions } from '../permissionService';
 import { getShowHiddenFiles } from '../../utils/localStorage';
 
 jest.mock('../fileService', () => {
@@ -73,17 +73,33 @@ describe('folderTreeGateway', () => {
     expect(result[0]).toMatchObject({ nodeId: 102, name: 'hidden', isHidden: true });
   });
 
-  it('filters out folders owned by the current user', async () => {
+  it('returns only directory entries with real names from shared permissions', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
-    getUserPermissions.mockResolvedValue([
-      { nodeId: 100, permission: 'write' },
-      { nodeId: 200, permission: 'read' },
+    getSharedPermissions.mockResolvedValue([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+      { nodeId: 200, name: 'Read Only', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'file.txt', permission: 'read', type: 'file' },
     ]);
 
     const result = await getUserSharedFolderPermissions({ user });
 
-    expect(getUserPermissions).toHaveBeenCalledWith(user.id, undefined);
-    expect(Array.isArray(result)).toBe(true);
+    expect(getSharedPermissions).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+      { nodeId: 200, name: 'Read Only', permission: 'read', type: 'directory' },
+    ]);
+  });
+
+  it('filters out the user root node defensively when the server still returns it', async () => {
+    const user = { id: 'u1', username: 'alice', is_admin: false, rootNodeId: 999 };
+    getSharedPermissions.mockResolvedValue([
+      { nodeId: 999, name: 'alice', permission: 'admin', type: 'directory' },
+      { nodeId: 200, name: 'External', permission: 'read', type: 'directory' },
+    ]);
+
+    const result = await getUserSharedFolderPermissions({ user });
+
+    expect(result).toEqual([{ nodeId: 200, name: 'External', permission: 'read', type: 'directory' }]);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {
@@ -92,7 +108,7 @@ describe('folderTreeGateway', () => {
     });
 
     expect(result).toEqual([]);
-    expect(getUserPermissions).not.toHaveBeenCalled();
+    expect(getSharedPermissions).not.toHaveBeenCalled();
   });
 
   it('propagates listFolderChildren errors', async () => {
@@ -108,7 +124,7 @@ describe('folderTreeGateway', () => {
 
   it('propagates getUserSharedFolderPermissions errors for non-admin users', async () => {
     const user = { id: 'u1', username: 'alice', is_admin: false };
-    getUserPermissions.mockRejectedValue(new Error('permissions failed'));
+    getSharedPermissions.mockRejectedValue(new Error('permissions failed'));
 
     await expect(getUserSharedFolderPermissions({ user })).rejects.toThrow('permissions failed');
   });

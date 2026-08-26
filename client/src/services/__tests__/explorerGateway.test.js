@@ -5,7 +5,7 @@
  */
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
 import { getShowHiddenFiles } from '../../utils/localStorage';
-import { checkPermission, getUserPermissions, listFilePermissions } from '../permissionService';
+import { checkPermission, getSharedPermissions, getUserPermissions } from '../permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
 import { onRecentFilesChange } from '../recentFilesNotifier';
 import explorerGateway, {
@@ -250,14 +250,10 @@ describe('explorerGateway', () => {
   });
 
   it('loads shared entries with top-level folders and file metadata', async () => {
-    getUserPermissions.mockResolvedValueOnce([
-      { nodeId: 100, permission: 'write' },
-      { nodeId: 101, permission: 'read' },
-      { nodeId: 200, permission: 'read' },
-    ]);
-    listFilePermissions.mockResolvedValueOnce([
-      { file_node_id: 300, permission: 'read' },
-      { file_node_id: 100, permission: 'read' },
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+      { nodeId: 101, name: 'Read Only', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'report.txt', permission: 'read', type: 'file' },
     ]);
     getFilesMetadata.mockResolvedValueOnce([
       { nodeId: 300, size: 50, lastmod: '2024-01-01', mime: 'text/plain' },
@@ -268,9 +264,9 @@ describe('explorerGateway', () => {
     });
 
     expect(result).toEqual([
-      expect.objectContaining({ nodeId: 100, type: 'directory', hasWritePermission: true }),
-      expect.objectContaining({ nodeId: 101, type: 'directory' }),
-      expect.objectContaining({ nodeId: 300, type: 'file', size: 50, mime: 'text/plain' }),
+      expect.objectContaining({ nodeId: 100, name: 'Shared Docs', basename: 'Shared Docs', type: 'directory', hasWritePermission: true }),
+      expect.objectContaining({ nodeId: 101, name: 'Read Only', type: 'directory' }),
+      expect.objectContaining({ nodeId: 300, name: 'report.txt', basename: 'report.txt', type: 'file', size: 50, mime: 'text/plain' }),
     ]);
   });
 

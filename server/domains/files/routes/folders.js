@@ -9,7 +9,6 @@ const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess
 const { requireAuth } = require('../../../middleware/requireUser');
 const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 
-const permissionStore = require('../../../store/permissionStore');
 const { getComposition } = require('../../../service/composition');
 
 // Create folder
@@ -33,7 +32,6 @@ router.post('/create', authenticateToken, requireAuth, checkMetaPathAccess, asyn
     }
   }
 
-  const userId = req.user.id;
   const principalId = req.principalId;
 
   if (!user.is_admin) {
@@ -60,11 +58,10 @@ router.post('/create', authenticateToken, requireAuth, checkMetaPathAccess, asyn
   const { blobStorageService } = getComposition();
   await blobStorageService.createDirectoryWebdav(dir.id);
 
-  try {
-    await permissionStore.grant(userId, dir.id, PERMISSIONS.WRITE);
-  } catch (permError) {
-    console.error('Failed to grant permission after folder creation:', permError);
-  }
+  // No self-grant: the creator already has full access via the home-root ADMIN
+  // grant (closure-table inheritance) and the owner exception. Self-grants on
+  // own folders are redundant ACL state that leaks into the "shared with me"
+  // listing (see docs/features/permissions.md#owner-exception).
 
   const display_path = await fileNodeService.getNodePath(dir.id);
 

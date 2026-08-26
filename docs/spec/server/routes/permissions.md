@@ -14,7 +14,7 @@
 ### 2.1 File Path
 
 - **Route index:** `server/domains/permissions/routes/index.js` (re-exports from modules below)
-- **Folder permissions:** `server/domains/permissions/routes/folderPermissions.js` (`POST /grant`, `DELETE /revoke`, `GET /user/:userId`, `GET /folder`)
+- **Folder permissions:** `server/domains/permissions/routes/folderPermissions.js` (`POST /grant`, `DELETE /revoke`, `GET /user/:userId`, `GET /shared`, `GET /folder`)
 - **File permissions:** `server/domains/permissions/routes/filePermissions.js` (`POST /file/grant`, `DELETE /file/revoke`, `PATCH /file`, `GET /file/check`, `GET /file/list`)
 - **Queries:** `server/domains/permissions/routes/queries.js` (`GET /check`)
 - **Existence index helper:** `server/domains/permissions/stores/permissionExistenceIndex.js`
@@ -27,6 +27,7 @@
 | POST | `/grant` | Token | Grant permission. Body: nodeId, userId, permission, targetType? |
 | DELETE | `/revoke` | Token | Revoke. Query: userId, nodeId, scope? |
 | GET | `/user/:userId` | Token | List permissions for user. |
+| GET | `/shared` | Token | List current user's "shared with me" permissions (own subtree excluded), including `name` and `type`. |
 | GET | `/folder` | Token | List permissions for folder. Query: nodeId, fileNodeId? |
 | GET | `/check` | Token | Check current user permission. Query: nodeId. |
 | POST | `/file/grant` | Token | Grant file-level permission. Body: userId, fileNodeId, permission. |
@@ -62,6 +63,14 @@
 
 - **Query:** `?nodeId=<BIGINT>`
 - Returns `{ hasRead: boolean, hasWrite: boolean, source: string }` for current user on the target node
+
+#### GET `/shared`
+
+- **Auth:** Token + user (admin returns `[]`)
+- **Purpose:** authoritative "shared with me" listing for the sidebar tree and `/files/__shared__` view.
+- Resolves the current user's home root node (`fileNodesStore.getUserRootNode`) and returns every grant where the user is the grantee **and the node is not inside the user's own subtree** (home root + all descendants, resolved via the `node_ancestors` closure table).
+- **Response:** `[{ nodeId: BIGINT, name: string, permission: string, type: 'file' | 'directory' }]`. `name` is the real node name from `file_nodes`; no `node-<id>` placeholders.
+- Same existence-index filtering semantics as `GET /user/:userId` (§2.4.3).
 
 ### 2.4.1 Validation
 

@@ -1,6 +1,6 @@
 # Testing Strategy
 
-This document describes **what** to test and **how** to test it: unit vs integration, mocking approach, and a checklist for new code. For how to run tests, what to commit, and CI, see [TEST_GIT_GUIDE.md](TEST_GIT_GUIDE.md).
+This document describes **what** to test and **how** to test it: unit vs integration, mocking approach, cross-cutting defect classes, and a checklist for new code. For how to run tests, what to commit, and CI, see [TEST_GIT_GUIDE.md](TEST_GIT_GUIDE.md).
 
 ---
 
@@ -101,6 +101,77 @@ function createExampleMock(overrides = {}) {
 
 ---
 
+## Cross-cutting defect classes & semantics-first testing
+
+Some defects do not live inside a single function or component; they live in the
+**relationship between data, derived collections, and lifecycle state**. The
+ACL architecture (closure-table inheritance, structural ownership, normalized
+permission tables, share tokens, virtual collections) makes several cross-cutting
+defect classes possible. Presence-based happy-path tests systematically miss
+them: a defect usually *adds* or *keeps* the wrong item instead of removing the
+expected one. Treat this section as the governing policy for that class of bugs.
+
+### 1. Defect classes
+
+| # | Class | Question it answers | Primary layer | Representative example |
+|---|-------|---------------------|---------------|------------------------|
+| A | Derived visibility | What is included / excluded from a listing? | Server route integration | `__shared__` / shared tree contains exactly the nodes granted by others — never the user's own subtree |
+| B | Authorization (ACL) | Does the grantee get exactly read/write/admin? | Server route integration + store | File-specific grant overrides inherited directory grant; revoke removes access immediately |
+| C | Reference stability | Do nodeId references survive move/rename/delete? | Server route integration + store | After a move, the closure table is rebuilt and permission inheritance follows the new parent |
+| D | Storage consistency | Do DB nodes and blobs agree? | Server integration + S3+PG infra | Copy shares a blob; overwriting the copy leaves the original intact; orphaned blobs are GC'd |
+| E | State transitions | Are lifecycle transitions atomic and terminal-state-enforcing? | Server route integration | Approving grants the requested permission; an already-cancelled request cannot be approved again |
+| F | Freshness / cache | Do cache, ETag, and existence index stay fresh? | Server integration + client unit | A grant is visible within cache TTL; a revoke is reflected immediately; `If-None-Match` gets a correct `304` |
+| G | Security surfaces | Can tokens / IDOR / reserved paths leak? | Server route integration | Expired/invalid share token blocks download; `/.wea` stays blocked for non-admin |
+| H | Cleanup / migration | Are cascades and reconciliations complete? | Server route integration + store | Deleting a user removes permission/share/recent rows while the home-root ADMIN anchor is preserved |
+
+### 2. Common principles
+
+Apply to every class above:
+
+1. **Pin semantics at the authoritative boundary.** The server response and the
+   DB are the source of truth. Encode each invariant as a route-integration
+   (Supertest) assertion; client unit tests and E2E are regression smoke, not the
+   primary guard.
+2. **Presence assertions never catch absence bugs.** Verify a listing with an
+   exact-set assertion: expected items present, unexpected items absent, correct
+   count, no duplicates.
+3. **Recreate the failure precondition.** Fresh E2E users hide accumulation and
+   state defects. When a defect requires a precondition (own folders created, a
+   request approved, a share expired), inject that precondition explicitly in the
+   scenario.
+4. **Distinguish identities.** Ownership ≠ grantee ≠ requester. Whenever a
+   listing or permission check conflates them, the test must assert the boundary.
+5. **Assert terminal states.** A non-terminal action must fail (e.g. approving an
+   already-cancelled request returns 404), not silently no-op.
+6. **Assert cleanup completeness.** Verify rows are removed *and* anchor grants
+   are preserved (e.g. home-root ADMIN survives self-grant cleanup).
+7. **Verify cache via invalidation.** After any ACL mutation, assert the new state
+   is visible immediately (grant appears, revoke disappears) within the configured
+   TTL.
+
+### 3. Representative examples
+
+Anchors for the pattern — not an exhaustive matrix.
+
+- **Class A — derived visibility (`__shared__`).** Server route integration
+  provisions a user who owns subfolders (historical self-grant rows) *and*
+  holds a genuine grant from another user, then asserts `GET
+  /api/permissions/shared` returns exactly the genuine grant with its real
+  `name`/`type` — never the own subtree. E2E asserts the sidebar "Shared" tree is
+  empty for a user who only has own folders.
+- **Class B + F — grant/revoke propagation.** Grant, then read the listing/check
+  within cache TTL → the granted node appears; revoke → it disappears
+  immediately; a follow-up `If-None-Match` returns a correct `304`.
+- **Class C — reference stability after move.** Move a granted folder, then
+  assert the grantee can still access it, the ancestor chain is rebuilt, and
+  recent entries still resolve.
+- **Class H — user deletion cascade.** Delete a user, then assert permission
+  rows, share links, and recent entries are gone; `ensure-home-owner-admin`
+  removes self-grants on the user's own subtree but preserves the home-root
+  ADMIN.
+
+---
+
 ## E2E flow policy
 
 - Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
@@ -157,6 +228,22 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New service → adapter call
 
 - Add a contract-conformance test asserting the argument types/units passed to the adapter match its documented signature (e.g. a `Date` cutoff, milliseconds, numeric id). Keep the adapter mock faithful to that contract so wrong-argument calls fail loudly.
+
+### New or changed listing endpoint
+
+- Add an **exact-set invariant** test (expected items present, own/unauthorized items absent, correct count, no duplicates) — not just a response-shape assertion. See [Cross-cutting defect classes](#cross-cutting-defect-classes--semantics-first-testing).
+
+### New ACL mutation or permission check
+
+- Add a denial/revoke assertion (grantee loses access immediately) plus a cache-invalidation assertion (the new state is visible within TTL).
+
+### New move/rename/delete flow
+
+- Assert reference and closure integrity: the ancestor chain is rebuilt, permission inheritance follows the new parent, and dependent references (recent files, share links, permission rows) still resolve or are cleaned up.
+
+### New cleanup or migration logic
+
+- Assert cascade completeness *and* anchor preservation (e.g. home-root ADMIN survives self-grant cleanup).
 
 ---
 

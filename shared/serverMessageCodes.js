@@ -57,6 +57,10 @@ const SERVER_ERROR_CODES = {
     gcFailed: P('serverErrors.admin', 'gcFailed'),
     repairSyncInvalidAction: P('serverErrors.admin', 'repairSyncInvalidAction'),
     repairSyncNodeNotFound: P('serverErrors.admin', 'repairSyncNodeNotFound'),
+    migrationInvalidPayload: P('serverErrors.admin', 'migrationInvalidPayload'),
+    migrationMissingRequired: P('serverErrors.admin', 'migrationMissingRequired'),
+    migrationAlreadyRunning: P('serverErrors.admin', 'migrationAlreadyRunning'),
+    migrationJobNotFound: P('serverErrors.admin', 'migrationJobNotFound'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -203,6 +207,7 @@ const SERVER_MESSAGE_CODES = {
     orphanCleanupDone: P('serverMessages.admin', 'orphanCleanupDone'),
     gcDone: P('serverMessages.admin', 'gcDone'),
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
+    migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

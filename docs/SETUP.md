@@ -105,34 +105,52 @@ Permission contract source of truth:
 - Runtime enum: `shared/constants.js` (`PERMISSIONS.ALL`)
 - Database checks: `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`permissions_*` permission constraints)
 
-### Data Migration: WebDAV → S3 (Phase D)
+### Data Migration: WebDAV ↔ S3
 
-> **Active — see `docs/spec/server/tools/webdav-s3-migration.md` for the full spec.**
+> **Active — see `docs/spec/server/tools/blob-migration.md` for the full spec.**
 
-Migrates an existing production instance (legacy **path-based** PostgreSQL metadata + WebDAV blobs) into the new architecture (nodeId-based PostgreSQL + S3). Runs as a **standalone CLI** (`server/scripts/migrateWebdavToS3.js`) — the application must not be booted against the target DB until migration completes.
+Moves physical blobs between the two supported blob backends (WebDAV and S3) in either direction, guided by the DB metadata (`file_nodes` + `object_map` + `filecache`). The tool is **bidirectional** and resumable. It runs as a **standalone CLI** (`server/scripts/migrateBlobs.js`) or in-app via the admin API (`POST /api/admin/migration/blobs`, 202 + `{ jobId }` polling). Both trigger the same `migrationService` core.
 
-**Prerequisites**
+**How it works**
 
-1. Target PostgreSQL instance + **fresh empty database** (e.g. `CREATE DATABASE webdav-easyaccess`) + connection role must already exist — the tool creates tables, never the database.
-2. Source DB (read-only), target DB (write), WebDAV, and dedicated S3 bucket config set via `SOURCE_PG_*` / `TARGET_PG_*` / `WEBDAV_*` / `S3_*` environment variables.
+- The **source** backend is auto-determined from the current app config (`WEA_FILE_STORAGE` + its env vars); direction implies source. Only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...).
+- The copy phase uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy phase.
+- **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
+
+**Direction and cutover**
+
+- **WebDAV → S3:** run the copy while the app is in webdav mode (`WEA_FILE_STORAGE=webdav`). `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize phase is needed.
+- **S3 → WebDAV:** run the copy while the app is in s3 mode (`WEA_FILE_STORAGE=s3`); `object_map` is left untouched so the running S3-mode app keeps resolving blobs. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. Finally run the **finalize** phase, which flips migrated nodes to `storage_backend='webdav'`, `s3_key=NULL` (idempotent; re-running flips nothing new).
 
 **Execution order**
 
 ```bash
-# 1) DB-only migration (metadata + file tree + path→nodeId transform)
-node server/scripts/migrateWebdavToS3.js --phase=db-only --dry-run
-node server/scripts/migrateWebdavToS3.js --phase=db-only --apply
+# 1) Preflight validation: config + snapshot + destination connectivity, no writes
+node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --check-env
 
-# 2) Blob migration (WebDAV → S3) — resumable; re-run skips completed files
-node server/scripts/migrateWebdavToS3.js --phase=blobs --dry-run
-node server/scripts/migrateWebdavToS3.js --phase=blobs --apply --delete-mode=deferred
+# 2) Dry run (mandatory before any apply) — writes nothing
+node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
+  --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --dry-run
+
+# 3) Apply — requires --yes; runs the internal dry-run pass first
+node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
+  --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --apply --yes
+
+# 4) Re-run to resume: skips already-migrated nodes; a full re-run copies nothing
+node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 ... --apply --yes --resume
+
+# s3-to-webdav: after cutover to webdav mode, run finalize
+node server/scripts/migrateBlobs.js --direction=s3-to-webdav --phase=finalize --dest-type=webdav \
+  --dest-webdav-url=... --dest-webdav-username=... --dest-webdav-password=... --apply --yes
 ```
 
 **Rules**
 
-- Dry-run is **mandatory** before every `--apply` run; a failed dry-run blocks execution (exit 1, nothing written).
-- Old-instance WebDAV files use one of three delete modes: `immediate`, `deferred`, or `never` (default).
-- After D2 validation, boot the new app against the migrated target DB; do not point the app at a non-fresh DB.
+- Dry-run is **mandatory** before every `--apply` run; `--apply` itself performs the dry-run pass first, and a failed dry-run blocks all writes (exit 1, nothing written).
+- `--apply` requires `--yes`; abort otherwise.
+- `.wea` is a normal folder — migrated like any other node.
+- Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
+- Re-run with `--resume` to continue an interrupted migration; `--force` re-copies nodes even when a resume marker is present.
 
 ### Transaction and Concurrency Notes (postgresql)
 
@@ -147,7 +165,7 @@ Use this checklist for deployment/runtime validation only:
 
 - [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
 - [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
-- [ ] Data migration (WebDAV → S3, Phase D) ran `--dry-run` before `--apply`, and report warnings are resolved.
+- [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran `--check-env` and `--dry-run` before `--apply`, and report warnings are resolved; cutover/finalize steps followed.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.

@@ -175,6 +175,11 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | POST | `/api/admin/cleanup/orphaned` | Token + Admin | Clean orphaned metadata. Also runs one GC cycle and reports `orphaned_node` status. |
 | POST | `/api/admin/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (orphaned blob cleanup). |
 | POST | `/api/admin/maintenance/repair-sync` | Token + Admin | Resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. |
+| POST | `/api/admin/migration/blobs` | Token + Admin | Start a bidirectional WebDAV ↔ S3 blob migration. Body: `{ direction, phase, mode, resume, force, dest }`. Returns `202 { jobId }`. |
+| GET | `/api/admin/migration/jobs/:jobId` | Token + Admin | Get blob-migration job status/progress. |
+| POST | `/api/admin/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running blob-migration job. |
+
+Spec: `docs/spec/server/tools/blob-migration.md`.
 
 ---
 

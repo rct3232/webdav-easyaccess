@@ -32,6 +32,7 @@ import {
   Close as CloseIcon,
   Delete as DeleteIcon,
   CleaningServices as CleaningServicesIcon,
+  SyncAlt as SyncAltIcon,
 } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
 import * as adminService from '../../../services/adminService';
@@ -39,6 +40,7 @@ import { validateRequired, validateUsername, validateEmail, validatePassword, va
 import { getValidationMessage } from '../../../utils/validationMessage';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { ShareDialog } from '../../dialogs';
+import MigrationDialog from './MigrationDialog';
 import { formatDate } from '../../../utils/format';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
 
@@ -59,6 +61,7 @@ const AdminContent = ({ selectedContentItem, onSelectContentItem, user, onMessag
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
   const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
+  const [migrationOpen, setMigrationOpen] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoadingIds, setActionLoadingIds] = useState(new Set());
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -554,6 +557,15 @@ const AdminContent = ({ selectedContentItem, onSelectContentItem, user, onMessag
             {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
           </IconButton>
         </Box>
+        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body1">{t('admin.storageMigration')}</Typography>
+            <Typography variant="body2" color="text.secondary">{t('admin.storageMigrationDesc')}</Typography>
+          </Box>
+          <IconButton onClick={() => setMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMigration')}>
+            <SyncAltIcon />
+          </IconButton>
+        </Box>
 
         <Dialog open={cleanupConfirmOpen} onClose={() => setCleanupConfirmOpen(false)} fullScreen>
           <DialogTitle>{t('admin.orphanCleanupConfirmTitle')}</DialogTitle>
@@ -594,6 +606,12 @@ const AdminContent = ({ selectedContentItem, onSelectContentItem, user, onMessag
             </Button>
           </DialogActions>
         </Dialog>
+
+        <MigrationDialog
+          open={migrationOpen}
+          onClose={() => setMigrationOpen(false)}
+          onMessage={(msg) => msg?.text && setMessage({ type: msg.type || 'info', text: msg.text })}
+        />
 
         <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
           <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>

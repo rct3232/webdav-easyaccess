@@ -5,7 +5,7 @@
 | Item | Description |
 |------|-------------|
 | Mount path | `/api/admin` |
-| Role | Admin-only: settings, user management (pending, list, approve, reject, delete, create), folder list, user permissions, cleanup. |
+| Role | Admin-only: settings, user management (pending, list, approve, reject, delete, create), folder list, user permissions, cleanup, blob migration. |
 
 ---
 
@@ -20,6 +20,7 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 | userManagement | `server/domains/admin/routes/userManagement.js` | `/api/admin` | `server/domains/admin/routes/__tests__/admin.test.js` |
 | settings | `server/domains/admin/routes/settings.js` | `/api/admin`, `/api/settings` (public) | `server/domains/admin/routes/__tests__/settings.test.js` |
 | maintenance | `server/domains/admin/routes/maintenance.js` | `/api/admin` | `server/domains/admin/routes/__tests__/admin.test.js` |
+| migration | `server/domains/admin/routes/migration.js` | `/api/admin` | `server/domains/admin/routes/__tests__/migration.test.js` |
 
 ### 2.2 Route List
 
@@ -65,6 +66,18 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 - `gc: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } }`
 - `orphanedNodes: Array<{ nodeId, path }>`
 
+#### 2.2.4 migration (`/api/admin`)
+
+Bidirectional WebDAV ↔ S3 blob migration (202 + poll contract). Service: `domains/admin/services/migrationService.js`; job tracking: `domains/admin/stores/migrationJobStore.js`. Worker runs via `setImmediate` and honours the `WEA_SKIP_MIGRATION_WORKER` test seam (skips worker scheduling without changing defaults).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/migration/blobs` | Token + Admin | Start a blob migration job. Body: `{ direction: 'webdav-to-s3' \| 's3-to-webdav', phase: 'copy' \| 'finalize' (default copy), mode: 'dry-run' \| 'apply', resume?, force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }`. Returns `202 { jobId }`. |
+| GET | `/migration/jobs/:jobId` | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }`. |
+| POST | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`. |
+
+Destination config fields and the authoritative migration rules are documented in `docs/spec/server/tools/blob-migration.md`.
+
 ### 2.3 Middleware Used
 
 - `authenticateToken`, `isAdmin` (inline middleware defined per module)
@@ -94,6 +107,12 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 - **POST /maintenance/gc:** 200: `{ messageCode, results: { tier1: { orphanedRows, deletedBlobs, deletedRows, errors }, tier2: { scannedKeys, untrackedKeys, deletedKeys, skipped, errors } } }`
 - **POST /maintenance/repair-sync:** Body: `{ nodeId, action }`. 200: `{ messageCode, result: { nodeId, action, status, path, detail } }`; 404 when node not found; 400 on invalid action.
 
+#### migration
+
+- **POST /migration/blobs:** Body: `{ direction, phase, mode, resume, force, dest }`. 202: `{ jobId }`; 400 on invalid payload (bad direction/phase/mode or dest config); 403 for non-admin; 409 when a migration job is already running.
+- **GET /migration/jobs/:jobId:** 200: migration job shape (status, progress, total, current, results `{ copied, skipped, failed, errors }`, errorMessage, createdAt, completedAt); 404 for unknown/expired job.
+- **POST /migration/jobs/:jobId/cancel:** 200: `{ messageCode, jobId }`; 404 for unknown/expired job.
+
 ### 2.5 Service Layers
 
 #### userService (`domains/admin/services/userService.js`)
@@ -113,6 +132,12 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 | `cleanupOrphanedData()` | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB. |
 | `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). |
 
+#### migrationService (`domains/admin/services/migrationService.js`)
+
+| Function | Description |
+|----------|-------------|
+| `run({ direction, phase, mode, destConfig, resume, force, onProgress })` | Snapshot traversal + per-node copy + direction-specific `object_map` rules + resume/dry-run/failure isolation + finalize. Returns `{ copied, skipped, failed, errors }`. Full contract: `docs/spec/server/services/migrationService.md`. |
+
 ### 2.6 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md)
@@ -124,3 +149,5 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 - [ ] Approve, reject, delete users
 - [ ] Create user with validation
 - [ ] Cleanup endpoints return results
+- [ ] Migration: start returns 202 `{ jobId }`; poll job status; cancel a running job
+- [ ] Migration: non-admin gets 403; invalid payload gets 400; running job conflict gets 409; unknown job gets 404

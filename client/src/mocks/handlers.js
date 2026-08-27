@@ -41,6 +41,9 @@ export const mockAdminUsers = {
   ],
 };
 
+// Mock migration job state (tests may override via server.use)
+export const mockMigrationJobs = new Map();
+
 // Restore module-level mock state between tests so POST-handler mutations
 // (bulk jobs, permission requests, share links, admin users) do not leak.
 // Wired into client/src/setupTests.js beforeEach (docs/TESTING_STRATEGY.md).
@@ -59,6 +62,7 @@ export function __resetHandlersState() {
     { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false });
   mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
     { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
+  mockMigrationJobs.clear();
 }
 
 function nextJobId() {
@@ -695,6 +699,60 @@ export const handlers = [
 
   http.post(`${API_BASE}/admin/permissions/ensure-home-owner-admin`, () => {
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
+  }),
+
+  // --- Admin: blob migration (aligned with PLAN.md module E / api contract) ---
+  // POST returns { jobId } (202); GET returns the job shape; cancel flips to cancelled.
+  // Tests override per scenario via server.use (same pattern as mockBulkJobs).
+  http.post(`${API_BASE}/admin/migration/blobs`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { direction, phase = 'copy', mode = 'dry-run', dest } = body;
+    if (!direction || !['webdav-to-s3', 's3-to-webdav'].includes(direction)) {
+      return errorResponse('serverErrors.admin.migrationInvalidPayload', 400);
+    }
+    if (!dest || !dest.type) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    if (dest.type === 's3' && (!dest.bucket || !dest.accessKey || !dest.secretKey)) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    if (dest.type === 'webdav' && (!dest.url || !dest.username || !dest.password)) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    const jobId = 'mig-1';
+    const now = new Date().toISOString();
+    mockMigrationJobs.set(jobId, {
+      jobId,
+      direction,
+      phase,
+      mode,
+      status: 'completed',
+      progress: 3,
+      total: 3,
+      current: null,
+      results: { copied: 3, skipped: 0, failed: 0, errors: [] },
+      errorMessage: null,
+      createdAt: now,
+      completedAt: now,
+    });
+    return HttpResponse.json({ jobId }, { status: 202 });
+  }),
+
+  http.get(`${API_BASE}/admin/migration/jobs/:jobId`, ({ params }) => {
+    const job = mockMigrationJobs.get(params.jobId);
+    if (!job) {
+      return errorResponse('serverErrors.admin.migrationJobNotFound', 404);
+    }
+    return HttpResponse.json(job);
+  }),
+
+  http.post(`${API_BASE}/admin/migration/jobs/:jobId/cancel`, ({ params }) => {
+    const job = mockMigrationJobs.get(params.jobId);
+    if (!job) {
+      return errorResponse('serverErrors.admin.migrationJobNotFound', 404);
+    }
+    job.status = 'cancelled';
+    return HttpResponse.json({ messageCode: 'serverMessages.admin.migrationCancelled', jobId: params.jobId });
   }),
 
   // --- Permission requests (nodeId-based, matching server/domains/permissions/routes/permissionRequests.js) ---

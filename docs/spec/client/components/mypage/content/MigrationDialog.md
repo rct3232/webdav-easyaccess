@@ -5,7 +5,7 @@
 | Item | Description |
 |------|-------------|
 | Role | Admin-only dialog that runs a blob-storage migration between WebDAV and S3: dest-config form, Start, 400ms progress polling, Cancel. |
-| Used in | `AdminContent` settings tab (Storage migration action row). |
+| Used in | `SystemSettingsContent` settings tab (Storage migration action row). |
 | Related components | migrationService, getServerErrorDisplay, MUI Dialog. |
 
 ---
@@ -23,7 +23,7 @@
 |------|------|----------|---------|-------------|
 | open | boolean | Y | - | Controls dialog visibility |
 | onClose | function | Y | - | Closes the dialog |
-| onMessage | function | N | - | Snackbar feedback handler `({ type, text })` (AdminContent settings Snackbar) |
+| onMessage | function | N | - | Snackbar feedback handler `({ type, text })` (SystemSettingsContent settings Snackbar) |
 
 ### 2.3 Form Fields
 
@@ -50,7 +50,7 @@
 ### 2.5 i18n Keys
 
 - `migration.*` (title, direction*, phase*, mode*, dest*, field labels, start, cancelJob, status*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess) — added to `client/src/locales/en.json` and `ko.json`.
-- `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — AdminContent settings row.
+- `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — SystemSettingsContent settings row.
 - `serverErrors.admin.migration*` and `serverMessages.admin.migrationCancelled` for server codes.
 
 ### 2.6 Verification Scenarios

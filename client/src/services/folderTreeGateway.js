@@ -1,5 +1,5 @@
 import { listFiles } from './fileService';
-import { getUserPermissions } from './permissionService';
+import { getSharedPermissions } from './permissionService';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
@@ -8,12 +8,12 @@ import { filterOutUserOwnFolders } from '../utils/userUtils';
  * - Preserves existing folder-tree behavior (directories only, hidden-file filtering, sorting).
  */
 export const listFolderChildren = async ({
-  path,
+  nodeId,
   listFilesOptions = {},
   useHiddenFilesFilter = true,
   filterChildNames,
 } = {}) => {
-  const data = await listFiles(path, listFilesOptions || {});
+  const data = await listFiles(nodeId, listFilesOptions || {});
 
   const showHiddenFiles = useHiddenFilesFilter ? getShowHiddenFiles() : true;
 
@@ -21,7 +21,7 @@ export const listFolderChildren = async ({
     .filter((item) => item.type === 'directory')
     .filter((item) => showHiddenFiles || !item.isHidden)
     .map((item) => ({
-      path: item.path,
+      nodeId: item.nodeId,
       name: item.basename || item.name,
       hasReadPermission: item.hasReadPermission,
       hasWritePermission: item.hasWritePermission,
@@ -39,13 +39,14 @@ export const listFolderChildren = async ({
 
 /**
  * Load shared-folder permissions for the folder-tree “__shared__” section.
- * Filters out folders owned by the current user.
+ * The server already excludes the user's own subtree; the client keeps a
+ * root-level safety filter and returns only directory entries.
  */
 export const getUserSharedFolderPermissions = async ({ user, options } = {}) => {
   if (!user || !user.id || user.is_admin) return [];
-  const data = await getUserPermissions(user.id, options);
+  const data = await getSharedPermissions();
   const filtered = filterOutUserOwnFolders(data || [], user);
-  return Array.isArray(filtered) ? filtered : [];
+  return (Array.isArray(filtered) ? filtered : []).filter((perm) => perm.type === 'directory');
 };
 
 const folderTreeGateway = {

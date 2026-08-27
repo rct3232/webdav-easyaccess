@@ -45,8 +45,8 @@ Shared request defaults:
      - requests whose `config.url` includes `/auth/login` or `/auth/register`, or
      - requests that include `X-Share-Token` header, or
      - requests whose `config.url` includes `/share/` and `/check-my-permission`.
-     - In excluded cases, `apiClient` returns `null` (no redirect and no retry).
-     - Callers must treat `null` as the observable "auth policy skipped" result for those request families.
+     - In excluded cases, `apiClient` **rethrows the `401`** (no redirect, no refresh, no retry). The error is rethrown so callers preserve the server's `errorCode` (e.g. `invalidCredentials`) for user-facing messages.
+     - Callers treat the thrown `401` as the observable "auth policy skipped" result for those request families.
    - For non-excluded requests:
      - attempt a refresh once (POST to `/api/auth/refresh` with `{ refreshToken }` via `authTokenStore`),
      - on refresh success: retry the original request once using the new token,
@@ -85,7 +85,7 @@ Verify observable outcomes (what callers see), not internal implementation:
 - [ ] When a response includes `x-new-token`, the new token is stored and a `token-refreshed` event is dispatched.
 - [ ] On `401` for a non-excluded endpoint: refresh succeeds, token is updated, and the original request is retried.
 - [ ] On `401` refresh failure for a non-excluded endpoint: tokens are removed, navigation to `/login` occurs, and the request resolves to `null`.
-- [ ] On `401` for excluded endpoints: no refresh and no redirect; `apiClient` returns `null`.
+- [ ] On `401` for excluded endpoints: no refresh and no redirect; `apiClient` rethrows the `401` (error preserved).
 - [ ] On redirectable `403` (GET `/api/files/list` or GET `/api/admin/*`): history/back-or-`/` navigation occurs without throwing.
 - [ ] On non-redirectable `403` or excluded endpoints: `apiClient` rethrows the error.
 - [ ] Retry behavior: network failures and 5xx retry with exponential backoff; 4xx and timeout aborts are not retried.

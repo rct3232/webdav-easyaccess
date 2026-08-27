@@ -1,6 +1,6 @@
 /**
  * ShareLinkSection tests.
- * Verifies observable outcomes per spec: path click, expand when currentPath in tree, root children loaded.
+ * Verifies observable outcomes per spec: node click, expand when current node in tree, root children loaded.
  * @see docs/spec/client/components/folder-tree/ShareLinkSection.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -9,21 +9,20 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import ShareLinkSection from '../ShareLinkSection';
 
-jest.mock('../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    listFolderChildren: jest.fn(),
-  },
-}));
-
 import folderTreeGateway from '../../../services/folderTreeGateway';
 
+jest.mock('../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
+
 const defaultProps = {
+  shareRootNodeId: 7,
   shareRootPath: '/share-root',
   shareRootName: 'My Share',
   shareToken: 'token-123',
-  currentPath: '/share-root',
-  onShareLinkPathClick: jest.fn(),
+  currentNodeId: null,
+  onNodeClick: jest.fn(),
 };
 
 describe('ShareLinkSection', () => {
@@ -31,7 +30,7 @@ describe('ShareLinkSection', () => {
     jest.clearAllMocks();
     folderTreeGateway.listFolderChildren.mockResolvedValue([
       {
-        path: '/share-root/docs',
+        nodeId: 8,
         name: 'docs',
         hasReadPermission: true,
         hasWritePermission: false,
@@ -39,24 +38,24 @@ describe('ShareLinkSection', () => {
     ]);
   });
 
-  it('returns null when no shareRootPath and no shareToken', () => {
+  it('returns null when no shareRootNodeId and no shareToken', () => {
     renderWithProviders(
       <ShareLinkSection
         {...defaultProps}
-        shareRootPath=""
+        shareRootNodeId={undefined}
         shareToken=""
       />
     );
     expect(screen.queryByText('My Share')).not.toBeInTheDocument();
   });
 
-  it('renders share root name and calls onShareLinkPathClick when header clicked', async () => {
+  it('renders share root name and calls onNodeClick with the share root nodeId when header clicked', async () => {
     renderWithProviders(<ShareLinkSection {...defaultProps} />);
     await waitFor(() => {
       expect(screen.getByText('My Share')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText('My Share'));
-    expect(defaultProps.onShareLinkPathClick).toHaveBeenCalledWith('/share-root');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(7);
   });
 
   it('loads and displays root children when expanded', async () => {
@@ -65,7 +64,7 @@ describe('ShareLinkSection', () => {
       expect(screen.getByText('docs')).toBeInTheDocument();
     });
     expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith({
-      path: '/share-root',
+      nodeId: 7,
       listFilesOptions: { shareToken: 'token-123' },
       useHiddenFilesFilter: true,
     });
@@ -78,9 +77,9 @@ describe('ShareLinkSection', () => {
     });
   });
 
-  it('expands parent paths when currentPath is under root', async () => {
+  it('keeps the section expanded when currentNodeId is under the share root', async () => {
     renderWithProviders(
-      <ShareLinkSection {...defaultProps} currentPath="/share-root/docs" />
+      <ShareLinkSection {...defaultProps} currentNodeId={7} />
     );
     await waitFor(() => {
       expect(screen.getByText('docs')).toBeInTheDocument();

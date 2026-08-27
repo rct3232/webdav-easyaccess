@@ -1,6 +1,6 @@
 /**
  * usePermissionManager tests.
- * Map-based permission state for ShareDialog.
+ * Map-based permission state for ShareDialog (nodeId-keyed).
  * @see docs/spec/client/hooks/usePermissionManager.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -37,10 +37,10 @@ describe('usePermissionManager', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.handleAddUserPermission('/folder', 'user2', PERMISSIONS.WRITE);
+      result.current.handleAddUserPermission(10, 'user2', PERMISSIONS.WRITE);
     });
 
-    const perms = result.current.folderPermissions.get('/folder');
+    const perms = result.current.folderPermissions.get(10);
     expect(perms).toBeDefined();
     expect(perms.get('user2')).toBe(PERMISSIONS.WRITE);
   });
@@ -49,82 +49,82 @@ describe('usePermissionManager', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.handleAddUserPermission('/folder', 'user2', PERMISSIONS.READ, ['/folder/sub1', '/folder/sub2']);
+      result.current.handleAddUserPermission(10, 'user2', PERMISSIONS.READ, [11, 12]);
     });
 
-    expect(result.current.folderPermissions.get('/folder').get('user2')).toBe(PERMISSIONS.READ);
-    expect(result.current.folderPermissions.get('/folder/sub1').get('user2')).toBe(PERMISSIONS.READ);
-    expect(result.current.folderPermissions.get('/folder/sub2').get('user2')).toBe(PERMISSIONS.READ);
+    expect(result.current.folderPermissions.get(10).get('user2')).toBe(PERMISSIONS.READ);
+    expect(result.current.folderPermissions.get(11).get('user2')).toBe(PERMISSIONS.READ);
+    expect(result.current.folderPermissions.get(12).get('user2')).toBe(PERMISSIONS.READ);
   });
 
   it('handleRemoveUserPermission removes user from folder', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.handleAddUserPermission('/folder', 'user2', PERMISSIONS.WRITE);
+      result.current.handleAddUserPermission(10, 'user2', PERMISSIONS.WRITE);
     });
-    expect(result.current.folderPermissions.get('/folder').has('user2')).toBe(true);
+    expect(result.current.folderPermissions.get(10).has('user2')).toBe(true);
 
     act(() => {
-      result.current.handleRemoveUserPermission('/folder', 'user2');
+      result.current.handleRemoveUserPermission(10, 'user2');
     });
 
-    expect(result.current.folderPermissions.get('/folder')).toBeUndefined();
+    expect(result.current.folderPermissions.get(10)).toBeUndefined();
   });
 
   it('handleRemoveUserPermission removes from subfolders', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.handleAddUserPermission('/folder', 'user2', PERMISSIONS.READ, ['/folder/sub1']);
+      result.current.handleAddUserPermission(10, 'user2', PERMISSIONS.READ, [11]);
     });
     act(() => {
-      result.current.handleRemoveUserPermission('/folder', 'user2', ['/folder/sub1']);
+      result.current.handleRemoveUserPermission(10, 'user2', [11]);
     });
 
-    expect(result.current.folderPermissions.get('/folder')).toBeUndefined();
-    expect(result.current.folderPermissions.get('/folder/sub1')).toBeUndefined();
+    expect(result.current.folderPermissions.get(10)).toBeUndefined();
+    expect(result.current.folderPermissions.get(11)).toBeUndefined();
   });
 
   it('handleToggleUserPermission toggles read <-> write', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.handleAddUserPermission('/folder', 'user2', PERMISSIONS.READ);
+      result.current.handleAddUserPermission(10, 'user2', PERMISSIONS.READ);
     });
-    expect(result.current.folderPermissions.get('/folder').get('user2')).toBe(PERMISSIONS.READ);
+    expect(result.current.folderPermissions.get(10).get('user2')).toBe(PERMISSIONS.READ);
 
     act(() => {
-      result.current.handleToggleUserPermission('/folder', 'user2');
+      result.current.handleToggleUserPermission(10, 'user2');
     });
-    expect(result.current.folderPermissions.get('/folder').get('user2')).toBe(PERMISSIONS.WRITE);
+    expect(result.current.folderPermissions.get(10).get('user2')).toBe(PERMISSIONS.WRITE);
 
     act(() => {
-      result.current.handleToggleUserPermission('/folder', 'user2');
+      result.current.handleToggleUserPermission(10, 'user2');
     });
-    expect(result.current.folderPermissions.get('/folder').get('user2')).toBe(PERMISSIONS.READ);
+    expect(result.current.folderPermissions.get(10).get('user2')).toBe(PERMISSIONS.READ);
   });
 
   it('hasPermissionChanged returns false when no changes', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.setFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.READ]])]]));
-      result.current.setInitialFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
     });
 
-    expect(result.current.hasPermissionChanged('/folder')).toBe(false);
+    expect(result.current.hasPermissionChanged(10)).toBe(false);
   });
 
   it('hasPermissionChanged returns true when permission differs', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.setFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.WRITE]])]]));
-      result.current.setInitialFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.WRITE]])]]));
+      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
     });
 
-    expect(result.current.hasPermissionChanged('/folder')).toBe(true);
+    expect(result.current.hasPermissionChanged(10)).toBe(true);
   });
 
   it('hasPermissionChanged returns true when user removed', () => {
@@ -132,20 +132,20 @@ describe('usePermissionManager', () => {
 
     act(() => {
       result.current.setFolderPermissions(new Map());
-      result.current.setInitialFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setInitialFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
     });
 
-    expect(result.current.hasPermissionChanged('/folder')).toBe(true);
+    expect(result.current.hasPermissionChanged(10)).toBe(true);
   });
 
   it('hasPermissionChanged returns true when user added', () => {
     const { result } = renderHook(() => usePermissionManager(defaultProps));
 
     act(() => {
-      result.current.setFolderPermissions(new Map([['/folder', new Map([['user2', PERMISSIONS.READ]])]]));
+      result.current.setFolderPermissions(new Map([[10, new Map([['user2', PERMISSIONS.READ]])]]));
       result.current.setInitialFolderPermissions(new Map());
     });
 
-    expect(result.current.hasPermissionChanged('/folder')).toBe(true);
+    expect(result.current.hasPermissionChanged(10)).toBe(true);
   });
 });

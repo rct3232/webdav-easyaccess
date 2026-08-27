@@ -23,11 +23,12 @@ import useFolderTreeItemController from './hooks/useFolderTreeItemController';
  * 통합된 폴더 트리 아이템 컴포넌트
  * BaseFolderTreeItem과 SharedFolderTreeItem의 기능을 모두 지원
  *
- * @param {string} path - 폴더 경로 (node가 없을 때 사용)
+ * @param {string} path - 폴더 경로 fallback (node가 없을 때 사용; transitional)
  * @param {string} name - 폴더 이름 (node가 없을 때 사용)
- * @param {object} node - 폴더 노드 객체 (path, name 포함)
- * @param {boolean} useHiddenFilesFilter - 숨김 파일 필터링 사용 여부 (기본값: true)
- * @param {Map} sharedFoldersMap - 공유 폴더 맵 (SharedFolderTree용)
+ * @param {object} node - 폴더 노드 객체 { nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }
+ * @param {number} currentNodeId - 현재 폴더 nodeId (하이라이트)
+ * @param {Set} expandedNodeIds - 확장된 nodeId 집합
+ * @param {Map} sharedFoldersMap - 공유 폴더 맵 (nodeId 키)
  */
 const BaseFolderTreeItem = ({
   // path/name 또는 node 지원
@@ -35,9 +36,9 @@ const BaseFolderTreeItem = ({
   name: nameProp,
   node,
   level = 0,
-  currentPath,
-  onPathClick,
-  expandedPaths,
+  currentNodeId,
+  onNodeClick,
+  expandedNodeIds,
   onToggleExpand,
   hasReadPermission: hasReadPermissionProp = true,
   hasWritePermission: hasWritePermissionProp = true,
@@ -45,7 +46,7 @@ const BaseFolderTreeItem = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
-  internalDraggedPath,
+  internalDraggedNodeId,
   isMobile = false,
   icon,
   openIcon,
@@ -89,9 +90,9 @@ const BaseFolderTreeItem = ({
     node,
 
     // display + navigation
-    currentPath,
-    expandedPaths,
-    onPathClick,
+    currentNodeId,
+    expandedNodeIds,
+    onNodeClick,
     onToggleExpand,
 
     // permissions
@@ -104,7 +105,7 @@ const BaseFolderTreeItem = ({
     onInternalFileDrop,
     onInternalDragStart,
     onInternalDragEnd,
-    internalDraggedPath,
+    internalDraggedNodeId,
     isMobile,
 
     // children + reload behavior
@@ -146,13 +147,14 @@ const BaseFolderTreeItem = ({
     }
     return (
       <BaseFolderTreeItem
-        key={child.path}
+        key={child.nodeId != null ? child.nodeId : child.path}
+        node={child}
         path={child.path}
         name={child.name}
         level={childLevel}
-        currentPath={currentPath}
-        onPathClick={onPathClick}
-        expandedPaths={expandedPaths}
+        currentNodeId={currentNodeId}
+        onNodeClick={onNodeClick}
+        expandedNodeIds={expandedNodeIds}
         onToggleExpand={onToggleExpand}
         hasReadPermission={child.hasReadPermission}
         hasWritePermission={child.hasWritePermission}
@@ -160,7 +162,7 @@ const BaseFolderTreeItem = ({
         onInternalFileDrop={onInternalFileDrop}
         onInternalDragStart={onInternalDragStart}
         onInternalDragEnd={onInternalDragEnd}
-        internalDraggedPath={internalDraggedPath}
+        internalDraggedNodeId={internalDraggedNodeId}
         isMobile={isMobile}
         treeUpdateTrigger={treeUpdateTrigger}
         isHidden={child.isHidden}

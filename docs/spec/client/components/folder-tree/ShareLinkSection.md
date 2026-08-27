@@ -21,18 +21,18 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| shareRootPath | string | Y | - | Share root path |
+| shareRootNodeId | number | Y | - | Share root node id (always present; link info carries nodeId) |
 | shareRootName | string | Y | - | Display name |
 | shareToken | string | N | - | Share token |
-| currentPath | string | Y | - | Current path |
-| onShareLinkPathClick | function | Y | - | Path click |
+| currentNodeId | number | Y | - | Current folder node id |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
 | isMobile | boolean | N | false | Mobile |
 
 ### 2.3 Callback Signatures
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onShareLinkPathClick | Path click | (path) |
+| onNodeClick | Node click | (nodeId) |
 
 ### 2.4 Dependencies
 
@@ -45,17 +45,17 @@
 
 ### 2.6 Conditional Rendering
 
-- Expands parent paths when currentPath under root
-- Loads root children through `folderTreeGateway.listFolderChildren({ path, listFilesOptions: { shareToken } })`
+- Expands ancestor nodes when `currentNodeId` is under the share root
+- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })` 
 
 ### 2.7 Verification Scenarios
 
-- [ ] Path click
-- [ ] Expand when currentPath in tree
+- [ ] Node click
+- [ ] Expand when current node in tree
 - [ ] Root children loaded
-- [ ] Root children request is routed through `folderTreeGateway` with the provided `shareToken`
+- [ ] Root children request is routed through `folderTreeGateway` with the provided `shareToken` and the share root `nodeId`
 
 ### 2.8 Edge Cases
 
-- shareRootPath normalized
-- currentPath outside root – no segments
+- `shareRootNodeId` is always present; the component returns null only when neither `shareRootNodeId` nor `shareToken` is provided
+- currentNodeId outside root – no segments

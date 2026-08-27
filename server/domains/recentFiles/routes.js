@@ -8,8 +8,7 @@ const recentFilesService = require('./service');
 
 const ERROR_MAP = {
   pathRequired: SERVER_ERROR_CODES.recentFiles.pathRequired,
-  movesRequired: SERVER_ERROR_CODES.recentFiles.movesRequired,
-  pathsMustBeArrays: SERVER_ERROR_CODES.recentFiles.pathsMustBeArrays,
+  fileNotFound: SERVER_ERROR_CODES.files.notFound,
 };
 
 function handleServiceError(error) {
@@ -22,31 +21,19 @@ router.get('/', authenticateToken, requireUser, asyncHandler(async (req, res) =>
 
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    res.json(await recentFilesService.addRecentFile(req.user.full.id, req.body));
+    res.json(await recentFilesService.addRecentFile(req.user.full.id, req.body.fileNodeId));
+  } catch (e) { throw handleServiceError(e); }
+}));
+
+router.delete('/:fileNodeId', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  try {
+    res.json(await recentFilesService.removeRecentFile(req.user.full.id, req.params.fileNodeId));
   } catch (e) { throw handleServiceError(e); }
 }));
 
 router.delete('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   await recentFilesService.clearRecentFiles(req.user.full.id);
   res.json({ messageCode: SERVER_MESSAGE_CODES.recentFiles.clearedSuccess });
-}));
-
-router.delete('/:filePath(*)', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  try {
-    res.json(await recentFilesService.removeRecentFile(req.user.full.id, req.params.filePath));
-  } catch (e) { throw handleServiceError(e); }
-}));
-
-router.post('/apply-moves', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  try {
-    res.json(await recentFilesService.applyBulkMove(req.user.full.id, req.body.moves));
-  } catch (e) { throw handleServiceError(e); }
-}));
-
-router.post('/remove-paths', authenticateToken, requireUser, asyncHandler(async (req, res) => {
-  try {
-    res.json(await recentFilesService.removePaths(req.user.full.id, req.body.filePaths, req.body.folderPaths));
-  } catch (e) { throw handleServiceError(e); }
 }));
 
 module.exports = router;

@@ -1,9 +1,8 @@
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import sharePermissionGateway from './sharePermissionGateway';
-import { collectSubfolderPaths } from '../utils/folderUtils';
 
 export async function shareTargetPermissionSaveUseCase({
-  targetPath,
+  targetNodeId,
   isDirectory,
   initialAccessList = [],
   accessList = [],
@@ -12,15 +11,12 @@ export async function shareTargetPermissionSaveUseCase({
   const currentMap = new Map(accessList.map((entry) => [entry.id, entry]));
 
   if (isDirectory) {
-    const pathsToGrant = await collectSubfolderPaths(targetPath);
-
     for (const userId of initialIds) {
       if (currentMap.has(userId)) continue;
       try {
         await sharePermissionGateway.revokePermission({
           userId,
-          folderPath: targetPath,
-          includeSubfolders: true,
+          nodeId: targetNodeId,
         });
       } catch (error) {
         // Preserve the existing best-effort revoke behavior.
@@ -28,13 +24,11 @@ export async function shareTargetPermissionSaveUseCase({
     }
 
     for (const entry of accessList) {
-      for (const folderPath of pathsToGrant) {
-        await sharePermissionGateway.grantPermission({
-          userId: entry.id,
-          folderPath,
-          permission: entry.permission,
-        });
-      }
+      await sharePermissionGateway.grantPermission({
+        userId: entry.id,
+        nodeId: targetNodeId,
+        permission: entry.permission,
+      });
     }
 
     return;
@@ -46,7 +40,7 @@ export async function shareTargetPermissionSaveUseCase({
     try {
       await sharePermissionGateway.revokePermission({
         userId: initialEntry.id,
-        folderPath: targetPath,
+        nodeId: targetNodeId,
         scope: 'pathOnly',
       });
     } catch (error) {
@@ -59,7 +53,7 @@ export async function shareTargetPermissionSaveUseCase({
       try {
         await sharePermissionGateway.revokePermission({
           userId: entry.id,
-          folderPath: targetPath,
+          nodeId: targetNodeId,
           scope: 'pathOnly',
         });
       } catch (error) {
@@ -81,7 +75,7 @@ export async function shareTargetPermissionSaveUseCase({
       try {
         await sharePermissionGateway.revokePermission({
           userId: entry.id,
-          folderPath: targetPath,
+          nodeId: targetNodeId,
           scope: 'pathOnly',
         });
       } catch (error) {
@@ -92,7 +86,7 @@ export async function shareTargetPermissionSaveUseCase({
 
     await sharePermissionGateway.grantPermission({
       userId: entry.id,
-      folderPath: targetPath,
+      nodeId: targetNodeId,
       permission: entry.permission,
       target: 'file',
     });

@@ -7,6 +7,10 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDropToUpload } from '../useDropToUpload';
 
 describe('useDropToUpload', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('returns isDraggingOver, uploadProgress, handlers in main mode', () => {
     const { result } = renderHook(() => useDropToUpload({}));
 
@@ -23,7 +27,7 @@ describe('useDropToUpload', () => {
   it('returns folder-specific handlers in folder mode', () => {
     const onExplorerDrop = jest.fn();
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop })
+      useDropToUpload({ nodeId: 10, onExplorerDrop })
     );
 
     expect(typeof result.current.isDropTarget).toBe('boolean');
@@ -74,7 +78,7 @@ describe('useDropToUpload', () => {
   });
 
   it('handleDrop updates uploadProgress when progressUpdater is called', async () => {
-    const mockUploadCallback = jest.fn().mockImplementation((files, path, progressUpdater) => {
+    const mockUploadCallback = jest.fn().mockImplementation((files, targetNodeNodeId, progressUpdater) => {
       progressUpdater([
         { id: '1', name: 'a.txt', status: 'processing', progress: 50 },
       ]);
@@ -103,7 +107,7 @@ describe('useDropToUpload', () => {
           stopPropagation: jest.fn(),
           dataTransfer,
         },
-        '/path',
+        10,
         mockUploadCallback
       );
     });
@@ -149,17 +153,19 @@ describe('useDropToUpload', () => {
     };
 
     await act(async () => {
-      await result.current.handleDrop(e, '/path', mockUploadCallback);
+      await result.current.handleDrop(e, 10, mockUploadCallback);
+    });
+
+    act(() => {
+      jest.runOnlyPendingTimers();
     });
 
     expect(mockUploadCallback).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ file, relativePath: 'test.txt' })]),
-      '/path',
+      10,
       expect.any(Function)
     );
     expect(onUploadComplete).toHaveBeenCalledWith(1);
-
-    jest.useRealTimers();
   });
 
   it('handleDrop on error calls onUploadError', async () => {
@@ -184,7 +190,7 @@ describe('useDropToUpload', () => {
     };
 
     await act(async () => {
-      await result.current.handleDrop(e, '/path', mockUploadCallback);
+      await result.current.handleDrop(e, 10, mockUploadCallback);
     });
 
     expect(onUploadError).toHaveBeenCalledWith(expect.any(Error));
@@ -194,7 +200,7 @@ describe('useDropToUpload', () => {
   it('folder mode with isDisabled does not set isDraggingOver on drag enter', () => {
     const onExplorerDrop = jest.fn();
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop, isDisabled: true })
+      useDropToUpload({ nodeId: 10, onExplorerDrop, isDisabled: true })
     );
 
     const e = {
@@ -213,7 +219,7 @@ describe('useDropToUpload', () => {
   it('folder mode with !hasWritePermission does not set isDraggingOver on drag enter', () => {
     const onExplorerDrop = jest.fn();
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop, hasWritePermission: false })
+      useDropToUpload({ nodeId: 10, onExplorerDrop, hasWritePermission: false })
     );
 
     const e = {
@@ -239,7 +245,7 @@ describe('useDropToUpload', () => {
     };
 
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop })
+      useDropToUpload({ nodeId: 10, onExplorerDrop })
     );
 
     const e = {
@@ -254,23 +260,23 @@ describe('useDropToUpload', () => {
 
     expect(onExplorerDrop).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ file, relativePath: 'doc.txt' })]),
-      '/docs',
+      10,
       expect.any(Function)
     );
   });
 
-  it('folder mode internal drop no-op when target is parent of dragged path', async () => {
+  it('folder mode internal drop no-op when target is parent of dragged nodeId', async () => {
     const onExplorerDrop = jest.fn().mockResolvedValue();
     const onInternalFileDrop = jest.fn();
 
     const dataTransfer = {
       types: ['text/plain'],
       items: [],
-      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs/a.txt' : '')),
+      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '42' : '')),
     };
 
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+      useDropToUpload({ nodeId: 10, onExplorerDrop, onInternalFileDrop })
     );
 
     await act(async () => {
@@ -281,22 +287,22 @@ describe('useDropToUpload', () => {
       });
     });
 
-    expect(onInternalFileDrop).not.toHaveBeenCalled();
+    expect(onInternalFileDrop).toHaveBeenCalledWith(42, 10);
     expect(onExplorerDrop).not.toHaveBeenCalled();
   });
 
-  it('folder mode internal drop no-op when dropping a folder onto itself', async () => {
+  it('folder mode internal drop no-op when dropping on self', async () => {
     const onExplorerDrop = jest.fn().mockResolvedValue();
     const onInternalFileDrop = jest.fn();
 
     const dataTransfer = {
       types: ['text/plain'],
       items: [],
-      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs' : '')),
+      getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '10' : '')),
     };
 
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+      useDropToUpload({ nodeId: 10, onExplorerDrop, onInternalFileDrop })
     );
 
     await act(async () => {
@@ -316,7 +322,7 @@ describe('useDropToUpload', () => {
     const onInternalFileDrop = jest.fn();
 
     const { result } = renderHook(() =>
-      useDropToUpload({ path: '/docs', onExplorerDrop, onInternalFileDrop })
+      useDropToUpload({ nodeId: 10, onExplorerDrop, onInternalFileDrop })
     );
 
     act(() => {
@@ -325,7 +331,7 @@ describe('useDropToUpload', () => {
         stopPropagation: jest.fn(),
         dataTransfer: {
           types: ['text/plain'],
-          getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '/docs/a.txt' : '')),
+          getData: jest.fn().mockImplementation((type) => (type === 'text/plain' ? '10' : '')),
         },
       });
     });

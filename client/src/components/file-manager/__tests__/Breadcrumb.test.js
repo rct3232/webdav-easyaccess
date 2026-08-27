@@ -1,6 +1,6 @@
 /**
  * Breadcrumb tests.
- * Verifies observable outcomes per spec: path segments, chip click, share mode, toggle folder tree.
+ * Verifies observable outcomes per spec: ancestor chain, nodeId clicks, share mode, toggle folder tree.
  * @see docs/spec/client/components/file-manager/Breadcrumb.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -9,14 +9,11 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import Breadcrumb from '../Breadcrumb';
 
-jest.mock('../../../services/permissionService', () => ({
-  getUserPermissions: jest.fn().mockResolvedValue([]),
-}));
-
 const defaultProps = {
-  currentPath: '/testuser',
-  onPathClick: jest.fn(),
-  user: { id: '1', username: 'testuser', is_admin: false },
+  ancestors: [],
+  onNodeClick: jest.fn(),
+  user: { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 },
+  currentPath: '/',
 };
 
 describe('Breadcrumb', () => {
@@ -24,31 +21,48 @@ describe('Breadcrumb', () => {
     jest.clearAllMocks();
   });
 
-  it('renders home chip for non-admin user', () => {
+  it('renders a single home chip when the ancestor chain is empty', () => {
     renderWithProviders(<Breadcrumb {...defaultProps} />);
     expect(screen.getByText('Home')).toBeInTheDocument();
   });
 
-  it('calls onPathClick with home path when home chip clicked', () => {
+  it('calls onNodeClick with the home nodeId when home chip clicked', () => {
     renderWithProviders(<Breadcrumb {...defaultProps} />);
     fireEvent.click(screen.getByText('Home'));
-    expect(defaultProps.onPathClick).toHaveBeenCalledWith('/testuser');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(1);
   });
 
-  it('renders path segments for nested path', () => {
+  it('renders the ancestor chain for a nested folder', () => {
     renderWithProviders(
-      <Breadcrumb {...defaultProps} currentPath="/testuser/docs/project" />
+      <Breadcrumb
+        {...defaultProps}
+        currentPath="/testuser/docs/project"
+        ancestors={[
+          { nodeId: 1, name: 'testuser' },
+          { nodeId: 2, name: 'docs' },
+          { nodeId: 3, name: 'project' },
+        ]}
+      />
     );
+    expect(screen.getByText('testuser')).toBeInTheDocument();
     expect(screen.getByText('docs')).toBeInTheDocument();
     expect(screen.getByText('project')).toBeInTheDocument();
   });
 
-  it('calls onPathClick with segment path when segment chip clicked', () => {
+  it('calls onNodeClick with the ancestor nodeId when a segment chip is clicked', () => {
     renderWithProviders(
-      <Breadcrumb {...defaultProps} currentPath="/testuser/docs/project" />
+      <Breadcrumb
+        {...defaultProps}
+        currentPath="/testuser/docs/project"
+        ancestors={[
+          { nodeId: 1, name: 'testuser' },
+          { nodeId: 2, name: 'docs' },
+          { nodeId: 3, name: 'project' },
+        ]}
+      />
     );
     fireEvent.click(screen.getByText('docs'));
-    expect(defaultProps.onPathClick).toHaveBeenCalledWith('/testuser/docs');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(2);
   });
 
   it('shows folder tree toggle when onToggleFolderTree provided', () => {
@@ -76,5 +90,12 @@ describe('Breadcrumb', () => {
       />
     );
     expect(screen.getByText('Shared Folder')).toBeInTheDocument();
+  });
+
+  it('renders the recent virtual-root label when viewing recent files', () => {
+    renderWithProviders(
+      <Breadcrumb {...defaultProps} currentPath="/__recent__" />
+    );
+    expect(screen.getByText(/recent/i)).toBeInTheDocument();
   });
 });

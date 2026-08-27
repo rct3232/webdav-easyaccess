@@ -1,10 +1,17 @@
 import { expect, test } from '@playwright/test';
 
 import { loginAsAdmin } from './helpers/auth';
-import { openFabAction } from './helpers/explorer';
-import { buildName } from './helpers/files';
+import { openFabAction, openItemActions } from './helpers/explorer';
+import { buildName, fileItem } from './helpers/files';
 import { switchViewMode, setSortMode } from './helpers/explorer-advanced';
-import { doubleClickItem, ctrlClickItem, shiftClickItem, clickEmptyArea, rightClickItem } from './helpers/desktop-interactions';
+import {
+  doubleClickItem,
+  ctrlClickItem,
+  shiftClickItem,
+  clickEmptyArea,
+  rightClickItem,
+} from './helpers/desktop-interactions';
+import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 
 async function createTestFolder(page: any, folderName: string) {
   await openFabAction(page, 'Create folder');
@@ -19,7 +26,7 @@ async function createTestFile(page: any, fileName: string) {
   const dialog = page.getByRole('dialog');
   const fileInput = dialog.getByTestId('upload-dialog-file-input');
   await expect(fileInput).toBeVisible();
-  
+
   // Upload a dummy file
   await fileInput.setInputFiles({
     name: fileName,
@@ -48,7 +55,7 @@ test.describe('explorer advanced (desktop)', () => {
 
     // 4. Folder Interaction: Double-click folder to enter
     await doubleClickItem(page, `/${folderName}`);
-    
+
     // 5. Assertion: Verify breadcrumb current path updates
     // We expect the last chip in the breadcrumb to be the folder name
     const breadcrumbChips = page.locator('.MuiChip-root');
@@ -89,16 +96,31 @@ test.describe('explorer advanced (desktop)', () => {
     await ctrlClickItem(page, `/${file3}`);
 
     // 5. Assertion: Verify file1 and file3 are selected, file2 is not
-    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator(`[data-file-path="/${file2}"]`)).not.toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.locator(`[data-file-path="/${file2}"]`)).not.toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
 
     // 6. Selection Toggle (Off): Ctrl-click file1 again
     await ctrlClickItem(page, `/${file1}`);
 
     // 7. Assertion: Verify file1 is no longer selected, file3 remains selected
-    await expect(page.locator(`[data-file-path="/${file1}"]`)).not.toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).not.toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 
   test('E2E-DESKTOP-003: Shift-click performs range selection', async ({ page }, testInfo) => {
@@ -123,9 +145,18 @@ test.describe('explorer advanced (desktop)', () => {
     await shiftClickItem(page, `/${file3}`);
 
     // 5. Assertion: Verify all items from anchor to target are selected
-    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator(`[data-file-path="/${file2}"]`)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${file1}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.locator(`[data-file-path="/${file2}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.locator(`[data-file-path="/${file3}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 
   test('E2E-DESKTOP-004: Clicking empty area exits selection mode', async ({ page }, testInfo) => {
@@ -142,7 +173,10 @@ test.describe('explorer advanced (desktop)', () => {
 
     // 4. Select the file
     await page.locator(`[data-file-path="/${fileName}"]`).click();
-    await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator(`[data-file-path="/${fileName}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
 
     // 5. Click empty area to clear selection
     await clickEmptyArea(page);
@@ -158,7 +192,7 @@ test.describe('explorer advanced (desktop)', () => {
     // 2. Create test folders first
     const folderName = buildName(testInfo, 'view-mode-folder');
     await createTestFolder(page, folderName);
-    
+
     // 3. Navigate to /files
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
@@ -168,19 +202,21 @@ test.describe('explorer advanced (desktop)', () => {
 
     // 5. Switch to grid mode
     await switchViewMode(page, 'grid');
-    
+
     // 6. Assert grid layout is visible (Box with data-file-path containing MuiCard)
     await expect(page.locator(`[data-file-path="/${folderName}"] .MuiCard-root`)).toBeVisible();
 
     // 7. Switch to detail mode
     await switchViewMode(page, 'detail');
-    
+
     // 8. Assert detail layout is visible (table row with data-file-path)
-    await expect(page.locator(`table.MuiTable-root tbody tr[data-file-path="/${folderName}"]`)).toBeVisible();
+    await expect(
+      page.locator(`table.MuiTable-root tbody tr[data-file-path="/${folderName}"]`)
+    ).toBeVisible();
 
     // 9. Switch back to list mode
     await switchViewMode(page, 'list');
-    
+
     // 10. Assert list layout is visible again
     await expect(page.locator(`[data-file-path="/${folderName}"]`)).toBeVisible();
   });
@@ -193,7 +229,7 @@ test.describe('explorer advanced (desktop)', () => {
     const folder1 = buildName(testInfo, 'folder-aaa');
     const folder2 = buildName(testInfo, 'folder-zzz');
     const folder3 = buildName(testInfo, 'folder-mmm');
-    
+
     await createTestFolder(page, folder1);
     await createTestFolder(page, folder2);
     await createTestFolder(page, folder3);
@@ -204,27 +240,27 @@ test.describe('explorer advanced (desktop)', () => {
 
     // 4. Get initial item order (name-asc by default)
     const initialItems = await page.locator('[data-file-path]').allTextContents();
-    
+
     // 5. Set sort mode to name-desc
     await setSortMode(page, 'name-desc');
-    
+
     // 6. Get sorted item order
     const sortedItemsDesc = await page.locator('[data-file-path]').allTextContents();
-    
+
     // 7. Assert order changed (zzz should come before aaa)
-    const zzzIndex = sortedItemsDesc.findIndex(item => item.includes('folder-zzz'));
-    const aaaIndex = sortedItemsDesc.findIndex(item => item.includes('folder-aaa'));
+    const zzzIndex = sortedItemsDesc.findIndex((item) => item.includes('folder-zzz'));
+    const aaaIndex = sortedItemsDesc.findIndex((item) => item.includes('folder-aaa'));
     expect(zzzIndex).toBeLessThan(aaaIndex);
 
     // 8. Set sort mode to name-asc
     await setSortMode(page, 'name-asc');
-    
+
     // 9. Get sorted item order
     const sortedItemsAsc = await page.locator('[data-file-path]').allTextContents();
-    
+
     // 10. Assert order changed back (aaa should come before zzz)
-    const aaaIndexAsc = sortedItemsAsc.findIndex(item => item.includes('folder-aaa'));
-    const zzzIndexAsc = sortedItemsAsc.findIndex(item => item.includes('folder-zzz'));
+    const aaaIndexAsc = sortedItemsAsc.findIndex((item) => item.includes('folder-aaa'));
+    const zzzIndexAsc = sortedItemsAsc.findIndex((item) => item.includes('folder-zzz'));
     expect(aaaIndexAsc).toBeLessThan(zzzIndexAsc);
   });
 
@@ -236,7 +272,7 @@ test.describe('explorer advanced (desktop)', () => {
     const folderAlpha = buildName(testInfo, 'alpha');
     const folderBeta = buildName(testInfo, 'beta');
     const folderGamma = buildName(testInfo, 'gamma');
-    
+
     await createTestFolder(page, folderAlpha);
     await createTestFolder(page, folderBeta);
     await createTestFolder(page, folderGamma);
@@ -324,13 +360,19 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(downloadBtn).toBeEnabled();
   });
 
-  test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({ page }, testInfo) => {
+  test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({
+    page,
+  }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
     // 2. Setup: Create a test file to generate a recent entry
     const fileName = buildName(testInfo, 'recent-test-file') + '.txt';
     await createTestFile(page, fileName);
+
+    // 2b. Open the file (double-click preview) so it is tracked as recent:
+    // recent tracking fires on file open/preview, not on creation or listing.
+    await doubleClickItem(page, `/${fileName}`);
 
     // 3. Navigate to the file's parent directory to track it as recent
     await page.goto('/files');
@@ -352,11 +394,53 @@ test.describe('explorer advanced (desktop)', () => {
     await expect(recentTreeButton).toBeVisible();
 
     // 7. Assertion: a recent file entry is visible in the listing
-    // The newly created file should appear in the recent files list
-    await expect(page.locator('[data-file-path]')).toBeVisible();
+    // The opened file appears in the recent files list. Recent entries are
+    // keyed by nodeId and render `data-file-path` from display_path; wait for
+    // the recent list to load (it is fetched after navigation).
+    await expect(fileItem(page, `/${fileName}`)).toBeVisible({ timeout: 20_000 });
   });
 
-  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({ page }, testInfo) => {
+  test('E2E-OVERLAY-010: Stale recent entry is removed after its file is deleted', async ({
+    page,
+    request,
+  }, testInfo) => {
+    // 1. Login as admin
+    await loginAsAdmin(page);
+
+    // 2. Setup: create a file and open it (preview) so it is tracked as recent.
+    const fileName = buildName(testInfo, 'recent-stale-file') + '.txt';
+    await createTestFile(page, fileName);
+    await doubleClickItem(page, `/${fileName}`);
+
+    const bearerToken = await getSessionToken(page);
+    const nodeId = await resolveNodeId(request, bearerToken, `/${fileName}`);
+
+    // 3. Precondition: the recent entry is present.
+    await page.goto('/files/__recent__');
+    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
+    await expect(fileItem(page, `/${fileName}`)).toBeVisible({ timeout: 20_000 });
+
+    // 4. Make the entry stale: delete the underlying file.
+    await page.goto('/files');
+    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+    await openItemActions(page, `/${fileName}`);
+    await page.getByTestId('file-action-delete').click();
+    const confirmDialog = page.getByRole('dialog');
+    await expect(confirmDialog.getByTestId('confirm-dialog-confirm')).toBeVisible();
+    await confirmDialog.getByTestId('confirm-dialog-confirm').click();
+    await expect(fileItem(page, `/${fileName}`)).toHaveCount(0);
+
+    // 5. Absence after recovery: the stale entry no longer appears in `__recent__`.
+    await page.goto('/files/__recent__');
+    await expect(page).toHaveURL(/\/files\/__recent__(?:\/.*)?$/);
+    await expect(fileItem(page, `/${fileName}`)).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.locator(`[data-file-node-id="${nodeId}"]`)).toHaveCount(0);
+  });
+
+  test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would collide', async ({
+    page,
+    request,
+  }, testInfo) => {
     // 1. Login as admin
     await loginAsAdmin(page);
 
@@ -369,15 +453,15 @@ test.describe('explorer advanced (desktop)', () => {
     await createTestFolder(page, folderB);
 
     // Upload file to folderA
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await createTestFile(page, conflictFileName);
 
     // Upload file to folderB
-    await page.goto(`/files/${folderB}`);
+    await gotoFilesPath(page, request, `/${folderB}`);
     await createTestFile(page, conflictFileName);
 
     // 3. Action: Move file from folderA to folderB
-    await page.goto(`/files/${folderA}`);
+    await gotoFilesPath(page, request, `/${folderA}`);
     await page.locator(`[data-file-path="/${folderA}/${conflictFileName}"]`).click();
 
     // Trigger bulk move
@@ -390,10 +474,10 @@ test.describe('explorer advanced (desktop)', () => {
     // Navigate to root via breadcrumb to find folderB
     const rootBreadcrumb = pickerDialog.locator('.MuiBreadcrumbs-root button').first();
     await rootBreadcrumb.click();
-    
+
     // Wait for the folder list to be populated and the loader to disappear
     await expect(pickerDialog.getByRole('progressbar')).not.toBeVisible();
-    
+
     // Select folderB - ensure we wait for it to be attached and visible
     const folderBItem = pickerDialog.locator('li').filter({ hasText: folderB });
     await expect(folderBItem).toBeVisible({ timeout: 10000 });
@@ -403,7 +487,7 @@ test.describe('explorer advanced (desktop)', () => {
     // 4. Assertion: Verify conflict resolution dialog appears
     const conflictDialog = page.getByRole('dialog');
     await expect(conflictDialog).toBeVisible();
-    
+
     await expect(conflictDialog).toContainText('conflict', { ignoreCase: true });
     await expect(conflictDialog.getByRole('button', { name: /skip/i })).toBeVisible();
     await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();

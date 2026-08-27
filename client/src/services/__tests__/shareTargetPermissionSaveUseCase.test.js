@@ -1,3 +1,6 @@
+import sharePermissionGateway from '../sharePermissionGateway';
+import { shareTargetPermissionSaveUseCase } from '../shareTargetPermissionSaveUseCase';
+
 jest.mock('../sharePermissionGateway', () => ({
   __esModule: true,
   default: {
@@ -6,25 +9,16 @@ jest.mock('../sharePermissionGateway', () => ({
   },
 }));
 
-jest.mock('../../utils/folderUtils', () => ({
-  collectSubfolderPaths: jest.fn(),
-}));
-
-import sharePermissionGateway from '../sharePermissionGateway';
-import { collectSubfolderPaths } from '../../utils/folderUtils';
-import { shareTargetPermissionSaveUseCase } from '../shareTargetPermissionSaveUseCase';
-
 describe('shareTargetPermissionSaveUseCase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sharePermissionGateway.grantPermission.mockResolvedValue(undefined);
     sharePermissionGateway.revokePermission.mockResolvedValue(undefined);
-    collectSubfolderPaths.mockResolvedValue(['/docs', '/docs/sub']);
   });
 
-  it('saves directory permissions across the subtree', async () => {
+  it('saves directory permissions for nodeId', async () => {
     await shareTargetPermissionSaveUseCase({
-      targetPath: '/docs',
+      targetNodeId: 42,
       isDirectory: true,
       initialAccessList: [{ id: 'u1', permission: 'read' }],
       accessList: [{ id: 'u2', permission: 'write' }],
@@ -32,24 +26,18 @@ describe('shareTargetPermissionSaveUseCase', () => {
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({
       userId: 'u1',
-      folderPath: '/docs',
-      includeSubfolders: true,
+      nodeId: 42,
     });
     expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
       userId: 'u2',
-      folderPath: '/docs',
-      permission: 'write',
-    });
-    expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
-      userId: 'u2',
-      folderPath: '/docs/sub',
+      nodeId: 42,
       permission: 'write',
     });
   });
 
   it('saves file permissions with path-only revoke semantics', async () => {
     await shareTargetPermissionSaveUseCase({
-      targetPath: '/docs/file.txt',
+      targetNodeId: 55,
       isDirectory: false,
       initialAccessList: [{ id: 'u1', permission: 'read', filePermission: 'read' }],
       accessList: [{ id: 'u1', permission: 'revoke', pathPermission: 'read', filePermission: 'read' }],
@@ -57,7 +45,7 @@ describe('shareTargetPermissionSaveUseCase', () => {
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({
       userId: 'u1',
-      folderPath: '/docs/file.txt',
+      nodeId: 55,
       scope: 'pathOnly',
     });
   });
@@ -67,7 +55,7 @@ describe('shareTargetPermissionSaveUseCase', () => {
 
     await expect(
       shareTargetPermissionSaveUseCase({
-        targetPath: '/docs/file.txt',
+        targetNodeId: 55,
         isDirectory: false,
         initialAccessList: [],
         accessList: [{ id: 'u1', permission: 'write', pathPermission: null, filePermission: null }],

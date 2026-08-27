@@ -2,29 +2,34 @@
  * Server-backed repository for user-specific recent files.
  *
  * This module isolates HTTP IO and notification triggering.
+ * Recent entries are keyed by stable nodeId (server `fileNodeId`); paths are
+ * display-only (`displayPath`).
  */
 import { get, post, del } from './apiClient';
 import { normalizePath } from '../utils/pathUtils';
 import { notifyRecentFilesChange } from './recentFilesNotifier';
-import { updateSubPathsOnPathChange } from '../utils/recentFiles';
 
 const asRecentEntry = (entry = {}) => {
-  const normalizedPath = entry.path ? normalizePath(entry.path) : '';
+  const displayPath = entry.displayPath ?? entry.display_path ?? entry.path ?? '';
+  const name = entry.name || entry.basename || undefined;
   return {
-    path: normalizedPath,
-    name: entry.name || entry.basename || undefined,
+    nodeId: entry.nodeId ?? entry.fileNodeId ?? null,
+    name,
     type: entry.type || 'file',
-    basename: entry.basename ?? entry.name ?? undefined,
+    basename: entry.basename ?? entry.name ?? name,
+    lastAccessed: entry.lastAccessed ?? null,
+    path: displayPath ? normalizePath(displayPath) : '',
+    displayPath: displayPath ? normalizePath(displayPath) : '',
   };
 };
 
 /**
- * @returns {Promise<Array<{path: string, name?: string, type?: 'file'|'directory', basename?: string, lastAccessed?: any}>>}
+ * @returns {Promise<Array<{nodeId: number|null, name?: string, type: 'file'|'directory', basename?: string, lastAccessed?: any, path: string, displayPath: string}>>}
  */
 export const getRecentFiles = async () => {
   try {
     const response = await get('/recent-files');
-    return Array.isArray(response?.data) ? response.data : [];
+    return Array.isArray(response?.data) ? response.data.map(asRecentEntry) : [];
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to load recent files:', error);
@@ -33,8 +38,8 @@ export const getRecentFiles = async () => {
 };
 
 /**
- * Persist a new recent entry.
- * @param {{path: string, name?: string, type?: 'file'|'directory', basename?: string}} file
+ * Persist a new recent entry. Server derives name/type from the nodeId.
+ * @param {{nodeId: number}} file
  * @param {{silent?: boolean}} [options]
  * @returns {Promise<Array>}
  */
@@ -42,15 +47,7 @@ export const addRecentFile = async (file, options = {}) => {
   const silent = options?.silent === true;
 
   try {
-    const entry = asRecentEntry(file);
-    const payload = {
-      path: entry.path,
-      name: entry.name,
-      type: entry.type,
-      basename: entry.basename,
-    };
-
-    await post('/recent-files', payload);
+    await post('/recent-files', { fileNodeId: file?.nodeId });
 
     if (silent) return [];
 
@@ -71,19 +68,17 @@ export const addRecentFile = async (file, options = {}) => {
 };
 
 /**
- * Remove a recent entry by exact path.
- * @param {string} filePath
+ * Remove a recent entry by nodeId.
+ * @param {number} fileNodeId
  * @param {{silent?: boolean}} [options]
  * @returns {Promise<Array>}
  */
-export const removeRecentFile = async (filePath, options = {}) => {
+export const removeRecentFile = async (fileNodeId, options = {}) => {
   const silent = options?.silent === true;
 
   try {
-    const normalizedPath = normalizePath(filePath);
-    const encodedPath = encodeURIComponent(normalizedPath);
-    const response = await del(`/recent-files/${encodedPath}`);
-    const result = Array.isArray(response?.data) ? response.data : [];
+    const response = await del(`/recent-files/${fileNodeId}`);
+    const result = Array.isArray(response?.data) ? response.data.map(asRecentEntry) : [];
 
     if (!silent) notifyRecentFilesChange();
     return result;
@@ -107,114 +102,3 @@ export const clearRecentFiles = async () => {
     console.error('Failed to clear recent files:', error);
   }
 };
-
-/**
- * Apply recent-file updates after rename.
- *
- * - For file renames: remove old exact path and add new exact path.
- * - For directory renames: use pure path-mutation planning helpers to update subpaths.
- *
- * @param {string} oldPath
- * @param {string} newPath
- * @param {{type?: 'file'|'directory', name?: string, basename?: string}} file
- * @returns {Promise<Array>}
- */
-export const applyRecentFilesAfterRename = async (oldPath, newPath, file) => {
-  try {
-    if (file?.type !== 'directory') {
-      await removeRecentFile(oldPath, { silent: true });
-
-      await addRecentFile(
-        {
-          path: newPath,
-          name: file?.name || file?.basename,
-          type: file?.type || 'file',
-          basename: file?.basename ?? file?.name,
-        },
-        { silent: true }
-      );
-
-      const result = await getRecentFiles();
-      notifyRecentFilesChange();
-      return result;
-    }
-
-    const recentEntries = await getRecentFiles();
-    const plan = updateSubPathsOnPathChange(recentEntries, oldPath, newPath);
-
-    // Apply removals/additions without triggering multiple notifications.
-    for (const removedPath of plan.removedPaths) {
-      await removeRecentFile(removedPath, { silent: true });
-    }
-
-    for (const entry of plan.addedEntries) {
-      await addRecentFile(entry, { silent: true });
-    }
-
-    const result = await getRecentFiles();
-    notifyRecentFilesChange();
-    return result;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to update recent files after rename:', error);
-    return [];
-  }
-};
-
-/**
- * Apply recent-file updates after bulk delete.
- * @param {{ filePaths?: string[], folderPaths?: string[] }} params
- * @returns {Promise<Array>}
- */
-export const applyRecentFilesAfterBulkDelete = async ({ filePaths = [], folderPaths = [] } = {}) => {
-  if (!filePaths?.length && !folderPaths?.length) {
-    return await getRecentFiles();
-  }
-
-  try {
-    await post('/recent-files/remove-paths', {
-      filePaths: filePaths || [],
-      folderPaths: folderPaths || [],
-    });
-
-    const result = await getRecentFiles();
-    notifyRecentFilesChange();
-    return result;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to clean up recent files after bulk delete:', error);
-    return [];
-  }
-};
-
-/**
- * Apply recent-file updates after bulk move.
- * @param {{oldPath: string, newPath: string, file?: {type?: 'file'|'directory', name?: string, basename?: string}}[]} moves
- * @returns {Promise<Array>}
- */
-export const applyRecentFilesAfterBulkMove = async (moves = []) => {
-  if (!moves || moves.length === 0) {
-    return await getRecentFiles();
-  }
-
-  try {
-    const payloadMoves = moves.map(({ oldPath, newPath, file }) => ({
-      oldPath,
-      newPath,
-      file: file
-        ? { type: file.type, name: file.name, basename: file.basename }
-        : undefined,
-    }));
-
-    await post('/recent-files/apply-moves', { moves: payloadMoves });
-
-    const result = await getRecentFiles();
-    notifyRecentFilesChange();
-    return result;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Failed to update recent files after bulk move:', error);
-    return [];
-  }
-};
-

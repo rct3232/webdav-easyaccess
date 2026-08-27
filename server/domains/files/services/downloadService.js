@@ -1,262 +1,107 @@
+'use strict';
+
+const crypto = require('crypto');
 const archiver = require('archiver');
-const path = require('path');
-const { listDirectory, getFileContents } = require('../../../utils/webdav');
-const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
-const { validationError, forbiddenError } = require('../../../utils/errorHandler');
-const { selectiveCollectFiles } = require('./selectiveDownload');
-const { isSharePrincipal, buildSyncReadChecker, buildSyncReadFileChecker, checkFolderPermission, checkFilePermission } = require('../../permissions/services/aclService');
-const PermissionFacade = require('../../permissions/services/permissionFacade');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { forbiddenError } = require('../../../utils/errorHandler');
 
-async function detectIsDirectory(filePath) {
-  try {
-    const parentPath = getParentPath(filePath);
-    const fileName = getBasename(filePath);
-    const parentItems = await listDirectory(parentPath);
-    const item = parentItems.find(i => i.basename === fileName);
-    if (item) return item.type === 'directory';
-  } catch {}
-  try {
-    const items = await listDirectory(filePath);
-    return items.length > 0 || filePath.endsWith('/');
-  } catch {
-    return false;
-  }
+/**
+ * Factory: nodeId-based multi-file ZIP download service.
+ * Replaces path-based legacy code with async permission checks per file.
+ * All blob retrieval goes through blobStorageService.
+ */
+function createDownloadService({ fileNodeService, blobStorageService, aclService }) {
+	const progressStore = new Map();
+
+	async function downloadMultiple(nodeIds, userId) {
+		if (!nodeIds || nodeIds.length === 0) {
+			throw forbiddenError('No files selected for download');
+		}
+
+		// Permission pre-check: async per file via Promise.allSettled
+		const permissionChecks = nodeIds.map((id) =>
+			aclService.checkFilePermission(userId, id, PERMISSIONS.READ)
+		);
+		const results = await Promise.allSettled(permissionChecks);
+
+		const allowedNodeIds = [];
+		const errors = [];
+
+		results.forEach((r, idx) => {
+			if (r.status === 'fulfilled' && r.value) {
+				allowedNodeIds.push(nodeIds[idx]);
+			} else {
+				errors.push({ nodeId: nodeIds[idx], reason: 'permission_denied' });
+			}
+		});
+
+		if (allowedNodeIds.length === 0) {
+			throw forbiddenError('No files selected for download');
+		}
+
+		const downloadId = crypto.randomUUID();
+		const totalFiles = allowedNodeIds.length;
+
+		progressStore.set(downloadId, { completed: 0, total: totalFiles, percentage: 0 });
+
+		const archive = archiver('zip', { zlib: { level: 6 } });
+
+		let successCount = 0;
+		for (let i = 0; i < allowedNodeIds.length; i++) {
+			const nodeId = allowedNodeIds[i];
+
+			try {
+				let displayName = `file_${nodeId}`;
+				try {
+					const node = await fileNodeService.getNode(nodeId);
+					if (!node) {
+						errors.push({ nodeId, reason: 'not_found' });
+						continue;
+					}
+					if (node.name) {
+						displayName = node.name;
+					}
+				} catch (_) {
+					errors.push({ nodeId, reason: 'not_found' });
+					continue;
+				}
+
+				const buffer = await blobStorageService.downloadBlob(nodeId);
+				if (buffer == null) {
+					errors.push({ nodeId, reason: 'blob_error', detail: 'No content returned' });
+					continue;
+				}
+
+				archive.append(buffer, { name: displayName });
+				successCount++;
+			} catch (err) {
+				errors.push({ nodeId, reason: 'blob_error', detail: err.message || String(err) });
+			}
+
+			const completed = i + 1;
+			progressStore.set(downloadId, {
+				completed,
+				total: totalFiles,
+				percentage: Math.round((completed / totalFiles) * 100),
+			});
+		}
+
+		progressStore.set(downloadId, {
+			completed: successCount,
+			total: totalFiles,
+			percentage: totalFiles > 0 ? Math.round((successCount / totalFiles) * 100) : 0,
+		});
+
+		return { zipStream: archive, totalFiles: successCount, downloadId, errors };
+	}
+
+	function getDownloadProgress(downloadId) {
+		const entry = progressStore.get(downloadId);
+		if (!entry) return null;
+		return { ...entry };
+	}
+
+	return { downloadMultiple, getDownloadProgress };
 }
 
-async function downloadMultiple(req, res, opStore) {
-  const principalId = req.principalId;
-  const isShare = isSharePrincipal(principalId);
-  const { paths, downloadId: clientDownloadId } = req.body;
-  const downloadId = clientDownloadId || `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  if (!paths || !Array.isArray(paths) || paths.length === 0) {
-    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-  }
-
-  let canEnterDirectory;
-  let canIncludeFile;
-
-  const checkInclude = async (fp) => {
-    const r = canIncludeFile(fp);
-    return typeof r?.then === 'function' ? await r : Boolean(r);
-  };
-
-  if (isShare) {
-    const token = req.shareContext.token;
-    canEnterDirectory = (dirPath) => checkFolderPermission('share:' + token, dirPath, PERMISSIONS.READ);
-    canIncludeFile = (filePath) => checkFilePermission('share:' + token, filePath, PERMISSIONS.READ);
-  } else {
-    const user = req.user.full;
-    const doc = await PermissionFacade.getPermissionDoc(principalId);
-    const canReadDirSync = buildSyncReadChecker(user, doc);
-    const canReadFileSync = buildSyncReadFileChecker(user, doc);
-    canEnterDirectory = (dirPath) => canReadDirSync(dirPath);
-    canIncludeFile = (filePath) => canReadFileSync(filePath);
-  }
-
-  const skippedPaths = [];
-
-  opStore.setDownloadProgress(downloadId, {
-    status: 'preparing',
-    progress: 0,
-    total: 0,
-    current: '',
-    zipName: '',
-  });
-
-  const allFiles = [];
-  let zipName = 'download';
-
-  let commonParentDir = null;
-  if (paths.length > 1) {
-    const parentDirs = paths.map(p => {
-      const dir = path.dirname(p);
-      return dir === '/' ? '' : dir;
-    });
-
-    if (parentDirs.every(d => d === parentDirs[0])) {
-      commonParentDir = parentDirs[0] || '/';
-    }
-  }
-
-  for (const filePath of paths) {
-    try {
-      const isDirectory = await detectIsDirectory(filePath);
-
-      if (isDirectory) {
-        const dirName = path.basename(filePath.replace(/\/$/, '')) || 'folder';
-        if (paths.length === 1) {
-          zipName = dirName;
-        }
-        const collected = await selectiveCollectFiles({
-          rootPath: filePath,
-          basePath: dirName,
-          canEnterDirectory,
-          canIncludeFile,
-        });
-        allFiles.push(...collected.files);
-        skippedPaths.push(...collected.skippedPaths);
-      } else {
-        const fileName = path.basename(filePath);
-
-        if (paths.length === 1) {
-          const parentDir = path.dirname(filePath);
-          if (parentDir && parentDir !== '/') {
-            zipName = path.basename(parentDir) || 'download';
-          } else {
-            zipName = fileName.replace(/\.[^/.]+$/, '');
-          }
-          const ok = await checkInclude(filePath);
-          if (!ok) {
-            skippedPaths.push(filePath);
-          } else {
-            allFiles.push({ path: filePath, relativePath: fileName });
-          }
-        } else {
-          if (commonParentDir && commonParentDir !== '/') {
-            const relativePath = filePath.replace(commonParentDir, '').replace(/^\//, '');
-            const ok = await checkInclude(filePath);
-            if (!ok) {
-              skippedPaths.push(filePath);
-            } else {
-              allFiles.push({ path: filePath, relativePath });
-            }
-          } else {
-            const ok = await checkInclude(filePath);
-            if (!ok) {
-              skippedPaths.push(filePath);
-            } else {
-              allFiles.push({ path: filePath, relativePath: fileName });
-            }
-          }
-        }
-      }
-    } catch (error) {
-      const fileName = path.basename(filePath);
-      const ok = await checkInclude(filePath);
-      if (!ok) {
-        skippedPaths.push(filePath);
-      } else {
-        if (paths.length === 1) {
-          const parentDir = path.dirname(filePath);
-          if (parentDir && parentDir !== '/') {
-            zipName = path.basename(parentDir) || 'download';
-          } else {
-            zipName = fileName.replace(/\.[^/.]+$/, '');
-          }
-          allFiles.push({ path: filePath, relativePath: fileName });
-        } else {
-          allFiles.push({ path: filePath, relativePath: fileName });
-        }
-      }
-    }
-  }
-
-  if (allFiles.length === 0) {
-    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
-  }
-
-  if (paths.length > 1) {
-    const firstPath = paths[0];
-    const parentDir = path.dirname(firstPath);
-    if (parentDir && parentDir !== '/') {
-      zipName = path.basename(parentDir) || 'download';
-    } else {
-      zipName = 'download';
-    }
-  }
-
-  opStore.setDownloadProgress(downloadId, {
-    status: 'downloading',
-    progress: 0,
-    total: allFiles.length,
-    current: '',
-    zipName: `${zipName}.zip`,
-  });
-
-  const encodedZipName = encodeURIComponent(`${zipName}.zip`);
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-WEA-Skipped-Count, X-WEA-Skipped');
-  res.setHeader('X-WEA-Skipped-Count', String(skippedPaths.length));
-  try {
-    const maxLen = 7000;
-    let payload = {
-      paths: skippedPaths.slice(0, 100),
-      truncated: skippedPaths.length > 100,
-    };
-    let encoded = encodeURIComponent(JSON.stringify(payload));
-
-    while (encoded.length > maxLen && payload.paths.length > 0) {
-      payload.paths.pop();
-      payload.truncated = true;
-      encoded = encodeURIComponent(JSON.stringify(payload));
-    }
-
-    if (encoded.length > maxLen) {
-      encoded = encodeURIComponent(JSON.stringify({ paths: [], truncated: true }));
-    }
-
-    res.setHeader('X-WEA-Skipped', encoded);
-  } catch {
-    res.setHeader('X-WEA-Skipped', encodeURIComponent(JSON.stringify({ paths: [], truncated: true })));
-  }
-  res.setHeader('Content-Disposition', `attachment; filename="${zipName}.zip"; filename*=UTF-8''${encodedZipName}`);
-
-  const archive = archiver('zip', {
-    zlib: { level: 9 }
-  });
-
-  archive.on('error', (err) => {
-    console.error('Archive error:', err);
-    opStore.setDownloadProgress(downloadId, {
-      status: 'error',
-      progress: 0,
-      total: allFiles.length,
-      current: '',
-      zipName: `${zipName}.zip`,
-      errorCode: SERVER_ERROR_CODES.files.zipFail,
-    });
-    if (!res.headersSent) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ errorCode: SERVER_ERROR_CODES.files.zipFail });
-    }
-  });
-
-  archive.pipe(res);
-
-  for (let i = 0; i < allFiles.length; i++) {
-    const file = allFiles[i];
-    try {
-      opStore.setDownloadProgress(downloadId, {
-        status: 'downloading',
-        progress: i + 1,
-        total: allFiles.length,
-        current: file.relativePath,
-        zipName: `${zipName}.zip`,
-      });
-
-      const buffer = await getFileContents(file.path);
-      const fileBuffer = Buffer.from(buffer);
-      archive.append(fileBuffer, { name: file.relativePath });
-    } catch (error) {
-      // Continue with other files even if one fails
-    }
-  }
-
-  await archive.finalize();
-
-  opStore.setDownloadProgress(downloadId, {
-    status: 'completed',
-    progress: allFiles.length,
-    total: allFiles.length,
-    current: '',
-    zipName: `${zipName}.zip`,
-  });
-
-  opStore.cleanupDownloadProgress(downloadId);
-}
-
-module.exports = {
-  downloadMultiple,
-};
+module.exports = { createDownloadService };

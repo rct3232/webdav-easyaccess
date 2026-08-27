@@ -19,14 +19,16 @@
 
 ### 2.2 Props
 
+> **Phase 4 nodeId end-state** (pending implementation in C2.3): the share dialog tree is keyed by **nodeId** — `rootNodeId`, `folderTree` Map keyed by nodeId, `expandedNodeIds`, `loadingNodeIds`, `toggleExpand(nodeId)`, permissions keyed by nodeId, and `setFolderMenuNodeId(nodeId)`. The current source still uses path keys (`rootPath`, `expandedPaths`, `toggleExpand(path)`, `setFolderMenuPath(path)`); those are transitional and are replaced below.
+
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| rootPath | string | Y | - | Root path |
-| folderTree | Map | Y | - | Path -> node map |
-| expandedPaths | Set | Y | - | Expanded paths |
-| loadingPaths | Set | Y | - | Loading paths |
-| toggleExpand | function | Y | - | Toggle expand |
-| folderPermissions | object | Y | - | Folder permissions map keyed by path |
+| rootNodeId | number | Y | - | Root node id (target contract, pending implementation) |
+| folderTree | Map | Y | - | NodeId -> node map (target contract, pending implementation) |
+| expandedNodeIds | Set | Y | - | Expanded node ids (target contract, pending implementation) |
+| loadingNodeIds | Set | Y | - | Loading node ids (target contract, pending implementation) |
+| toggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` (target contract, pending implementation) |
+| folderPermissions | object | Y | - | Folder permissions map keyed by nodeId (target contract, pending implementation) |
 | isAdminMode | boolean | Y | - | Admin mode |
 | userId | string | N | - | Target user ID |
 | user | object | N | - | User |
@@ -35,7 +37,7 @@
 | getUserName | function | Y | - | Get username |
 | hasPermissionChanged | boolean | Y | - | Has changes |
 | setFolderMenuAnchor | function | Y | - | Menu anchor |
-| setFolderMenuPath | function | Y | - | Menu path |
+| setFolderMenuNodeId | function | Y | - | Menu node id (target contract, pending implementation) |
 | loadingPermissions | boolean | Y | - | Loading |
 | isMobile | boolean | Y | - | Mobile |
 | level | number | N | 0 | Indent level |
@@ -44,9 +46,9 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| toggleExpand | Expand/collapse | (path) |
+| toggleExpand | Expand/collapse | (nodeId) |
 | setFolderMenuAnchor | Menu open | - |
-| setFolderMenuPath | Menu path | (path) |
+| setFolderMenuNodeId | Menu node id | (nodeId) |
 
 ### 2.4 Dependencies
 
@@ -60,7 +62,7 @@
 
 ### 2.6 Conditional Rendering
 
-- Recursive children when expanded
+- Recursive children when expanded (`expandedNodeIds.has(nodeId)`)
 - Menu button reflects prepared permission-count / changed-state information
 - Loading state renders skeleton/progress affordances
 - User filtering and menu-button policy should be prepared upstream where possible; this component should stay primarily presentational

@@ -25,8 +25,6 @@ import sharePermissionGateway from '../../services/sharePermissionGateway';
 import { openUrlInNewTab } from '../../services/browserNavigation';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { getPermissionLabels } from '../../constants/permissions';
-import { normalizePath } from '../../utils/pathUtils';
-import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
 import { createShareLink, getShareLinkUrl } from '../../services/shareLinkService';
 import ExternalShareSection from './ExternalShareSection';
 import { useSharedManage } from '../../hooks/useSharedManage';
@@ -87,7 +85,8 @@ function getFilePermissionOptions(pathPermission, hasSameLevelFilePermission, t)
  * 공유 관리 영역 — hasAdmin false 일 때 (폴더/파일 통합)
  */
 function ShareManageContent({ open, file, user, onMessage, onActionComplete, onClose }) {
-  const targetPath = file?.path ? normalizePath(file.path) : null;
+  const targetNodeId = file?.nodeId ?? null;
+  const parentNodeId = !file?.type || file.type === 'directory' ? null : file?.parentId ?? null;
   const displayName = file?.basename || file?.name || '';
   const isDirectory = file?.type === 'directory';
   const directHasReadPermission =
@@ -109,7 +108,8 @@ function ShareManageContent({ open, file, user, onMessage, onActionComplete, onC
     handleRevokePermission,
   } = useSharedManage({
     open,
-    targetPath,
+    targetNodeId,
+    parentNodeId,
     displayName,
     isDirectory,
     user,
@@ -168,7 +168,7 @@ const ShareTargetDialog = ({
   const [externalShareUnlimited, setExternalShareUnlimited] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const targetPath = file?.path ? normalizePath(file.path) : null;
+  const targetNodeId = file?.nodeId ?? null;
   const isDirectory = file?.type === 'directory';
   const displayName = file?.basename || file?.name || '';
   const hasAdmin = Boolean(user?.is_admin || file?.hasAdminPermission);
@@ -184,12 +184,11 @@ const ShareTargetDialog = ({
   }, [onMessage, t]);
 
   const loadPermissions = useCallback(async () => {
-    if (!targetPath) return;
+    if (!targetNodeId) return;
     setLoading(true);
     try {
-      const pathToQuery = isDirectory ? targetPath : getParentPath(targetPath);
-      const filePathParam = isDirectory ? undefined : targetPath;
-      const data = await sharePermissionGateway.getFolderPermissions(pathToQuery, false, filePathParam);
+      const fileNodeId = isDirectory ? undefined : targetNodeId;
+      const data = await sharePermissionGateway.getFolderPermissions(targetNodeId, fileNodeId);
       const list = buildShareTargetAccessList({ permissions: data, isDirectory });
       setAccessList(list);
       setInitialAccessList(list.map((u) => ({ ...u })));
@@ -201,13 +200,13 @@ const ShareTargetDialog = ({
     } finally {
       setLoading(false);
     }
-  }, [targetPath, isDirectory, onMessage, t]);
+  }, [targetNodeId, isDirectory, onMessage, t]);
 
   useEffect(() => {
     if (open) {
       if (hasAdmin) {
         loadUsers();
-        if (targetPath) loadPermissions();
+        if (targetNodeId) loadPermissions();
       }
       setSearchQuery('');
       setSearchOpen(false);
@@ -218,7 +217,7 @@ const ShareTargetDialog = ({
     } else {
       setSearchAnchorEl(null);
     }
-  }, [open, targetPath, hasAdmin, loadUsers, loadPermissions]);
+  }, [open, targetNodeId, hasAdmin, loadUsers, loadPermissions]);
 
   const filteredUsers = React.useMemo(
     () => filterShareTargetUsers({ users, searchQuery }),
@@ -260,11 +259,11 @@ const ShareTargetDialog = ({
   }, [isDirectory]);
 
   const handleSave = useCallback(async () => {
-    if (!targetPath) return;
+    if (!targetNodeId) return;
     setSaving(true);
     try {
       await shareTargetPermissionSaveUseCase({
-        targetPath,
+        targetNodeId,
         isDirectory,
         initialAccessList,
         accessList,
@@ -280,7 +279,7 @@ const ShareTargetDialog = ({
       setSaving(false);
     }
   }, [
-    targetPath,
+    targetNodeId,
     isDirectory,
     initialAccessList,
     accessList,
@@ -482,7 +481,7 @@ const ShareTargetDialog = ({
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
               onOpenShareLink={openUrlInNewTab}
-              filePath={targetPath}
+              fileNodeId={file.nodeId}
               fileName={displayName}
               onMessage={onMessage}
             />

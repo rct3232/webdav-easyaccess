@@ -28,7 +28,7 @@ function handleServiceError(error) {
 
 router.post('/', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   try {
-    const result = await shareLinkService.createShareLink(req.body.filePath, req.user.full.id, req.body.expiresInDays);
+    const result = await shareLinkService.createShareLink(req.body.fileNodeId, req.user.full.id, req.body.expiresInDays);
     res.json(result);
   } catch (e) { throw handleServiceError(e); }
 }));

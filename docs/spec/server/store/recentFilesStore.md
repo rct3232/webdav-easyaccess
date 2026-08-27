@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Per-user recent files. Stored as JSON in `webdav`/`fs` and normalized rows in `postgresql`. Max 20 entries per user. Supports add, remove, clear, bulk move, bulk remove. |
+| Role | Per-user recent files. Stored as normalized tables in postgresql/sqlite. Max 20 entries per user. Supports add, remove, clear. Node_ids are stable so bulk move/remove operations are no longer needed. |
 
 ---
 
@@ -13,47 +13,37 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/recentFilesStore.js`
-- **Test file:** `server/store/__tests__/recentFilesStore.test.js`
+- **Test file:** `server/domains/recentFiles/__tests__/recentFilesStore.test.js`
 
 ### 2.2 Main Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | getUserRecentFiles | (userId) => Promise\<Array\> | List recent files |
-| addRecentFile | (userId, fileData) => Promise\<Array\> | Add; dedupe by path; prepend; cap at MAX_RECENT_FILES |
-| removeRecentFile | (userId, targetPath) => Promise\<Array\> | Remove by path |
-| clearRecentFiles | (userId) => Promise\<void\> | Delete file |
-| applyBulkMove | (userId, moves) => Promise\<Array\> | Move/rename paths in one read/write |
-| removePaths | (userId, filePaths, folderPaths) => Promise\<Array\> | Remove paths and descendants |
+| addRecentFile | (userId, fileNodeId) => Promise<Array> | Add; dedupe by node_id; prepend; cap at MAX_RECENT_FILES. Name/type derivable from `file_nodes`. |
+| removeRecentFile | (userId, fileNodeId) => Promise\<Array\> | Remove by node_id |
+| clearRecentFiles | (userId) => Promise\<void\> | Delete all entries |
 
-### 2.3 Storage Paths
+**REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId.
 
-- `/.wea/recent-files/{userId}.json`
-- Entry: { path, name, type, lastAccessed }
-- MAX_RECENT_FILES = 20
+### 2.3 PostgreSQL v2 Table Mapping
 
-### 2.4 PostgreSQL v2 Table Mapping
-
-- Table: `recent_files(user_id, path, name, type, last_accessed)`
+- Table: `recent_files(user_id, file_node_id, last_accessed)`
+- Unique on `(user_id, file_node_id)`
 - Constraint/index source of truth: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
-### 2.5 Transaction Boundaries
+### 2.4 Transaction Boundaries
 
-- `addRecentFile`: single transaction that upserts by `(user_id, path)` and preserves recency ordering.
+- `addRecentFile`: single transaction that upserts by `(user_id, file_node_id)` and preserves recency ordering.
 - `removeRecentFile`, `clearRecentFiles`: single transaction per call.
-- `applyBulkMove`, `removePaths`: single transaction per batch to keep list updates atomic.
 
-### 2.6 Dependencies
+### 2.5 Dependencies
 
-- storage (ensureDirSafe, exists, readFile, writeFile, deletePath)
-- metaPaths.normalizeWebdavPath
-- shared pathUtils.normalizePath
+- PostgresqlMetadataAdapter / SqliteMetadataAdapter
 
-### 2.7 Verification Scenarios
+### 2.6 Verification Scenarios
 
-- [ ] addRecentFile dedupes; new entry at front; cap at 20
-- [ ] removeRecentFile filters by normalized path
-- [ ] applyBulkMove: folder → update subpaths; file → replace
-- [ ] removePaths: filePaths exact match; folderPaths remove descendants
-- [ ] Missing file → [] from getUserRecentFiles
-- [ ] PostgreSQL: unique `(user_id, path)` prevents duplicates under concurrent inserts
+- [ ] addRecentFile dedupes by node_id; new entry at front; cap at 20
+- [ ] removeRecentFile filters by file_node_id
+- [ ] Missing entries → [] from getUserRecentFiles
+- [ ] PostgreSQL: unique `(user_id, file_node_id)` prevents duplicates under concurrent inserts

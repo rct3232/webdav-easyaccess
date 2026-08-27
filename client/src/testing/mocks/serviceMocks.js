@@ -1,20 +1,47 @@
 export function createFileServiceMock(overrides = {}) {
   return {
     listFiles: jest.fn(),
+    resolvePath: jest.fn(),
+    getAncestors: jest.fn(),
     getWebDAVInfo: jest.fn(),
     checkPermission: jest.fn(),
     listFilePermissions: jest.fn(),
     getFilesMetadata: jest.fn(),
+    getFileBlob: jest.fn(),
+    getVideoPreviewStreamUrl: jest.fn(),
+    downloadFile: jest.fn(),
+    uploadFile: jest.fn(),
+    uploadMultipleFiles: jest.fn(),
+    renameFile: jest.fn(),
+    createFolder: jest.fn(),
+    getFolderStats: jest.fn(),
+    checkConflicts: jest.fn(),
+    downloadMultipleFiles: jest.fn(),
+    getDownloadProgress: jest.fn(),
+    checkFilePermission: jest.fn(),
+    grantFilePermission: jest.fn(),
+    revokeFilePermission: jest.fn(),
+    updateFilePermission: jest.fn(),
+    requestThumbnailsBatch: jest.fn(),
+    batchDeleteFiles: jest.fn(),
+    batchMoveFiles: jest.fn(),
+    batchCopyFiles: jest.fn(),
+    getBulkOperationStatus: jest.fn(),
+    cancelBulkOperation: jest.fn(),
     ...overrides,
   };
 }
 
 export function createPermissionServiceMock(overrides = {}) {
   return {
+    clearUserPermissionsCache: jest.fn(),
     getUserPermissions: jest.fn(),
+    getSharedPermissions: jest.fn(),
     getFolderPermissions: jest.fn(),
     grantPermission: jest.fn(),
     revokePermission: jest.fn(),
+    checkPermission: jest.fn(),
+    listFilePermissions: jest.fn(),
     ...overrides,
   };
 }
@@ -22,6 +49,8 @@ export function createPermissionServiceMock(overrides = {}) {
 export function createUserServiceMock(overrides = {}) {
   return {
     getApprovedUsers: jest.fn(),
+    updateEmail: jest.fn(),
+    updatePassword: jest.fn(),
     updateUserPermissions: jest.fn(),
     ...overrides,
   };
@@ -29,7 +58,13 @@ export function createUserServiceMock(overrides = {}) {
 
 export function createPermissionRequestServiceMock(overrides = {}) {
   return {
+    createPermissionRequest: jest.fn(),
+    listInboxPermissionRequests: jest.fn(),
+    listOutboxPermissionRequests: jest.fn(),
     approvePermissionRequest: jest.fn(),
+    rejectPermissionRequest: jest.fn(),
+    cancelPermissionRequest: jest.fn(),
+    checkOwnerExists: jest.fn(),
     ...overrides,
   };
 }
@@ -40,9 +75,6 @@ export function createRecentFilesRepositoryMock(overrides = {}) {
     addRecentFile: jest.fn().mockResolvedValue([]),
     removeRecentFile: jest.fn().mockResolvedValue([]),
     clearRecentFiles: jest.fn().mockResolvedValue(undefined),
-    applyRecentFilesAfterRename: jest.fn().mockResolvedValue([]),
-    applyRecentFilesAfterBulkDelete: jest.fn().mockResolvedValue([]),
-    applyRecentFilesAfterBulkMove: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -58,7 +90,7 @@ export function createRecentFilesNotifierMock(overrides = {}) {
 export function createExplorerGatewayMock(overrides = {}) {
   return {
     addRecentFile: jest.fn().mockResolvedValue([]),
-    canNavigateToPath: jest.fn().mockResolvedValue(true),
+    canNavigateToNode: jest.fn().mockResolvedValue(true),
     checkConflicts: jest.fn().mockResolvedValue([]),
     getEntriesMetadata: jest.fn().mockResolvedValue([]),
     getPathAccess: jest.fn().mockResolvedValue({ canRead: true, canWrite: true, raw: {} }),
@@ -69,6 +101,17 @@ export function createExplorerGatewayMock(overrides = {}) {
     subscribeToRecentFiles: jest.fn(() => jest.fn()),
     uploadToPath: jest.fn().mockResolvedValue({ errors: [] }),
     ...overrides,
+  };
+}
+
+export function createFolderTreeGatewayMock(overrides = {}) {
+  return {
+    __esModule: true,
+    default: {
+      listFolderChildren: jest.fn(),
+      getUserSharedFolderPermissions: jest.fn(),
+      ...overrides,
+    },
   };
 }
 
@@ -91,9 +134,19 @@ export function createFileUtilsMock(overrides = {}) {
   };
 }
 
+export function createMigrationServiceMock(overrides = {}) {
+  return {
+    startBlobMigration: jest.fn(),
+    getBlobMigrationStatus: jest.fn(),
+    cancelBlobMigration: jest.fn(),
+    ...overrides,
+  };
+}
+
 export function createErrorUtilsMock(overrides = {}) {
   return {
     getServerErrorDisplay: jest.fn((data) => data?.errorCode || 'error'),
+    showErrorFromError: jest.fn(),
     ...overrides,
   };
 }

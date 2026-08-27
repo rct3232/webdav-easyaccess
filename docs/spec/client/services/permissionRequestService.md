@@ -17,17 +17,20 @@
 
 ### 2.2 Main Functions
 
+All request targets are nodeId-based (`nodeId` is a BIGINT `file_nodes.id`; no `folderPath` / `filePath` payloads).
+
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
-| createPermissionRequest | ({ folderPath?, filePath?, permission, message? }) | Promise\<Object\> | POST /api/permission-requests |
+| createPermissionRequest | ({ nodeId, permission, message? }) | Promise\<Object\> | POST /api/permission-requests |
 | listInboxPermissionRequests | ({ status? }) | Promise\<Array\> | GET /api/permission-requests/inbox |
 | listOutboxPermissionRequests | ({ status? }) | Promise\<Array\> | GET /api/permission-requests/outbox |
 | approvePermissionRequest | (id) | Promise\<Object\> | POST /api/permission-requests/:id/approve |
 | rejectPermissionRequest | (id) | Promise\<Object\> | POST /api/permission-requests/:id/reject |
 | cancelPermissionRequest | (id) | Promise\<Object\> | POST /api/permission-requests/:id/cancel |
-| checkOwnerExists | (folderPathOrFilePath, { forFile? }) | Promise\<Object\> | GET /api/permission-requests/check-owner |
+| checkOwnerExists | (nodeId) | Promise\<Object\> | GET /api/permission-requests/check-owner?nodeId=... |
 
-- Create: either folderPath or filePath required
+- Create: `nodeId` required; target type (file/directory) is derived server-side from `file_nodes.type`
+- Inbox/outbox rows are enriched server-side with `display_path` (target absolute path) and `target_name` (target node name); both are `null` when the target node no longer resolves. Consumers may fall back to the raw `file_node_id` for display.
 
 ### 2.3 Error Handling
 
@@ -35,7 +38,7 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] createPermissionRequest sends folderPath or filePath
+- [ ] createPermissionRequest sends `{ nodeId, permission, message }`
 - [ ] listInbox, listOutbox return arrays
 - [ ] approve, reject, cancel call correct endpoints
-- [ ] checkOwnerExists uses filePath param when forFile true
+- [ ] checkOwnerExists uses nodeId query param

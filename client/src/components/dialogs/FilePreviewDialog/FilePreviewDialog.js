@@ -204,7 +204,7 @@ const FilePreviewDialog = ({
     const targetFile = displayFile || file;
     if (!targetFile) return;
     const fileName = targetFile.name || targetFile.basename;
-    downloadFile(targetFile.path, { fileName, shareToken });
+    downloadFile(targetFile.nodeId, { fileName, shareToken });
   }, [displayFile, file, shareToken]);
 
   if (!file) return null;

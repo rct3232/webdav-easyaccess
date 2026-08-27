@@ -9,12 +9,13 @@ import { FilePreviewDialog } from '../components/dialogs';
  */
 const ShareLinkSingleFileView = ({ token, linkInfo }) => {
   const file = React.useMemo(() => {
-    const path = linkInfo?.filePath || '';
+    const path = linkInfo?.displayPath || '';
     const name = linkInfo?.fileName || '';
     return {
       path,
       name,
       basename: name,
+      nodeId: linkInfo?.nodeId,
       canPreview: name ? canPreview(name) : false,
     };
   }, [linkInfo]);

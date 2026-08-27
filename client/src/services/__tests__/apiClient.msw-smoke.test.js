@@ -102,7 +102,7 @@ describe('apiClient MSW smoke', () => {
 });
 
 describe('apiClient share refresh no-redirect', () => {
-  it('refresh fail on share check-my-permission: returns null and does not redirect to /login', async () => {
+  it('refresh fail on share check-my-permission: throws the 401 and does not redirect to /login', async () => {
     sessionStorage.setItem('token', 'expired-jwt');
     sessionStorage.setItem('refreshToken', 'bad-refresh');
 
@@ -119,11 +119,15 @@ describe('apiClient share refresh no-redirect', () => {
       )
     );
 
-    const result = await get('/share/abc123/check-my-permission');
-
-    expect(result).toBeNull();
-    expect(window.location.href).not.toBe('/login');
-    window.location = origLocation;
-    sessionStorage.clear();
+    try {
+      await get('/share/abc123/check-my-permission');
+      throw new Error('Expected reject');
+    } catch (err) {
+      expect(err.response?.status).toBe(401);
+      expect(window.location.href).not.toBe('/login');
+    } finally {
+      window.location = origLocation;
+      sessionStorage.clear();
+    }
   });
 });

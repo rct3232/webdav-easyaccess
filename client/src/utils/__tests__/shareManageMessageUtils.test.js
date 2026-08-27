@@ -7,11 +7,11 @@ import {
   HIDDEN_SHARE_MANAGE_MESSAGE,
 } from '../shareManageMessageUtils';
 
+import { getServerErrorDisplay } from '../errorUtils';
+
 jest.mock('../errorUtils', () => ({
   getServerErrorDisplay: jest.fn(),
 }));
-
-import { getServerErrorDisplay } from '../errorUtils';
 
 describe('shareManageMessageUtils', () => {
   const t = (key, params) => {

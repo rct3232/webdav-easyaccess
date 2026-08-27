@@ -7,19 +7,6 @@
  */
 import { get, post, put } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-}));
-
-jest.mock('../permissionService', () => ({
-  checkPermission: jest.fn(),
-  grantPermission: jest.fn(),
-  revokePermission: jest.fn(),
-  listFilePermissions: jest.fn(),
-}));
-
 import {
   listFiles,
   getFilesMetadata,
@@ -34,7 +21,21 @@ import {
   getBulkOperationStatus,
   cancelBulkOperation,
   checkConflicts,
+  requestThumbnailsBatch,
 } from '../fileService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+}));
+
+jest.mock('../permissionService', () => ({
+  checkPermission: jest.fn(),
+  grantPermission: jest.fn(),
+  revokePermission: jest.fn(),
+  listFilePermissions: jest.fn(),
+}));
 
 describe('fileService', () => {
   beforeEach(() => {
@@ -42,7 +43,7 @@ describe('fileService', () => {
   });
 
   describe('getFilesMetadata', () => {
-    it('returns [] when paths empty, post not called', async () => {
+    it('returns [] when nodeIds empty, post not called', async () => {
       const result = await getFilesMetadata([]);
 
       expect(result).toEqual([]);
@@ -54,11 +55,11 @@ describe('fileService', () => {
     it('passes inline and shareToken in params and headers when provided', async () => {
       get.mockResolvedValueOnce({ data: new Blob(['x']) });
 
-      await getFileBlob('/a.pdf', { inline: true, shareToken: 't' });
+      await getFileBlob(42, { inline: true, shareToken: 't' });
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
         params: expect.objectContaining({
-          path: '/a.pdf',
+          nodeId: 42,
           inline: 'true',
           shareToken: 't',
         }),
@@ -72,26 +73,26 @@ describe('fileService', () => {
     it('requests preview ticket and returns preview-stream URL', async () => {
       post.mockResolvedValueOnce({ data: { ticket: 'ticket123' } });
 
-      const url = await getVideoPreviewStreamUrl('/v.mp4');
+      const url = await getVideoPreviewStreamUrl(7);
 
       expect(post).toHaveBeenCalledWith(
         '/files/preview-ticket',
-        { path: '/v.mp4' },
+        { nodeId: 7 },
         expect.any(Object)
       );
       expect(url).toContain('/api/files/preview-stream?');
       expect(url).toContain('ticket=ticket123');
-      expect(url).toContain('path=%2Fv.mp4');
+      expect(url).toContain('nodeId=7');
     });
 
     it('passes shareToken in body and headers when provided', async () => {
       post.mockResolvedValueOnce({ data: { ticket: 't' } });
 
-      await getVideoPreviewStreamUrl('/v.mp4', { shareToken: 'st' });
+      await getVideoPreviewStreamUrl(7, { shareToken: 'st' });
 
       expect(post).toHaveBeenCalledWith(
         '/files/preview-ticket',
-        { path: '/v.mp4', shareToken: 'st' },
+        { nodeId: 7, shareToken: 'st' },
         expect.objectContaining({
           headers: expect.objectContaining({ 'X-Share-Token': 'st' }),
         })
@@ -100,25 +101,25 @@ describe('fileService', () => {
   });
 
   describe('createFolder', () => {
-    it('calls POST /folders/create', async () => {
-      post.mockResolvedValueOnce({ data: { messageCode: 'folderCreated', path: '/foo/bar' } });
+    it('calls POST /folders/create with parentNodeId and name', async () => {
+      post.mockResolvedValueOnce({ data: { messageCode: 'folderCreated', nodeId: 99 } });
 
-      await createFolder('/foo/bar');
+      await createFolder(3, 'bar');
 
-      expect(post).toHaveBeenCalledWith('/folders/create', { path: '/foo/bar' });
+      expect(post).toHaveBeenCalledWith('/folders/create', { parentNodeId: 3, name: 'bar' });
     });
   });
 
   describe('getFolderStats', () => {
-    it('calls GET /folders/stats with path param and returns fileCount and totalSize', async () => {
+    it('calls GET /folders/stats with nodeId param and returns fileCount and totalSize', async () => {
       get.mockResolvedValueOnce({ data: { fileCount: 10, totalSize: 2048 } });
 
-      const result = await getFolderStats('/my/folder');
+      const result = await getFolderStats(5);
 
       expect(get).toHaveBeenCalledWith(
         '/folders/stats',
         expect.objectContaining({
-          params: { path: '/my/folder' },
+          params: { nodeId: 5 },
         })
       );
       expect(result).toHaveProperty('fileCount', 10);
@@ -127,13 +128,13 @@ describe('fileService', () => {
   });
 
   describe('downloadFile', () => {
-    it('calls get with path only, no options (auth-only)', async () => {
+    it('calls get with nodeId only, no options (auth-only)', async () => {
       get.mockResolvedValueOnce({ data: new Blob(['x']) });
 
-      await downloadFile('/a.pdf');
+      await downloadFile(1);
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { path: '/a.pdf' },
+        params: { nodeId: 1 },
         responseType: 'blob',
       }));
       const callArgs = get.mock.calls[0];
@@ -144,10 +145,10 @@ describe('fileService', () => {
     it('passes shareToken in params and headers when provided', async () => {
       get.mockResolvedValueOnce({ data: new Blob(['x']) });
 
-      await downloadFile('/photo.jpg', { shareToken: 'st' });
+      await downloadFile(2, { shareToken: 'st' });
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { path: '/photo.jpg', shareToken: 'st' },
+        params: { nodeId: 2, shareToken: 'st' },
         responseType: 'blob',
         headers: { 'X-Share-Token': 'st' },
       }));
@@ -156,10 +157,10 @@ describe('fileService', () => {
     it('passes options.fileName for display; non-image uses default download', async () => {
       get.mockResolvedValueOnce({ data: new Blob(['x']) });
 
-      await downloadFile('/path/to/doc.pdf', { fileName: 'doc.pdf' });
+      await downloadFile(3, { fileName: 'doc.pdf' });
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { path: '/path/to/doc.pdf' },
+        params: { nodeId: 3 },
       }));
     });
 
@@ -179,10 +180,10 @@ describe('fileService', () => {
       });
       get.mockResolvedValueOnce({ data: new Blob(['content']) });
 
-      await downloadFile('/p.jpg');
+      await downloadFile(4, { fileName: 'p.jpg' });
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { path: '/p.jpg' },
+        params: { nodeId: 4 },
         responseType: 'blob',
       }));
       expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
@@ -205,10 +206,10 @@ describe('fileService', () => {
       });
       get.mockResolvedValueOnce({ data: new Blob(['content']) });
 
-      await downloadFile('/doc.pdf');
+      await downloadFile(5, { fileName: 'doc.pdf' });
 
       expect(get).toHaveBeenCalledWith('/files/download', expect.objectContaining({
-        params: { path: '/doc.pdf' },
+        params: { nodeId: 5 },
         responseType: 'blob',
       }));
       expect(canShareMock).toHaveBeenCalledWith({ files: [expect.any(File)] });
@@ -219,19 +220,19 @@ describe('fileService', () => {
   describe('listFiles', () => {
     it('returns array of file items', async () => {
       const items = [
-        { path: '/test.txt', basename: 'test.txt', type: 'file', size: 0 },
-        { path: '/folder', basename: 'folder', type: 'directory', size: 0 },
+        { nodeId: 1, path: '/test.txt', basename: 'test.txt', type: 'file', size: 0 },
+        { nodeId: 2, path: '/folder', basename: 'folder', type: 'directory', size: 0 },
       ];
       get.mockResolvedValueOnce({ data: items });
 
-      const result = await listFiles('/');
+      const result = await listFiles(1);
 
       expect(get).toHaveBeenCalledWith('/files/list', expect.objectContaining({
-        params: expect.objectContaining({ path: '/' }),
+        params: expect.objectContaining({ nodeId: 1 }),
       }));
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(2);
-      expect(result[0]).toHaveProperty('path');
+      expect(result[0]).toHaveProperty('nodeId');
       expect(result[0]).toHaveProperty('basename');
       expect(result[0]).toHaveProperty('type');
     });
@@ -239,21 +240,11 @@ describe('fileService', () => {
     it('passes shareToken when provided', async () => {
       get.mockResolvedValueOnce({ data: [] });
 
-      await listFiles('/folder', { shareToken: 'my-share-token' });
+      await listFiles(3, { shareToken: 'my-share-token' });
 
       expect(get).toHaveBeenCalledWith('/files/list', expect.objectContaining({
-        params: expect.objectContaining({ path: '/folder', shareToken: 'my-share-token' }),
+        params: expect.objectContaining({ nodeId: 3, shareToken: 'my-share-token' }),
         headers: expect.objectContaining({ 'X-Share-Token': 'my-share-token' }),
-      }));
-    });
-
-    it('listFiles("") uses normalized path (root /) per spec', async () => {
-      get.mockResolvedValueOnce({ data: [] });
-
-      await listFiles('');
-
-      expect(get).toHaveBeenCalledWith('/files/list', expect.objectContaining({
-        params: expect.objectContaining({ path: '/' }),
       }));
     });
   });
@@ -267,10 +258,10 @@ describe('fileService', () => {
         { file: file2, relativePath: '' },
       ];
       const onProgress = jest.fn();
-      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', path: '/file1.txt' } });
-      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', path: '/file2.txt' } });
+      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', nodeId: 10 } });
+      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', nodeId: 11 } });
 
-      const result = await uploadMultipleFiles(files, '/', onProgress);
+      const result = await uploadMultipleFiles(files, 1, onProgress);
 
       expect(result).toHaveProperty('results');
       expect(result).toHaveProperty('errors');
@@ -292,7 +283,7 @@ describe('fileService', () => {
       post.mockRejectedValueOnce(err);
 
       const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
-      const result = await uploadMultipleFiles([{ file, relativePath: '' }], '/', onProgress);
+      const result = await uploadMultipleFiles([{ file, relativePath: '' }], 1, onProgress);
       spy.mockRestore();
 
       expect(result.errors).toHaveLength(1);
@@ -307,14 +298,14 @@ describe('fileService', () => {
         { file: file2, relativePath: 'b.txt' },
       ];
       const onProgress = jest.fn();
-      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', path: '/a.txt' } });
+      post.mockResolvedValueOnce({ data: { messageCode: 'uploadSuccess', nodeId: 10 } });
       post.mockRejectedValueOnce(
         Object.assign(new Error('Conflict'), {
           response: { status: 409, data: { errorCode: 'serverErrors.files.conflict' } },
         })
       );
 
-      const result = await uploadMultipleFiles(files, '/', onProgress);
+      const result = await uploadMultipleFiles(files, 1, onProgress);
 
       expect(result).toHaveProperty('results');
       expect(result).toHaveProperty('errors');
@@ -333,11 +324,11 @@ describe('fileService', () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-123' } });
 
       const result = await batchMoveFiles([
-        { sourcePath: '/a.txt', destinationPath: '/b/a.txt' },
+        { sourceNodeId: 1, destinationParentNodeId: 5 },
       ]);
 
       expect(post).toHaveBeenCalledWith('/files/batch-move', {
-        moves: [{ sourcePath: '/a.txt', destinationPath: '/b/a.txt' }],
+        moves: [{ sourceNodeId: 1, destinationParentNodeId: 5 }],
         onConflict: 'error',
       });
       expect(result).toHaveProperty('jobId');
@@ -348,7 +339,7 @@ describe('fileService', () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-456' } });
 
       const result = await batchCopyFiles([
-        { sourcePath: '/a.txt', destinationPath: '/copy/a.txt' },
+        { sourceNodeId: 1, destinationParentNodeId: 3 },
       ]);
 
       expect(result).toHaveProperty('jobId');
@@ -361,7 +352,7 @@ describe('fileService', () => {
         data: { status: 'completed', progress: 1, total: 1, results: [] },
       });
 
-      await batchMoveFiles([{ sourcePath: '/x.txt', destinationPath: '/y/x.txt' }]);
+      await batchMoveFiles([{ sourceNodeId: 1, destinationParentNodeId: 2 }]);
       const status = await getBulkOperationStatus('job-x');
 
       expect(get).toHaveBeenCalledWith(expect.stringContaining('job-x'));
@@ -381,12 +372,12 @@ describe('fileService', () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-overwrite' } });
 
       await batchMoveFiles(
-        [{ sourcePath: '/a.txt', destinationPath: '/b/a.txt' }],
+        [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
         'overwrite'
       );
 
       expect(post).toHaveBeenCalledWith('/files/batch-move', {
-        moves: [{ sourcePath: '/a.txt', destinationPath: '/b/a.txt' }],
+        moves: [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
         onConflict: 'overwrite',
       });
     });
@@ -395,12 +386,12 @@ describe('fileService', () => {
       post.mockResolvedValueOnce({ data: { jobId: 'job-skip' } });
 
       await batchCopyFiles(
-        [{ sourcePath: '/x.txt', destinationPath: '/y/x.txt' }],
+        [{ sourceNodeId: 3, destinationParentNodeId: 4 }],
         'skip'
       );
 
       expect(post).toHaveBeenCalledWith('/files/batch-copy', {
-        copies: [{ sourcePath: '/x.txt', destinationPath: '/y/x.txt' }],
+        copies: [{ sourceNodeId: 3, destinationParentNodeId: 4 }],
         onConflict: 'skip',
       });
     });
@@ -417,12 +408,44 @@ describe('fileService', () => {
     });
   });
 
+  describe('requestThumbnailsBatch', () => {
+    it('posts { nodeIds } to /thumbnails/batch (apiClient prefixes /api)', async () => {
+      post.mockResolvedValueOnce({
+        data: { thumbnails: [{ nodeId: 7, thumbnailUrl: 'http://thumb/a.jpg' }] },
+      });
+
+      const result = await requestThumbnailsBatch([7, 8]);
+
+      expect(post).toHaveBeenCalledWith(
+        '/thumbnails/batch',
+        { nodeIds: [7, 8] },
+        expect.any(Object)
+      );
+      expect(result).toHaveProperty('thumbnails');
+      expect(result.thumbnails[0]).toMatchObject({ nodeId: 7 });
+    });
+
+    it('passes shareToken in body and headers when provided', async () => {
+      post.mockResolvedValueOnce({ data: { thumbnails: [] } });
+
+      await requestThumbnailsBatch([7], { shareToken: 'st' });
+
+      expect(post).toHaveBeenCalledWith(
+        '/thumbnails/batch',
+        { nodeIds: [7], shareToken: 'st' },
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Share-Token': 'st' }),
+        })
+      );
+    });
+  });
+
   describe('checkConflicts', () => {
     it('returns conflicts array', async () => {
       post.mockResolvedValueOnce({ data: { conflicts: [] } });
 
       const result = await checkConflicts([
-        { sourcePath: '/a.txt', destinationPath: '/b/a.txt', operation: 'move' },
+        { sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' },
       ]);
 
       expect(Array.isArray(result)).toBe(true);
@@ -433,19 +456,19 @@ describe('fileService', () => {
       post.mockResolvedValueOnce({
         data: {
           conflicts: [
-            { sourcePath: '/a.txt', destinationPath: '/b/a.txt', reason: 'exists' },
+            { sourceNodeId: 1, destinationParentNodeId: 2, reason: 'exists' },
           ],
         },
       });
 
       const result = await checkConflicts([
-        { sourcePath: '/a.txt', destinationPath: '/b/a.txt', operation: 'move' },
+        { sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' },
       ]);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
-        sourcePath: '/a.txt',
-        destinationPath: '/b/a.txt',
+        sourceNodeId: 1,
+        destinationParentNodeId: 2,
         reason: 'exists',
       });
     });

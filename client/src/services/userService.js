@@ -30,7 +30,7 @@ export const updatePassword = async (userId, password) => {
 /**
  * 사용자 권한 일괄 수정 (관리자 전용)
  * @param {number} userId - 사용자 ID
- * @param {Array} permissions - [{ folderPath, permission }]
+ * @param {Array} permissions - [{ nodeId, permission }]
  */
 export const updateUserPermissions = async (userId, permissions) => {
   await put(`/users/${userId}/permissions`, { permissions });

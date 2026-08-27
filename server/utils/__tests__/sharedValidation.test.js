@@ -196,7 +196,6 @@ describe('shared validation', () => {
       ['root', 'validation.usernameReserved'],
       ['SYSTEM', 'validation.usernameReserved'],
       ['api', 'validation.usernameReserved'],
-      ['wea', 'validation.usernameReserved'],
     ])('rejects reserved username %p → %s', (input, expected) => {
       expect(validateUsername(input)).toBe(expected);
     });

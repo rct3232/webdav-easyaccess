@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { setupDragGhost } from '../utils/dragGhostImage';
-import { getParentPath } from '../utils/pathUtils';
 
 export const useDragAndDrop = (
   onFileDrop,
@@ -9,7 +8,7 @@ export const useDragAndDrop = (
   onDropPermissionDenied,
   onDragStart,
   onDragEnd,
-  internalDraggedPath
+  internalDraggedNodeId
 ) => {
   const [draggedFile, setDraggedFile] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
@@ -17,13 +16,13 @@ export const useDragAndDrop = (
   const handleDragStart = (e, file) => {
     if (selectionMode) return;
     setDraggedFile(file);
-    onDragStart?.(file.path);
+    onDragStart?.(file.nodeId);
     // In real browsers `dataTransfer` always exists; in tests it may be missing.
     if (e?.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', file.path);
+      e.dataTransfer.setData('text/plain', String(file.nodeId));
     }
-    
+
     // Set custom drag ghost image if theme is available
     if (theme && e?.dataTransfer) {
       setupDragGhost(e, file, theme, 1);
@@ -38,25 +37,25 @@ export const useDragAndDrop = (
 
   const handleDragOver = (e, file) => {
     if (selectionMode) return;
-    const fromList = draggedFile?.path && draggedFile.path !== file.path;
+    const fromList = draggedFile?.nodeId != null && draggedFile.nodeId !== file.nodeId;
     const fromTree = !draggedFile && e?.dataTransfer?.types?.includes('text/plain');
     const canDropOnFolder = file.type === 'directory' && (fromList || fromTree);
     if (canDropOnFolder) {
       e.preventDefault();
       if (e?.dataTransfer) e.dataTransfer.dropEffect = file.hasWritePermission === false ? 'none' : 'move';
       if (file.hasWritePermission === false) return;
-      // No-op move: target is the parent of the dragged path (item already lives there)
-      const listNoOp = fromList && getParentPath(draggedFile.path) === file.path;
+      // No-op move: target is the parent of the dragged nodeId (item already lives there)
+      const listNoOp = fromList && draggedFile.parentNodeId === file.nodeId;
       if (listNoOp) return;
-      // Tree-origin no-op: target is parent of tree path or tree path equals target (drop on self)
-      const treePath = e?.dataTransfer?.getData?.('text/plain');
-      const effectiveTreePath = treePath || internalDraggedPath;
+      // Tree-origin no-op: target equals tree nodeId (drop on self)
+      const treeNodeId = e?.dataTransfer?.getData?.('text/plain');
+      const effectiveTreeNodeId = treeNodeId || internalDraggedNodeId;
       const treeNoOp =
         fromTree &&
-        effectiveTreePath &&
-        (getParentPath(effectiveTreePath) === file.path || effectiveTreePath === file.path);
+        effectiveTreeNodeId != null &&
+        String(effectiveTreeNodeId) === String(file.nodeId);
       if (treeNoOp) return;
-      setDropTarget(file.path);
+      setDropTarget(file.nodeId);
     }
   };
 
@@ -70,38 +69,38 @@ export const useDragAndDrop = (
     e.stopPropagation();
 
     if (targetFolder.hasWritePermission === false) {
-      onDropPermissionDenied?.(targetFolder.path);
+      onDropPermissionDenied?.(targetFolder.nodeId);
       setDraggedFile(null);
       setDropTarget(null);
       return;
     }
 
-    // List no-op: target is parent of dragged path (same folder)
-    if (draggedFile && targetFolder.type === 'directory' && getParentPath(draggedFile.path) === targetFolder.path) {
+    // List no-op: target is parent of dragged nodeId (same folder)
+    if (draggedFile && targetFolder.type === 'directory' && draggedFile.parentNodeId === targetFolder.nodeId) {
       setDraggedFile(null);
       setDropTarget(null);
       return;
     }
-    // Tree no-op: target is parent of tree path or tree path equals target (drop on self)
-    const treePath = !draggedFile ? e?.dataTransfer?.getData?.('text/plain') : null;
-    const effectiveTreePath = treePath || (!draggedFile ? internalDraggedPath : null);
+    // Tree no-op: tree nodeId equals target (drop on self)
+    const treeNodeId = !draggedFile ? e?.dataTransfer?.getData?.('text/plain') : null;
+    const effectiveTreeNodeId = treeNodeId || (!draggedFile ? internalDraggedNodeId : null);
     if (
-      effectiveTreePath &&
+      effectiveTreeNodeId != null &&
       targetFolder.type === 'directory' &&
-      (getParentPath(effectiveTreePath) === targetFolder.path || effectiveTreePath === targetFolder.path)
+      String(effectiveTreeNodeId) === String(targetFolder.nodeId)
     ) {
       setDraggedFile(null);
       setDropTarget(null);
       return;
     }
 
-    const fromList = draggedFile && targetFolder.type === 'directory' && draggedFile.path !== targetFolder.path;
-    const fromTree = effectiveTreePath && targetFolder.type === 'directory' && effectiveTreePath !== targetFolder.path;
+    const fromList = draggedFile && targetFolder.type === 'directory' && draggedFile.nodeId !== targetFolder.nodeId;
+    const fromTree = effectiveTreeNodeId != null && targetFolder.type === 'directory' && String(effectiveTreeNodeId) !== String(targetFolder.nodeId);
 
     if (fromList) {
       onFileDrop?.(draggedFile, targetFolder);
     } else if (fromTree) {
-      onFileDrop?.({ path: effectiveTreePath }, targetFolder);
+      onFileDrop?.({ nodeId: Number(effectiveTreeNodeId) }, targetFolder);
     }
 
     setDraggedFile(null);

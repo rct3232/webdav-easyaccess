@@ -7,12 +7,6 @@
  */
 import { get, post, del } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  del: jest.fn(),
-}));
-
 import {
   getUserPermissions,
   clearUserPermissionsCache,
@@ -21,7 +15,14 @@ import {
   revokePermission,
   checkPermission,
   listFilePermissions,
+  getSharedPermissions,
 } from '../permissionService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  del: jest.fn(),
+}));
 
 describe('permissionService', () => {
   beforeEach(() => {
@@ -31,7 +32,7 @@ describe('permissionService', () => {
 
   describe('getUserPermissions', () => {
     it('returns array from GET /permissions/user/:userId', async () => {
-      const perms = [{ folderPath: '/a', permission: 'read' }];
+      const perms = [{ nodeId: 10, permission: 'read' }];
       get.mockResolvedValueOnce({ data: perms });
 
       const result = await getUserPermissions('user-1');
@@ -42,7 +43,7 @@ describe('permissionService', () => {
     });
 
     it('dedupes in-flight calls for same userId', async () => {
-      const perms = [{ folderPath: '/shared', permission: 'read' }];
+      const perms = [{ nodeId: 20, permission: 'read' }];
       let resolveRequest;
       const pendingRequest = new Promise((resolve) => {
         resolveRequest = resolve;
@@ -62,7 +63,7 @@ describe('permissionService', () => {
     });
 
     it('returns memoized result within ttl without extra request', async () => {
-      const perms = [{ folderPath: '/docs', permission: 'write' }];
+      const perms = [{ nodeId: 30, permission: 'write' }];
       get.mockResolvedValueOnce({ data: perms });
 
       const first = await getUserPermissions('user-1');
@@ -74,8 +75,8 @@ describe('permissionService', () => {
     });
 
     it('fetches again with forceRefresh even within ttl', async () => {
-      const first = [{ folderPath: '/a', permission: 'read' }];
-      const refreshed = [{ folderPath: '/a', permission: 'admin' }];
+      const first = [{ nodeId: 10, permission: 'read' }];
+      const refreshed = [{ nodeId: 10, permission: 'admin' }];
       get.mockResolvedValueOnce({ data: first });
       get.mockResolvedValueOnce({ data: refreshed });
 
@@ -89,79 +90,97 @@ describe('permissionService', () => {
   });
 
   describe('getFolderPermissions', () => {
-    it('returns array from GET /permissions/folder with path params', async () => {
+    it('returns array from GET /permissions/folder with nodeId params', async () => {
       const perms = [];
       get.mockResolvedValueOnce({ data: perms });
 
-      const result = await getFolderPermissions('/docs', false);
+      const result = await getFolderPermissions(42);
 
       expect(get).toHaveBeenCalledWith('/permissions/folder', {
-        params: { path: '/docs', includeSubfolders: 'false' },
+        params: { nodeId: 42 },
       });
       expect(Array.isArray(result)).toBe(true);
     });
 
-    it('sends includeSubfolders true and filePath when provided', async () => {
+    it('sends fileNodeId when provided', async () => {
       get.mockResolvedValueOnce({ data: [] });
 
-      await getFolderPermissions('/docs', true, '/docs/file.txt');
+      await getFolderPermissions(42, 55);
 
       expect(get).toHaveBeenCalledWith('/permissions/folder', {
-        params: { path: '/docs', includeSubfolders: 'true', filePath: '/docs/file.txt' },
+        params: { nodeId: 42, fileNodeId: 55 },
       });
     });
   });
 
   describe('grantPermission', () => {
-    it('calls POST /permissions/grant with userId, folderPath, permission', async () => {
+    it('calls POST /permissions/grant with userId, nodeId, permission', async () => {
       post.mockResolvedValueOnce(undefined);
 
       await grantPermission({
         userId: 'u1',
-        folderPath: '/a',
+        nodeId: 10,
         permission: 'read',
       });
 
       expect(post).toHaveBeenCalledWith('/permissions/grant', {
         userId: 'u1',
-        folderPath: '/a',
+        nodeId: 10,
         permission: 'read',
       });
     });
 
-    it('includes target "file" for file-level grant', async () => {
+    it('posts to file grant route with fileNodeId for file-level grant', async () => {
       post.mockResolvedValueOnce(undefined);
 
       await grantPermission({
         userId: 'u1',
-        folderPath: '/a/file.txt',
+        nodeId: 20,
         permission: 'read',
         target: 'file',
       });
 
-      expect(post).toHaveBeenCalledWith('/permissions/grant', {
+      expect(post).toHaveBeenCalledWith('/permissions/file/grant', {
         userId: 'u1',
-        folderPath: '/a/file.txt',
+        fileNodeId: 20,
         permission: 'read',
-        target: 'file',
       });
     });
 
     it('invalidates user cache after successful grant', async () => {
-      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'read' }] });
+      get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'read' }] });
       post.mockResolvedValueOnce(undefined);
-      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'admin' }] });
+      get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'admin' }] });
 
       const beforeGrant = await getUserPermissions('u1');
       await grantPermission({
         userId: 'u1',
-        folderPath: '/a',
+        nodeId: 10,
         permission: 'admin',
       });
       const afterGrant = await getUserPermissions('u1');
 
-      expect(beforeGrant).toEqual([{ folderPath: '/a', permission: 'read' }]);
-      expect(afterGrant).toEqual([{ folderPath: '/a', permission: 'admin' }]);
+      expect(beforeGrant).toEqual([{ nodeId: 10, permission: 'read' }]);
+      expect(afterGrant).toEqual([{ nodeId: 10, permission: 'admin' }]);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates only the granted user cache, keeping other users cached', async () => {
+      get.mockResolvedValueOnce({ data: [{ nodeId: 1, permission: 'read' }] });
+      get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'write' }] });
+      post.mockResolvedValueOnce(undefined);
+
+      await getUserPermissions('me');
+      await grantPermission({
+        userId: 'target',
+        nodeId: 10,
+        permission: 'write',
+      });
+      const actorCached = await getUserPermissions('me');
+      const targetRefreshed = await getUserPermissions('target');
+
+      expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
+      expect(targetRefreshed).toEqual([{ nodeId: 10, permission: 'write' }]);
       expect(get).toHaveBeenCalledTimes(2);
     });
   });
@@ -172,66 +191,109 @@ describe('permissionService', () => {
 
       await revokePermission({
         userId: 'u1',
-        folderPath: '/a',
-        includeSubfolders: false,
+        nodeId: 10,
       });
 
       expect(del).toHaveBeenCalledWith('/permissions/revoke', {
-        params: { userId: 'u1', folderPath: '/a', includeSubfolders: 'false' },
+        params: { userId: 'u1', nodeId: 10 },
       });
     });
 
-    it('includes scope pathOnly for file-level revoke', async () => {
+    it('includes scope pathOnly for directory revoke', async () => {
       del.mockResolvedValueOnce(undefined);
 
       await revokePermission({
         userId: 'u1',
-        folderPath: '/a/file.txt',
-        includeSubfolders: false,
+        nodeId: 20,
         scope: 'pathOnly',
       });
 
       expect(del).toHaveBeenCalledWith('/permissions/revoke', {
         params: {
           userId: 'u1',
-          folderPath: '/a/file.txt',
-          includeSubfolders: 'false',
+          nodeId: 20,
           scope: 'pathOnly',
         },
       });
     });
 
+    it('deletes file revoke route with fileNodeId for file-level revoke', async () => {
+      del.mockResolvedValueOnce(undefined);
+
+      await revokePermission({
+        userId: 'u1',
+        nodeId: 20,
+        target: 'file',
+      });
+
+      expect(del).toHaveBeenCalledWith('/permissions/file/revoke', {
+        params: {
+          userId: 'u1',
+          fileNodeId: 20,
+        },
+      });
+    });
+
     it('invalidates user cache after successful revoke', async () => {
-      get.mockResolvedValueOnce({ data: [{ folderPath: '/a', permission: 'admin' }] });
+      get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'admin' }] });
       del.mockResolvedValueOnce(undefined);
       get.mockResolvedValueOnce({ data: [] });
 
       const beforeRevoke = await getUserPermissions('u1');
       await revokePermission({
         userId: 'u1',
-        folderPath: '/a',
-        includeSubfolders: false,
+        nodeId: 10,
       });
       const afterRevoke = await getUserPermissions('u1');
 
-      expect(beforeRevoke).toEqual([{ folderPath: '/a', permission: 'admin' }]);
+      expect(beforeRevoke).toEqual([{ nodeId: 10, permission: 'admin' }]);
       expect(afterRevoke).toEqual([]);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates only the revoked user cache, keeping other users cached', async () => {
+      get.mockResolvedValueOnce({ data: [{ nodeId: 1, permission: 'read' }] });
+      get.mockResolvedValueOnce({ data: [] });
+      del.mockResolvedValueOnce(undefined);
+
+      await getUserPermissions('me');
+      await revokePermission({
+        userId: 'target',
+        nodeId: 10,
+      });
+      const actorCached = await getUserPermissions('me');
+      const targetRefreshed = await getUserPermissions('target');
+
+      expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
+      expect(targetRefreshed).toEqual([]);
       expect(get).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('checkPermission', () => {
     it('returns object with hasRead, hasWrite, source', async () => {
-      const data = { path: '/a', hasRead: true, hasWrite: false, source: 'path' };
+      const data = { nodeId: 10, hasRead: true, hasWrite: false, source: 'path' };
       get.mockResolvedValueOnce({ data });
 
-      const result = await checkPermission('/a');
+      const result = await checkPermission(10);
 
-      expect(get).toHaveBeenCalledWith('/permissions/check', { params: { path: '/a' } });
+      expect(get).toHaveBeenCalledWith('/permissions/check', { params: { nodeId: 10 } });
       expect(result).toHaveProperty('hasRead');
       expect(result).toHaveProperty('hasWrite');
       expect(result).toHaveProperty('source');
       expect(result).toEqual(data);
+    });
+  });
+
+  describe('getSharedPermissions', () => {
+    it('returns array from GET /permissions/shared', async () => {
+      const shared = [{ nodeId: 10, name: 'Shared Docs', permission: 'read', type: 'directory' }];
+      get.mockResolvedValueOnce({ data: shared });
+
+      const result = await getSharedPermissions();
+
+      expect(get).toHaveBeenCalledWith('/permissions/shared');
+      expect(result).toEqual(shared);
     });
   });
 
@@ -246,13 +308,13 @@ describe('permissionService', () => {
       expect(Array.isArray(result)).toBe(true);
     });
 
-    it('sends folderPath when provided', async () => {
+    it('sends parentNodeId when provided', async () => {
       get.mockResolvedValueOnce({ data: [] });
 
-      await listFilePermissions('/docs');
+      await listFilePermissions(42);
 
       expect(get).toHaveBeenCalledWith('/permissions/file/list', {
-        params: { folderPath: '/docs' },
+        params: { parentNodeId: 42 },
       });
     });
   });

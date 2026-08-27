@@ -1,31 +1,30 @@
 import { deriveFolderPickerSharedState } from '../deriveFolderPickerSharedState';
 
 describe('deriveFolderPickerSharedState', () => {
-  it('normalizes paths and exposes only top-level shared folders', () => {
+  it('builds nodeId-keyed shared state and exposes all permissions as roots', () => {
     const result = deriveFolderPickerSharedState({
       permissions: [
-        { folder_path: '/shared/root/', permission: 'write' },
-        { folder_path: '/shared/root/nested', permission: 'read' },
-        { folder_path: '/other/path', permission: 'read' },
+        { nodeId: 10, permission: 'write' },
+        { nodeId: 20, permission: 'read' },
+        { nodeId: 30, permission: 'read' },
       ],
     });
 
-    expect(Array.from(result.sharedPermissionPaths)).toEqual([
-      '/shared/root',
-      '/shared/root/nested',
-      '/other/path',
-    ]);
-    expect(result.sharedFolderRoots).toEqual(['/shared/root', '/other/path']);
+    expect(Array.from(result.sharedPermissionNodeIds)).toEqual(['10', '20', '30']);
+    expect(result.sharedFolderRoots).toEqual(['10', '20', '30']);
     expect(result.sharedFolders).toEqual([
       expect.objectContaining({
-        path: '/shared/root',
-        basename: 'root',
+        nodeId: 10,
         hasReadPermission: true,
         hasWritePermission: true,
       }),
       expect.objectContaining({
-        path: '/other/path',
-        basename: 'path',
+        nodeId: 20,
+        hasReadPermission: true,
+        hasWritePermission: false,
+      }),
+      expect.objectContaining({
+        nodeId: 30,
         hasReadPermission: true,
         hasWritePermission: false,
       }),
@@ -35,7 +34,7 @@ describe('deriveFolderPickerSharedState', () => {
   it('returns empty shared state for empty input', () => {
     const result = deriveFolderPickerSharedState();
 
-    expect(Array.from(result.sharedPermissionPaths)).toEqual([]);
+    expect(Array.from(result.sharedPermissionNodeIds)).toEqual([]);
     expect(result.sharedFolderRoots).toEqual([]);
     expect(result.sharedFolders).toEqual([]);
   });

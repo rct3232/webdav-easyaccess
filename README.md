@@ -26,10 +26,9 @@ Unlike a simple client, it runs via a **dedicated Node.js server**, and users ca
 flowchart LR
   Browser --> ReactClient
   ReactClient -->|"/api via proxy or same-origin"| ExpressServer
-  ExpressServer -->|"webdav library"| WebDAVServer
-  ExpressServer -->|"metadata JSON"| MetaStore
-  MetaStore --> WebDAVMeta["WebDAV /.wea"]
-  MetaStore --> FSMeta["Local FS (optional)"]
+  ExpressServer -->|"blobs (default: s3)"| S3[(S3 / MinIO)]
+  ExpressServer -->|"blobs (webdav option)"| WebDAVServer
+  ExpressServer -->|"metadata"| MetadataDB[(PostgreSQL / SQLite)]
 ```
 
 ## Tech Stack
@@ -37,9 +36,9 @@ flowchart LR
 - **Backend**: Node.js, Express.js
 - **Frontend**: React, MUI (Material UI)
 - **Auth**: JWT
-- **WebDAV Client**: `webdav`
+- **Blob storage**: `@aws-sdk/client-s3` (default S3/MinIO) or the `webdav` client (webdav mode)
 - **Thumbnails**: Sharp (FFmpeg required for video)
-- **Metadata store**: JSON under WebDAV `/.wea/` (optional local filesystem storage)
+- **Metadata store**: DB-backed (`WEA_STORAGE_BACKEND`: `sqlite` default, `postgresql`)
 
 ## Documentation
 
@@ -92,19 +91,22 @@ npm start
 
 ### Required
 
-- **WEBDAV_URL**: WebDAV server URL (path prefix allowed)
-- **WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV credentials
 - **JWT_SECRET**: JWT signing key (must be changed in production; server will not start if unset)
 - **PORT**: Server port (default `5001`)
+- **WEA_FILE_STORAGE**: File content blob storage backend (default `s3`; `webdav` is an option)
+- **S3_BUCKET**: S3/MinIO bucket name (required in default `s3` mode)
+- **AWS_REGION**: AWS region (required in default `s3` mode)
+- **AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY**: S3/MinIO credentials (required in default `s3` mode)
 
 ### Optional (main)
 
+- **S3_ENDPOINT**: Custom S3 endpoint URL for MinIO/compatible services (forces path-style access; optional in `s3` mode)
+- **WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV server URL (path prefix allowed) and credentials — **required only when `WEA_FILE_STORAGE=webdav`**
 - **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)
 - **WEA_DISABLE_DEFAULT_ADMIN**: Disable default admin auto-creation (`true`)
-- **WEA_STORAGE_BACKEND**: Metadata storage (`webdav` or `fs`, default `webdav`)
-- **WEA_FS_DIR / WEA_METADATA_DIR**: Storage path when using `fs` backend
+- **WEA_STORAGE_BACKEND**: Metadata storage backend (`sqlite` default, `postgresql`)
 - **CORS_ORIGINS / CORS_ORIGIN**: Allowed CORS origins (recommended in production; comma-separated)
 - **LOGIN_RATE_LIMIT_WINDOW_MS / LOGIN_RATE_LIMIT_MAX**: Login rate limit (best-effort, in-memory)
 - **WEBDAV_AUTH_TYPE**: `auto` / `basic` / `digest`
@@ -126,7 +128,6 @@ npm start
 - **Read**: **Direct-only** (no inheritance). Read is required on each folder to list it, and on a file's parent folder to read the file. Read on `/share` does not grant read on `/share/sub` unless explicitly granted.
 - **Write**: Shared paths use **direct-only write** (no inheritance).
   - Example: Write on `/share` does not imply write on `/share/sub` unless explicitly granted.
-- **Reserved path**: `/.wea` is reserved for metadata; hidden/blocked in UI and server.
 
 ## Usage
 
@@ -206,10 +207,6 @@ Without `EMAIL_HOST`, `EMAIL_USER`, and `EMAIL_PASSWORD`, emails are not sent; o
 ### Upload fails with 409 (Conflict)
 
 Normal when a file with the same name already exists. Rename the file or change the target path.
-
-### `/.wea` path not visible
-
-`/.wea` is a reserved path for metadata; it is hidden and blocked in the UI and server.
 
 ## License
 

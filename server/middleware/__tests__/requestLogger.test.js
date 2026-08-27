@@ -20,7 +20,7 @@ describe('requestLogger', () => {
   });
 
   afterEach(() => {
-    console.log.mockRestore();
+    console.log.mockRestore(); // eslint-disable-line no-console
   });
 
   it('logs a JSON line with method, url, status, and duration_ms', async () => {

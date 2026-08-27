@@ -1,72 +1,81 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import folderPickerGateway from '../../../../services/folderPickerGateway';
-import { getUserBaseFolder } from '../../../../utils/userUtils';
 import { buildFolderPickerBreadcrumbs } from './helpers/buildFolderPickerBreadcrumbs';
 import { deriveFolderPickerSharedState } from './helpers/deriveFolderPickerSharedState';
 import { isInvalidFolderPickerDestination } from './helpers/isInvalidFolderPickerDestination';
 import { resolveFolderPickerToggleTarget } from './helpers/resolveFolderPickerToggleTarget';
 
 /**
- * FolderPickerDialog state and logic: folder list, selected path, permissions, breadcrumbs.
+ * FolderPickerDialog state and logic: folder list, selected nodeId, permissions, breadcrumbs.
+ * Navigation is nodeId-first: the hook keeps a { nodeId, name } stack so breadcrumbs and
+ * back-navigation work without server ancestor calls.
  */
 export function useFolderPicker({
   open,
-  currentPath,
+  currentNodeId,
   user,
   action,
-  sourceFilePath,
-  sourceFilePaths,
+  sourceNodeId,
+  sourceNodeIds,
 }) {
   const { t } = useTranslation();
-  const [selectedPath, setSelectedPath] = useState(currentPath || '/');
+
+  const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
+  const homeLabel = user?.is_admin ? t('nav.root') : t('nav.home');
+  const sharedLabel = t('nav.shared');
+
+  const [selectedNodeId, setSelectedNodeId] = useState(currentNodeId != null ? currentNodeId : homeNodeId);
+  const [navStack, setNavStack] = useState(() => [
+    { nodeId: homeNodeId ?? null, name: homeLabel },
+  ]);
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const [sharedFolderRoots, setSharedFolderRoots] = useState([]);
-  const [sharedPermissionPaths, setSharedPermissionPaths] = useState(new Set());
+  const [sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
 
   const prevOpenRef = useRef(false);
 
-  const checkWritePermission = useCallback(async (path) => {
+  const getCurrentPathType = useCallback(() => {
+    return navStack[0]?.isSharedRoot ? 'shared' : 'home';
+  }, [navStack]);
+
+  const checkWritePermission = useCallback(async (nodeId) => {
     try {
       if (user?.is_admin) {
         setHasWritePermission(true);
         return;
       }
-      const permission = await folderPickerGateway.checkWritePermission({ path });
-      setHasWritePermission(permission.hasWrite);
+      const permission = await folderPickerGateway.checkWritePermission({ nodeId });
+      setHasWritePermission(permission?.hasWrite === true);
     } catch (error) {
       console.error('Failed to check permission:', error);
-      if (user?.is_admin) {
-        setHasWritePermission(true);
-      } else {
-        setHasWritePermission(path.startsWith(getUserBaseFolder(user)));
-      }
+      setHasWritePermission(Boolean(user?.is_admin));
     }
   }, [user]);
 
   const applySharedPermissionState = useCallback((permissions) => {
     const {
-      sharedPermissionPaths: nextSharedPermissionPaths,
+      sharedPermissionNodeIds: nextSharedPermissionNodeIds,
       sharedFolders,
       sharedFolderRoots: nextSharedFolderRoots,
     } = deriveFolderPickerSharedState({ permissions });
 
-    setSharedPermissionPaths(nextSharedPermissionPaths);
+    setSharedPermissionNodeIds(nextSharedPermissionNodeIds);
     setSharedFolderRoots(nextSharedFolderRoots);
 
     return sharedFolders;
   }, []);
 
-  const loadFolders = useCallback(async (path) => {
+  const loadFolders = useCallback(async (nodeId, pathType = getCurrentPathType()) => {
     setLoading(true);
     try {
-      if (path === '/__shared__') {
+      if (pathType === 'shared' && nodeId == null) {
         const sharedPermissions = await folderPickerGateway.getUserSharedFolderPermissions({ user });
         setFolders(applySharedPermissionState(sharedPermissions));
       } else {
-        const data = await folderPickerGateway.listFolderContents({ path });
+        const data = await folderPickerGateway.listFolderContents({ nodeId });
         const directories = Array.isArray(data) ? data.filter(item => item.type === 'directory') : [];
         setFolders(directories);
       }
@@ -76,17 +85,20 @@ export function useFolderPicker({
     } finally {
       setLoading(false);
     }
-  }, [applySharedPermissionState, user]);
+  }, [applySharedPermissionState, getCurrentPathType, user]);
 
   const loadSharedFolders = useCallback(async () => {
-    if (!user?.id || user.is_admin) return;
+    if (!user?.id || user.is_admin) return new Set();
     try {
       const sharedPermissions = await folderPickerGateway.getUserSharedFolderPermissions({ user });
+      const sharedState = deriveFolderPickerSharedState({ permissions: sharedPermissions });
       applySharedPermissionState(sharedPermissions);
+      return sharedState.sharedPermissionNodeIds;
     } catch (error) {
       console.error('Failed to load shared folders:', error);
       setSharedFolderRoots([]);
-      setSharedPermissionPaths(new Set());
+      setSharedPermissionNodeIds(new Set());
+      return new Set();
     }
   }, [applySharedPermissionState, user]);
 
@@ -94,109 +106,118 @@ export function useFolderPicker({
     const wasClosed = !prevOpenRef.current;
     const isNowOpen = open;
     if (wasClosed && isNowOpen) {
-      const initialPath = currentPath || '/';
-      setSelectedPath(initialPath);
-      loadFolders(initialPath);
+      const initialNodeId = currentNodeId != null ? currentNodeId : homeNodeId;
+      setSelectedNodeId(initialNodeId);
+      setNavStack([{ nodeId: homeNodeId ?? null, name: homeLabel }]);
+
       if (action === 'copy' || action === 'move') {
         if (user?.is_admin) setHasWritePermission(true);
-        else checkWritePermission(initialPath);
+        else checkWritePermission(initialNodeId);
       } else {
         setHasWritePermission(true);
       }
+
       if (user && !user.is_admin && (action === 'copy' || action === 'move')) {
-        loadSharedFolders();
+        loadSharedFolders().then((sharedPermissionNodeIds) => {
+          if (initialNodeId != null && sharedPermissionNodeIds.has(String(initialNodeId))) {
+            setNavStack([{ nodeId: null, name: sharedLabel, isSharedRoot: true }]);
+          }
+        });
       }
+
+      loadFolders(initialNodeId, 'home');
     }
     prevOpenRef.current = open;
-  }, [open, currentPath, action, user, loadFolders, checkWritePermission, loadSharedFolders]);
+  }, [open, currentNodeId, action, user, homeNodeId, homeLabel, sharedLabel, loadFolders, loadSharedFolders, checkWritePermission]);
 
   const handleFolderClick = useCallback((folder) => {
     if (folder.hasReadPermission === false) return;
-    const newPath = folder.path;
-    setSelectedPath(newPath);
-    loadFolders(newPath);
+    const nodeId = folder.nodeId != null ? folder.nodeId : null;
+    const pathType = getCurrentPathType();
+    setSelectedNodeId(nodeId);
+    setNavStack(prev => [...prev, { nodeId, name: folder.basename || folder.name || '' }]);
+    loadFolders(nodeId, pathType);
     if (action === 'copy' || action === 'move') {
       if (folder.hasWritePermission !== undefined) {
         setHasWritePermission(folder.hasWritePermission);
       } else {
-        checkWritePermission(newPath);
+        checkWritePermission(nodeId);
       }
     }
-  }, [action, loadFolders, checkWritePermission]);
+  }, [action, getCurrentPathType, loadFolders, checkWritePermission]);
 
-  const handlePathClick = useCallback((path) => {
-    setSelectedPath(path);
-    loadFolders(path);
+  const handleNodeClick = useCallback((nodeId) => {
+    const pathType = getCurrentPathType();
+    const index = navStack.findIndex((entry) => entry.nodeId === nodeId);
+    if (index < 0) return;
+    setNavStack(navStack.slice(0, index + 1));
+    setSelectedNodeId(nodeId);
+    loadFolders(nodeId, pathType);
     if (action === 'copy' || action === 'move') {
-      if (path === '/__shared__') setHasWritePermission(true);
-      else checkWritePermission(path);
+      if (index === 0 && pathType === 'shared') setHasWritePermission(true);
+      else checkWritePermission(nodeId);
     }
-  }, [action, loadFolders, checkWritePermission]);
+  }, [action, getCurrentPathType, navStack, loadFolders, checkWritePermission]);
 
   const isInvalidDestination = useCallback(() => {
     return isInvalidFolderPickerDestination({
       action,
-      selectedPath,
-      sourceFilePath,
-      sourceFilePaths,
+      selectedNodeId,
+      sourceNodeId,
+      sourceNodeIds,
     });
-  }, [action, selectedPath, sourceFilePath, sourceFilePaths]);
+  }, [action, selectedNodeId, sourceNodeId, sourceNodeIds]);
 
   const handleTogglePath = useCallback((event, newValue) => {
     const toggleTarget = resolveFolderPickerToggleTarget({
       nextPathType: newValue,
       action,
-      user,
-      sourceFilePath,
-      sourceFilePaths,
+      sourceNodeId,
+      sourceNodeIds,
       sharedFolderRoots,
+      homeNodeId,
     });
 
     if (!toggleTarget) {
       return;
     }
 
-    setSelectedPath(toggleTarget.path);
-    loadFolders(toggleTarget.path);
+    const { nodeId, pathType, presetHasWritePermission } = toggleTarget;
+    setSelectedNodeId(nodeId);
+    setNavStack([
+      {
+        nodeId: nodeId ?? null,
+        name: pathType === 'shared' ? sharedLabel : homeLabel,
+        ...(pathType === 'shared' ? { isSharedRoot: true } : {}),
+      },
+    ]);
+    loadFolders(nodeId, pathType);
 
     if (action === 'copy' || action === 'move') {
-      if (typeof toggleTarget.presetHasWritePermission === 'boolean') {
-        setHasWritePermission(toggleTarget.presetHasWritePermission);
+      if (typeof presetHasWritePermission === 'boolean') {
+        setHasWritePermission(presetHasWritePermission);
       } else {
-        checkWritePermission(toggleTarget.path);
+        checkWritePermission(nodeId);
       }
     }
-  }, [action, checkWritePermission, loadFolders, sharedFolderRoots, sourceFilePath, sourceFilePaths, user]);
+  }, [action, checkWritePermission, loadFolders, sharedFolderRoots, sourceNodeId, sourceNodeIds, homeNodeId, homeLabel, sharedLabel]);
 
-  const getCurrentPathType = useCallback(() => {
-    const userBaseFolder = getUserBaseFolder(user);
-    const homePath = user?.is_admin ? '/' : userBaseFolder;
-    if (selectedPath === '/__shared__') return 'shared';
-    if (user?.is_admin) return selectedPath?.startsWith('/') ? 'home' : 'shared';
-    if (selectedPath === homePath || selectedPath.startsWith(homePath + '/')) return 'home';
-    return 'shared';
-  }, [user, selectedPath]);
-
-  const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
-  const homeLabel = user?.is_admin ? t('nav.root') : t('nav.home');
   const breadcrumbs = buildFolderPickerBreadcrumbs({
-    selectedPath,
-    user,
-    homePath,
+    homeNodeId: homeNodeId ?? null,
     homeLabel,
-    sharedPermissionPaths,
-    sharedLabel: t('nav.shared'),
+    sharedLabel,
+    navStack,
   });
 
   return {
-    selectedPath,
-    setSelectedPath,
+    selectedNodeId,
+    setSelectedNodeId,
     folders,
     loading,
     hasWritePermission,
     breadcrumbs,
     handleFolderClick,
-    handlePathClick,
+    handleNodeClick,
     handleTogglePath,
     getCurrentPathType,
     isInvalidDestination,

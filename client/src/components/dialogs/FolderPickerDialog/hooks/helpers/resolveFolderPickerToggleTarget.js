@@ -1,114 +1,63 @@
-import { getParentPath, normalizePath } from '../../../../../utils/pathUtils';
-import { getUserBaseFolder } from '../../../../../utils/userUtils';
-
 function isMoveOrCopyAction(action) {
   return action === 'copy' || action === 'move';
 }
 
-function getNormalizedSourcePaths(sourceFilePath, sourceFilePaths) {
-  const rawSourcePaths = sourceFilePath ? [sourceFilePath] : sourceFilePaths || [];
-  return rawSourcePaths.map((path) => normalizePath(path));
+function getSourceNodeIds(sourceNodeId, sourceNodeIds) {
+  return sourceNodeId != null
+    ? [sourceNodeId]
+    : (Array.isArray(sourceNodeIds) ? sourceNodeIds : []);
 }
 
-function isSourceInHome({ action, user, sourcePaths }) {
-  if (!isMoveOrCopyAction(action) || sourcePaths.length === 0) {
-    return false;
-  }
-
-  if (user?.is_admin) {
-    return sourcePaths.every((path) => path.startsWith('/'));
-  }
-
-  const userBaseFolder = getUserBaseFolder(user);
-  return sourcePaths.some((path) => path.startsWith(userBaseFolder));
-}
-
-function getSharedRootPath(sourcePath, sharedFolderRoots) {
-  if (!sourcePath) {
-    return null;
-  }
-
-  let bestMatch = null;
-  let bestMatchLength = -1;
-
-  (sharedFolderRoots || []).forEach((sharedRoot) => {
-    const normalizedSharedRoot = normalizePath(sharedRoot);
-    const isMatch =
-      sourcePath === normalizedSharedRoot
-      || sourcePath.startsWith(`${normalizedSharedRoot}/`);
-
-    if (isMatch && normalizedSharedRoot.length > bestMatchLength) {
-      bestMatch = normalizedSharedRoot;
-      bestMatchLength = normalizedSharedRoot.length;
-    }
-  });
-
-  if (bestMatch) {
-    return bestMatch;
-  }
-
-  const pathParts = sourcePath.split('/').filter(Boolean);
-  return pathParts.length > 0 ? `/${pathParts[0]}` : null;
-}
-
+/**
+ * Resolve the landing nodeId for home/shared toggle changes without mutating
+ * React state or calling IO.
+ */
 export function resolveFolderPickerToggleTarget({
   nextPathType,
   action,
-  user,
-  sourceFilePath,
-  sourceFilePaths,
+  sourceNodeId,
+  sourceNodeIds,
   sharedFolderRoots,
+  homeNodeId,
 } = {}) {
   if (!nextPathType) {
     return null;
   }
 
-  const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
+  const homeTargetNodeId = homeNodeId ?? null;
+  const sharedRootNodeId = null;
 
   if (!isMoveOrCopyAction(action)) {
     return {
-      path: nextPathType === 'shared' ? '/__shared__' : homePath,
+      nodeId: nextPathType === 'shared' ? sharedRootNodeId : homeTargetNodeId,
       pathType: nextPathType,
       presetHasWritePermission: nextPathType === 'shared' ? true : undefined,
     };
   }
 
-  const sourcePaths = getNormalizedSourcePaths(sourceFilePath, sourceFilePaths);
-  const primarySourcePath = sourcePaths[0] || null;
-  const sourceIsHome = isSourceInHome({ action, user, sourcePaths });
+  const sourceIds = getSourceNodeIds(sourceNodeId, sourceNodeIds).filter((id) => id != null);
+  const primarySourceNodeId = sourceIds[0] ?? null;
 
   if (nextPathType === 'home') {
-    const homeTargetPath =
-      sourceIsHome && primarySourcePath
-        ? getParentPath(primarySourcePath) || homePath
-        : homePath;
-
     return {
-      path: normalizePath(homeTargetPath),
+      nodeId: homeTargetNodeId,
       pathType: 'home',
       presetHasWritePermission: undefined,
     };
   }
 
-  if (sourceIsHome) {
+  const sharedRootIdStrings = (sharedFolderRoots || []).map((id) => String(id));
+  if (primarySourceNodeId != null && sharedRootIdStrings.includes(String(primarySourceNodeId))) {
     return {
-      path: '/__shared__',
+      nodeId: primarySourceNodeId,
       pathType: 'shared',
-      presetHasWritePermission: true,
+      presetHasWritePermission: undefined,
     };
   }
 
-  const sharedRootPath = getSharedRootPath(primarySourcePath, sharedFolderRoots);
-  if (!sharedRootPath) {
-    return null;
-  }
-
-  const sharedTargetPath =
-    primarySourcePath ? getParentPath(primarySourcePath) || sharedRootPath : sharedRootPath;
-
   return {
-    path: normalizePath(sharedTargetPath),
+    nodeId: sharedRootNodeId,
     pathType: 'shared',
-    presetHasWritePermission: undefined,
+    presetHasWritePermission: true,
   };
 }

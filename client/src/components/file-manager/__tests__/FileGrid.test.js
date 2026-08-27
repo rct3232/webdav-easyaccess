@@ -8,9 +8,10 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileGrid from '../FileGrid';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const mockFiles = [
   { path: '/a.txt', basename: 'a.txt', size: 100, lastmod: '2025-01-01T00:00:00Z', type: 'file' },

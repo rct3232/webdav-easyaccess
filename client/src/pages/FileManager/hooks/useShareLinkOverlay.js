@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 import { addShareLinkToMyPermissions, checkMyPermissionForShare } from '../../../services/shareLinkService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
@@ -18,10 +18,18 @@ export function useShareLinkOverlay({
   const [addToSharedStatus, setAddToSharedStatus] = useState('loading');
   const [addToSharedConfirmLoading, setAddToSharedConfirmLoading] = useState(false);
   const [leaveShareConfirmOpen, setLeaveShareConfirmOpen] = useState(false);
+  const [leaveShareConfirmTargetNodeId, setLeaveShareConfirmTargetNodeId] = useState(null);
   const [leaveShareConfirmTargetPath, setLeaveShareConfirmTargetPath] = useState(null);
 
   const addToSharedCheckDoneRef = useRef(null);
   const addToSharedRequestIdRef = useRef(0);
+
+  // Share-directory routing is nodeId-first. linkInfo.nodeId is always present
+  // for directories (Phase 5); '/' is a safe fallback for non-directory links.
+  const shareDirectoryRoute = useMemo(
+    () => (linkInfo?.nodeId != null ? `/files/node/${linkInfo.nodeId}` : '/'),
+    [linkInfo]
+  );
 
   const runSharePermissionBootstrap = useCallback(() => {
     if (!shareToken) return;
@@ -42,7 +50,7 @@ export function useShareLinkOverlay({
 
         if (data.hasSufficientPermission && linkInfo?.isDirectory) {
           setAddToSharedModalOpen(false);
-          navigate(toFilesPath(linkInfo.filePath));
+          navigate(shareDirectoryRoute);
         } else if (data.hasSufficientPermission) {
           setAddToSharedModalOpen(false);
         } else {
@@ -53,7 +61,7 @@ export function useShareLinkOverlay({
         if (myRequestId !== addToSharedRequestIdRef.current) return;
         setAddToSharedModalOpen(false);
       });
-  }, [shareToken, linkInfo, navigate]);
+  }, [shareToken, linkInfo, navigate, shareDirectoryRoute]);
 
   useEffect(() => {
     if (!isShareLinkMode || !user || !shareToken) return;
@@ -71,34 +79,46 @@ export function useShareLinkOverlay({
       await addShareLinkToMyPermissions(shareToken);
       setAddToSharedModalOpen(false);
       if (linkInfo?.isDirectory) {
-        navigate(toFilesPath(linkInfo.filePath));
+        navigate(shareDirectoryRoute);
       }
     } catch (err) {
       showError(getServerErrorDisplay(err?.response?.data, t) || err?.message || t('dialogs.addToSharedError'));
     } finally {
       setAddToSharedConfirmLoading(false);
     }
-  }, [shareToken, linkInfo, navigate, showError, t]);
+  }, [shareToken, linkInfo, navigate, showError, t, shareDirectoryRoute]);
 
   const openAddToSharedModal = useCallback(() => {
     runSharePermissionBootstrap();
   }, [runSharePermissionBootstrap]);
 
-  const handleLeaveSharePathClick = useCallback((path) => {
-    setLeaveShareConfirmTargetPath(path);
+  const handleLeaveSharePathClick = useCallback((target) => {
+    if (typeof target === 'number') {
+      setLeaveShareConfirmTargetNodeId(target);
+      setLeaveShareConfirmTargetPath(null);
+    } else {
+      setLeaveShareConfirmTargetNodeId(null);
+      // null/undefined targets (e.g. admin "home" with no root node) resolve to the explorer home route.
+      setLeaveShareConfirmTargetPath(target == null ? '/' : target);
+    }
     setLeaveShareConfirmOpen(true);
   }, []);
 
   const handleLeaveShareConfirm = useCallback(() => {
-    if (!leaveShareConfirmTargetPath) return;
+    if (leaveShareConfirmTargetNodeId == null && !leaveShareConfirmTargetPath) return;
 
-    navigate(toFilesPath(leaveShareConfirmTargetPath));
+    if (leaveShareConfirmTargetNodeId != null) {
+      navigate(`/files/node/${leaveShareConfirmTargetNodeId}`);
+    } else {
+      navigate(toFilesPath(leaveShareConfirmTargetPath));
+    }
     setLeaveShareConfirmOpen(false);
+    setLeaveShareConfirmTargetNodeId(null);
     setLeaveShareConfirmTargetPath(null);
     if (typeof setDrawerOpen === 'function') {
       setDrawerOpen(false);
     }
-  }, [leaveShareConfirmTargetPath, navigate, setDrawerOpen]);
+  }, [leaveShareConfirmTargetNodeId, leaveShareConfirmTargetPath, navigate, setDrawerOpen]);
 
   return {
     addToSharedModalOpen,
@@ -109,6 +129,8 @@ export function useShareLinkOverlay({
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    leaveShareConfirmTargetNodeId,
+    setLeaveShareConfirmTargetNodeId,
     leaveShareConfirmTargetPath,
     setLeaveShareConfirmTargetPath,
     handleLeaveSharePathClick,

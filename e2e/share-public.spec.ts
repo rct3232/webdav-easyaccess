@@ -4,6 +4,7 @@ import { createPublicShareFixtures, type PublicShareFixtures } from './helpers/s
 import { gotoAsAnonymousShare, gotoAsLoggedInShare } from './helpers/auth';
 import { openItemActions } from './helpers/explorer';
 import { fileItem } from './helpers/files';
+import { nodeUrl } from './helpers/resolvePath';
 
 const laterWavesEnabled = process.env.E2E_LATER_WAVES === '1';
 
@@ -19,7 +20,7 @@ test.describe('public share link', () => {
 
     test.skip(
       !laterWavesEnabled && isP2Deferred,
-      'P2 share follow-up runs only when E2E_LATER_WAVES=1 (after share-public + bulk P0 are stable).',
+      'P2 share follow-up runs only when E2E_LATER_WAVES=1 (after share-public + bulk P0 are stable).'
     );
   });
 
@@ -47,7 +48,9 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('file-action-share')).toHaveCount(0);
   });
 
-  test('E2E-SHARE-004: Anonymous user can open login flow from shared directory', async ({ page }) => {
+  test('E2E-SHARE-004: Anonymous user can open login flow from shared directory', async ({
+    page,
+  }) => {
     await gotoAsAnonymousShare(page, fixtures.anonDir.token);
 
     await page.getByTestId('share-link-fab').click();
@@ -57,19 +60,39 @@ test.describe('public share link', () => {
     await expect(page.locator('input[name="password"]')).toBeVisible();
   });
 
-  test('E2E-SHARE-005: Logged-in user can add shared content to own permissions', async ({ page }) => {
+  test('E2E-SHARE-005: Logged-in user can add shared content to own permissions', async ({
+    page,
+  }) => {
     await gotoAsLoggedInShare(page, fixtures.addDir.token, 'user1', fixtures.approvedUserSuffix);
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.addDir.dirName}(?:/.*)?$`));
+    await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.addDir.nodeId}$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     await expect(fileItem(page, fixtures.addDir.innerFilePath)).toBeVisible();
+
+    // Absence regression (class A/E): add-to-my-permissions makes the shared node the
+    // shared entry under `__shared__`, while the user's own home stays un-polluted.
+    await page.goto('/files/__shared__');
+    await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
+    await expect(page.locator(`[data-file-node-id="${fixtures.addDir.nodeId}"]`)).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.goto(nodeUrl(fixtures.approvedUserHomeNodeId));
+    await expect(page.locator(`[data-file-node-id="${fixtures.addDir.nodeId}"]`)).toHaveCount(0);
   });
 
-  test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular `/files` path', async ({ page }) => {
-    await gotoAsLoggedInShare(page, fixtures.transitionDir.token, 'user1', fixtures.approvedUserSuffix);
+  test('E2E-SHARE-006: Successful add-to-my-permissions transitions to regular `/files` path', async ({
+    page,
+  }) => {
+    await gotoAsLoggedInShare(
+      page,
+      fixtures.transitionDir.token,
+      'user1',
+      fixtures.approvedUserSuffix
+    );
 
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-confirm').click();
@@ -77,6 +100,19 @@ test.describe('public share link', () => {
     await expect(page).toHaveURL(/\/files(?:\/.*)?$/);
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     await expect(fileItem(page, fixtures.transitionDir.innerFilePath)).toBeVisible();
+
+    // Absence regression (class A/E): the added node becomes the shared entry and the
+    // user's own home stays un-polluted.
+    await page.goto('/files/__shared__');
+    await expect(page).toHaveURL(/\/files\/__shared__(?:\/.*)?$/);
+    await expect(
+      page.locator(`[data-file-node-id="${fixtures.transitionDir.nodeId}"]`)
+    ).toBeVisible({ timeout: 20_000 });
+
+    await page.goto(nodeUrl(fixtures.approvedUserHomeNodeId));
+    await expect(
+      page.locator(`[data-file-node-id="${fixtures.transitionDir.nodeId}"]`)
+    ).toHaveCount(0);
   });
 
   test('E2E-SHARE-007: Leaving share scope requires confirmation', async ({ page }, testInfo) => {
@@ -85,7 +121,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible();
     await page.getByTestId('confirm-dialog-cancel').click(); // close add-to-my-permissions modal
 
-    if (testInfo.project.name === 'mobile') {
+    if (testInfo.project.name.endsWith('-mobile')) {
       const toggle = page.locator('button[title="Open folder tree"]');
       if (await toggle.count()) {
         await toggle.click();
@@ -98,7 +134,7 @@ test.describe('public share link', () => {
     await expect(page.getByTestId('confirm-dialog-confirm')).toBeVisible(); // leave-share confirm
     await page.getByTestId('confirm-dialog-confirm').click();
 
-    await expect(page).toHaveURL(new RegExp(`/files/${fixtures.approvedUsername}(?:/.*)?$`));
+    await expect(page).toHaveURL(new RegExp(`/files/node/${fixtures.approvedUserHomeNodeId}$`));
     await expect(page.getByTestId('share-link-fab')).toHaveCount(0);
     // After leaving share scope, the user is taken back to their own explorer home;
     // the shared directory path should no longer be part of the visible listing.
@@ -118,7 +154,7 @@ test.describe('public share link', () => {
 
     const fileLocator = page.locator(`[data-file-path="${fixtures.anonDir.innerFilePath}"]`);
 
-    if (testInfo.project.name === 'desktop') {
+    if (testInfo.project.name.endsWith('-desktop')) {
       // Desktop: 더블클릭으로 PreviewDialog 열림
       await fileLocator.dblclick();
     } else {
@@ -131,4 +167,3 @@ test.describe('public share link', () => {
     await expect(dialog).toBeVisible();
   });
 });
-

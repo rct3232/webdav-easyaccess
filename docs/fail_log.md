@@ -27,3 +27,528 @@
 - **Area:** `client/src/services/__tests__/apiClient.test.js` and others
 - **Classification:** Case B (Test Error — pre-existing environmental issues)
 - **Observed failure:** Timeout errors (`Exceeded timeout of 5000 ms`) in 403 handling tests. No recent commits modify client code; these are pre-existing flaky tests unrelated to current changes.
+
+---
+
+## 2026-07-31 — Phase 3 verification: createNode closure-table double-population
+
+- **Area:** `server/store/fileNodesStore.js`, `server/domains/permissions/routes/__tests__/{permissions,permissionRequests}.test.js`
+- **Classification:** Case A (Source Error — `createNode` auto-population violates documented architecture) + Case B (route tests bypassed the service-layer node-creation flow)
+- **Summary:** `fileNodesStore.createNode` contained an uncommitted auto-population block that inserted `node_ancestors` rows (self + parent chain) while swallowing errors (`catch (e) { /* ignore */ }`). `fileNodeService.createFile/createDirectory` already calls `buildAncestorsForNode` right after `createNode`, so the auto-population was 100% redundant and caused a `SQLITE_CONSTRAINT: UNIQUE constraint failed: node_ancestors.ancestor_id, node_ancestors.descendant_id` at runtime.
+- **Observed failure:** 29 tests failed across 3 suites — `fileNodesStore.test.js` (7), `fileNodeService.test.js` (15), `uploadService.test.js` (7). Every `createFile`/`createDirectory` call threw via `buildAncestorsForNode` (`service/_ancestryHelper.js:17`).
+- **Spec cross-check:** `docs/spec/server/store/fileNodesStore.md:41` documents `createNode` as a pure INSERT (no ancestor maintenance); `_ancestryHelper.md:32` defines `buildAncestorsForNode` as the single closure-table builder; `fileNodeService.md:50` documents `createNode + buildAncestorsForNode` in one transaction. The auto-population violated all three.
+- **Action taken:** Removed the auto-population block from `fileNodesStore.createNode` (restored pure-INSERT contract). Updated the two permission route test files to create nodes via `fileNodeService.createDirectory/createFile` (the documented production path) instead of raw `fileNodesStore.createNode`, so closure-table rows are properly established. All 15 Phase 2/3 suites (287 tests) pass. Remaining failures in `files`, `folders`, `auth`, `admin`, `recentFiles`, `shareLinks`, and legacy `Permission`/`PermissionRequest`/`ShareLink` model suites are the pre-existing "Expected Test Failures After Phase 0" (PLAN.md) pending Phase 4/5 migration — verified identical with and without the auto-population block.
+
+---
+
+## 2026-08-04 — Wave 4 Fix Plan: Post-Migration Incidents
+
+### G1 — downloadService factory: `checkFolderPermission` used instead of `checkFilePermission`
+
+- **Area:** `server/domains/files/services/downloadService.js`, `createDownloadService` factory
+- **Classification:** Case A (Source Error)
+- **Summary:** The new `createDownloadService` factory wired both directory-entry and file-inclusion permission gates to `aclService.checkFolderPermission`. File-level direct permissions were silently ignored because `checkFolderPermission` queries the closure table for folder ancestors, which yields false-negatives for leaf files that have a file-scoped READ grant.
+- **Observed failure:** Download of individually shared files returned empty archives or permission-denied entries despite a correct direct file-level permission in `permissionStore`. No runtime error — the gate simply returned `false`.
+- **Root cause:** Copy-paste from the directory-entry gate (`canEnterDirectory`) to the file-inclusion gate (`canIncludeFile`). Both assigned `checkFolderPermission`; the latter must call `checkFilePermission` to exercise the file-level direct-permission path.
+- **Action taken:** Replaced `checkFolderPermission` with `checkFilePermission` in the non-share `canIncludeFile` assignment inside the factory. Commit: `a27de6c`.
+
+### G2 — Route tests still imported removed `grantTestPermission`
+
+- **Area:** `server/domains/files/routes/__tests__/*.test.js`, `server/test-utils.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** 23 of 38 route test files across download-multiple endpoints (`files.test.js`, `folders.test.js`) imported the removed `grantTestPermission` helper from `testUtils`. The function was deleted during W4.4 PermissionFacade cleanup but import statements were not updated in all test files.
+- **Observed failure:** HTTP 500 on every download-multiple route test — `TypeError: grantTestPermission is not a function` at module load, causing the entire test suite to crash before reaching assertions.
+- **Root cause:** W4.4 replaced `grantTestPermission(path-based)` with `grantTestPermissionByNodeId(nodeId-based)` in `test-utils.js`, but 23 route test files retained the old import and call pattern. The rename was not propagated during batch migration.
+- **Action taken:** Migrated all file/folder route tests to use `grantTestPermissionByNodeId` with nodeId payloads. Commit: `1d86bc9`.
+
+### G3 — fileService mock drift: missing stubs for new factory methods
+
+- **Area:** `client/src/services/__tests__/fileService.test.js`, Jest manual mocks
+- **Classification:** Case B (Test Error)
+- **Summary:** The `createDownloadService` factory introduced two new dependency methods — `ensureExclusiveBlob` and `downloadBlobWebdav` — that were not present in the fileService Jest mock. When tests exercised the S3 + overwrite download path, `mockFileService.ensureExclusiveBlob` was `undefined`, producing a `TypeError: ... is not a function`.
+- **Observed failure:** 2 client test suites failed with `TypeError: mockFileService.ensureExclusiveBlob is not a function` and `TypeError: blobStorageService.downloadBlobWebdav is not a function`.
+- **Root cause:** Mock definitions lagged behind implementation. The factory pattern in W4.2 added new method calls that were not reflected in the corresponding Jest mocks.
+- **Action taken:** Added `ensureExclusiveBlob` stub to fileService mock (`8b4c482`) and `downloadBlobWebdav` stub to blobStorageService mock (`6c60188`).
+
+### G4 — Client fixtures: path strings passed to nodeId-based implementations
+
+- **Area:** `client/src/services/__tests__/fileService.test.js`, `useBulkOperations.test.js`, `useExplorerCommands.test.js`, `useFileOperations.test.js`, `useDragAndDrop.test.js`, `useDropToUpload.test.js`, `usePreviewLoader.test.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** 22 client tests constructed fixture objects with path strings (`{ path: '/alice/file.txt' }`) but the implementations under test now expect nodeId payloads (`{ nodeId: 42 }`). The mismatch caused silent failures — the server mock received a string where it expected an integer, producing no-op or wrong-key lookups in shared folder UI flows.
+- **Observed failure:** Tests appeared to pass structurally (no crashes) but assertions on returned data were empty arrays or null because nodeId-based lookups failed against path-string keys. Shared folder UI tests showed blank file lists despite correct permissions being granted.
+- **Root cause:** W4.10 migrated the service-layer functions from path to nodeId, but 22 test files retained path-shaped fixtures. The migration was not atomic — implementation moved first, tests followed in a second commit.
+- **Action taken:** Rewrote all client file-layer test fixtures to use nodeId payloads matching the migrated implementations (`a98bd5a`). Removed dead path fixtures from `useExplorerCommands` test that referenced paths no longer resolved by the hook (`e2c0eb5`).
+
+### G5 — Shared gateways runtime break: Breadcrumb reads removed `perm.folder_path`, MSW returns empty arrays
+
+- **Area:** `client/src/components/Breadcrumb.js`, `client/src/mocks/handlers.js`, `client/src/utils/__tests__/userUtils.test.js`
+- **Classification:** Case A (Source Error) + Case B (Test Error)
+- **Summary:** Three independent runtime breaks converged: (1) `Breadcrumb.js` read `perm.folder_path` which was removed in the nodeId migration, causing `undefined` breadcrumb segments; (2) MSW handlers for file-list endpoints returned empty arrays because they matched on path-based URL params that no longer arrived; (3) `userUtils` tests consumed path-shaped fixture data against nodeId-based utility functions.
+- **Observed failure:** Breadcrumb rendered blank/empty segments in shared folder views. MSW mock server returned `[]` for all file-list requests during client test execution, making every shared-folder UI test fail with "no files found" assertions. UserUtils tests threw type errors comparing strings against integers.
+- **Root cause:** W4.8/W4.10 migrated gateway interfaces to nodeId but missed three consumer sites: the Breadcrumb component's permission shape reader, the MSW handler URL param matchers, and the userUtils test fixture data shapes.
+- **Action taken:** Migrated `Breadcrumb.js` to read nodeId-based permission payloads (`perm.nodeId`, resolved display path via `getNodePath`). Updated MSW handlers to match nodeId query params and return nodeId-shaped responses. Rewrote userUtils test fixtures from path strings to nodeId integers. Commit: `888e2a5`. Implementation migration for client file-layer to complete nodeId payload contract: `e01f6ff`.
+
+---
+
+## 2026-08-05 — Phase 4 Post-Verification: Full Test Suite Audit
+
+### Server: 14 failed suites / 78 failed tests / 1011 passed / 1090 total
+
+| Suite | Failures | Classification | Root Cause |
+|---|---|---|---|
+| `domains/files/routes/__tests__/files.test.js` | ~18 | Test migration incomplete (Task 4.9) | Route tests not fully migrated from WebDAV mock to fileNodeService + blobStorageService; S3 config missing in default mode |
+| `domains/files/routes/__tests__/folders.test.js` | ~6 | Test migration incomplete (Task 4.9) | Same as files.test.js |
+| `domains/recentFiles/__tests__/recentFiles.test.js` | 6 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
+| `domains/recentFiles/__tests__/recentFilesStore.test.js` | 8 | Phase 5 scope | Pending nodeId migration in Phase 5 Task 5.x |
+| `domains/sharing/routes/__tests__/shareLinks.test.js` | ~6 | Phase 5 scope | `grantTestPermission` removed; sharing routes pending nodeId migration |
+| `domains/sharing/routes/__tests__/sharePublic.test.js` | ~4 | Phase 5 scope | Same as shareLinks.test.js |
+| `domains/sharing/__tests__/shareLinkStore.test.js` | 5 | Phase 5 scope | Pending nodeId migration |
+| `models/__tests__/ShareLink.test.js` | 7 | Phase 5 scope | Legacy path-based model tests |
+| `models/__tests__/PermissionRequest.test.js` | 3 | Phase 5 scope | Legacy path-based model tests |
+| `domains/auth/routes/__tests__/auth.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env (no PostgreSQL configured) |
+| `domains/admin/routes/__tests__/admin.test.js` | 1 | Environmental | `postgresqlNotConfigured` in test env |
+| `infrastructure/__tests__/lockManager.test.js` | 5 | Environmental | `postgresqlNotConfigured` in test env |
+| `infrastructure/adapters/metadata/__tests__/settingsStore.test.js` | 3 | Pre-existing bug | Double-serialization bug in Settings model (unrelated to Phase 4) |
+| `models/__tests__/Settings.test.js` | 3 | Pre-existing bug | Same double-serialization bug |
+
+### Client: FileManager.test.js — 7 failures
+
+- **Area:** `client/src/components/__tests__/FileManager.test.js`
+- **Classification:** Test migration incomplete (Task 4.8i)
+- **Summary:** UI layer not yet migrated to nodeId payloads. FileManager tests still construct path-based file objects but the underlying services now expect nodeId keys.
+
+### Summary
+
+- **Phase 4 integration suite:** 41/41 pass (isolated, mocked boundaries)
+- **Total failures:** 78 server + 7 client = 85
+- **Failures attributable to Phase 4 incomplete migration:** ~24 (files.test.js + folders.test.js + FileManager.test.js)
+- **Failures in Phase 5 scope:** ~44 (sharing, recentFiles, legacy models)
+- **Environmental (postgresqlNotConfigured):** 11
+- **Pre-existing (Settings serialization):** 6
+
+---
+
+## 2026-08-05 — Phase 4 Post-Verification Fixes (fix/phase4-alignment)
+
+### G6 — Batch worker circular dependency: `getComposition is not a function`
+
+- **Area:** `server/domains/files/services/batchOperationService.js`, `server/service/composition.js`
+- **Classification:** Case A (Source Error)
+- **Summary:** `batchOperationService.js:4` destructured `getComposition` from `composition.js` at module load. Because `composition.js:10` itself requires `batchOperationService`, a circular require occurs: when `composition.js` is loaded first (via `routes/crud.js`), `batchOperationService`'s top-level destructure runs while `composition.js`'s `module.exports` is still empty → `getComposition` bound to `undefined`.
+- **Observed failure:** Every `POST /api/files/batch-move|batch-delete|batch-copy` returned 202+jobId immediately, but the `setImmediate` worker crashed with `TypeError: getComposition is not a function` (caught and logged via `console.error` at `batchOperationService.js:71`). Jobs never reached `completed`. Route tests passed because they assert only the 202 API contract, not the worker outcome — the bug was invisible to CI.
+- **Root cause:** Circular CommonJS require between composition root and the batch worker; destructuring at module scope captures the incomplete export object.
+- **Action taken:** Moved the `getComposition` require inside `_processBulkJob` (deferred to runtime, by which time `composition.js` is fully loaded). Also made `scheduleBulkWorker` honor the pre-existing `WEA_SKIP_BULK_WORKER=1` test flag (set by `files.test.js`/`files.integration.test.js` but previously unused) so the now-functional worker doesn't race Jest teardown. Verified with a real end-to-end job that reaches `completed`. Commit: `fix/phase4-alignment`.
+
+### G7 — Path-based conflict resolver removed (Task 4.8 "No path-based compatibility layer")
+
+- **Area:** `server/domains/files/services/conflictResolver.js`, `server/domains/files/routes/crud.js`, `server/domains/files/routes/__tests__/files.test.js`
+- **Classification:** Case A (Source Error — stale path-based branch)
+- **Summary:** `conflictResolver.js` retained path-based `getConflicts` / `checkConflictsRecursive` / `handleSingleOpConflict` operating on raw WebDAV remote listing via `createFileStoreAdapter()`. `crud.js` `/check-conflicts` branched to them when operations lacked nodeId — contradicting the "No path-based compatibility layer" end-state.
+- **Action taken:** Deleted the three path-based functions (+ helper `isDirectoryPath`, 246→64 lines). `crud.js` now always calls `getConflictsByNodeIds`. Route test updated to send `{ sourceNodeId, destinationParentNodeId }` payloads.
+
+### G8 — Client file-layer path remnants (Task 4.8i UI completion)
+
+- **Area:** `client/src/services/fileService.js`, `explorerGateway.js`, `pages/FileManager/hooks/useFileManager.js`, `FileManager.js`, `components/dialogs/CreateFolderDialog.js`, `mocks/handlers.js`
+- **Classification:** Case A (Source Error — path-based UI broken against nodeId-only server)
+- **Summary:** `/api/files/list` and `/api/folders/create` became nodeId-only, but the client UI still navigated by path (`listDirectory({ path })`, `createFolder(currentPath)`, `listByPath`), silently broken against the real server. MSW handlers accepted both shapes, masking the breakage in tests.
+- **Action taken:** `listFiles` path option and `listByPath` removed; `listDirectory({ nodeId })` nodeId-only; `useFileManager` tracks `currentNodeId` with a session path→nodeId map; `createFolder(parentNodeId, name)`; MSW handlers nodeId-only. Known limitations documented in the spec: deep-link below the resolved tree lists root until navigation; root-view create sends `parentNodeId: null` (server 400, pre-existing no-home-nodeId limitation).
+
+### Post-fix verification (full suite, 2026-08-05)
+
+- **Server:** 12 failed suites / 55 failed / 1032 passed / 1090 total — `files.test.js` (Task 4.9) and `folders.test.js` now pass; remaining failures are Phase 5 scope (recentFiles, sharing, legacy models), environmental (`postgresqlNotConfigured`), or the pre-existing Settings serialization bug. Identical to pre-change baseline → zero regressions.
+- **Client:** 8 suites / 23 tests still fail, verified byte-identical on base commit `503678d` (git stash comparison) → pre-existing, out of Phase 4 scope. FileManager/useFileManager/CreateFolderDialog/service-layer suites (231 tests) pass.
+
+---
+
+## 2026-08-05 — Gap Closure C1.5: stale path fixtures in 3 client test suites
+
+- **Area:** `client/src/services/__tests__/sharePermissionSaveUseCase.test.js`, `client/src/services/__tests__/shareReviewUseCase.test.js`, `client/src/utils/__tests__/buildPendingRequestState.test.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** Three suites asserted path-based payloads (`folderPath`/`includeSubfolders`, `folder_path`/`file_path`, `targetPath`) against nodeId-based implementations left stale after the Phase 4.8b nodeId migration. The source implementations are correct; only the fixtures were stale. `sharePermissionSaveUseCase`/`shareReviewUseCase` now take `initialNodePermissions`/`nodePermissions` and call `revokePermission({ userId, nodeId })` / `grantPermission({ userId, nodeId, permission })`; `buildPendingRequestState` matches requests by `request.node_id === targetNodeId`.
+- **Observed failure:** Revoke/grant assertions never matched (expected `folderPath` payloads vs actual `nodeId` payloads); pending-state lookups returned the empty state because request fixtures carried `folder_path`/`file_path` while the matcher read `node_id`.
+- **Action taken:** Updated the 3 suites to nodeId payloads (`nodeId` keys in permission Maps, `node_id` request fixtures, `targetNodeId`), matching the implemented call shapes. Implementations unchanged.
+- **Verification:** All three suites pass via `react-scripts test` (gap closure C1.5).
+
+---
+
+## 2026-08-05 — Gap Closure C1.7: RCA of remaining failing client suites
+
+### FilePreviewDialog.test.js — Case B (Test Error — stale path fixtures)
+
+> **Correction (2026-08-05, audit A2):** the "implementation is correct" claim in this entry was **inaccurate**. It covered the preview *loader* calls (`getFileBlob`/`getVideoPreviewStreamUrl`), but the *download* action at `FilePreviewDialog.js:207` still passed `targetFile.path` to nodeId-only `downloadFile` (server 400). The second test file (`FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx`) asserted the buggy path call and passed while encoding the bug. Fixed under audit A2 (see entry below).
+
+- **Area:** `client/src/components/dialogs/__tests__/FilePreviewDialog.test.js`
+- **Classification:** Case B (Test Error)
+- **Summary:** 3 of 9 tests asserted path-string arguments (`mockGetFileBlob('/b.jpg', ...)`, `mockGetVideoPreviewStreamUrl('/v.mp4', ...)`) against a nodeId-based preview loader. After the Phase 4.8b nodeId migration, `usePreviewLoader` (`client/src/components/dialogs/FilePreviewDialog/hooks/usePreviewLoader.js:24,31`) calls `getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken })` and `getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal })`, and `fileService.getFileBlob(nodeId)` / `getVideoPreviewStreamUrl(nodeId)` (`fileService.js:57,79`) are nodeId-based. The fixtures carried only `path`, so the mock was invoked with `nodeId === undefined`. The implementation is correct; only the fixtures/assertions were stale.
+- **Observed failure:** `expect(jest.fn()).toHaveBeenCalledWith(...)` — Expected `"/b.jpg"`/`"/v.mp4"`, Received `undefined` with the options object (`{"inline": true, "shareToken": undefined, "signal": {}}` / `{"shareToken": undefined}`).
+- **Spec cross-check:** `docs/spec/client/components/dialogs/FilePreviewDialog.md` §2.4/2.9 specify getFileBlob and ticket-based streaming URL for video preview; the preview payload key is the file `nodeId` (gallery index matching remains `file.path`-keyed per §2.6 in `useGalleryNavigation.js:19`). No spec violation by the source.
+- **Action taken:** Added `nodeId` to all file fixtures in the test and updated the `getFileBlob`/`getVideoPreviewStreamUrl` call assertions to nodeId (`20` for the video fixture, `2` for the non-first gallery file, `1` never loaded). `path` retained in fixtures for gallery-index matching. Implementation unchanged.
+- **Verification:** `CI=true npx react-scripts test --watchAll=false src/components/dialogs/__tests__/FilePreviewDialog.test.js` — 9/9 pass.
+
+### FileActionSheet.test.js — Out of scope (not a stale-path/nodeId issue); spec/implementation behavior conflict
+
+- **Area:** `client/src/components/file-manager/__tests__/FileActionSheet.test.js`
+- **Classification:** Out of scope for C1.7 (spec/implementation behavior conflict; not nodeId-related). Do not change the test.
+- **Summary:** 4 of 8 tests fail for reasons unrelated to the nodeId migration: (1) `calls onDownload and onClose when download clicked` — the fixture file lacks `hasReadPermission`, so the download row is rendered `disabled` (`FileActionSheet.js:138`) and the click is a no-op (`onDownload` called 0 times). (2–4) `hides rename/move/delete when !fileWritePermission` — the component renders rename/move/delete rows **disabled** (`FileActionSheet.js:153,168,214`), not hidden, when write permission is absent; the tests assert the rows are absent from the document.
+- **Observed failure:** `Expected number of calls: 1, Received number of calls: 0` for `onDownload`; `expected document not to contain element, found <span ...>Rename</span>` (likewise Move, Delete) after passing `hasWritePermission={false}`.
+- **Spec cross-check:** `docs/spec/client/components/file-manager/FileActionSheet.md` §2.6/§2.7 state "Rename, move, delete only when fileWritePermission" / "hidden when !fileWritePermission". The implementation deliberately disables instead of hiding, and this is the established pattern: the desktop counterpart `FileContextMenu.js:66-136` applies the identical `disabled={!file.hasReadPermission}` / `disabled={!fileWritePermission}` semantics, and the spec §2.6 E2E selector contract requires the action rows (e.g. rename/delete) to be present in the DOM with stable `data-testid`. The spec's "hidden" wording is stale relative to the implemented (and consistently applied) disable-state design.
+- **Action taken:** None (test not changed). Fixing the tests to assert the disabled state (or removing the fixtures' permission fields) is a product/spec decision: either align `FileActionSheet.md` §2.6/§2.7 to the disable-state design and update the tests accordingly (recommended, consistent with FileContextMenu + E2E selector contract), or change the source to hide the rows (would contradict the sibling component). Both are outside the C1.7 nodeId-migration scope. Recording this incident per AGENTS.md §3.2; **recommendation**: update the spec to document the disable (not hide) behavior and rewrite the three hide-tests to assert `disabled` on the action rows, plus add `hasReadPermission: true` to the shared fixture for the download test.
+- **Verification:** Suite still fails 4/8 (unchanged baseline) — expected, per decision not to modify.
+
+---
+
+## 2026-08-05 — Audit wave 1 (GAP §10 A1–A5): live path-payload bugs
+
+### A1 — Single-file delete sent `file.path` to nodeId-only `batch-delete`
+
+- **Area:** `client/src/components/file-manager/FileManagerView.js:745,890`, `client/src/pages/FileManager/hooks/useExplorerCommands.js:437-442`
+- **Classification:** Case A (Source Error)
+- **Summary:** Desktop context-menu delete and mobile action-sheet delete called `openBulkDeleteDialog([file.path])`; `handleBulkDeleteConfirm` forwards those values as `nodeIds` to `batchDeleteFiles` → `POST /files/batch-delete` with path strings → server `parseNodeId` → 400.
+- **Action taken:** Both call sites → `[file.nodeId]` / `[actionSheetFile.nodeId]`.
+- **Verification:** `FileManagerView.test.js`, `useExplorerCommands.test.js` pass.
+
+### A2 — Preview download sent `targetFile.path` to nodeId-only `downloadFile` (corrects C1.7 record)
+
+- **Area:** `client/src/components/dialogs/FilePreviewDialog/FilePreviewDialog.js:207`, `FilePreviewDialog/__tests__/FilePreviewDialog.test.jsx:193`
+- **Classification:** Case A (Source Error). Corrects the prior C1.7 record which claimed "implementation is correct" — that RCA covered the preview *loader* calls only.
+- **Action taken:** `FilePreviewDialog.js:207` → `downloadFile(targetFile.nodeId, …)`; both preview test files updated to nodeId fixtures/assertions.
+- **Verification:** `FilePreviewDialog.test.js` (9) + `FilePreviewDialog.test.jsx` (7) pass.
+
+### A3 — Pending-permission-request matcher keyed on non-existent `node_id`
+
+- **Area:** `client/src/utils/buildPendingRequestState.js:21,26`
+- **Classification:** Case A (Source Error)
+- **Summary:** Matcher read `request.node_id`; real server (`permissionRequestStore.js:34`) and MSW (`handlers.js:631`) return `file_node_id`. C1.5 aligned test fixtures to the implementation's wrong key → tests passed, live pending state never matched.
+- **Action taken:** Matcher → `request.file_node_id`; test + `useSharedManage.test.js` fixtures updated.
+- **Verification:** `buildPendingRequestState.test.js`, `useSharedManage.test.js` pass.
+
+### A4 — Grid/list/detail React keys path-keyed
+
+- **Area:** `FileGrid.js:80`, `FileList.js:71`, `FileDetail.js:104`, `FileGridItemContainer.js:52`, `FileItem.js:52`, `FileDetailRow.js:60`
+- **Classification:** Case B (Task 4.8i "keyed by file.nodeId" not fully applied)
+- **Action taken:** All six list/item keys → nodeId-primary `getEntryKey(file)`.
+- **Verification:** FileGrid/FileList/FileDetail suites pass.
+
+---
+
+## 2026-08-05 — Audit wave 2 (GAP §10.6 C1–C11): cross-cutting contract breaks masked by MSW
+
+A five-sweep audit (client path remnants, server residual paths, client↔server contract, docs drift,
+test drift) found the A1–A6 wave missed client↔server contract breaks that unit tests masked because MSW
+`handlers.js` mirrors the *client's* expectations instead of the *server's* responses. All classified
+Case A (Source Error — client), fixed in one wave; C11 (MSW mask) is Case B (test env).
+
+### C1 — `/files/list` response shape mismatch (`name/display_path/mimeType/modifiedAt` vs `basename/path/mime/lastmod`)
+
+- **Area:** `client/src/services/explorerGateway.js`; `server/domains/files/services/fileService.js:53-66`
+- **Classification:** Case A + Case B (MSW returned client keys, masking)
+- **Summary:** Server sends `{name, display_path, mimeType, modifiedAt}`; client renderers read `file.basename/path/lastmod/mime` with no normalization → blank names/paths/dates against a real server; e2e `[data-file-path]` selectors break. MSW `handlers.js:105-111` returned client keys, so all tests passed.
+- **Action taken:** `normalizeFileEntry` in `explorerGateway.listDirectory` (server→client mapping); MSW list/rename handlers → server shapes; `useFileOperations.js` rename handling → server `newName`.
+- **Verification:** explorerGateway, fileService, useFileManager, FileGrid/List/Detail, FileManagerView, FileManager suites pass.
+
+### C2 — `explorerGateway.js:42` reads `permission.node_id`, server returns `nodeId`
+
+- **Classification:** Case A. `nodeId` used; admin-folder flag works. `explorerGateway.test.js` passes.
+
+### C3 — `ConflictResolveDialog` reads `conflict.path` (server sends `{name}`)
+
+- **Classification:** Case A — TypeError crash on real conflicts. Renders `conflict.name`; fixtures → server shape. 6/6 pass.
+
+### C4 — `FilePropertiesDialog` sends `file.path` as nodeId + `false` as fileNodeId arg
+
+- **Classification:** Case A — properties panel 400/404 for every file. nodeId-based calls; property rows fall back to `mimeType`/`modifiedAt`/`display_path`. 9/9 pass.
+
+### C5 — Legacy ShareDialog v1 path-based and live in MyPage
+
+- **Classification:** Case A — share/review/admin saves 400 or silently persist nothing.
+- **Action taken:** nodeId-keyed migration of `useShareDialog.js` (folder tree, permission Maps, root from `folderNodeId`/`targetNodeId`/`permissionRequest.file_node_id`/`resolvePath` fallback), `usePermissionManager.js`, `ShareFolderTree.js`, `ShareDialog.js`, `deriveShareFolderAccessView.js`. `adminPermissionSaveUseCase` computes a nodeId diff → per-nodeId `grantPermission`/`revokePermission` (bypasses the broken Phase 7 `PUT /users/:id/permissions`). MyPage callers pass `folderNodeId`.
+- **Verification:** useShareDialog, ShareDialog, ShareFolderTree, usePermissionManager, adminPermissionSaveUseCase, SharingContent, MyPage suites pass.
+
+### C6 — `SharingContent.js` reads removed `target_type`/`file_path`/`folder_path` (server returns `targetType`/`file_node_id`)
+
+- **Classification:** Case A — inbox/outbox empty paths; file-request approve dead (`nodeId: undefined`).
+- **Action taken:** Reads `targetType`/`file_node_id`; file-approve sends `{userId, nodeId: r.file_node_id, permission, target:'file'}`. Fixtures → server shape. SharingContent + MyPage suites pass.
+
+### C7 — `UploadDialog` passes `currentPath` to `handleUploadStart` (expects parentNodeId)
+
+- **Classification:** Case A — uploads 400. `parentNodeId` prop threaded via FileManagerView; `onUploadStart(files, parentNodeId)`. UploadDialog.test passes.
+
+### C8 — `useExplorerProgress` retryData key mismatch (`currentPath`/`startedPath` vs producer `parentNodeId`/`startedNodeId`)
+
+- **Classification:** Case A — upload retry targets wrong node; refresh gating never fires. Consumer aligned; fixtures updated. useExplorerProgress.test passes.
+
+### C9 — File-level grants routed to directory-only `POST /permissions/grant` (`target` ignored)
+
+- **Classification:** Case A — file grants 400. `grantPermission`/`revokePermission` route to `/permissions/file/grant`/`/permissions/file/revoke` when `target==='file'`. permissionService + shareTargetPermissionSaveUseCase suites pass.
+
+### C10 — Drop-target / `isDragging` compares `dropTarget` (nodeId) to `file.path`
+
+- **Classification:** Case A — drop highlight dead. Compare by `getEntryKey` in FileGrid/FileList/FileDetail; imports added. Suites pass; ESLint clean.
+
+### C11 — MSW mirrors client keys, masking the above
+
+- **Classification:** Case B (test env). MSW list/rename/permissions handlers repointed to server shapes.
+
+**Final wave-2 verification:** Client 1263 passed / 12 failed / 3 out-of-scope suites (apiClient ×2, FileActionSheet); server 1075 passed / 55 failed / 12 suites (unchanged baseline). Zero regressions.
+
+---
+
+## 2026-08-06 — Phase 5 (Sharing & RecentFiles → Node ID)
+
+### Scope-fixed suites (server): 7 suites / 59 tests now pass
+
+- **Area:** `shareLinks.test.js`, `sharePublic.test.js`, `shareLinkStore.test.js`, `ShareLink.test.js`, `recentFiles.test.js`, `recentFilesStore.test.js`, `PermissionRequest.test.js`
+- **Classification:** Case B (test drift) + Case A (source migration). Legacy suites asserted `filePath`/`path` payloads and called the removed `grantTestPermission` against a nodeId-only server.
+- **Action taken:** Rewrote all 7 suites to the nodeId contract (`{ fileNodeId }` payloads, `nodeId`/`displayPath` assertions, `grantTestPermissionByNodeId`, composition setup per `files.test.js`). `apply-moves`/`remove-paths` tests removed (endpoints deleted).
+
+### Production fixes surfaced during test rewrite
+
+- **`shareLinkStore.updateShareLink`:** `COALESCE(?, expires_at)` made `expiresAt=null` a silent no-op (removing a link's expiration failed). Replaced with per-field explicit SET clauses so a null expiry is applied.
+- **`mapServiceError`:** always built a 400, downgrading the recent-files service's 404 `fileNotFound`. Now uses `createError(code, error.status || 400)`.
+- **`fileNodeService.getNodePath`:** reversed the ancestor chain (leaf→root). Corrected to root→leaf; updated V13 test. This bug would have produced wrong `displayPath` for the new share-link/recent-files API contract.
+
+### Verification
+
+- **Server:** 1111 passed / 16 failed / 3 skipped / 1130 total; 5 failed suites = Settings double-serialization (settingsStore, Settings) + environmental postgresqlNotConfigured (auth, admin, lockManager) — all out of scope. Down from 55 failed / 12 suites at Phase 5 start.
+- **Client:** 1248 passed / 12 failed / 149 suites; 3 failing suites = pre-existing out-of-scope (apiClient ×2, FileActionSheet). Zero new failures. Recent-files/share-link suites, MSW handlers, and shim-removal tests all pass.
+
+---
+
+## 2026-08-06 — Pre-existing bug & test-failure fixes (fix/pre-existing-bugs-tests)
+
+All previously reported pre-existing failures are fixed; server and client
+suites are fully green.
+
+### Fixed
+
+1. **Settings double-serialization** (`settingsStore.js` SQLite path): `set()`
+   used `JSON.stringify(String(value))` on the TEXT column, persisting literal
+   quotes (`"\"true\""`); `isRegistrationEnabled() === 'true'` always failed →
+   registration permanently disabled (auth register 403). SQLite now stores
+   `String(value)`. (PostgreSQL JSONB path was already correct.)
+2. **lockManager SQLite** (`lockManager.js`): `acquireSqliteLock` read
+   `insertResult.changes` from a `db.all()`-based client.query (never returns
+   changes) → every acquire returned undefined; release called `db.query` on the
+   raw sqlite3 connection (no such method) → releases silently no-op'd. Both now
+   use `sqliteRun`; acquire returns null (not undefined) to continue the retry loop.
+3. **Admin A7 path→nodeId** (`userService.js`, `cleanupService.js`, `bootstrap.js`):
+   admin approve/create and home-owner bootstrap passed WebDAV path strings to
+   nodeId-only `permissionStore.grant/checkPermission` → NaN nodeId → 500/no-op.
+   `ensureUserHomeNode` resolves/creates the root node via fileNodeService and
+   grants by nodeId; `ensureHomeOwnerAdminForAllUsers` grants once on the home
+   node (closure table covers descendants); bootstrap drops the root grant
+   (admin bypasses ACL via is_admin). `admin.test.js` updated to nodeId assertion
+   + webdav composition setup.
+4. **FileActionSheet** (`FileActionSheet.js`): implementation rendered
+   rename/move/delete disabled, but spec (FileActionSheet.md §2.6) requires
+   conditional rendering (hide) when `!fileWritePermission`; download was
+   disabled when `hasReadPermission` undefined. Now rename/move/delete render
+   only with write permission; download/copy disable only when
+   `hasReadPermission === false`. Test updated to spec (hide semantics).
+5. **apiClient 401 excluded** (`apiClient.js` + tests + spec): implementation
+   rethrew 401 for excluded endpoints (login/register/share), but spec/tests
+   asserted null return — which would drop the server errorCode and degrade
+   login UX. Decision (user-approved): keep rethrowing excluded 401 (preserve
+   errorCode), refresh-failure path still resolves null + /login redirect.
+   Spec (apiClient.md) and the 3 excluded-401 tests updated accordingly.
+6. **test:ci sqlite isolation** (`storage.js`, `test-utils.js`,
+   `sqliteSchemaInit.js`): `getSqliteConnection` reused a cached handle ignoring
+   `WEA_SQLITE_PATH` changes between suites; `initSqliteSchema` ran DDL in a
+   plain loop that coverage instrumentation could interleave with a close →
+   SQLITE_MISUSE "Database handle is closed" + native process.exit in
+   healthRoutes/settings suites. Connection now reopens on path/close change;
+   createTestDatabase closes prior shared connections; DDL runs serially via
+   `db.serialize()`.
+
+### Verification
+
+- **Server**: 66 suites / 1127 passed / 3 skipped / 0 failed (both `npx jest`
+  and `npm run test:ci`).
+- **Client**: 149 suites / 1260 passed / 0 failed.
+- ESLint: 0 new issues (pre-existing warnings only).
+- Branch `fix/pre-existing-bugs-tests`; merged to `dev`, branch deleted.
+
+---
+
+## 2026-08-07 — Phase 8: core-flow E2E BULK-002/003 folder-picker destination selection
+
+- **Area:** `e2e/desktop-core-flow.spec.ts` (E2E-BULK-002/003),
+  `e2e/mobile-core-flow.spec.ts` (E2E-BULK-002/003)
+- **Classification:** Case A (Source Error — client folder picker renders
+  unnamed destination folders)
+- **Summary:** After the home-relative → absolute `display_path` prefixing fix,
+  the four BULK-002/003 tests progress past item selection but fail at
+  `openFolderPickerAndSelectDestination` (spec line 103): the picker dialog
+  opens at the admin root (breadcrumb "Root") and lists its folder nodes, but
+  every `ListItemButton` renders with **no accessible text**, so
+  `dialog.getByRole('button', { name: destinationFolderName, exact: true })`
+  never matches. Root cause: `folderPickerGateway.listFolderContents` returns the
+  raw `listFiles` shape (`{ nodeId, name, display_path, ... }` — no `basename`),
+  while `FolderPickerDialog.js` renders `ListItemText primary={folder.basename}`
+  → undefined label. The explorer path normalizes via `explorerGateway`
+  `normalizeFileEntry` (`basename: item.basename ?? item.name`); the picker
+  gateway intentionally "preserves raw shape" and never normalizes
+  (docs/spec/client/services/folderPickerGateway.md §2.2). Verified identical in
+  S3 and WebDAV modes. Pre-existing (predates the path fix; masked until the
+  path assertions were corrected). No spec-only workaround is possible because
+  the picker buttons are unnamed.
+- **Spec cross-check:** `FolderPickerDialog.md` and `folderPickerGateway.md` do
+  not pin the folder-item shape (`basename` vs `name`); `useFolderPicker` mocks
+  use `basename`, the live gateway returns `name`. Contract is under-specified.
+- **Action taken (reporting only):** Spec-only path-prefix fix completed
+  (19/23 core-flow tests pass per mode; full default waves: S3 107 passed / 4
+  failed / 2 skipped, WebDAV 91 passed / 4 failed / 18 skipped). The picker
+  defect is out of scope (no client source changes permitted by this task).
+  Recommended follow-up: normalize picker entries (`basename` fallback to
+  `name`) in `folderPickerGateway.listFolderContents` or
+  `FolderPickerDialog.js`, and/or anchor the admin picker at the admin home node
+  instead of the server root.
+
+---
+
+## 2026-08-06 — Phase 8: post-teardown startup continuations fail `--runInBand`
+
+- **Area:** `server/domains/admin/routes/__tests__/settings.test.js`,
+  `server/infrastructure/routes/__tests__/healthRoutes.test.js`
+- **Classification:** Case B (Test Error — teardown artifact)
+- **Summary:** Both suites `require('../../../../index')`; `server/index.js`
+  fires an unawaited `initMetadataStore().then(...)` startup chain at
+  require-time (SQLite schema init → ffmpeg probe → WebDAV connection probe).
+  Under `--runInBand` the suites finish before that chain settles, so its async
+  continuations run after Jest teardown → `ReferenceError: ... after the Jest
+  environment has been torn down` + "Cannot log after tests are done" → exit 1
+  despite all suites passing. Reproduced on SQLite with `--runInBand`
+  (pre-existing, independent of PG). Empirically confirmed `require.main ===
+  module` is false under Jest (app.listen/GC-scheduler block does not run) and
+  that "Cannot log after tests are done" alone produces exit 1.
+- **Action taken (test files only):** await `initMetadataStore()` +
+  `initFfmpegOnce()` (the shared/memoized init promises the startup chain awaits)
+  in `beforeAll` so the whole chain settles deterministically before teardown;
+  in `settings.test.js` additionally `jest.mock` `infrastructure/webdavTest` (same
+  pattern already used by `healthRoutes.test.js`) so the startup WebDAV probe
+  cannot hit the real server configured in `.env`. No production code or test
+  assertions changed.
+- **Verification:** SQLite `npm run test:ci` → 68 suites / 1132 passed / 2
+  skipped / exit 0. SQLite `--runInBand` → 67 suites / 1131 passed / 2 skipped /
+  exit 0. PG `npm run test:ci:pg` → 67 suites / 1131 passed / 2 skipped /
+  exit 0. ESLint clean on both files.
+
+---
+
+## 2026-08-07 — Phase 8: PostgreSQL suite, CoW, and E2E-driven production bugs
+
+Consolidated RCA for source bugs surfaced by the Phase 8 validation work (full
+suite now runs on both backends + full Playwright E2E in both modes). Each was
+classified Case A (Source Error) and fixed with user approval on branch
+`refactor/phase-8-verification` (not merged to `dev`).
+
+### 1. `fileNodesStore.insertAncestorRows` — PG multi-row VALUES syntax (42601)
+- **Area:** `server/store/fileNodesStore.js`
+- **Summary:** The PG branch built a flat `$1..$N` placeholder list for a
+  multi-row `INSERT INTO node_ancestors ... VALUES (...)`; PG rejects that with
+  42601, breaking ALL child-node create/move (closure-table inserts) on PG. Never
+  exercised because the PG path was previously un-runnable (no schema bootstrap).
+- **Fix:** group placeholders as `($1,$2,$3),($4,$5,$6),…` per row.
+- **Verification:** 11 previously-gated suites + `node_ancestors` describe now
+  pass on PG; gates removed; full PG suite green.
+
+### 2. `permissionRequestStore` — `resolved_by = CASE … $4` type inference (42804)
+- **Area:** `server/domains/permissions/stores/permissionRequestStore.js`
+- **Summary:** node-pg sends `$4` (nullable bigint) as text; PG cannot infer the
+  column type in the `ELSE $4` arm → 42804.
+- **Fix:** `$4::BIGINT`.
+- **Verification:** previously-gated 2 tests now pass.
+
+### 3. `blobStorageService.ensureExclusiveBlob` — CoW overwrite broken (409 + original corruption)
+- **Area:** `server/service/blobStorageService.js`
+- **Summary:** overwriting a copy-on-write copy (E2E-S3PG-004) failed with 409
+  and would also orphan the ORIGINAL node: `orphanObject(s3_key)` orphans ALL
+  sharers (not just this node), then `insertObject(..., version 1)` collided with
+  the node's existing v1 row (`UNIQUE(file_node_id, version_number)`). The unit
+  test encoded the wrong behavior ("nodeB is also affected").
+- **Fix:** replace with `upsertObjectMap(fileNodeId, newS3Key, 'active')`
+  (per-node orphan + next version); corrected the encoding unit test.
+- **Verification:** E2E-S3PG-004 passes; original content preserved.
+
+### 4. Auth responses missing `rootNodeId` (home-view CRUD 400s)
+- **Area:** `server/domains/auth/service.js`
+- **Summary:** login/register/`/me` user payloads lacked the user's home node id;
+  the client's home view computed `homeNodeId = user?.rootNodeId ?? null` →
+  create-folder/upload sent `parentNodeId: null` → 400. ~42 E2E failures.
+- **Fix:** attach `rootNodeId` (via `getUserRootNode`) to all three payloads.
+- **Verification:** home-view CRUD works in both E2E modes.
+
+### 5. WebDAV mode created directories DB-only (no MKCOL) — uploads 403
+- **Area:** `server/utils/webdav.js`, `server/service/blobStorageService.js`,
+  `folders.js`, `userService.js`, `cleanupService.js`, E2E seed
+- **Summary:** physical WebDAV directories never created; PUT into a missing
+  parent returned 403 — zero webdav-mode uploads succeeded.
+- **Fix:** recursive already-exists-tolerant `ensureDirectoryExists` (MKCOL
+  root→deepest), `createDirectoryWebdav(nodeId)` (S3 no-op, `orphaned_node`
+  fail-safe), wired into folder-create + home-node creation (service, cleanup,
+  seed).
+- **Verification:** webdav E2E `mypage-user`/`core-flow` green.
+
+### 6. Leave-share confirmation dead code (client)
+- **Area:** `client/src/pages/FileManager/*`, `useShareLinkOverlay.js`,
+  `FolderTree.js`, `FileManagerView.js`
+- **Summary:** `handleLeaveSharePathClick` was never invoked in the render tree;
+  leaving a shared folder navigated without the confirm dialog (E2E-SHARE-007).
+- **Fix:** wire the confirm dialog into share-mode folder-tree/drawer navigation;
+  confirm navigates nodeId-first.
+- **Verification:** E2E-SHARE-007 passes.
+
+### 7. Permission-request inbox/outbox showed `#<file_node_id>` instead of a path
+- **Area:** `server/domains/permissions/routes/permissionRequests.js`,
+  `client/.../mypage/content/SharingContent.js`
+- **Summary:** post-migration responses carried only `file_node_id`; the client
+  rendered the raw id (UX regression + 6 E2E failures).
+- **Fix:** server enriches inbox/outbox/create with `display_path`/`target_name`;
+  client renders path with `#id` fallback.
+- **Verification:** MYPAGE-006/007/008 pass.
+
+### 8. `pg.Pool` unhandled 'error' crashed the process
+- **Area:** `server/store/storage.js`
+- **Summary:** no `pool.on('error')` listener; a PG restart/drop (e.g. E2E
+  teardown `down -v`) crashed the server via an unhandled event.
+- **Fix:** register `pool.on('error', …)` (node-pg documented best practice).
+- **Verification:** teardown no longer crashes the run; production resilience to
+  PG restarts.
+
+### 9. `folderPickerGateway.listFolderContents` missing `basename` normalization
+- **Area:** `client/src/services/folderPickerGateway.js`,
+  `client/src/components/dialogs/FolderPickerDialog/FolderPickerDialog.js`
+- **Summary:** picker entries were the raw `listFiles` shape (no `basename`);
+  `FolderPickerDialog` renders `primary={folder.basename}` → unnamed buttons →
+  BULK-002/003 could not select a destination. (Detailed entry above, 373.)
+- **Fix:** gateway normalizes entries (explorer shape) + dialog `basename||name`
+  fallback.
+- **Verification:** BULK-002/003 pass in both modes; folderPickerGateway unit
+  test updated to assert normalization.
+
+---
+
+## 2026-08-07 — Admin root = filesystem root: root-level ops and listing gaps
+
+- **Area:** `server/domains/files/routes/folders.js`, `crud.js`,
+  `server/store/fileNodesStore.js` (`getChildren`),
+  `client/src/pages/FileManager/hooks/useFileManager.js`
+- **Classification:** Case A (Source Error) — the admin-home design (admin's
+  home is the filesystem root `/`) was already implemented in the client
+  (`useFolderTreeController` forces admin home to null, `cleanupService` never
+  creates an admin home node), but two server paths rejected/omitted root-level
+  operations:
+  1. `folders/create` and upload required a non-null `parentNodeId`, so an admin
+     acting at the root (`parentNodeId: null` / multipart `"null"`) got 400s.
+  2. `fileNodesStore.getChildren(null)` ran `WHERE parent_id = $1` with a null
+     param — `parent_id = NULL` never matches, so root-level nodes
+     (`parent_id IS NULL`) were invisible; the admin home view listed `[]`.
+- **Fix:** create/upload accept a root parent for `is_admin` users only
+  (normalizing `"null"`/`"undefined"` multipart strings); `getChildren` uses
+  `parent_id IS NULL` when the parent is null (both PG and SQLite);
+  `useFileManager.homeNodeId` is `is_admin ? null : rootNodeId` (consistent
+  with the folder tree). E2E seed no longer creates a `/admin` node and the
+  core-flow specs assert root-relative paths (`/flow-folder`).
+- **Verification:** unit test added for root listing; server SQLite + PG
+  (67/1137) and client (147/1265) green; full default-wave E2E passes in both
+  modes (S3 111 pass, WebDAV 95 pass, 0 failures).

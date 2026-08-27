@@ -7,7 +7,7 @@
 | Role | IO boundary for persisting and reading user-specific “recent files” on the server. Provides server-backed operations and returns observable updated recent lists (unless silenced). |
 | Used by | Explorer/tree controllers and file operation flows that need recent list updates. |
 | Does not own | Pub-sub subscriptions and change notification fan-out (that belongs to `recentFilesNotifier`). |
-| Does not own | Pure path mutation planning rules (that belongs to `client/src/utils/recentFiles.js` after the split). |
+| Does not own | Pure path mutation planning rules. `client/src/utils/recentFiles.js` was removed (Phase 5); recent entries are keyed by `nodeId`/`fileNodeId` and survive renames/moves without client-side path rewrites. |
 
 ---
 
@@ -25,19 +25,18 @@
 Recent entry shape:
 
 - Minimum contract:
-  - `RecentEntry = { path: string, name?: string, type?: 'file'|'directory', basename?: string, lastAccessed?: string | number | null }`
+  - `RecentEntry = { nodeId: number, name?: string, type?: 'file'|'directory', basename?: string, lastAccessed?: string | number | null, displayPath?: string }`
 - `getRecentFiles()` may preserve additional server-provided fields beyond the minimum contract.
 - Callers may rely on `lastAccessed` when present (for example, `useFileManager` maps it into the recent-view listing metadata).
+- Recent entries are keyed by `nodeId`; nodeIds are stable across renames/moves.
+- `addRecentFile(file)` sends `{ fileNodeId: file.nodeId }`.
 
 | Function | Input => Return |
 |----------|------------------|
 | getRecentFiles | `() => Promise<RecentEntry[]>` |
 | addRecentFile | `(file, options?) => Promise<RecentEntry[]>` |
-| removeRecentFile | `(filePath, options?) => Promise<RecentEntry[]>` |
+| removeRecentFile | `(fileNodeId, options?) => Promise<RecentEntry[]>` |
 | clearRecentFiles | `() => Promise<void>` |
-| applyRecentFilesAfterRename | `(oldPath, newPath, file) => Promise<RecentEntry[]>` |
-| applyRecentFilesAfterBulkDelete | `({ filePaths, folderPaths }) => Promise<RecentEntry[]>` |
-| applyRecentFilesAfterBulkMove | `(moves) => Promise<RecentEntry[]>` |
 
 `options`:
 
@@ -60,19 +59,15 @@ Recent entry shape:
   - `client/src/services/apiClient` (get, post, del)
 - Notification:
   - `client/src/services/recentFilesNotifier` (`notifyRecentFilesChange`)
-- Pure helpers:
-  - `client/src/utils/recentFiles` (path mutation planning helpers after the split)
 
 ---
 
 ### 2.5 API Endpoints
 
 - GET `/recent-files`
-- POST `/recent-files`
+- POST `/recent-files` (body: `{ fileNodeId }`)
 - DELETE `/recent-files`
-- DELETE `/recent-files/:encodedPath`
-- POST `/recent-files/remove-paths`
-- POST `/recent-files/apply-moves`
+- DELETE `/recent-files/:fileNodeId`
 
 ---
 
@@ -95,10 +90,8 @@ Recent entry shape:
 - [ ] `addRecentFile` and `removeRecentFile` return an updated recent list when `silent` is not enabled.
 - [ ] `addRecentFile`/`removeRecentFile` with `{ silent: true }` do not notify subscribers.
 - [ ] Failed persistence paths do not emit `notifyRecentFilesChange()` unless a real successful recent-files mutation occurred earlier in the same flow.
-- [ ] `applyRecentFilesAfterBulkDelete` uses the batch endpoint for removals and returns the updated list.
-- [ ] `applyRecentFilesAfterBulkMove` uses the batch endpoint for moves and returns the updated list.
-- [ ] `applyRecentFilesAfterBulkMove` is safe to call with only the successfully moved subset of a larger bulk operation.
-- [ ] `applyRecentFilesAfterRename` updates recent entries for directory renames/removals using the pure path-mutation planning helpers.
+- [ ] `addRecentFile(file)` sends `{ fileNodeId: file.nodeId }` to POST `/recent-files`.
+- [ ] `removeRecentFile(fileNodeId)` calls DELETE `/recent-files/:fileNodeId` and returns the updated list.
 
 ---
 

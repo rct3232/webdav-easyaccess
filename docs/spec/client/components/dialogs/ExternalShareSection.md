@@ -34,7 +34,7 @@
 | createShareLink | function | Y | - | Create link API |
 | getShareLinkUrl | function | Y | - | Get URL |
 | onOpenShareLink | function | N | - | Opens a prepared share URL through an upstream browser adapter/callback |
-| filePath | string | N | - | File path |
+| fileNodeId | number | N | - | File node id (single file share) |
 | fileName | string | N | - | File name |
 | onMessage | function | N | - | Message handler |
 
@@ -71,4 +71,4 @@
 
 ### 2.8 Edge Cases
 
-- displayName from fileName or path basename
+- displayName from `fileName` (empty string when absent)

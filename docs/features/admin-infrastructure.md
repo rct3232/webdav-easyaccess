@@ -20,7 +20,7 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 ### Admin role and middleware
 
 - **isAdmin:** Determined by `user.is_admin` (from metadata store). Stored in JWT payload for quick checks; admin routes re-load user and enforce `is_admin`.
-- **Admin middleware:** In `server/routes/admin.js`, `isAdmin` loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
+- **Admin middleware:** Each admin route module (`server/domains/admin/routes/settings.js`, `userManagement.js`, `maintenance.js`) defines a local `isAdmin` handler that loads the user by `req.user.id` and returns 403 with `errorCode: admin.adminRequired` if not admin. All admin routes use `authenticateToken` then `isAdmin`.
 - **Pipeline boundary:** Full middleware ordering and exclusions are documented in `docs/ARCHITECTURE.md` and are not duplicated here.
 
 ### Admin APIs
@@ -32,7 +32,9 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 | Approval | `POST /api/admin/users/:id/approve`, `POST /api/admin/users/:id/reject` | Approve or reject signup; optional email (sendApprovalEmail, sendRejectionEmail). |
 | User management | `DELETE /api/admin/users/:id` | Delete user (cannot delete self or other admins). |
 | Permissions | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions` | List folders for permission UI; set user folder permissions. |
-| Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; clean orphaned metadata. |
+| Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata. |
+| Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync` | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows. |
+| Blob migration | `GET /api/admin/migration/info`, `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Fetch derived direction/source, start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.
 
@@ -50,11 +52,22 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 
 ### Metadata store and locking
 
-- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`webdav`, `fs`, `postgresql`) with stable store interfaces across backends.
+- **Storage backend selection:** `WEA_STORAGE_BACKEND` (`sqlite` default, `postgresql`) with stable store interfaces across backends. `fs` and `webdav` metadata backends are removed (Phase 7).
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
-- **Locking contract:** `server/store/locks.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes).
-- **Migration workflow:** `server/scripts/migrateMetadataToPostgresql.js` command usage and order are documented in `docs/SETUP.md`.
+- **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.
+- **Blob migration workflow:** bidirectional WebDAV ↔ S3 blob migration is available in-app (admin API `POST/GET/cancel /api/admin/migration/*` with a settings-tab "Storage migration" UI) and as a standalone CLI (`server/scripts/migrateBlobs.js`). Full spec: `docs/spec/server/tools/blob-migration.md`; service contract: `docs/spec/server/services/migrationService.md`.
+
+### Infrastructure layer
+
+Cross-cutting infrastructure modules reside in `server/infrastructure/`:
+
+- **Health routes** (`healthRoutes.js`): Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.
+- **WebDAV diagnostic routes** (`webdavRoutes.js`): No-auth endpoints `GET /api/webdav/test` and `GET /api/webdav/info` for connectivity checks and URL display. Connection test logic is extracted to `webdavTest.js`.
+- **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting PostgreSQL and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
+- **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when `WEA_STORAGE_BACKEND=sqlite`.
+
+These modules are mounted in `server/index.js` alongside the domain routes.
 
 ---
 
@@ -80,13 +93,15 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 
 ### Admin: user permissions and cleanup
 
-- **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server updates `/.wea/permissions/users/<userId>.json`.
-- **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery).
+- **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server revokes existing grants and applies the new permission set in the DB (`permissions_user_paths` / `permissions_user_files`).
+- **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery), and removes redundant self-grants the user holds on their own subtree (a one-time reconciliation for data created before self-grants were removed).
 - **Orphan cleanup:** `POST /api/admin/cleanup/orphaned` removes orphaned metadata (e.g. permissions/shares pointing to missing paths); response includes result summary.
+- **Garbage collection:** `POST /api/admin/maintenance/gc` runs a two-tier GC cycle (DB-driven orphaned `object_map` rows → S3 blob delete; S3 `ListObjectsV2` reconciliation against the active `s3_key` set). Optionally scheduled via `GC_INTERVAL_MS`; orphan age threshold via `GC_ORPHAN_TTL_DAYS`. Service contract: `docs/spec/server/services/gcService.md`.
+- **Fail-safe recovery:** `POST /api/admin/maintenance/repair-sync` resolves `file_nodes` stuck in `sync_status='orphaned_node'` (`retry-delete` or `force-active`). A startup hook scans and reports stuck nodes without auto-deleting. Service contract: `docs/spec/server/services/gcService.md`.
 
-### API pipeline and meta path
+### API pipeline
 
-- Authenticated file/folder request: Auth → User Loader → Normalize path params → If path is `/.wea`, Meta Path Guard allows only when `user.is_admin`; otherwise 403. Then route handler runs (and may perform further ACL checks per [permissions.md](permissions.md)).
+- Authenticated file/folder request: Auth → User Loader → Route handler (nodeId-based; may perform further ACL checks per [permissions.md](permissions.md)).
 
 ### Metadata lock usage
 

@@ -4,13 +4,10 @@ import { TEST_FILES } from './fixtures/test-data';
 import { loginAsAdmin } from './helpers/auth';
 import { openFabAction, openItemActions } from './helpers/explorer';
 import { buildName, fileItem, readTestFileFixture } from './helpers/files';
+import { gotoFilesPath } from './helpers/resolvePath';
 
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 const imageFixtureBuffer = readTestFileFixture(TEST_FILES.smallImage);
-
-function toFilesRoute(filePath: string) {
-  return filePath === '/' ? '/files' : `/files${filePath}`;
-}
 
 async function uploadFile(
   page: Parameters<typeof openFabAction>[0],
@@ -78,13 +75,14 @@ async function waitForBulkOperationToComplete(
 
 async function openFolderRouteAndWaitForItems(
   page: Parameters<typeof openFabAction>[0],
+  request: Parameters<typeof gotoFilesPath>[1],
   folderPath: string,
   expectedItemPaths: string[],
 ) {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
-    await page.goto(toFilesRoute(folderPath));
+    await gotoFilesPath(page, request, folderPath);
 
     try {
       for (const itemPath of expectedItemPaths) {
@@ -177,7 +175,7 @@ test('E2E-BULK-001: Enter selection mode and show bulk toolbar', async ({ page }
   await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
 });
 
-test('E2E-BULK-002: Move selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-002: Move selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-move-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-move-src-2', '.txt');
   const srcFile1Path = `/${srcFile1Name}`;
@@ -207,12 +205,12 @@ test('E2E-BULK-002: Move selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
   await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
 
-  await page.goto(toFilesRoute(destFolderPath));
+  await gotoFilesPath(page, request, destFolderPath);
   await expect(fileItem(page, destFile1Path)).toBeVisible();
   await expect(fileItem(page, destFile2Path)).toBeVisible();
 });
 
-test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, testInfo) => {
+test('E2E-BULK-003: Copy selected items to another folder', async ({ page, request }, testInfo) => {
   const srcFile1Name = buildName(testInfo, 'bulk-copy-src-1', '.txt');
   const srcFile2Name = buildName(testInfo, 'bulk-copy-src-2', '.txt');
   const srcFile1Path = `/${srcFile1Name}`;
@@ -243,7 +241,7 @@ test('E2E-BULK-003: Copy selected items to another folder', async ({ page }, tes
   await expect(fileItem(page, srcFile1Path)).toBeVisible();
   await expect(fileItem(page, srcFile2Path)).toBeVisible();
 
-  await openFolderRouteAndWaitForItems(page, destFolderPath, [
+  await openFolderRouteAndWaitForItems(page, request, destFolderPath, [
     destFile1Path,
     destFile2Path,
   ]);

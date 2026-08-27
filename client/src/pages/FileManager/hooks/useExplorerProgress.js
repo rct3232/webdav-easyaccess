@@ -86,7 +86,7 @@ export function useExplorerProgress({
 
       handleOperationComplete({
         opType: 'upload',
-        startedPath: progressItem.retryData?.currentPath ?? currentPathRef.current,
+        startedNodeId: progressItem.retryData?.parentNodeId ?? currentPathRef.current,
       });
       setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() });
     }
@@ -149,10 +149,10 @@ export function useExplorerProgress({
       return;
     }
 
-    const targetPath = progressItem.retryData.currentPath;
+    const targetParentNodeId = progressItem.retryData.parentNodeId;
     dismissProgressItem(progressId);
     explorerUploadFilesRef.current.delete(progressId);
-    await executeExplorerUpload(failedFilesToUpload, targetPath);
+    await executeExplorerUpload(failedFilesToUpload, targetParentNodeId);
   }, [progressItems, handleRetry, explorerUploadFilesRef, executeExplorerUpload, dismissProgressItem]);
 
   const setProgressDrawerOpen = useCallback((open) => {

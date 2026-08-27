@@ -20,16 +20,16 @@ export const getUserPermissions = async (userId, options) => {
   return getUserPermissionsService(userId, options);
 };
 
-export const getFolderPermissions = async (path, includeSubfolders = false, filePath) => {
-  return getFolderPermissionsService(path, includeSubfolders, filePath);
+export const getFolderPermissions = async (nodeId, fileNodeId) => {
+  return getFolderPermissionsService(nodeId, fileNodeId);
 };
 
-export const checkPermission = async (path) => {
-  return checkPermissionService(path);
+export const checkPermission = async (nodeId) => {
+  return checkPermissionService(nodeId);
 };
 
-export const checkOwnerExists = async (path, { forFile } = {}) => {
-  return checkOwnerExistsService(path, { forFile });
+export const checkOwnerExists = async (nodeId) => {
+  return checkOwnerExistsService(nodeId);
 };
 
 export const listOutboxPermissionRequests = async (params) => {
@@ -44,12 +44,12 @@ export const cancelPermissionRequest = async (id) => {
   return cancelPermissionRequestService(id);
 };
 
-export const grantPermission = async ({ userId, folderPath, permission, target }) => {
-  return grantPermissionService({ userId, folderPath, permission, target });
+export const grantPermission = async ({ userId, nodeId, permission, target }) => {
+  return grantPermissionService({ userId, nodeId, permission, target });
 };
 
-export const revokePermission = async ({ userId, folderPath, includeSubfolders, scope }) => {
-  return revokePermissionService({ userId, folderPath, includeSubfolders, scope });
+export const revokePermission = async ({ userId, nodeId, scope }) => {
+  return revokePermissionService({ userId, nodeId, scope });
 };
 
 export const approvePermissionRequest = async (id) => {

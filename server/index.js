@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- server startup/diagnostic logging */
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -74,6 +75,7 @@ app.use('/api/users', require('./domains/admin/routes/users'));
 app.use('/api/admin', require('./domains/admin/routes/userManagement'));
 app.use('/api/admin', require('./domains/admin/routes/settings'));
 app.use('/api/admin', require('./domains/admin/routes/maintenance'));
+app.use('/api/admin', require('./domains/admin/routes/migration'));
 app.use('/api/settings', require('./domains/admin/routes/settings'));
 // Files domain routes (Phase 6 split)
 app.use('/api/files', require('./domains/files/routes/crud'));
@@ -158,6 +160,15 @@ initMetadataStore().then(async () => {
         ensureHomeOwnerAdminForAllUsers()
           .then(() => console.log('✓ Permission cleanup (home-owner admin) completed'))
           .catch(err => console.error('Permission cleanup on startup failed:', err));
+      });
+      setImmediate(() => {
+        const { getComposition } = require('./service/composition');
+        const { runStartupFailSafeRecovery, startGcScheduler } = require('./infrastructure/maintenanceScheduler');
+        const composition = getComposition();
+        runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
+          .then(() => {})
+          .catch(err => console.error('Fail-safe recovery on startup failed:', err));
+        startGcScheduler({ gcService: composition.gcService });
       });
     });
   }

@@ -1,33 +1,37 @@
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { useTranslation } from 'react-i18next';
-
 import { getPublicShareLinkInfo } from '../../../../services/shareLinkService';
 import { getServerErrorDisplay } from '../../../../utils/errorUtils';
 import { useShareLinkInfo } from '../useShareLinkInfo';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: jest.fn(),
-}));
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('../../../../services/shareLinkService', () => ({
   getPublicShareLinkInfo: jest.fn(),
 }));
 
-jest.mock('../../../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn(),
-}));
+jest.mock('../../../../utils/errorUtils', () => {
+  const { createErrorUtilsMock } = require('../../../../testing/mocks/serviceMocks');
+  return createErrorUtilsMock({
+    getServerErrorDisplay: jest.fn(),
+  });
+});
 
 describe('useShareLinkInfo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useTranslation.mockReturnValue({ t: (key) => key });
+    sessionStorage.removeItem('token');
   });
 
-  it('loads directory link info successfully', async () => {
+  it('loads directory link info successfully (nodeId always present)', async () => {
     getPublicShareLinkInfo.mockResolvedValue({
+      nodeId: 42,
       fileName: 'shared-folder',
       isDirectory: true,
+      displayPath: '/shared/folder',
     });
 
     const { result } = renderHook(() => useShareLinkInfo('folder-token'));
@@ -40,7 +44,29 @@ describe('useShareLinkInfo', () => {
 
     expect(result.current.error).toBeNull();
     expect(result.current.linkInfo).toEqual({
+      nodeId: 42,
       fileName: 'shared-folder',
+      isDirectory: true,
+      displayPath: '/shared/folder',
+    });
+  });
+
+  it('passes through the server-provided nodeId for directory links', async () => {
+    getPublicShareLinkInfo.mockResolvedValue({
+      nodeId: 42,
+      fileName: 'folder',
+      isDirectory: true,
+    });
+
+    const { result } = renderHook(() => useShareLinkInfo('folder-token'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.linkInfo).toEqual({
+      nodeId: 42,
+      fileName: 'folder',
       isDirectory: true,
     });
   });

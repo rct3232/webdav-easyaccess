@@ -17,7 +17,6 @@ import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getFolderPermissions } from '../../services/permissionService';
 import { getFolderStats } from '../../services/fileService';
-import { getParentPath } from '@webdav-easyaccess/shared/pathUtils';
 import { getPermissionLabels, PERMISSION_ORDER } from '../../constants/permissions';
 
 const FilePropertiesDialog = ({ open, onClose, file }) => {
@@ -35,18 +34,24 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
       return;
     }
     const isDirectory = file.type === 'directory';
-    const path = isDirectory ? file.path : getParentPath(file.path);
-    const filePath = isDirectory ? undefined : file.path;
+    const parentNodeId = file.parentNodeId ?? null;
 
     setPermissionsLoading(true);
-    getFolderPermissions(path, false, filePath)
-      .then((data) => setPermissions(Array.isArray(data) ? data : []))
-      .catch(() => setPermissions([]))
-      .finally(() => setPermissionsLoading(false));
+    if (isDirectory) {
+      getFolderPermissions(file.nodeId)
+        .then((data) => setPermissions(Array.isArray(data) ? data : []))
+        .catch(() => setPermissions([]))
+        .finally(() => setPermissionsLoading(false));
+    } else {
+      getFolderPermissions(parentNodeId ?? file.nodeId, file.nodeId)
+        .then((data) => setPermissions(Array.isArray(data) ? data : []))
+        .catch(() => setPermissions([]))
+        .finally(() => setPermissionsLoading(false));
+    }
 
     if (isDirectory) {
       setStatsLoading(true);
-      getFolderStats(file.path)
+      getFolderStats(file.nodeId)
         .then((data) => setFolderStats(data))
         .catch(() => setFolderStats(null))
         .finally(() => setStatsLoading(false));
@@ -69,7 +74,7 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
   const propertyItems = [
     {
       label: t('dialogs.type'),
-      value: isDirectory ? t('actions.folder') : (file.mime || t('actions.file')),
+      value: isDirectory ? t('actions.folder') : (file.mime ?? file.mimeType ?? t('actions.file')),
     },
     {
       label: t('dialogs.size'),
@@ -84,11 +89,11 @@ const FilePropertiesDialog = ({ open, onClose, file }) => {
     },
     {
       label: t('dialogs.modifiedDate'),
-      value: formatDate(file.lastmod),
+      value: formatDate(file.lastmod ?? file.modifiedAt),
     },
     {
       label: t('dialogs.path'),
-      value: file.path || '-',
+      value: file.display_path || file.path || '-',
     },
   ];
 

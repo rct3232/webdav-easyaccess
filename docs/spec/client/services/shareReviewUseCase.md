@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Use-case for the “review mode” permission request flow. Applies permission mutations derived from the sharing dialog’s edited state, then approves the permission request. |
+| Role | Use-case for the “review mode” permission request flow. Revokes assignments the reviewer removed from the dialog (best-effort), then approves the permission request. The requested permission itself is granted atomically by the server on approve, so the client must not pre-grant. |
 
 ---
 
@@ -29,28 +29,28 @@
 
 ### 2.4 Dependencies
 
-- `buildPermissionDiff` (pure helper)
+- `buildPermissionDiff` (pure helper, used for the revoke set)
 - `sharePermissionGateway` (permission/request IO)
 
 ### 2.5 Execution Semantics
 
-1. Compute `permissionsToRevoke` and `permissionsToGrant` by comparing `initialFolderPermissions` vs `folderPermissions`.
+1. Compute `permissionsToRevoke` by comparing `initialFolderPermissions` vs `folderPermissions`.
 2. Revoke permissions for removed user-path assignments:
-   - Revocation failures for individual entries are non-fatal (continue revoking/granting the rest).
-3. Grant permissions for all current assignments.
-4. Approve the permission request (`approvePermissionRequest(permissionRequestId)`).
+   - Revocation failures for individual entries are non-fatal (continue revoking the rest).
+3. Approve the permission request (`approvePermissionRequest(permissionRequestId)`).
+4. The requested permission is granted by the server atomically on approve; no client-side grant is issued for the request target.
 
 ### 2.6 Error Handling
 
-- If granting or approving fails, the use-case throws (caller decides how to display errors and whether to keep the dialog open).
-- If individual revokes fail, the use-case continues (matching the current sharing behavior where revocation failures do not block later grant/approve attempts).
+- If approving fails, the use-case throws (caller decides how to display errors and whether to keep the dialog open).
+- If individual revokes fail, the use-case continues (matching the current sharing behavior where revocation failures do not block the approve attempt).
 
 ### 2.7 Verification Scenarios
 
 - Users removed from a path in `folderPermissions` are included in the computed revoke operations.
-- Existing users whose permission level changed are included in grant operations, and are not included in revoke operations.
-- When `folderPermissions` is empty: grants are empty and revokes cover all `initialFolderPermissions` assignments.
-- `approvePermissionRequest(permissionRequestId)` is called only after grant operations succeed.
+- The use-case never issues a client-side grant before approving; the requested permission is granted server-side on approve.
+- `approvePermissionRequest(permissionRequestId)` is called exactly once after the best-effort revoke pass.
+- An approve failure propagates to the caller.
 
 ### 2.8 Edge Cases
 

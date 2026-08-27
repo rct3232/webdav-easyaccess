@@ -1,3 +1,6 @@
+import sharePermissionGateway from '../sharePermissionGateway';
+import { sharePermissionSaveUseCase } from '../sharePermissionSaveUseCase';
+
 jest.mock('../sharePermissionGateway', () => ({
   __esModule: true,
   default: {
@@ -5,9 +8,6 @@ jest.mock('../sharePermissionGateway', () => ({
     grantPermission: jest.fn(),
   },
 }));
-
-import sharePermissionGateway from '../sharePermissionGateway';
-import { sharePermissionSaveUseCase } from '../sharePermissionSaveUseCase';
 
 describe('sharePermissionSaveUseCase', () => {
   beforeEach(() => {
@@ -17,18 +17,18 @@ describe('sharePermissionSaveUseCase', () => {
   });
 
   it('revokes removed assignments and grants current assignments', async () => {
-    const initialFolderPermissions = new Map([
+    const initialNodePermissions = new Map([
       [
-        '/docs',
+        1001,
         new Map([
           ['u1', 'read'],
           ['u2', 'write'],
         ]),
       ],
     ]);
-    const folderPermissions = new Map([
+    const nodePermissions = new Map([
       [
-        '/docs',
+        1001,
         new Map([
           ['u1', 'write'],
           ['u3', 'read'],
@@ -37,23 +37,22 @@ describe('sharePermissionSaveUseCase', () => {
     ]);
 
     await sharePermissionSaveUseCase({
-      initialFolderPermissions,
-      folderPermissions,
+      initialNodePermissions,
+      nodePermissions,
     });
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({
       userId: 'u2',
-      folderPath: '/docs',
-      includeSubfolders: true,
+      nodeId: 1001,
     });
     expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
       userId: 'u1',
-      folderPath: '/docs',
+      nodeId: 1001,
       permission: 'write',
     });
     expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
       userId: 'u3',
-      folderPath: '/docs',
+      nodeId: 1001,
       permission: 'read',
     });
   });
@@ -62,13 +61,13 @@ describe('sharePermissionSaveUseCase', () => {
     sharePermissionGateway.revokePermission.mockRejectedValueOnce(new Error('revoke failed'));
 
     await sharePermissionSaveUseCase({
-      initialFolderPermissions: new Map([['/docs', new Map([['u1', 'read']])]]),
-      folderPermissions: new Map([['/docs', new Map([['u2', 'write']])]]),
+      initialNodePermissions: new Map([[1001, new Map([['u1', 'read']])]]),
+      nodePermissions: new Map([[1001, new Map([['u2', 'write']])]]),
     });
 
     expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
       userId: 'u2',
-      folderPath: '/docs',
+      nodeId: 1001,
       permission: 'write',
     });
   });
@@ -78,8 +77,8 @@ describe('sharePermissionSaveUseCase', () => {
 
     await expect(
       sharePermissionSaveUseCase({
-        initialFolderPermissions: new Map(),
-        folderPermissions: new Map([['/docs', new Map([['u1', 'read']])]]),
+        initialNodePermissions: new Map(),
+        nodePermissions: new Map([[1001, new Map([['u1', 'read']])]]),
       })
     ).rejects.toThrow('grant failed');
   });

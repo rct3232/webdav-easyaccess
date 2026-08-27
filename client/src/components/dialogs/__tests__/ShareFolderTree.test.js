@@ -1,5 +1,5 @@
 /**
- * ShareFolderTree tests.
+ * ShareFolderTree tests (nodeId-based).
  * Verifies observable outcomes per spec: ShareFolderTree.md.
  * @see docs/TESTING_STRATEGY.md
  */
@@ -8,20 +8,21 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import ShareFolderTree from '../ShareFolderTree';
 
-const createNode = (path, name, children = []) => ({
-  path,
+const createNode = (nodeId, name, children = []) => ({
+  nodeId,
   name,
+  path: `/display/${name}`,
   children,
 });
 
 const defaultProps = {
-  rootPath: '/docs',
+  rootNodeId: 1,
   folderTree: new Map([
-    ['/docs', createNode('/docs', 'docs', [{ path: '/docs/sub', name: 'sub', children: [] }])],
-    ['/docs/sub', createNode('/docs/sub', 'sub', [])],
+    [1, createNode(1, 'docs', [{ nodeId: 2, name: 'sub', children: [] }])],
+    [2, createNode(2, 'sub', [])],
   ]),
-  expandedPaths: new Set(),
-  loadingPaths: new Set(),
+  expandedNodeIds: new Set(),
+  loadingNodeIds: new Set(),
   toggleExpand: jest.fn(),
   folderPermissions: new Map(),
   isAdminMode: false,
@@ -29,7 +30,7 @@ const defaultProps = {
   getUserName: jest.fn((id) => `user-${id}`),
   hasPermissionChanged: jest.fn(() => false),
   setFolderMenuAnchor: jest.fn(),
-  setFolderMenuPath: jest.fn(),
+  setFolderMenuNodeId: jest.fn(),
   loadingPermissions: false,
   isMobile: false,
 };
@@ -43,7 +44,7 @@ describe('ShareFolderTree', () => {
     const { container } = renderWithProviders(
       <ShareFolderTree
         {...defaultProps}
-        rootPath="/nonexistent"
+        rootNodeId={999}
         folderTree={new Map()}
       />
     );
@@ -59,14 +60,14 @@ describe('ShareFolderTree', () => {
     renderWithProviders(<ShareFolderTree {...defaultProps} />);
     const expandBtn = screen.getByRole('button', { name: '' });
     fireEvent.click(expandBtn);
-    expect(defaultProps.toggleExpand).toHaveBeenCalledWith('/docs');
+    expect(defaultProps.toggleExpand).toHaveBeenCalledWith(1);
   });
 
   it('shows children when expanded', () => {
     renderWithProviders(
       <ShareFolderTree
         {...defaultProps}
-        expandedPaths={new Set(['/docs'])}
+        expandedNodeIds={new Set([1])}
       />
     );
     expect(screen.getByText('sub')).toBeInTheDocument();
@@ -76,7 +77,7 @@ describe('ShareFolderTree', () => {
     renderWithProviders(
       <ShareFolderTree
         {...defaultProps}
-        folderPermissions={new Map([['/docs', new Map([['u1', 'read']])]])}
+        folderPermissions={new Map([[1, new Map([['u1', 'read']])]])}
         users={[{ id: 'u2', username: 'user2', is_admin: false }]}
         user={{ id: 'me' }}
       />
@@ -84,7 +85,7 @@ describe('ShareFolderTree', () => {
     const buttons = screen.getAllByRole('button');
     const permBtn = buttons[1];
     fireEvent.click(permBtn);
-    expect(defaultProps.setFolderMenuPath).toHaveBeenCalledWith('/docs');
+    expect(defaultProps.setFolderMenuNodeId).toHaveBeenCalledWith(1);
   });
 
   it('animates overflowing labels on hover and resets on leave', () => {

@@ -81,6 +81,7 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 - [ ] Clicking/tapping items triggers `onFileOpen` or `onFolderOpen` with the same UX semantics as today (semantics are owned by controllers; view must only wire events).
 - [ ] Folder tree and overlay slots render in the same layout positions as today.
 - [ ] Progress drawer renders from `progress` props and calls provided retry/cancel callbacks without owning the operation logic.
+- [ ] In share-link mode, the folder tree routes non-share section clicks through `onLeaveShareClick` (`interaction.handleLeaveSharePathClick`) so the hosting shell can open the leave-share confirmation; the leave-share `ConfirmDialog` renders from `overlayState` (leave-share state) and confirms via `handleLeaveShareConfirm`.
 
 ### 2.6 Edge Cases
 

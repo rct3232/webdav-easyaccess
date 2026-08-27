@@ -69,8 +69,11 @@ async function requestWithAuth(config) {
       if (config?._retry) {
         removeTokens();
         handle401RefreshFailure(policyConfig);
-        throw err;
+        return null;
       }
+      // Excluded endpoints (auth login/register, share-related): no refresh and
+      // no redirect, but the 401 is rethrown so callers preserve the server's
+      // errorCode (e.g. invalidCredentials) for user-facing messages.
       if (shouldSkipAuthNavigation(policyConfig)) throw err;
 
       try {
@@ -81,7 +84,7 @@ async function requestWithAuth(config) {
       } catch (refreshError) {
         removeTokens();
         handle401RefreshFailure(policyConfig);
-        throw refreshError;
+        return null;
       }
     }
 

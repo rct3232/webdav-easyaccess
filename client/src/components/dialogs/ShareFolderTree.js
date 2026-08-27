@@ -21,10 +21,10 @@ const HOVER_SCROLL_ANIMATION_NAME = 'shareFolderTreeLabelScroll';
 const HOVER_SCROLL_HOLD_RATIO = 0.875;
 
 const ShareFolderTree = ({
-  rootPath,
+  rootNodeId,
   folderTree,
-  expandedPaths,
-  loadingPaths,
+  expandedNodeIds,
+  loadingNodeIds,
   toggleExpand,
   folderPermissions,
   isAdminMode,
@@ -35,13 +35,14 @@ const ShareFolderTree = ({
   getUserName,
   hasPermissionChanged,
   setFolderMenuAnchor,
-  setFolderMenuPath,
+  setFolderMenuNodeId,
   loadingPermissions,
   isMobile,
+  baseFolderNodeId = null,
   level = 0,
 }) => {
   const { t } = useTranslation();
-  const node = folderTree.get(rootPath);
+  const node = folderTree.get(rootNodeId);
   if (!node) return null;
 
   const startLabelScroll = isMobile ? undefined : (event) => {
@@ -72,13 +73,14 @@ const ShareFolderTree = ({
     text.style.animation = 'none';
     text.style.transform = 'translateX(0)';
   };
-  
-  const isExpanded = expandedPaths.has(node.path);
-  const isLoading = loadingPaths.has(node.path);
+
+  const nodeId = node.nodeId ?? rootNodeId;
+  const isExpanded = expandedNodeIds.has(nodeId);
+  const isLoading = loadingNodeIds.has(nodeId);
   const hasChildren = node.children && node.children.length > 0;
 
   return (
-    <Box key={node.path} sx={{ width: '100%', overflow: 'visible' }}>
+    <Box key={nodeId ?? 'root'} sx={{ width: '100%', overflow: 'visible' }}>
       {level === 0 && (
         <style>
           {`
@@ -105,7 +107,7 @@ const ShareFolderTree = ({
         <Box sx={{ display: 'flex', alignItems: 'center', flex: '1 0 0', minWidth: 0 }}>
           <IconButton
             size="small"
-            onClick={() => toggleExpand(node.path)}
+            onClick={() => toggleExpand(nodeId)}
             disabled={isLoading}
             sx={{ mr: 0.5, flexShrink: 0 }}
           >
@@ -151,7 +153,7 @@ const ShareFolderTree = ({
             isChanged,
             isFolderWithAdminPermission,
           } = deriveShareFolderAccessView({
-            folderPath: node.path,
+            nodeId,
             folderPermissions,
             isAdminMode,
             userId,
@@ -160,6 +162,7 @@ const ShareFolderTree = ({
             users,
             getUserName,
             hasPermissionChanged,
+            baseFolderNodeId,
           });
 
           return (
@@ -170,7 +173,7 @@ const ShareFolderTree = ({
                 e.stopPropagation();
                 if (isFolderWithAdminPermission) return;
                 setFolderMenuAnchor(e.currentTarget);
-                setFolderMenuPath(node.path);
+                setFolderMenuNodeId(nodeId);
               }}
               sx={{ 
                 display: 'flex',
@@ -249,11 +252,11 @@ const ShareFolderTree = ({
           ) : (
             node.children.map(child => (
               <ShareFolderTree
-                key={child.path}
-                rootPath={child.path}
+                key={child.nodeId ?? child.path}
+                rootNodeId={child.nodeId}
                 folderTree={folderTree}
-                expandedPaths={expandedPaths}
-                loadingPaths={loadingPaths}
+                expandedNodeIds={expandedNodeIds}
+                loadingNodeIds={loadingNodeIds}
                 toggleExpand={toggleExpand}
                 folderPermissions={folderPermissions}
                 isAdminMode={isAdminMode}
@@ -264,9 +267,10 @@ const ShareFolderTree = ({
                 getUserName={getUserName}
                 hasPermissionChanged={hasPermissionChanged}
                 setFolderMenuAnchor={setFolderMenuAnchor}
-                setFolderMenuPath={setFolderMenuPath}
+                setFolderMenuNodeId={setFolderMenuNodeId}
                 loadingPermissions={loadingPermissions}
                 isMobile={isMobile}
+                baseFolderNodeId={baseFolderNodeId}
                 level={level + 1}
               />
             ))

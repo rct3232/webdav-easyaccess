@@ -25,9 +25,9 @@
 | handleRecentToggle | function | Y | - | Toggle expand |
 | handleRecentClick | function | Y | - | Section header click |
 | currentPath | string | Y | - | Current path |
-| recentFilesList | array | Y | - | Recent files |
-| onPathClick | function | Y | - | Path click (folder) |
-| onFileClick | function | N | - | File click. If omitted, file click falls back to `onPathClick(parentPath)` |
+| recentFilesList | array | Y | - | Recent files (entries keyed/carried by nodeId) |
+| onNodeClick | function | Y | - | Node click (folder): `(nodeId) => void` |
+| onFileClick | function | N | - | File click: `(file) => void`, receives `{ ...entry, nodeId, isRecentFile: true }`. If omitted, file click falls back to parent-folder navigation via `onNodeClick` |
 
 ### 2.3 Callback Signatures
 
@@ -35,8 +35,8 @@
 |----------|--------------|-----------|
 | handleRecentToggle | Expand/collapse | - |
 | handleRecentClick | Section click | - |
-| onPathClick | Folder click | (path) |
-| onFileClick | File click | (file) |
+| onNodeClick | Folder click | (nodeId) |
+| onFileClick | File click | (file) — receives `{ ...entry, nodeId, isRecentFile: true }` |
 
 ### 2.4 Dependencies
 
@@ -58,9 +58,9 @@
 ### 2.7 Verification Scenarios
 
 - [ ] Section click, expand
-- [ ] File/folder click
+- [ ] File/folder click (folder clicks call `onNodeClick(nodeId)`)
 - [ ] Empty state
-- [ ] File click when onFileClick is undefined falls back to `onPathClick(parentPath)`
+- [ ] File click passes `{ ...entry, nodeId, isRecentFile: true }`; when `onFileClick` is undefined, it falls back to parent-folder navigation via `onNodeClick`
 - [ ] List shows max 10 items
 
 ### 2.9 UI Enhancements

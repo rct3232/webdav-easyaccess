@@ -22,25 +22,25 @@ const SharedFoldersSection = ({
   sharedExpanded,
   handleSharedToggle,
   handleSharedClick,
-  currentPath,
+  currentNodeId,
   buildSharedFolderTree,
-  handleSharedFolderClick,
-  expandedPaths,
-  handleToggleExpand,
+  onNodeClick,
+  expandedNodeIds,
+  onToggleExpand,
   user,
   treeUpdateTrigger,
   onExplorerDrop,
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
-  internalDraggedPath,
+  internalDraggedNodeId,
   isMobile,
 }) => {
   const { t } = useTranslation();
   if (user?.is_admin || sharedFolders.length === 0) return null;
 
   const sharedTree = buildSharedFolderTree();
-  const sharedFoldersMap = new Map(sharedFolders.map(perm => [perm.folder_path, perm]));
+  const sharedFoldersMap = new Map(sharedFolders.map(perm => [perm.nodeId, perm]));
 
   return (
     <>
@@ -54,7 +54,7 @@ const SharedFoldersSection = ({
       >
         <ListItemButton
           onClick={handleSharedClick}
-          selected={currentPath === '/__shared__'}
+          selected={currentNodeId == null}
           sx={{
             py: 0.5,
             minHeight: 32,
@@ -103,7 +103,7 @@ const SharedFoldersSection = ({
                 variant="body2"
                 sx={{
                   fontSize: '0.875rem',
-                  fontWeight: currentPath === '/__shared__' ? 700 : 400,
+                  fontWeight: currentNodeId == null ? 700 : 400,
                 }}
               >
                 {t('nav.shared')}
@@ -116,13 +116,13 @@ const SharedFoldersSection = ({
         <List component="div" disablePadding>
           {sharedTree.map((node) => (
             <BaseFolderTreeItem
-              key={node.path}
+              key={node.nodeId}
               node={node}
               level={1}
-              currentPath={currentPath}
-              onPathClick={handleSharedFolderClick}
-              expandedPaths={expandedPaths}
-              onToggleExpand={handleToggleExpand}
+              currentNodeId={currentNodeId}
+              onNodeClick={onNodeClick}
+              expandedNodeIds={expandedNodeIds}
+              onToggleExpand={onToggleExpand}
               user={user}
               treeUpdateTrigger={treeUpdateTrigger}
               sharedFoldersMap={sharedFoldersMap}
@@ -130,7 +130,7 @@ const SharedFoldersSection = ({
               onInternalFileDrop={onInternalFileDrop}
               onInternalDragStart={onInternalDragStart}
               onInternalDragEnd={onInternalDragEnd}
-              internalDraggedPath={internalDraggedPath}
+              internalDraggedNodeId={internalDraggedNodeId}
               isMobile={isMobile}
               useHiddenFilesFilter={false}
             />

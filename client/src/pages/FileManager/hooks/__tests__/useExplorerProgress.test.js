@@ -39,7 +39,7 @@ describe('useExplorerProgress', () => {
     expect(result.current.isProgressDrawerOpen).toBe(false);
   });
 
-  it('retries only failed upload files using the original target path', async () => {
+  it('retries only failed upload files using the original target nodeId', async () => {
     const executeExplorerUpload = jest.fn().mockResolvedValue(undefined);
     const updateProgress = jest.fn();
 
@@ -47,7 +47,7 @@ describe('useExplorerProgress', () => {
       progressItems: [{
         id: 'upload_drop_1',
         type: 'upload',
-        retryData: { type: 'upload', currentPath: '/docs' },
+        retryData: { type: 'upload', parentNodeId: 42 },
         fileItems: [
           { fileName: 'a.txt', status: 'completed' },
           { fileName: 'b.txt', status: 'error' },
@@ -81,7 +81,7 @@ describe('useExplorerProgress', () => {
     expect(updateProgress).toHaveBeenCalledWith({ id: 'upload_drop_1', remove: true });
     expect(executeExplorerUpload).toHaveBeenCalledWith(
       [{ file: { name: 'b.txt' }, relativePath: 'b.txt' }],
-      '/docs'
+      42
     );
   });
 
@@ -96,7 +96,7 @@ describe('useExplorerProgress', () => {
       progressItems: [{
         id: 'upload_drop_2',
         type: 'upload',
-        retryData: { currentPath: '/docs' },
+        retryData: { parentNodeId: 42 },
         fileItems: [
           { fileName: 'a.txt', status: 'pending' },
           { fileName: 'b.txt', status: 'uploading' },
@@ -134,7 +134,7 @@ describe('useExplorerProgress', () => {
     }));
     expect(handleOperationComplete).toHaveBeenCalledWith({
       opType: 'upload',
-      startedPath: '/docs',
+      startedNodeId: 42,
     });
     expect(setTreeUpdateTrigger).toHaveBeenCalledWith(expect.objectContaining({ type: 'refresh' }));
   });

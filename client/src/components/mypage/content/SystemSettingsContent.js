@@ -17,10 +17,12 @@ import {
 } from '@mui/material';
 import { CleaningServices as CleaningServicesIcon } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
+import SyncAlt from '@mui/icons-material/SyncAlt';
 import * as adminService from '../../../services/adminService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
+import MigrationDialog from './MigrationDialog';
 
 const SystemSettingsContent = ({ onMessage }) => {
   const { t } = useTranslation();
@@ -34,6 +36,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
   const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
+  const [migrationOpen, setMigrationOpen] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -161,6 +164,15 @@ const SystemSettingsContent = ({ onMessage }) => {
           {permissionCleanupLoading ? <CircularProgress size={24} /> : <CategoryIcon />}
         </IconButton>
       </Box>
+      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body1">{t('admin.storageMigration')}</Typography>
+          <Typography variant="body2" color="text.secondary">{t('admin.storageMigrationDesc')}</Typography>
+        </Box>
+        <IconButton onClick={() => setMigrationOpen(true)} color="primary" sx={{ ml: 2 }} aria-label={t('admin.runMigration')}>
+          <SyncAlt />
+        </IconButton>
+      </Box>
 
       <Dialog open={cleanupConfirmOpen} onClose={() => setCleanupConfirmOpen(false)} fullScreen>
         <DialogTitle>{t('admin.orphanCleanupConfirmTitle')}</DialogTitle>
@@ -201,6 +213,8 @@ const SystemSettingsContent = ({ onMessage }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <MigrationDialog open={migrationOpen} onClose={() => setMigrationOpen(false)} onMessage={(msg) => setMessage(msg)} />
 
       <Snackbar open={!!message.text} autoHideDuration={6000} onClose={() => setMessage({ type: '', text: '' })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setMessage({ type: '', text: '' })} severity={message.type || 'info'} sx={{ width: '100%' }}>

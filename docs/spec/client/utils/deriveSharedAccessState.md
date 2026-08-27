@@ -26,8 +26,8 @@
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | isDirectory | boolean | Y | Whether the target is a folder. |
-| permissionCheck | object | Y | Result from `checkPermission(targetPath)`. For file targets this includes `source` (`'file'` or `'path'`). For directory targets only `hasRead`/`hasWrite` are used. |
-| parentPermissionCheck | object \| null | N | Only used for file targets. Result from `checkPermission(parentPath)` to derive `pathPermission`. |
+| permissionCheck | object | Y | Result from `checkPermission(nodeId)`. For file targets this includes `source` (`'file'` or `'path'`). For directory targets only `hasRead`/`hasWrite` are used. |
+| parentPermissionCheck | object \| null | N | Only used for file targets. Result from `checkPermission(parentNodeId)` to derive `pathPermission`. |
 | directHasReadPermission | boolean \| undefined | N | Optional override for `hasReadPermission` when the caller already knows direct read (e.g. from optimistic state). |
 | pendingRequest | object | N | Pending request state (passed-through, not mutated). |
 | ownerExists | boolean \| null | N | Owner existence state (passed-through, not mutated). |

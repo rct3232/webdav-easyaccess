@@ -4,9 +4,9 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Path breadcrumb: path segments as chips. Shown on all viewports (mobile and desktop). shareRootPath: share mode (path within share). Optional folder tree toggle. Loads shared permission paths for path display. |
+| Role | NodeId breadcrumb: renders the current folder's ancestor chain (`ancestors: [{ nodeId, name }]` supplied by the `GET /files/list` response) as chips. Shown on all viewports (mobile and desktop). shareRootPath: share mode (path within share). Optional folder tree toggle. |
 | Used in | FileManager |
-| Related components | getUserPermissions, normalizePath, userUtils |
+| Related components | `GET /files/list` `ancestors` chain |
 
 ---
 
@@ -21,8 +21,8 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| currentPath | string | Y | - | Current path |
-| onPathClick | function | Y | - | Path chip click |
+| ancestors | array | Y | - | Current folder's ancestor chain `[{ nodeId, name }]` from the `GET /files/list` response |
+| onNodeClick | function | Y | - | Ancestor chip click (by nodeId) |
 | user | object | N | - | User |
 | onToggleFolderTree | function | N | - | Toggle folder tree |
 | isFolderTreeOpen | boolean | N | - | Tree open |
@@ -34,14 +34,14 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onPathClick | Chip click | (path) |
+| onNodeClick | Ancestor chip click | (nodeId) |
 | onToggleFolderTree | Toggle click | - |
 
 ### 2.4 Dependencies
 
-- **imports:** getUserPermissions, normalizePath, isUserOwnFolder, filterOutUserOwnFolders
+- **imports:** the `ancestors` chain provided in the `GET /files/list` response (server builds it via the ancestor-chain helper)
 - **Reference implementation:** `client/src/components/file-manager/Breadcrumb.js`
-- For shared request dedupe and TTL memoization behavior, see `docs/spec/client/services/permissionService.md`.
+- No client-side shared-permission path loading is needed for segment derivation; segment names and nodeIds come from the server-provided ancestor chain.
 
 ### 2.5 i18n Keys
 
@@ -56,11 +56,11 @@
 
 ### 2.7 Verification Scenarios
 
-- [ ] Path segments, chip click
+- [ ] Ancestor chain rendered from `ancestors`; chip click navigates by nodeId
 - [ ] Share mode path parsing
 - [ ] Toggle folder tree
 
 ### 2.8 Edge Cases
 
 - User own folder – no shared segments
-- Horizontal scroll for long paths
+- Horizontal scroll for long chains

@@ -15,8 +15,10 @@ import { useSelection } from './hooks/useSelection';
 import { useDropToUpload } from '../../hooks/useDropToUpload';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useMessage } from '../../hooks/useMessage';
+import { resolvePath } from '../../services/fileService';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
+import { getEntryKey } from '../../utils/fileViewUtils';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
@@ -32,12 +34,13 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { isMobile } = useResponsive();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [contentAreaDraggedPath, setContentAreaDraggedPath] = useState(null);
+  const [contentAreaDraggedNodeId, setContentAreaDraggedNodeId] = useState(null);
+  const [contentAreaDraggedParentNodeId, setContentAreaDraggedParentNodeId] = useState(null);
   const [contentAreaDragType, setContentAreaDragType] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
-    () => (linkInfo ? normalizePath(linkInfo.filePath || '/') : ''),
+    () => (linkInfo ? normalizePath(linkInfo.displayPath || '/') : ''),
     [linkInfo]
   );
   const shareRootName = useMemo(
@@ -64,6 +67,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    leaveShareConfirmTargetNodeId,
+    setLeaveShareConfirmTargetNodeId,
     leaveShareConfirmTargetPath,
     setLeaveShareConfirmTargetPath,
     handleLeaveSharePathClick,
@@ -82,6 +87,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const {
     currentPath,
     setCurrentPath,
+    currentNodeId,
+    setCurrentNodeId,
+    ancestors,
     files: filesFromHook,
     loading,
     loadFiles,
@@ -96,10 +104,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   // currentPathRef는 useFileManager 호출 후에 정의 (currentPath가 필요)
   const currentPathRef = useRef(null);
+  const currentNodeIdRef = useRef(null);
 
   useEffect(() => {
     currentPathRef.current = currentPath;
   }, [currentPath]);
+
+  useEffect(() => {
+    currentNodeIdRef.current = currentNodeId;
+  }, [currentNodeId]);
 
   const {
     sessionKey,
@@ -116,7 +129,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     hasMore,
     handleThumbnailsLoaded,
   } = useExplorerSession({
-    currentPath,
+    currentNodeId,
+    view: currentPath === '/__recent__' ? 'recent' : currentPath === '/__shared__' ? 'shared' : 'folder',
     files: filesFromHook,
     isMobile,
   });
@@ -138,12 +152,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // 선택 모드에서 삭제/이동 버튼: 선택된 항목 모두 write 권한이 있어야 활성화
   const allSelectedHaveWrite = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedPaths = Array.from(selectedFiles);
-    const selectedFileObjects = selectedPaths
-      .map(path => sortedFiles.find(f => f.path === path))
+    const selectedKeys = Array.from(selectedFiles);
+    const selectedFileObjects = selectedKeys
+      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
       .filter(Boolean);
     return (
-      selectedFileObjects.length === selectedPaths.length &&
+      selectedFileObjects.length === selectedKeys.length &&
       selectedFileObjects.every(f => f.hasWritePermission === true)
     );
   }, [selectionMode, selectedFiles, sortedFiles]);
@@ -151,9 +165,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // 선택된 항목 중 읽기 전용(hasWritePermission === false) 포함 여부
   const hasReadOnlyInSelection = useMemo(() => {
     if (!selectionMode || selectedFiles.size === 0) return false;
-    const selectedPaths = Array.from(selectedFiles);
-    const selectedFileObjects = selectedPaths
-      .map(path => sortedFiles.find(f => f.path === path))
+    const selectedKeys = Array.from(selectedFiles);
+    const selectedFileObjects = selectedKeys
+      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
       .filter(Boolean);
     return selectedFileObjects.some(f => f.hasWritePermission === false);
   }, [selectionMode, selectedFiles, sortedFiles]);
@@ -190,10 +204,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const propertiesFile = useMemo(() => {
     const source = mobilePropertiesFile || actionSheetFile;
     if (!source) return null;
-    return files.find(f => f.path === source.path) || source;
+    return files.find(f => getEntryKey(f) === getEntryKey(source)) || source;
   }, [files, mobilePropertiesFile, actionSheetFile]);
 
-  // 미리보기 갤러리용 미디어 파일 목록 (같은 경로의 이미지/비디오)
+  // 미리보기 갤러리용 미디어 파일 목록 (같은 노드/경로의 이미지/비디오)
   const mediaFiles = useMemo(() => {
     if (!selectedFile) return [];
     if (currentPath === '/__shared__') {
@@ -203,19 +217,21 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
       );
     }
+    const isMedia = (f) =>
+      f.type === 'file' &&
+      (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video');
+    const parentNodeId = selectedFile.parentNodeId ?? null;
+    if (parentNodeId != null) {
+      return sortedFiles.filter((f) => (f.parentNodeId ?? null) === parentNodeId && isMedia(f));
+    }
     const parentPath = getParentPath(selectedFile.path);
-    return sortedFiles.filter(
-      (f) =>
-        getParentPath(f.path) === parentPath &&
-        (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
-    );
+    return sortedFiles.filter((f) => getParentPath(f.path) === parentPath && isMedia(f));
   }, [sortedFiles, selectedFile, currentPath]);
 
   const [dropMessage, setDropMessage] = useState({ show: false, text: '', type: 'success' });
 
   const {
     trackRecentFileClick,
-    trackPathHistory,
     clearTracking,
     clearPathHistory,
     handleRecentFileError,
@@ -320,8 +336,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     shareToken,
     currentPath,
     currentPathRef,
+    currentNodeId,
+    currentNodeIdRef,
     refreshNow: loadFiles,
-    getCurrentPathNow: () => currentPathRef.current,
+    getCurrentNodeIdNow: () => currentNodeIdRef.current,
     hasWritePermission,
     selectedFiles,
     sortedFiles,
@@ -366,20 +384,25 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   });
 
   const {
-    navigateToPath: navigateToExplorerPath,
+    navigateToNode: navigateToExplorerNode,
     handleFolderOpen: openExplorerFolder,
   } = useExplorerNavigation({
-    currentPath,
-    getPreviousPath: () => currentPathRef.current,
-    setCurrentPath,
-    onTrackPathHistory: trackPathHistory,
-    canNavigateToPath: user?.is_admin ? async () => true : explorerGateway.canNavigateToPath,
+    currentNodeId,
+    getPreviousNodeId: () => currentNodeIdRef.current,
+    setCurrentNodeId,
+    canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
   });
-  const handleProductPathClick = useCallback(async (path) => {
+
+  const handleProductPathClick = useCallback(async (path, file) => {
     if (!path) return false;
 
     if (isShareLinkMode) {
       const normalizedPath = normalizePath(path);
+      // nodeId-first share navigation (C2.5): navigate by the clicked folder nodeId
+      // when available; the path only drives the breadcrumb display.
+      if (file?.nodeId != null) {
+        setCurrentNodeId(file.nodeId);
+      }
       setCurrentPath(normalizedPath);
       if (isMobile) setDrawerOpen(false);
       return true;
@@ -391,7 +414,59 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
 
     return false;
-  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen]);
+  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId]);
+
+  // Path-based navigation entry (recent files / legacy fallbacks): resolve the path to a
+  // nodeId via the legacy resolver and navigate by nodeId. Throws so recent-file error
+  // handling can react to NOT_FOUND.
+  const navigateToExplorerPath = useCallback(async (path) => {
+    if (!path) return undefined;
+    const normalizedPath = normalizePath(path);
+    if (normalizedPath === '/__recent__' || normalizedPath === '/__shared__') {
+      return handleProductPathClick(normalizedPath);
+    }
+    const data = await resolvePath(normalizedPath);
+    if (data?.nodeId != null) {
+      return navigateToExplorerNode(data.nodeId);
+    }
+    setCurrentNodeId(null);
+    return undefined;
+  }, [handleProductPathClick, navigateToExplorerNode, setCurrentNodeId]);
+
+  // NodeId-first navigation entry used by the folder tree and breadcrumb.
+  // Accepts a nodeId (number), a virtual-root route ('/__shared__' | '/__recent__'),
+  // or null (home). Share mode navigates exclusively by nodeId; legacy path
+  // targets are only handled outside share mode via resolve-path.
+  const handleFolderTreeNodeClick = useCallback(async (target) => {
+    if (isShareLinkMode) {
+      if (typeof target === 'number') {
+        setCurrentNodeId(target);
+        if (isMobile) setDrawerOpen(false);
+        return;
+      }
+      if (typeof target === 'string' && target) {
+        const normalizedPath = normalizePath(target);
+        if (normalizedPath === '/__shared__' || normalizedPath === '/__recent__') {
+          setCurrentPath(normalizedPath);
+          if (isMobile) setDrawerOpen(false);
+        }
+      }
+      return;
+    }
+    if (typeof target === 'string') {
+      if (target === '/__shared__' || target === '/__recent__') {
+        setCurrentPath(target);
+        return;
+      }
+      navigateToExplorerPath(target);
+      return;
+    }
+    if (target == null) {
+      setCurrentNodeId(null);
+      return;
+    }
+    navigateToExplorerNode(target);
+  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId, navigateToExplorerPath, navigateToExplorerNode]);
 
   const {
     handlePathClick,
@@ -426,17 +501,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleProductPathClick,
   });
 
-  const handleCreateFolderComplete = useCallback((folderPath, folderName) => {
-    const parentPath = folderPath.substring(0, folderPath.lastIndexOf('/')) || (user?.is_admin ? '/' : `/${user?.username || ''}`);
-    setTreeUpdateTrigger({
-      type: 'created',
-      folderPath,
-      folderName,
-      parentPath,
-      timestamp: Date.now(),
-    });
+  const handleCreateFolderComplete = useCallback((folderPath, folderName, createdNodeId) => {
+    const parentNodeId = currentNodeIdRef.current;
+    if (createdNodeId != null && parentNodeId != null) {
+      setTreeUpdateTrigger({
+        type: 'created',
+        parentNodeId,
+        nodeId: createdNodeId,
+        name: folderName,
+        timestamp: Date.now(),
+      });
+    }
 
-    handleOperationComplete({ opType: 'createFolder', startedPath: parentPath });
+    handleOperationComplete({ opType: 'createFolder', startedPath: folderPath });
     closeCreateFolderDialog();
 
     setTimeout(() => {
@@ -445,7 +522,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         timestamp: Date.now(),
       });
     }, 500);
-  }, [user, setTreeUpdateTrigger, handleOperationComplete, closeCreateFolderDialog]);
+  }, [setTreeUpdateTrigger, handleOperationComplete, closeCreateFolderDialog]);
 
   const handleViewContextMenu = useCallback(
     (e, file) => {
@@ -458,12 +535,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [isMobile, setContextMenu, setSelectedFile]
   );
 
-  const handleDragStartFromView = useCallback((path) => {
-    setContentAreaDraggedPath(path);
-  }, []);
+  const handleDragStartFromView = useCallback((nodeId) => {
+    setContentAreaDraggedNodeId(nodeId ?? null);
+    const file = files.find((f) => f.nodeId === nodeId);
+    setContentAreaDraggedParentNodeId(file?.parentNodeId ?? null);
+  }, [files]);
 
   const handleDragEndFromView = useCallback(() => {
-    setContentAreaDraggedPath(null);
+    setContentAreaDraggedNodeId(null);
+    setContentAreaDraggedParentNodeId(null);
     setContentAreaDragType(null);
   }, []);
 
@@ -472,9 +552,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     selectionMode,
     hasWritePermission,
     isShareLinkMode,
-    currentPath,
-    contentAreaDraggedPath,
-    setContentAreaDraggedPath,
+    currentNodeId,
+    contentAreaDraggedNodeId,
+    contentAreaDraggedParentNodeId,
+    setContentAreaDraggedNodeId,
     setContentAreaDragType,
     handleInternalFileDrop,
     handleExplorerDrop,
@@ -502,7 +583,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     isShareLinkMode,
     shareRootPath,
     shareRootName,
-  }), [shareToken, isShareLinkMode, shareRootPath, shareRootName]);
+    shareRootNodeId: linkInfo?.nodeId,
+  }), [shareToken, isShareLinkMode, shareRootPath, shareRootName, linkInfo]);
 
   const shellContextProps = useMemo(() => ({
     user,
@@ -527,6 +609,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    leaveShareConfirmTargetNodeId,
+    setLeaveShareConfirmTargetNodeId,
     leaveShareConfirmTargetPath,
     setLeaveShareConfirmTargetPath,
     handleLeaveShareConfirm,
@@ -545,6 +629,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    leaveShareConfirmTargetNodeId,
+    setLeaveShareConfirmTargetNodeId,
     leaveShareConfirmTargetPath,
     setLeaveShareConfirmTargetPath,
     handleLeaveShareConfirm,
@@ -552,6 +638,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const controlsStateProps = useMemo(() => ({
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,
@@ -560,6 +647,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSearchQuery,
   }), [
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,
@@ -635,10 +723,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   ]);
 
   const transferStateProps = useMemo(() => ({
-    contentAreaDraggedPath,
+    contentAreaDraggedNodeId,
     bulkMoveCopyInProgress,
   }), [
-    contentAreaDraggedPath,
+    contentAreaDraggedNodeId,
     bulkMoveCopyInProgress,
   ]);
 
@@ -798,6 +886,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleInternalFileDrop,
     handleLeaveSharePathClick,
     handlePathClick,
+    handleFolderTreeNodeClick,
+    ancestors,
     handleScrollAreaClick,
     handleFileDownloadOp,
     contentAreaDnD,
@@ -818,6 +908,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleInternalFileDrop,
     handleLeaveSharePathClick,
     handlePathClick,
+    handleFolderTreeNodeClick,
+    ancestors,
     handleScrollAreaClick,
     handleFileDownloadOp,
     contentAreaDnD,

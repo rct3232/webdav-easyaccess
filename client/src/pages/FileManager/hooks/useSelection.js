@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { getEntryKey } from '../../../utils/fileViewUtils';
 
 export const useSelection = (displayedFiles, allFiles = null) => {
   const [selectionMode, setSelectionMode] = useState(false);
@@ -36,7 +37,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   };
 
   const handleSelectAll = () => {
-    setSelectedFiles(new Set(filesForSelectAll.map(file => file.path)));
+    setSelectedFiles(new Set(filesForSelectAll.map(file => getEntryKey(file))));
   };
 
   const handleDeselectAll = () => {
@@ -47,9 +48,9 @@ export const useSelection = (displayedFiles, allFiles = null) => {
     setSelectedFiles(prev => {
       const newSet = new Set(prev);
       if (checked) {
-        newSet.add(file.path);
+        newSet.add(getEntryKey(file));
       } else {
-        newSet.delete(file.path);
+        newSet.delete(getEntryKey(file));
       }
       return newSet;
     });
@@ -58,10 +59,10 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   const toggleFileSelection = (file) => {
     setSelectedFiles(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(file.path)) {
-        newSet.delete(file.path);
+      if (newSet.has(getEntryKey(file))) {
+        newSet.delete(getEntryKey(file));
       } else {
-        newSet.add(file.path);
+        newSet.add(getEntryKey(file));
       }
       return newSet;
     });
@@ -74,10 +75,10 @@ export const useSelection = (displayedFiles, allFiles = null) => {
       const hi = Math.max(fromIndex, toIndex);
       const clampedLo = Math.max(0, lo);
       const clampedHi = Math.min(displayedFiles.length - 1, hi);
-      const paths = displayedFiles
+      const keys = displayedFiles
         .slice(clampedLo, clampedHi + 1)
-        .map(f => f.path);
-      setSelectedFiles(new Set(paths));
+        .map(f => getEntryKey(f));
+      setSelectedFiles(new Set(keys));
     },
     [displayedFiles]
   );
@@ -102,17 +103,17 @@ export const useSelection = (displayedFiles, allFiles = null) => {
         setSelectionMode(true);
         setSelectedFiles(prev => {
           const newSet = new Set(prev);
-          if (newSet.has(file.path)) {
-            newSet.delete(file.path);
+          if (newSet.has(getEntryKey(file))) {
+            newSet.delete(getEntryKey(file));
           } else {
-            newSet.add(file.path);
+            newSet.add(getEntryKey(file));
           }
           return newSet;
         });
         lastSelectedIndexRef.current = fileIndex;
       } else {
         setSelectionMode(true);
-        setSelectedFiles(new Set([file.path]));
+        setSelectedFiles(new Set([getEntryKey(file)]));
         lastSelectedIndexRef.current = fileIndex;
       }
     },

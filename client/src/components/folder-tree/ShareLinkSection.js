@@ -15,62 +15,58 @@ import {
   ExpandMore as ExpandMoreIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
-import { normalizePath } from '../../utils/pathUtils';
 import folderTreeGateway from '../../services/folderTreeGateway';
 import BaseFolderTreeItem from './BaseFolderTreeItem';
 
 /**
  * 공유 링크를 __shared__ / __recent__ 처럼 FolderTree 안의 한 섹션으로 표시
+ * (nodeId-first; share root is always addressed by nodeId in Phase 5)
  */
 const ShareLinkSection = ({
-  shareRootPath,
+  shareRootNodeId,
   shareRootName,
   shareToken,
-  currentPath,
-  onShareLinkPathClick,
+  currentNodeId,
+  onNodeClick,
   isMobile = false,
 }) => {
   const { t } = useTranslation();
-  const rootPath = normalizePath(shareRootPath || '/');
+  const rootNodeId = shareRootNodeId ?? null;
   const [shareLinkExpanded, setShareLinkExpanded] = useState(true);
-  const [expandedPaths, setExpandedPaths] = useState(new Set([rootPath]));
+  const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [rootChildren, setRootChildren] = useState([]);
   const [loadingRoot, setLoadingRoot] = useState(false);
 
-  const handleToggleExpand = useCallback((path) => {
-    setExpandedPaths((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
+  const handleToggleExpand = useCallback((nodeId) => {
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
       } else {
-        newSet.add(path);
+        next.add(nodeId);
       }
-      return newSet;
+      return next;
     });
   }, []);
 
-  // currentPath가 공유 루트 이하일 때 해당 부모들 확장
+  // currentNodeId가 공유 루트 이하일 때 섹션 확장 유지 (부모 노드 자동 확장은 Phase 5).
   useEffect(() => {
-    if (!currentPath || !rootPath || !currentPath.startsWith(rootPath)) return;
-    const normRoot = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
-    const suffix = currentPath === normRoot ? '' : currentPath.slice(normRoot.length + 1);
-    const pathParts = suffix ? suffix.split('/').filter(Boolean) : [];
-    const pathsToExpand = new Set([rootPath]);
-    let built = normRoot;
-    pathParts.forEach((part) => {
-      built = built === '/' ? `/${part}` : `${built}/${part}`;
-      pathsToExpand.add(built);
-    });
-    setExpandedPaths(pathsToExpand);
+    if (rootNodeId == null || currentNodeId == null) return undefined;
     setShareLinkExpanded(true);
-  }, [currentPath, rootPath]);
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      next.add(rootNodeId);
+      return next;
+    });
+    return undefined;
+  }, [rootNodeId, currentNodeId]);
 
   useEffect(() => {
-    if (!shareLinkExpanded || !rootPath || !shareToken) return;
+    if (!shareLinkExpanded || !shareToken) return undefined;
     let cancelled = false;
     setLoadingRoot(true);
     folderTreeGateway.listFolderChildren({
-      path: rootPath,
+      nodeId: rootNodeId ?? undefined,
       listFilesOptions: { shareToken },
       useHiddenFilesFilter: true,
     })
@@ -84,17 +80,20 @@ const ShareLinkSection = ({
       .finally(() => {
         if (!cancelled) setLoadingRoot(false);
       });
-    return () => { cancelled = true; };
-  }, [shareLinkExpanded, rootPath, shareToken]);
+    return () => {
+      cancelled = true;
+    };
+  }, [shareLinkExpanded, rootNodeId, shareToken]);
 
-  if (!shareRootPath && !shareToken) return null;
+  if (shareRootNodeId == null && !shareToken) return null;
 
-  const listFilesOptions = shareToken ? { shareToken } : {};
-  const isSelected = currentPath === rootPath || (currentPath && currentPath.startsWith(rootPath + (rootPath.endsWith('/') ? '' : '/')));
+  const isSelected = currentNodeId != null && rootNodeId != null && currentNodeId === rootNodeId;
 
   const handleHeaderClick = () => {
     setShareLinkExpanded((prev) => !prev);
-    onShareLinkPathClick(rootPath);
+    if (rootNodeId != null) {
+      onNodeClick(rootNodeId);
+    }
   };
 
   const handleHeaderToggle = (e) => {
@@ -176,19 +175,20 @@ const ShareLinkSection = ({
         <List component="div" disablePadding>
           {loadingRoot ? null : rootChildren.map((child) => (
             <BaseFolderTreeItem
-              key={child.path}
+              key={child.nodeId != null ? child.nodeId : child.path}
+              node={child}
               path={child.path}
               name={child.name}
               level={1}
-              currentPath={currentPath}
-              onPathClick={onShareLinkPathClick}
-              expandedPaths={expandedPaths}
+              currentNodeId={currentNodeId}
+              onNodeClick={onNodeClick}
+              expandedNodeIds={expandedNodeIds}
               onToggleExpand={handleToggleExpand}
               hasReadPermission={child.hasReadPermission !== false}
               hasWritePermission={false}
               onExplorerDrop={undefined}
               isMobile={isMobile}
-              listFilesOptions={listFilesOptions}
+              listFilesOptions={{ shareToken }}
               useHiddenFilesFilter={true}
             />
           ))}

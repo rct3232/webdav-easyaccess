@@ -1,6 +1,6 @@
 /**
  * RecentFilesSection tests.
- * Verifies section click/expand, file/folder click, empty state per spec.
+ * Verifies section click/expand, file/folder click by nodeId, empty state per spec.
  * @see docs/spec/client/components/folder-tree/RecentFilesSection.md
  */
 import React from 'react';
@@ -14,7 +14,7 @@ const defaultProps = {
   handleRecentClick: jest.fn(),
   currentPath: '/',
   recentFilesList: [],
-  onPathClick: jest.fn(),
+  onNodeClick: jest.fn(),
   onFileClick: jest.fn(),
 };
 
@@ -49,27 +49,27 @@ describe('RecentFilesSection', () => {
 
   it('shows file list when recentFilesList has items and expanded', () => {
     const files = [
-      { path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
-      { path: '/docs/folder', name: 'folder', type: 'directory' },
+      { nodeId: 1, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' },
+      { nodeId: 2, path: '/docs/folder', name: 'folder', type: 'directory' },
     ];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     expect(screen.getByText('a.pdf')).toBeInTheDocument();
     expect(screen.getByText('folder')).toBeInTheDocument();
   });
 
-  it('folder click invokes onPathClick', () => {
-    const files = [{ path: '/docs/folder', name: 'folder', type: 'directory' }];
+  it('folder click calls onNodeClick with the entry nodeId', () => {
+    const files = [{ nodeId: 5, path: '/docs/folder', name: 'folder', type: 'directory' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     fireEvent.click(screen.getByText('folder'));
-    expect(defaultProps.onPathClick).toHaveBeenCalledWith('/docs/folder');
+    expect(defaultProps.onNodeClick).toHaveBeenCalledWith(5);
   });
 
-  it('file click invokes onFileClick', () => {
-    const files = [{ path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
+  it('file click invokes onFileClick with the nodeId entry', () => {
+    const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
     fireEvent.click(screen.getByText('a.pdf'));
     expect(defaultProps.onFileClick).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/docs/a.pdf', name: 'a.pdf', basename: 'a.pdf', isRecentFile: true })
+      expect.objectContaining({ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', basename: 'a.pdf', isRecentFile: true })
     );
   });
 
@@ -79,16 +79,17 @@ describe('RecentFilesSection', () => {
     expect(screen.getByText(/No recent items/)).toBeInTheDocument();
   });
 
-  it('file click when onFileClick undefined falls back to onPathClick(parentPath)', () => {
-    const files = [{ path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
+  it('file click without onFileClick does not navigate (no path shim)', () => {
+    const files = [{ nodeId: 3, path: '/docs/a.pdf', name: 'a.pdf', type: 'file' }];
     const props = { ...defaultProps, recentExpanded: true, recentFilesList: files, onFileClick: undefined };
     renderWithProviders(<RecentFilesSection {...props} />);
     fireEvent.click(screen.getByText('a.pdf'));
-    expect(defaultProps.onPathClick).toHaveBeenCalledWith('/docs');
+    expect(defaultProps.onNodeClick).not.toHaveBeenCalled();
   });
 
   it('list limited to 10 items', () => {
     const files = Array.from({ length: 15 }, (_, i) => ({
+      nodeId: i + 1,
       path: `/folder/file${i}.txt`,
       name: `file${i}.txt`,
       type: 'file',
@@ -101,12 +102,9 @@ describe('RecentFilesSection', () => {
 
   it('truncates very long filenames in the middle', () => {
     const longName = 'this-is-a-very-long-filename-that-should-be-truncated.docx';
-    const files = [{ path: '/long.docx', name: longName, type: 'file' }];
+    const files = [{ nodeId: 99, path: '/long.docx', name: longName, type: 'file' }];
     renderWithProviders(<RecentFilesSection {...defaultProps} recentExpanded recentFilesList={files} />);
 
-    // With 200px width, maxVisibleLength is Math.floor((200-32)/8) = 21
-    // middleTruncate('...', 21)
-    // The resulting text should contain '...' and the extension
     const truncatedElement = screen.getByLabelText(longName);
     expect(truncatedElement).toBeInTheDocument();
     expect(truncatedElement.textContent).toContain('...');

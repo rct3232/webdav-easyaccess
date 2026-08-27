@@ -9,9 +9,10 @@ import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { useResponsive } from '../../hooks/useResponsive';
 import { FileGridSkeleton } from './FileSkeletons';
 import { useThumbnailLazyLoad } from '../../hooks/useThumbnailLazyLoad';
+import { getEntryKey } from '../../utils/fileViewUtils';
 import FileGridItemContainer from './FileGridItemContainer';
 
-const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedPath, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
+const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false, onThumbnailsLoaded, loadMoreRef, hasMore, shareToken }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const gridRef = useRef(null);
@@ -30,7 +31,7 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     onDropPermissionDenied,
     onDragStart,
     onDragEnd,
-    internalDraggedPath,
+    internalDraggedNodeId,
     selectionMode,
     selectedFiles,
     onFileCheck,
@@ -70,14 +71,14 @@ const FileGrid = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPress
     >
       {files.map((file, index) => {
         const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-        const isDragging = draggedFile?.path === file.path;
-        const isDropTarget = dropTarget === file.path;
+        const isDragging = draggedFile?.nodeId != null && getEntryKey(draggedFile) === getEntryKey(file);
+        const isDropTarget = dropTarget != null && String(dropTarget) === String(getEntryKey(file));
         const dragHandlers = getDragHandlers(file, isDisabled);
         const dropHandlers = getDropHandlers(file, isDisabled);
 
         return (
           <FileGridItemContainer
-            key={file.path}
+            key={getEntryKey(file)}
             file={file}
             index={index}
             onFileClick={onFileClick}

@@ -58,6 +58,7 @@ const FileManagerView = ({
     isShareLinkMode,
     shareRootPath,
     shareRootName,
+    shareRootNodeId,
   } = shareContext;
   const {
     user,
@@ -81,6 +82,7 @@ const FileManagerView = ({
     handleAddToSharedConfirm,
     leaveShareConfirmOpen,
     setLeaveShareConfirmOpen,
+    setLeaveShareConfirmTargetNodeId,
     setLeaveShareConfirmTargetPath,
     handleLeaveShareConfirm,
   } = overlayState;
@@ -90,6 +92,7 @@ const FileManagerView = ({
   } = explorerSession;
   const {
     currentPath,
+    currentNodeId,
     viewMode,
     setViewMode,
     sortMode,
@@ -132,7 +135,7 @@ const FileManagerView = ({
     treeUpdateTrigger,
   } = treeState;
   const {
-    contentAreaDraggedPath,
+    contentAreaDraggedNodeId,
     bulkMoveCopyInProgress,
   } = transferState;
   const {
@@ -224,6 +227,8 @@ const FileManagerView = ({
     handleInternalFileDrop,
     handleLeaveSharePathClick,
     handlePathClick,
+    handleFolderTreeNodeClick,
+    ancestors,
     handleScrollAreaClick,
     handleFileDownloadOp,
     contentAreaDnD,
@@ -336,8 +341,11 @@ const FileManagerView = ({
           >
             <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
               <FolderTree
+                currentNodeId={currentNodeId}
                 currentPath={currentPath}
-                onPathClick={isShareLinkMode ? handleLeaveSharePathClick : handlePathClick}
+                ancestors={ancestors}
+                onNodeClick={handleFolderTreeNodeClick}
+                onLeaveShareClick={isShareLinkMode ? handleLeaveSharePathClick : undefined}
                 onFileClick={handleFileClick}
                 user={user}
                 treeUpdateTrigger={treeUpdateTrigger}
@@ -346,13 +354,14 @@ const FileManagerView = ({
                 onInternalFileDrop={handleInternalFileDrop}
                 onInternalDragStart={handleDragStartFromView}
                 onInternalDragEnd={handleDragEndFromView}
-                internalDraggedPath={contentAreaDraggedPath}
+                internalDraggedNodeId={contentAreaDraggedNodeId}
                 isMobile={false}
                 shareLinkSection={isShareLinkMode ? {
+                  shareRootNodeId,
                   shareRootPath,
                   shareRootName,
                   shareToken,
-                  onShareLinkPathClick: handlePathClick,
+                  onNodeClick: handleFolderTreeNodeClick,
                 } : undefined}
               />
             </Box>
@@ -371,7 +380,8 @@ const FileManagerView = ({
         >
           <Breadcrumb
             currentPath={currentPath}
-            onPathClick={handlePathClick}
+            ancestors={ancestors}
+            onNodeClick={handleFolderTreeNodeClick}
             {...(isShareLinkMode ? { shareRootPath, shareRootName, showFolderTreeToggle: true } : { user })}
             {...(isMobile ? {
               onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
@@ -391,13 +401,15 @@ const FileManagerView = ({
                 }}
               >
                 <FolderTree
+                  currentNodeId={currentNodeId}
                   currentPath={currentPath}
-                  onPathClick={(path) => {
-                    if (isShareLinkMode) {
-                      handleLeaveSharePathClick(path);
-                    } else {
-                      handlePathClick(path);
-                    }
+                  ancestors={ancestors}
+                  onNodeClick={(target) => {
+                    handleFolderTreeNodeClick(target);
+                    setDrawerOpen(false);
+                  }}
+                  onLeaveShareClick={(target) => {
+                    handleLeaveSharePathClick(target);
                     setDrawerOpen(false);
                   }}
                   onFileClick={(file) => {
@@ -411,14 +423,15 @@ const FileManagerView = ({
                   onInternalFileDrop={handleInternalFileDrop}
                   onInternalDragStart={handleDragStartFromView}
                   onInternalDragEnd={handleDragEndFromView}
-                  internalDraggedPath={contentAreaDraggedPath}
+                  internalDraggedNodeId={contentAreaDraggedNodeId}
                   isMobile
                   shareLinkSection={isShareLinkMode ? {
+                    shareRootNodeId,
                     shareRootPath,
                     shareRootName,
                     shareToken,
-                    onShareLinkPathClick: (path) => {
-                      handlePathClick(path);
+                    onNodeClick: (target) => {
+                      handleFolderTreeNodeClick(target);
                       setDrawerOpen(false);
                     },
                   } : undefined}
@@ -568,7 +581,7 @@ const FileManagerView = ({
                   onDropPermissionDenied={handleDropPermissionDenied}
                   onDragStart={handleDragStartFromView}
                   onDragEnd={handleDragEndFromView}
-                  internalDraggedPath={contentAreaDraggedPath}
+                  internalDraggedNodeId={contentAreaDraggedNodeId}
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
@@ -594,7 +607,7 @@ const FileManagerView = ({
                   onDropPermissionDenied={handleDropPermissionDenied}
                   onDragStart={handleDragStartFromView}
                   onDragEnd={handleDragEndFromView}
-                  internalDraggedPath={contentAreaDraggedPath}
+                  internalDraggedNodeId={contentAreaDraggedNodeId}
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
@@ -620,7 +633,7 @@ const FileManagerView = ({
                   onDropPermissionDenied={handleDropPermissionDenied}
                   onDragStart={handleDragStartFromView}
                   onDragEnd={handleDragEndFromView}
-                  internalDraggedPath={contentAreaDraggedPath}
+                  internalDraggedNodeId={contentAreaDraggedNodeId}
                   selectionMode={selectionMode}
                   selectedFiles={selectedFiles}
                   onFileCheck={handleFileCheck}
@@ -641,7 +654,7 @@ const FileManagerView = ({
           <UploadDialog
             open={uploadDialogOpen}
             onClose={closeUploadDialog}
-            currentPath={currentPath}
+            parentNodeId={currentNodeId ?? null}
             onUploadStart={handleUploadStart}
           />
           <CreateFolderDialog
@@ -649,6 +662,7 @@ const FileManagerView = ({
             onClose={closeCreateFolderDialog}
             onComplete={handleCreateFolderComplete}
             currentPath={currentPath}
+            parentNodeId={currentNodeId ?? null}
             onProgress={updateProgress}
           />
         </>
@@ -687,6 +701,7 @@ const FileManagerView = ({
         open={leaveShareConfirmOpen}
         onClose={() => {
           setLeaveShareConfirmOpen(false);
+          setLeaveShareConfirmTargetNodeId(null);
           setLeaveShareConfirmTargetPath(null);
         }}
         onConfirm={handleLeaveShareConfirm}
@@ -734,7 +749,7 @@ const FileManagerView = ({
         }}
         onDelete={isShareLinkMode ? undefined : (file) => {
           setContextMenu(null);
-          openBulkDeleteDialog([file.path]);
+          openBulkDeleteDialog([file.nodeId]);
         }}
       />
 
@@ -748,11 +763,14 @@ const FileManagerView = ({
             setMobilePickerAction(null);
           }
         }}
-        onSelect={(selectedPath) => {
-          const sourceFilePath = mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined);
-          const filePaths = sourceFilePath ? [sourceFilePath] : Array.from(selectedFiles);
-          if (filePaths.length > 0 && folderPickerAction) {
-            handleFolderPickerSelect(selectedPath, { type: folderPickerAction, filePaths });
+        onSelect={(selectedNodeId) => {
+          const sourceNodeIds = mobilePickerFile
+            ? [mobilePickerFile.nodeId]
+            : actionSheetFile
+              ? [actionSheetFile.nodeId]
+              : Array.from(selectedFiles);
+          if (sourceNodeIds.length > 0 && folderPickerAction) {
+            handleFolderPickerSelect(selectedNodeId, { type: folderPickerAction, nodeIds: sourceNodeIds });
           }
         }}
         title={
@@ -760,12 +778,14 @@ const FileManagerView = ({
             ? `${mobilePickerAction === 'move' ? t('actions.move') : t('actions.copy')}: ${mobilePickerFile.basename}`
             : folderPickerAction === 'move' ? t('dialogs.moveFolderSelect') : t('dialogs.copyFolderSelect')
         }
-        currentPath={currentPath}
+        currentNodeId={currentNodeId}
         user={user}
         action={folderPickerAction}
-        sourceFilePath={mobilePickerFile ? mobilePickerFile.path : (actionSheetFile ? actionSheetFile.path : undefined)}
-        sourceFilePaths={
-          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move') ? Array.from(selectedFiles) : undefined
+        sourceNodeId={mobilePickerFile ? mobilePickerFile.nodeId : (actionSheetFile ? actionSheetFile.nodeId : undefined)}
+        sourceNodeIds={
+          !mobilePickerFile && !actionSheetFile && (folderPickerAction === 'copy' || folderPickerAction === 'move')
+            ? Array.from(selectedFiles)
+            : undefined
         }
       />
 
@@ -874,7 +894,7 @@ const FileManagerView = ({
           }}
           onDelete={isShareLinkMode ? undefined : () => {
             if (actionSheetFile) {
-              openBulkDeleteDialog([actionSheetFile.path]);
+              openBulkDeleteDialog([actionSheetFile.nodeId]);
             }
           }}
           onShare={isShareLinkMode ? undefined : () => {
@@ -918,12 +938,13 @@ const FileManagerView = ({
             <ShareDialog
               open={shareDialogOpen}
               onClose={closeShareDialog}
+              folderNodeId={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
               folderPath={(mobileShareFile || actionSheetFile)?.type === 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
               folderName={(mobileShareFile || actionSheetFile)?.type === 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
               user={user}
               onMessage={setDropMessage}
               enableExternalShare={(mobileShareFile || actionSheetFile)?.type !== 'directory'}
-              filePath={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.path : null}
+              fileNodeId={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? (mobileShareFile || actionSheetFile)?.nodeId : null}
               fileName={(mobileShareFile || actionSheetFile)?.type !== 'directory' ? ((mobileShareFile || actionSheetFile)?.basename || (mobileShareFile || actionSheetFile)?.name) : null}
             />
           )}

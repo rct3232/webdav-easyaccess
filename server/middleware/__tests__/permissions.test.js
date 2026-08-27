@@ -1,103 +1,62 @@
 /**
- * permissions middleware tests.
- * Verifies requirePermission, requireFolderPermission: admin/owner bypass, 400, 401, 403.
+ * permissions middleware tests — nodeId-based migration.
+ * Verifies requirePermission, requireFolderPermission with nodeId extraction.
  */
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const {
-  requirePermission,
-  requireFolderPermission,
-} = require('../permissions');
-const {
-  createTestDatabase,
-  grantTestPermission,
-  createAuthenticatedTestUser,
-  PERMISSIONS,
-} = require('../../test-utils');
 
-describe('permissions middleware', () => {
-  let req;
-  let res;
-  let next;
-  let dbCleanup;
+jest.mock('../../domains/permissions/services/aclService', () => {
+  const actual = jest.requireActual(
+        '../../domains/permissions/services/aclService'
+  );
+  return {
+    ...actual,
+    checkFilePermission: jest.fn(),
+    checkFolderPermission: jest.fn(),
+    getCachedUser: jest.fn(),
+    isAdminUser: jest.fn(),
+  };
+});
 
-  beforeAll(async () => {
-    const db = await createTestDatabase();
-    dbCleanup = db.cleanup;
-  });
+const aclService = require('../../domains/permissions/services/aclService');
+const { requirePermission, requireFolderPermission } = require('../permissions');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 
-  afterAll(async () => {
-    await dbCleanup?.();
-  });
+describe('permissions middleware (nodeId)', () => {
+  let req, res, next;
 
   beforeEach(() => {
     req = { query: {}, body: {} };
     res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     next = jest.fn();
+    jest.clearAllMocks();
+    aclService.checkFilePermission.mockResolvedValue(false);
+    aclService.checkFolderPermission.mockResolvedValue(false);
+    aclService.getCachedUser.mockResolvedValue({ id: 1, is_admin: false });
+    aclService.isAdminUser.mockReturnValue(false);
   });
 
   describe('requirePermission (file)', () => {
-    it('returns 400 when path is missing', async () => {
-      req.user = { id: 1 };
+    // V1: requirePermission with valid nodeId — request proceeds
+    it('calls next() when user has permission on nodeId', async () => {
       req.principalId = 1;
+      req.query.nodeId = '42';
+      aclService.checkFilePermission.mockResolvedValue(true);
+
       const mw = requirePermission(PERMISSIONS.READ);
-
-      await mw(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.BAD_REQUEST);
-      expect(res.json).toHaveBeenCalledWith({
-        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.pathRequired,
-      });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it('returns 401 when principalId and user.id are missing', async () => {
-      req.query.path = '/docs/file.txt';
-      req.user = undefined;
-      req.principalId = undefined;
-      const mw = requirePermission(PERMISSIONS.READ);
-
-      await mw(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.UNAUTHORIZED);
-      expect(res.json).toHaveBeenCalledWith({
-        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired,
-      });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it('uses req.principalId when set', async () => {
-      const { user } = await createAuthenticatedTestUser({ isAdmin: true });
-      req.principalId = user.id;
-      req.query.path = '/docs/file.txt';
-      const mw = requirePermission(PERMISSIONS.READ);
-
-      await mw(req, res, next);
-
-      expect(next).toHaveBeenCalled();
-    });
-
-    it('calls next() when admin user (admin bypass)', async () => {
-      const { user } = await createAuthenticatedTestUser({ isAdmin: true });
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.query.path = '/some/path/file.txt';
-      const mw = requirePermission(PERMISSIONS.READ);
-
       await mw(req, res, next);
 
       expect(next).toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it('returns 403 when user has no permission', async () => {
-      const { user } = await createAuthenticatedTestUser(); // non-admin, no extra perms
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      // Path outside user's home and without granted permission
-      req.query.path = '/other-user/folder/file.txt';
-      const mw = requirePermission(PERMISSIONS.READ);
+    // V2: requirePermission with unauthorized nodeId — returns 403
+    it('returns 403 when user lacks permission on nodeId', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '42';
+      aclService.checkFilePermission.mockResolvedValue(false);
 
+      const mw = requirePermission(PERMISSIONS.READ);
       await mw(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.FORBIDDEN);
@@ -107,99 +66,136 @@ describe('permissions middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('calls next() when user has folder permission', async () => {
-      const { user } = await createAuthenticatedTestUser();
-      await grantTestPermission(user.id, '/shared', PERMISSIONS.READ);
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.query.path = '/shared/file.txt'; // parent /shared has permission
-      const mw = requirePermission(PERMISSIONS.READ);
+    // V3: requirePermission with missing nodeId — returns 400
+    it('returns 400 when nodeId is missing', async () => {
+      req.principalId = 1;
 
+      const mw = requirePermission(PERMISSIONS.READ);
       await mw(req, res, next);
 
-      expect(next).toHaveBeenCalled();
-      expect(res.status).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.BAD_REQUEST);
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('uses custom pathExtractor from body', async () => {
-      const { user } = await createAuthenticatedTestUser({ grantRoot: true });
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.body.customPath = '/docs';
-      const mw = requirePermission(PERMISSIONS.READ, (r) => r.body.customPath);
+    // V4: Admin user bypasses all checks
+    it('bypasses permission check for admin users', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '99';
+      aclService.getCachedUser.mockResolvedValue({ id: 1, is_admin: true });
+      aclService.isAdminUser.mockReturnValue(true);
 
+      const mw = requirePermission(PERMISSIONS.READ);
       await mw(req, res, next);
 
       expect(next).toHaveBeenCalled();
+      expect(aclService.checkFilePermission).not.toHaveBeenCalled();
+    });
+
+    // V5: Owner accesses own node via ancestry check (permission granted)
+    it('allows access when ownership grants permission', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '10';
+      aclService.checkFilePermission.mockResolvedValue(true);
+
+      const mw = requirePermission(PERMISSIONS.READ);
+      await mw(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('returns 401 when no principal', async () => {
+      req.query.nodeId = '42';
+
+      const mw = requirePermission(PERMISSIONS.READ);
+      await mw(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.UNAUTHORIZED);
+      expect(res.json).toHaveBeenCalledWith({
+        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired,
+      });
+    });
+
+    it('falls back to req.body.nodeId when query is empty', async () => {
+      req.principalId = 1;
+      req.body.nodeId = '50';
+      aclService.checkFilePermission.mockResolvedValue(true);
+
+      const mw = requirePermission(PERMISSIONS.READ);
+      await mw(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('accepts custom nodeIdExtractor', async () => {
+      req.principalId = 1;
+      req.body.customNodeId = '75';
+      aclService.checkFilePermission.mockResolvedValue(true);
+
+      const mw = requirePermission(
+        PERMISSIONS.READ,
+        (r) => r.body.customNodeId
+      );
+      await mw(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('returns 500 on internal error', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '42';
+      aclService.getCachedUser.mockRejectedValue(new Error('db down'));
+
+      const mw = requirePermission(PERMISSIONS.READ);
+      await mw(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.INTERNAL_SERVER_ERROR);
     });
   });
 
   describe('requireFolderPermission', () => {
-    it('returns 400 when path is missing', async () => {
-      req.user = { id: 1 };
-      const mw = requireFolderPermission(PERMISSIONS.READ);
+    it('calls next() when user has folder permission on nodeId', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '20';
+      aclService.checkFolderPermission.mockResolvedValue(true);
 
-      await mw(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.BAD_REQUEST);
-      expect(res.json).toHaveBeenCalledWith({
-        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.pathRequired,
-      });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it('returns 401 when no principalId', async () => {
-      req.query.path = '/docs';
-      req.user = undefined;
-      req.principalId = undefined;
-      const mw = requireFolderPermission(PERMISSIONS.READ);
-
-      await mw(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.UNAUTHORIZED);
-      expect(res.json).toHaveBeenCalledWith({
-        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.authenticationRequired,
-      });
-    });
-
-    it('calls next() when admin user', async () => {
-      const { user } = await createAuthenticatedTestUser({ isAdmin: true });
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.query.path = '/any/folder';
-      const mw = requireFolderPermission(PERMISSIONS.READ);
-
+      const mw = requireFolderPermission(PERMISSIONS.WRITE);
       await mw(req, res, next);
 
       expect(next).toHaveBeenCalled();
     });
 
-    it('returns 403 when user has no folder permission', async () => {
-      const { user } = await createAuthenticatedTestUser();
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.query.path = '/other-user/private';
-      const mw = requireFolderPermission(PERMISSIONS.READ);
+    it('returns 403 when user lacks folder permission', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '20';
 
+      const mw = requireFolderPermission(PERMISSIONS.WRITE);
       await mw(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.FORBIDDEN);
-      expect(res.json).toHaveBeenCalledWith({
-        errorCode: SERVER_ERROR_CODES.permissionsMiddleware.accessDenied,
-      });
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('calls next() when user has folder permission', async () => {
-      const { user } = await createAuthenticatedTestUser();
-      await grantTestPermission(user.id, '/shared', PERMISSIONS.WRITE);
-      req.user = { id: user.id };
-      req.principalId = user.id;
-      req.query.path = '/shared';
-      const mw = requireFolderPermission(PERMISSIONS.WRITE);
+    it('returns 400 when nodeId is missing', async () => {
+      req.principalId = 1;
 
+      const mw = requireFolderPermission(PERMISSIONS.READ);
+      await mw(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(HTTP_STATUS.BAD_REQUEST);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('bypasses check for admin users', async () => {
+      req.principalId = 1;
+      req.query.nodeId = '20';
+      aclService.getCachedUser.mockResolvedValue({ id: 1, is_admin: true });
+      aclService.isAdminUser.mockReturnValue(true);
+
+      const mw = requireFolderPermission(PERMISSIONS.READ);
       await mw(req, res, next);
 
       expect(next).toHaveBeenCalled();
+      expect(aclService.checkFolderPermission).not.toHaveBeenCalled();
     });
   });
 });

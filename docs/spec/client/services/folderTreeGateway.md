@@ -23,18 +23,19 @@
 
 | Function | Input | Return | API called (see api.md) |
 |----------|-------|--------|-------------------------|
-| `listFolderChildren` | `({ path, listFilesOptions?, useHiddenFilesFilter?, filterChildNames? })` | `Promise<Array<{ path: string, name: string, hasReadPermission?: boolean, hasWritePermission?: boolean, isHidden?: boolean }>>` | `GET /api/files/list` |
-| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ folder_path: string, permission: string }>>` | `GET /api/permissions/user/:userId` |
+| `listFolderChildren` | `({ nodeId, listFilesOptions?, useHiddenFilesFilter?, filterChildNames? })` | `Promise<Array<{ nodeId: number, name: string, hasReadPermission?: boolean, hasWritePermission?: boolean, isHidden?: boolean }>>` | `GET /api/files/list?nodeId=...` |
+| `getUserSharedFolderPermissions` | `({ user, options? })` | `Promise<Array<{ nodeId: number, name: string, permission: string, type: string }>>` | `GET /api/permissions/shared` |
 
 Notes:
 
 - `listFolderChildren` must preserve the current folder-tree observable behavior:
+  - Takes a directory `nodeId` (BIGINT `file_nodes.id`) as the expandable tree node reference — no path strings.
   - Only directory entries are returned.
   - Hidden entries are filtered based on the `showHiddenFiles` localStorage flag only when `useHiddenFilesFilter` is `true`.
   - `filterChildNames`, when provided, is a string array denylist matched against child `name`.
-  - Returned entries include `path`, `name` (basename/name), and permission flags (`hasReadPermission`, `hasWritePermission`) shaped exactly like the current tree implementation expects.
+  - Returned entries include `nodeId`, `name` (basename/name), and permission flags (`hasReadPermission`, `hasWritePermission`) shaped exactly like the current tree implementation expects.
   - Returned entries are sorted lexicographically by `name`.
-- `getUserSharedFolderPermissions` returns the permission entries after filtering out the current user’s own folders.
+- `getUserSharedFolderPermissions` returns the shared-with-me permission entries (`{ nodeId, name, permission, type }`) from `GET /api/permissions/shared`. The server already excludes the user's own home subtree; the gateway keeps `isUserOwnFolder` (`nodeId === user.rootNodeId`) as a defensive client-side safety net and returns only `type === 'directory'` entries for the tree.
 - Admin users return `[]` without hitting the permissions service.
 
 ---
@@ -50,7 +51,7 @@ Notes:
 
 - Internal services/utilities:
   - `client/src/services/fileService` (`listFiles`)
-  - `client/src/services/permissionService` (`getUserPermissions`)
+  - `client/src/services/permissionService` (`getSharedPermissions`)
   - `client/src/utils/localStorage` (`getShowHiddenFiles`)
   - `client/src/utils/userUtils` (`filterOutUserOwnFolders`)
 
@@ -60,11 +61,12 @@ Notes:
 
 Verify from the caller perspective (observable outcome of the tree):
 
-- [ ] `listFolderChildren` returns only directories and preserves permission flags from `listFiles`.
+- [ ] `listFolderChildren({ nodeId })` returns only directories and preserves permission flags from `listFiles`.
 - [ ] With `useHiddenFilesFilter: true`, hidden directories are excluded when `showHiddenFiles` is `false`.
 - [ ] With `useHiddenFilesFilter: false`, hidden directories are included.
 - [ ] `filterChildNames` excludes children by their `name`.
-- [ ] `getUserSharedFolderPermissions` returns only folders the user does not own (filtering out own home tree).
+- [ ] `getUserSharedFolderPermissions` returns only shared folders (server excludes the user's own subtree; client keeps the root-level safety filter).
+- [ ] `getUserSharedFolderPermissions` returns only `type === 'directory'` entries with real `name` values (no `node-<id>` placeholders).
 - [ ] Admin users receive `[]` for `getUserSharedFolderPermissions`.
 - [ ] Listing/permissions errors are propagated to the caller.
 

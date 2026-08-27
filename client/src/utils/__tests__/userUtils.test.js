@@ -26,48 +26,58 @@ describe('getUserBaseFolder', () => {
 });
 
 describe('isUserOwnFolder', () => {
-  const user = { id: 'u1', username: 'alice' };
+  const user = { id: 'u1', username: 'alice', rootNodeId: 10 };
 
-  it('returns true for user base folder', () => {
-    expect(isUserOwnFolder('/alice', user)).toBe(true);
-    expect(isUserOwnFolder('/alice/', user)).toBe(true);
+  it('returns true when nodeId matches user rootNodeId', () => {
+    expect(isUserOwnFolder(10, user)).toBe(true);
   });
 
-  it('returns true for path under user base', () => {
-    expect(isUserOwnFolder('/alice/docs', user)).toBe(true);
-    expect(isUserOwnFolder('/alice/docs/sub', user)).toBe(true);
+  it('returns false for different nodeId', () => {
+    expect(isUserOwnFolder(20, user)).toBe(false);
+    expect(isUserOwnFolder(30, user)).toBe(false);
   });
 
-  it('returns false for other user folder', () => {
-    expect(isUserOwnFolder('/bob', user)).toBe(false);
-    expect(isUserOwnFolder('/bob/docs', user)).toBe(false);
-  });
-
-  it('returns false for shared path', () => {
-    expect(isUserOwnFolder('/__shared__', user)).toBe(false);
-    expect(isUserOwnFolder('/__shared__/alice', user)).toBe(false);
-  });
-
-  it('handles path normalization', () => {
-    expect(isUserOwnFolder('alice/docs', user)).toBe(true);
+  it('returns false for null/undefined inputs', () => {
+    expect(isUserOwnFolder(null, user)).toBe(false);
+    expect(isUserOwnFolder(undefined, user)).toBe(false);
+    expect(isUserOwnFolder(10, null)).toBe(false);
+    expect(isUserOwnFolder(10, undefined)).toBe(false);
   });
 });
 
 describe('filterOutUserOwnFolders', () => {
-  const user = { id: 'u1', username: 'alice' };
+  const user = { id: 'u1', username: 'alice', rootNodeId: 10 };
   const permissions = [
-    { folder_path: '/alice/docs' },
-    { folder_path: '/bob/shared' },
-    { folder_path: '/alice' },
+    { nodeId: 10, permission: 'admin' },
+    { nodeId: 20, permission: 'read' },
+    { nodeId: 30, permission: 'write' },
   ];
 
   it('excludes user own folders', () => {
     const result = filterOutUserOwnFolders(permissions, user);
-    expect(result).toEqual([{ folder_path: '/bob/shared' }]);
+    expect(result).toEqual([
+      { nodeId: 20, permission: 'read' },
+      { nodeId: 30, permission: 'write' },
+    ]);
   });
 
   it('returns empty array when no permissions', () => {
     expect(filterOutUserOwnFolders([], user)).toEqual([]);
+  });
+
+  it('acts as a root-only safety net: removes only the exact root node, not descendants', () => {
+    const perms = [
+      { nodeId: 10, permission: 'admin' },
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 20, permission: 'read' },
+    ];
+
+    const result = filterOutUserOwnFolders(perms, user);
+
+    expect(result).toEqual([
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 20, permission: 'read' },
+    ]);
   });
 });
 

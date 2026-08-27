@@ -2,14 +2,14 @@
  * shareReviewUseCase tests.
  * @see docs/spec/client/services/shareReviewUseCase.md
  */
+import { shareReviewUseCase } from '../shareReviewUseCase';
+import * as sharePermissionGateway from '../sharePermissionGateway';
+
 jest.mock('../sharePermissionGateway', () => ({
   revokePermission: jest.fn(),
   grantPermission: jest.fn(),
   approvePermissionRequest: jest.fn(),
 }));
-
-import { shareReviewUseCase } from '../shareReviewUseCase';
-import * as sharePermissionGateway from '../sharePermissionGateway';
 
 describe('shareReviewUseCase', () => {
   beforeEach(() => {
@@ -19,10 +19,10 @@ describe('shareReviewUseCase', () => {
     sharePermissionGateway.approvePermissionRequest.mockResolvedValue(undefined);
   });
 
-  it('revokes removed assignments (best-effort), grants changes, then approves', async () => {
-    const initialFolderPermissions = new Map([
+  it('revokes removed assignments (best-effort), never pre-grants, then approves', async () => {
+    const initialNodePermissions = new Map([
       [
-        '/a',
+        1001,
         new Map([
           ['u1', 'read'],
           ['u2', 'write'],
@@ -30,12 +30,12 @@ describe('shareReviewUseCase', () => {
       ],
     ]);
 
-    const folderPermissions = new Map([
+    const nodePermissions = new Map([
       [
-        '/a',
+        1001,
         new Map([
-          ['u1', 'write'], // permission change => grant
-          ['u3', 'read'], // extra user => grant
+          ['u1', 'write'], // permission change
+          ['u3', 'read'], // extra user
         ]),
       ],
     ]);
@@ -44,50 +44,36 @@ describe('shareReviewUseCase', () => {
 
     await shareReviewUseCase({
       permissionRequestId: 'req-1',
-      initialFolderPermissions,
-      folderPermissions,
+      initialNodePermissions,
+      nodePermissions,
     });
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({
       userId: 'u2',
-      folderPath: '/a',
-      includeSubfolders: true,
+      nodeId: 1001,
     });
 
-    // Grants for u1 and u3 should be attempted.
-    expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
-      userId: 'u1',
-      folderPath: '/a',
-      permission: 'write',
-    });
-    expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
-      userId: 'u3',
-      folderPath: '/a',
-      permission: 'read',
-    });
+    // The requested permission is granted atomically by the server on approve;
+    // the client must not issue a pre-approve grant.
+    expect(sharePermissionGateway.grantPermission).not.toHaveBeenCalled();
 
     expect(sharePermissionGateway.approvePermissionRequest).toHaveBeenCalledWith('req-1');
   });
 
-  it('does not approve when grant fails', async () => {
-    sharePermissionGateway.grantPermission.mockRejectedValueOnce(new Error('Grant failed'));
+  it('propagates approve failures to the caller', async () => {
+    sharePermissionGateway.approvePermissionRequest.mockRejectedValueOnce(
+      new Error('Approve failed')
+    );
 
-    const initialFolderPermissions = new Map([
-      ['/a', new Map([['u1', 'read']])],
-    ]);
-    const folderPermissions = new Map([
-      ['/a', new Map([['u1', 'write']])],
-    ]);
+    const initialNodePermissions = new Map([[1001, new Map([['u1', 'read']])]]);
+    const nodePermissions = new Map([[1001, new Map([['u1', 'write']])]]);
 
     await expect(
       shareReviewUseCase({
         permissionRequestId: 'req-1',
-        initialFolderPermissions,
-        folderPermissions,
+        initialNodePermissions,
+        nodePermissions,
       })
     ).rejects.toBeTruthy();
-
-    expect(sharePermissionGateway.approvePermissionRequest).not.toHaveBeenCalled();
   });
 });
-

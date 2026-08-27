@@ -38,7 +38,7 @@
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| trackRecentFileClick | (filePath, parentPath?) => void | Track recent file click |
+| trackRecentFileClick | (nodeId, parentNodeId) => void | Track recent file click |
 | trackPathHistory | (path, previousPath) => void | Track path navigation history |
 | clearTracking | (path) => void | Clear tracking for path |
 | clearAllTracking | () => void | Clear all tracking |
@@ -46,7 +46,7 @@
 | handleRecentFileError | (error, path) => Promise | Error handler: 404+recent → removeRecentFile; navigates on error |
 | recentFileToPreview | object \| null | File pending preview open |
 | setRecentFileToPreview | function | Set file to open in preview |
-| recentFilePathsRef | ref | Map of path → recent file path |
+| recentFilePathsRef | ref | Map of nodeId → recent file nodeId |
 | pathHistoryRef | ref | Map of path → previous path |
 | processingErrorRef | ref | Set of paths with active error handling |
 
@@ -87,7 +87,7 @@
 
 ### 2.8 Verification Scenarios
 
-- [ ] `trackRecentFileClick` and `trackPathHistory` record enough information to recover recent-file navigation as they do today.
+- [ ] `trackRecentFileClick(nodeId, parentNodeId)` records the recent entry's nodeId and parent nodeId, enough to recover recent-file navigation as they do today.
 - [ ] When a recent target is missing (`404`/equivalent stale-entry outcome), `handleRecentFileError` removes the stale recent entry through the gateway-backed seam and shows the same user-visible error outcome.
 - [ ] On recoverable navigation errors, the hook returns the explorer to the previous path (or current default fallback) as it does today.
 - [ ] Previewable recent targets still open preview instead of forcing directory navigation.

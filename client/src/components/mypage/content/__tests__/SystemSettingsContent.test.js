@@ -1,7 +1,9 @@
 /**
  * SystemSettingsContent tests.
- * Verifies registration toggle, show hidden files toggle, data cleanup, permission cleanup per spec.
+ * Verifies registration toggle, show hidden files toggle, data cleanup, permission cleanup,
+ * and the Storage migration row + MigrationDialog per spec.
  * @see docs/spec/client/components/mypage/content/SystemSettingsContent.md
+ * @see docs/spec/client/components/mypage/content/MigrationDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
@@ -163,5 +165,44 @@ describe('SystemSettingsContent', () => {
       expect(permissionCleanupCalled).toBe(true);
     });
     expect(screen.getByText(/no permissions to fix/i)).toBeInTheDocument();
+  });
+
+  it('renders the Storage migration row alongside the existing cleanup rows', async () => {
+    renderSystemSettingsContent();
+
+    expect(await screen.findByText(/data cleanup/i)).toBeInTheDocument();
+    expect(screen.getByText(/permission cleanup/i)).toBeInTheDocument();
+    expect(screen.getByText(/storage migration/i)).toBeInTheDocument();
+    expect(screen.getByText(/move blobs between webdav and s3/i)).toBeInTheDocument();
+  });
+
+  it('clicking the migration action button opens MigrationDialog', async () => {
+    const user = userEvent.setup();
+    renderSystemSettingsContent();
+
+    const migrationButton = await screen.findByRole('button', { name: /run storage migration/i });
+    await user.click(migrationButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /storage migration/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /^start$/i })).toBeInTheDocument();
+  });
+
+  it('opens with S3 destination fields default for a webdav source', async () => {
+    const user = userEvent.setup();
+    renderSystemSettingsContent();
+
+    const migrationButton = await screen.findByRole('button', { name: /run storage migration/i });
+    await user.click(migrationButton);
+
+    const dialog = await screen.findByRole('dialog', { name: /storage migration/i });
+    expect(dialog).toBeInTheDocument();
+    expect(await screen.findByText(/source: webdav/i)).toBeInTheDocument();
+    expect(screen.getByText(/destination: s3/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/bucket \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/access key \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/region/i)).toHaveValue('us-east-1');
   });
 });

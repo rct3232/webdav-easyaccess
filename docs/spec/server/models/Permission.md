@@ -1,10 +1,14 @@
+> **REMOVED** — `server/models/Permission.js` deleted in Phase 4 Task 4.8e.
+> The legacy Permission model wrapper no longer exists in the codebase. All permission CRUD and query operations are performed directly through `permissionStore` (`server/domains/permissions/stores/permissionStore.js`) and `aclService` (`server/domains/permissions/services/aclService.js`), both of which are nodeId-based (`file_node_id BIGINT`).
+> This spec is retained for historical reference only.
+
 # Permission Model Spec
 
 ## 1. Overview
 
 | Item | Description |
 |------|-------------|
-| Role | Permission model: delegates to permissionStore for folder/file permissions and share-token permissions. Thin wrapper. |
+| Role | Removed. Legacy Permission model class that proxied path-string based methods to `permissionStore`. Superseded by direct nodeId-based `permissionStore` / `aclService` usage. |
 
 ---
 
@@ -12,42 +16,43 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/models/Permission.js`
-- **Test file:** `server/models/__tests__/Permission.test.js`
+- **Source:** `server/models/Permission.js` — **DELETED**
+- **Test file:** `server/models/__tests__/Permission.test.js` — **DELETED**
 
-### 2.2 Static Methods
+### 2.2 Removal Details
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| grant | (userId, folderPath, permission, options) | permissionStore.grant |
-| revoke | (userId, folderPath, options) | permissionStore.revoke |
-| revokeAllUserPermissions | (userId) | permissionStore.revokeAllUserPermissions |
-| deleteUserPermissionsFile | (userId) | permissionStore.deleteUserPermissionsFile |
-| getUserPermissions | (userId) | permissionStore.getUserPermissions |
-| checkPermission | (userId, folderPath, requiredPermission) | permissionStore.checkPermission |
-| checkPermissionSync | (doc, folderPath, requiredPermission) | permissionStore.checkPermissionSync |
-| getPermissionDoc | (userId) | permissionStore.getPermissionDoc |
-| checkPermissions | (userId, paths, requiredPermission) | permissionStore.checkPermissions |
-| getFolderPermissions | (folderPath, filePath) | permissionStore.getFolderPermissions |
-| hasPermissionsInPath | (folderPath) | permissionStore.hasPermissionsInPath |
-| rewritePermissionsForAllUsers | (mappings, options) | permissionStore.rewritePermissionsForAllUsers |
-| revokePermissionsPrefixForAllUsers | (prefixes) | permissionStore.revokePermissionsPrefixForAllUsers |
-| getFilePermission | (userId, filePath) | permissionStore.getFilePermission |
-| getEffectivePermission | (userId, path) | permissionStore.getEffectivePermission |
-| grantFile | (userId, filePath, permission) | permissionStore.grant(..., { target: 'file' }) |
-| revokeFile | (userId, filePath) | permissionStore.revoke(..., { scope: 'pathOnly' }) |
-| getUserFilePermissions | (userId) | permissionStore.getUserFilePermissions |
-| checkFilePermissionSync | (doc, filePath, requiredPermission) | permissionStore.checkFilePermissionSync |
-| getPathEffectivePermission | (userId, folderPath) | permissionStore.getPathEffectivePermission |
-| grantSharePermission | (token, rootPath, isDirectory) | permissionStore.grantSharePermission |
-| revokeSharePermission | (token) | permissionStore.revokeSharePermission |
-| getSharePermissionDoc | (token) | permissionStore.getSharePermissionDoc |
-| checkSharePermission | (token, path, requiredPermission) | permissionStore.checkSharePermission |
+Phase 4 Task 4.8e removed `server/models/Permission.js` and `server/domains/permissions/services/permissionFacade.js`. All production callers were migrated to import `permissionStore` or `aclService` directly.
 
-### 2.3 Dependencies
+The methods this model previously proxied were path-based and have no nodeId-based counterpart on the model layer:
 
-- permissionStore
+| Legacy Model Method (removed) | nodeId-based replacement |
+|-------------------------------|--------------------------|
+| grant(userId, folderPath, permission) | permissionStore.grant(userId, nodeId, permission) |
+| revoke(userId, folderPath) | permissionStore.revoke(userId, nodeId) |
+| checkPermission(userId, folderPath, requiredPermission) | permissionStore.checkPermission(userId, nodeId, requiredPermission) / aclService.checkFolderPermission |
+| checkPermissionSync(doc, folderPath, ...) | removed — no synchronous checks exist |
+| getFolderPermissions(folderPath, filePath?) | permissionStore.getFolderPermissions(nodeId, fileNodeId?) |
+| getFilePermission(userId, filePath) | permissionStore.getFilePermission(userId, fileNodeId) |
+| getEffectivePermission(userId, path) | permissionStore.getEffectivePermission(userId, fileNodeId) |
+| grantFile(userId, filePath, permission) | permissionStore.grantFilePermission(userId, fileNodeId, permission) |
+| revokeFile(userId, filePath) | permissionStore.revokeFilePermission(userId, fileNodeId) |
+| grantSharePermission(token, rootPath, isDirectory) | permissionStore.grantSharePermission(token, nodeId) |
+| checkSharePermission(token, path, requiredPermission) | permissionStore.checkSharePermission(token, nodeId, requiredPermission) |
+| getPermissionDoc / getSharePermissionDoc | permissionStore.getPermissionDoc / getSharePermissionDoc (nodeId-based) |
 
-### 2.4 Verification Scenarios
+### 2.3 Current Entry Points
 
-- [ ] All methods delegate to store; mock store and assert calls
+Callers use these modules directly:
+
+- **`permissionStore`** — nodeId-based permission CRUD and queries (`grant`, `revoke`, `checkPermission`, `getFolderPermissions`, `grantFilePermission`, `getEffectivePermission`, `checkSharePermission`, ...). See `docs/spec/server/store/permissionStore.md`.
+- **`aclService`** — nodeId-based async permission checks with closure-table inheritance (`checkFolderPermission`, `checkFilePermission`, `checkPermission`, `isAdminUser`).
+
+### 2.4 Dependencies
+
+- None. Module removed; no import sites remain.
+
+### 2.5 Verification Scenarios
+
+- [ ] No file at `server/models/Permission.js`
+- [ ] No imports of `models/Permission` or `permissionFacade` remain in server code
+- [ ] All permission operations go through nodeId-based `permissionStore` / `aclService` methods

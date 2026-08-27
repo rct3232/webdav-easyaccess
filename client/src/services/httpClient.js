@@ -166,13 +166,21 @@ async function doRequestOnce(config) {
   }
 }
 
+const RETRY_CONFIG = {
+  retryDelay: 1000,
+};
+
+export function __setRetryConfigForTests(overrides) {
+  Object.assign(RETRY_CONFIG, overrides);
+}
+
 /**
  * Execute request with transport-level retry.
  * Retries only on network failures and response status >= 500.
  */
 export async function request(config) {
   const maxRetries = config.maxRetries ?? 3;
-  const baseDelay = 1000;
+  const baseDelay = config.retryDelay ?? RETRY_CONFIG.retryDelay;
   let lastError;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

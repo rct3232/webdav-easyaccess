@@ -14,7 +14,7 @@ import { Close as CloseIcon } from '@mui/icons-material';
 import BaseDialog from './BaseDialog';
 import { useResponsive } from '../../hooks/useResponsive';
 
-const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
+const UploadDialog = ({ open, onClose, parentNodeId, onUploadStart }) => {
   const { t } = useTranslation();
   const { isMobile = false } = useResponsive() || {};
   const [files, setFiles] = useState([]);
@@ -56,7 +56,7 @@ const UploadDialog = ({ open, onClose, currentPath, onUploadStart }) => {
     // 선택된 파일 목록을 콜백으로 전달하고 다이얼로그 닫기
     const fileList = files.map(item => item.file);
     if (onUploadStart) {
-      onUploadStart(fileList, currentPath);
+      onUploadStart(fileList, parentNodeId);
     }
     
     setFiles([]);

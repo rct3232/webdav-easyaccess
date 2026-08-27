@@ -12,19 +12,19 @@ import FolderPickerDialog from '../FolderPickerDialog';
 import { useFolderPicker } from '../FolderPickerDialog/hooks/useFolderPicker';
 
 const defaultMockReturn = {
-  selectedPath: '/docs',
+  selectedNodeId: 10,
   folders: [
-    { path: '/docs', basename: 'docs', hasReadPermission: true },
-    { path: '/media', basename: 'media', hasReadPermission: true },
+    { nodeId: 10, basename: 'docs', hasReadPermission: true },
+    { nodeId: 11, basename: 'media', hasReadPermission: true },
   ],
   loading: false,
   hasWritePermission: true,
   breadcrumbs: [
-    { path: '/', name: 'Home' },
-    { path: '/docs', name: 'docs' },
+    { nodeId: 100, name: 'Home' },
+    { nodeId: 10, name: 'docs' },
   ],
   handleFolderClick: jest.fn(),
-  handlePathClick: jest.fn(),
+  handleNodeClick: jest.fn(),
   handleTogglePath: jest.fn(),
   getCurrentPathType: jest.fn().mockReturnValue('home'),
   isInvalidDestination: jest.fn().mockReturnValue(false),
@@ -34,15 +34,16 @@ jest.mock('../FolderPickerDialog/hooks/useFolderPicker', () => ({
   useFolderPicker: jest.fn(),
 }));
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 const defaultProps = {
   open: true,
   onClose: jest.fn(),
   onSelect: jest.fn(),
-  currentPath: '/docs',
+  currentNodeId: 100,
 };
 
 describe('FolderPickerDialog', () => {
@@ -70,11 +71,11 @@ describe('FolderPickerDialog', () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onSelect with selectedPath and onClose when Select clicked', async () => {
+  it('calls onSelect with selectedNodeId and onClose when Select clicked', async () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderPickerDialog {...defaultProps} />);
     await user.click(screen.getByRole('button', { name: /select/i }));
-    expect(defaultProps.onSelect).toHaveBeenCalledWith('/docs');
+    expect(defaultProps.onSelect).toHaveBeenCalledWith(10);
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -97,10 +98,11 @@ describe('FolderPickerDialog', () => {
     expect(screen.getByText(/no subfolders/i)).toBeInTheDocument();
   });
 
-  it('Select is disabled when selectedPath is /__shared__', () => {
+  it('Select is disabled when at the shared root', () => {
     useFolderPicker.mockReturnValue({
       ...defaultMockReturn,
-      selectedPath: '/__shared__',
+      selectedNodeId: null,
+      getCurrentPathType: jest.fn().mockReturnValue('shared'),
     });
     renderWithProviders(<FolderPickerDialog {...defaultProps} />);
     expect(screen.getByRole('button', { name: /select/i })).toBeDisabled();

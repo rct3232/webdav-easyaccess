@@ -26,6 +26,7 @@ export const useShareLinkInfo = (token) => {
 
       try {
         const info = await getPublicShareLinkInfo(token);
+
         if (!cancelled) {
           setLinkInfo(info);
         }

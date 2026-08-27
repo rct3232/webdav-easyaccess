@@ -7,9 +7,12 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSharedManage } from '../useSharedManage';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+import * as sharePermissionGateway from '../../services/sharePermissionGateway';
+
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
 
 jest.mock('../../services/sharePermissionGateway', () => ({
   checkPermission: jest.fn(),
@@ -19,8 +22,6 @@ jest.mock('../../services/sharePermissionGateway', () => ({
   cancelPermissionRequest: jest.fn(),
   revokePermission: jest.fn(),
 }));
-
-import * as sharePermissionGateway from '../../services/sharePermissionGateway';
 
 const mockUser = { id: '1', username: 'user1', is_admin: false };
 const mockAdminUser = { id: 'admin', username: 'admin', is_admin: true };
@@ -43,7 +44,7 @@ async function renderOpenUseSharedManage(props) {
 
 const defaultProps = {
   open: true,
-  targetPath: '/shared/folder',
+  targetNodeId: 100,
   displayName: 'folder',
   isDirectory: true,
   user: mockUser,
@@ -101,7 +102,7 @@ describe('useSharedManage', () => {
       expect(result.current.initialLoading).toBe(false);
     });
 
-    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith('/shared/folder');
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(100);
     expect(result.current.hasReadPermission).toBe(true);
     expect(result.current.hasWritePermission).toBe(false);
   });
@@ -113,7 +114,8 @@ describe('useSharedManage', () => {
 
     const { result } = await renderOpenUseSharedManage({
       ...defaultProps,
-      targetPath: '/shared/file.txt',
+      targetNodeId: 200,
+      parentNodeId: 150,
       displayName: 'file.txt',
       isDirectory: false,
     });
@@ -122,8 +124,8 @@ describe('useSharedManage', () => {
       expect(result.current.initialLoading).toBe(false);
     });
 
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(1, '/shared/file.txt');
-    expect(sharePermissionGateway.checkPermission).toHaveBeenNthCalledWith(2, '/shared');
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(200);
+    expect(sharePermissionGateway.checkPermission).toHaveBeenCalledWith(150);
     expect(result.current.pathPermission).toBe('read');
     expect(result.current.filePermissionLevel).toBe('read');
   });
@@ -168,7 +170,7 @@ describe('useSharedManage', () => {
     });
 
     expect(sharePermissionGateway.createPermissionRequest).toHaveBeenCalledWith({
-      folderPath: '/shared/folder',
+      nodeId: 100,
       permission: PERMISSIONS.READ,
     });
     expect(mockOnMessage).toHaveBeenCalledWith({
@@ -207,8 +209,7 @@ describe('useSharedManage', () => {
 
     expect(sharePermissionGateway.revokePermission).toHaveBeenCalledWith({
       userId: mockUser.id,
-      folderPath: '/shared/folder',
-      includeSubfolders: true,
+      nodeId: 100,
     });
     expect(mockOnClose).toHaveBeenCalled();
     expect(mockOnActionComplete).toHaveBeenCalled();
@@ -250,7 +251,7 @@ describe('useSharedManage', () => {
 
   it('handleCancelPendingRequest calls cancelPermissionRequest when pending request exists', async () => {
     sharePermissionGateway.listOutboxPermissionRequests.mockResolvedValue([
-      { id: 'req-1', folder_path: '/shared/folder', requested_permission: PERMISSIONS.READ },
+      { id: 'req-1', file_node_id: 100, requested_permission: PERMISSIONS.READ },
     ]);
     sharePermissionGateway.cancelPermissionRequest.mockResolvedValue();
 
@@ -271,17 +272,18 @@ describe('useSharedManage', () => {
     );
   });
 
-  it('maps pending file requests by file_path', async () => {
+  it('maps pending file requests by file_node_id', async () => {
     sharePermissionGateway.checkPermission
       .mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'path' })
       .mockResolvedValueOnce({ hasRead: true, hasWrite: false });
     sharePermissionGateway.listOutboxPermissionRequests.mockResolvedValue([
-      { id: 'req-file', file_path: '/shared/file.txt', requested_permission: PERMISSIONS.WRITE },
+      { id: 'req-file', file_node_id: 200, requested_permission: PERMISSIONS.WRITE },
     ]);
 
     const { result } = await renderOpenUseSharedManage({
       ...defaultProps,
-      targetPath: '/shared/file.txt',
+      targetNodeId: 200,
+      parentNodeId: 150,
       displayName: 'file.txt',
       isDirectory: false,
     });

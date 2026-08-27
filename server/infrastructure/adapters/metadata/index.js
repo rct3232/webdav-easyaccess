@@ -10,13 +10,9 @@ function createMetadataAdapter() {
   // Lazy require so Jest mocks apply correctly
   const storage = require('../../../store/storage');
   const backend = storage.getBackend();
-  if (backend === 'postgresql') {
-    return require('./PostgresqlMetadataAdapter')();
-  }
-  if (backend === 'sqlite') {
-    return require('./SqliteMetadataAdapter')();
-  }
-  return require('./FsJsonMetadataAdapter')();
+  if (backend === 'postgresql') return require('./PostgresqlMetadataAdapter')();
+  if (backend === 'sqlite') return require('./SqliteMetadataAdapter')();
+  throw new Error(`Unsupported metadata backend: ${backend}`);
 }
 
 module.exports = { createMetadataAdapter };

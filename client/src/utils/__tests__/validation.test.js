@@ -203,7 +203,6 @@ describe('validateUsername', () => {
   it('returns usernameReserved for reserved names', () => {
     expect(validateUsername('admin')).toBe('validation.usernameReserved');
     expect(validateUsername('root')).toBe('validation.usernameReserved');
-    expect(validateUsername('wea')).toBe('validation.usernameReserved');
   });
 });
 

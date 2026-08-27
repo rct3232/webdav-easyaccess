@@ -1,8 +1,8 @@
 const ShareLink = require('../../../models/ShareLink');
-const Permission = require('../../../models/Permission');
-const { pathExists, listDirectory } = require('../../../utils/webdav');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
-const { isMetaPath } = require('../../../store/metaPaths');
+const permissionStore = require('../../../store/permissionStore');
+const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { checkFilePermission } = require('../../permissions/services/aclService');
 
 function validateExpiration(expiresInDays) {
   if (expiresInDays === null || expiresInDays === undefined) {
@@ -17,68 +17,76 @@ function validateExpiration(expiresInDays) {
   return days;
 }
 
-async function detectIsDirectory(normalizedPath) {
-  try {
-    await listDirectory(normalizedPath);
-    return true;
-  } catch (_) {
-    try {
-      const alt = normalizedPath.endsWith('/') ? normalizedPath.slice(0, -1) : normalizedPath + '/';
-      await listDirectory(alt);
-      return true;
-    } catch (_2) {
-      return false;
-    }
-  }
-}
-
-async function createShareLink(filePath, userId, expiresInDays) {
-  if (!filePath) {
+function validateNodeId(fileNodeId) {
+  if (fileNodeId === null || fileNodeId === undefined || !Number.isFinite(Number(fileNodeId))) {
     const error = new Error('pathRequired');
     error.status = 400;
     throw error;
   }
+  return Number(fileNodeId);
+}
 
-  const normalizedPath = normalizePath(filePath);
+async function getFileNodeService() {
+  const { getComposition } = require('../../../service/composition');
+  return getComposition().fileNodeService;
+}
 
-  if (isMetaPath(normalizedPath)) {
-    const error = new Error('cannotAddShare');
-    error.status = 403;
-    throw error;
-  }
+function toLinkResponse(link, node) {
+  const fileName = node ? node.name : null;
+  return {
+    token: link.token,
+    nodeId: link.nodeId != null ? Number(link.nodeId) : (link.fileNodeId != null ? Number(link.fileNodeId) : null),
+    fileName,
+    fileType: fileName ? getFileType(fileName) : null,
+    isDirectory: node ? node.type === 'directory' : null,
+    displayPath: null,
+    createdAt: link.createdAt,
+    expiresAt: link.expiresAt,
+    downloadCount: link.downloadCount,
+    isExpired: ShareLink.isExpired(link),
+  };
+}
 
-  const exists = await pathExists(normalizedPath);
-  if (!exists) {
+async function createShareLink(fileNodeId, userId, expiresInDays) {
+  const nodeId = validateNodeId(fileNodeId);
+  const fileNodeService = await getFileNodeService();
+
+  const node = await fileNodeService.getNode(nodeId);
+  if (!node) {
     const error = new Error('fileNotFound');
     error.status = 404;
     throw error;
   }
 
-  const isDirectory = await detectIsDirectory(normalizedPath);
+  const canRead = await checkFilePermission(userId, nodeId, PERMISSIONS.READ);
+  if (!canRead) {
+    const error = new Error('accessDenied');
+    error.status = 403;
+    throw error;
+  }
+
   const expiresInDaysValue = validateExpiration(expiresInDays);
 
-  const link = await ShareLink.create(normalizedPath, userId, expiresInDaysValue);
-  await Permission.grantSharePermission(link.token, normalizedPath, isDirectory);
+  const link = await ShareLink.create(nodeId, userId, expiresInDaysValue);
+  await permissionStore.grantSharePermission(link.token, nodeId);
 
+  const displayPath = await fileNodeService.getNodePath(nodeId);
   return {
-    token: link.token,
-    filePath: link.filePath,
-    createdAt: link.createdAt,
-    expiresAt: link.expiresAt,
-    downloadCount: link.downloadCount,
+    ...toLinkResponse(link, node),
+    displayPath,
   };
 }
 
 async function listUserShareLinks(userId) {
   const links = await ShareLink.findByUserId(userId);
-  return links.map(link => ({
-    token: link.token,
-    filePath: link.filePath,
-    createdAt: link.createdAt,
-    expiresAt: link.expiresAt,
-    downloadCount: link.downloadCount,
-    isExpired: ShareLink.isExpired(link),
-  }));
+  const fileNodeService = await getFileNodeService();
+  const results = [];
+  for (const link of links) {
+    const node = await fileNodeService.getNode(link.nodeId);
+    const displayPath = node ? await fileNodeService.getNodePath(node.id) : null;
+    results.push({ ...toLinkResponse(link, node), displayPath });
+  }
+  return results;
 }
 
 async function getShareLinkInfo(token, userId) {
@@ -95,14 +103,10 @@ async function getShareLinkInfo(token, userId) {
     throw error;
   }
 
-  return {
-    token: link.token,
-    filePath: link.filePath,
-    createdAt: link.createdAt,
-    expiresAt: link.expiresAt,
-    downloadCount: link.downloadCount,
-    isExpired: ShareLink.isExpired(link),
-  };
+  const fileNodeService = await getFileNodeService();
+  const node = await fileNodeService.getNode(link.nodeId);
+  const displayPath = node ? await fileNodeService.getNodePath(node.id) : null;
+  return { ...toLinkResponse(link, node), displayPath };
 }
 
 async function updateShareLink(token, expiresInDays, userId) {
@@ -138,14 +142,10 @@ async function updateShareLink(token, expiresInDays, userId) {
 
   const updatedLink = await ShareLink.update(token, updates);
 
-  return {
-    token: updatedLink.token,
-    filePath: updatedLink.filePath,
-    createdAt: updatedLink.createdAt,
-    expiresAt: updatedLink.expiresAt,
-    downloadCount: updatedLink.downloadCount,
-    isExpired: ShareLink.isExpired(updatedLink),
-  };
+  const fileNodeService = await getFileNodeService();
+  const node = await fileNodeService.getNode(updatedLink.nodeId);
+  const displayPath = node ? await fileNodeService.getNodePath(node.id) : null;
+  return { ...toLinkResponse(updatedLink, node), displayPath };
 }
 
 async function deleteShareLink(token, userId) {
@@ -163,7 +163,7 @@ async function deleteShareLink(token, userId) {
   }
 
   await ShareLink.delete(token);
-  await Permission.revokeSharePermission(token);
+  await permissionStore.revokeSharePermission(token);
 }
 
 module.exports = {

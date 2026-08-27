@@ -1,52 +1,34 @@
 /**
- * Inheritance policy for permission checks.
+ * Inheritance policy for nodeId-based permission checks.
  *
  * Rules:
- * 1. Read checks are direct-only — no ancestor traversal.
- * 2. Write checks allow parent-path fallback for files (file-level if present, else parent folder).
- * 3. Admin/owner bypass applies to both read and write.
+ * 1. Permission resolution uses closure table ancestor traversal via permStore.
+ * 2. Nearest ancestor (smallest depth) wins.
+ * 3. Admin/owner bypass is handled by the caller (permissionPolicy layer).
  */
 
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
+const permStore = require('../stores/permissionStore');
 
 /**
- * Determines whether a path should be treated as a directory.
+ * Get effective permission for a userId on a target nodeId.
+ * Traverses closure table to find nearest ancestor with a direct grant.
+ * Returns the permission string (e.g. 'read', 'write', 'admin') or null.
  */
-function isDirectoryPath(path) {
-  return typeof path === 'string' && (path.endsWith('/') || path === '/');
+async function getEffectivePermission(userId, targetNodeId) {
+  return await permStore.getPathEffectivePermission(userId, targetNodeId);
 }
 
 /**
- * Normalizes the path for permission lookup, handling both slash and no-slash variants.
- * Returns an array of [normalizedWithSlash, normalizedWithoutSlash] if they differ,
- * otherwise just the single normalized path.
+ * Check whether a userId has at least the required permission on a target nodeId
+ * via ancestor inheritance (closure table). Does NOT check direct grants —
+ * use permStore.checkPermission for that. This is a policy-level helper
+ * for callers that want to know if inheritance alone would satisfy a requirement.
  */
-function getLookupPaths(path, options = {}) {
-  const opts = { isDirectory: false, ...options };
-  const primary = normalizePath(path, opts.isDirectory ? { isDirectory: true } : undefined);
-  
-  if (opts.isDirectory) {
-    const noSlash = normalizePath(path);
-    return noSlash !== '/' && noSlash !== primary 
-      ? [primary, noSlash] 
-      : [primary];
-  }
-  
-  return [primary];
-}
-
-/**
- * Checks whether a direct permission grant exists for the path (no inheritance).
- * Returns true if any lookup path matches.
- */
-function isDirectPermission(userId, folderPath, requiredPermission) {
-  // This is a policy marker — actual DB check happens in the store/model layer.
-  const paths = getLookupPaths(folderPath, { isDirectory: true });
-  return paths.some(p => p === folderPath || (folderPath !== '/' && normalizePath(folderPath) === p));
+async function hasInheritedPermission(userId, targetNodeId, requiredPermission) {
+  return await permStore.checkPermission(userId, targetNodeId, requiredPermission);
 }
 
 module.exports = {
-  isDirectoryPath,
-  getLookupPaths,
-  isDirectPermission,
+  getEffectivePermission,
+  hasInheritedPermission,
 };

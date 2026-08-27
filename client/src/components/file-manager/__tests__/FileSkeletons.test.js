@@ -13,9 +13,10 @@ import {
   FileTreeSkeleton,
 } from '../FileSkeletons';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 describe('FileSkeletons', () => {
   describe('FileListSkeleton', () => {

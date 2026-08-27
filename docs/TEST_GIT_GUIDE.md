@@ -5,17 +5,23 @@
 ### 1. Test Code
 
 ```
-✓ client/src/__tests__/**/*.test.js
-✓ client/src/components/__tests__/**/*.test.js
+✓ client/src/components/**/__tests__/**/*.test.js
 ✓ client/src/contexts/__tests__/**/*.test.js
 ✓ client/src/hooks/__tests__/**/*.test.js
-✓ client/src/pages/__tests__/**/*.test.js
+✓ client/src/pages/**/__tests__/**/*.test.js
 ✓ client/src/services/__tests__/**/*.test.js
 ✓ client/src/utils/__tests__/**/*.test.js
-✓ server/models/__tests__/**/*.test.js
+✓ server/domains/<x>/routes/__tests__/**/*.test.js
+✓ server/domains/<x>/services/__tests__/**/*.test.js
+✓ server/domains/<x>/stores/__tests__/**/*.test.js
+✓ server/domains/<x>/policy/__tests__/**/*.test.js
+✓ server/domains/<x>/__tests__/**/*.test.js
+✓ server/infrastructure/__tests__/**/*.test.js
+✓ server/infrastructure/routes/__tests__/**/*.test.js
+✓ server/infrastructure/adapters/blobstore/__tests__/**/*.test.js
 ✓ server/middleware/__tests__/**/*.test.js
-✓ server/routes/__tests__/**/*.test.js
-✓ server/services/__tests__/**/*.test.js
+✓ server/models/__tests__/**/*.test.js
+✓ server/service/__tests__/**/*.test.js
 ✓ server/store/__tests__/**/*.test.js
 ✓ server/utils/__tests__/**/*.test.js
 ✓ e2e/**/*.spec.ts
@@ -29,7 +35,6 @@
 ✓ jest.config.js (server only; client uses Jest config in package.json)
 ✓ test-setup.js (server)
 ✓ server/test-utils.js
-✓ client/src/test-utils/ (or test-utils/index.js)
 ✓ setupTests.js (client)
 ✓ playwright.config.ts
 ✓ e2e/global-setup.ts
@@ -42,14 +47,14 @@
 
 ```
 ✓ client/src/mocks/handlers.js
-✓ client/src/mocks/server.js
-✓ client/src/test-utils/index.js
 ✓ server/test-utils.js
 ✓ e2e/helpers/**/*.ts
 ✓ e2e/fixtures/**/*
 ```
 
 **Reason**: Common utilities needed for writing tests.
+
+> Note: The MSW server (`setupServer`) is created in `client/src/setupTests.js` (see Test Configuration above); there is no separate `client/src/mocks/server.js`.
 
 ### 4. Test Documentation
 
@@ -114,11 +119,27 @@ npm run test:e2e:install
 
 # 2. Run the full E2E suite
 # This command automatically handles:
-# - Restarting the Docker-backed WebDAV server (clean state)
+# - Bringing the Docker-backed WebDAV/PostgreSQL/MinIO services up and waiting
+#   until they are healthy (provisioned by the `e2e:server` webServer command
+#   via `scripts/e2e-wait-healthy.mjs` before the app server boots — no manual
+#   `dev:webdav:start` prerequisite)
+# - Resetting the data state without restarting services: TRUNCATE all app
+#   tables (preserving `_schema_migrations`) and re-seed admin + base users
+#   with home `file_nodes` roots; empty the MinIO bucket (s3 mode)
 # - Starting the E2E API/server (port 5002)
 # - Starting the E2E client (port 3000)
 # - Executing the Playwright tests
 npm run test:e2e
+
+# Run a specific backend mode (default is s3)
+#   s3     → S3 + PostgreSQL (new architecture, `.env.e2e`)
+#   webdav → WebDAV + PostgreSQL (legacy, `.env.e2e.webdav`)
+npm run test:e2e:s3
+npm run test:e2e:webdav
+
+# Run the standalone E2E server in a given mode (picks the matching env file;
+# also brings the Docker stack up and waits for healthy containers first)
+E2E_BACKEND_MODE=webdav npm run e2e:server
 
 # Run gated later waves (P1/P2 scenarios)
 E2E_LATER_WAVES=1 npm run test:e2e
@@ -128,8 +149,10 @@ Required assumptions:
 
 - Docker must be installed and running on the host machine.
 - `playwright.config.ts` is configured with `webServer` to manage the client and server lifecycle automatically.
-- `e2e/global-setup.ts` ensures a fresh WebDAV storage environment by resetting the Docker container before each run.
-- The root Playwright config defines separate desktop and mobile projects, so `npm run test:e2e` executes both project assignments unless filtered.
+- The E2E Docker stack (`docker-compose.e2e.yml`: WebDAV, PostgreSQL, MinIO) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the mode's required containers report `healthy` (webdav-test + postgresql-e2e always; minio-e2e in s3 mode only). `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down), then resets the data state WITHOUT restarting services: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, and (s3 mode) empties the MinIO bucket before ensuring it. `e2e/global-teardown.ts` empties the S3 bucket (s3 mode) and stops the services (`down -v`).
+- The root Playwright config builds the desktop/mobile project matrix from the active backend mode: `s3-desktop`/`s3-mobile` when `E2E_BACKEND_MODE=s3`, and `webdav-desktop`/`webdav-mobile` when `E2E_BACKEND_MODE=webdav`. Only the projects for the active mode are defined, so `npm run test:e2e:s3` runs only the `s3-*` projects and `npm run test:e2e:webdav` only the `webdav-*` projects (check with `E2E_BACKEND_MODE=s3 npx playwright test --list`).
+- The backend mode is selected via `E2E_BACKEND_MODE` (`s3` default, `webdav` legacy). The `e2e:server` script maps it to the matching env file (`../.env.e2e` for s3, `../.env.e2e.webdav` for webdav) and chains `scripts/e2e-wait-healthy.mjs` (compose provisioning + health wait) before starting the server; host-exposed ports are MinIO 9010, PostgreSQL 5433, and WebDAV 8090.
+- Specs branch on the project name platform suffix (`testInfo.project.name.endsWith('-desktop')` / `endsWith('-mobile')`), so the platform checks keep working under the mode-prefixed project names.
 
 ## Recommended Git Workflow
 
@@ -267,8 +290,9 @@ jobs:
 
 ### Current Status
 
-- **Client**: 464 tests, 100% pass rate. Coverage: ~41% statements, ~42% lines. See `client/TEST_SUMMARY.md`.
-- **Server**: 373 tests, 100% pass rate. Coverage: ~89% statements, ~91% lines. Core modules 95–100%. See `server/TEST_SUMMARY.md`.
+- **Client**: 1254 tests across 147 suites, 100% pass rate. See `client/TEST_SUMMARY.md`.
+- **Server**: 1119 tests across 66 suites, 100% pass rate (3 skipped). See `server/TEST_SUMMARY.md`.
+- Coverage figures are measured per run via `npm run test:coverage` and recorded in the respective `TEST_SUMMARY.md`.
 
 ### Recommended Targets
 
@@ -364,7 +388,7 @@ cat .gitignore | grep coverage
 
 **Root cause**: The `data/webdav/` directory is a Docker bind mount (`./data/webdav:/var/lib/dav`). While `docker compose down -v` removes named Docker volumes, it does NOT clean host-path bind mounts. Stale WebDAV data from the previous run persists, causing conflicts.
 
-**Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before restarting Docker Compose. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
+**Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before the E2E services start. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
 
 ### Q: Mobile Action Sheet tests are flaky (E2E-EXP-006, E2E-MOBILE-002)
 

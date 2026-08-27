@@ -21,14 +21,14 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
       const fileType = getFileType(filename);
 
       if (fileType === 'video') {
-        const url = await getVideoPreviewStreamUrl(targetFile.path, { shareToken });
+        const url = await getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken });
         if (signal?.aborted) return;
         setPreviewUrl(url);
         setLoading(false);
         return;
       }
 
-      const blob = await getFileBlob(targetFile.path, { inline: true, shareToken, signal });
+      const blob = await getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal });
       if (signal?.aborted) return;
 
       if (fileType === 'text') {

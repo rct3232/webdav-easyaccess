@@ -48,6 +48,26 @@ if (typeof global.BroadcastChannel === 'undefined') {
   };
 }
 
+// jsdom 16's Blob lacks .stream(), but undici's Response (used by MSW) requires
+// it to build blob responses. Polyfill via FileReader so blob responses work.
+if (typeof Blob !== 'undefined' && typeof Blob.prototype.stream !== 'function') {
+  Blob.prototype.stream = function () {
+    const self = this;
+    return new ReadableStream({
+      async pull(controller) {
+        const buffer = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsArrayBuffer(self);
+        });
+        controller.enqueue(new Uint8Array(buffer));
+        controller.close();
+      },
+    });
+  };
+}
+
 // JSDOM does not implement URL.createObjectURL/revokeObjectURL (used by fileService.downloadMultipleFiles)
 if (typeof global.URL !== 'undefined' && !global.URL.createObjectURL) {
   const blobUrls = new Map();

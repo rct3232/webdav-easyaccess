@@ -9,48 +9,28 @@ describe('isInvalidFolderPickerDestination', () => {
     expect(
       isInvalidFolderPickerDestination({
         action: undefined,
-        selectedPath: '/folder1',
-        sourceFilePath: '/folder1/file.txt',
+        selectedNodeId: 101,
+        sourceNodeId: 55,
       })
     ).toBe(false);
   });
 
-  it('returns true when the destination is the source path itself', () => {
+  it('returns true when the destination is the source nodeId itself', () => {
     expect(
       isInvalidFolderPickerDestination({
         action: 'move',
-        selectedPath: '/folder1',
-        sourceFilePath: '/folder1',
+        selectedNodeId: 101,
+        sourceNodeId: 101,
       })
     ).toBe(true);
   });
 
-  it('returns true when the destination is the source parent directory', () => {
+  it('returns true for multi-source input when any source equals the destination', () => {
     expect(
       isInvalidFolderPickerDestination({
         action: 'move',
-        selectedPath: '/folder1',
-        sourceFilePath: '/folder1/file.txt',
-      })
-    ).toBe(true);
-  });
-
-  it('returns true when the destination is a descendant of the source path', () => {
-    expect(
-      isInvalidFolderPickerDestination({
-        action: 'copy',
-        selectedPath: '/folder1/subfolder',
-        sourceFilePath: '/folder1',
-      })
-    ).toBe(true);
-  });
-
-  it('returns true for multi-source input when any source is invalid', () => {
-    expect(
-      isInvalidFolderPickerDestination({
-        action: 'move',
-        selectedPath: '/folder1',
-        sourceFilePaths: ['/folder1/file-a.txt', '/folder2/file-b.txt'],
+        selectedNodeId: 101,
+        sourceNodeIds: [55, 101, 202],
       })
     ).toBe(true);
   });
@@ -59,8 +39,8 @@ describe('isInvalidFolderPickerDestination', () => {
     expect(
       isInvalidFolderPickerDestination({
         action: 'copy',
-        selectedPath: '/target',
-        sourceFilePath: '/folder1/file.txt',
+        selectedNodeId: 101,
+        sourceNodeId: 55,
       })
     ).toBe(false);
   });

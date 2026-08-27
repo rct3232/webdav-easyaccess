@@ -1,5 +1,5 @@
 /**
- * PermissionRequest model tests.
+ * PermissionRequest model tests (nodeId contract).
  * Verifies create, findById, listInbox, listOutbox, updateStatus, deleteByRequesterId, rejectByOwnerId.
  */
 const PermissionRequest = require('../PermissionRequest');
@@ -7,12 +7,16 @@ const { PERMISSION_REQUEST_STATUS } = require('@webdav-easyaccess/shared/constan
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
+  createTestFileNode,
 } = require('../../test-utils');
 
 describe('PermissionRequest model', () => {
   let dbCleanup;
   let ownerId;
   let requesterId;
+  let sharedNodeId;
+  let findMeNodeId;
+  let approveNodeId;
 
   beforeAll(async () => {
     const db = await createTestDatabase();
@@ -21,6 +25,13 @@ describe('PermissionRequest model', () => {
     const requester = await createAuthenticatedTestUser({ username: 'requester' });
     ownerId = owner.user.id;
     requesterId = requester.user.id;
+
+    const sharedNode = await createTestFileNode({ name: 'shared.txt' });
+    sharedNodeId = sharedNode.nodeId;
+    const findMeNode = await createTestFileNode({ name: 'find-me.txt' });
+    findMeNodeId = findMeNode.nodeId;
+    const approveNode = await createTestFileNode({ name: 'approve-me.txt' });
+    approveNodeId = approveNode.nodeId;
   });
 
   afterAll(async () => {
@@ -34,14 +45,14 @@ describe('PermissionRequest model', () => {
         requesterUsername: 'requester',
         ownerId,
         ownerUsername: 'owner',
-        folderPath: '/shared',
+        fileNodeId: sharedNodeId,
         requestedPermission: 'read',
         message: 'Please grant access',
       });
       expect(result).toMatchObject({
         requester_id: requesterId,
         owner_id: ownerId,
-        folder_path: '/shared',
+        file_node_id: sharedNodeId,
         requested_permission: 'read',
         status: PERMISSION_REQUEST_STATUS.PENDING,
       });
@@ -57,13 +68,13 @@ describe('PermissionRequest model', () => {
         requesterUsername: 'requester',
         ownerId,
         ownerUsername: 'owner',
-        folderPath: '/find-me',
+        fileNodeId: findMeNodeId,
         requestedPermission: 'write',
       });
       const req = await PermissionRequest.findById(created.id);
       expect(req).toMatchObject({
         id: created.id,
-        folder_path: '/find-me',
+        file_node_id: findMeNodeId,
         requested_permission: 'write',
         status: PERMISSION_REQUEST_STATUS.PENDING,
       });
@@ -105,7 +116,7 @@ describe('PermissionRequest model', () => {
         requesterUsername: 'requester',
         ownerId,
         ownerUsername: 'owner',
-        folderPath: '/approve-me',
+        fileNodeId: approveNodeId,
         requestedPermission: 'read',
       });
       const updated = await PermissionRequest.updateStatus(created.id, {

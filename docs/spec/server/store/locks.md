@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Distributed metadata lock abstraction for all backends. Uses lock files for `webdav`/`fs` and lock rows for `postgresql`, with TTL-based stale recovery and ownership-safe release. |
+| Role | Distributed metadata lock abstraction for all backends. Uses lock rows for `postgresql` and `sqlite`, with TTL-based stale recovery and ownership-safe release. |
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| acquireLock | (lockName, options?) => Promise\<{ token, lockPath, release }\> | Acquire backend-specific lock. `webdav`/`fs`: retries on 412/409 and stale lockfile cleanup. `postgresql`: retries on PK conflict with stale row cleanup (`expires_at < NOW()`). |
+| acquireLock | (lockName, options?) => Promise\<{ token, lockPath, release }\> | Acquire backend-specific lock. `postgresql`/`sqlite`: retries on PK conflict with stale row cleanup (`expires_at < NOW()`). |
 | withLock | (lockName, fn, options?) => Promise\<T\> | Acquire, run fn, release in `finally` for both success and error paths. |
 
 ### 2.3 Options
@@ -30,11 +30,6 @@
 - owner – debug identifier
 
 ### 2.4 Backend Strategy
-
-#### `webdav` / `fs`
-
-- JSON: { token, owner, createdAt, expiresAt }
-- Stale: expiresAt < now → delete and retry
 
 #### `postgresql`
 
@@ -49,14 +44,14 @@
 
 ### 2.5 Dependencies
 
-- storage (ensureDir, writeFile, readFile, deletePath)
-- metaPaths (LOCKS_DIR, lockPathByKey, sha256HexLower)
+- storage (getBackend, getPgPool, sqliteRun, withSqliteTransaction)
+- hash (sha256HexLower)
 - crypto (randomUUID)
 - storage.getBackend / storage.getPgPool for backend selection and PostgreSQL queries
 
 ### 2.6 Verification Scenarios
 
-- [ ] acquireLock returns release function; 412/409 triggers retry
+- [ ] acquireLock returns release function
 - [ ] Stale lock (expired) → delete and retry
 - [ ] waitMs exceeded → LOCK_TIMEOUT error
 - [ ] withLock runs fn and releases on success and on throw

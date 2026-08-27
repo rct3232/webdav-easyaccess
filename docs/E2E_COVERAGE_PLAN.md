@@ -122,6 +122,8 @@ Planning note:
 - App origin is the local client used by the E2E environment.
 - WebDAV and metadata backends are initialized for repeatable test runs.
 - The baseline `.env.e2e` setup provides a local WebDAV target and a deterministic admin password.
+- The E2E Docker stack is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose -f docker-compose.e2e.yml up -d` and waits for the mode's required containers to be healthy. There is no manual `dev:webdav:start` prerequisite.
+- `e2e/global-setup.ts` never tears the stack down (that would wipe the Postgres volume out from under the running server). It resets the data state instead: TRUNCATE all app tables (preserving `_schema_migrations`) + re-seed admin and base users with home `file_nodes` roots, and (s3 mode) empty then ensure the MinIO bucket. `e2e/global-teardown.ts` empties the bucket (s3 mode) and stops the stack (`down -v`).
 
 ## Scenario Classification
 
@@ -182,6 +184,7 @@ This is the target ownership map for future Playwright growth.
 | `e2e/mypage-admin.spec.ts` | admin user management and settings flows |
 | `e2e/explorer-advanced.desktop.spec.ts` | desktop-only advanced explorer interactions |
 | `e2e/explorer-advanced.mobile.spec.ts` | mobile-only advanced explorer interactions |
+| `e2e/s3-pg-integration.spec.ts` | S3+PostgreSQL new-architecture scenarios (E2E-S3PG-001..008); S3 mode only |
 
 The shared core-flow coverage now lives in `e2e/core-flow.shared.spec.ts`, with platform-specific bulk interactions remaining in `e2e/desktop-core-flow.spec.ts` and `e2e/mobile-core-flow.spec.ts`. These files replace the earlier `e2e/desktop-flow.spec.ts` and `e2e/mobile-flow.spec.ts` seed filenames.
 
@@ -213,6 +216,7 @@ Current expansion note:
 - The rows for `E2E-SHARE-001` through `E2E-SHARE-008` are now `covered` in `e2e/share-public.spec.ts`; `E2E-SHARE-009` stays `planned` and `E2E-SHARE-010` stays `deferred`.
 - `E2E-OVERLAY-001`, `E2E-OVERLAY-002`, and `E2E-OVERLAY-006` are now covered in `e2e/share-internal.spec.ts`.
 - `E2E-OVERLAY-008` is now covered in `e2e/explorer-advanced.desktop.spec.ts`.
+- `E2E-S3PG-001` through `E2E-S3PG-008` are now covered in `e2e/s3-pg-integration.spec.ts`. The spec is S3-mode only: it self-skips when `E2E_BACKEND_MODE` is `webdav`. It depends on `GC_ORPHAN_TTL_DAYS=0.00002` in `.env.e2e` so the GC scenarios (E2E-S3PG-005/008) can reclaim freshly orphaned/untracked blobs, and on direct MinIO/PostgreSQL helpers (`e2e/helpers/minio.ts`, `e2e/helpers/pg.ts`) for blob-level assertions that have no other observable.
 - `E2E-MYPAGE-004` through `E2E-MYPAGE-009` are now covered in `e2e/mypage-user.spec.ts`.
 - Internal user-to-user sharing plus `__shared__` coverage is reserved for `e2e/share-internal.spec.ts`, because those journeys cross explorer entry, MyPage request management, and granted-access outcomes.
 - `__recent__` rows stay with the platform-owned explorer advanced specs because they are explorer-visible virtual-collection behaviors rather than MyPage-only flows.
@@ -283,10 +287,10 @@ Current expansion note:
 
 | ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
 |----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
-| E2E-OVERLAY-001 | Virtual collection | Approved user can enter `__shared__` from the explorer tree | approved user | `/files` | both | non-admin has at least one shared folder or file permission | browser navigates into the shared collection and visible shared entries render | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Distinct from public share-link browsing |
-| E2E-OVERLAY-002 | Virtual collection | Approved user can navigate from `__shared__` root into a nested shared folder | approved user | `/files/__shared__` | both | shared folder permission exists | visible folder contents change to the selected shared path | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Browser-visible counterpart to shared tree expansion/navigation behavior |
+| E2E-OVERLAY-001 | Virtual collection | Approved user can enter `__shared__` from the explorer tree | approved user | `/files` | both | non-admin has at least one shared folder or file permission | browser navigates into the shared collection and the approved target node renders as a shared entry | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Distinct from public share-link browsing |
+| E2E-OVERLAY-002 | Virtual collection | Approved user can navigate from `__shared__` root into a nested shared folder | approved user | `/files/__shared__` | both | shared folder permission exists | the shared listing shows the approved target node as the shared entry and selecting it navigates into the shared folder | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Browser-visible counterpart to shared tree expansion/navigation behavior |
 | E2E-OVERLAY-003 | Internal share | Request access to another user's content from protected UI | approved user | `/files/*` | both | requestable target exists and requester lacks direct permission | request success UI appears and the request becomes visible in outbox/inbox surfaces | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Covers request creation, not the full permission matrix |
-| E2E-OVERLAY-004 | Internal share | Owner approves a pending request and requester can open the shared content | approved user | `/mypage` then `/files/__shared__` | both | pending request exists between requester and owner | approval UI updates and requester can browse the newly shared target | P0 | playwright | `e2e/share-internal.spec.ts` | covered | End-to-end request -> approve -> access journey |
+| E2E-OVERLAY-004 | Internal share | Owner approves a pending request and requester can open the shared content | approved user | `/mypage` then `/files/__shared__` | both | pending request exists between requester and owner | approval UI updates and the approved target node renders as a shared entry under the requester's `__shared__` root, where the requester can browse it | P0 | playwright | `e2e/share-internal.spec.ts` | covered | End-to-end request -> approve -> access journey |
 | E2E-OVERLAY-005 | Internal share | Owner rejects a pending request and requester stays blocked from the target | approved user | `/mypage` | both | pending request exists between requester and owner | rejection UI updates and requester still lacks usable explorer access | P1 | playwright | `e2e/share-internal.spec.ts` | covered | Browser scope is visible blocked access, not server permission internals |
 | E2E-OVERLAY-006 | Internal share | Shared target remains read-only when the granted permission is read | approved user | `/files/__shared__` | both | shared target exists with read-only permission | browsing works but write actions are absent or disabled | P0 | playwright | `e2e/share-internal.spec.ts` | covered | Visible capability difference only |
 | E2E-OVERLAY-007 | Internal share | Shared target exposes write-capable actions when the granted permission is write | approved user | `/files/__shared__` | both | shared target exists with write permission | create/upload/rename/delete affordances are available | P1 | playwright | `e2e/share-internal.spec.ts` | covered | Complements read-only outcome without duplicating ACL matrix |
@@ -324,6 +328,19 @@ Current expansion note:
 | E2E-ADMIN-007 | MyPage admin | Toggle registration-related settings | admin | `/mypage` | both | authenticated admin session | settings save succeeds and the next public auth visit reflects the new state | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
 | E2E-ADMIN-008 | MyPage admin | Cleanup actions show confirmation and completion feedback | admin | `/mypage` | both | authenticated admin session | cleanup flow completes with visible result | P1 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
 
+### S3+PostgreSQL new-architecture integration
+
+| ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
+|----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
+| E2E-S3PG-001 | S3+PG | Upload → list → download → downloaded content equals original | user1 | `/files` | both | seeded S3+PG environment | file listed and download bytes match the uploaded fixture | P0 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | S3 mode only; self-skips in webdav mode |
+| E2E-S3PG-002 | S3+PG | Rename is instant (DB-only, no blob copy) | user1 | `/files` | both | uploaded file exists | rename succeeds, new path resolves, content unchanged; old path gone | P0 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | Timing logged via annotation; no sub-second assertion |
+| E2E-S3PG-003 | S3+PG | Move file across folders — closure table updated | user1 | `/files` | both | source and destination folders exist | file accessible at the new path and absent from the old path | P1 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | |
+| E2E-S3PG-004 | S3+PG | Copy-on-write: copy shares the same blob; overwrite one triggers a real copy | user1 | `/files` | both | uploaded file exists | both nodes reference the same `s3_key`; overwriting the copy leaves the original content unchanged | P1 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | Same-blob check uses a targeted `object_map` read (no API exposes `s3_key`) |
+| E2E-S3PG-005 | S3+PG | Delete → orphaned blob → GC admin endpoint cleans it up | admin | API (GC) | both | uploaded file exists; `GC_ORPHAN_TTL_DAYS` lowered in `.env.e2e` | after delete the blob remains until GC; GC run reports Tier 2 cleanup and the blob is gone from MinIO | P1 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | Blob presence asserted directly via MinIO helper |
+| E2E-S3PG-006 | S3+PG | Permission inheritance: grant folder read → child/grandchild accessible via `__shared__` | approved user | `/files/__shared__` | both | owner folder with nested grandchild and a grant to a second user | granted folder appears in `__shared__` and grandchild file is downloadable/browsable | P0 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | Follows the `share-internal.spec.ts` grant pattern |
+| E2E-S3PG-007 | S3+PG | Share link survives file rename (nodeId reference, not path) | anonymous | `/share/:token` | both | single-file share link on a file | renaming the file does not break the share link; preview still renders | P1 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | |
+| E2E-S3PG-008 | S3+PG | S3 bucket reconciliation: untracked blob is deleted by GC admin endpoint | admin | API (GC) | both | untracked blob directly PUT into MinIO; `GC_ORPHAN_TTL_DAYS` lowered in `.env.e2e` | GC Tier 2 (`listOrphanedKeys`) detects and deletes the blob | P1 | playwright | `e2e/s3-pg-integration.spec.ts` | covered | Blob injected via MinIO helper with no `object_map` row |
+
 ### Desktop-only advanced interactions
 
 | ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
@@ -352,7 +369,6 @@ Current expansion note:
 | ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
 |----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
 | E2E-NEG-001 | Negative | Read-only or forbidden actions surface user-visible denial | approved user | `/files` | both | user can reach a read-only target | UI blocks or reports denied action | P1 | playwright | `e2e/share-public.spec.ts` or dedicated negative spec | planned | Keep browser scope limited to visible denial, not full ACL matrix |
-| E2E-NEG-002 | Negative | `/.wea` remains inaccessible to non-admin users | approved user | browser entry that can expose target | both | non-admin session | reserved metadata path is not exposed as a usable path | P2 | supertest | none | non-e2e | Better as server integration |
 | E2E-NEG-003 | Negative | Full direct read/direct write permission matrix | multiple | API-level scenarios | both | controlled ACL fixtures | all allow/deny branches match contract | P2 | supertest | none | non-e2e | Too broad for browser E2E |
 | E2E-NEG-004 | Negative | Login rate-limit branches and `Retry-After` behavior | anonymous | `/login` | both | deterministic repeated failed attempts | rate-limit contract is correct | P2 | supertest | none | non-e2e | Browser E2E adds little value over route integration |
 | E2E-NEG-005 | Negative | Token refresh retry-once behavior | authenticated user | protected routes | both | expiring access token and refresh token orchestration | session retry behavior matches contract | P2 | rtl-msw | none | non-e2e | Better isolated in client integration tests |

@@ -1,31 +1,28 @@
 import { buildPermissionDiff } from '../utils/buildPermissionDiff';
-import { revokePermission, grantPermission, approvePermissionRequest } from './sharePermissionGateway';
+import { revokePermission, approvePermissionRequest } from './sharePermissionGateway';
 
 /**
- * Review-mode use-case: apply permission changes and approve a permission request.
+ * Review-mode use-case: revoke assignments removed in the dialog (best-effort),
+ * then approve the permission request. The requested permission is granted
+ * atomically by the server on approve, so no client-side grant is issued.
  */
 export async function shareReviewUseCase({
   permissionRequestId,
-  initialFolderPermissions,
-  folderPermissions,
+  initialNodePermissions,
+  nodePermissions,
 } = {}) {
-  const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
-    initialFolderPermissions,
-    folderPermissions,
+  const { permissionsToRevoke } = buildPermissionDiff({
+    initialNodePermissions,
+    nodePermissions,
   });
 
-  // Revokes are best-effort: errors for individual entries should not block later grants/approve.
-  for (const { userId, folderPath } of permissionsToRevoke) {
+  // Revokes are best-effort: errors for individual entries should not block approve.
+  for (const { userId, nodeId } of permissionsToRevoke) {
     try {
-      await revokePermission({ userId, folderPath, includeSubfolders: true });
+      await revokePermission({ userId, nodeId });
     } catch (e) {
       // Non-fatal revocation failure (matches current dialog behavior).
     }
-  }
-
-  // Grants are required; any failure should abort the flow and surface to the caller.
-  for (const { userId, folderPath, permission } of permissionsToGrant) {
-    await grantPermission({ userId, folderPath, permission });
   }
 
   await approvePermissionRequest(permissionRequestId);

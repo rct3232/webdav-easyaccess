@@ -7,38 +7,80 @@ const {
   createTestDatabase,
   createAuthenticatedTestUser,
   createTestUser,
+  createTestFileNode,
+  createUserRootNode,
   USER_STATUS,
+  PERMISSIONS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
-const Permission = require('../../../../models/Permission');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
-var mockEmail;
 var mockWebdav;
-jest.mock('../../../../utils/email', () => {
-  const { createEmailMock } = require('../../../../testing/mocks/emailMock');
-  mockEmail = createEmailMock();
-  return mockEmail;
-});
 jest.mock('../../../../utils/webdav', () => {
-  const { createWebdavMock } = require('../../../../testing/mocks/webdavMock');
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
   mockWebdav = createWebdavMock();
   return mockWebdav;
 });
 
 let app;
 let dbCleanup;
-const previousBackend = process.env.WEA_STORAGE_BACKEND;
+const previousFileStorage = process.env.WEA_FILE_STORAGE;
 
 beforeAll(async () => {
-  process.env.WEA_STORAGE_BACKEND = 'fs';
+  process.env.WEA_FILE_STORAGE = 'webdav';
   const db = await createTestDatabase();
   dbCleanup = db.cleanup;
+  const { createWebdavMock } = require('@testing/mocks/webdavMock');
+  const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
+  const composition = require('../../../../service/composition');
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore: new WebdavBlobStore(createWebdavMock()),
+  });
   app = require('../../../../index');
 });
 
 afterAll(async () => {
   await dbCleanup?.();
-  process.env.WEA_STORAGE_BACKEND = previousBackend;
+  process.env.WEA_FILE_STORAGE = previousFileStorage;
+});
+
+beforeEach(jest.clearAllMocks);
+
+describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
+  const ADMIN_ROUTES = [
+    ['get', '/api/admin/settings'],
+    ['put', '/api/admin/settings'],
+    ['get', '/api/admin/users'],
+    ['get', '/api/admin/users/pending'],
+    ['post', '/api/admin/users'],
+    ['post', '/api/admin/users/1/approve'],
+    ['post', '/api/admin/users/1/reject'],
+    ['delete', '/api/admin/users/1'],
+    ['put', '/api/admin/users/1/permissions'],
+    ['get', '/api/admin/folders/list'],
+    ['post', '/api/admin/permissions/ensure-home-owner-admin'],
+    ['post', '/api/admin/cleanup/orphaned'],
+    ['post', '/api/admin/maintenance/gc'],
+    ['post', '/api/admin/maintenance/repair-sync'],
+  ];
+
+  it('returns 403 for a non-admin on every admin route', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-matrix-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    for (const [method, url] of ADMIN_ROUTES) {
+      const res = await request(app)[method](url)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+    }
+  });
 });
 
 describe('GET /api/admin/settings', () => {
@@ -137,9 +179,12 @@ describe('POST /api/admin/users/:id/approve', () => {
     expect(res.status).toBe(200);
     expect(res.body.messageCode).toBeDefined();
 
-    const hasAdmin = await Permission.checkPermission(
+    const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+    const homeNode = await createFileNodesStore().getUserRootNode(pendingUser.id);
+    expect(homeNode).not.toBeNull();
+    const hasAdmin = await permissionStore.checkPermission(
       pendingUser.id,
-      `/${pendingUser.username}`,
+      homeNode.id,
       'admin'
     );
     expect(hasAdmin).toBe(true);
@@ -195,11 +240,187 @@ describe('POST /api/admin/cleanup/orphaned', () => {
     expect(res.body.messageCode).toBeDefined();
     expect(res.body.results).toBeDefined();
     expect(res.body.results).toMatchObject({
-      deletedPermissionFiles: expect.any(Number),
-      deletedUserFiles: expect.any(Number),
-      deletedEmailIndexFiles: expect.any(Number),
-      cleanedPermissionRequests: expect.any(Number),
+      errors: expect.any(Array),
+      gc: expect.anything(),
+      orphanedNodes: expect.any(Array),
+    });
+  });
+});
+
+describe('POST /api/admin/permissions/ensure-home-owner-admin', () => {
+  it('removes redundant self-grants on the user own subtree while preserving home admin', async () => {
+    const user = await createAuthenticatedTestUser({ username: `clean-self-${Date.now()}` });
+    const home = await createUserRootNode({ userId: user.user.id });
+    const ownDir = await createTestFileNode({
+      name: `own-${Date.now()}`,
+      type: 'directory',
+      parentId: home.nodeId,
+    });
+    await permissionStore.grant(user.user.id, ownDir.nodeId, PERMISSIONS.WRITE);
+
+    const admin = await createAuthenticatedTestUser({
+      username: `clean-admin-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/permissions/ensure-home-owner-admin')
+      .set('Authorization', `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.removedSelfGrants).toBeGreaterThanOrEqual(1);
+
+    const perms = await permissionStore.getUserPermissions(user.user.id);
+    const ids = perms.map(p => p.file_node_id);
+    expect(ids).toContain(home.nodeId);       // home-root admin preserved
+    expect(ids).not.toContain(ownDir.nodeId); // descendant self-grant removed
+  });
+
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-ensure-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/permissions/ensure-home-owner-admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
+  });
+});
+
+describe('POST /api/admin/maintenance/gc', () => {
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-gc-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/gc')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 200 with messageCode and two-tier results shape when admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-gc-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/gc')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBeDefined();
+    expect(res.body.results).toBeDefined();
+    expect(res.body.results.tier1).toMatchObject({
+      orphanedRows: expect.any(Number),
+      deletedBlobs: expect.any(Number),
+      deletedRows: expect.any(Number),
       errors: expect.any(Array),
     });
+    expect(res.body.results.tier2).toMatchObject({
+      scannedKeys: expect.any(Number),
+      untrackedKeys: expect.any(Number),
+      deletedKeys: expect.any(Number),
+      skipped: expect.any(Boolean),
+      errors: expect.any(Array),
+    });
+  });
+});
+
+describe('POST /api/admin/maintenance/repair-sync', () => {
+  const { createFileNodesStore } = require('../../../../store/fileNodesStore');
+
+  it('returns 403 when non-admin', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `nonadmin-repair-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1, action: 'force-active' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 400 for an invalid action', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-bad-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 1, action: 'delete-now' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 404 for a missing node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-missing-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId: 999999, action: 'force-active' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('force-active resolves an orphaned node', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-force-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `repair-force-${Date.now()}` });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'force-active' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBeDefined();
+    expect(res.body.result).toMatchObject({ nodeId, action: 'force-active', status: 'resolved' });
+
+    const after = await store.getNode(nodeId);
+    expect(after.syncStatus).toBe('active');
+  });
+
+  it('retry-delete removes an orphaned node from the DB', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-repair-delete-${Date.now()}`,
+      isAdmin: true,
+    });
+    const { nodeId } = await createTestFileNode({ name: `repair-del-${Date.now()}` });
+    const store = createFileNodesStore();
+    await store.updateSyncStatus(nodeId, 'orphaned_node');
+
+    const res = await request(app)
+      .post('/api/admin/maintenance/repair-sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeId, action: 'retry-delete' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ nodeId, action: 'retry-delete', status: 'resolved' });
+    expect(await store.getNode(nodeId)).toBeNull();
   });
 });

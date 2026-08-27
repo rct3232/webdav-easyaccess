@@ -1,44 +1,23 @@
-# folderUtils Spec
+# folderUtils Spec — REMOVED (Wave 4)
 
-## 1. Overview
+## Status: DELETED
 
-| Item | Description |
-|------|-------------|
-| Role | Folder path utilities: recursively collect folder and all subfolder paths under a given folder. Uses fileService.listFiles. |
+The `client/src/utils/folderUtils.js` file was deleted during Wave 4 as part of the path-to-nodeId migration. Its sole export, `collectSubfolderPaths`, is no longer available.
 
----
+### What Was Here
 
-## 2. Implementation Spec
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| collectSubfolderPaths | `(folderPath) => Promise<string[]>` | Recursively collected folder and subfolder paths via fileService.listFiles |
 
-### 2.1 File Path
+### Why Removed
 
-- **Source:** `client/src/utils/folderUtils.js`
-- **Test file:** `client/src/utils/__tests__/folderUtils.test.js`
+Server-side permission inheritance via the closure table eliminates the need for client-side recursive path collection. Permission grants on a directory node automatically propagate to descendants through `node_ancestors`, so the client no longer needs to enumerate subfolder paths for permission operations.
 
-### 2.2 Function Signatures
+### Replacement
 
-| Function | (input) => return |
-|----------|-------------------|
-| collectSubfolderPaths | (folderPath) => Promise<string[]> |
+No direct replacement — callers that previously used this function now operate on nodeId-based permissions where inheritance is resolved server-side by the store layer (`permissionStore.checkPermission` traverses ancestors via closure table).
 
-### 2.3 Return Value
+### Affected Code
 
-- `[folderPath, ...subfolder paths]` – normalized, depth-first traversal
-
-### 2.4 Dependencies
-
-- `pathUtils.normalizePath`
-- `listFiles` – imported from `client/src/services/fileService.js` (e.g. `import { listFiles } from '../services/fileService'`). Calls API to list files per path.
-
-### 2.5 Verification Scenarios
-
-- [ ] Returns [folderPath] for leaf folder
-- [ ] Returns [folderPath, ...children] for nested structure
-- [ ] Paths normalized
-- [ ] On listFiles error: logs and skips that branch; continues traverse. **Skips that branch** = does not include the path that failed to list nor its descendants. Only paths we successfully listed are included.
-
-### 2.6 Edge Cases
-
-- Empty listFiles response → dirs=[]
-- Traverse catches errors, continues with siblings
-- Paths whose listFiles fails → excluded from result (per 2.5)
+- `shareTargetPermissionSaveUseCase.js` — migrated to `targetNodeId`; no longer collects subfolder paths (Wave 4 Task W4.8)

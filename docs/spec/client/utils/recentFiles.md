@@ -4,47 +4,28 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Pure path-mutation helpers for recent entries: given a list of recent entries and a path change (rename/move/delete), derive which recent paths should be removed and which updated entries should be added. |
-| Boundary note | This is a **product utility**, not part of reusable explorer core. Explorer core must not own virtual collections such as `__recent__` (those remain product overlays in the FileManager shell), but the product may use these pure helpers inside the `recentFilesRepository` implementation. |
+| Role | **REMOVED in Phase 5.** Previously a pure path-mutation helper module for recent entries: given a list of recent entries and a path change (rename/move/delete), it derived which recent paths should be removed and which updated entries should be added. |
+| Boundary note | Recent entries are now keyed by stable `nodeId`s, and server `CASCADE` handles deletes. Path-based mutation planning is no longer needed, so this module and its three helpers are **REMOVED** and must not be imported by client code. |
 
 ---
 
-## 2. Implementation Spec
+## 2. Removal
 
 ### 2.1 File Path
 
-- **Source:** `client/src/utils/recentFiles.js`
-- **Test file:** `client/src/utils/__tests__/recentFiles.test.js`
+- **Source:** `client/src/utils/recentFiles.js` (REMOVED in Phase 5)
+- **Test file:** `client/src/utils/__tests__/recentFiles.test.js` (REMOVED in Phase 5)
 
-### 2.2 Function Signatures (pure contracts)
+### 2.2 Removed Functions (Phase 5)
 
-Recent entry shape:
+The following path-mutation helpers are **REMOVED**:
 
-- `RecentEntry = { path: string, name?: string, type?: 'file'|'directory', basename?: string }`
+- `updateSubPathsOnPathChange`
+- `removeSubPathsOnFolderDelete`
+- `removeMultiplePaths`
 
-Return shape:
+### 2.3 Impact
 
-- `RecentMutationPlan = { removedPaths: string[], addedEntries: RecentEntry[] }`
-
-| Function | Input => Return |
-|----------|------------------|
-| updateSubPathsOnPathChange | `(recentEntries, oldPath, newPath) => RecentMutationPlan` |
-| removeSubPathsOnFolderDelete | `(recentEntries, folderPath) => { removedPaths: string[] }` |
-| removeMultiplePaths | `(recentEntries, filePaths) => { removedPaths: string[] }` |
-
-### 2.3 Dependencies
-
-- pathUtils.normalizePath (used only to compare and compute derived relative paths)
-
-### 2.4 Verification Scenarios
-
-- [ ] `updateSubPathsOnPathChange` produces removed paths under `oldPath` and (for non-directory recent entries) adds updated entries under `newPath`.
-- [ ] `updateSubPathsOnPathChange` does not re-add `type === 'directory'` recent entries.
-- [ ] `removeSubPathsOnFolderDelete` removes any recent entry whose normalized path is `folderPath` or has `folderPath + '/'` prefix.
-- [ ] `removeMultiplePaths` removes only exact path matches after normalization.
-
-### 2.5 Edge Cases
-
-- Empty `recentEntries` returns empty removals/additions.
-- `oldPath === newPath` produces an empty mutation plan.
-- Empty `filePaths` for `removeMultiplePaths` produces `{ removedPaths: [] }`.
+- `recentFilesRepository` no longer depends on path-mutation planning helpers.
+- Renames/moves no longer rewrite recent paths (nodeIds are stable).
+- Folder/file deletes are handled by server `CASCADE`; no client-side removal planning is required.

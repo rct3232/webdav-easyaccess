@@ -8,27 +8,19 @@ const multer = require('multer');
 const { authenticateToken, authenticateTokenOrShare } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
 const { requireAuth } = requireUser;
-const normalizePathParam = require('../../../middleware/normalizePathParam');
-const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../../../utils/errorHandler');
+const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
-const { createFileService } = require('../services/fileService');
-const { getConflicts } = require('../services/conflictResolver');
+const { getConflictsByNodeIds } = require('../services/conflictResolver');
 
-const {
-  checkFilePermission,
-  checkFolderPermission,
-  canWriteFolder,
-  canWriteFile,
-  isSharePrincipal,
-} = require('../../permissions/services/aclService');
-const { getFileMetadata, pathExists } = require('../../../utils/webdav');
+const { isSharePrincipal } = require('../../permissions/services/aclService');
 
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
+
+const { getComposition } = require('../../../service/composition');
 
 const upload = multer({ storage: multer.memoryStorage(), preservePath: true });
 
@@ -39,125 +31,140 @@ function requireTokenNotShare(req, res, next) {
   next();
 }
 
-async function isDirectoryPath(webdavPath) {
-  try {
-    const result = await pathExists(webdavPath);
-    if (result) return true;
-  } catch (error) {}
-  try {
-    if (!webdavPath.endsWith('/')) {
-      const meta = await getFileMetadata(webdavPath + '/');
-      if (meta && meta.type === 'directory') return true;
-    }
-  } catch (_) {}
-  try {
-    if (webdavPath.endsWith('/') && webdavPath !== '/') {
-      const meta = await getFileMetadata(webdavPath.slice(0, -1));
-      if (meta && meta.type === 'directory') return true;
-    }
-  } catch (_) {}
-  return false;
-}
-
 const METADATA_PATHS_LIMIT = 100;
 
-router.post('/check-conflicts', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/check-conflicts', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { operations, limit = true } = req.body;
   if (!operations || !Array.isArray(operations)) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
-  const conflicts = await getConflicts(operations, { limit });
+  const conflicts = await getConflictsByNodeIds(operations, { limit });
   res.json({ conflicts });
 }));
 
-router.post('/metadata', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const paths = req.body.paths;
-  if (!Array.isArray(paths)) {
-    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
-  }
-  if (paths.length > METADATA_PATHS_LIMIT) {
+// Legacy-URL bootstrap resolver (nodeId-first navigation): resolves a path string to a nodeId.
+// Sole path-accepting endpoint; documented exception to the nodeId-only rule (PLAN.md Rule 13).
+router.post('/resolve-path', authenticateToken, requireUser, asyncHandler(async (req, res) => {
+  const { path } = req.body;
+  if (typeof path !== 'string' || path.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
+
+  const { fileNodeService } = getComposition();
+  const node = await fileNodeService.resolvePath(path);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+  }
+
+  res.json({ nodeId: node.id });
+}));
+
+router.post('/metadata', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
+  const nodeIds = req.body.nodeIds;
+  if (!Array.isArray(nodeIds)) {
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
+  }
+  if (nodeIds.length > METADATA_PATHS_LIMIT) {
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
+  }
+
   const principalId = req.principalId;
+  const { fileNodeService, aclService } = getComposition();
   const results = [];
-  for (const p of paths) {
-    const pathVal = typeof p === 'string' ? p.trim() : '';
-    if (!pathVal) continue;
-    const normalized = normalizePath(pathVal);
-    const hasRead = await checkFilePermission(principalId, normalized, PERMISSIONS.READ);
+
+  for (const nodeId of nodeIds) {
+    const parsedId = parseNodeId(nodeId, 'nodeId');
+    const hasRead = await aclService.checkFilePermission(principalId, parsedId, PERMISSIONS.READ);
     if (!hasRead) continue;
+
     try {
-      const meta = await getFileMetadata(normalized);
-      results.push({
-        path: normalized,
-        size: meta.size,
-        lastmod: meta.lastmod,
-        mime: meta.mime,
-      });
+      const node = await fileNodeService.getNode(parsedId);
+      if (node) {
+        results.push({
+          nodeId: node.id,
+          name: node.name,
+          type: node.type,
+          size: null,
+          lastmod: node.updatedAt,
+          mime: null,
+        });
+      }
     } catch (err) {
       if (err.status !== HTTP_STATUS.NOT_FOUND) {
-        console.error(`[files/metadata] getFileMetadata failed for ${normalized}:`, err.message);
+        console.error(`[files/metadata] getNode failed for nodeId ${parsedId}:`, err.message);
       }
     }
   }
+
   res.json(results);
 }));
 
-router.get('/list', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/list', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const principalId = req.principalId;
   const isShare = isSharePrincipal(principalId);
-  let folderPath = normalizePath(req.query.path || '/');
 
-  if (isShare) {
-    const rootPath = req.shareContext.rootPath;
-    if (folderPath === '/' || folderPath === '') {
-      folderPath = rootPath;
-    }
-  }
-
-  let hasPermission = await checkFolderPermission(principalId, folderPath, PERMISSIONS.READ);
-  if (!hasPermission) {
-    if (isShare) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({
-        errorCode: SERVER_ERROR_CODES.files.folderAccessDenied,
-      });
-    }
-    const user = req.user.full;
-    const userFolder = `/${user.username}`;
-    if (folderPath === '/' || folderPath === '') {
-      folderPath = userFolder;
-    } else if (!folderPath.startsWith(userFolder)) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({
-        errorCode: SERVER_ERROR_CODES.files.folderAccessDenied,
-      });
-    }
+  let parentNodeId;
+  if (req.query.nodeId != null && req.query.nodeId !== '') {
+    parentNodeId = parseNodeId(req.query.nodeId, 'nodeId');
+  } else {
+    parentNodeId = null;
   }
 
   const user = req.user?.full;
-  const fileService = createFileService();
-  const itemsWithThumbnails = await fileService.listDirectoryWithPermissions(principalId, folderPath, user, isShare);
+  const { fileService } = getComposition();
+  const itemsWithThumbnails = await fileService.listDirectoryWithPermissions(principalId, parentNodeId, user);
 
   res.json(itemsWithThumbnails);
 }));
 
-router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const filePath = req.query.path;
+router.get('/ancestors', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
+  const nodeId = parseNodeId(req.query.nodeId, 'nodeId');
+
+  const { fileNodeService, fileNodesStore } = getComposition();
+  const node = await fileNodeService.getNode(nodeId);
+  if (!node) {
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+  }
+
+  const chain = await fileNodesStore.getAncestorChain(nodeId);
+  const ancestorIds = chain.map((entry) => entry.ancestorId);
+  if (ancestorIds[ancestorIds.length - 1] !== nodeId) {
+    ancestorIds.push(nodeId);
+  }
+
+  const ancestors = [];
+  for (const ancestorId of ancestorIds) {
+    const ancestorNode = await fileNodeService.getNode(ancestorId);
+    if (ancestorNode) {
+      ancestors.push({ nodeId: ancestorNode.id, name: ancestorNode.name });
+    }
+  }
+
+  res.json({ ancestors });
+}));
+
+router.get('/download', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
+  const nodeIdValue = req.query.nodeId;
   const inline = req.query.inline === 'true';
 
-  if (!filePath) {
+  if (!nodeIdValue) {
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
   }
 
+  const fileNodeId = parseNodeId(nodeIdValue, 'nodeId');
   const principalId = req.principalId;
-  const hasPermission = await checkFilePermission(principalId, filePath, PERMISSIONS.READ);
-  if (!hasPermission) {
-    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.files.accessDenied });
+  const user = req.user?.full;
+  const { fileService } = getComposition();
+
+  const buffer = await fileService.downloadFile(fileNodeId, principalId, user);
+  if (!buffer) {
+    throw notFoundError(SERVER_ERROR_CODES.files.notFound);
   }
 
-  const fileService = createFileService();
-  const buffer = await fileService.downloadFile(filePath);
-  const filename = path.basename(filePath);
+  const { fileNodeService } = getComposition();
+  const node = await fileNodeService.getNode(fileNodeId);
+  const filename = node ? node.name : 'download';
   const encodedFilename = encodeURIComponent(filename);
   const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
   const disposition = inline ? 'inline' : 'attachment';
@@ -173,7 +180,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, normalizePathPara
   await sendBufferAsChunks(res, buffer);
 }));
 
-router.post('/upload', authenticateToken, requireUser, normalizePathParam, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/upload', authenticateToken, requireAuth, upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
@@ -186,56 +193,115 @@ router.post('/upload', authenticateToken, requireUser, normalizePathParam, check
     }
   } catch (e) {}
 
-  let folderPath = req.body.path || '/';
-  const relativePath = req.body.relativePath || '';
+  const parentNodeIdValue = req.body.parentNodeId;
+  const uploadUser = req.user.full;
+  // Root-level upload (parentNodeId null) is admin-only: the filesystem root
+  // `/` is the admin's home. Multipart form fields arrive as strings, so
+  // normalize "null"/"undefined" to null.
+  const isRootUpload =
+    parentNodeIdValue == null ||
+    parentNodeIdValue === '' ||
+    parentNodeIdValue === 'null' ||
+    parentNodeIdValue === 'undefined';
+  if (isRootUpload && !uploadUser.is_admin) {
+    throw validationError(SERVER_ERROR_CODES.files.invalidPath);
+  }
+  const parentNodeId = isRootUpload ? null : parseNodeId(parentNodeIdValue, 'parentNodeId');
   const { onConflict } = req.body;
 
-  if (!req.user.is_admin && normalizePath(folderPath) !== '/' && normalizePath(folderPath) !== '') {
-    const ok = await canWriteFolder(req.user.full, normalizePath(folderPath));
-    if (!ok) {
-      throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
-    }
-  }
+  const mimeType = req.file.mimeType || originalFilename.mimetype || getContentType(originalFilename) || 'application/octet-stream';
 
-  const fileService = createFileService();
+  const principalId = req.principalId;
+  const user = req.user.full;
+  const { fileService } = getComposition();
+
   const result = await fileService.uploadFile(
-    req.user.full,
-    folderPath,
-    req.file.buffer,
+    principalId,
+    parentNodeId,
     originalFilename,
-    relativePath,
-    onConflict
+    req.file.buffer,
+    mimeType,
+    user,
+    onConflict,
   );
 
   if (result.skipped) {
-    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSkipped, path: result.path, skipped: true });
+    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSkipped, nodeId: result.nodeId, skipped: true });
   } else {
-    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, path: result.path });
+    res.json({ messageCode: SERVER_MESSAGE_CODES.files.uploadSuccess, nodeId: result.nodeId });
   }
 }));
 
-router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, normalizePathParam, checkMetaPathAccess, asyncHandler(async (req, res) => {
-  const { oldPath, newName } = req.body;
-  if (!oldPath || !newName) {
+router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, asyncHandler(async (req, res) => {
+  const { nodeId, newName } = req.body;
+  if (!nodeId || !newName) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
+  const fileNodeId = parseNodeId(nodeId, 'nodeId');
+  const principalId = req.principalId;
   const user = req.user.full;
+  const { fileService } = getComposition();
 
-  const isDir = await isDirectoryPath(oldPath);
-  const normalizedOld = normalizePath(oldPath);
-  const hasPermission = isDir
-    ? await canWriteFolder(user, normalizedOld)
-    : await canWriteFile(user, normalizedOld);
+  const result = await fileService.renameNode(fileNodeId, newName, principalId, user);
 
-  if (!hasPermission) {
-    throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, nodeId: result.nodeId, newName: result.newName });
+}));
+
+router.post('/move', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
+  const { nodeId, destinationParentNodeId } = req.body;
+  if (!nodeId || !destinationParentNodeId) {
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
   }
 
-  const fileService = createFileService();
-  const result = await fileService.renameFile(oldPath, newName);
+  const fileNodeId = parseNodeId(nodeId, 'nodeId');
+  const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
+  const principalId = req.principalId;
+  const user = req.user.full;
+  const { fileService } = getComposition();
 
-  res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, path: result.path });
+  const result = await fileService.moveNode(fileNodeId, destParentNodeId, principalId, user);
+
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.moveSuccess, nodeId: result.nodeId, newParentId: result.newParentId });
+}));
+
+router.post('/copy', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
+  const { nodeId, destinationParentNodeId, newName } = req.body;
+  if (!nodeId || !destinationParentNodeId) {
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
+  }
+
+  const sourceNodeId = parseNodeId(nodeId, 'nodeId');
+  const destParentNodeId = parseNodeId(destinationParentNodeId, 'destinationParentNodeId');
+  const principalId = req.principalId;
+  const user = req.user.full;
+  const { fileService } = getComposition();
+
+  const result = await fileService.copyFile(
+    sourceNodeId,
+    destParentNodeId,
+    newName || null,
+    principalId,
+    user,
+  );
+
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.copySuccess, sourceNodeId: result.sourceNodeId, copiedNodeId: result.copiedNodeId });
+}));
+
+router.delete('/delete', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
+  const { nodeId } = req.body;
+  if (!nodeId) {
+    throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
+  }
+
+  const fileNodeId = parseNodeId(nodeId, 'nodeId');
+  const principalId = req.principalId;
+  const user = req.user.full;
+  const { fileService } = getComposition();
+
+  const result = await fileService.deleteNode(fileNodeId, principalId, user);
+
+  res.json({ messageCode: SERVER_MESSAGE_CODES.files.deleteSuccess, nodeId: fileNodeId, deletedCount: result.deletedCount });
 }));
 
 module.exports = router;

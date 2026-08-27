@@ -1,5 +1,5 @@
 /**
- * useShareDialog tests.
+ * useShareDialog tests (nodeId-based).
  * @see docs/spec/client/hooks/useShareDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -7,6 +7,14 @@ import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShareDialog } from '../useShareDialog';
 import { usePermissionManager } from '../usePermissionManager';
+
+import * as userService from '../../../../../services/userService';
+import * as permissionService from '../../../../../services/permissionService';
+import * as fileService from '../../../../../services/fileService';
+import * as permissionRequestService from '../../../../../services/permissionRequestService';
+import { sharePermissionSaveUseCase } from '../../../../../services/sharePermissionSaveUseCase';
+import { adminPermissionSaveUseCase } from '../../../../../services/adminPermissionSaveUseCase';
+import { shareReviewUseCase } from '../../../../../services/shareReviewUseCase';
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../../testing/mocks/i18nMock');
   return createI18nModuleMock();
@@ -21,7 +29,7 @@ jest.mock('../../../../../services/permissionService', () => {
 });
 jest.mock('../../../../../services/fileService', () => {
   const { createFileServiceMock } = require('../../../../../testing/mocks/serviceMocks');
-  return createFileServiceMock();
+  return createFileServiceMock({ resolvePath: jest.fn() });
 });
 jest.mock('../../../../../services/permissionRequestService', () => {
   const { createPermissionRequestServiceMock } = require('../../../../../testing/mocks/serviceMocks');
@@ -40,14 +48,6 @@ jest.mock('../../../../../services/adminPermissionSaveUseCase', () => ({
 jest.mock('../../../../../services/shareReviewUseCase', () => ({
   shareReviewUseCase: jest.fn(),
 }));
-
-import * as userService from '../../../../../services/userService';
-import * as permissionService from '../../../../../services/permissionService';
-import * as fileService from '../../../../../services/fileService';
-import * as permissionRequestService from '../../../../../services/permissionRequestService';
-import { sharePermissionSaveUseCase } from '../../../../../services/sharePermissionSaveUseCase';
-import { adminPermissionSaveUseCase } from '../../../../../services/adminPermissionSaveUseCase';
-import { shareReviewUseCase } from '../../../../../services/shareReviewUseCase';
 
 const mockOnMessage = jest.fn();
 const mockOnSave = jest.fn();
@@ -106,7 +106,7 @@ describe('useShareDialog', () => {
     permissionService.getFolderPermissions.mockResolvedValue([]);
     permissionService.getUserPermissions.mockResolvedValue([]);
     fileService.listFiles.mockResolvedValue([]);
-    userService.updateUserPermissions.mockResolvedValue();
+    fileService.resolvePath.mockResolvedValue({ nodeId: 1 });
     permissionService.grantPermission.mockResolvedValue();
     permissionService.revokePermission.mockResolvedValue();
     permissionRequestService.approvePermissionRequest.mockResolvedValue();
@@ -123,7 +123,7 @@ describe('useShareDialog', () => {
     jest.useRealTimers();
   });
 
-  it('returns rootPath, users, folderTree, expandedPaths, handlers', () => {
+  it('returns rootPath, users, folderTree, expandedNodeIds, handlers', () => {
     const { result } = renderHook(() =>
       useShareDialogWithPermissionManager({
         open: false,
@@ -137,7 +137,7 @@ describe('useShareDialog', () => {
     expect(typeof result.current.rootPath).toBe('string');
     expect(Array.isArray(result.current.users)).toBe(true);
     expect(result.current.folderTree).toBeInstanceOf(Map);
-    expect(result.current.expandedPaths).toBeInstanceOf(Set);
+    expect(result.current.expandedNodeIds).toBeInstanceOf(Set);
     expect(typeof result.current.toggleExpand).toBe('function');
     expect(typeof result.current.handleSave).toBe('function');
     expect(typeof result.current.handleClose).toBe('function');
@@ -242,7 +242,38 @@ describe('useShareDialog', () => {
     });
   });
 
-  it('reuses in-flight load for the same path and resolves all callers', async () => {
+  it('resolves the root path to a nodeId when open', async () => {
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'share',
+        folderPath: '/docs',
+        folderName: 'docs',
+        onClose: mockOnClose,
+      });
+
+    await waitFor(() => {
+      expect(fileService.resolvePath).toHaveBeenCalledWith('/docs');
+      expect(result.current.rootNodeId).toBe(1);
+    });
+  });
+
+  it('prefers folderNodeId over path resolution when provided', async () => {
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'share',
+        folderPath: '/docs',
+        folderName: 'docs',
+        folderNodeId: 42,
+        onClose: mockOnClose,
+      });
+
+    await waitFor(() => {
+      expect(result.current.rootNodeId).toBe(42);
+    });
+    expect(fileService.listFiles).toHaveBeenCalledWith(42);
+  });
+
+  it('reuses in-flight load for the same nodeId and resolves all callers', async () => {
     let resolveListFiles;
     fileService.listFiles.mockImplementation(
       () =>
@@ -264,25 +295,25 @@ describe('useShareDialog', () => {
     let firstCall;
     let secondCall;
     act(() => {
-      firstCall = result.current.loadFolderChildren('/docs');
-      secondCall = result.current.loadFolderChildren('/docs');
+      firstCall = result.current.loadFolderChildren(1);
+      secondCall = result.current.loadFolderChildren(1);
     });
 
     expect(fileService.listFiles).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveListFiles([
-        { path: '/docs/sub', type: 'directory', basename: 'sub' },
+        { nodeId: 11, path: '/docs/sub', type: 'directory', basename: 'sub' },
       ]);
       await Promise.all([firstCall, secondCall]);
     });
 
     await waitFor(() => {
-      const root = result.current.folderTree.get('/docs');
+      const root = result.current.folderTree.get(1);
       expect(root).toBeDefined();
       expect(root.children).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ path: '/docs/sub', name: 'sub' }),
+          expect.objectContaining({ nodeId: 11, name: 'sub' }),
         ])
       );
     });
@@ -303,7 +334,7 @@ describe('useShareDialog', () => {
     });
 
     act(() => {
-      result.current.permissionManager.handleAddUserPermission('/docs', '2', 'read', []);
+      result.current.permissionManager.handleAddUserPermission(1, '2', 'read', []);
     });
 
     await waitFor(() => {
@@ -315,8 +346,8 @@ describe('useShareDialog', () => {
     });
 
     expect(sharePermissionSaveUseCase).toHaveBeenCalledWith({
-      initialFolderPermissions: expect.any(Map),
-      folderPermissions: expect.any(Map),
+      initialNodePermissions: expect.any(Map),
+      nodePermissions: expect.any(Map),
     });
     expect(mockOnClose).toHaveBeenCalled();
   });
@@ -337,7 +368,7 @@ describe('useShareDialog', () => {
     });
 
     act(() => {
-      result.current.permissionManager.handleAddUserPermission('/docs', '2', 'read', []);
+      result.current.permissionManager.handleAddUserPermission(1, '2', 'read', []);
     });
 
     await waitFor(() => {
@@ -370,7 +401,7 @@ describe('useShareDialog', () => {
     });
 
     act(() => {
-      result.current.permissionManager.handleAddUserPermission('/alice', '1', 'write', []);
+      result.current.permissionManager.handleAddUserPermission(1, '1', 'write', []);
     });
 
     await waitFor(() => {
@@ -384,6 +415,8 @@ describe('useShareDialog', () => {
     expect(adminPermissionSaveUseCase).toHaveBeenCalledWith({
       userId: '1',
       username: 'alice',
+      homeFolderNodeId: expect.any(Number),
+      initialFolderPermissions: expect.any(Map),
       folderPermissions: expect.any(Map),
     });
     expect(mockOnClose).toHaveBeenCalled();
@@ -405,7 +438,7 @@ describe('useShareDialog', () => {
     });
 
     act(() => {
-      result.current.permissionManager.handleAddUserPermission('/', '1', 'write', []);
+      result.current.permissionManager.handleAddUserPermission(1, '1', 'write', []);
     });
 
     await waitFor(() => {
@@ -440,14 +473,14 @@ describe('useShareDialog', () => {
     expect(mockOnClose).toHaveBeenCalled();
   });
 
-  it('toggleExpand toggles path in expandedPaths and loads children when expanding', async () => {
-    fileService.listFiles.mockImplementation((path) => {
-      if (path === '/docs') {
+  it('toggleExpand toggles nodeId in expandedNodeIds and loads children when expanding', async () => {
+    fileService.listFiles.mockImplementation((nodeId) => {
+      if (nodeId === 1) {
         return Promise.resolve([
-          { path: '/docs/sub', type: 'directory', basename: 'sub' },
+          { nodeId: 11, path: '/docs/sub', type: 'directory', basename: 'sub' },
         ]);
       }
-      if (path === '/docs/sub') {
+      if (nodeId === 11) {
         return Promise.resolve([]);
       }
       return Promise.resolve([]);
@@ -465,20 +498,20 @@ describe('useShareDialog', () => {
       expect(result.current.loadingAllFolders).toBe(false);
     });
 
-    expect(result.current.expandedPaths.has('/docs/sub')).toBe(true);
+    expect(result.current.expandedNodeIds.has(11)).toBe(true);
 
     await act(async () => {
-      await result.current.toggleExpand('/docs/sub');
+      await result.current.toggleExpand(11);
     });
 
-    expect(result.current.expandedPaths.has('/docs/sub')).toBe(false);
+    expect(result.current.expandedNodeIds.has(11)).toBe(false);
 
     await act(async () => {
-      await result.current.toggleExpand('/docs/sub');
+      await result.current.toggleExpand(11);
     });
 
-    expect(result.current.expandedPaths.has('/docs/sub')).toBe(true);
-    expect(fileService.listFiles).toHaveBeenCalledWith('/docs/sub');
+    expect(result.current.expandedNodeIds.has(11)).toBe(true);
+    expect(fileService.listFiles).toHaveBeenCalledWith(11);
   });
 
   it('handleSave in review mode calls shareReviewUseCase and onApprove on success', async () => {
@@ -486,11 +519,12 @@ describe('useShareDialog', () => {
       id: 'req-1',
       requester_id: '2',
       requested_paths: ['/docs'],
+      file_node_id: 1,
       requested_permission: 'read',
       requester_username: 'bob',
     };
     permissionService.getUserPermissions.mockResolvedValue([
-      { folder_path: '/docs', permission: 'read', id: '2' },
+      { nodeId: 10, permission: 'read', id: '2' },
     ]);
     fileService.listFiles.mockResolvedValue([]);
 
@@ -515,8 +549,8 @@ describe('useShareDialog', () => {
 
     expect(shareReviewUseCase).toHaveBeenCalledWith({
       permissionRequestId: 'req-1',
-      initialFolderPermissions: expect.any(Map),
-      folderPermissions: expect.any(Map),
+      initialNodePermissions: expect.any(Map),
+      nodePermissions: expect.any(Map),
     });
     expect(mockOnApprove).toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
@@ -527,11 +561,12 @@ describe('useShareDialog', () => {
       id: 'req-1',
       requester_id: '2',
       requested_paths: ['/docs'],
+      file_node_id: 1,
       requested_permission: 'read',
       requester_username: 'bob',
     };
     permissionService.getUserPermissions.mockResolvedValue([
-      { folder_path: '/docs', permission: 'read', id: '2' },
+      { nodeId: 10, permission: 'read', id: '2' },
     ]);
     shareReviewUseCase.mockRejectedValue(
       new Error('Approve failed')
@@ -561,6 +596,64 @@ describe('useShareDialog', () => {
     expect(mockOnMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error' })
     );
+  });
+
+  it('drops a revoked user permission from the derived shared list (absence)', async () => {
+    permissionService.getFolderPermissions.mockResolvedValue([
+      { id: '2', username: 'bob', email: 'bob@example.com', is_admin: false, permission: 'read', node_id: 1 },
+    ]);
+    fileService.listFiles.mockResolvedValue([]);
+
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'share',
+        folderPath: '/docs',
+        folderName: 'docs',
+        onClose: mockOnClose,
+      });
+
+    await waitFor(() => {
+      expect(result.current.permissionManager.folderPermissions.get(1)?.get('2')).toBe('read');
+    });
+
+    act(() => {
+      result.current.permissionManager.handleRemoveUserPermission(1, '2', []);
+    });
+
+    expect(result.current.permissionManager.folderPermissions.has(1)).toBe(false);
+  });
+
+  it('drops a rejected requester from the derived shared list in review mode (absence)', async () => {
+    const permissionRequest = {
+      id: 'req-1',
+      requester_id: '2',
+      requested_paths: ['/docs'],
+      file_node_id: 1,
+      requested_permission: 'read',
+      requester_username: 'bob',
+    };
+    permissionService.getFolderPermissions.mockResolvedValue([]);
+    fileService.listFiles.mockResolvedValue([]);
+
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'review',
+        folderPath: '/docs',
+        folderName: 'docs',
+        permissionRequest,
+        onClose: mockOnClose,
+        onApprove: mockOnApprove,
+      });
+
+    await waitFor(() => {
+      expect(result.current.permissionManager.folderPermissions.get(1)?.get('2')).toBe('read');
+    });
+
+    act(() => {
+      result.current.permissionManager.handleRemoveUserPermission(1, '2', []);
+    });
+
+    expect(result.current.permissionManager.folderPermissions.has(1)).toBe(false);
   });
 
   it('returns externalShare state when enableExternalShare', async () => {

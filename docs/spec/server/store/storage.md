@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Abstraction over metadata backends. Supports `webdav`, `fs`, and `postgresql` selection while preserving store-layer APIs. Provides file-style helpers for `webdav`/`fs` and PostgreSQL pool/transaction helpers for relational mode. |
+| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite` only (FsJSON `fs` and legacy `webdav` metadata backends were removed in Phase 7). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. |
 
 ---
 
@@ -13,38 +13,55 @@
 ### 2.1 File Path
 
 - **Source:** `server/store/storage.js`
-- **Test file:** `server/store/__tests__/storage.test.js`
+- **Test file:** `server/infrastructure/__tests__/storage.test.js`
 
 ### 2.2 Main Methods
 
+#### Backend Selection
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| getBackend | () => 'webdav' \| 'fs' \| 'postgresql' | Resolved from `WEA_STORAGE_BACKEND`; `NODE_ENV=test` defaults to `fs` unless explicitly overridden |
-| getFsBaseDir | () => string | WEA_FS_DIR or WEA_METADATA_DIR or os.tmpdir() |
+| getBackend | () => 'postgresql' \| 'sqlite' | Resolved from `WEA_STORAGE_BACKEND`. Accepts aliases: `postgresql`/`postgres`/`pg` → `'postgresql'`; `sqlite` → `'sqlite'`; any other value (including removed `fs`/`filesystem`/`webdav`) → warns + returns `'sqlite'`; empty/undefined → warns + returns `'sqlite'` (default) |
+| isSqliteBackend | () => boolean | Returns `true` if `getBackend() === 'sqlite'` |
+
+#### PostgreSQL Helpers
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | getPgPool | () => Pool | Returns PostgreSQL connection pool when backend is `postgresql` |
 | withTransaction | (callback) => Promise\<T\> | Executes callback in single SQL transaction (begin/commit/rollback) |
-| ensureDir | (dirPath) => Promise\<void\> | Create dir (recursive for fs; step-by-step for WebDAV) |
-| ensureDirSafe | (dirPath) => Promise\<void\> | Exists check, create, retry on error |
-| exists | (p) => Promise\<boolean\> | Path exists |
-| readFile | (p) => Promise\<Buffer\> | Read file contents |
-| writeFile | (p, data, options?) => Promise\<void\> | Write; overwrite, ifNoneMatchStar, contentType |
-| deletePath | (p) => Promise\<void\> | Remove (recursive for fs) |
-| listDir | (dirPath) => Promise\<Array\<{ basename, type }\>\> | List directory entries |
+| closePgPool | () => Promise\<void\> | Close pool (for tests and process shutdown) |
 
-### 2.3 writeFile Options
+#### SQLite Helpers
 
-- overwrite (default true), ifNoneMatchStar (412/409 on exists)
-- contentType (default application/octet-stream)
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| getSqliteConnection | () => Database | Returns better-sqlite3 Database instance |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
+| closeSqliteDb | () => void | Close SQLite database |
 
-### 2.4 Dependencies
+#### Legacy Filesystem Helpers
 
-- fs, fs/promises, os, path
-- utils/webdav (createDirectory, deleteFile, getFileContents, listDirectory, pathExists, putFileContentsAdvanced)
+**Removed in Phase 7:** `getFsBaseDir`, `webdavToFsPath`, `ensureDir`, `ensureDirSafe`, `exists`, `readFile`, `writeFile`, `deletePath`, `listDir` — FsJSON metadata support is removed; `storage.js` no longer exposes filesystem helpers.
+
+### 2.3 Dependencies
+
+- fs, path
 - pg (Pool), backend-specific SQL helpers
-- metaPaths.normalizeWebdavPath
 - errorHandler (`createError`, `mapDatabaseError`), SERVER_ERROR_CODES
 
-### 2.5 PostgreSQL Infrastructure Contract
+### 2.4 `WEA_STORAGE_BACKEND` vs `WEA_FILE_STORAGE`
+
+These two environment variables are **completely independent**:
+
+| Variable | Purpose | Values | Handled By |
+|----------|---------|--------|------------|
+| `WEA_STORAGE_BACKEND` | Metadata persistence layer | `sqlite` (default), `postgresql` | `storage.js:getBackend()` |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav` | Phase 1 S3 adapter |
+
+`WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized value warns and falls back to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
+
+### 2.4 PostgreSQL Infrastructure Contract
 
 - Backend selector accepts `WEA_STORAGE_BACKEND=postgresql`.
 - Pool configuration uses environment values:
@@ -60,14 +77,16 @@
   - SQL errors are converted by shared DB error mapping
 - `closePgPool()` is provided for tests and process shutdown hooks.
 
-### 2.6 PostgreSQL v2 Schema Contract
+### 2.5 PostgreSQL v2 Schema Contract
 
 When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
-`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
+`users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
 
 Canonical source for table definitions, constraints, and indexes:
 
 - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+
+The schema is applied at startup: `server/store/bootstrap.js` `initMetadataStore()` calls `applyPendingMigrations('postgresql')` (see `docs/spec/server/infrastructure/schemaManager.md`) for the non-SQLite branch before `ensureDefaultAdmin()`. The DDL is intended for a **fresh empty database only** — a misconfigured app pointed at an existing/old DB must fail loudly at boot; no "already exists" tolerance is added.
 
 This spec intentionally does not duplicate full DDL text. Store modules consume this schema through
 backend selector functions while keeping route-level contracts unchanged.
@@ -79,25 +98,21 @@ Permission contract source of truth for `postgresql` backend:
 
 ### 2.7 Verification Scenarios
 
-- [ ] getBackend: test env → fs; WEA_STORAGE_BACKEND=fs → fs
 - [ ] getBackend: WEA_STORAGE_BACKEND=postgresql → postgresql
-- [ ] backend parity: shared store-facing behaviors remain consistent across `fs` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
+- [ ] getBackend: WEA_STORAGE_BACKEND=fs → warns + returns sqlite (fs removed in Phase 7)
+- [ ] getBackend: WEA_STORAGE_BACKEND=webdav → warns + returns sqlite
+- [ ] getBackend: WEA_STORAGE_BACKEND= (empty) → warns + returns sqlite (default)
+- [ ] getBackend: WEA_STORAGE_BACKEND=postgres → postgresql (alias)
+- [ ] getBackend: WEA_STORAGE_BACKEND=pg → postgresql (alias)
+- [ ] getBackend: WEA_STORAGE_BACKEND=sqlite → sqlite
+- [ ] backend parity: shared store-facing behaviors remain consistent across `sqlite` and `postgresql` for equivalent inputs (shape, ordering, not-found handling)
 - [ ] getPgPool: missing env throws `storage.postgresqlNotConfigured`
 - [ ] getPgPool: returns singleton pool across repeated calls
 - [ ] withTransaction commits on success and rolls back on error
 - [ ] withTransaction maps SQL errors with standardized DB error codes/status
-- [ ] webdavToFsPath: path stays under base; invalid → 400
-- [ ] ensureDir creates dirs; WebDAV MKCOL per segment
-- [ ] writeFile ifNoneMatchStar → 412 when exists
-- [ ] listDir returns { basename, type }[]
-- [ ] writeFile throws on ENOSPC
-- [ ] listDir throws on EACCES
 
-### 2.8 Error Cases
+### 2.7 Error Cases
 
-- writeFile disk full (ENOSPC): throw; upper layer maps to 500
-- WebDAV disconnection: adapter throws; upper layer retries or returns 500
-- listDir permission denied (EACCES): throw; upper layer maps to 403
 - PostgreSQL unique violation (`23505`): mapped to 409 `errorHandler.databaseConflict`
 - PostgreSQL FK/check violations (`23503`/`23514`): mapped to 400 `errorHandler.databaseConstraintViolation`
 - PostgreSQL unavailable/timeout (`57P01`/`53300`): mapped to 503 `errorHandler.databaseUnavailable`

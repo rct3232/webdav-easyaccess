@@ -1,27 +1,8 @@
-const { withLock } = require('./locks');
-const { SETTINGS_PATH, META_ROOT } = require('./metaPaths');
-const { ensureDir, exists, readFile, writeFile, getBackend, withTransaction, getPgPool, isSqliteBackend, getSqliteConnection, withSqliteTransaction } = require('./storage');
+const { getBackend, withTransaction, getPgPool, isSqliteBackend, withSqliteTransaction } = require('./storage');
 const { mapDatabaseError } = require('../utils/errorHandler');
-const { nowIso } = require('../utils/sharedHelpers');
 
 function isPostgresqlBackend() {
   return getBackend() === 'postgresql';
-}
-
-async function ensureSettingsFile() {
-  if (isPostgresqlBackend() || isSqliteBackend()) return;
-  await ensureDir(META_ROOT);
-  const ok = await exists(SETTINGS_PATH);
-  if (!ok) {
-    const initial = {
-      registration_enabled: 'false',
-      updated_at: nowIso(),
-    };
-    await writeFile(SETTINGS_PATH, JSON.stringify(initial, null, 2), {
-      overwrite: true,
-      contentType: 'application/json; charset=utf-8',
-    });
-  }
 }
 
 async function readSettings() {
@@ -54,33 +35,7 @@ async function readSettings() {
     }
   }
 
-  await ensureSettingsFile();
-  const buf = await readFile(SETTINGS_PATH);
-  const text = Buffer.from(buf).toString('utf8');
-  try {
-    const obj = JSON.parse(text);
-    if (obj && typeof obj === 'object') return obj;
-  } catch {
-    // fall through
-  }
-  // If corrupted, reset to safe defaults
-  const fallback = {
-    registration_enabled: 'false',
-    updated_at: nowIso(),
-  };
-  await writeFile(SETTINGS_PATH, JSON.stringify(fallback, null, 2), {
-    overwrite: true,
-    contentType: 'application/json; charset=utf-8',
-  });
-  return fallback;
-}
-
-async function writeSettings(obj) {
-  obj.updated_at = nowIso();
-  await writeFile(SETTINGS_PATH, JSON.stringify(obj, null, 2), {
-    overwrite: true,
-    contentType: 'application/json; charset=utf-8',
-  });
+  throw new Error('No database backend configured');
 }
 
 async function get(key) {
@@ -119,8 +74,7 @@ async function get(key) {
     }
   }
 
-  const s = await readSettings();
-  return Object.prototype.hasOwnProperty.call(s, key) ? s[key] : null;
+  throw new Error('No database backend configured');
 }
 
 async function set(key, value) {
@@ -153,7 +107,7 @@ async function set(key, value) {
            DO UPDATE SET
              value = EXCLUDED.value,
              updated_at = CURRENT_TIMESTAMP`,
-          [String(key), JSON.stringify(String(value))]
+          [String(key), String(value)]
         );
       });
       return { success: true };
@@ -162,22 +116,13 @@ async function set(key, value) {
     }
   }
 
-  await ensureSettingsFile();
-  return await withLock('settings', async () => {
-    const s = await readSettings();
-    s[key] = String(value);
-    await writeSettings(s);
-    return { success: true };
-  });
+  throw new Error('No database backend configured');
 }
 
 async function getAll() {
-  if (isPostgresqlBackend()) {
-    return await readSettings();
-  }
-
   const s = await readSettings();
-  const { updated_at, ...rest } = s;
+  const rest = { ...s };
+  delete rest.updated_at;
   return rest;
 }
 
@@ -187,10 +132,8 @@ async function isRegistrationEnabled() {
 }
 
 module.exports = {
-  ensureSettingsFile,
   get,
   set,
   getAll,
   isRegistrationEnabled,
 };
-

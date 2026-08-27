@@ -1,31 +1,46 @@
 import { listFiles } from './fileService';
-import { checkPermission, getUserPermissions } from './permissionService';
+import { checkPermission, getSharedPermissions } from './permissionService';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
-/**
- * List directory entries for picker paths (normal folders).
- * Preserves listFiles raw response shape; callers decide how to filter.
- */
-export const listFolderContents = async ({ path, options } = {}) => {
-  return listFiles(path, options || {});
+const normalizeEntry = (item) => {
+  if (!item || item.nodeId == null) return item;
+  return {
+    ...item,
+    path: item.path ?? item.display_path ?? '',
+    basename: item.basename ?? item.name ?? '',
+    mime: item.mime ?? item.mimeType ?? null,
+    lastmod: item.lastmod ?? item.modifiedAt ?? null,
+    display_path: item.display_path ?? item.path ?? '',
+  };
 };
 
 /**
- * Check effective permission for a path and return the same structure used by the picker hook.
+ * List directory entries for picker nodeIds (normal folders).
+ * Normalizes entries to the explorer shape (basename/name fallback) so the
+ * picker dialog can render accessible item labels.
  */
-export const checkWritePermission = async ({ path } = {}) => {
-  return checkPermission(path);
+export const listFolderContents = async ({ nodeId, options } = {}) => {
+  const data = await listFiles(nodeId, options || {});
+  return Array.isArray(data) ? data.map(normalizeEntry) : data;
+};
+
+/**
+ * Check effective permission for a nodeId and return the same structure used by the picker hook.
+ */
+export const checkWritePermission = async ({ nodeId } = {}) => {
+  return checkPermission(nodeId);
 };
 
 /**
  * Load shared-folder permissions for the picker’s “__shared__” root.
- * Filters out folders owned by the current user.
+ * The server already excludes the user's own subtree; the client keeps a
+ * root-level safety filter and returns only directory entries.
  */
 export const getUserSharedFolderPermissions = async ({ user, options } = {}) => {
   if (!user || !user.id || user.is_admin) return [];
-  const data = await getUserPermissions(user.id, options);
+  const data = await getSharedPermissions();
   const filtered = filterOutUserOwnFolders(data || [], user);
-  return Array.isArray(filtered) ? filtered : [];
+  return (Array.isArray(filtered) ? filtered : []).filter((perm) => perm.type === 'directory');
 };
 
 const folderPickerGateway = {

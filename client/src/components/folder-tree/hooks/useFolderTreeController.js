@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
-import { normalizePath } from '../../../utils/pathUtils';
-import { getUserBaseFolder } from '../../../utils/userUtils';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 
-const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
-  const [expandedPaths, setExpandedPaths] = useState(new Set());
+const EMPTY_ANCESTORS = [];
+
+const useFolderTreeController = ({ currentNodeId, currentPath = '', user, onNodeClick, ancestors = EMPTY_ANCESTORS }) => {
+  const chain = Array.isArray(ancestors) ? ancestors : EMPTY_ANCESTORS;
+  const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
   const [recentFilesList, setRecentFilesList] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
 
-  const homePath = user?.is_admin ? '/' : getUserBaseFolder(user);
+  const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
   useEffect(() => {
     if (!user) {
       setRecentFilesList([]);
-      return;
+      return undefined;
     }
 
     const loadRecentFiles = async () => {
@@ -65,91 +66,48 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
   const buildSharedFolderTree = useMemo(() => {
     if (sharedFolders.length === 0) return [];
 
-    const permissionPaths = new Map();
-    sharedFolders.forEach((perm) => {
-      const normalized = normalizePath(perm.folder_path);
-      permissionPaths.set(normalized, perm);
-    });
+    return sharedFolders.map((perm) => ({
+      nodeId: perm.nodeId,
+      name: perm.name || `Shared (${perm.nodeId})`,
+      children: [],
+      parentNodeId: homeNodeId,
+      permission: perm.permission,
+      hasReadPermission: true,
+    }));
+  }, [sharedFolders, homeNodeId]);
 
-    const pathMap = new Map();
-    permissionPaths.forEach((perm, normalizedPath) => {
-      const parts = normalizedPath.split('/').filter(Boolean);
-      const name = parts[parts.length - 1] || normalizedPath;
-      let parentPath = null;
-
-      for (let i = parts.length - 1; i > 0; i--) {
-        const parentCandidate = '/' + parts.slice(0, i).join('/');
-        if (permissionPaths.has(parentCandidate)) {
-          parentPath = parentCandidate;
-          break;
-        }
-      }
-
-      pathMap.set(normalizedPath, {
-        path: normalizedPath,
-        name,
-        children: [],
-        parentPath,
-        permission: perm.permission,
-        hasReadPermission: true,
-      });
-    });
-
-    const buildTree = (parentPath) => {
-      const children = [];
-      pathMap.forEach((node, path) => {
-        if (node.parentPath === parentPath) {
-          const childNode = {
-            ...node,
-            children: buildTree(path),
-          };
-          children.push(childNode);
-        }
-      });
-      return children.sort((a, b) => a.name.localeCompare(b.name));
-    };
-
-    return buildTree(null);
-  }, [sharedFolders]);
-
+  // Expansion derivation: home node + the current node's ancestor node ids + current node.
+  // Virtual-root / shared-subtree location auto-expands sections (manual toggles are never overridden).
   useEffect(() => {
-    if (currentPath) {
-      const paths = currentPath.split('/').filter(Boolean);
-      const pathsToExpand = new Set();
-      let current = '';
-
-      paths.forEach((part) => {
-        current = current ? `${current}/${part}` : `/${part}`;
-        pathsToExpand.add(current);
+    const ids = new Set();
+    if (homeNodeId != null) ids.add(homeNodeId);
+    if (currentNodeId != null) {
+      chain.forEach((ancestor) => {
+        if (ancestor?.nodeId != null) ids.add(ancestor.nodeId);
       });
-
-      pathsToExpand.add(homePath);
-      setExpandedPaths(pathsToExpand);
-
-      if (currentPath === '/__shared__') {
-        setSharedExpanded(true);
-      } else {
-        const isSharedPath = sharedFolders.some((perm) => currentPath.startsWith(perm.folder_path));
-        if (isSharedPath) {
-          setSharedExpanded(true);
-        }
-      }
-
-      if (currentPath === '/__recent__') {
-        setRecentExpanded(true);
-      }
-    } else {
-      setExpandedPaths(new Set([homePath]));
+      ids.add(currentNodeId);
     }
-  }, [currentPath, homePath, sharedFolders]);
+    setExpandedNodeIds(ids);
 
-  const onToggleExpand = useCallback((path) => {
-    setExpandedPaths((prev) => {
+    const sharedNodeIds = new Set(sharedFolders.map((perm) => perm.nodeId));
+    const isInSharedTree =
+      currentNodeId != null &&
+      (sharedNodeIds.has(currentNodeId) || chain.some((a) => sharedNodeIds.has(a?.nodeId)));
+    if (currentPath === '/__shared__' || isInSharedTree) {
+      setSharedExpanded(true);
+    }
+    if (currentPath === '/__recent__') {
+      setRecentExpanded(true);
+    }
+  }, [currentNodeId, currentPath, homeNodeId, chain, sharedFolders]);
+
+  const onToggleExpand = useCallback((nodeId) => {
+    setExpandedNodeIds((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
       } else {
-        newSet.add(path);
+        newSet.add(nodeId);
       }
       return newSet;
     });
@@ -161,21 +119,21 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
       const newExpanded = !sharedExpanded;
       setSharedExpanded(newExpanded);
       if (newExpanded) {
-        onPathClick('/__shared__');
+        onNodeClick('/__shared__');
       }
     },
-    [sharedExpanded, onPathClick]
+    [sharedExpanded, onNodeClick]
   );
 
   const handleSharedClick = useCallback(() => {
-    onPathClick('/__shared__');
-  }, [onPathClick]);
+    onNodeClick('/__shared__');
+  }, [onNodeClick]);
 
   const handleSharedFolderClick = useCallback(
-    (folderPath) => {
-      onPathClick(folderPath);
+    (nodeId) => {
+      onNodeClick(nodeId);
     },
-    [onPathClick]
+    [onNodeClick]
   );
 
   const handleRecentToggle = useCallback(
@@ -187,12 +145,12 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
   );
 
   const handleRecentClick = useCallback(() => {
-    onPathClick('/__recent__');
-  }, [onPathClick]);
+    onNodeClick('/__recent__');
+  }, [onNodeClick]);
 
   return {
-    homePath,
-    expandedPaths,
+    homeNodeId,
+    expandedNodeIds,
     onToggleExpand,
     sharedFolders,
     sharedExpanded,
@@ -208,4 +166,3 @@ const useFolderTreeController = ({ currentPath, user, onPathClick }) => {
 };
 
 export default useFolderTreeController;
-

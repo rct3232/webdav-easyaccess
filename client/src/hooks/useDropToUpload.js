@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { getParentPath } from '../utils/pathUtils';
 
 /**
  * Hook for handling drop-to-upload from OS file explorer
@@ -8,25 +7,25 @@ import { getParentPath } from '../utils/pathUtils';
  * @param {Object} options - Options object
  * @param {Function} [options.onUploadComplete] - Callback when upload completes (main area)
  * @param {Function} [options.onUploadError] - Callback when upload errors (main area)
- * @param {string} [options.path] - Folder path (folder tree mode)
+ * @param {number} [options.nodeId] - Folder nodeId (folder tree mode)
  * @param {boolean} [options.isDisabled] - Whether the drop zone is disabled (folder tree mode)
  * @param {boolean} [options.hasWritePermission] - Whether the target has write permission (folder tree mode)
  * @param {Function} [options.onExplorerDrop] - Drop handler (folder tree mode)
- * @param {Function} [options.onInternalFileDrop] - Internal drag/drop: (draggedPath, targetFolderPath) when dropped from file manager
+ * @param {Function} [options.onInternalFileDrop] - Internal drag/drop: (draggedNodeId, targetNodeNodeId) when dropped from file manager
  */
 export const useDropToUpload = (options = {}) => {
   const {
     onUploadComplete,
     onUploadError,
-    path,
+    nodeId,
     isDisabled = false,
     hasWritePermission = true,
     onExplorerDrop,
     onInternalFileDrop,
-    internalDraggedPath,
+    internalDraggedNodeId,
   } = typeof options === 'object' ? options : { onUploadComplete: options };
 
-  const isFolderMode = path != null && typeof onExplorerDrop === 'function';
+  const isFolderMode = nodeId != null && typeof onExplorerDrop === 'function';
 
   const getDragTypes = (e) => {
     const t = e.dataTransfer?.types || [];
@@ -112,12 +111,12 @@ export const useDropToUpload = (options = {}) => {
         } else if (isInternal && onInternalFileDrop) {
           e.preventDefault();
           e.stopPropagation();
-          const internalPath = e?.dataTransfer?.getData?.('text/plain');
-          const effectiveInternalPath = internalPath || internalDraggedPath;
+          const internalNodeId = e?.dataTransfer?.getData?.('text/plain');
+          const effectiveInternalNodeId = internalNodeId || internalDraggedNodeId;
           const noOp =
-            effectiveInternalPath && (getParentPath(effectiveInternalPath) === path || effectiveInternalPath === path);
+            effectiveInternalNodeId != null && String(effectiveInternalNodeId) === String(nodeId);
           if (noOp) {
-            // No-op: same folder or drop on self — do not highlight
+            // No-op: drop on self — do not highlight
           } else {
             setIsDraggingOver(true);
             setIsDropTarget(true);
@@ -129,7 +128,7 @@ export const useDropToUpload = (options = {}) => {
         setIsDraggingOver(true);
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path, internalDraggedPath]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, nodeId, internalDraggedNodeId]
   );
 
   const handleDragOver = useCallback(
@@ -146,12 +145,12 @@ export const useDropToUpload = (options = {}) => {
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = 'move';
-          const internalPath = e?.dataTransfer?.getData?.('text/plain');
-          const effectiveInternalPath = internalPath || internalDraggedPath;
+          const internalNodeId = e?.dataTransfer?.getData?.('text/plain');
+          const effectiveInternalNodeId = internalNodeId || internalDraggedNodeId;
           const noOp =
-            effectiveInternalPath && (getParentPath(effectiveInternalPath) === path || effectiveInternalPath === path);
+            effectiveInternalNodeId != null && String(effectiveInternalNodeId) === String(nodeId);
           if (noOp) {
-            // No-op: same folder or drop on self — do not highlight
+            // No-op: drop on self — do not highlight
           } else {
             setIsDropTarget(true);
           }
@@ -162,7 +161,7 @@ export const useDropToUpload = (options = {}) => {
         e.dataTransfer.dropEffect = 'copy';
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, path, internalDraggedPath]
+    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, nodeId, internalDraggedNodeId]
   );
 
   const handleDragLeave = useCallback(
@@ -190,7 +189,7 @@ export const useDropToUpload = (options = {}) => {
   );
 
   const handleDrop = useCallback(
-    async (e, targetPath, uploadCallback) => {
+    async (e, targetNodeNodeId, uploadCallback) => {
       if (isFolderMode && (isDisabled || !hasWritePermission)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -198,13 +197,13 @@ export const useDropToUpload = (options = {}) => {
       setIsDropTarget(false);
 
       const dataTransfer = e.dataTransfer;
-      const internalPath = dataTransfer?.getData?.('text/plain');
+      const internalNodeId = dataTransfer?.getData?.('text/plain');
 
-      if (isFolderMode && internalPath && onInternalFileDrop) {
-        if (getParentPath(internalPath) === targetPath || internalPath === targetPath) {
+      if (isFolderMode && internalNodeId && onInternalFileDrop) {
+        if (String(internalNodeId) === String(targetNodeNodeId)) {
           return;
         }
-        onInternalFileDrop(internalPath, targetPath);
+        onInternalFileDrop(Number(internalNodeId), targetNodeNodeId);
         return;
       }
 
@@ -233,7 +232,7 @@ export const useDropToUpload = (options = {}) => {
         setUploadProgress(progressItems);
 
         if (uploadCallback) {
-          await uploadCallback(filesToUpload, targetPath, (updatedProgress) => {
+          await uploadCallback(filesToUpload, targetNodeNodeId, (updatedProgress) => {
             setUploadProgress(updatedProgress);
           });
         }
@@ -248,7 +247,7 @@ export const useDropToUpload = (options = {}) => {
       } catch (error) {
         console.error('Drop error:', error);
         if (onUploadError) {
-          onUploadError(error);
+            onUploadError(error);
         }
         setUploadProgress([]);
       }
@@ -279,7 +278,7 @@ export const useDropToUpload = (options = {}) => {
       handleFolderDragOver: handleDragOver,
       handleFolderDragEnter: handleDragEnter,
       handleFolderDragLeave: handleDragLeave,
-      handleFolderDrop: (e) => handleDrop(e, path, onExplorerDrop),
+      handleFolderDrop: (e) => handleDrop(e, nodeId, onExplorerDrop),
     };
   }
 

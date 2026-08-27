@@ -3,40 +3,13 @@
  * @see docs/spec/client/services/explorerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-jest.mock('../fileService', () => ({
-  checkConflicts: jest.fn(),
-  getFilesMetadata: jest.fn(),
-  listFiles: jest.fn(),
-  uploadMultipleFiles: jest.fn(),
-}));
-
-jest.mock('../permissionService', () => ({
-  checkPermission: jest.fn(),
-  getUserPermissions: jest.fn(),
-  listFilePermissions: jest.fn(),
-}));
-
-jest.mock('../recentFilesRepository', () => ({
-  addRecentFile: jest.fn(),
-  getRecentFiles: jest.fn(),
-  removeRecentFile: jest.fn(),
-}));
-
-jest.mock('../recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(() => jest.fn()),
-}));
-
-jest.mock('../../utils/localStorage', () => ({
-  getShowHiddenFiles: jest.fn(() => false),
-}));
-
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
 import { getShowHiddenFiles } from '../../utils/localStorage';
-import { checkPermission, getUserPermissions, listFilePermissions } from '../permissionService';
+import { checkPermission, getSharedPermissions, getUserPermissions } from '../permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
 import { onRecentFilesChange } from '../recentFilesNotifier';
 import explorerGateway, {
-  canNavigateToPath,
+  canNavigateToNode,
   checkConflictsForExplorer,
   getEntriesMetadata,
   getPathAccess,
@@ -47,6 +20,33 @@ import explorerGateway, {
   uploadToPath,
 } from '../explorerGateway';
 
+jest.mock('../fileService', () => {
+  const { createFileServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createFileServiceMock();
+});
+
+jest.mock('../permissionService', () => {
+  const { createPermissionServiceMock } = require('../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock();
+});
+
+jest.mock('../recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
+
+jest.mock('../recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
+
+jest.mock('../../utils/localStorage', () => {
+  const { createLocalStorageUiMock } = require('../../testing/mocks/serviceMocks');
+  return createLocalStorageUiMock({
+    getShowHiddenFiles: jest.fn(() => false),
+  });
+});
+
 describe('explorerGateway', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -54,18 +54,18 @@ describe('explorerGateway', () => {
   });
 
   it('delegates conflict preflight to fileService with the same operations', async () => {
-    checkConflicts.mockResolvedValueOnce([{ path: '/docs/report.txt' }]);
+    checkConflicts.mockResolvedValueOnce([{ nodeId: 1, basename: 'report.txt' }]);
 
     const result = await checkConflictsForExplorer({
-      operations: [{ sourcePath: 'report.txt', destinationPath: '/docs/report.txt', type: 'upload' }],
+      operations: [{ sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' }],
       options: { limit: false },
     });
 
     expect(checkConflicts).toHaveBeenCalledWith(
-      [{ sourcePath: 'report.txt', destinationPath: '/docs/report.txt', type: 'upload' }],
+      [{ sourceNodeId: 1, destinationParentNodeId: 2, type: 'move' }],
       { limit: false }
     );
-    expect(result).toEqual([{ path: '/docs/report.txt' }]);
+    expect(result).toEqual([{ nodeId: 1, basename: 'report.txt' }]);
   });
 
   it('delegates uploadToPath to fileService preserving progress and conflict options', async () => {
@@ -74,7 +74,7 @@ describe('explorerGateway', () => {
 
     const files = [{ file: { name: 'report.txt' }, relativePath: 'report.txt' }];
     const result = await uploadToPath({
-      targetPath: '/docs',
+      parentNodeId: 5,
       files,
       onProgress,
       onConflict: 'replace',
@@ -83,7 +83,7 @@ describe('explorerGateway', () => {
 
     expect(uploadMultipleFiles).toHaveBeenCalledWith(
       files,
-      '/docs',
+      5,
       onProgress,
       'replace',
       expect.objectContaining({ getSignalForFile: expect.any(Function) })
@@ -93,7 +93,7 @@ describe('explorerGateway', () => {
 
   it('exposes the same gateway functions through the default export', () => {
     expect(explorerGateway).toMatchObject({
-      canNavigateToPath,
+      canNavigateToNode,
       checkConflicts: checkConflictsForExplorer,
       getEntriesMetadata,
       getPathAccess,
@@ -105,78 +105,133 @@ describe('explorerGateway', () => {
     });
   });
 
-  it('lists a normal directory with hidden filtering and admin permission enrichment', async () => {
+  it('lists a normal directory with hidden filtering and server-provided admin capability', async () => {
     listFiles.mockResolvedValueOnce([
-      { path: '/docs/report.txt', isHidden: false },
-      { path: '/docs/.draft.txt', isHidden: true },
-    ]);
-    getUserPermissions.mockResolvedValueOnce([
-      { folder_path: '/docs', permission: 'admin' },
+      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false, hasAdminPermission: true },
+      { nodeId: 11, display_path: '/docs/.draft.txt', isHidden: true, hasAdminPermission: true },
     ]);
 
     const result = await listDirectory({
-      path: '/docs',
+      nodeId: 5,
       options: {
         user: { id: '1', is_admin: false },
       },
     });
 
-    expect(listFiles).toHaveBeenCalledWith('/docs', {});
+    expect(listFiles).toHaveBeenCalledWith(5, {});
     expect(getShowHiddenFiles).toHaveBeenCalled();
     expect(result).toEqual([
-      expect.objectContaining({ path: '/docs/report.txt', hasAdminPermission: true }),
+      expect.objectContaining({ nodeId: 10, hasAdminPermission: true }),
     ]);
+    expect(result).toHaveLength(1); // hidden file filtered out
+    // hasAdminPermission comes from the server listing row, not getUserPermissions.
+    expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
   it('returns raw share listings without hidden or permission enrichment', async () => {
-    listFiles.mockResolvedValueOnce([{ path: '/shared/.hidden.txt', isHidden: true }]);
+    listFiles.mockResolvedValueOnce([{ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }]);
 
     const result = await listDirectory({
-      path: '/shared',
+      nodeId: 15,
       options: {
         shareToken: 'share-token',
         user: { id: '1', is_admin: false },
       },
     });
 
-    expect(listFiles).toHaveBeenCalledWith('/shared', { shareToken: 'share-token' });
-    expect(result).toEqual([{ path: '/shared/.hidden.txt', isHidden: true }]);
+    expect(listFiles).toHaveBeenCalledWith(15, { shareToken: 'share-token' });
+    expect(result).toEqual([
+      expect.objectContaining({ nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true }),
+    ]);
     expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
-  it('maps permission checks into explorer access facts', async () => {
-    checkPermission.mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'path' });
+  it('normalizes server-shaped file entries into the client shape', async () => {
+    listFiles.mockResolvedValueOnce([
+      {
+        nodeId: 30,
+        name: 'report.pdf',
+        type: 'file',
+        display_path: '/docs/report.pdf',
+        size: 120,
+        mimeType: 'application/pdf',
+        modifiedAt: '2024-05-01T10:00:00Z',
+        hasReadPermission: true,
+        hasWritePermission: true,
+        isHidden: false,
+      },
+      {
+        nodeId: 31,
+        name: 'assets',
+        type: 'directory',
+        display_path: '/docs/assets',
+        size: 0,
+        mimeType: null,
+        modifiedAt: null,
+        hasReadPermission: true,
+        hasWritePermission: true,
+        isHidden: false,
+      },
+    ]);
 
-    const access = await getPathAccess({ path: '/docs' });
+    const result = await listDirectory({
+      nodeId: 5,
+      options: { user: { id: '1', is_admin: true } },
+    });
 
-    expect(checkPermission).toHaveBeenCalledWith('/docs', {});
-    expect(access).toEqual({
-      canRead: true,
-      canWrite: false,
-      raw: { hasRead: true, hasWrite: false, source: 'path' },
+    expect(result[0]).toMatchObject({
+      nodeId: 30,
+      path: '/docs/report.pdf',
+      basename: 'report.pdf',
+      name: 'report.pdf',
+      mime: 'application/pdf',
+      lastmod: '2024-05-01T10:00:00Z',
+      size: 120,
+      type: 'file',
+      display_path: '/docs/report.pdf',
+    });
+    expect(result[1]).toMatchObject({
+      nodeId: 31,
+      path: '/docs/assets',
+      basename: 'assets',
+      mime: null,
+      lastmod: null,
     });
   });
 
-  it('uses access facts for canNavigateToPath', async () => {
+  it('maps permission checks into explorer access facts', async () => {
+    checkPermission.mockResolvedValueOnce({ hasRead: true, hasWrite: false, source: 'nodeId' });
+
+    const access = await getPathAccess({ nodeId: 5 });
+
+    expect(checkPermission).toHaveBeenCalledWith(5, {});
+    expect(access).toEqual({
+      canRead: true,
+      canWrite: false,
+      raw: { hasRead: true, hasWrite: false, source: 'nodeId' },
+    });
+  });
+
+  it('uses access facts for canNavigateToNode', async () => {
     checkPermission.mockResolvedValueOnce({ hasRead: false, hasWrite: false });
 
-    const result = await canNavigateToPath('/forbidden');
+    const result = await canNavigateToNode(99);
 
     expect(result).toBe(false);
   });
 
   it('loads metadata for file entries only', async () => {
-    getFilesMetadata.mockResolvedValueOnce([{ path: '/docs/report.txt', size: 12 }]);
+    getFilesMetadata.mockResolvedValueOnce([{ nodeId: 10, display_path: '/docs/report.txt', size: 12 }]);
 
     const result = await getEntriesMetadata({
       entries: [
-        { path: '/docs/report.txt', type: 'file' },
-        { path: '/docs/archive', type: 'directory' },
+        { nodeId: 10, type: 'file' },
+        { nodeId: 11, type: 'directory' },
       ],
     });
 
-    expect(getFilesMetadata).toHaveBeenCalledWith(['/docs/report.txt'], {});
-    expect(result).toEqual([{ path: '/docs/report.txt', size: 12 }]);
+    expect(getFilesMetadata).toHaveBeenCalledWith([10], {});
+    expect(result).toEqual([{ nodeId: 10, display_path: '/docs/report.txt', size: 12 }]);
   });
 
   it('delegates recent file loading, removal, and subscription helpers', async () => {
@@ -195,32 +250,82 @@ describe('explorerGateway', () => {
   });
 
   it('loads shared entries with top-level folders and file metadata', async () => {
-    getUserPermissions.mockResolvedValueOnce([
-      { folder_path: '/shared/team', permission: 'write' },
-      { folder_path: '/shared/team/reports', permission: 'read' },
-      { folder_path: '/owner-home/docs', permission: 'read' },
-    ]);
-    listFilePermissions.mockResolvedValueOnce([
-      { filePath: '/lonely/readme.txt', permission: 'read' },
-      { filePath: '/shared/team/report.txt', permission: 'read' },
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
+      { nodeId: 101, name: 'Read Only', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'report.txt', permission: 'read', type: 'file' },
     ]);
     getFilesMetadata.mockResolvedValueOnce([
-      { path: '/lonely/readme.txt', size: 50, lastmod: '2024-01-01', mime: 'text/plain' },
+      { nodeId: 300, size: 50, lastmod: '2024-01-01', mime: 'text/plain' },
     ]);
 
     const result = await loadSharedEntries({
-      user: { id: '1', username: 'owner-home', is_admin: false },
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
     });
 
     expect(result).toEqual([
-      expect.objectContaining({ path: '/shared/team', type: 'directory', hasWritePermission: true }),
-      expect.objectContaining({
-        path: '/lonely/readme.txt',
-        type: 'file',
-        size: 50,
-        mime: 'text/plain',
-      }),
+      expect.objectContaining({ nodeId: 100, name: 'Shared Docs', basename: 'Shared Docs', type: 'directory', hasWritePermission: true }),
+      expect.objectContaining({ nodeId: 101, name: 'Read Only', type: 'directory' }),
+      expect.objectContaining({ nodeId: 300, name: 'report.txt', basename: 'report.txt', type: 'file', size: 50, mime: 'text/plain' }),
     ]);
+    expect(result).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain('node-100');
+    expect(JSON.stringify(result)).not.toContain('node-101');
+    expect(JSON.stringify(result)).not.toContain('file-300');
+  });
+
+  it('derives hasWritePermission and hasAdminPermission from the granted permission, not ownership', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Admin Folder', permission: 'admin', type: 'directory' },
+      { nodeId: 101, name: 'Write Folder', permission: 'write', type: 'directory' },
+      { nodeId: 102, name: 'Read Folder', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'read-only.txt', permission: 'read', type: 'file' },
+    ]);
+    getFilesMetadata.mockResolvedValueOnce([]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ nodeId: 100, hasWritePermission: true, hasAdminPermission: true }),
+      expect.objectContaining({ nodeId: 101, hasWritePermission: true, hasAdminPermission: false }),
+      expect.objectContaining({ nodeId: 102, hasWritePermission: false, hasAdminPermission: false }),
+      expect.objectContaining({ nodeId: 300, type: 'file', hasWritePermission: false, hasAdminPermission: false }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('node-100');
+    expect(JSON.stringify(result)).not.toContain('file-300');
+  });
+
+  it('excludes the user own root node from shared entries', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 200, name: 'owner-home', permission: 'admin', type: 'directory' },
+      { nodeId: 300, name: 'Genuine Share', permission: 'read', type: 'directory' },
+    ]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ nodeId: 300, name: 'Genuine Share', type: 'directory' });
+  });
+
+  it('dedupes shared entries by nodeId and keeps directory entries before file entries', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Docs', permission: 'read', type: 'directory' },
+      { nodeId: 100, name: 'Docs', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'note.txt', permission: 'read', type: 'file' },
+    ]);
+    getFilesMetadata.mockResolvedValueOnce([{ nodeId: 300, size: 5 }]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result.map((entry) => entry.nodeId)).toEqual([100, 300]);
+    expect(result[0]).toMatchObject({ type: 'directory', name: 'Docs' });
+    expect(result[1]).toMatchObject({ type: 'file', name: 'note.txt' });
   });
 
   it('delegates addRecentFile through the default gateway', async () => {

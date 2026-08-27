@@ -6,17 +6,18 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "migrate:metadata:pg": "node scripts/migrateMetadataToPostgresql.js",
     "test": "NODE_OPTIONS=--max-old-space-size=8192 jest",
-    "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/(utils|models|middleware)/**/*.test.js'",
-    "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/**/*.test.js'",
+    "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testPathIgnorePatterns='/routes/__tests__/'",
+    "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/__tests__/*.test.js'",
     "test:ci": "NODE_OPTIONS=--max-old-space-size=8192 jest --ci --coverage --maxWorkers=2",
+    "test:ci:pg": "NODE_OPTIONS=--max-old-space-size=8192 WEA_STORAGE_BACKEND=postgresql WEA_PG_HOST=127.0.0.1 WEA_PG_PORT=5433 WEA_PG_USER=e2etest WEA_PG_PASSWORD=e2etest WEA_PG_DATABASE=webdav_test jest --ci --runInBand",
     "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 jest --coverage",
     "test:mutation": "stryker run",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1098.0",
     "@webdav-easyaccess/shared": "1.0.0",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",

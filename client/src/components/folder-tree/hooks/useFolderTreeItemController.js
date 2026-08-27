@@ -4,16 +4,16 @@ import { useDropToUpload } from '../../../hooks/useDropToUpload';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 
 const useFolderTreeItemController = ({
-  // path/name or node
+  // path/name or node (nodeId-first end-state: nodeId comes from node)
   path: pathProp,
   name: nameProp,
   node,
 
   // display + navigation
-  currentPath,
-  expandedPaths,
-  onPathClick,
+  currentNodeId,
+  expandedNodeIds,
   onToggleExpand,
+  onNodeClick,
 
   // permissions
   hasReadPermission: hasReadPermissionProp = true,
@@ -25,7 +25,7 @@ const useFolderTreeItemController = ({
   onInternalFileDrop,
   onInternalDragStart,
   onInternalDragEnd,
-  internalDraggedPath,
+  internalDraggedNodeId,
   isMobile = false,
 
   // children + reload behavior
@@ -40,26 +40,27 @@ const useFolderTreeItemController = ({
   listFilesOptions,
   filterChildNames,
 }) => {
-  const path = pathProp || node?.path;
-  const name = nameProp || node?.name;
+  const nodeId = node?.nodeId != null ? node.nodeId : null;
+  const name = nameProp || node?.name || (pathProp ? pathProp.split('/').filter(Boolean).pop() || '' : '');
   const isHidden = isHiddenProp || node?.isHidden || false;
 
   // Permission derivation:
   // - Prefer explicit node permission fields (when provided in node object)
-  // - Otherwise, for shared-tree mode, derive permissions from sharedFoldersMap
+  // - Otherwise, for shared-tree mode, derive permissions from sharedFoldersMap (keyed by nodeId)
   let hasReadPermission = hasReadPermissionProp;
   let hasWritePermission = hasWritePermissionProp;
 
   if (node?.hasReadPermission !== undefined) {
     hasReadPermission = node.hasReadPermission === true;
-  } else if (sharedFoldersMap) {
-    hasReadPermission = sharedFoldersMap.has(path) || sharedFoldersMap.has(path + '/');
+  } else if (sharedFoldersMap && nodeId != null) {
+    hasReadPermission =
+      sharedFoldersMap.has(nodeId) || sharedFoldersMap.has(String(nodeId));
   }
 
   if (node?.hasWritePermission !== undefined) {
     hasWritePermission = node.hasWritePermission === true;
-  } else if (sharedFoldersMap) {
-    const perm = sharedFoldersMap.get(path) || sharedFoldersMap.get(path + '/');
+  } else if (sharedFoldersMap && nodeId != null) {
+    const perm = sharedFoldersMap.get(nodeId) || sharedFoldersMap.get(String(nodeId));
     hasWritePermission = perm && perm.permission === PERMISSIONS.WRITE;
   }
 
@@ -68,8 +69,8 @@ const useFolderTreeItemController = ({
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(nodeChildren.length > 0);
 
-  const isExpanded = expandedPaths.has(path);
-  const isCurrent = currentPath === path;
+  const isExpanded = nodeId != null && expandedNodeIds.has(nodeId);
+  const isCurrent = currentNodeId != null && nodeId != null && currentNodeId === nodeId;
   const hasChildren = children.length > 0;
   const showExpandIcon = hasChildren || isExpanded || hasLoaded;
 
@@ -84,12 +85,12 @@ const useFolderTreeItemController = ({
     handleFolderDragLeave,
     handleFolderDrop,
   } = useDropToUpload({
-    path,
+    nodeId,
     isDisabled,
     hasWritePermission,
     onExplorerDrop,
     onInternalFileDrop,
-    internalDraggedPath,
+    internalDraggedNodeId,
   });
 
   const loadChildren = useCallback(
@@ -99,7 +100,7 @@ const useFolderTreeItemController = ({
 
       try {
         const folders = await folderTreeGateway.listFolderChildren({
-          path,
+          nodeId,
           listFilesOptions,
           useHiddenFilesFilter,
           filterChildNames,
@@ -116,22 +117,14 @@ const useFolderTreeItemController = ({
         setLoading(false);
       }
     },
-    [path, loading, useHiddenFilesFilter, listFilesOptions, filterChildNames]
+    [nodeId, loading, useHiddenFilesFilter, listFilesOptions, filterChildNames]
   );
 
   useEffect(() => {
-    if (isExpanded && !hasLoaded && !loading) {
+    if (nodeId != null && isExpanded && !hasLoaded && !loading) {
       loadChildren();
     }
-  }, [isExpanded, hasLoaded, loading, loadChildren]);
-
-  useEffect(() => {
-    if (currentPath && currentPath.startsWith(path + '/') && path !== currentPath) {
-      if (!isExpanded) {
-        onToggleExpand(path);
-      }
-    }
-  }, [currentPath, path, isExpanded, onToggleExpand]);
+  }, [nodeId, isExpanded, hasLoaded, loading, loadChildren]);
 
   useEffect(() => {
     if (!treeUpdateTrigger || treeUpdateTrigger === prevTreeUpdateTriggerRef.current) return;
@@ -139,40 +132,41 @@ const useFolderTreeItemController = ({
     prevTreeUpdateTriggerRef.current = treeUpdateTrigger;
 
     if (treeUpdateTrigger.type === 'created') {
-      const { folderPath, folderName, parentPath } = treeUpdateTrigger;
-      if (parentPath === path) {
-        setChildren((prev) => {
-          const exists = prev.some((child) => child.path === folderPath);
-          if (exists) return prev;
+      const { parentNodeId, nodeId: createdNodeId, name: createdName } = treeUpdateTrigger;
+      if (parentNodeId !== nodeId) return;
 
-          const newChild = { path: folderPath, name: folderName };
-          return [...prev, newChild].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        });
+      setChildren((prev) => {
+        const exists = prev.some((child) => child.nodeId === createdNodeId);
+        if (exists) return prev;
 
-        if (!isExpanded) {
-          onToggleExpand(path);
-        }
+        const newChild = { nodeId: createdNodeId, name: createdName };
+        return [...prev, newChild].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      });
 
-        setHasLoaded(true);
+      if (!isExpanded) {
+        onToggleExpand(nodeId);
       }
+
+      setHasLoaded(true);
     } else if (treeUpdateTrigger.type === 'deleted') {
-      const { folderPath } = treeUpdateTrigger;
-      setChildren((prev) => prev.filter((child) => child.path !== folderPath));
+      const { nodeId: deletedNodeId } = treeUpdateTrigger;
+      setChildren((prev) => prev.filter((child) => child.nodeId !== deletedNodeId));
     } else if (treeUpdateTrigger.type === 'refresh') {
       if (isExpanded || isHome) {
         loadChildren(true);
       }
     }
-  }, [treeUpdateTrigger, path, isExpanded, isHome, onToggleExpand, loadChildren]);
+  }, [treeUpdateTrigger, nodeId, isExpanded, isHome, onToggleExpand, loadChildren]);
 
   const handleClick = () => {
     if (isDisabled) return;
-    onPathClick(path);
+    onNodeClick(nodeId);
   };
 
   const handleToggle = (e) => {
     e.stopPropagation();
-    onToggleExpand(path);
+    if (nodeId == null) return;
+    onToggleExpand(nodeId);
 
     if (!isExpanded && children.length === 0) {
       loadChildren();
@@ -181,16 +175,16 @@ const useFolderTreeItemController = ({
 
   const handleDragStart = useCallback(
     (e) => {
-      if (isMobile || isDisabled) return;
+      if (isMobile || isDisabled || nodeId == null) return;
       e.stopPropagation();
-      onInternalDragStart?.(path);
+      onInternalDragStart?.(nodeId);
 
       if (e?.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', path);
+        e.dataTransfer.setData('text/plain', String(nodeId));
       }
     },
-    [path, isMobile, isDisabled, onInternalDragStart]
+    [nodeId, isMobile, isDisabled, onInternalDragStart]
   );
 
   const handleDragEnd = useCallback(() => {
@@ -198,7 +192,7 @@ const useFolderTreeItemController = ({
   }, [onInternalDragEnd]);
 
   return {
-    path,
+    nodeId,
     name,
     isHidden,
     hasReadPermission,
@@ -225,4 +219,3 @@ const useFolderTreeItemController = ({
 };
 
 export default useFolderTreeItemController;
-

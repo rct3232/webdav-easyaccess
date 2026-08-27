@@ -4,35 +4,29 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 import { renderWithProviders } from '../../../test-utils';
 import FileManagerView from '../FileManagerView';
 
-jest.mock('../../../services/permissionService', () => ({
-  getUserPermissions: jest.fn(),
-}));
-
-jest.mock('../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    getUserSharedFolderPermissions: jest.fn(),
-    listFolderChildren: jest.fn(),
-  },
-}));
-
-jest.mock('../../../services/recentFilesRepository', () => ({
-  getRecentFiles: jest.fn(),
-}));
-
-jest.mock('../../../services/recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(),
-}));
-
-import { getUserPermissions } from '../../../services/permissionService';
 import folderTreeGateway from '../../../services/folderTreeGateway';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
+
+jest.mock('../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
+
+jest.mock('../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
+
+jest.mock('../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
 
 function createProps(overrides = {}) {
   const baseProps = {
@@ -64,6 +58,8 @@ function createProps(overrides = {}) {
       handleAddToSharedConfirm: jest.fn(),
       leaveShareConfirmOpen: false,
       setLeaveShareConfirmOpen: jest.fn(),
+      leaveShareConfirmTargetNodeId: null,
+      setLeaveShareConfirmTargetNodeId: jest.fn(),
       leaveShareConfirmTargetPath: null,
       setLeaveShareConfirmTargetPath: jest.fn(),
       handleLeaveShareConfirm: jest.fn(),
@@ -79,7 +75,7 @@ function createProps(overrides = {}) {
         setSearchQuery: jest.fn(),
       },
       listingState: {
-        displayedFiles: [{ path: '/docs/a.txt', basename: 'a.txt', type: 'file', size: 12, lastmod: '2025-01-01T00:00:00Z' }],
+        displayedFiles: [{ nodeId: 1, path: '/docs/a.txt', basename: 'a.txt', type: 'file', size: 12, lastmod: '2025-01-01T00:00:00Z' }],
         loading: false,
         processingMap: new Map(),
         handleThumbnailsLoaded: jest.fn(),
@@ -252,7 +248,6 @@ function createProps(overrides = {}) {
 describe('FileManagerView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    getUserPermissions.mockResolvedValue([]);
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
     folderTreeGateway.listFolderChildren.mockResolvedValue([]);
     getRecentFiles.mockResolvedValue([]);
@@ -264,7 +259,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 
@@ -274,7 +268,7 @@ describe('FileManagerView', () => {
     fireEvent.click(fileName);
 
     expect(props.explorerHandlers.interaction.handleFileClick).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/docs/a.txt' }),
+      expect.objectContaining({ nodeId: 1, path: '/docs/a.txt' }),
       expect.any(Object),
       0
     );
@@ -285,7 +279,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 
@@ -301,7 +294,6 @@ describe('FileManagerView', () => {
     renderWithProviders(<FileManagerView {...props} />);
 
     await waitFor(() => {
-      expect(getUserPermissions).toHaveBeenCalled();
       expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
     });
 
@@ -312,6 +304,86 @@ describe('FileManagerView', () => {
 
     expect(props.explorerHandlers.commands.openUploadDialog).toHaveBeenCalled();
     expect(props.explorerHandlers.commands.openCreateFolderDialog).toHaveBeenCalled();
+  });
+
+  it('shows fab create/upload affordances for write-granted shared targets', async () => {
+    const props = createProps({
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/shared/docs',
+        },
+      },
+      explorerActionState: {
+        ...createProps().explorerActionState,
+        capabilityState: { hasWritePermission: true },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
+
+    expect(screen.getByRole('menuitem', { name: /upload file/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /create folder/i })).toBeInTheDocument();
+  });
+
+  it('hides fab create/upload affordances for read-granted targets', async () => {
+    const props = createProps({
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/shared/docs',
+        },
+      },
+      explorerActionState: {
+        ...createProps().explorerActionState,
+        capabilityState: { hasWritePermission: false },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByRole('button', { name: /file actions/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('file-actions-speed-dial')).not.toBeInTheDocument();
+  });
+
+  it('renders real folder names in the shared tree (no placeholder names)', async () => {
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { nodeId: 21, name: 'Reports', permission: 'write', type: 'directory' },
+    ]);
+
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        isMobile: false,
+      },
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/__shared__',
+        },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Reports')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Shared (21)')).not.toBeInTheDocument();
   });
 
   it('uses share-link fab actions for login and add-to-shared states', async () => {
@@ -344,5 +416,59 @@ describe('FileManagerView', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /add to shared/i }));
     expect(addProps.overlayState.openAddToSharedModal).toHaveBeenCalled();
+  });
+
+  it('renders the leave-share confirmation dialog and forwards confirm/cancel', async () => {
+    const props = createProps({
+      overlayState: {
+        ...createProps().overlayState,
+        leaveShareConfirmOpen: true,
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId('confirm-dialog-confirm')).toBeInTheDocument();
+    expect(screen.getByTestId('confirm-dialog-cancel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
+    expect(props.overlayState.handleLeaveShareConfirm).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    expect(props.overlayState.setLeaveShareConfirmOpen).toHaveBeenCalledWith(false);
+    expect(props.overlayState.setLeaveShareConfirmTargetNodeId).toHaveBeenCalledWith(null);
+    expect(props.overlayState.setLeaveShareConfirmTargetPath).toHaveBeenCalledWith(null);
+  });
+
+  it('routes non-share folder-tree clicks through handleLeaveSharePathClick in share mode', async () => {
+    const props = createProps({
+      shareContext: {
+        ...createProps().shareContext,
+        isShareLinkMode: true,
+        shareToken: 'share-token',
+        shareRootNodeId: 10,
+      },
+      shellContext: {
+        ...createProps().shellContext,
+        isMobile: false,
+        user: { id: 'user-1', username: 'user1', rootNodeId: 7 },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    const tree = screen.getByTestId('folder-tree');
+    await waitFor(() => {
+      expect(within(tree).getByText('user1')).toBeInTheDocument();
+    });
+    fireEvent.click(within(tree).getByText('user1'));
+
+    expect(props.explorerHandlers.interaction.handleLeaveSharePathClick).toHaveBeenCalledWith(7);
   });
 });

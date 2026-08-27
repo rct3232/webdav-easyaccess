@@ -21,6 +21,7 @@ function WebdavFileStoreAdapter(webdav) {
       webdav.copyFile(sourcePath, destinationPath, progressCallback, overwrite, options),
     deleteFile: (path, options) => webdav.deleteFile(path, options),
     createDirectory: (path) => webdav.createDirectory(path),
+    ensureDirectoryExists: (path) => webdav.ensureDirectoryExists(path),
     pathExists: (path) => webdav.pathExists(path),
     getFileMetadata: (filePath) => webdav.getFileMetadata(filePath),
   };

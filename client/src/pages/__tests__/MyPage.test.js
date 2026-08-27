@@ -5,11 +5,6 @@
  * Uses server.use to control inbox/outbox responses (per RCA).
  * @see docs/spec/client/pages/MyPage.md
  */
-jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
-jest.mock('../../hooks/useResponsive', () => ({
-  useResponsive: jest.fn(),
-}));
-
 import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,6 +13,12 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { renderWithProviders } from '../../test-utils';
 import { server } from '../../setupTests';
 import MyPage from '../MyPage';
+
+jest.mock('../../components/dialogs/FilePreviewDialog', () => () => null);
+jest.mock('../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock({ useResponsive: jest.fn() });
+});
 
 /** Select Sharing category, then a sub-item (inbox/outbox/links). Non-admin user sees Sharing. Uses label pattern; count is shown via Badge. */
 const selectSharingAndItem = async (user, labelPattern) => {
@@ -44,9 +45,8 @@ const inboxRequest = (overrides = {}) => ({
   requester_id: '2',
   requester_username: 'alice',
   owner_id: '1',
-  folder_path: '/testuser/shared',
-  file_path: null,
-  target_type: 'folder',
+  file_node_id: 101,
+  targetType: 'folder',
   requested_permission: 'read',
   status: 'pending',
   created_at: new Date().toISOString(),
@@ -58,9 +58,8 @@ const outboxRequest = (overrides = {}) => ({
   requester_id: '1',
   owner_id: '2',
   owner_username: 'owner',
-  folder_path: '/owner/folder',
-  file_path: null,
-  target_type: 'folder',
+  file_node_id: 202,
+  targetType: 'folder',
   requested_permission: 'read',
   status: 'pending',
   created_at: new Date().toISOString(),
@@ -173,9 +172,8 @@ describe('MyPage', () => {
     const req = inboxRequest({
       id: 'pr-inbox-approve',
       requester_username: 'bob',
-      target_type: 'file',
-      file_path: '/testuser/docs/file.pdf',
-      folder_path: null,
+      targetType: 'file',
+      file_node_id: 101,
     });
     server.use(
       http.get('/api/permission-requests/inbox', () => HttpResponse.json([req])),

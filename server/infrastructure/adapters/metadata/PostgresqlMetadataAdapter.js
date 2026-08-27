@@ -3,7 +3,8 @@
 const { USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
-const { sha256HexLower, normalizeWebdavPath } = require('../../../store/metaPaths');
+const { sha256HexLower } = require('../../../utils/hash');
+const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { nowIso, toIsoString } = require('../../../utils/sharedHelpers');
 
 function normalizeEmail(email) {
@@ -30,10 +31,6 @@ function PostgresqlMetadataAdapter() {
   // Lazy require to ensure Jest mocks on store/storage are picked up
   const { getPgPool, withTransaction } = require('../../../store/storage');
   return {
-    async ensureUserIndexFile() {
-      // No-op for PostgreSQL; schema is managed externally
-    },
-
     async findByUsername(username) {
       try {
         const pool = getPgPool();
@@ -272,7 +269,7 @@ function PostgresqlMetadataAdapter() {
         expiryDate.setDate(expiryDate.getDate() + expiresInDays);
         expiresAt = expiryDate.toISOString();
       }
-      const normalizedFilePath = normalizeWebdavPath(filePath);
+      const normalizedFilePath = normalizePath(filePath);
       try {
         return await withTransaction(async (client) => {
           const existing = await client.query(
@@ -336,7 +333,7 @@ function PostgresqlMetadataAdapter() {
           const updated = await client.query(
             `UPDATE share_links SET file_path = $2, expires_at = $3, download_count = $4
              WHERE token = $1 RETURNING *`,
-            [String(token), normalizeWebdavPath(merged.filePath), merged.expiresAt || null, Number(merged.downloadCount || 0)]
+            [String(token), normalizePath(merged.filePath), merged.expiresAt || null, Number(merged.downloadCount || 0)]
           );
           return mapShareLinkRow(updated.rows[0]);
         });
@@ -379,7 +376,7 @@ function mapShareLinkRow(row) {
   if (!row) return null;
   return {
     token: row.token,
-    filePath: normalizeWebdavPath(row.file_path),
+    filePath: normalizePath(row.file_path),
     createdBy: Number(row.created_by),
     createdAt: toIsoString(row.created_at),
     expiresAt: row.expires_at ? toIsoString(row.expires_at) : null,

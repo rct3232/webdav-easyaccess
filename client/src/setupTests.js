@@ -6,6 +6,11 @@
  * @see docs/api.md
  */
 import './jest-polyfills.js';
+import { __setRetryConfigForTests } from './services/httpClient';
+import { __setBatchDelayForTests, __resetHandlersState, handlers } from './mocks/handlers';
+import '@testing-library/jest-dom';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 
 jest.mock('react-pdf', () => {
   const React = require('react');
@@ -15,11 +20,24 @@ jest.mock('react-pdf', () => {
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' } },
   };
 });
-import '@testing-library/jest-dom';
-import { setupServer } from 'msw/node';
-import { handlers } from './mocks/handlers';
 
-export const server = setupServer(...handlers);
+__setRetryConfigForTests({ retryDelay: 0 });
+__setBatchDelayForTests(0);
+
+// Fallback for requests with no matching handler: return a distinguishable
+// 501 JSON instead of silently failing as a network error, so tests fail fast
+// instead of paying retry backoff (docs/TESTING_STRATEGY.md "Unhandled MSW
+// request policy"). Specific handlers (shared or server.use overrides) always
+// take precedence because they are registered before this catch-all.
+export const server = setupServer(
+  ...handlers,
+  http.all('*', () =>
+    HttpResponse.json(
+      { errorCode: 'serverErrors.msw.unhandled' },
+      { status: 501 }
+    )
+  )
+);
 
 // React 18 expects this flag in custom Jest/jsdom setups so async updates can
 // be tracked through act-aware helpers from React Testing Library.
@@ -60,5 +78,6 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
+beforeEach(() => __resetHandlersState());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

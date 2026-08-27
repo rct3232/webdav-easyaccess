@@ -5,13 +5,21 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 
-jest.mock('../../../../services/explorerGateway', () => ({
-  __esModule: true,
-  default: {
-    uploadToPath: jest.fn(),
-    checkConflicts: jest.fn(),
-  },
-}));
+import explorerGateway from '../../../../services/explorerGateway';
+import { useBulkOperations } from '../useBulkOperations';
+import { useFileOperations } from '../useFileOperations';
+import { showErrorFromError } from '../../../../utils/errorUtils';
+import { validateFileName } from '@webdav-easyaccess/shared/validation';
+import { getValidationMessage } from '../../../../utils/validationMessage';
+import { useExplorerCommands } from '../useExplorerCommands';
+
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return {
+    __esModule: true,
+    default: createExplorerGatewayMock(),
+  };
+});
 
 jest.mock('../useBulkOperations', () => ({
   useBulkOperations: jest.fn(),
@@ -21,12 +29,15 @@ jest.mock('../useFileOperations', () => ({
   useFileOperations: jest.fn(),
 }));
 
-jest.mock('../../../../utils/errorUtils', () => ({
-  getServerErrorDisplay: jest.fn(() => 'server error'),
-  showErrorFromError: jest.fn((error, showError) => {
-    showError(error?.message || 'errors.unknown');
-  }),
-}));
+jest.mock('../../../../utils/errorUtils', () => {
+  const { createErrorUtilsMock } = require('../../../../testing/mocks/serviceMocks');
+  return createErrorUtilsMock({
+    getServerErrorDisplay: jest.fn(() => 'server error'),
+    showErrorFromError: jest.fn((error, showError) => {
+      showError(error?.message || 'errors.unknown');
+    }),
+  });
+});
 
 jest.mock('@webdav-easyaccess/shared/validation', () => ({
   validateFileName: jest.fn(() => null),
@@ -35,14 +46,6 @@ jest.mock('@webdav-easyaccess/shared/validation', () => ({
 jest.mock('../../../../utils/validationMessage', () => ({
   getValidationMessage: jest.fn((error) => `validation:${error}`),
 }));
-
-import explorerGateway from '../../../../services/explorerGateway';
-import { useBulkOperations } from '../useBulkOperations';
-import { useFileOperations } from '../useFileOperations';
-import { showErrorFromError } from '../../../../utils/errorUtils';
-import { validateFileName } from '@webdav-easyaccess/shared/validation';
-import { getValidationMessage } from '../../../../utils/validationMessage';
-import { useExplorerCommands } from '../useExplorerCommands';
 
 function createBulkState(overrides = {}) {
   return {
@@ -76,18 +79,19 @@ function createFileOperationsState(overrides = {}) {
 }
 
 function createProps(overrides = {}) {
+  const currentNodeIdRef = { current: 10 };
   return {
     t: (key) => key,
     user: null,
     isMobile: false,
     isShareLinkMode: false,
     shareToken: null,
-    currentPath: '/docs',
-    currentPathRef: { current: '/docs' },
+    currentNodeId: 10,
+    currentNodeIdRef,
     refreshNow: jest.fn(),
-    getCurrentPathNow: jest.fn(() => '/docs'),
+    getCurrentNodeIdNow: jest.fn(() => 10),
     hasWritePermission: true,
-    selectedFiles: new Set(['/docs/a.txt']),
+    selectedFiles: new Set([42]),
     sortedFiles: [],
     dismissFailedItems: jest.fn(),
     setTreeUpdateTrigger: jest.fn(),
@@ -101,11 +105,11 @@ function createProps(overrides = {}) {
     closeActionSheet: jest.fn(),
     setActionSheetOpen: jest.fn(),
     setActionSheetFile: jest.fn(),
-    actionSheetFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+    actionSheetFile: { nodeId: 42, basename: 'a.txt', type: 'file' },
     mobileRenameFile: null,
     renameNewName: 'renamed.txt',
     setRenameError: jest.fn(),
-    bulkDeleteFilePaths: ['/docs/a.txt'],
+    bulkDeleteFilePaths: [42],
     ...overrides,
   };
 }
@@ -136,7 +140,7 @@ describe('useExplorerCommands', () => {
 
   it('stores upload conflict data when conflict preflight finds duplicates', async () => {
     explorerGateway.checkConflicts.mockResolvedValue([
-      { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' },
+      { fileName: 'dup.txt' },
     ]);
     const props = createProps();
     const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
@@ -144,32 +148,29 @@ describe('useExplorerCommands', () => {
     const { result } = renderHook(() => useExplorerCommands(props));
 
     await act(async () => {
-      await result.current.handleUploadStart([file], '/docs');
+      await result.current.handleUploadStart([file], 10);
     });
 
     expect(props.closeUploadDialog).toHaveBeenCalled();
-    expect(explorerGateway.checkConflicts).toHaveBeenCalledWith({
-      operations: [
-        { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt', type: 'upload' },
-      ],
-    });
+    expect(explorerGateway.checkConflicts).toHaveBeenCalledWith(
+      expect.objectContaining({ parentNodeId: 10 })
+    );
     expect(result.current.uploadConflictData).toEqual(expect.objectContaining({
-      targetPath: '/docs',
-      conflicts: [{ sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' }],
+      parentNodeId: 10,
     }));
     expect(bulkState.updateProgress).toHaveBeenCalledWith(expect.objectContaining({ remove: true }));
   });
 
   it('replays conflicted upload with the chosen resolution and refresh completion wiring', async () => {
     explorerGateway.checkConflicts.mockResolvedValue([
-      { sourcePath: 'dup.txt', destinationPath: '/docs/dup.txt' },
+      { fileName: 'dup.txt' },
     ]);
     const props = createProps();
     const file = new File(['x'], 'dup.txt', { type: 'text/plain' });
     const { result } = renderHook(() => useExplorerCommands(props));
 
     await act(async () => {
-      await result.current.handleUploadStart([file], '/docs');
+      await result.current.handleUploadStart([file], 10);
     });
 
     await act(async () => {
@@ -177,7 +178,7 @@ describe('useExplorerCommands', () => {
     });
 
     expect(explorerGateway.uploadToPath).toHaveBeenCalledWith(expect.objectContaining({
-      targetPath: '/docs',
+      parentNodeId: 10,
       onConflict: 'skip',
     }));
     expect(props.refreshNow).toHaveBeenCalled();
@@ -187,7 +188,7 @@ describe('useExplorerCommands', () => {
 
   it('reports rename validation errors without calling file rename operations', async () => {
     const props = createProps({
-      mobileRenameFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      mobileRenameFile: { nodeId: 42, basename: 'a.txt', type: 'file' },
       renameNewName: '   ',
     });
     validateFileName.mockReturnValue('empty');
@@ -205,7 +206,7 @@ describe('useExplorerCommands', () => {
 
   it('completes rename flow by clearing errors and closing rename surfaces', async () => {
     const props = createProps({
-      actionSheetFile: { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      actionSheetFile: { nodeId: 42, basename: 'a.txt', type: 'file' },
       renameNewName: 'renamed.txt',
     });
 
@@ -217,9 +218,9 @@ describe('useExplorerCommands', () => {
 
     expect(props.setRenameError).toHaveBeenCalledWith('');
     expect(fileOperationsState.handleFileRename).toHaveBeenCalledWith(
-      { path: '/docs/a.txt', basename: 'a.txt', type: 'file' },
+      { nodeId: 42, basename: 'a.txt', type: 'file' },
       'renamed.txt',
-      { startedPath: '/docs' }
+      { startedNodeId: 10 }
     );
     expect(props.closeRenameDialog).toHaveBeenCalled();
     expect(props.closeActionSheet).toHaveBeenCalled();
@@ -228,7 +229,7 @@ describe('useExplorerCommands', () => {
 
   it('confirms bulk delete by clearing selection and delegating the delete command', () => {
     const props = createProps({
-      bulkDeleteFilePaths: ['/docs/a.txt', '/docs/b.txt'],
+      bulkDeleteFilePaths: [42, 43],
     });
 
     const { result } = renderHook(() => useExplorerCommands(props));
@@ -241,13 +242,13 @@ describe('useExplorerCommands', () => {
     expect(props.setSelectedFiles).toHaveBeenCalledWith(new Set());
     expect(props.setSelectionMode).toHaveBeenCalledWith(false);
     expect(bulkState.handleBulkDelete).toHaveBeenCalledWith({
-      filePaths: ['/docs/a.txt', '/docs/b.txt'],
+      nodeIds: [42, 43],
     }, null);
   });
 
   it('surfaces command-style validation failures through the shared error surface and rethrows', async () => {
     const props = createProps();
-    const file = { path: '/docs/a.txt', basename: 'a.txt', type: 'file' };
+    const file = { nodeId: 42, basename: 'a.txt', type: 'file' };
     validateFileName.mockReturnValue('invalid');
     getValidationMessage.mockReturnValue('rename failed');
 
@@ -276,9 +277,9 @@ describe('useExplorerCommands', () => {
     expect(result.current.folderPickerMoveCopyInProgress).toBe(true);
   });
 
-  it('exposes an operation completion handler that refreshes only affected paths', () => {
+  it('exposes an operation completion handler that invokes refresh', () => {
     const props = createProps({
-      getCurrentPathNow: jest.fn(() => '/docs'),
+      getCurrentNodeIdNow: jest.fn(() => 10),
     });
 
     const { result } = renderHook(() => useExplorerCommands(props));
@@ -286,16 +287,7 @@ describe('useExplorerCommands', () => {
     act(() => {
       result.current.handleOperationComplete({
         opType: 'rename',
-        startedPath: '/other',
-      });
-    });
-
-    expect(props.refreshNow).not.toHaveBeenCalled();
-
-    act(() => {
-      result.current.handleOperationComplete({
-        opType: 'rename',
-        startedPath: '/docs',
+        startedNodeId: 10,
       });
     });
 

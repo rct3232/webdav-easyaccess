@@ -41,7 +41,7 @@
 
 - [ ] getUserBaseFolder({ username: 'x' }) → '/x'
 - [ ] isUserOwnFolder('/x/y', { username: 'x' }) → true; '/other/y' → false
-- [ ] filterOutUserOwnFolders removes entries where folder is user's
+- [ ] filterOutUserOwnFolders removes entries where nodeId === user.rootNodeId
 - [ ] filterDisplayUsers: excludes self and admins (unless isAdminMode)
 - [ ] getUserDisplayName: username || email || id || ''
 
@@ -49,3 +49,8 @@
 
 - user null → getUserBaseFolder '/'; isUserOwnFolder false; getUserDisplayName ''
 - isAdminMode true → single user (currentUserId)
+
+### 2.7 Ownership filter boundary
+
+- `isUserOwnFolder` / `filterOutUserOwnFolders` are a **client-side root-level safety net** only (`nodeId === user.rootNodeId`). The client cannot resolve full tree ancestry, so it cannot detect descendants of the user's home root.
+- The authoritative "is this my own folder" exclusion (home root **and** all descendants) is performed server-side by `GET /api/permissions/shared` via the closure table (see [permissions.md](../../../features/permissions.md#shared-with-me-listing-semantics)).

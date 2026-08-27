@@ -25,7 +25,6 @@ router.get('/folders/list', authenticateToken, isAdmin, asyncHandler(async (req,
   const items = await listDirectory(path);
   const folders = items
     .filter(item => item.type === 'directory')
-    .filter(item => item.basename !== '.wea')
     .map(item => ({
       path: item.filename || item.basename,
       name: item.basename || item.name,
@@ -49,6 +48,29 @@ router.post('/cleanup/orphaned', authenticateToken, isAdmin, asyncHandler(async 
   res.json({
     messageCode: SERVER_MESSAGE_CODES.admin.orphanCleanupDone,
     results,
+  });
+}));
+
+// Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 reconciliation)
+router.post('/maintenance/gc', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
+  const { getComposition } = require('../../../service/composition');
+  const { gcService } = getComposition();
+  const results = await gcService.runGcCycle();
+  res.json({
+    messageCode: SERVER_MESSAGE_CODES.admin.gcDone,
+    results,
+  });
+}));
+
+// Manually resolve an orphaned node (retry delete or force-mark active)
+router.post('/maintenance/repair-sync', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
+  const { getComposition } = require('../../../service/composition');
+  const { failSafeService } = getComposition();
+  const { nodeId, action } = req.body || {};
+  const result = await failSafeService.repairNode(Number(nodeId), { action });
+  res.json({
+    messageCode: SERVER_MESSAGE_CODES.admin.repairSyncDone,
+    result,
   });
 }));
 

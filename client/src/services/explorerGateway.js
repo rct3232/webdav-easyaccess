@@ -1,34 +1,34 @@
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from './fileService';
-import { checkPermission, getUserPermissions, listFilePermissions } from './permissionService';
+import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
-import { normalizePath, getBasename, getParentPath } from '../utils/pathUtils';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
-const hasAdminPermissionForPath = (itemPath, adminPrefixes) => {
-  if (!itemPath || adminPrefixes.length === 0) return false;
-
-  const normalizedPath = normalizePath(itemPath);
-  return adminPrefixes.some((adminPath) => (
-    normalizedPath === adminPath || normalizedPath.startsWith(`${adminPath}/`)
-  ));
+const normalizeFileEntry = (item) => {
+  if (!item || item.nodeId == null) return item;
+  return {
+    ...item,
+    path: item.path ?? item.display_path ?? '',
+    basename: item.basename ?? item.name ?? '',
+    mime: item.mime ?? item.mimeType ?? null,
+    lastmod: item.lastmod ?? item.modifiedAt ?? null,
+    display_path: item.display_path ?? item.path ?? '',
+  };
 };
 
-export const listDirectory = async ({ path = '/', options = {} } = {}) => {
-  const {
-    shareToken,
-    showHiddenFiles,
-    user,
-  } = options;
+export const listDirectory = async ({ nodeId, options = {} } = {}) => {
+  const resolvedOpts = typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const extracted = resolvedOpts.shareToken || resolvedOpts.user ? resolvedOpts : (options || {});
+  const { shareToken, showHiddenFiles, user } = extracted;
 
-  const data = await listFiles(path, shareToken ? { shareToken } : {});
+  const data = await listFiles(nodeId ?? null, shareToken ? { shareToken } : {});
 
   if (shareToken) {
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data) ? data.map(normalizeFileEntry) : [];
   }
 
-  let files = Array.isArray(data) ? data : [];
+  let files = Array.isArray(data) ? data.map(normalizeFileEntry) : [];
   const shouldShowHiddenFiles = typeof showHiddenFiles === 'boolean'
     ? showHiddenFiles
     : getShowHiddenFiles();
@@ -41,25 +41,21 @@ export const listDirectory = async ({ path = '/', options = {} } = {}) => {
     return files;
   }
 
-  try {
-    const permissions = await getUserPermissions(user.id);
-    const adminPrefixes = (permissions || [])
-      .filter((permission) => permission.permission === 'admin')
-      .map((permission) => normalizePath(permission.folder_path));
-
-    return files.map((item) => (
-      item?.path
-        ? { ...item, hasAdminPermission: hasAdminPermissionForPath(item.path, adminPrefixes) }
-        : item
-    ));
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load admin prefixes for listing:', error);
-    return files;
-  }
+  // hasAdminPermission is now computed server-side per listing row
+  // (admin bypass || owner of the node || explicit admin grant — see
+  // docs/spec/server/services/fileService.md). The gateway only normalizes it
+  // to a boolean; it no longer recomputes it from getUserPermissions rows,
+  // which under the "No self-grants" policy would hide the owner's admin
+  // capability on their own folders.
+  return files.map((item) => (
+    item?.nodeId != null
+      ? { ...item, hasAdminPermission: item.hasAdminPermission === true }
+      : item
+  ));
 };
 
-export const getPathAccess = async ({ path = '/', options = {} } = {}) => {
-  const permission = await checkPermission(path, options);
+export const getPathAccess = async ({ nodeId, options = {} } = {}) => {
+  const permission = await checkPermission(nodeId, options);
   return {
     canRead: permission?.hasRead === true,
     canWrite: permission?.hasWrite === true,
@@ -67,17 +63,17 @@ export const getPathAccess = async ({ path = '/', options = {} } = {}) => {
   };
 };
 
-export const canNavigateToPath = async (path, options) => {
-  const access = await getPathAccess({ path, options });
+export const canNavigateToNode = async (nodeId, options) => {
+  const access = await getPathAccess({ nodeId, options });
   return access.canRead;
 };
 
 export const getEntriesMetadata = async ({ entries = [], options = {} } = {}) => {
-  const filePaths = (Array.isArray(entries) ? entries : [])
-    .filter((entry) => entry?.type === 'file' && entry?.path)
-    .map((entry) => entry.path);
+  const nodeIds = (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.type === 'file' && entry?.nodeId != null)
+    .map((entry) => entry.nodeId);
 
-  return getFilesMetadata(filePaths, options);
+  return getFilesMetadata(nodeIds, options);
 };
 
 export const loadRecentFiles = async (options) => {
@@ -89,107 +85,79 @@ export const loadSharedEntries = async ({ user, options = {} } = {}) => {
     return [];
   }
 
-  const permissions = await getUserPermissions(user.id, options);
+  const permissions = await getSharedPermissions();
   const sharedFolders = filterOutUserOwnFolders(permissions || [], user);
 
-  const permissionPaths = new Map();
+  const seenNodeIds = new Set();
+  const folderEntries = [];
+  const fileEntries = [];
+
   sharedFolders.forEach((permission) => {
-    const normalizedPath = normalizePath(permission.folder_path);
-    permissionPaths.set(normalizedPath, permission);
-  });
-
-  const topLevelFolders = Array.from(permissionPaths.entries()).filter(([normalizedPath]) => {
-    const pathParts = normalizedPath.split('/').filter(Boolean);
-    for (let index = pathParts.length - 1; index > 0; index -= 1) {
-      const parentPath = `/${pathParts.slice(0, index).join('/')}`;
-      if (permissionPaths.has(parentPath)) {
-        return false;
-      }
-    }
-    return true;
-  });
-
-  const folderEntries = topLevelFolders.map(([normalizedPath, permission]) => {
-    const name = getBasename(normalizedPath) || normalizedPath;
-    return {
-      path: normalizedPath,
-      basename: name,
-      name,
-      type: 'directory',
+    const nodeId = permission.nodeId;
+    if (seenNodeIds.has(nodeId)) return;
+    seenNodeIds.add(nodeId);
+    const base = {
+      nodeId,
+      name: permission.name || `node-${nodeId}`,
+      basename: permission.name || `node-${nodeId}`,
       size: 0,
       lastmodified: null,
       hasReadPermission: true,
       hasWritePermission: permission.permission === 'write' || permission.permission === 'admin',
       hasAdminPermission: permission.permission === 'admin',
     };
+    if (permission.type === 'file') {
+      fileEntries.push({ ...base, type: 'file' });
+    } else {
+      folderEntries.push({ ...base, type: 'directory' });
+    }
   });
 
-  let fileOnlyEntries = [];
-  try {
-    const filePermissions = await listFilePermissions();
-    if (Array.isArray(filePermissions) && filePermissions.length > 0) {
-      fileOnlyEntries = filePermissions
-        .filter(({ filePath }) => {
-          const normalizedPath = normalizePath(filePath);
-          const parentPath = getParentPath(normalizedPath);
-          return parentPath !== undefined && parentPath !== null && !permissionPaths.has(parentPath);
-        })
-        .map(({ filePath, permission }) => {
-          const normalizedPath = normalizePath(filePath);
-          const name = getBasename(normalizedPath) || normalizedPath;
-          return {
-            path: normalizedPath,
-            basename: name,
-            name,
-            type: 'file',
-            size: 0,
-            lastmodified: null,
-            hasReadPermission: true,
-            hasWritePermission: permission === 'write' || permission === 'admin',
-            hasAdminPermission: permission === 'admin',
-          };
-        });
+  if (fileEntries.length > 0) {
+    try {
+      const metadataList = await getEntriesMetadata({ entries: fileEntries });
+      const metadataByNodeId = new Map(metadataList.map((m) => [m.nodeId, m]));
+      fileEntries.forEach((entry, index) => {
+        const metadata = metadataByNodeId.get(entry.nodeId);
+        if (!metadata) return;
+        fileEntries[index] = {
+          ...entry,
+          size: metadata.size != null ? metadata.size : 0,
+          lastmod: metadata.lastmod ?? null,
+          mime: metadata.mime ?? null,
+        };
+      });
+    } catch (error) {
+      console.error('[explorerGateway] Failed to load metadata for shared file entries:', error);
     }
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load file-only shared permissions:', error);
   }
 
-  if (fileOnlyEntries.length === 0) {
-    return [...folderEntries];
-  }
-
-  try {
-    const metadataList = await getEntriesMetadata({ entries: fileOnlyEntries });
-    const metadataByPath = new Map(metadataList.map((metadata) => [metadata.path, metadata]));
-    fileOnlyEntries = fileOnlyEntries.map((entry) => {
-      const metadata = metadataByPath.get(entry.path);
-      if (!metadata) return entry;
-      return {
-        ...entry,
-        size: metadata.size != null ? metadata.size : 0,
-        lastmod: metadata.lastmod ?? null,
-        mime: metadata.mime ?? null,
-      };
-    });
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load metadata for shared file entries:', error);
-  }
-
-  return [...folderEntries, ...fileOnlyEntries];
+  return [...folderEntries, ...fileEntries];
 };
 
-export const checkConflictsForExplorer = async ({ operations, options } = {}) => {
-  return checkConflicts(Array.isArray(operations) ? operations : [], options);
+export const checkConflictsForExplorer = async ({ operations, parentNodeId, files, options } = {}) => {
+  if (Array.isArray(operations)) {
+    return checkConflicts(operations, options);
+  }
+  if (Array.isArray(files) && files.length > 0) {
+    const ops = files.map(f => ({
+      sourceNodeId: f?.file?.nodeId || undefined,
+      destinationParentNodeId: parentNodeId,
+      fileName: f?.file?.name || f?.relativePath || 'unknown',
+    }));
+    return checkConflicts(ops, options);
+  }
+  return [];
 };
 
 export const uploadToPath = async ({
-  targetPath = '/',
+  parentNodeId,
   files = [],
   onProgress,
   onConflict = 'error',
   options,
 } = {}) => {
-  return uploadMultipleFiles(files, targetPath, onProgress, onConflict, options);
+  return uploadMultipleFiles(files, parentNodeId, onProgress, onConflict, options);
 };
 
 export const addExplorerRecentFile = async (file, options) => {
@@ -212,7 +180,7 @@ const explorerGateway = {
   loadRecentFiles,
   loadSharedEntries,
   removeRecentFile: removeExplorerRecentFile,
-  canNavigateToPath,
+  canNavigateToNode,
   checkConflicts: checkConflictsForExplorer,
   subscribeToRecentFiles,
   uploadToPath,

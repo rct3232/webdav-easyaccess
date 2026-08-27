@@ -85,14 +85,11 @@ async function authenticateTokenOrShare(req, res, next) {
     }
     const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
     const rootPath = normalizePath(link.filePath);
-    const Permission = require('../models/Permission');
-    const shareDoc = await Permission.getSharePermissionDoc(shareToken);
-    const isDirectory = shareDoc ? Boolean(shareDoc.isDirectory) : false;
     req.shareContext = {
       link,
       token: shareToken,
       rootPath,
-      isDirectory,
+      isDirectory: false,
     };
     req.principalId = 'share:' + shareToken;
     return next();

@@ -2,11 +2,11 @@ import { renderHook, act } from '@testing-library/react';
 
 import useObservedElementWidth from '../useObservedElementWidth';
 
+import { observeElementWidth } from '../../../../services/resizeObserverAdapter';
+
 jest.mock('../../../../services/resizeObserverAdapter', () => ({
   observeElementWidth: jest.fn(),
 }));
-
-import { observeElementWidth } from '../../../../services/resizeObserverAdapter';
 
 describe('useObservedElementWidth', () => {
   beforeEach(() => {

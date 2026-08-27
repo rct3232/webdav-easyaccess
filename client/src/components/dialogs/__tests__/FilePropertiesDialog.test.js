@@ -11,24 +11,33 @@ import FilePropertiesDialog from '../FilePropertiesDialog';
 import { getFolderPermissions } from '../../../services/permissionService';
 import { getFolderStats } from '../../../services/fileService';
 
-jest.mock('../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
-jest.mock('../../../services/permissionService', () => ({
-  getFolderPermissions: jest.fn().mockResolvedValue([]),
-  getUserPermissions: jest.fn().mockResolvedValue([]),
-  grantPermission: jest.fn().mockResolvedValue(),
-  revokePermission: jest.fn().mockResolvedValue(),
-  checkPermission: jest.fn().mockResolvedValue({}),
-  listFilePermissions: jest.fn().mockResolvedValue([]),
-}));
+jest.mock('../../../services/permissionService', () => {
+  const { createPermissionServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createPermissionServiceMock({
+    getFolderPermissions: jest.fn().mockResolvedValue([]),
+    getUserPermissions: jest.fn().mockResolvedValue([]),
+    grantPermission: jest.fn().mockResolvedValue(),
+    revokePermission: jest.fn().mockResolvedValue(),
+    checkPermission: jest.fn().mockResolvedValue({}),
+    listFilePermissions: jest.fn().mockResolvedValue([]),
+  });
+});
 
-jest.mock('../../../services/fileService', () => ({
-  getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
-}));
+jest.mock('../../../services/fileService', () => {
+  const { createFileServiceMock } = require('../../../testing/mocks/serviceMocks');
+  return createFileServiceMock({
+    getFolderStats: jest.fn().mockResolvedValue({ fileCount: 42, totalSize: 2048 }),
+  });
+});
 
 const fileProps = {
+  nodeId: 5,
+  parentNodeId: 1,
   path: '/docs/readme.txt',
   basename: 'readme.txt',
   name: 'readme.txt',
@@ -39,6 +48,7 @@ const fileProps = {
 };
 
 const folderProps = {
+  nodeId: 2,
   path: '/docs',
   basename: 'docs',
   name: 'docs',
@@ -122,5 +132,23 @@ describe('FilePropertiesDialog', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     expect(screen.getByText(/1\s*KB/i)).toBeInTheDocument();
+  });
+
+  it('for a file, fetches folder permissions with parent nodeId and the file nodeId', async () => {
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(getFolderPermissions).toHaveBeenCalledWith(1, 5);
+    });
+    expect(getFolderStats).not.toHaveBeenCalled();
+  });
+
+  it('for a directory, fetches folder permissions and stats by nodeId', async () => {
+    renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} file={folderProps} />
+    );
+    await waitFor(() => {
+      expect(getFolderPermissions).toHaveBeenCalledWith(2);
+      expect(getFolderStats).toHaveBeenCalledWith(2);
+    });
   });
 });

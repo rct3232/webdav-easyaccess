@@ -7,12 +7,45 @@ const {
 } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
-const Permission = require('../../../models/Permission');
+const permissionStore = require('../../../store/permissionStore');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { sendApprovalEmail, sendRejectionEmail } = require('../../../utils/email');
-const { createDirectory, pathExists } = require('../../../utils/webdav');
 const { createError, validationError, notFoundError, conflictError } = require('../../../utils/errorHandler');
 const { revokeAllUserTokens } = require('../../../domains/auth/service');
+
+function getFileNodeService() {
+  const { getComposition } = require('../../../service/composition');
+  return getComposition().fileNodeService;
+}
+
+function getBlobStorageService() {
+  const { getComposition } = require('../../../service/composition');
+  return getComposition().blobStorageService;
+}
+
+/**
+ * Resolve or create the user's home directory node (root-level node named
+ * after the username) and return its nodeId. Granting works on nodeIds only.
+ *
+ * In WebDAV blob-storage mode the physical home directory is also MKCOL'd on
+ * the WebDAV server (idempotent, recursive). On MKCOL failure the node is
+ * marked sync_status='orphaned_node' and the error propagates (loud fail-safe);
+ * S3 mode is unaffected (no-op).
+ * @param {number} userId
+ * @param {string} username
+ * @returns {Promise<number|null>} home node id, or null if it cannot be created
+ */
+async function ensureUserHomeNode(userId, username) {
+  const fileNodeService = getFileNodeService();
+  let node = await fileNodeService.resolvePath(`/${username}`);
+  if (!node) {
+    node = await fileNodeService.createDirectory(null, username);
+  }
+  if (node) {
+    await getBlobStorageService().createDirectoryWebdav(Number(node.id));
+  }
+  return node ? Number(node.id) : null;
+}
 
 async function createAdminUser({ username, email, password, isAdmin }) {
   let createdUser = null;
@@ -35,31 +68,18 @@ async function createAdminUser({ username, email, password, isAdmin }) {
     throw validationError(SERVER_ERROR_CODES.admin.emailTaken);
   }
 
-  const userFolder = `/${username}`;
-
   createdUser = await User.create(username, email, password, false);
   await User.updateStatus(createdUser.id, USER_STATUS.APPROVED);
 
   try {
-    const folderExists = await pathExists(userFolder);
-    if (!folderExists) {
-      await createDirectory(userFolder);
-    }
-
-    const folderExistsAfter = await pathExists(userFolder);
-    if (!folderExistsAfter) {
+    const homeNodeId = await ensureUserHomeNode(createdUser.id, username);
+    if (homeNodeId == null) {
       throw createError(SERVER_ERROR_CODES.admin.userFolderFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-  } catch (folderError) {
-    console.error('[Admin Create] Failed to check or create user folder:', folderError);
-    await User.delete(createdUser.id);
-    throw createError(SERVER_ERROR_CODES.admin.userFolderFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-  }
 
-  try {
-    await Permission.grant(createdUser.id, userFolder, PERMISSIONS.ADMIN);
+    await permissionStore.grant(createdUser.id, homeNodeId, PERMISSIONS.ADMIN);
 
-    const hasPermission = await Permission.checkPermission(createdUser.id, userFolder, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(createdUser.id, homeNodeId, PERMISSIONS.ADMIN);
     if (!hasPermission) {
       throw createError(SERVER_ERROR_CODES.admin.userPermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
@@ -91,27 +111,15 @@ async function approvePendingUser(userId) {
 
   await User.updateStatus(userId, USER_STATUS.APPROVED);
 
-  const userFolder = `/${user.username}`;
   try {
-    const folderExists = await pathExists(userFolder);
-    if (!folderExists) {
-      await createDirectory(userFolder);
-    }
-
-    const folderExistsAfter = await pathExists(userFolder);
-    if (!folderExistsAfter) {
+    const homeNodeId = await ensureUserHomeNode(userId, user.username);
+    if (homeNodeId == null) {
       throw createError(SERVER_ERROR_CODES.admin.approveFolderFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-  } catch (folderError) {
-    console.error(`[Admin] Failed to check or create user folder:`, folderError);
-    await User.updateStatus(userId, USER_STATUS.PENDING);
-    throw createError(SERVER_ERROR_CODES.admin.approveFolderFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
-  }
 
-  try {
-    await Permission.grant(userId, `/${user.username}`, PERMISSIONS.ADMIN);
+    await permissionStore.grant(userId, homeNodeId, PERMISSIONS.ADMIN);
 
-    const hasPermission = await Permission.checkPermission(userId, `/${user.username}`, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(userId, homeNodeId, PERMISSIONS.ADMIN);
     if (!hasPermission) {
       throw createError(SERVER_ERROR_CODES.admin.approvePermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
@@ -149,8 +157,8 @@ async function rejectPendingUser(userId, adminId) {
 
   await PermissionRequest.deleteByRequesterId(userId);
   await PermissionRequest.rejectByOwnerId(userId, adminId);
-  await Permission.revokeAllUserPermissions(userId);
-  await Permission.deleteUserPermissionsFile(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
+  await permissionStore.deleteUserPermissionsFile(userId);
   await User.updateStatus(userId, USER_STATUS.REJECTED);
 
   return { id: user.id, username: user.username, email: user.email };
@@ -173,8 +181,8 @@ async function deleteUserCascade(userId, adminId) {
 
   await PermissionRequest.deleteByRequesterId(userId);
   await PermissionRequest.rejectByOwnerId(userId, adminId);
-  await Permission.revokeAllUserPermissions(userId);
-  await Permission.deleteUserPermissionsFile(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
+  await permissionStore.deleteUserPermissionsFile(userId);
   await User.delete(userId);
 
   return { id: user.id, username: user.username, email: user.email };
@@ -185,11 +193,11 @@ async function bulkUpdateUserPermissions(userId, permissionEntries) {
     throw validationError(SERVER_ERROR_CODES.admin.invalidPermissionList);
   }
 
-  await Permission.revokeAllUserPermissions(userId);
+  await permissionStore.revokeAllUserPermissions(userId);
 
   for (const perm of permissionEntries) {
     if (perm.folderPath && perm.permission && PERMISSIONS.isValid(perm.permission)) {
-      await Permission.grant(userId, perm.folderPath, perm.permission);
+      await permissionStore.grant(userId, perm.folderPath, perm.permission);
     }
   }
 

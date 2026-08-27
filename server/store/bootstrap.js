@@ -1,29 +1,9 @@
 const bcrypt = require('bcryptjs');
-const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 
-const {
-  META_ROOT,
-  USERS_DIR,
-  EMAIL_INDEX_DIR,
-  LOCKS_DIR,
-  PERMISSIONS_DIR,
-  PERMISSIONS_USERS_DIR,
-} = require('./metaPaths');
-const { ensureDir, isSqliteBackend } = require('./storage');
+const { isSqliteBackend } = require('./storage');
 const { initSqliteSchema } = require('../scripts/initSqliteSchema');
+const { applyPendingMigrations } = require('../infrastructure/schemaManager');
 const userStore = require('./userStore');
-const settingsStore = require('./settingsStore');
-const permissionStore = require('./permissionStore');
-const permissionRequestStore = require('../domains/permissions/stores/permissionRequestStore');
-
-async function ensureDirs() {
-  await ensureDir(META_ROOT);
-  await ensureDir(USERS_DIR);
-  await ensureDir(EMAIL_INDEX_DIR);
-  await ensureDir(LOCKS_DIR);
-  await ensureDir(PERMISSIONS_DIR);
-  await ensureDir(PERMISSIONS_USERS_DIR);
-}
 
 async function ensureDefaultAdmin() {
   if (process.env.WEA_DISABLE_DEFAULT_ADMIN === 'true') return;
@@ -39,13 +19,8 @@ async function ensureDefaultAdmin() {
     isAdmin: true,
   });
 
-  // Keep compatibility with prior behavior where admin had explicit root permission
-  try {
-    await permissionStore.grant(admin.id, '/', PERMISSIONS.ADMIN);
-  } catch {
-    // best-effort
-  }
-
+  // Admin users bypass ACL checks (is_admin), so no explicit root grant is
+  // needed. The previous path-based grant ('/') was a no-op on nodeId stores.
   // Keep console output consistent with previous behavior
   // eslint-disable-next-line no-console
   console.log('Default admin account created. Please change the default password after first login.');
@@ -57,10 +32,7 @@ async function initMetadataStore() {
   if (isSqliteBackend()) {
     await initSqliteSchema();
   } else {
-    await ensureDirs();
-    await userStore.ensureUserIndexFile();
-    await settingsStore.ensureSettingsFile();
-    await permissionRequestStore.ensurePermissionRequestsFile();
+    await applyPendingMigrations('postgresql');
   }
   await ensureDefaultAdmin();
 }
@@ -68,6 +40,4 @@ async function initMetadataStore() {
 module.exports = {
   initMetadataStore,
   ensureDefaultAdmin,
-  ensureDirs,
 };
-

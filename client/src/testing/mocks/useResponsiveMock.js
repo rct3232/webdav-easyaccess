@@ -5,10 +5,12 @@ export function createUseResponsiveModuleMock(overrides = {}) {
     isDesktop: true,
   };
 
+  const { useResponsive: useResponsiveOverride, ...valueOverrides } = overrides;
+
   return {
-    useResponsive: () => ({
+    useResponsive: useResponsiveOverride || (() => ({
       ...defaultValue,
-      ...overrides,
-    }),
+      ...valueOverrides,
+    })),
   };
 }

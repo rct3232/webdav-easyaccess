@@ -7,9 +7,10 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test-utils';
 import ProgressSummary from '../ProgressSummary';
 
-jest.mock('../../../../hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
-}));
+jest.mock('../../../../hooks/useResponsive', () => {
+  const { createUseResponsiveModuleMock } = require('../../../../testing/mocks/useResponsiveMock');
+  return createUseResponsiveModuleMock();
+});
 
 describe('ProgressSummary', () => {
   it('renders primaryLabel and secondaryLabel', () => {

@@ -10,22 +10,19 @@ import {
   cancelBulkOperation,
 } from '../../../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
-import {
-  applyRecentFilesAfterBulkDelete,
-  applyRecentFilesAfterBulkMove,
-} from '../../../services/recentFilesRepository';
+import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 const POLL_INTERVAL_MS = 400;
 
 export const useBulkOperations = (
-  selectedFiles,
+  selectedNodeIds,
   files,
   onOperationComplete,
   setTreeUpdateTrigger,
   setDropMessage,
   setSelectedFiles,
   setSelectionMode,
-  getCurrentPath,
+  getCurrentNodeId,
   options = {}
 ) => {
   const { t } = useTranslation();
@@ -39,21 +36,22 @@ export const useBulkOperations = (
   const activeIntervalsRef = useRef(new Set());
 
   useEffect(() => {
+    const intervals = activeIntervalsRef.current;
     return () => {
-      activeIntervalsRef.current.forEach(intervalId => clearInterval(intervalId));
-      activeIntervalsRef.current.clear();
+      intervals.forEach(intervalId => clearInterval(intervalId));
+      intervals.clear();
     };
   }, []);
 
-  const markProcessing = useCallback((filePaths, opType) => {
+  const markProcessing = useCallback((nodeIds, opType) => {
     if (typeof markProcessingImpl === 'function') {
-      markProcessingImpl(filePaths, opType);
+      markProcessingImpl(nodeIds, opType);
     }
   }, [markProcessingImpl]);
 
-  const clearProcessing = useCallback((filePaths) => {
+  const clearProcessing = useCallback((nodeIds) => {
     if (typeof clearProcessingImpl === 'function') {
-      clearProcessingImpl(filePaths);
+      clearProcessingImpl(nodeIds);
     }
   }, [clearProcessingImpl]);
 
@@ -92,36 +90,36 @@ export const useBulkOperations = (
   };
 
   const handleBulkDelete = useCallback(async (retryData = null, onConfirm = null) => {
-    const filePaths = retryData?.filePaths || Array.from(selectedFiles);
-    if (filePaths.length === 0) return;
-    const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
+    const nodeIds = retryData?.nodeIds || Array.from(selectedNodeIds);
+    if (nodeIds.length === 0) return;
+    const startedNodeId = retryData?.startedNodeId || (typeof getCurrentNodeId === 'function' ? getCurrentNodeId() : undefined);
 
     if (!retryData) {
       dismissFailedItems();
       if (onConfirm) {
-        onConfirm(filePaths);
+        onConfirm(nodeIds);
         return;
       }
       setSelectedFiles(new Set());
       setSelectionMode(false);
     }
 
-    markProcessing(filePaths, 'delete');
+    markProcessing(nodeIds, 'delete');
     const progressId = retryData?.progressId || `delete_${Date.now()}`;
-    const retryDataObj = { type: 'delete', filePaths, startedPath };
+    const retryDataObj = { type: 'delete', nodeIds, startedNodeId };
 
     updateProgressWithRetry(progressId, {
       type: 'delete',
       status: 'preparing',
       progress: 0,
-      total: filePaths.length,
+      total: nodeIds.length,
       current: t('fileManager.bulkPreparing'),
-      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: t('actions.delete') }),
+      name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: t('actions.delete') }),
     }, retryDataObj);
 
     let jobId;
     try {
-      const data = await batchDeleteFiles(filePaths);
+      const data = await batchDeleteFiles(nodeIds);
       jobId = data?.jobId;
     } catch (err) {
       console.error('Bulk delete start failed:', err);
@@ -131,7 +129,7 @@ export const useBulkOperations = (
         error: err.message || t('fileManager.bulkDeleteStartFail'),
         keepOnError: true,
       }, retryDataObj);
-      clearProcessing(filePaths);
+      clearProcessing(nodeIds);
       return;
     }
 
@@ -141,14 +139,14 @@ export const useBulkOperations = (
       try {
         const job = await getBulkOperationStatus(jobId);
         const { status: jobStatus, progress: jobProgress, total: jobTotal, results: jobResults = [] } = job;
-        const succeeded = jobResults.filter(r => r.status === 'succeeded').map(r => r.path);
+        const succeededNodeIds = jobResults.filter(r => r.status === 'succeeded').map(r => r.nodeId);
         const failed = jobResults.filter(r => r.status === 'failed');
-        const skipped = jobResults.filter(r => r.status === 'skipped').map(r => r.path);
-        const skippedSet = new Set(skipped);
+        const skippedNodeIds = jobResults.filter(r => r.status === 'skipped').map(r => r.nodeId);
+        const skippedSet = new Set(skippedNodeIds);
         const failCount = failed.length;
-        const successCount = succeeded.length;
+        const successCount = succeededNodeIds.length;
         const failedItems = failed.map(f => ({
-          fileName: (f.path || '').split('/').pop() || t('common.unknown'),
+          fileName: (f.basename || String(f.nodeId)) || t('common.unknown'),
           error: f.error || t('common.unknownError'),
         }));
 
@@ -162,49 +160,50 @@ export const useBulkOperations = (
           activeIntervalsRef.current.delete(intervalId);
           clearInterval(intervalId);
           const deletedFolders = [];
-          succeeded.forEach(filePath => {
-            const file = files.find(f => f.path === filePath);
-            if (file?.type === 'directory') deletedFolders.push(filePath);
+          const deletedNodeIds = [];
+          succeededNodeIds.forEach(nid => {
+            const file = files.find(f => f.nodeId === nid);
+            if (file?.type === 'directory') {
+              deletedNodeIds.push(nid);
+              deletedFolders.push(file.display_path || nid);
+            }
           });
           const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (skippedSet.size > 0 ? 'warning' : 'completed'));
           const currentMsg = jobStatus === 'cancelled'
-            ? t('fileManager.bulkCancelledDone', { done: successCount, total: filePaths.length })
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
             : failCount > 0
-              ? t('fileManager.bulkDeleteDonePartial', { done: successCount, total: filePaths.length, failCount })
-              : t('fileManager.bulkDeleteDone', { done: successCount, total: filePaths.length });
+              ? t('fileManager.bulkDeleteDonePartial', { done: successCount, total: nodeIds.length, failCount })
+              : t('fileManager.bulkDeleteDone', { done: successCount, total: nodeIds.length });
           updateProgressWithRetry(progressId, {
             type: 'delete',
             status: finalStatus,
             progress: successCount,
-            total: filePaths.length,
+            total: nodeIds.length,
             current: currentMsg,
-            name: t('fileManager.bulkItemCount', { count: filePaths.length, action: t('actions.delete') }),
+            name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: t('actions.delete') }),
             error: jobStatus === 'cancelled' ? t('common.cancelledByUser') : (failCount > 0 ? t('fileManager.uploadFailCount', { count: failCount }) : (skippedSet.size > 0 ? t('fileManager.bulkExcludedByPermission', { count: skippedSet.size }) : undefined)),
             failedItems: failedItems.length > 0 ? failedItems : undefined,
             keepOnError: failCount > 0 || skippedSet.size > 0 || jobStatus === 'cancelled',
-            skippedPaths: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
+            skippedNodeIds: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
             skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
           }, retryDataObj);
 
           if (successCount > 0) {
             try {
-              await applyRecentFilesAfterBulkDelete({
-                filePaths: succeeded,
-                folderPaths: deletedFolders,
-              });
+              notifyRecentFilesChange();
             } catch (err) {
-              console.error('Failed to clean up recent files after bulk delete:', err);
+              console.error('Failed to refresh recent files after bulk delete:', err);
             }
-            deletedFolders.forEach(folderPath => {
-              setTreeUpdateTrigger({ type: 'deleted', folderPath, timestamp: Date.now() });
+            deletedNodeIds.forEach(nodeId => {
+              setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() });
             });
-            if (deletedFolders.length > 0) {
+            if (deletedNodeIds.length > 0) {
               setTimeout(() => setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() }), 500);
             }
           }
-          clearProcessing(filePaths);
+          clearProcessing(nodeIds);
           if (onOperationComplete) {
-            onOperationComplete({ opType: 'delete', startedPath, deletedFolderPaths: deletedFolders });
+            onOperationComplete({ opType: 'delete', startedNodeId, deletedNodeIds, deletedFolderPaths: deletedFolders });
           }
           if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
             setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
@@ -218,29 +217,29 @@ export const useBulkOperations = (
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     activeIntervalsRef.current.add(intervalId);
     poll();
-  }, [selectedFiles, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress, t]);
+  }, [selectedNodeIds, files, onOperationComplete, setTreeUpdateTrigger, setSelectedFiles, setSelectionMode, getCurrentNodeId, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, updateProgress, t]);
 
   const handleBulkDownload = async () => {
-    if (selectedFiles.size === 0) return;
+    if (selectedNodeIds.size === 0) return;
     dismissFailedItems();
     setSelectionMode(false);
 
-    const filePaths = Array.from(selectedFiles);
+    const nodeIds = Array.from(selectedNodeIds);
     const progressId = `download_${Date.now()}`;
-    
+
     updateProgress({
       id: progressId,
       type: 'download',
       status: 'preparing',
       progress: 0,
-      total: filePaths.length,
+      total: nodeIds.length,
       current: '',
       zipName: '',
     });
 
     try {
       const result = await downloadMultipleFiles(
-        filePaths,
+        nodeIds,
         (progress) => {
           updateProgress({ ...progress, id: progressId });
         },
@@ -248,25 +247,25 @@ export const useBulkOperations = (
       );
 
       const skippedCount = result?.skippedCount || 0;
-      const skippedPaths = result?.skippedInfo?.paths || [];
+      const skippedNodeIdsResult = result?.skippedInfo?.nodeIds || [];
       const skippedTruncated = Boolean(result?.skippedInfo?.truncated);
-      if (skippedCount > 0 || skippedPaths.length > 0) {
+      if (skippedCount > 0 || skippedNodeIdsResult.length > 0) {
         updateProgress({
           id: progressId,
           type: 'download',
           status: 'warning',
-          error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedPaths.length }),
+          error: t('fileManager.bulkExcludedByPermission', { count: skippedCount || skippedNodeIdsResult.length }),
           keepOnError: true,
-          skippedPaths,
-          skippedCount: skippedCount || skippedPaths.length,
+          skippedNodeIds: skippedNodeIdsResult,
+          skippedCount: skippedCount || skippedNodeIdsResult.length,
           skippedTruncated,
         });
       }
-      
+
       setSelectedFiles(new Set());
       setSelectionMode(false);
-      
-      if (!(skippedCount > 0 || skippedPaths.length > 0)) {
+
+      if (!(skippedCount > 0 || skippedNodeIdsResult.length > 0)) {
         setTimeout(() => {
           updateProgress({ id: progressId, remove: true });
         }, 3000);
@@ -284,34 +283,33 @@ export const useBulkOperations = (
   /**
    * Execute bulk operation after pre-checks (Job + polling)
    */
-  const executeBulkOperation = useCallback(async (destinationPath, retryData = null, onConflict = 'error') => {
+  const executeBulkOperation = useCallback(async (destinationParentNodeId, retryData = null, onConflict = 'error') => {
     const action = retryData?.type || folderPickerAction;
-    const filePaths = retryData?.filePaths || Array.from(selectedFiles);
-    if (!action || filePaths.length === 0) return;
-    const startedPath = retryData?.startedPath || (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
+    const nodeIds = retryData?.nodeIds || Array.from(selectedNodeIds);
+    if (!action || nodeIds.length === 0) return;
+    const startedNodeId = retryData?.startedNodeId || (typeof getCurrentNodeId === 'function' ? getCurrentNodeId() : undefined);
 
     setSelectionMode(false);
     setSelectedFiles(new Set());
     if (!retryData) dismissFailedItems();
 
-    markProcessing(filePaths, action);
+    markProcessing(nodeIds, action);
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
     const actionName = getActionName(action);
-    const retryDataObj = { type: action, filePaths, destinationPath, startedPath };
+    const retryDataObj = { type: action, nodeIds, destinationParentNodeId, startedNodeId };
 
-    const operations = filePaths.map(sourcePath => {
-      const fileName = sourcePath.split('/').pop();
-      const destinationFilePath = destinationPath === '/' ? `/${fileName}` : `${destinationPath}/${fileName}`;
-      return { sourcePath, destinationPath: destinationFilePath };
-    });
+    const operations = nodeIds.map(sourceNodeId => ({
+      sourceNodeId,
+      destinationParentNodeId,
+    }));
 
     updateProgressWithRetry(progressId, {
       type: action,
       status: 'preparing',
       progress: 0,
-      total: filePaths.length,
+      total: nodeIds.length,
       current: t('fileManager.bulkPreparing'),
-      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
+      name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: actionName }),
     }, retryDataObj);
 
     let jobId;
@@ -328,7 +326,7 @@ export const useBulkOperations = (
         error: err.message || t('fileManager.bulkStartFail'),
         keepOnError: true,
       }, retryDataObj);
-      clearProcessing(filePaths);
+      clearProcessing(nodeIds);
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
       return;
@@ -340,17 +338,17 @@ export const useBulkOperations = (
       try {
         const job = await getBulkOperationStatus(jobId);
         const { status: jobStatus, progress: jobProgress, total: jobTotal, results: jobResults = [] } = job;
-        const succeeded = jobResults.filter(r => r.status === 'succeeded').map(r => ({ sourcePath: r.sourcePath, destinationPath: r.destinationPath }));
+        const succeeded = jobResults.filter(r => r.status === 'succeeded').map(r => ({ sourceNodeId: r.sourceNodeId, destinationParentNodeId: r.destinationParentNodeId }));
         const failed = jobResults.filter(r => r.status === 'failed');
-        const skippedByConflict = jobResults.filter(r => r.status === 'skippedByConflict').map(r => r.sourcePath || r.path);
-        const skippedByPermission = jobResults.filter(r => r.status === 'skippedByPermission').map(r => r.sourcePath || r.path);
+        const skippedByConflict = jobResults.filter(r => r.status === 'skippedByConflict').map(r => r.sourceNodeId || r.nodeId);
+        const skippedByPermission = jobResults.filter(r => r.status === 'skippedByPermission').map(r => r.sourceNodeId || r.nodeId);
         const failCount = failed.length;
         const successCount = succeeded.length;
         const hasSkippedByConflict = skippedByConflict.length > 0;
         const hasSkippedByPermission = skippedByPermission.length > 0;
         const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
         const failedItems = failed.map(f => ({
-          fileName: (f.sourcePath || f.path || '').split('/').pop() || t('common.unknown'),
+          fileName: (f.basename || String(f.sourceNodeId || f.nodeId)) || t('common.unknown'),
           error: f.error || t('common.unknownError'),
         }));
 
@@ -372,45 +370,38 @@ export const useBulkOperations = (
           }
           const finalStatus = jobStatus === 'cancelled' ? 'warning' : (failCount > 0 ? 'error' : (hasAnySkipped ? 'warning' : 'completed'));
           const currentMsg = jobStatus === 'cancelled'
-            ? t('fileManager.bulkCancelledDone', { done: successCount, total: filePaths.length })
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
             : failCount > 0
-              ? t('fileManager.bulkActionDonePartial', { done: successCount, total: filePaths.length, action: actionName, failCount })
-              : t('fileManager.bulkActionDone', { done: successCount, total: filePaths.length, action: actionName });
+              ? t('fileManager.bulkActionDonePartial', { done: successCount, total: nodeIds.length, action: actionName, failCount })
+              : t('fileManager.bulkActionDone', { done: successCount, total: nodeIds.length, action: actionName });
           updateProgressWithRetry(progressId, {
             type: action,
             status: finalStatus,
             progress: successCount,
-            total: filePaths.length,
+            total: nodeIds.length,
             current: currentMsg,
-            name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
+            name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: actionName }),
             error: jobStatus === 'cancelled' ? t('common.cancelledByUser') : (failCount > 0 ? t('fileManager.uploadFailCount', { count: failCount }) : skippedErrorMsg),
             failedItems: failedItems.length > 0 ? failedItems : undefined,
             keepOnError: failCount > 0 || hasAnySkipped || jobStatus === 'cancelled',
-            skippedPathsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
+            skippedNodeIdsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
             skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
-            skippedPathsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
+            skippedNodeIdsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
             skippedCountByPermission: hasSkippedByPermission ? skippedByPermission.length : undefined,
           }, retryDataObj);
 
           if (successCount > 0) {
             if (action === 'move') {
               try {
-                const moves = succeeded.map(({ sourcePath, destinationPath: destPath }) => {
-                  const file = files.find(f => f.path === sourcePath);
-                  const fileName = sourcePath.split('/').pop();
-                  return { oldPath: sourcePath, newPath: destPath, file: file || { type: 'file', name: fileName, basename: fileName } };
-                });
-                if (moves.length > 0) {
-                  await applyRecentFilesAfterBulkMove(moves);
-                }
+                notifyRecentFilesChange();
               } catch (err) {
-                console.error('Failed to update recent files after bulk move:', err);
+                console.error('Failed to refresh recent files after bulk move:', err);
               }
             }
           }
-          clearProcessing(filePaths);
+          clearProcessing(nodeIds);
           if (onOperationComplete) {
-            onOperationComplete({ opType: action, startedPath, targetPath: destinationPath });
+            onOperationComplete({ opType: action, startedNodeId, targetParentNodeId: destinationParentNodeId });
           }
           if (failCount === 0 && !hasAnySkipped && jobStatus !== 'cancelled') {
             setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
@@ -428,68 +419,66 @@ export const useBulkOperations = (
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     activeIntervalsRef.current.add(intervalId);
     poll();
-  }, [selectedFiles, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentPath, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, files, t]);
+  }, [selectedNodeIds, folderPickerAction, onOperationComplete, setSelectedFiles, setSelectionMode, getCurrentNodeId, dismissFailedItems, markProcessing, clearProcessing, updateProgressWithRetry, getActionName, updateProgress, t]);
 
   /**
    * Handle folder picker selection with conflict check
    */
-  const handleFolderPickerSelect = useCallback(async (destinationPath, retryData = null) => {
+  const handleFolderPickerSelect = useCallback(async (destinationParentNodeId, retryData = null) => {
     const action = retryData?.type || folderPickerAction;
-    const filePaths = retryData?.filePaths || Array.from(selectedFiles);
-    
-    if (!action || filePaths.length === 0) return;
+    const nodeIds = retryData?.nodeIds || Array.from(selectedNodeIds);
+
+    if (!action || nodeIds.length === 0) return;
 
     // Prepare moves/copies array for conflict check
-    const operations = filePaths.map(sourcePath => {
-      const fileName = sourcePath.split('/').pop();
-      const destinationFilePath = destinationPath === '/' 
-        ? `/${fileName}` 
-        : `${destinationPath}/${fileName}`;
-      return { sourcePath, destinationPath: destinationFilePath, type: action };
-    });
+    const operations = nodeIds.map(sourceNodeId => ({
+      sourceNodeId,
+      destinationParentNodeId,
+      type: action,
+    }));
 
     const progressId = retryData?.progressId || `${action}_${Date.now()}`;
-    const startedPath = retryData?.startedPath ?? (typeof getCurrentPath === 'function' ? getCurrentPath() : undefined);
+    const startedNodeId = retryData?.startedNodeId ?? (typeof getCurrentNodeId === 'function' ? getCurrentNodeId() : undefined);
     const actionName = getActionName(action);
-    const retryDataForModal = { type: action, filePaths, destinationPath, startedPath, progressId };
+    const retryDataForModal = { type: action, nodeIds, destinationParentNodeId, startedNodeId, progressId };
 
     updateProgressWithRetry(progressId, {
       type: action,
       status: 'preparing',
       progress: 0,
-      total: filePaths.length,
+      total: nodeIds.length,
       current: t('fileManager.statusConflictCheck'),
-      name: t('fileManager.bulkItemCount', { count: filePaths.length, action: actionName }),
+      name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: actionName }),
     }, retryDataForModal);
 
-    markProcessing(filePaths, action);
+    markProcessing(nodeIds, action);
 
     try {
       const conflicts = await checkConflicts(operations);
 
       if (conflicts && conflicts.length > 0) {
         updateProgress({ id: progressId, remove: true });
-        clearProcessing(filePaths);
+        clearProcessing(nodeIds);
         setBulkConflictData({
-          destinationPath,
-          retryData: retryData ?? { type: action, filePaths },
+          destinationParentNodeId,
+          retryData: retryData ?? { type: action, nodeIds },
           conflicts,
           action,
         });
         return;
       }
 
-      await executeBulkOperation(destinationPath, { type: action, filePaths, destinationPath, startedPath, progressId });
+      await executeBulkOperation(destinationParentNodeId, { type: action, nodeIds, destinationParentNodeId, startedNodeId, progressId });
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     } catch (error) {
       console.error('Bulk conflict check failed:', error);
-      clearProcessing(filePaths);
-      await executeBulkOperation(destinationPath, { type: action, filePaths, destinationPath, startedPath, progressId });
+      clearProcessing(nodeIds);
+      await executeBulkOperation(destinationParentNodeId, { type: action, nodeIds, destinationParentNodeId, startedNodeId, progressId });
       setFolderPickerOpen(false);
       setFolderPickerAction(null);
     }
-  }, [selectedFiles, folderPickerAction, getCurrentPath, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation, markProcessing, clearProcessing, t]);
+  }, [selectedNodeIds, folderPickerAction, getCurrentNodeId, getActionName, updateProgressWithRetry, updateProgress, executeBulkOperation, markProcessing, clearProcessing, t]);
 
   /**
    * Resolve bulk conflicts
@@ -497,23 +486,23 @@ export const useBulkOperations = (
   const resolveBulkConflict = useCallback(async (resolution) => {
     if (!bulkConflictData) return;
 
-    const { destinationPath, retryData, conflicts } = bulkConflictData;
+    const { destinationParentNodeId, retryData, conflicts } = bulkConflictData;
     setBulkConflictData(null);
 
-    // When user chooses skip: exclude conflicting source paths from the operation payload
+    // When user chooses skip: exclude conflicting source nodeIds from the operation payload
     // so the server receives only non-conflicting files and skips redundant getConflicts.
     let effectiveRetryData = retryData;
     if (resolution === 'skip' && conflicts && Array.isArray(conflicts) && conflicts.length > 0) {
-      const conflictSourcePaths = new Set(
-        conflicts.map((c) => c.sourcePath).filter(Boolean)
+      const conflictSourceNodeIds = new Set(
+        conflicts.map((c) => c.sourceNodeId).filter(Boolean)
       );
-      const filteredPaths = (retryData.filePaths || []).filter(
-        (p) => !conflictSourcePaths.has(p)
+      const filteredNodeIds = (retryData.nodeIds || []).filter(
+        (n) => !conflictSourceNodeIds.has(n)
       );
-      effectiveRetryData = { ...retryData, filePaths: filteredPaths };
+      effectiveRetryData = { ...retryData, nodeIds: filteredNodeIds };
     }
 
-    await executeBulkOperation(destinationPath, effectiveRetryData, resolution);
+    await executeBulkOperation(destinationParentNodeId, effectiveRetryData, resolution);
     setFolderPickerOpen(false);
     setFolderPickerAction(null);
   }, [bulkConflictData, executeBulkOperation]);
@@ -524,11 +513,11 @@ export const useBulkOperations = (
       console.error('Retry data not found for progress item:', progressId);
       return;
     }
-    const { type, filePaths, destinationPath, startedPath } = progressItem.retryData;
+    const { type, nodeIds, destinationParentNodeId, startedNodeId } = progressItem.retryData;
     if (type === 'delete') {
-      await handleBulkDelete({ filePaths, progressId, startedPath });
+      await handleBulkDelete({ nodeIds, progressId, startedNodeId });
     } else if (type === 'move' || type === 'copy') {
-      await handleFolderPickerSelect(destinationPath, { type, filePaths, progressId, startedPath });
+      await handleFolderPickerSelect(destinationParentNodeId, { type, nodeIds, progressId, startedNodeId });
     }
   };
 

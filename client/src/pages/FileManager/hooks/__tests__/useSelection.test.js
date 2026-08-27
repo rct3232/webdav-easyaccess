@@ -6,9 +6,9 @@ import { renderHook, act } from '@testing-library/react';
 import { useSelection } from '../useSelection';
 
 const displayFiles = [
-  { path: '/file1.txt', type: 'file' },
-  { path: '/file2.txt', type: 'file' },
-  { path: '/folder', type: 'directory' },
+  { nodeId: 1, path: '/file1.txt', type: 'file' },
+  { nodeId: 2, path: '/file2.txt', type: 'file' },
+  { nodeId: 3, path: '/folder', type: 'directory' },
 ];
 
 describe('useSelection', () => {
@@ -27,9 +27,9 @@ describe('useSelection', () => {
     });
 
     expect(result.current.selectedFiles.size).toBe(3);
-    expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
-    expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
-    expect(result.current.selectedFiles.has('/folder')).toBe(true);
+    expect(result.current.selectedFiles.has(1)).toBe(true);
+    expect(result.current.selectedFiles.has(2)).toBe(true);
+    expect(result.current.selectedFiles.has(3)).toBe(true);
   });
 
   it('handleDeselectAll clears selection', () => {
@@ -73,12 +73,12 @@ describe('useSelection', () => {
     act(() => {
       result.current.handleFileCheck(file, true);
     });
-    expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
+    expect(result.current.selectedFiles.has(1)).toBe(true);
 
     act(() => {
       result.current.handleFileCheck(file, false);
     });
-    expect(result.current.selectedFiles.has('/file1.txt')).toBe(false);
+    expect(result.current.selectedFiles.has(1)).toBe(false);
   });
 
   it('toggleFileSelection toggles file in selection', () => {
@@ -88,20 +88,20 @@ describe('useSelection', () => {
     act(() => {
       result.current.toggleFileSelection(file);
     });
-    expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
+    expect(result.current.selectedFiles.has(1)).toBe(true);
 
     act(() => {
       result.current.toggleFileSelection(file);
     });
-    expect(result.current.selectedFiles.has('/file1.txt')).toBe(false);
+    expect(result.current.selectedFiles.has(1)).toBe(false);
   });
 
   it('uses allFiles for select all when provided', () => {
     const allFiles = [
-      { path: '/visible.txt', type: 'file' },
-      { path: '/hidden.txt', type: 'file' },
+      { nodeId: 10, path: '/visible.txt', type: 'file' },
+      { nodeId: 11, path: '/hidden.txt', type: 'file' },
     ];
-    const displayedFiles = [{ path: '/visible.txt', type: 'file' }];
+    const displayedFiles = [{ nodeId: 10, path: '/visible.txt', type: 'file' }];
     const { result } = renderHook(() => useSelection(displayedFiles, allFiles));
 
     act(() => {
@@ -109,8 +109,25 @@ describe('useSelection', () => {
     });
 
     expect(result.current.selectedFiles.size).toBe(2);
-    expect(result.current.selectedFiles.has('/visible.txt')).toBe(true);
-    expect(result.current.selectedFiles.has('/hidden.txt')).toBe(true);
+    expect(result.current.selectedFiles.has(10)).toBe(true);
+    expect(result.current.selectedFiles.has(11)).toBe(true);
+  });
+
+  it('keys entries without nodeId by path fallback (recent-file entries)', () => {
+    const recentFiles = [{ path: '/recent.txt', type: 'file' }];
+    const { result } = renderHook(() => useSelection(recentFiles));
+
+    act(() => {
+      result.current.handleSelectAll();
+    });
+
+    expect(result.current.selectedFiles.size).toBe(1);
+    expect(result.current.selectedFiles.has('/recent.txt')).toBe(true);
+
+    act(() => {
+      result.current.toggleFileSelection(recentFiles[0]);
+    });
+    expect(result.current.selectedFiles.size).toBe(0);
   });
 
   describe('handleFileClickSelection', () => {
@@ -132,7 +149,7 @@ describe('useSelection', () => {
 
       expect(result.current.selectionMode).toBe(true);
       expect(result.current.selectedFiles.size).toBe(1);
-      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+      expect(result.current.selectedFiles.has(2)).toBe(true);
     });
 
     it('Ctrl+click adds file to selection', () => {
@@ -147,8 +164,8 @@ describe('useSelection', () => {
 
       expect(result.current.selectionMode).toBe(true);
       expect(result.current.selectedFiles.size).toBe(2);
-      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
-      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+      expect(result.current.selectedFiles.has(1)).toBe(true);
+      expect(result.current.selectedFiles.has(3)).toBe(true);
     });
 
     it('Ctrl+click removes file if already selected, auto-exits when last deselected', () => {
@@ -177,9 +194,9 @@ describe('useSelection', () => {
 
       expect(result.current.selectionMode).toBe(true);
       expect(result.current.selectedFiles.size).toBe(3);
-      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
-      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
-      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+      expect(result.current.selectedFiles.has(1)).toBe(true);
+      expect(result.current.selectedFiles.has(2)).toBe(true);
+      expect(result.current.selectedFiles.has(3)).toBe(true);
     });
 
     it('Shift+click with no anchor uses index 0', () => {
@@ -191,8 +208,8 @@ describe('useSelection', () => {
 
       expect(result.current.selectionMode).toBe(true);
       expect(result.current.selectedFiles.size).toBe(2);
-      expect(result.current.selectedFiles.has('/file1.txt')).toBe(true);
-      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
+      expect(result.current.selectedFiles.has(1)).toBe(true);
+      expect(result.current.selectedFiles.has(2)).toBe(true);
     });
   });
 
@@ -206,8 +223,8 @@ describe('useSelection', () => {
       });
 
       expect(result.current.selectedFiles.size).toBe(2);
-      expect(result.current.selectedFiles.has('/file2.txt')).toBe(true);
-      expect(result.current.selectedFiles.has('/folder')).toBe(true);
+      expect(result.current.selectedFiles.has(2)).toBe(true);
+      expect(result.current.selectedFiles.has(3)).toBe(true);
     });
 
     it('handles reversed indices', () => {

@@ -29,9 +29,9 @@ Transitional note:
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | gateway | object | Y | Explorer IO gateway matching `docs/spec/client/services/explorerGateway.md`. |
-| currentPath | string | Y | Current normalized path used for list-refresh decisions. |
+| currentNodeId | number \| null | Y | Current directory node ID used for upload/refresh decisions. |
 | refreshNow | () => void \| Promise<void> | Y | Shell-provided “refresh listing” entry point (implementation-owned elsewhere). |
-| getCurrentPathNow | () => string | Y | Function returning the latest current path at decision time (avoid stale closures; aligns with `refreshPolicy`). |
+| getCurrentNodeIdNow | () => number \| null | Y | Function returning the latest current node ID at decision time (avoid stale closures; aligns with `refreshPolicy`). |
 | openDialogs | object | N | Shell-provided dialog openers for existing UX (rename prompt, conflict prompt, confirm delete, etc.). |
 | notify | (message: object) => void | N | Shell-provided user messaging mechanism (snackbar/toast) matching current behavior. |
 | modePolicy | object | N | Product overlay policy (e.g. share-link mode restrictions). Must be provided by the shell; explorer core must not own these rules. |
@@ -40,13 +40,13 @@ Transitional note:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| handleOperationComplete | `(info?: object | string) => void` | Explorer-owned completion handler that applies refresh policy and tree refresh coordination for operation outcomes. The shell may reuse this callback for adjacent explorer flows (for example create-folder completion) rather than duplicating refresh logic inline. |
-| uploadFiles | (files: FileList \| File[], targetPath?: string) => Promise<void> | Upload entry point (drop/select). |
-| renameEntry | (file: object) => Promise<void> | Rename orchestration, including validation and dialog lifecycle as today. |
-| moveEntries | (paths: string[], targetPath: string) => Promise<void> | Move orchestration (single/bulk). |
-| copyEntries | (paths: string[], targetPath: string) => Promise<void> | Copy orchestration (single/bulk). |
-| deleteEntries | (paths: string[]) => Promise<void> | Delete orchestration. |
-| downloadEntries | (paths: string[]) => Promise<void> | Download orchestration (single/bulk). |
+| handleOperationComplete | `(info?: object \| string) => void` | Explorer-owned completion handler that applies refresh policy (via `startedNodeId` / `targetParentNodeId` in the payload) and tree refresh coordination for operation outcomes. The shell may reuse this callback for adjacent explorer flows (for example create-folder completion) rather than duplicating refresh logic inline. |
+| uploadFiles | (files: FileList \| File[], targetParentNodeId?: number) => Promise<void> | Upload entry point (drop/select). Falls back to the current directory node ID when `targetParentNodeId` is omitted. |
+| renameEntry | (file: object, newName: string) => Promise<void> | Rename orchestration, including validation and dialog lifecycle as today. |
+| moveEntries | (nodeIds: number[], destinationParentNodeId: number) => Promise<void> | Move orchestration (single/bulk) keyed by node IDs. |
+| copyEntries | (nodeIds: number[], destinationParentNodeId: number) => Promise<void> | Copy orchestration (single/bulk) keyed by node IDs. |
+| deleteEntries | (nodeIds: number[]) => Promise<void> | Delete orchestration keyed by node IDs. |
+| downloadEntries | (nodeIds: number[]) => Promise<void> | Download orchestration (single/bulk) keyed by node IDs. |
 
 Notes:
 
@@ -77,7 +77,7 @@ Notes:
 
 - Invokes gateway operations.
 - Triggers progress creation through whichever progress mechanism is used today (may be wired via `useExplorerProgress` in the shell).
-- Calls `refreshNow` conditionally based on refresh policy and current vs started/target paths.
+- Calls `refreshNow` conditionally based on refresh policy and current vs started/target parent nodes.
 - May trigger explorer tree refresh/update notifications tied to operation outcomes.
 
 ### 2.7 Error Handling
@@ -96,12 +96,12 @@ These scenarios should be covered by a dedicated hook unit test in `client/src/p
 - [ ] Move/copy/delete:
   - [ ] Bulk operations produce the same success/error outcomes as today.
   - [ ] Refresh behavior does not incorrectly refresh a folder the user navigated away from (same as today).
-- [ ] `handleOperationComplete` refreshes the active explorer only when the refresh policy says the current path is affected, while still emitting tree-refresh updates for deleted folders.
+- [ ] `handleOperationComplete` refreshes the active explorer only when the refresh policy says the current node is affected, while still emitting tree-refresh updates for deleted folders.
 - [ ] Share-link mode policy:
   - [ ] Restricted commands remain unavailable and cannot be executed (policy remains shell-owned).
 
 ### 2.9 Edge Cases
 
-- Empty selection/path lists are no-ops.
-- Target path missing for move/copy uses the same fallback behavior as today (or is treated as invalid and rejected consistently).
+- Empty selection/node-ID lists are no-ops.
+- Destination parent node missing for move/copy uses the same fallback behavior as today (or is treated as invalid and rejected consistently).
 

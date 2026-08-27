@@ -28,12 +28,14 @@ const ShareDialog = ({
   startFromUserHome = false,
   folderPath = null,
   folderName = null,
+  folderNodeId = null,
+  targetNodeId = null,
   user = null,
   permissionRequest = null,
   onApprove = null,
   onMessage = null,
   enableExternalShare = false,
-  filePath = null,
+  fileNodeId = null,
   fileName = null,
 }) => {
   const { isMobile } = useResponsive();
@@ -57,6 +59,8 @@ const ShareDialog = ({
     startFromUserHome,
     folderPath,
     folderName,
+    folderNodeId,
+    targetNodeId,
     permissionRequest,
     enableExternalShare,
     onMessage,
@@ -79,18 +83,19 @@ const ShareDialog = ({
 
   const {
     rootPath,
+    baseFolderNodeId,
     isAdminMode,
     isShareMode,
     isReviewMode,
     users,
     folderTree,
-    expandedPaths,
-    loadingPaths,
+    expandedNodeIds,
+    loadingNodeIds,
     loadingAllFolders,
     folderMenuAnchor,
     setFolderMenuAnchor,
-    folderMenuPath,
-    setFolderMenuPath,
+    folderMenuNodeId,
+    setFolderMenuNodeId,
     folderMenuView,
     setFolderMenuView,
     externalShareLoading,
@@ -127,28 +132,33 @@ const ShareDialog = ({
       ? `${t('dialogs.permissionReview')} - ${folderName}`
       : `${t('dialogs.folderShare')} - ${folderName}`;
 
-  const renderFolderTreeWrapper = (rootPathArg, level = 0) => (
-    <ShareFolderTree
-      rootPath={rootPathArg}
-      folderTree={folderTree}
-      expandedPaths={expandedPaths}
-      loadingPaths={loadingPaths}
-      toggleExpand={toggleExpand}
-      folderPermissions={folderPermissions}
-      isAdminMode={isAdminMode}
-      userId={userId}
-      user={user}
-      userInfoMap={permissionManager.userInfoMap}
-      users={users}
-      getUserName={getUserName}
-      hasPermissionChanged={hasPermissionChanged}
-      setFolderMenuAnchor={setFolderMenuAnchor}
-      setFolderMenuPath={setFolderMenuPath}
-      loadingPermissions={loadingPermissions}
-      isMobile={isMobile}
-      level={level}
-    />
-  );
+  const renderFolderTreeWrapper = (identifier, level = 0) => {
+    const node = folderTree.get(identifier);
+    const resolvedNodeId = node?.nodeId != null ? node.nodeId : (typeof identifier === 'number' ? identifier : null);
+    return (
+      <ShareFolderTree
+        rootNodeId={resolvedNodeId}
+        folderTree={folderTree}
+        expandedNodeIds={expandedNodeIds}
+        loadingNodeIds={loadingNodeIds}
+        toggleExpand={toggleExpand}
+        folderPermissions={folderPermissions}
+        isAdminMode={isAdminMode}
+        userId={userId}
+        user={user}
+        userInfoMap={permissionManager.userInfoMap}
+        users={users}
+        getUserName={getUserName}
+        hasPermissionChanged={hasPermissionChanged}
+        setFolderMenuAnchor={setFolderMenuAnchor}
+        setFolderMenuNodeId={setFolderMenuNodeId}
+        loadingPermissions={loadingPermissions}
+        isMobile={isMobile}
+        baseFolderNodeId={baseFolderNodeId}
+        level={level}
+      />
+    );
+  };
 
   return (
     <>
@@ -170,7 +180,7 @@ const ShareDialog = ({
           {enableExternalShare ? t('dialogs.externalShareTitle') : dialogTitle}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
-          {enableExternalShare && filePath && (
+          {enableExternalShare && fileNodeId != null && (
             <ExternalShareSection
               externalShareLink={externalShareLink}
               setExternalShareLink={setExternalShareLink}
@@ -185,7 +195,7 @@ const ShareDialog = ({
               createShareLink={createShareLink}
               getShareLinkUrl={getShareLinkUrl}
               onOpenShareLink={openUrlInNewTab}
-              filePath={filePath}
+              fileNodeId={fileNodeId}
               fileName={fileName}
               onMessage={onMessage}
             />
@@ -228,10 +238,10 @@ const ShareDialog = ({
         folderMenuAnchor={folderMenuAnchor}
         onClose={() => {
           setFolderMenuAnchor(null);
-          setFolderMenuPath(null);
+          setFolderMenuNodeId(null);
           setFolderMenuView('manage');
         }}
-        folderMenuPath={folderMenuPath}
+        folderMenuPath={folderMenuNodeId}
         folderPermissions={folderPermissions}
         isAdminMode={isAdminMode}
         userId={userId}

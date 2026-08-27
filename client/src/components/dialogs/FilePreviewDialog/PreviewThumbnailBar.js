@@ -93,6 +93,7 @@ const PreviewThumbnailBar = ({ files, currentIndex, onSelect, onThumbnailsLoaded
             <Box
               key={f.path}
               data-file-path={f.path}
+              data-file-node-id={f.nodeId}
               ref={(el) => {
                 thumbRefs.current[i] = el;
               }}

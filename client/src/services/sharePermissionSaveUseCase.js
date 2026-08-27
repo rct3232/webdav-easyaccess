@@ -5,30 +5,29 @@ import sharePermissionGateway from './sharePermissionGateway';
  * Persist ShareDialog share-mode permissions using diffed revoke/grant operations.
  */
 export async function sharePermissionSaveUseCase({
-  initialFolderPermissions,
-  folderPermissions,
+  initialNodePermissions,
+  nodePermissions,
 } = {}) {
   const { permissionsToRevoke, permissionsToGrant } = buildPermissionDiff({
-    initialFolderPermissions,
-    folderPermissions,
+    initialNodePermissions,
+    nodePermissions,
   });
 
-  for (const { userId, folderPath } of permissionsToRevoke) {
+  for (const { userId, nodeId } of permissionsToRevoke) {
     try {
       await sharePermissionGateway.revokePermission({
         userId,
-        folderPath,
-        includeSubfolders: true,
+        nodeId,
       });
     } catch (error) {
       // Preserve current share-dialog behavior: revokes are best-effort.
     }
   }
 
-  for (const { userId, folderPath, permission } of permissionsToGrant) {
+  for (const { userId, nodeId, permission } of permissionsToGrant) {
     await sharePermissionGateway.grantPermission({
       userId,
-      folderPath,
+      nodeId,
       permission,
     });
   }

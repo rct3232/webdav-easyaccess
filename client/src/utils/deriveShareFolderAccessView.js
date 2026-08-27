@@ -1,11 +1,10 @@
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 
 export function deriveShareFolderAccessView({
-  folderPath,
+  nodeId,
   folderPermissions,
   isAdminMode,
   userId,
-  username,
   user,
   userInfoMap,
   users = [],
@@ -13,8 +12,9 @@ export function deriveShareFolderAccessView({
   hasPermissionChanged = () => false,
   isReviewMode = false,
   permissionRequest = null,
+  baseFolderNodeId = null,
 } = {}) {
-  const currentFolderUserPerms = folderPermissions?.get(folderPath) || new Map();
+  const currentFolderUserPerms = folderPermissions?.get(nodeId) || new Map();
   const currentFolderUsers = Array.from(currentFolderUserPerms.entries());
   const rawDisplayUsers = isAdminMode
     ? currentFolderUsers.filter(([targetUserId]) => targetUserId === userId)
@@ -57,8 +57,8 @@ export function deriveShareFolderAccessView({
       }
     : null;
 
-  const currentUserBaseFolder = isAdminMode ? `/${username}` : null;
-  const currentIsUserBaseFolder = isAdminMode && folderPath === currentUserBaseFolder;
+  const currentIsUserBaseFolder =
+    isAdminMode && baseFolderNodeId != null && nodeId === baseFolderNodeId;
   const isFolderWithAdminPermission =
     isAdminMode && currentFolderUserPerms.get(userId) === PERMISSIONS.ADMIN;
 
@@ -70,6 +70,6 @@ export function deriveShareFolderAccessView({
     userCount: displayUsers.length,
     currentIsUserBaseFolder,
     isFolderWithAdminPermission,
-    isChanged: hasPermissionChanged(folderPath),
+    isChanged: hasPermissionChanged(nodeId),
   };
 }

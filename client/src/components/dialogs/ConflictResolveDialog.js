@@ -60,8 +60,8 @@ const ConflictResolveDialog = ({
                   {conflict.type === 'directory' ? <FolderIcon color="primary" /> : <FileIcon color="action" />}
                 </ListItemIcon>
                 <ListItemText 
-                  primary={conflict.path.split('/').pop()} 
-                  secondary={conflict.path}
+                  primary={conflict.name || conflict.sourceNodeId || `#${index + 1}`}
+                  secondary={conflict.name ? `Conflicts with ${conflict.name}` : t('dialogs.conflictMessage')}
                   primaryTypographyProps={{ variant: 'body2', fontWeight: 'medium' }}
                   secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
                 />

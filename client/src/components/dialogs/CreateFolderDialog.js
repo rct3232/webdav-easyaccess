@@ -11,7 +11,7 @@ import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../utils/validationMessage';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 
-const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress }) => {
+const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, parentNodeId, onProgress }) => {
   const { t } = useTranslation();
   const {
     values,
@@ -52,9 +52,9 @@ const CreateFolderDialog = ({ open, onClose, onComplete, currentPath, onProgress
             });
           }
 
-          await createFolder(folderPath);
+          const result = await createFolder(parentNodeId, finalFolderName);
           reset();
-          onComplete(folderPath, finalFolderName);
+          onComplete(folderPath, finalFolderName, result?.nodeId);
 
           if (onProgress) {
             onProgress({

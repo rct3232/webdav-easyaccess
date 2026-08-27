@@ -7,13 +7,6 @@
  */
 import { get, post, put, del } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-  del: jest.fn(),
-}));
-
 import {
   createShareLink,
   getShareLinks,
@@ -25,6 +18,13 @@ import {
   checkMyPermissionForShare,
   addShareLinkToMyPermissions,
 } from '../shareLinkService';
+
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  del: jest.fn(),
+}));
 
 describe('shareLinkService', () => {
   const originalOrigin = window.location.origin;
@@ -45,14 +45,14 @@ describe('shareLinkService', () => {
   });
 
   describe('createShareLink', () => {
-    it('returns link object from POST /share-links', async () => {
-      const link = { token: 'abc', filePath: '/f', expiresAt: null };
+    it('returns link object from POST /share-links with fileNodeId', async () => {
+      const link = { token: 'abc', nodeId: 42, displayPath: '/f', expiresAt: null };
       post.mockResolvedValueOnce({ data: link });
 
-      const result = await createShareLink('/f', 14);
+      const result = await createShareLink(42, 14);
 
       expect(post).toHaveBeenCalledWith('/share-links', {
-        filePath: '/f',
+        fileNodeId: 42,
         expiresInDays: 14,
       });
       expect(result).toEqual(link);

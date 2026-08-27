@@ -5,12 +5,12 @@
  */
 import { renderHook, act } from '@testing-library/react';
 
+import { usePullToRefresh } from '../../../../hooks/usePullToRefresh';
+import { useExplorerRefreshIndicator } from '../useExplorerRefreshIndicator';
+
 jest.mock('../../../../hooks/usePullToRefresh', () => ({
   usePullToRefresh: jest.fn(),
 }));
-
-import { usePullToRefresh } from '../../../../hooks/usePullToRefresh';
-import { useExplorerRefreshIndicator } from '../useExplorerRefreshIndicator';
 
 function createDefaultProps(overrides = {}) {
   return {

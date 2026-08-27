@@ -6,11 +6,6 @@
  */
 import { get, post } from '../apiClient';
 
-jest.mock('../apiClient', () => ({
-  get: jest.fn(),
-  post: jest.fn(),
-}));
-
 import {
   createPermissionRequest,
   listInboxPermissionRequests,
@@ -21,42 +16,32 @@ import {
   checkOwnerExists,
 } from '../permissionRequestService';
 
+jest.mock('../apiClient', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+}));
+
 describe('permissionRequestService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe('createPermissionRequest', () => {
-    it('sends folderPath when provided', async () => {
+    it('sends nodeId when provided', async () => {
       post.mockResolvedValueOnce({ data: { id: 'req-1' } });
 
       const result = await createPermissionRequest({
-        folderPath: '/folder',
+        nodeId: 42,
         permission: 'read',
         message: 'Please',
       });
 
       expect(post).toHaveBeenCalledWith('/permission-requests', {
+        nodeId: 42,
         permission: 'read',
         message: 'Please',
-        folderPath: '/folder',
       });
       expect(result).toHaveProperty('id');
-    });
-
-    it('sends filePath when provided (over folderPath)', async () => {
-      post.mockResolvedValueOnce({ data: {} });
-
-      await createPermissionRequest({
-        filePath: '/file.txt',
-        permission: 'read',
-      });
-
-      expect(post).toHaveBeenCalledWith('/permission-requests', {
-        permission: 'read',
-        message: undefined,
-        filePath: '/file.txt',
-      });
     });
   });
 
@@ -130,25 +115,15 @@ describe('permissionRequestService', () => {
   });
 
   describe('checkOwnerExists', () => {
-    it('uses folderPath param when forFile is false', async () => {
-      get.mockResolvedValueOnce({ data: { exists: true } });
+    it('uses nodeId param', async () => {
+      get.mockResolvedValueOnce({ data: { ownerExists: true } });
 
-      const result = await checkOwnerExists('/folder');
-
-      expect(get).toHaveBeenCalledWith('/permission-requests/check-owner', {
-        params: { folderPath: '/folder' },
-      });
-      expect(result).toHaveProperty('exists');
-    });
-
-    it('uses filePath param when forFile is true', async () => {
-      get.mockResolvedValueOnce({ data: {} });
-
-      await checkOwnerExists('/path/file.txt', { forFile: true });
+      const result = await checkOwnerExists(42);
 
       expect(get).toHaveBeenCalledWith('/permission-requests/check-owner', {
-        params: { filePath: '/path/file.txt' },
+        params: { nodeId: 42 },
       });
+      expect(result).toHaveProperty('ownerExists');
     });
   });
 });

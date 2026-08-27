@@ -1,17 +1,6 @@
 const fs = require('fs');
-const fsp = require('fs/promises');
-const os = require('os');
 const path = require('path');
 
-const {
-  createDirectory,
-  deleteFile,
-  getFileContents,
-  listDirectory,
-  pathExists,
-  putFileContentsAdvanced,
-} = require('../utils/webdav');
-const { normalizeWebdavPath } = require('./metaPaths');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../utils/errorHandler');
 
@@ -20,41 +9,14 @@ let sqliteDb = null;
 
 function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
-  if (forced === 'fs' || forced === 'filesystem') return 'fs';
-  if (forced === 'webdav') return 'webdav';
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (forced === 'sqlite') return 'sqlite';
-  if (process.env.NODE_ENV === 'test') return 'fs';
-  return 'webdav';
+  console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to sqlite.`);
+  return 'sqlite';
 }
 
 function isSqliteBackend() {
   return getBackend() === 'sqlite';
-}
-
-function getFsBaseDir() {
-  const envDir = process.env.WEA_FS_DIR || process.env.WEA_METADATA_DIR;
-  return envDir ? path.resolve(envDir) : path.join(os.tmpdir(), 'webdav-easyaccess-meta');
-}
-
-function webdavToFsPath(webdavPath) {
-  const normalized = normalizeWebdavPath(webdavPath);
-  const base = getFsBaseDir();
-  // Drop leading slash to avoid absolute join
-  const rel = normalized === '/' ? '' : normalized.substring(1);
-  const joined = path.join(base, rel);
-  // Safety: ensure path stays under base
-  const resolved = path.resolve(joined);
-  if (!resolved.startsWith(base)) {
-    throw createError(SERVER_ERROR_CODES.storage.invalidPathMapping, 400, { path: webdavPath });
-  }
-  return resolved;
-}
-
-function makeStatusError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
 }
 
 function parseBooleanEnv(value) {
@@ -111,6 +73,13 @@ function getPgPool() {
   }
 
   pgPool = new Pool(resolvePgConfig());
+  pgPool.on('error', (err) => {
+    // node-pg emits 'error' for idle-client failures (e.g. PostgreSQL
+    // restart or dropped connection). Without a listener the event is
+    // unhandled and crashes the process.
+    // eslint-disable-next-line no-console
+    console.error('Unexpected error on idle PostgreSQL client:', err.message);
+  });
   return pgPool;
 }
 
@@ -122,7 +91,21 @@ async function closePgPool() {
 }
 
 function getSqliteConnection() {
-  if (sqliteDb) return sqliteDb;
+  const dbPath = process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../data/webdav.db');
+
+  // Reuse the cached connection only when it targets the same file and is
+  // still open. Cross-suite test runs change WEA_SQLITE_PATH between suites;
+  // reusing a stale (closed or different-path) handle causes
+  // SQLITE_MISUSE "Database handle is closed".
+  if (sqliteDb && sqliteDb.__weaPath === dbPath && !sqliteDb.__weaClosed) {
+    return sqliteDb;
+  }
+
+  if (sqliteDb) {
+    try { sqliteDb.close(); } catch { /* ignore */ }
+    sqliteDb = null;
+  }
+
   let sqlite3;
   try {
     sqlite3 = require('sqlite3').verbose();
@@ -134,7 +117,6 @@ function getSqliteConnection() {
     );
   }
 
-  const dbPath = process.env.WEA_SQLITE_PATH || path.join(__dirname, '../../data/webdav.db');
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -145,6 +127,8 @@ function getSqliteConnection() {
       console.error('Failed to open SQLite database:', err.message);
     }
   });
+  sqliteDb.__weaPath = dbPath;
+  sqliteDb.__weaClosed = false;
 
   sqliteDb.run('PRAGMA journal_mode = WAL', () => {});
   sqliteDb.run('PRAGMA foreign_keys = ON', () => {});
@@ -235,182 +219,15 @@ async function withTransaction(callback) {
   }
 }
 
-async function ensureDir(dirPath) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(dirPath);
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    await fsp.mkdir(local, { recursive: true });
-    return;
-  }
-  // WebDAV MKCOL is not recursive; create step-by-step (mkdir -p)
-  const parts = normalized.split('/').filter(Boolean);
-  let current = '';
-  for (const part of parts) {
-    current = current + '/' + part;
-    try {
-      await createDirectory(current);
-    } catch (e) {
-      // Ignore "already exists" / conflicts. If a parent was missing, the next
-      // iteration would still fail; later writes will surface a clear error.
-    }
-  }
-}
-
-async function exists(p) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(p);
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    try {
-      await fsp.access(local, fs.constants.F_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return await pathExists(normalized);
-}
-
-async function readFile(p) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(p);
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    return await fsp.readFile(local);
-  }
-  const buf = await getFileContents(normalized);
-  return Buffer.from(buf);
-}
-
-async function writeFile(p, data, options = {}) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(p);
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf8');
-
-  const overwrite = options.overwrite !== undefined ? !!options.overwrite : true;
-  const ifNoneMatchStar = !!options.ifNoneMatchStar;
-  const contentType = options.contentType || 'application/octet-stream';
-
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    await fsp.mkdir(path.dirname(local), { recursive: true });
-    const flag = ifNoneMatchStar || !overwrite ? 'wx' : 'w';
-    try {
-      await fsp.writeFile(local, buf, { flag });
-      return;
-    } catch (e) {
-      if (e && (e.code === 'EEXIST' || e.code === 'EISDIR')) {
-        throw makeStatusError(412, `Precondition Failed: ${normalized} exists`);
-      }
-      throw e;
-    }
-  }
-
-  const headers = {
-    'Content-Type': contentType,
-    ...(options.headers || {}),
-  };
-  if (ifNoneMatchStar) {
-    headers['If-None-Match'] = '*';
-  }
-
-  // webdav putFileContents uses overwrite flag (client-side) + server-side conditional header
-  await putFileContentsAdvanced(normalized, buf, {
-    overwrite: ifNoneMatchStar ? false : overwrite,
-    headers,
-  });
-}
-
-async function deletePath(p) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(p);
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    try {
-      await fsp.rm(local, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-    return;
-  }
-  try {
-    await deleteFile(normalized);
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Create directory safely (check existence before creating, retry on failure)
- * @param {string} dirPath - Directory path
- * @returns {Promise<void>}
- */
-async function ensureDirSafe(dirPath) {
-  const normalizedPath = normalizeWebdavPath(dirPath);
-  try {
-    // Check if directory exists
-    const dirExists = await exists(normalizedPath);
-    if (!dirExists) {
-      // Create directory
-      await ensureDir(normalizedPath);
-    }
-  } catch (error) {
-    // Attempt to create directory even on error
-    try {
-      await ensureDir(normalizedPath);
-    } catch (e) {
-      // Ignore directory creation failure (may already exist)
-    }
-  }
-}
-
-async function listDir(dirPath) {
-  const backend = getBackend();
-  const normalized = normalizeWebdavPath(dirPath);
-  if (backend === 'fs') {
-    const local = webdavToFsPath(normalized);
-    try {
-      const entries = await fsp.readdir(local, { withFileTypes: true });
-      return entries.map((ent) => ({
-        basename: ent.name,
-        type: ent.isDirectory() ? 'directory' : 'file',
-      }));
-    } catch (e) {
-      // spec 2.6: EACCES etc permission denied → throw; upstream returns 403
-      if (e?.code === 'EACCES' || e?.code === 'EPERM') {
-        const err = new Error(e.message || 'Permission denied');
-        err.code = e.code;
-        err.status = 403;
-        throw err;
-      }
-      return [];
-    }
-  }
-
-  const items = await listDirectory(normalized);
-  return items.map((it) => ({
-    basename: it.basename,
-    type: it.type,
-  }));
-}
-
 module.exports = {
   getBackend,
   isSqliteBackend,
-  getFsBaseDir,
   getPgPool,
   withTransaction,
   closePgPool,
   getSqliteConnection,
+  sqliteQuery,
+  sqliteRun,
   withSqliteTransaction,
   closeSqliteDb,
-  ensureDir,
-  ensureDirSafe,
-  exists,
-  readFile,
-  writeFile,
-  deletePath,
-  listDir,
 };
-

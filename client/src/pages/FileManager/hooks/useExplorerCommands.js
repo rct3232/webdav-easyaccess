@@ -5,7 +5,6 @@ import { getServerErrorDisplay, showErrorFromError } from '../../../utils/errorU
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../utils/validationMessage';
-import { getParentPath } from '../../../utils/pathUtils';
 import { shouldRefreshAfterOperation } from '../../../utils/refreshPolicy';
 import { useBulkOperations } from './useBulkOperations';
 import { useFileOperations } from './useFileOperations';
@@ -18,8 +17,10 @@ export function useExplorerCommands({
   shareToken,
   currentPath,
   currentPathRef,
+  currentNodeId,
+  currentNodeIdRef,
   refreshNow,
-  getCurrentPathNow,
+  getCurrentNodeIdNow,
   hasWritePermission,
   selectedFiles,
   sortedFiles,
@@ -55,40 +56,40 @@ export function useExplorerCommands({
 
   const handleOperationComplete = useCallback((info = {}) => {
     const payload = typeof info === 'string'
-      ? { opType: 'delete', deletedFolderPath: info }
+      ? { opType: 'delete' }
       : (info || {});
 
     const opType = payload.opType || payload.type || 'refresh';
-    const startedPath = payload.startedPath;
-    const targetPath = payload.targetPath;
-    const currentPathNow = typeof getCurrentPathNow === 'function'
-      ? getCurrentPathNow()
-      : currentPathRef.current;
+    const startedNodeId = payload.startedNodeId;
+    const targetParentNodeId = payload.targetParentNodeId;
+    const currentNodeIdNow = typeof getCurrentNodeIdNow === 'function'
+      ? getCurrentNodeIdNow()
+      : currentNodeIdRef?.current;
 
-    const deletedFolderPaths = Array.isArray(payload.deletedFolderPaths)
-      ? payload.deletedFolderPaths
-      : (payload.deletedFolderPath ? [payload.deletedFolderPath] : []);
+    const deletedNodeIds = Array.isArray(payload.deletedNodeIds)
+      ? payload.deletedNodeIds
+      : (payload.deletedNodeId ? [payload.deletedNodeId] : []);
 
-    deletedFolderPaths.filter(Boolean).forEach((folderPath) => {
+    deletedNodeIds.filter(Boolean).forEach((nodeId) => {
       setTreeUpdateTrigger({
         type: 'deleted',
-        folderPath,
+        nodeId,
         timestamp: Date.now(),
       });
     });
 
     const shouldRefresh = shouldRefreshAfterOperation({
       opType,
-      startedPath: startedPath ?? currentPathNow,
-      currentPathNow,
-      targetPath,
+      startedNodeId: startedNodeId ?? currentNodeIdNow,
+      currentNodeIdNow,
+      targetParentNodeId,
     });
 
     if (shouldRefresh && typeof refreshNow === 'function') {
       refreshNow();
     }
 
-    if (deletedFolderPaths.length > 0) {
+    if (deletedNodeIds.length > 0) {
       setTimeout(() => {
         setTreeUpdateTrigger({
           type: 'refresh',
@@ -96,7 +97,7 @@ export function useExplorerCommands({
         });
       }, 500);
     }
-  }, [currentPathRef, getCurrentPathNow, refreshNow, setTreeUpdateTrigger]);
+  }, [currentNodeIdRef, getCurrentNodeIdNow, refreshNow, setTreeUpdateTrigger]);
 
   const {
     folderPickerOpen,
@@ -124,7 +125,7 @@ export function useExplorerCommands({
     setDropMessage,
     setSelectedFiles,
     setSelectionMode,
-    () => currentPathRef.current,
+    () => currentNodeIdRef?.current ?? currentNodeId,
     { markProcessing, clearProcessing, shareToken: isShareLinkMode ? shareToken : undefined }
   );
 
@@ -150,8 +151,8 @@ export function useExplorerCommands({
     },
   });
 
-  const executeExplorerUpload = useCallback(async (filesToUpload, targetPath, onConflict = 'error') => {
-    const uploadPath = targetPath || currentPath;
+  const executeExplorerUpload = useCallback(async (filesToUpload, parentNodeId, onConflict = 'error') => {
+    const uploadParentNodeId = parentNodeId || currentNodeId;
     if (!filesToUpload || filesToUpload.length === 0) return;
 
     dismissFailedItemsSafe();
@@ -176,7 +177,7 @@ export function useExplorerCommands({
       name: t('fileManager.uploadFileCount', { count: filesToUpload.length }),
       fileItems: [...fileItems],
       cancellable: true,
-      retryData: { type: 'upload', currentPath: uploadPath },
+      retryData: { type: 'upload', parentNodeId: uploadParentNodeId },
     };
 
     if (!hasWritePermission && !user?.is_admin) {
@@ -210,7 +211,7 @@ export function useExplorerCommands({
 
     try {
       const { errors } = await explorerGateway.uploadToPath({
-        targetPath: uploadPath,
+        parentNodeId: uploadParentNodeId,
         files: filesToUpload,
         onProgress: (progress) => {
           if (explorerUploadCancelAllRequestedRef.current.has(progressId)) return;
@@ -270,7 +271,7 @@ export function useExplorerCommands({
       }));
 
       if (explorerUploadCancelAllRequestedRef.current.has(progressId)) {
-        handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+        handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
         return;
       }
 
@@ -312,7 +313,7 @@ export function useExplorerCommands({
         }, 3000);
       }
 
-      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+      handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
       setTreeUpdateTrigger({
         type: 'refresh',
         timestamp: Date.now(),
@@ -335,14 +336,14 @@ export function useExplorerCommands({
         keepOnError: true,
         fileItems: [...fileItems],
       });
-      handleOperationComplete({ opType: 'upload', startedPath: uploadPath });
+      handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
     } finally {
       explorerUploadAbortControllersRef.current.delete(progressId);
       explorerUploadCancelledRef.current.delete(progressId);
       explorerUploadCancelAllRequestedRef.current.delete(progressId);
     }
   }, [
-    currentPath,
+    currentNodeId,
     dismissFailedItemsSafe,
     hasWritePermission,
     user,
@@ -355,26 +356,20 @@ export function useExplorerCommands({
   const resolveUploadConflict = useCallback(async (resolution) => {
     if (!uploadConflictData) return;
 
-    const { filesToUpload, targetPath } = uploadConflictData;
+    const { filesToUpload, parentNodeId } = uploadConflictData;
     setUploadConflictData(null);
 
     if (filesToUpload.length > 0) {
-      await executeExplorerUpload(filesToUpload, targetPath, resolution);
+      await executeExplorerUpload(filesToUpload, parentNodeId, resolution);
     }
   }, [uploadConflictData, executeExplorerUpload]);
 
-  const handleUploadStart = useCallback(async (files, uploadPath) => {
+  const handleUploadStart = useCallback(async (files, uploadParentNodeId) => {
     closeUploadDialog();
 
     if (!files || files.length === 0) return;
     const filesToUpload = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
 
-    const operations = filesToUpload.map(({ file, relativePath }) => {
-      const fileName = relativePath || file.name;
-      const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
-      return { sourcePath: fileName, destinationPath, type: 'upload' };
-    });
-
     const progressId = `upload_check_${Date.now()}`;
     updateProgress({
       id: progressId,
@@ -387,33 +382,27 @@ export function useExplorerCommands({
     });
 
     try {
-      const conflicts = await explorerGateway.checkConflicts({ operations });
+      const conflicts = await explorerGateway.checkConflicts({ parentNodeId: uploadParentNodeId, files: filesToUpload });
 
       if (conflicts && conflicts.length > 0) {
         updateProgress({ id: progressId, remove: true });
-        setUploadConflictData({ filesToUpload, targetPath: uploadPath, conflicts });
+        setUploadConflictData({ filesToUpload, parentNodeId: uploadParentNodeId, conflicts });
         return;
       }
 
       updateProgress({ id: progressId, remove: true });
-      await executeExplorerUpload(filesToUpload, uploadPath);
+      await executeExplorerUpload(filesToUpload, uploadParentNodeId);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Upload conflict check failed:', error);
       updateProgress({ id: progressId, remove: true });
-      await executeExplorerUpload(filesToUpload, uploadPath);
+      await executeExplorerUpload(filesToUpload, uploadParentNodeId);
     }
   }, [closeUploadDialog, executeExplorerUpload, updateProgress, t]);
 
-  const handleExplorerDrop = useCallback(async (filesToUpload, targetPath) => {
-    const uploadPath = targetPath || currentPath;
+  const handleExplorerDrop = useCallback(async (filesToUpload, parentNodeId) => {
+    const uploadParentNodeId = parentNodeId || currentNodeId;
     if (!filesToUpload || filesToUpload.length === 0) return;
-
-    const operations = filesToUpload.map(({ file, relativePath }) => {
-      const fileName = relativePath || file.name;
-      const destinationPath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
-      return { sourcePath: fileName, destinationPath, type: 'upload' };
-    });
 
     const progressId = `upload_check_${Date.now()}`;
     updateProgress({
@@ -427,30 +416,30 @@ export function useExplorerCommands({
     });
 
     try {
-      const conflicts = await explorerGateway.checkConflicts({ operations });
+      const conflicts = await explorerGateway.checkConflicts({ parentNodeId: uploadParentNodeId, files: filesToUpload });
 
       if (conflicts && conflicts.length > 0) {
         updateProgress({ id: progressId, remove: true });
-        setUploadConflictData({ filesToUpload, targetPath, conflicts });
+        setUploadConflictData({ filesToUpload, parentNodeId: uploadParentNodeId, conflicts });
         return;
       }
 
       updateProgress({ id: progressId, remove: true });
-      await executeExplorerUpload(filesToUpload, targetPath);
+      await executeExplorerUpload(filesToUpload, uploadParentNodeId);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Upload conflict check failed:', error);
       updateProgress({ id: progressId, remove: true });
-      await executeExplorerUpload(filesToUpload, targetPath);
+      await executeExplorerUpload(filesToUpload, uploadParentNodeId);
     }
-  }, [currentPath, updateProgress, executeExplorerUpload, t]);
+  }, [currentNodeId, updateProgress, executeExplorerUpload, t]);
 
   const handleBulkDeleteConfirm = useCallback(() => {
-    const filePaths = [...bulkDeleteFilePaths];
+    const nodeIds = [...bulkDeleteFilePaths];
     closeBulkDeleteDialog();
     setSelectedFiles(new Set());
     setSelectionMode(false);
-    handleBulkDelete({ filePaths }, null);
+    handleBulkDelete({ nodeIds }, null);
   }, [
     bulkDeleteFilePaths,
     closeBulkDeleteDialog,
@@ -471,7 +460,7 @@ export function useExplorerCommands({
     setRenameLoading(true);
     try {
       setRenameError('');
-      await handleFileRenameOp(targetFile, renameNewName, { startedPath: currentPathRef.current });
+      await handleFileRenameOp(targetFile, renameNewName, { startedNodeId: currentNodeIdRef?.current });
       closeRenameDialog();
       closeActionSheet();
     } finally {
@@ -481,7 +470,7 @@ export function useExplorerCommands({
     actionSheetFile,
     closeActionSheet,
     closeRenameDialog,
-    currentPathRef,
+    currentNodeIdRef,
     handleFileRenameOp,
     mobileRenameFile,
     renameNewName,
@@ -499,26 +488,25 @@ export function useExplorerCommands({
     }
   }, [actionSheetFile, closeActionSheet, handleFileDownloadOp]);
 
-  const movePathsToFolder = useCallback(async (filePaths, targetFolderPath) => {
-    const paths = Array.isArray(filePaths) ? filePaths.filter(Boolean) : [];
-    if (!targetFolderPath || paths.length === 0) return;
+  const moveNodeIdsToFolder = useCallback(async (sourceNodeIds, destinationParentNodeId) => {
+    const nodeIds = Array.isArray(sourceNodeIds) ? sourceNodeIds.filter(Boolean) : [];
+    if (!destinationParentNodeId || nodeIds.length === 0) return;
 
-    if (paths.some((p) => p === targetFolderPath)) return;
-    if (paths.every((p) => getParentPath(p) === targetFolderPath)) return;
+    if (nodeIds.includes(destinationParentNodeId)) return;
     try {
-      await handleFolderPickerSelect(targetFolderPath, { type: 'move', filePaths: paths });
+      await handleFolderPickerSelect(destinationParentNodeId, { type: 'move', nodeIds });
     } catch {
       // handled in useBulkOperations
     }
   }, [handleFolderPickerSelect]);
 
   const handleFileDrop = useCallback((draggedFile, targetFolder) => {
-    movePathsToFolder([draggedFile.path], targetFolder.path);
-  }, [movePathsToFolder]);
+    moveNodeIdsToFolder([draggedFile.nodeId], targetFolder.nodeId);
+  }, [moveNodeIdsToFolder]);
 
-  const handleInternalFileDrop = useCallback((draggedPath, targetFolderPath) => {
-    movePathsToFolder([draggedPath], targetFolderPath);
-  }, [movePathsToFolder]);
+  const handleInternalFileDrop = useCallback((draggedNodeId, destinationParentNodeId) => {
+    moveNodeIdsToFolder([draggedNodeId], destinationParentNodeId);
+  }, [moveNodeIdsToFolder]);
 
   const handleDropPermissionDenied = useCallback((destinationPath) => {
     showError(t('fileManager.dropNoWritePermission', { path: destinationPath }));
@@ -539,38 +527,38 @@ export function useExplorerCommands({
       throw new Error(getValidationMessage(nameError, t));
     }
 
-    await handleFileRenameOp(file, newName, { startedPath: currentPathRef.current });
-  }, [currentPathRef, handleFileRenameOp, t]);
+    await handleFileRenameOp(file, newName, { startedNodeId: currentNodeIdRef?.current });
+  }, [currentNodeIdRef, handleFileRenameOp, t]);
 
-  const deleteEntries = useCallback(async (paths) => {
-    const filePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
-    if (filePaths.length === 0) return;
-    await handleBulkDelete({ filePaths }, null);
+  const deleteEntries = useCallback(async (nodeIds) => {
+    const ids = Array.isArray(nodeIds) ? nodeIds.filter(Boolean) : [];
+    if (ids.length === 0) return;
+    await handleBulkDelete({ nodeIds: ids }, null);
   }, [handleBulkDelete]);
 
-  const moveEntries = useCallback(async (paths, targetPath) => {
-    const filePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
-    if (!targetPath || filePaths.length === 0) return;
-    await handleFolderPickerSelect(targetPath, { type: 'move', filePaths });
+  const moveEntries = useCallback(async (nodeIds, destinationParentNodeId) => {
+    const ids = Array.isArray(nodeIds) ? nodeIds.filter(Boolean) : [];
+    if (!destinationParentNodeId || ids.length === 0) return;
+    await handleFolderPickerSelect(destinationParentNodeId, { type: 'move', nodeIds: ids });
   }, [handleFolderPickerSelect]);
 
-  const copyEntries = useCallback(async (paths, targetPath) => {
-    const filePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
-    if (!targetPath || filePaths.length === 0) return;
-    await handleFolderPickerSelect(targetPath, { type: 'copy', filePaths });
+  const copyEntries = useCallback(async (nodeIds, destinationParentNodeId) => {
+    const ids = Array.isArray(nodeIds) ? nodeIds.filter(Boolean) : [];
+    if (!destinationParentNodeId || ids.length === 0) return;
+    await handleFolderPickerSelect(destinationParentNodeId, { type: 'copy', nodeIds: ids });
   }, [handleFolderPickerSelect]);
 
-  const downloadEntries = useCallback(async (paths) => {
-    const filePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
-    if (filePaths.length === 0) return;
-    await handleBulkDownload({ filePaths });
+  const downloadEntries = useCallback(async (nodeIds) => {
+    const ids = Array.isArray(nodeIds) ? nodeIds.filter(Boolean) : [];
+    if (ids.length === 0) return;
+    await handleBulkDownload({ nodeIds: ids });
   }, [handleBulkDownload]);
 
-  const uploadFiles = useCallback(async (files, targetPath) => {
+  const uploadFiles = useCallback(async (files, targetParentNodeId) => {
     if (!files) return;
     const list = Array.isArray(files) ? files : Array.from(files);
-    await handleUploadStart(list, targetPath ?? currentPathRef.current);
-  }, [currentPathRef, handleUploadStart]);
+    await handleUploadStart(list, targetParentNodeId ?? currentNodeIdRef?.current);
+  }, [currentNodeIdRef, handleUploadStart]);
 
   const runWithErrorSurface = useCallback(async (fn) => {
     try {
@@ -632,12 +620,12 @@ export function useExplorerCommands({
     handleOperationComplete,
 
     // command-style API (for future wiring)
-    uploadFiles: (files, targetPath) => runWithErrorSurface(() => uploadFiles(files, targetPath)),
+    uploadFiles: (files, targetParentNodeId) => runWithErrorSurface(() => uploadFiles(files, targetParentNodeId)),
     renameEntry: (file, newName) => runWithErrorSurface(() => renameEntry(file, newName)),
-    moveEntries: (paths, targetPath) => runWithErrorSurface(() => moveEntries(paths, targetPath)),
-    copyEntries: (paths, targetPath) => runWithErrorSurface(() => copyEntries(paths, targetPath)),
-    deleteEntries: (paths) => runWithErrorSurface(() => deleteEntries(paths)),
-    downloadEntries: (paths) => runWithErrorSurface(() => downloadEntries(paths)),
+    moveEntries: (nodeIds, destinationParentNodeId) => runWithErrorSurface(() => moveEntries(nodeIds, destinationParentNodeId)),
+    copyEntries: (nodeIds, destinationParentNodeId) => runWithErrorSurface(() => copyEntries(nodeIds, destinationParentNodeId)),
+    deleteEntries: (nodeIds) => runWithErrorSurface(() => deleteEntries(nodeIds)),
+    downloadEntries: (nodeIds) => runWithErrorSurface(() => downloadEntries(nodeIds)),
   }), [
     processingMap,
     setProcessingMap,

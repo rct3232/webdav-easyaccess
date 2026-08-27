@@ -37,23 +37,24 @@
 
 ### 2.5 Side Effects
 
-- IntersectionObserver on visible image/video files
-- requestThumbnailsBatch (debounced DEBOUNCE_MS)
-- onThumbnailsLoaded(thumbnailMap)
+- IntersectionObserver observes visible image/video file elements keyed by `data-file-node-id`
+- requestThumbnailsBatch(nodeIds) (debounced DEBOUNCE_MS)
+- onThumbnailsLoaded(thumbnailMap), where `thumbnailMap` is `Map(nodeId → thumbnailUrl)` keyed by `file.nodeId`
 
 ### 2.6 Error Handling
 
 - console.error on fail
-- requestedPathsRef prevents re-request
+- requestedNodeIdsRef prevents re-request
 
 ### 2.7 Verification Scenarios
 
 - [ ] Only image/video files observed
-- [ ] requestThumbnailsBatch called
-- [ ] onThumbnailsLoaded with Map
+- [ ] requestThumbnailsBatch called with nodeIds (batch keyed by `file.nodeId`)
+- [ ] onThumbnailsLoaded with Map(nodeId → thumbnailUrl)
 - [ ] Debouncing
 
 ### 2.8 Edge Cases
 
 - pendingRequestRef prevents concurrent
 - ROOT_MARGIN for preload
+- `data-file-node-id` attributes supply the nodeIds for intersection observation

@@ -10,12 +10,17 @@ import {
 import { useInfiniteScroll } from '../../../hooks/useInfiniteScroll';
 
 export const useExplorerSession = ({
-  currentPath,
+  currentNodeId,
+  view = 'folder',
   files: filesFromListing,
   initialSearchQuery = '',
   isMobile = false,
 } = {}) => {
-  const sessionKey = useMemo(() => currentPath || '/', [currentPath]);
+  const sessionKey = useMemo(() => {
+    if (view === 'recent') return 'view:recent';
+    if (view === 'shared') return 'view:shared';
+    return currentNodeId == null ? 'node:root' : `node:${currentNodeId}`;
+  }, [view, currentNodeId]);
 
   const [viewMode, setViewMode] = useState(() => getViewMode());
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
@@ -63,15 +68,15 @@ export const useExplorerSession = ({
     setFiles((prevFiles) => {
       if (!(thumbnailMap instanceof Map) || thumbnailMap.size === 0) return prevFiles;
 
-      const hasChanges = Array.from(thumbnailMap.keys()).some((path) => {
-        const file = prevFiles.find((f) => f.path === path);
+      const hasChanges = Array.from(thumbnailMap.keys()).some((nodeId) => {
+        const file = prevFiles.find((f) => f.nodeId === nodeId);
         return file && !file.thumbnailUrl;
       });
 
       if (!hasChanges) return prevFiles;
 
       return prevFiles.map((file) => {
-        const thumbnailUrl = thumbnailMap.get(file.path);
+        const thumbnailUrl = thumbnailMap.get(file.nodeId);
         if (thumbnailUrl && !file.thumbnailUrl) {
           return { ...file, thumbnailUrl };
         }

@@ -5,27 +5,29 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import useFolderTreeController from '../useFolderTreeController';
 
-jest.mock('../../../../services/recentFilesRepository', () => ({
-  getRecentFiles: jest.fn(),
-}));
-
-jest.mock('../../../../services/recentFilesNotifier', () => ({
-  onRecentFilesChange: jest.fn(),
-}));
-
-jest.mock('../../../../services/folderTreeGateway', () => ({
-  __esModule: true,
-  default: {
-    getUserSharedFolderPermissions: jest.fn(),
-  },
-}));
-
 import { getRecentFiles } from '../../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../../services/folderTreeGateway';
 
+jest.mock('../../../../services/recentFilesRepository', () => {
+  const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesRepositoryMock();
+});
+
+jest.mock('../../../../services/recentFilesNotifier', () => {
+  const { createRecentFilesNotifierMock } = require('../../../../testing/mocks/serviceMocks');
+  return createRecentFilesNotifierMock();
+});
+
+jest.mock('../../../../services/folderTreeGateway', () => {
+  const { createFolderTreeGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return createFolderTreeGatewayMock();
+});
+
 const renderControllerHook = (initialProps) =>
   renderHook((props) => useFolderTreeController(props), { initialProps });
+
+const baseUser = { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 };
 
 describe('useFolderTreeController', () => {
   beforeEach(() => {
@@ -41,15 +43,15 @@ describe('useFolderTreeController', () => {
     const unsubscribe = jest.fn();
     onRecentFilesChange.mockImplementation(() => unsubscribe);
 
-    // React strict-mode (or test environment) may invoke effects more than once.
-    // Use a stable resolved value rather than `mockResolvedValueOnce`.
     getRecentFiles.mockResolvedValue([{ path: '/testuser/f1', name: 'f1' }]);
 
-    const onPathClick = jest.fn();
+    const onNodeClick = jest.fn();
     const initialProps = {
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick,
+      user: baseUser,
+      onNodeClick,
+      ancestors: [],
     };
 
     const { result, rerender } = renderHook((props) => useFolderTreeController(props), {
@@ -85,9 +87,11 @@ describe('useFolderTreeController', () => {
     });
 
     const { result } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -110,27 +114,31 @@ describe('useFolderTreeController', () => {
     getRecentFiles.mockResolvedValue([]);
 
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
-      { folder_path: '/shared/root/child', permission: 'read' },
+      { nodeId: 10, name: 'Shared Docs', permission: 'read', type: 'directory' },
+      { nodeId: 20, name: 'Team Assets', permission: 'read', type: 'directory' },
     ]);
 
     const { result } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
       expect(result.current.sharedFolders).toHaveLength(2);
     });
-    expect(result.current.sharedFolders[0]).toMatchObject({ folder_path: '/shared/root', permission: 'read' });
+    expect(result.current.sharedFolders[0]).toMatchObject({ nodeId: 10, name: 'Shared Docs', permission: 'read' });
   });
 
   it('does not load shared folders for admin users', async () => {
     const { result } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'admin', is_admin: true },
-      onPathClick: jest.fn(),
+      user: { id: '1', username: 'admin', is_admin: true, rootNodeId: 999 },
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -146,9 +154,11 @@ describe('useFolderTreeController', () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockRejectedValue(new Error('shared failed'));
 
     const { result } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -159,15 +169,17 @@ describe('useFolderTreeController', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('sets sharedExpanded/recentExpanded based on currentPath', async () => {
+  it('sets sharedExpanded/recentExpanded based on the virtual-root routes', async () => {
     onRecentFilesChange.mockImplementation(() => jest.fn());
     getRecentFiles.mockResolvedValue([]);
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
 
     const { result: sharedResult } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/__shared__',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -175,9 +187,11 @@ describe('useFolderTreeController', () => {
     });
 
     const { result: recentResult } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/__recent__',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -185,15 +199,17 @@ describe('useFolderTreeController', () => {
     });
   });
 
-  it('auto-expands shared sections when currentPath enters a shared folder prefix', async () => {
+  it('auto-expands the shared section when current node is a shared folder', async () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
+      { nodeId: 10, permission: 'read' },
     ]);
 
     const { result } = renderControllerHook({
-      currentPath: '/shared/root/docs',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      currentNodeId: 10,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -201,25 +217,53 @@ describe('useFolderTreeController', () => {
     });
   });
 
-  it('expands prefixes of currentPath plus homePath, and handleSharedToggle navigates', async () => {
+  it('builds shared tree nodes with real folder names from the gateway result', async () => {
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { nodeId: 10, name: 'Team Docs', permission: 'write', type: 'directory' },
+    ]);
+
+    const { result } = renderControllerHook({
+      currentNodeId: null,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+
+    await waitFor(() => {
+      expect(result.current.sharedFolders).toHaveLength(1);
+    });
+
+    const tree = result.current.buildSharedFolderTree();
+
+    expect(tree).toEqual([
+      expect.objectContaining({ nodeId: 10, name: 'Team Docs', permission: 'write' }),
+    ]);
+    expect(JSON.stringify(tree)).not.toContain('Shared (10)');
+  });
+
+  it('expands home, ancestor node ids and the current node; handleSharedToggle navigates to /__shared__', async () => {
     onRecentFilesChange.mockImplementation(() => jest.fn());
     getRecentFiles.mockResolvedValue([]);
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
 
-    const onPathClick = jest.fn();
+    const onNodeClick = jest.fn();
 
     const { result } = renderControllerHook({
-      currentPath: '/a/b',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick,
+      currentNodeId: 3,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick,
+      ancestors: [{ nodeId: 1, name: 'testuser' }, { nodeId: 2, name: 'a' }],
     });
 
     await waitFor(() => {
-      expect(Array.from(result.current.expandedPaths)).toEqual(
-        expect.arrayContaining(['/a', '/a/b', '/testuser'])
+      expect(Array.from(result.current.expandedNodeIds)).toEqual(
+        expect.arrayContaining([1, 2, 3])
       );
     });
 
+    expect(result.current.homeNodeId).toBe(1);
     expect(result.current.sharedExpanded).toBe(false);
     act(() => {
       result.current.handleSharedToggle({ stopPropagation: jest.fn() });
@@ -227,31 +271,35 @@ describe('useFolderTreeController', () => {
 
     await waitFor(() => {
       expect(result.current.sharedExpanded).toBe(true);
-      expect(onPathClick).toHaveBeenCalledWith('/__shared__');
+      expect(onNodeClick).toHaveBeenCalledWith('/__shared__');
     });
   });
 
-  it('keeps only homePath expanded when currentPath is falsy', async () => {
+  it('keeps only homeNodeId expanded when currentNodeId is falsy', async () => {
     const { result } = renderControllerHook({
-      currentPath: '',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick: jest.fn(),
+      currentNodeId: null,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
     });
 
     await waitFor(() => {
-      expect(Array.from(result.current.expandedPaths)).toEqual(['/testuser']);
+      expect(Array.from(result.current.expandedNodeIds)).toEqual([1]);
     });
   });
 
-  it('routes recent and shared folder click handlers through onPathClick', async () => {
+  it('routes recent and shared folder click handlers through onNodeClick', async () => {
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { folder_path: '/shared/root', permission: 'read' },
+      { nodeId: 10, permission: 'read' },
     ]);
-    const onPathClick = jest.fn();
+    const onNodeClick = jest.fn();
     const { result } = renderControllerHook({
+      currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'testuser', is_admin: false },
-      onPathClick,
+      user: baseUser,
+      onNodeClick,
+      ancestors: [],
     });
 
     await waitFor(() => {
@@ -260,13 +308,12 @@ describe('useFolderTreeController', () => {
 
     act(() => {
       result.current.handleRecentClick();
-      result.current.handleSharedFolderClick('/shared/root');
+      result.current.handleSharedFolderClick(10);
       result.current.handleRecentToggle({ stopPropagation: jest.fn() });
     });
 
-    expect(onPathClick).toHaveBeenCalledWith('/__recent__');
-    expect(onPathClick).toHaveBeenCalledWith('/shared/root');
+    expect(onNodeClick).toHaveBeenCalledWith('/__recent__');
+    expect(onNodeClick).toHaveBeenCalledWith(10);
     expect(result.current.recentExpanded).toBe(true);
   });
 });
-

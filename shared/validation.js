@@ -91,7 +91,7 @@ function validateUsername(username) {
     return 'validation.usernameInvalidChars';
   }
 
-  const reservedNames = ['admin', 'root', 'system', 'user', 'users', 'api', 'wea', '.wea'];
+  const reservedNames = ['admin', 'root', 'system', 'user', 'users', 'api'];
   if (reservedNames.includes(trimmed.toLowerCase())) {
     return 'validation.usernameReserved';
   }

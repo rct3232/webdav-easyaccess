@@ -1,6 +1,8 @@
 /**
  * MSW handlers aligned with docs/api.md and actual server routes.
- * Routes use batch-move, batch-copy, batch-delete, PUT /rename - NOT the legacy move/delete paths.
+ * File mutations use the batch endpoints (batch-move/batch-copy/batch-delete,
+ * PUT /rename) as well as the single-node POST /files/move, POST /files/copy,
+ * DELETE /files/delete routes exposed by server/domains/files/routes/crud.js.
  * @see docs/api.md
  * @see docs/shared-contracts.md
  */
@@ -12,6 +14,14 @@ const API_BASE = '/api';
 const mockFiles = new Map();
 const mockBulkJobs = new Map();
 let jobIdCounter = 0;
+
+// Controlled delay seam for batch-job completion. Tests may set this to 0 to
+// avoid real-time waits (docs/TESTING_STRATEGY.md "Avoid real-time waits").
+let bulkJobDelayMs = 50;
+
+export function __setBatchDelayForTests(ms) {
+  bulkJobDelayMs = ms;
+}
 
 // Mock state for permission requests and share links (tests may override via server.use)
 export const mockPermissionRequests = {
@@ -31,6 +41,36 @@ export const mockAdminUsers = {
   ],
 };
 
+// Mock migration job state (tests may override via server.use)
+export const mockMigrationJobs = new Map();
+
+// Mock migration info (source backend + server-derived direction). Tests may
+// override via server.use. Default: webdav source → s3 destination.
+export const mockMigrationInfo = { source: 'webdav', direction: 'webdav-to-s3' };
+
+// Restore module-level mock state between tests so POST-handler mutations
+// (bulk jobs, permission requests, share links, admin users) do not leak.
+// Wired into client/src/setupTests.js beforeEach (docs/TESTING_STRATEGY.md).
+export function __resetHandlersState() {
+  mockFiles.clear();
+  mockBulkJobs.clear();
+  jobIdCounter = 0;
+  mockPermissionRequests.inbox.length = 0;
+  mockPermissionRequests.outbox.length = 0;
+  mockShareLinks.length = 0;
+  for (const key of Object.keys(mockAdminSettings)) {
+    delete mockAdminSettings[key];
+  }
+  mockAdminSettings.registration_enabled = 'false';
+  mockAdminUsers.pending.splice(0, mockAdminUsers.pending.length,
+    { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false });
+  mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
+    { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
+  mockMigrationJobs.clear();
+  mockMigrationInfo.source = 'webdav';
+  mockMigrationInfo.direction = 'webdav-to-s3';
+}
+
 function nextJobId() {
   jobIdCounter += 1;
   return `job_${jobIdCounter}_${Date.now()}`;
@@ -43,6 +83,10 @@ function errorResponse(errorCode, status = 400, params = {}) {
     { status }
   );
 }
+
+// Public share tokens considered valid by the shared /share/:token/* mocks
+// (mirrors the invalid/expired 404 behaviour of the /info handler).
+const publicShareIsValid = (token) => token !== 'invalid' && token !== 'expired';
 
 export const handlers = [
   // --- Auth ---
@@ -96,86 +140,212 @@ export const handlers = [
   }),
 
   // --- Files: list, download, upload ---
-  // Non-admin users get currentPath redirected to /:username; list is called with that path.
-  // Return path-prefixed items so folder click navigates to e.g. /testuser/folder and list(/testuser/folder) returns children.
   http.get(`${API_BASE}/files/list`, ({ request }) => {
     const url = new URL(request.url);
-    let path = url.searchParams.get('path') || '/';
-    path = path.replace(/\/$/, '') || '/';
-    const custom = mockFiles.get(path);
+    const nodeIdParam = url.searchParams.get('nodeId');
+    const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
-    const segments = path.split('/').filter(Boolean);
-    const lastSegment = segments[segments.length - 1];
-    // Leaf: /nested paths return empty to avoid infinite recursion in loadAllSubfoldersRecursive
-    if (lastSegment === 'nested') {
-      return HttpResponse.json([]);
-    }
-    const isFolderPath = path.endsWith('/folder') || lastSegment === 'folder';
-    const base = path === '' || path === '/' ? '/testuser' : path.startsWith('/') ? path : `/${path}`;
     const rootItems = [
-      { path: `${base}/test.txt`, basename: 'test.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/docs`, basename: 'docs', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/folder`, basename: 'folder', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 1, name: 'test.txt', type: 'file', display_path: '/testuser/test.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 2, name: 'docs', type: 'directory', display_path: '/testuser/docs', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 3, name: 'folder', type: 'directory', display_path: '/testuser/folder', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
     ];
     const folderItems = [
-      { path: `${base}/sub.txt`, basename: 'sub.txt', type: 'file', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { path: `${base}/nested`, basename: 'nested', type: 'directory', size: 0, lastmod: null, hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 4, name: 'sub.txt', type: 'file', display_path: '/testuser/folder/sub.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 5, name: 'nested', type: 'directory', display_path: '/testuser/folder/nested', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
     ];
-    // /docs paths: return folderItems (finite) to avoid docs/docs/docs... infinite depth
-    const items = lastSegment === 'docs' ? folderItems : (isFolderPath ? folderItems : rootItems);
-    return HttpResponse.json(items);
+    if (nodeIdParam === '3') {
+      return HttpResponse.json(folderItems);
+    }
+    if (nodeIdParam === '2' || nodeIdParam === '5') {
+      return HttpResponse.json([]);
+    }
+    return HttpResponse.json(rootItems);
   }),
 
-  // --- Permissions (required for FileManager path navigation and permission checks) ---
-  http.get(`${API_BASE}/permissions/check`, () => {
-    return HttpResponse.json({ hasRead: true, hasWrite: true });
-  }),
-  http.get(`${API_BASE}/permissions/user/:userId`, () => {
-    return HttpResponse.json([]);
+  // --- Files: legacy-URL resolver (nodeId-first navigation bootstrap) ---
+  http.post(`${API_BASE}/files/resolve-path`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const path = body.path;
+    if (typeof path !== 'string' || path.length === 0) {
+      return errorResponse('serverErrors.files.invalidPath', 400);
+    }
+    const pathToNodeId = {
+      '/': null,
+      '/testuser': 1,
+      '/testuser/test.txt': 1,
+      '/testuser/docs': 2,
+      '/testuser/folder': 3,
+      '/testuser/folder/sub.txt': 3,
+      '/testuser/folder/nested': 5,
+    };
+    const nodeId = pathToNodeId[path];
+    if (nodeId == null) {
+      return errorResponse('serverErrors.files.notFound', 404);
+    }
+    return HttpResponse.json({ nodeId });
   }),
 
-  http.get(`${API_BASE}/permissions/folder`, () => {
-    return HttpResponse.json([]);
+  // --- Files: ancestor chain (breadcrumbs) — root→current, self last ---
+  http.get(`${API_BASE}/files/ancestors`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.files.invalidPath', 400);
+    }
+    const chains = {
+      1: [{ nodeId: 1, name: 'testuser' }],
+      2: [{ nodeId: 1, name: 'testuser' }, { nodeId: 2, name: 'docs' }],
+      3: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }],
+      4: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 4, name: 'sub.txt' }],
+      5: [{ nodeId: 1, name: 'testuser' }, { nodeId: 3, name: 'folder' }, { nodeId: 5, name: 'nested' }],
+    };
+    const ancestors = chains[nodeId] || [{ nodeId: Number(nodeId), name: 'folder' }];
+    return HttpResponse.json({ ancestors });
+  }),
+
+  // --- Permissions (nodeId-based, matching server/domains/permissions/routes) ---
+  http.get(`${API_BASE}/permissions/check`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(nodeId), hasRead: true, hasWrite: true, source: 'path' });
+  }),
+
+  http.get(`${API_BASE}/permissions/user/:userId`, ({ params }) => {
+    const userId = params.userId;
+    if (userId === '1') {
+      return HttpResponse.json([
+        { nodeId: 2, permission: 'admin' },
+        { nodeId: 3, permission: 'admin' },
+      ]);
+    }
+    return HttpResponse.json([
+      { nodeId: 20, permission: 'read' },
+      { nodeId: 21, permission: 'write' },
+    ]);
+  }),
+
+  http.get(`${API_BASE}/permissions/shared`, () => {
+    return HttpResponse.json([
+      { nodeId: 2, name: 'Shared Docs', permission: 'admin', type: 'directory' },
+      { nodeId: 21, name: 'Reports', permission: 'write', type: 'directory' },
+      { nodeId: 30, name: 'report.txt', permission: 'read', type: 'file' },
+    ]);
+  }),
+
+  http.get(`${API_BASE}/permissions/folder`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    const perms = [
+      { id: 1, username: 'testuser', email: 'user@example.com', is_admin: false, permission: 'admin', node_id: Number(nodeId) },
+      { id: 2, username: 'user2', email: 'user2@example.com', is_admin: false, permission: 'read', node_id: Number(nodeId) },
+    ];
+    if (fileNodeId) {
+      return HttpResponse.json(perms.map((p) => ({ ...p, file_permission: p.permission })));
+    }
+    return HttpResponse.json(perms);
+  }),
+
+  http.post(`${API_BASE}/permissions/grant`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, nodeId, permission } = body;
+    if (!userId || !nodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionGranted' });
+  }),
+
+  http.delete(`${API_BASE}/permissions/revoke`, ({ request }) => {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+    const nodeId = url.searchParams.get('nodeId');
+    const includeDescendants = url.searchParams.get('includeDescendants');
+    if (!userId || !nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    if (includeDescendants === 'true') {
+      return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked', deletedCount: 1 });
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.permissionRevoked' });
+  }),
+
+  http.get(`${API_BASE}/permissions/file/list`, () => {
+    return HttpResponse.json([
+      { file_node_id: 4, permission: 'read' },
+      { file_node_id: 5, permission: 'write' },
+    ]);
+  }),
+
+  http.post(`${API_BASE}/permissions/file/grant`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, fileNodeId, permission } = body;
+    if (!userId || !fileNodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionGranted' });
+  }),
+
+  http.delete(`${API_BASE}/permissions/file/revoke`, ({ request }) => {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!userId || !fileNodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionRevoked' });
+  }),
+
+  http.get(`${API_BASE}/permissions/file/check`, ({ request }) => {
+    const url = new URL(request.url);
+    const fileNodeId = url.searchParams.get('fileNodeId');
+    if (!fileNodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(fileNodeId), hasRead: true, hasWrite: true, source: 'path' });
+  }),
+
+  http.patch(`${API_BASE}/permissions/file`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { userId, fileNodeId, permission } = body;
+    if (!userId || !fileNodeId || !permission) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.permissions.filePermissionUpdated' });
   }),
 
   // --- Recent files (required for FolderTree / FileManager) ---
   http.get(`${API_BASE}/recent-files`, () => HttpResponse.json([])),
 
-  http.post(`${API_BASE}/recent-files/apply-moves`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body?.moves)) {
-      return errorResponse('serverErrors.recentFiles.movesRequired', 400);
-    }
-    return HttpResponse.json([]);
-  }),
-
-  http.post(`${API_BASE}/recent-files/remove-paths`, async ({ request }) => {
-    const body = await request.json().catch(() => ({}));
-    if (!Array.isArray(body?.filePaths) || !Array.isArray(body?.folderPaths)) {
-      return errorResponse('serverErrors.recentFiles.pathsMustBeArrays', 400);
-    }
-    return HttpResponse.json([]);
-  }),
-
   http.post(`${API_BASE}/recent-files`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    if (!body?.path) {
+    if (body?.fileNodeId == null) {
       return errorResponse('serverErrors.recentFiles.pathRequired', 400);
     }
-    return HttpResponse.json([]);
+    return HttpResponse.json([
+      { fileNodeId: body.fileNodeId, name: `file-${body.fileNodeId}`, type: 'file', lastAccessed: new Date().toISOString(), displayPath: `/file-${body.fileNodeId}` },
+    ]);
   }),
 
   http.delete(`${API_BASE}/recent-files`, () =>
     HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
   ),
 
-  http.delete(`${API_BASE}/recent-files/:encodedPath`, () => HttpResponse.json([])),
+  http.delete(`${API_BASE}/recent-files/:fileNodeId`, ({ params }) =>
+    HttpResponse.json([])
+  ),
 
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
-    const path = url.searchParams.get('path');
-    if (!path) {
-      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionsMiddleware.nodeIdRequired', 400);
     }
     return new HttpResponse(new Blob(['mock file content']), {
       headers: { 'Content-Disposition': 'attachment; filename="file"' },
@@ -185,36 +355,61 @@ export const handlers = [
   http.post(`${API_BASE}/files/upload`, async ({ request }) => {
     const formData = await request.formData();
     const file = formData.get('file');
-    const targetPath = formData.get('path') || '/';
+    const parentNodeId = formData.get('parentNodeId') || '1';
     const onConflict = formData.get('onConflict') || 'error';
     if (!file) {
-      return errorResponse('serverErrors.files.invalidPath', 400);
+      return errorResponse('serverErrors.files.invalidParentNodeId', 400);
     }
     const name = file.name;
-    const fullPath = targetPath === '/' ? `/${name}` : `${targetPath.replace(/\/$/, '')}/${name}`;
-    const exists = mockFiles.has(targetPath) && (mockFiles.get(targetPath) ?? []).some((i) => i.basename === name);
+    const exists = mockFiles.has(parentNodeId) && (mockFiles.get(parentNodeId) ?? []).some((i) => i.basename === name);
     if (exists && onConflict === 'skip') {
-      return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', path: fullPath, skipped: true });
+      return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSkipped', parentNodeId, skipped: true });
     }
     if (exists && onConflict !== 'overwrite') {
       return errorResponse('serverErrors.files.duplicateFile', 409);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', path: fullPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.uploadSuccess', nodeId: Date.now(), parentNodeId, basename: name });
   }),
 
-  // --- Files: rename (PUT /files/rename, NOT POST /files/move) ---
+  // --- Files: rename (PUT /files/rename) ---
   http.put(`${API_BASE}/files/rename`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { oldPath, newName } = body;
-    if (!oldPath || !newName) {
+    const { nodeId, newName } = body;
+    if (!nodeId || !newName) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    const dir = oldPath.replace(/\/[^/]+$/, '') || '/';
-    const newPath = dir === '/' ? `/${newName}` : `${dir}/${newName}`;
-    if (oldPath === newPath) {
-      return HttpResponse.json({ messageCode: 'serverMessages.files.nameUnchanged', path: newPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', nodeId, newName });
+  }),
+
+  // --- Files: single-node move (POST /files/move, body: { nodeId, destinationParentNodeId }) ---
+  // server/domains/files/routes/crud.js + api.md "Files and Folders".
+  http.post(`${API_BASE}/files/move`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId, destinationParentNodeId } = body;
+    if (!nodeId || !destinationParentNodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.files.renameSuccess', path: newPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.files.moveSuccess', nodeId, newParentId: destinationParentNodeId });
+  }),
+
+  // --- Files: single-node copy (POST /files/copy, body: { nodeId, destinationParentNodeId, newName? }) ---
+  http.post(`${API_BASE}/files/copy`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId, destinationParentNodeId } = body;
+    if (!nodeId || !destinationParentNodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.files.copySuccess', sourceNodeId: nodeId, copiedNodeId: `${nodeId}_copy` });
+  }),
+
+  // --- Files: single-node delete (DELETE /files/delete, body: { nodeId }) ---
+  http.delete(`${API_BASE}/files/delete`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { nodeId } = body;
+    if (!nodeId) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.files.deleteSuccess', nodeId, deletedCount: 1 });
   }),
 
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---
@@ -232,9 +427,9 @@ export const handlers = [
       if (job) {
         job.status = 'completed';
         job.progress = moves.length;
-        job.results = moves.map((m) => ({ sourcePath: m.sourcePath, destinationPath: m.destinationPath, status: 'succeeded' }));
+        job.results = moves.map((m) => ({ sourceNodeId: m.sourceNodeId, destinationParentNodeId: m.destinationParentNodeId, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
@@ -252,29 +447,29 @@ export const handlers = [
       if (job) {
         job.status = 'completed';
         job.progress = copies.length;
-        job.results = copies.map((c) => ({ sourcePath: c.sourcePath, destinationPath: c.destinationPath, status: 'succeeded' }));
+        job.results = copies.map((c) => ({ sourceNodeId: c.sourceNodeId, destinationParentNodeId: c.destinationParentNodeId, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
-  // --- Files: batch-delete (POST, body: { paths }) ---
+  // --- Files: batch-delete (POST, body: { nodeIds }) ---
   http.post(`${API_BASE}/files/batch-delete`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { paths } = body;
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    const { nodeIds } = body;
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const jobId = nextJobId();
-    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: paths.length, results: [], userId: '1' });
+    mockBulkJobs.set(jobId, { status: 'pending', progress: 0, total: nodeIds.length, results: [], userId: '1' });
     setTimeout(() => {
       const job = mockBulkJobs.get(jobId);
       if (job) {
         job.status = 'completed';
-        job.progress = paths.length;
-        job.results = paths.map((p) => ({ path: p, status: 'succeeded' }));
+        job.progress = nodeIds.length;
+        job.results = nodeIds.map((n) => ({ nodeId: n, status: 'succeeded' }));
       }
-    }, 50);
+    }, bulkJobDelayMs);
     return HttpResponse.json({ jobId }, { status: 202 });
   }),
 
@@ -305,8 +500,8 @@ export const handlers = [
   // --- Files: download-multiple, download-progress ---
   http.post(`${API_BASE}/files/download-multiple`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { paths } = body;
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    const { nodeIds } = body;
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
     const blob = new Blob(['mock zip content'], { type: 'application/zip' });
@@ -340,25 +535,55 @@ export const handlers = [
 
   http.post(`${API_BASE}/files/metadata`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const paths = body.paths ?? [];
-    const results = paths.map((p) => ({ path: p, size: 0, lastmod: null, mime: null }));
+    const nodeIds = body.nodeIds ?? [];
+    const results = nodeIds.map((n) => ({ nodeId: n, size: 0, lastmod: null, mime: null }));
     return HttpResponse.json(results);
   }),
 
-  http.post(`${API_BASE}/files/thumbnails/batch`, async ({ request }) => {
+  http.post(`${API_BASE}/thumbnails/batch`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const paths = body.paths ?? [];
-    return HttpResponse.json({ thumbnails: paths.map((p) => ({ path: p, hash: null, url: null })) });
+    const nodeIds = body.nodeIds;
+    if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+      return errorResponse('serverErrors.files.sourceDestRequired', 400);
+    }
+    return HttpResponse.json({ thumbnails: nodeIds.map((n) => ({ nodeId: n, thumbnailUrl: null })) });
+  }),
+
+  // --- Video preview ticket/stream ---
+  http.post(`${API_BASE}/files/preview-ticket`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body?.nodeId) {
+      return errorResponse('serverErrors.files.nodeIdRequired', 400);
+    }
+    return HttpResponse.json({ ticket: `ticket_${Date.now()}` });
+  }),
+
+  http.get(`${API_BASE}/files/preview-stream`, () => {
+    return new HttpResponse(new Blob(['mock video']), {
+      headers: { 'Content-Type': 'video/mp4' },
+    });
   }),
 
   // --- Folders ---
   http.post(`${API_BASE}/folders/create`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const folderPath = body.path;
-    if (!folderPath) {
+    const { parentNodeId, name } = body;
+    if (!parentNodeId || !name) {
       return errorResponse('serverErrors.folders.pathRequired', 400);
     }
-    return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', path: folderPath });
+    return HttpResponse.json({ messageCode: 'serverMessages.folders.createSuccess', nodeId: Date.now(), parentNodeId, basename: name });
+  }),
+
+  // --- Folders: recursive stats (GET /folders/stats?nodeId=) ---
+  // server/domains/files/routes/folders.js + api.md "Files and Folders".
+  // Mirrors the server shape { nodeId, name, totalFiles, totalFolders, totalSize }.
+  http.get(`${API_BASE}/folders/stats`, ({ request }) => {
+    const url = new URL(request.url);
+    const nodeId = url.searchParams.get('nodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.folders.pathRequired', 400);
+    }
+    return HttpResponse.json({ nodeId: Number(nodeId), name: 'folder', totalFiles: 2, totalFolders: 1, totalSize: 0 });
   }),
 
   // --- Health, settings, webdav ---
@@ -385,6 +610,32 @@ export const handlers = [
 
   http.get(`${API_BASE}/users/approved`, () => {
     return HttpResponse.json([{ id: '1', username: 'testuser', email: 'user@example.com' }]);
+  }),
+
+  // --- Users: self-service mutations (PUT /users/:id/password|email|permissions) ---
+  // server/domains/admin/routes/users.js + api.md "Users".
+  http.put(`${API_BASE}/users/:id/password`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body.password) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.passwordUpdated' });
+  }),
+
+  http.put(`${API_BASE}/users/:id/email`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!body.email) {
+      return errorResponse('serverErrors.permissionsMiddleware.pathRequired', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.emailUpdated' });
+  }),
+
+  http.put(`${API_BASE}/users/:id/permissions`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body.permissions)) {
+      return errorResponse('serverErrors.admin.invalidPermissionList', 400);
+    }
+    return HttpResponse.json({ messageCode: 'serverMessages.users.permissionUpdated' });
   }),
 
   // --- Admin ---
@@ -456,7 +707,64 @@ export const handlers = [
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
   }),
 
-  // --- Permission requests ---
+  // --- Admin: blob migration (aligned with PLAN.md module E / api contract) ---
+  // GET /info returns { source, direction } (direction server-derived from WEA_FILE_STORAGE);
+  // POST returns { jobId } (202) and takes NO direction (server derives it, validates dest.type);
+  // GET returns the job shape; cancel flips to cancelled.
+  // Tests override per scenario via server.use (same pattern as mockBulkJobs).
+  http.get(`${API_BASE}/admin/migration/info`, () => {
+    return HttpResponse.json(mockMigrationInfo);
+  }),
+
+  http.post(`${API_BASE}/admin/migration/blobs`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const { mode = 'dry-run', dest } = body;
+    if (!dest || !dest.type) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    if (dest.type === 's3' && (!dest.bucket || !dest.accessKey || !dest.secretKey)) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    if (dest.type === 'webdav' && (!dest.url || !dest.username || !dest.password)) {
+      return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
+    }
+    const direction = dest.type === 's3' ? 'webdav-to-s3' : 's3-to-webdav';
+    const jobId = 'mig-1';
+    const now = new Date().toISOString();
+    mockMigrationJobs.set(jobId, {
+      jobId,
+      direction,
+      mode,
+      status: 'completed',
+      progress: 3,
+      total: 3,
+      current: null,
+      results: { copied: 3, skipped: 0, failed: 0, errors: [] },
+      errorMessage: null,
+      createdAt: now,
+      completedAt: now,
+    });
+    return HttpResponse.json({ jobId }, { status: 202 });
+  }),
+
+  http.get(`${API_BASE}/admin/migration/jobs/:jobId`, ({ params }) => {
+    const job = mockMigrationJobs.get(params.jobId);
+    if (!job) {
+      return errorResponse('serverErrors.admin.migrationJobNotFound', 404);
+    }
+    return HttpResponse.json(job);
+  }),
+
+  http.post(`${API_BASE}/admin/migration/jobs/:jobId/cancel`, ({ params }) => {
+    const job = mockMigrationJobs.get(params.jobId);
+    if (!job) {
+      return errorResponse('serverErrors.admin.migrationJobNotFound', 404);
+    }
+    job.status = 'cancelled';
+    return HttpResponse.json({ messageCode: 'serverMessages.admin.migrationCancelled', jobId: params.jobId });
+  }),
+
+  // --- Permission requests (nodeId-based, matching server/domains/permissions/routes/permissionRequests.js) ---
   http.get(`${API_BASE}/permission-requests/inbox`, () => {
     return HttpResponse.json(mockPermissionRequests.inbox);
   }),
@@ -465,51 +773,63 @@ export const handlers = [
   }),
   http.get(`${API_BASE}/permission-requests/check-owner`, ({ request }) => {
     const url = new URL(request.url);
-    const folderPath = url.searchParams.get('folderPath');
-    const filePath = url.searchParams.get('filePath');
-    if (!folderPath && !filePath) {
-      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    const nodeId = url.searchParams.get('nodeId') || url.searchParams.get('folderNodeId') || url.searchParams.get('fileNodeId');
+    if (!nodeId) {
+      return errorResponse('serverErrors.permissionRequests.pathRequired', 400);
     }
-    return HttpResponse.json({ hasOwner: true });
+    return HttpResponse.json({ ownerExists: true, ownerUsername: 'owner1' });
   }),
   http.post(`${API_BASE}/permission-requests`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { folderPath, filePath, permission, message } = body;
-    if (!folderPath && !filePath) {
-      return errorResponse('serverErrors.permissionRequest.pathRequired', 400);
+    const { nodeId, fileNodeId, permission, message } = body;
+    const targetNodeId = nodeId || fileNodeId;
+    if (!targetNodeId) {
+      return errorResponse('serverErrors.permissionRequests.folderOrFileRequired', 400);
     }
-    const id = `pr_${Date.now()}`;
+    if (permission !== 'read' && permission !== 'write') {
+      return errorResponse('serverErrors.permissionRequests.invalidPermission', 400);
+    }
     const req = {
-      id,
-      requester_id: '1',
-      owner_id: '2',
-      folder_path: folderPath || null,
-      file_path: filePath || null,
-      requested_permission: permission || 'read',
+      id: `pr_${Date.now()}`,
+      requester_id: 1,
+      requester_username: 'testuser',
+      owner_id: 2,
+      owner_username: 'owner1',
+      file_node_id: Number(targetNodeId),
+      requested_permission: permission,
       status: 'pending',
-      message: message || null,
+      message: typeof message === 'string' ? message : '',
       created_at: new Date().toISOString(),
+      resolved_at: null,
+      resolved_by: null,
+      targetType: null,
     };
     mockPermissionRequests.outbox.push(req);
-    return HttpResponse.json(req, { status: 201 });
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/approve`, ({ params }) => {
     const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
-    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
     req.status = 'approved';
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.approved' });
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/reject`, ({ params }) => {
     const req = mockPermissionRequests.inbox.find((r) => r.id === params.id);
-    if (!req) return errorResponse('serverErrors.permissionRequest.notFound', 404);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
     req.status = 'rejected';
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.rejected' });
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
   http.post(`${API_BASE}/permission-requests/:id/cancel`, ({ params }) => {
-    const idx = mockPermissionRequests.outbox.findIndex((r) => r.id === params.id);
-    if (idx === -1) return errorResponse('serverErrors.permissionRequest.notFound', 404);
-    mockPermissionRequests.outbox.splice(idx, 1);
-    return HttpResponse.json({ messageCode: 'serverMessages.permissionRequest.cancelled' });
+    const req = mockPermissionRequests.outbox.find((r) => r.id === params.id);
+    if (!req) return errorResponse('serverErrors.permissionRequests.requestNotFound', 404);
+    req.status = 'cancelled';
+    req.resolved_at = new Date().toISOString();
+    req.resolved_by = 1;
+    return HttpResponse.json(req);
   }),
 
   // --- Share links (authenticated) ---
@@ -518,16 +838,18 @@ export const handlers = [
   }),
   http.post(`${API_BASE}/share-links`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { filePath, expiresInDays } = body;
-    if (!filePath) {
-      return errorResponse('serverErrors.share.filePathRequired', 400);
+    const { fileNodeId, expiresInDays } = body;
+    if (fileNodeId == null) {
+      return errorResponse('serverErrors.share.pathRequired', 400);
     }
     const token = `sl_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const link = {
       token,
-      filePath,
-      fileName: filePath.split('/').pop() || 'file',
+      nodeId: fileNodeId,
+      fileName: `file-${fileNodeId}`,
       fileType: 'file',
+      isDirectory: false,
+      displayPath: `/file-${fileNodeId}`,
       createdAt: new Date().toISOString(),
       expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null,
       downloadCount: 0,
@@ -540,7 +862,25 @@ export const handlers = [
     const idx = mockShareLinks.findIndex((l) => l.token === params.token);
     if (idx === -1) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
     mockShareLinks.splice(idx, 1);
-    return HttpResponse.json({ messageCode: 'serverMessages.share.deleted' });
+    return HttpResponse.json({ messageCode: 'serverMessages.shareLinks.shareLinkDeleted' });
+  }),
+
+  // --- Share links: get/update one link (GET/PUT /share-links/:token) ---
+  // server/domains/sharing/routes/shareLinks.js + api.md "Share Links (authenticated)".
+  http.get(`${API_BASE}/share-links/:token`, ({ params }) => {
+    const link = mockShareLinks.find((l) => l.token === params.token);
+    if (!link) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    return HttpResponse.json(link);
+  }),
+
+  http.put(`${API_BASE}/share-links/:token`, async ({ request, params }) => {
+    const link = mockShareLinks.find((l) => l.token === params.token);
+    if (!link) return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    const body = await request.json().catch(() => ({}));
+    if (body.expiresInDays) {
+      link.expiresAt = new Date(Date.now() + body.expiresInDays * 86400000).toISOString();
+    }
+    return HttpResponse.json(link);
   }),
 
   // --- Share (public) ---
@@ -550,14 +890,64 @@ export const handlers = [
     }
     return HttpResponse.json({
       token: params.token,
-      filePath: '/user/docs/file.pdf',
+      nodeId: 2,
       fileName: 'file.pdf',
       fileType: 'pdf',
       isDirectory: false,
+      displayPath: '/testuser/docs/file.pdf',
       createdAt: new Date().toISOString(),
       expiresAt: null,
       downloadCount: 0,
       isExpired: false,
+    });
+  }),
+
+  http.get(`${API_BASE}/share/:token/check-my-permission`, () =>
+    HttpResponse.json({ hasSufficientPermission: true })
+  ),
+
+  http.post(`${API_BASE}/share/:token/add-to-my-permissions`, () =>
+    HttpResponse.json({ messageCode: 'serverMessages.share.addedToShared' })
+  ),
+
+  // --- Share (public): download + preview (GET /share/:token, /share/:token/preview) ---
+  // server/domains/sharing/routes/sharePublic.js + api.md "Share (public)".
+  http.get(`${API_BASE}/share/:token`, ({ params }) => {
+    if (!publicShareIsValid(params.token)) {
+      return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    }
+    return new HttpResponse(new Blob(['mock shared file content']), {
+      headers: {
+        'Content-Disposition': `attachment; filename="shared.bin"`,
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+  }),
+
+  http.get(`${API_BASE}/share/:token/preview`, ({ params }) => {
+    if (!publicShareIsValid(params.token)) {
+      return errorResponse('serverErrors.share.shareLinkNotFound', 404);
+    }
+    return new HttpResponse(new Blob(['mock shared preview content']), {
+      headers: {
+        'Content-Disposition': `inline; filename="shared.bin"`,
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+  }),
+
+  // --- Thumbnails: single image fetch (GET /thumbnails/:hash.:ext?token=) ---
+  // server/domains/thumbnails/routes.js + api.md "Thumbnails".
+  http.get(`${API_BASE}/thumbnails/:hash.:ext`, ({ request }) => {
+    const url = new URL(request.url);
+    if (!url.searchParams.get('token')) {
+      return errorResponse('serverErrors.thumbnails.invalidOrExpiredToken', 401);
+    }
+    return new HttpResponse(new Blob(['mock thumbnail'], { type: 'image/jpeg' }), {
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'Cache-Control': 'public, max-age=31536000',
+      },
     });
   }),
 ];

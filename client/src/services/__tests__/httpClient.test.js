@@ -78,14 +78,8 @@ describe('httpClient', () => {
   });
 
   it('retries 5xx responses and preserves the last error.response', async () => {
-    const originalSetTimeout = global.setTimeout;
-    jest.spyOn(global, 'setTimeout').mockImplementation((callback, delay, ...args) => {
-      if (delay === 1000) {
-        callback(...args);
-        return 0;
-      }
-      return originalSetTimeout(callback, delay, ...args);
-    });
+    // Retry delay is zeroed test-wide via __setRetryConfigForTests({ retryDelay: 0 })
+    // in setupTests.js (docs/TESTING_STRATEGY.md "Avoid real-time waits").
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(

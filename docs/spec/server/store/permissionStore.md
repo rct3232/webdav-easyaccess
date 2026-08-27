@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | User and share-token permissions. Folder/file-level grants with cache support. Uses JSON docs in `webdav`/`fs` and normalized permission tables in `postgresql`. Supports path rewriting (rename/move) and prefix revocation. |
+| Role | User and share-token permissions. Node-level grants with cache support. Uses normalized permission tables in postgresql/sqlite; all references use `file_node_id` BIGINT foreign keys instead of path strings. |
 
 ---
 
@@ -12,76 +12,124 @@
 
 ### 2.1 File Path
 
-- **Source:** `server/store/permissionStore.js`
-- **Test file:** `server/store/__tests__/permissionStore.test.js`
+- **Source:** `server/domains/permissions/stores/permissionStore.js`
+- **Test file:** `server/domains/permissions/stores/__tests__/permissionStore.test.js`
 
 ### 2.2 Main Methods
 
+#### Directory Permissions (Folder-Level)
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| grant | (userId, folderPath, permission, options?) => Promise\<object\> | Grant folder or file permission (target: 'folder' \| 'file') |
-| revoke | (userId, folderPath, options?) => Promise\<{ success }\> | Revoke (scope: includeDescendants \| pathOnly) |
-| getUserPermissions | (userId) => Promise\<Array\<{ folder_path, permission }\>\> | List folder permissions |
-| checkPermission | (userId, folderPath, requiredPermission) => Promise\<boolean\> | Check folder permission |
-| checkPermissionSync | (doc, folderPath, requiredPermission) => boolean | Sync check with preloaded doc |
-| getPermissionDoc | (userId) => Promise\<object\> | Get full doc (cached) |
-| checkPermissions | (userId, paths, requiredPermission) => Promise\<Map\<string,boolean\>\> | Bulk check |
-| getPathEffectivePermission | (userId, folderPath) => Promise\<string \| null\> | Direct path permission |
-| getEffectivePermission | (userId, path) => Promise\<string \| null\> | File or parent path permission |
-| grantFilePermission | (userId, filePath, permission) => Promise\<object\> | File-only permission |
-| revokeFilePermission | (userId, filePath) => Promise\<{ success }\> | Remove file permission |
-| getFolderPermissions | (folderPath, filePath?) => Promise\<Array\> | List users with access |
-| hasPermissionsInPath | (folderPath) => Promise\<Array\> | Permissions under path |
-| grantSharePermission | (token, rootPath, isDirectory) => Promise\<object\> | Share-token grant |
+| grant | (userId, nodeId, permission, options?) => Promise\<object\> | Grant directory permission; `nodeId` is BIGINT referencing `file_nodes.id` where `type='directory'` |
+| revoke | (userId, nodeId, options?) => Promise\<{ success }\> | Revoke all permissions for user on directory node |
+| getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
+| getSharedPermissions | (userId, homeRootNodeId?) => Promise\<Array\> | List grants where user is grantee, excluding nodes inside the user's own subtree (closure-table); each row includes `name` and `type` from `file_nodes` |
+| removeOwnSubtreePermissions | (userId, homeRootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on proper descendants of their home root (depth > 0); preserves the home-root ADMIN grant |
+| revokeUserSubtreePermissions | (userId, rootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on every node in the subtree rooted at `rootNodeId`, INCLUDING the root itself (depth 0). Used on ownership transfer (D6): when a node the user owned is moved into another user's home subtree, the mover's explicit rows on the moved subtree (historical self-grants, admin-assigned rows) would otherwise resurface in `getSharedPermissions` as "shared with me" leaks. |
+| checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
+| checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
+| getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |
+| hasPermissionsInPath | (nodeId) => Promise\<Array\> | Permissions on ancestors of node |
+| getPathEffectivePermission | (userId, nodeId) => Promise\<string \| null\> | Effective directory-level permission for a node via ancestor traversal (§2.7) |
+
+#### File Permissions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| getFilePermission | (userId, fileNodeId) => Promise\<object\> | Get file-specific permission; `fileNodeId` is BIGINT referencing `file_nodes.id` where `type='file'` |
+| getEffectivePermission | (userId, fileNodeId) => Promise\<string \| null\> | File or ancestor directory effective permission for a file node |
+| grantFilePermission | (userId, fileNodeId, permission) => Promise\<object\> | File-only permission; `fileNodeId` is BIGINT |
+| revokeFilePermission | (userId, fileNodeId) => Promise\<{ success }\> | Remove file permission |
+| getUserFilePermissions | (userId) => Promise\<Array\> | List file permissions for user |
+
+> **Removed:** `checkPermissionSync` and `checkFilePermissionSync` — synchronous permission checks were deleted in Phase 4 (permissionPolicy/ACL legacy cleanup). All permission checks are async and nodeId-based.
+
+#### Share Token Permissions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| grantSharePermission | (token, nodeId) => Promise\<object\> | Share-token grant; `nodeId` is BIGINT referencing `file_nodes.id`; node type (`file`/`directory`) derivable from `file_nodes.type` |
 | revokeSharePermission | (token) => Promise\<{ success }\> | Revoke share token |
-| getSharePermissionDoc | (token, opts?) => Promise\<object \| null\> | Share doc (cached) |
-| checkSharePermission | (token, path, requiredPermission) => Promise\<boolean\> | Share token check |
-| rewritePermissionsForAllUsers | (mappings, opts?) => Promise\<object\> | Rename/move paths |
-| revokePermissionsPrefixForAllUsers | (prefixes) => Promise\<object\> | Revoke by prefix |
+| checkSharePermission | (token, nodeId, requiredPermission) => Promise\<boolean\> | Share token permission check against node; ancestor inheritance via closure table (§2.7) |
 
-Permission enum contract:
+> **Removed in Phase 7:** `getPermissionDoc` and `getSharePermissionDoc` — raw permission-document accessors; callers use nodeId-based queries directly. `shareCache` Map removed with them.
 
-- Allowed values: `read`, `write`, `admin`
-- Ordering for effective checks: `read < write < admin`
-- Canonical runtime source: `shared/constants.js` (`PERMISSIONS.ALL`)
-- Canonical DB enforcement: `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+#### Admin / Lifecycle
 
-### 2.3 Storage Paths
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| revokeAllUserPermissions | (userId) => Promise\<{ success }\> | Revoke all permissions for user |
+| deleteUserPermissionsFile | (userId) => Promise\<{ success }\> | Delete user permission file |
 
-- User: `/.wea/permissions/users/{userId}.json` (permissions, file_permissions)
-- Share: `/.wea/permissions/shares/{token}.json`
+> **Removed:** `rewritePermissionsForAllUsers` and `revokePermissionsPrefixForAllUsers` — path-based bulk operations are unnecessary with nodeId references; CASCADE delete on `file_nodes` handles bulk cleanup.
+
+### 2.8 Deleted Modules (Wave 4)
+
+The following modules were deleted during Wave 4 and their responsibilities absorbed by the store:
+
+- **`permissionFacade.js`** (`server/domains/permissions/services/permissionFacade.js`) — previously a thin wrapper around permission operations; all callers now import `permissionStore` directly.
+- **`models/Permission.js`** (`server/models/Permission.js`) — legacy Permission model class replaced by the store's direct SQL queries via the metadata adapter layer.
+
+The `permissionStore` is now the sole source of truth for all permission CRUD and query operations. No facade or model abstraction sits between callers and the store.
+
+### 2.3 Transaction Boundaries
+
+- `grant`, `revoke`, `grantFilePermission`, `revokeFilePermission`: per-call transaction to keep each ACL mutation atomic.
+- Share permission grant/revoke: single-row transactional updates/deletes.
 
 ### 2.4 PostgreSQL v2 Table Mapping
 
-- `permissions_user_paths(user_id, folder_path, permission, updated_at)`
-- `permissions_user_files(user_id, file_path, permission, updated_at)`
-- `permissions_shares(token, root_path, is_directory, permission, updated_at)`
+- `permissions_user_paths(user_id, file_node_id, permission, updated_at)` — unique on `(user_id, file_node_id)`
+- `permissions_user_files(user_id, file_node_id, permission, updated_at)` — unique on `(user_id, file_node_id)`
+- `permissions_shares(token, file_node_id, permission, updated_at)`
+
+All tables use `file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE`. No path-based columns remain.
 
 Constraint/index details are canonical in:
 
 - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
 
-### 2.5 Transaction Boundaries
+### 2.5 Dependencies
 
-- `grant`, `revoke`, `grantFilePermission`, `revokeFilePermission`: per-call transaction to keep each ACL mutation atomic.
-- `rewritePermissionsForAllUsers`: single transaction per mapping batch.
-- `revokePermissionsPrefixForAllUsers`: single transaction per prefix batch.
-- Share permission grant/revoke: single-row transactional updates/deletes.
-
-### 2.6 Dependencies
-
-- storage, metaPaths, locks, userStore
-- shared pathUtils, constants (PERMISSIONS)
+- PostgresqlMetadataAdapter / SqliteMetadataAdapter
+- locks, userStore
+- shared constants (PERMISSIONS)
 - errorHandler, SERVER_ERROR_CODES
+- fileNodeService (for node existence validation, ancestor queries via closure table)
 
-### 2.7 Verification Scenarios
+> **Removed:** `metaPaths` legacy import — path normalization is unnecessary for opaque integer identifiers.
 
-- [ ] grant/revoke folder; checkPermission returns correct boolean
+### 2.6 Verification Scenarios
+
+- [ ] grant/revoke directory; checkPermission returns correct boolean
 - [ ] grantFilePermission validates parent and rank; revokeFilePermission removes entry
-- [ ] getEffectivePermission: file perm overrides path perm
-- [ ] checkSharePermission for directory vs file root
-- [ ] rewritePermissionsForAllUsers updates paths; revokePermissionsPrefixForAllUsers removes matching
-- [ ] Cache bypass and TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables)
-- [ ] PostgreSQL: duplicate path grant upserts/replaces permission without duplicate rows
+- [ ] getEffectivePermission: file perm overrides ancestor directory perm
+- [ ] checkSharePermission for directory vs file node
+- [ ] Cache TTL (PERMISSION_CACHE_TTL_MS, NODE_ENV=test disables) applies to `getUserPermissions` only
+- [ ] PostgreSQL: duplicate grant upserts/replaces permission without duplicate rows
 - [ ] PostgreSQL: permission check constraint rejects invalid values
 - [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true
+- [ ] Ancestor inheritance (§2.7): granting on ancestor nodeId propagates to descendants via closure table traversal
+- [ ] `revokeUserSubtreePermissions`: removes the user's rows on the subtree root AND all descendants (depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`; rows outside the subtree are preserved
+
+### 2.7 Ancestor Inheritance
+
+Directory permissions propagate to descendants through the `node_ancestors` closure table rather than fan-out INSERTs. Granting a permission on a directory node is O(1); checking permission for any descendant resolves by walking ancestors at query time.
+
+**Resolution algorithm:** To determine if `userId` has access to `targetNodeId`, traverse all ancestors of the target (including self) and find the closest ancestor with an explicit grant:
+
+```sql
+SELECT p.permission
+FROM permissions_user_paths p
+JOIN node_ancestors a ON a.ancestor_id = p.file_node_id
+WHERE a.descendant_id = ? AND p.user_id = ?
+ORDER BY a.depth ASC
+LIMIT 1
+```
+
+- `depth=0` match means the permission was granted directly on the target node itself.
+- Higher `depth` values mean the permission was inherited from a more distant ancestor.
+- If no row matches, the user has no explicit directory-level permission (subject to owner/admin bypass rules in middleware).
+
+**File permissions:** A file-specific grant (`permissions_user_files`) always takes precedence over any ancestor directory grant. The effective permission for a file is resolved by first checking `permissions_user_files` directly, then falling back to the ancestor traversal above.

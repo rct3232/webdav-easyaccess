@@ -22,14 +22,15 @@
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| currentPath | string | Y | - | Current path |
-| onPathClick | function | Y | - | Path click |
-| onFileClick | function | N | - | File click (recent) |
+| currentNodeId | number | Y | - | Current folder node id |
+| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
+| onLeaveShareClick | function | N | - | Share-mode folder click for non-share sections: `(nodeId: number \| path: string) => void`. When a `shareLinkSection` is present, the home / shared / recent sections call this instead of `onNodeClick`, so the hosting surface can open the leave-share confirmation. Falls back to `onNodeClick` when omitted. |
+| onFileClick | function | N | - | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5) |
 | user | object | Y | - | User |
 | treeUpdateTrigger | any | N | - | Trigger reload |
 | hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
 | onExplorerDrop | function | N | - | Drop handler (OS files) |
-| onInternalFileDrop | function | N | - | Internal drag: (draggedPath, targetFolderPath) when dropped from file manager |
+| onInternalFileDrop | function | N | - | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager |
 | isMobile | boolean | N | false | Mobile |
 | shareLinkSection | ReactNode | N | - | Share link section |
 
@@ -37,10 +38,11 @@
 
 | Callback | When invoked | Arguments |
 |----------|--------------|-----------|
-| onPathClick | Folder click | (path) |
+| onNodeClick | Folder click | (nodeId) |
+| onLeaveShareClick | Non-share section folder click while a share-link section is present (home/shared/recent) | (nodeId: number) or (path: string) |
 | onFileClick | Recent file click | (file) |
 | onExplorerDrop | Drop (OS files) | - |
-| onInternalFileDrop | Internal drop (file manager) | (draggedPath, targetFolderPath) |
+| onInternalFileDrop | Internal drop (file manager) | (draggedNodeId, targetNodeId) |
 
 ### 2.4 Dependencies
 
@@ -57,18 +59,19 @@
 
 ### 2.6 Conditional Rendering
 
-- Admin: home at /
-- Non-admin: user home path
+- Admin: home root node 
+- Non-admin: user home node 
 - Shared/recent sections expandable
 - shareLinkSection when provided
 
 ### 2.7 Verification Scenarios
 
-- [ ] Clicking a folder calls `onPathClick(path)` with the clicked folder’s path.
-- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section.
+- [ ] Clicking a folder calls `onNodeClick(nodeId)` with the clicked folder's node id.
+- [ ] When a share-link section is present, clicking the home / shared / recent entries calls `onLeaveShareClick` (node id or virtual-root path) instead of `onNodeClick`; the share-link section itself still calls `onNodeClick`.
+- [ ] Clicking a recent file entry (if rendered) calls `onFileClick(file)` with the same file object used by the section. Recent entries are nodeId-first since Phase 5.
 - [ ] Shared and recent sections render when the hosting surface provides the required inputs/sections (product overlays remain product-owned).
 - [ ] External drop handler calls `onExplorerDrop` when OS-file drop occurs (if enabled).
-- [ ] Internal DnD drop calls `onInternalFileDrop(draggedPath, targetFolderPath)` only for valid targets (permission/no-op rules remain unchanged).
+- [ ] Internal DnD drop calls `onInternalFileDrop(draggedNodeId, targetNodeId)` only for valid targets (permission/no-op rules remain unchanged).
 
 ### 2.8 Edge Cases
 

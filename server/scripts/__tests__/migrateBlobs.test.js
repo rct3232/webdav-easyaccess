@@ -98,8 +98,6 @@ describe('runMigrationCli', () => {
     const args = service.run.mock.calls[0][0];
     expect(args.mode).toBe('dry-run');
     expect(args.direction).toBe('webdav-to-s3');
-    expect(args.phase).toBe('copy');
-    expect(args.resume).toBe(false);
     expect(args.force).toBe(false);
     expect(args.destConfig).toEqual({
       type: 's3',
@@ -246,27 +244,25 @@ describe('runMigrationCli', () => {
     expect(lines.error.join('\n')).toMatch(/config invalid/);
   });
 
-  it('--phase=finalize is passed through for s3-to-webdav', async () => {
-    const { output } = makeOutput();
+  it('legacy --phase and --resume flags are rejected as unknown flags', async () => {
+    const { output, lines } = makeOutput();
     const service = makeFakeService();
-    await runMigrationCli(['--direction=s3-to-webdav', '--phase=finalize', '--dry-run', ...WEBDAV_FLAGS], {
+    const phaseCode = await runMigrationCli(['--direction=s3-to-webdav', '--phase=finalize', '--dry-run', ...WEBDAV_FLAGS], {
       migrationService: service,
       buildDestBlobStore,
       output,
     });
-    expect(service.run.mock.calls[0][0].phase).toBe('finalize');
-  });
+    expect(phaseCode).toBe(2);
+    expect(lines.error.join('\n')).toMatch(/Unknown flag: --phase/);
 
-  it('--phase=finalize passes through for webdav-to-s3 (validation is the service job)', async () => {
-    const { output } = makeOutput();
-    const service = makeFakeService();
-    await runMigrationCli(['--direction=webdav-to-s3', '--phase=finalize', '--dry-run', ...S3_FLAGS], {
+    const resumeCode = await runMigrationCli(['--direction=webdav-to-s3', '--resume', '--dry-run', ...S3_FLAGS], {
       migrationService: service,
       buildDestBlobStore,
       output,
     });
-    expect(service.run.mock.calls[0][0].phase).toBe('finalize');
-    expect(service.run.mock.calls[0][0].direction).toBe('webdav-to-s3');
+    expect(resumeCode).toBe(2);
+    expect(lines.error.join('\n')).toMatch(/Unknown flag: --resume/);
+    expect(service.run).not.toHaveBeenCalled();
   });
 
   it('onProgress logging does not throw and summary is logged on success', async () => {

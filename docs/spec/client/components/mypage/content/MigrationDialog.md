@@ -30,9 +30,8 @@
 | Field | Control | Values / Default | Notes |
 |-------|---------|------------------|-------|
 | Direction | Radio | `webdav-to-s3` (default) \| `s3-to-webdav` | Determines dest type |
-| Phase | Select | `copy` (default); `finalize` only when direction is `s3-to-webdav` | Reset to `copy` when switching back to webdav-to-s3 |
 | Mode | Radio | `dry-run` (default) \| `apply` | |
-| Resume | Checkbox | off (default) | Shown only when mode is `apply` |
+| Auto-resume note | Text | — | Shown when mode is `apply`: already copied files are skipped automatically |
 | S3 dest | TextFields | bucket* , accessKey* , secretKey* (password), endpoint (optional), region (default `us-east-1`) | Shown when direction is `webdav-to-s3` |
 | WebDAV dest | TextFields | url* , username* , password* (password), authType (default `auto`), upstreamUrl (optional) | Shown when direction is `s3-to-webdav` |
 
@@ -40,7 +39,7 @@
 
 ### 2.4 Behavior
 
-- **Start:** validates required fields client-side; on success calls `startBlobMigration` with `{ direction, phase, mode, resume, force: false, dest }`, then polls `getBlobMigrationStatus(jobId)` immediately and every 400ms (mirrors `useBulkOperations`).
+- **Start:** validates required fields client-side; on success calls `startBlobMigration` with `{ direction, mode, force: false, dest }`, then polls `getBlobMigrationStatus(jobId)` immediately and every 400ms (mirrors `useBulkOperations`).
 - **Polling:** stops on terminal status (`completed`, `failed`, `cancelled`); interval cleared on unmount/close.
 - **Progress UI:** LinearProgress (`progress/total`), current path, copied/skipped/failed counts, error list (first 5) when failed, result summary on terminal. `jobId` stays visible.
 - **Cancel:** calls `cancelBlobMigration(jobId)`; polling continues until the job reaches `cancelled`.
@@ -49,20 +48,19 @@
 
 ### 2.5 i18n Keys
 
-- `migration.*` (title, direction*, phase*, mode*, dest*, field labels, start, cancelJob, status*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess) — added to `client/src/locales/en.json` and `ko.json`.
+- `migration.*` (title, direction*, mode*, dest*, field labels, autoResume, start, cancelJob, status*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess) — added to `client/src/locales/en.json` and `ko.json`.
 - `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — SystemSettingsContent settings row.
 - `serverErrors.admin.migration*` and `serverMessages.admin.migrationCancelled` for server codes.
 
 ### 2.6 Verification Scenarios
 
 - [ ] Renders S3 destination fields by default; direction radios correct
-- [ ] `s3-to-webdav` shows WebDAV destination fields and the `finalize` phase option
+- [ ] `s3-to-webdav` shows WebDAV destination fields; apply mode shows the auto-resume note
 - [ ] Required-field validation blocks Start without a network call
 - [ ] Start → poll → running progress → completed summary
 - [ ] Cancel calls the cancel API and stops on `cancelled`
 
 ### 2.7 Edge Cases
 
-- Switching direction from `s3-to-webdav` (finalize) back to `webdav-to-s3` resets phase to `copy`.
 - Poll returning terminal status immediately after start must not leave a running interval.
 - Interval is cleared on close and on unmount.

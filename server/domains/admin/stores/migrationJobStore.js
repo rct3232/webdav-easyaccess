@@ -22,7 +22,6 @@ MigrationJobStore.prototype.create = function (fields) {
   const job = {
     jobId,
     direction: fields.direction || null,
-    phase: fields.phase || 'copy',
     mode: fields.mode || 'dry-run',
     status: 'pending',
     progress: 0,

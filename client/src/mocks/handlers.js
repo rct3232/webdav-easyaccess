@@ -706,7 +706,7 @@ export const handlers = [
   // Tests override per scenario via server.use (same pattern as mockBulkJobs).
   http.post(`${API_BASE}/admin/migration/blobs`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { direction, phase = 'copy', mode = 'dry-run', dest } = body;
+    const { direction, mode = 'dry-run', dest } = body;
     if (!direction || !['webdav-to-s3', 's3-to-webdav'].includes(direction)) {
       return errorResponse('serverErrors.admin.migrationInvalidPayload', 400);
     }
@@ -724,7 +724,6 @@ export const handlers = [
     mockMigrationJobs.set(jobId, {
       jobId,
       direction,
-      phase,
       mode,
       status: 'completed',
       progress: 3,

@@ -15,11 +15,10 @@ describe('createMigrationJobStore', () => {
   });
 
   it('create returns a job with a unique jobId, status pending, and documented defaults', () => {
-    const job = store.create({ direction: 'webdav-to-s3', phase: 'copy', mode: 'dry-run' });
+    const job = store.create({ direction: 'webdav-to-s3', mode: 'dry-run' });
     expect(job.jobId).toBeDefined();
     expect(store.create({ direction: 's3-to-webdav' }).jobId).not.toBe(job.jobId);
     expect(job.direction).toBe('webdav-to-s3');
-    expect(job.phase).toBe('copy');
     expect(job.mode).toBe('dry-run');
     expect(job.status).toBe('pending');
     expect(job.progress).toBe(0);

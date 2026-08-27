@@ -72,7 +72,7 @@ Bidirectional WebDAV ↔ S3 blob migration (202 + poll contract). Service: `doma
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/migration/blobs` | Token + Admin | Start a blob migration job. Body: `{ direction: 'webdav-to-s3' \| 's3-to-webdav', phase: 'copy' \| 'finalize' (default copy), mode: 'dry-run' \| 'apply', resume?, force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }`. Returns `202 { jobId }`. |
+| POST | `/migration/blobs` | Token + Admin | Start a blob migration job. Body: `{ direction: 'webdav-to-s3' \| 's3-to-webdav', mode: 'dry-run' \| 'apply', force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }`. Returns `202 { jobId }`. |
 | GET | `/migration/jobs/:jobId` | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }`. |
 | POST | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`. |
 
@@ -109,8 +109,8 @@ Destination config fields and the authoritative migration rules are documented i
 
 #### migration
 
-- **POST /migration/blobs:** Body: `{ direction, phase, mode, resume, force, dest }`. 202: `{ jobId }`; 400 on invalid payload (bad direction/phase/mode or dest config); 403 for non-admin; 409 when a migration job is already running.
-- **GET /migration/jobs/:jobId:** 200: migration job shape (status, progress, total, current, results `{ copied, skipped, failed, errors }`, errorMessage, createdAt, completedAt); 404 for unknown/expired job.
+- **POST /migration/blobs:** Body: `{ direction, mode, force?, dest }`. 202: `{ jobId }`; 400 on invalid payload (bad direction/mode or dest config); 403 for non-admin; 409 when a migration job is already running.
+- **GET /migration/jobs/:jobId:** 200: migration job shape `{ jobId, direction, mode, status, progress, total, current, results { copied, skipped, failed, errors }, errorMessage, createdAt, completedAt }`; 404 for unknown/expired job.
 - **POST /migration/jobs/:jobId/cancel:** 200: `{ messageCode, jobId }`; 404 for unknown/expired job.
 
 ### 2.5 Service Layers
@@ -136,7 +136,7 @@ Destination config fields and the authoritative migration rules are documented i
 
 | Function | Description |
 |----------|-------------|
-| `run({ direction, phase, mode, destConfig, resume, force, onProgress })` | Snapshot traversal + per-node copy + direction-specific `object_map` rules + resume/dry-run/failure isolation + finalize. Returns `{ copied, skipped, failed, errors }`. Full contract: `docs/spec/server/services/migrationService.md`. |
+| `run({ direction, destConfig, mode, force, onProgress })` | Snapshot traversal + per-node copy + direction-specific `object_map` rules (incl. the inline flip for s3→webdav) + automatic resume + dry-run/failure isolation. Returns `{ copied, skipped, failed, errors }`. Full contract: `docs/spec/server/services/migrationService.md`. |
 
 ### 2.6 Related Documents
 

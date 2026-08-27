@@ -39,7 +39,6 @@
 {
   jobId: string,
   direction: 'webdav-to-s3' | 's3-to-webdav',
-  phase: 'copy' | 'finalize',
   mode: 'dry-run' | 'apply',
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
   progress: number,   // 0..1 or done/total ratio

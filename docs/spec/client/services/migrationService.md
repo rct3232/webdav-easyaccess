@@ -35,9 +35,7 @@ Request body:
 ```json
 {
   "direction": "webdav-to-s3" | "s3-to-webdav",
-  "phase": "copy" | "finalize",
   "mode": "dry-run" | "apply",
-  "resume": false,
   "force": false,
   "dest": {
     "type": "s3",
@@ -71,7 +69,6 @@ Response: `202 { jobId }`; `400` invalid payload / missing required destination 
 {
   "jobId": "mig-1",
   "direction": "webdav-to-s3",
-  "phase": "copy",
   "mode": "dry-run",
   "status": "pending" | "running" | "completed" | "failed" | "cancelled",
   "progress": 3,

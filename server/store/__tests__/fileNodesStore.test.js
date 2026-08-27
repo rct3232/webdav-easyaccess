@@ -527,13 +527,36 @@ describe('createFileNodesStore', () => {
       expect(count).toBe(2);
     });
 
-    it('excludes orphaned rows from countActiveObjectsByS3Key', async () => {
-      const created = await store.createNode(null, `${testPrefix}count-orphan`, 'file');
-      await store.insertObject(created.id, 's3://bucket/orphan-count-key', 'active');
-      await store.orphanObject('s3://bucket/orphan-count-key');
+    // V19: setObjectMapBackendWebdav flips backend and keeps s3_key
+    it('marks an active object as webdav backend while preserving s3_key', async () => {
+      const created = await store.createNode(null, `${testPrefix}backend-flip`, 'file');
+      await store.insertObject(created.id, 's3://bucket/backend-flip-key', 'active');
 
-      const count = await store.countActiveObjectsByS3Key('s3://bucket/orphan-count-key');
-      expect(count).toBe(0);
+      const result = await store.setObjectMapBackendWebdav(created.id);
+      expect(result.changes).toBe(1);
+
+      const row = await dbQuery(
+        `SELECT storage_backend, s3_key FROM object_map WHERE file_node_id = ? AND status = 'active'`,
+        [created.id]
+      );
+      expect(row.rows[0].storage_backend).toBe('webdav');
+      expect(row.rows[0].s3_key).toBe('s3://bucket/backend-flip-key');
+    });
+
+    it('setObjectMapBackendWebdav only flips active object_map rows', async () => {
+      const created = await store.createNode(null, `${testPrefix}backend-flip-orphan`, 'file');
+      await store.insertObject(created.id, 's3://bucket/backend-flip-orphan-key', 'active');
+      await store.orphanObject('s3://bucket/backend-flip-orphan-key');
+
+      const result = await store.setObjectMapBackendWebdav(created.id);
+      expect(result.changes).toBe(0);
+
+      const row = await dbQuery(
+        `SELECT storage_backend, s3_key FROM object_map WHERE file_node_id = ?`,
+        [created.id]
+      );
+      expect(row.rows[0].storage_backend).toBe('s3');
+      expect(row.rows[0].s3_key).toBe('s3://bucket/backend-flip-orphan-key');
     });
   });
 

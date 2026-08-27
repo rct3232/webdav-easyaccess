@@ -35,9 +35,7 @@ const previousSkipWorker = process.env.WEA_SKIP_MIGRATION_WORKER;
 
 const VALID_PAYLOAD = {
   direction: 'webdav-to-s3',
-  phase: 'copy',
   mode: 'dry-run',
-  resume: false,
   force: false,
   dest: { type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' },
 };
@@ -144,7 +142,6 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(job).toMatchObject({
       jobId: res.body.jobId,
       direction: 'webdav-to-s3',
-      phase: 'copy',
       mode: 'dry-run',
       status: 'pending',
       progress: 0,
@@ -154,6 +151,7 @@ describe('POST /api/admin/migration/blobs', () => {
       errorMessage: null,
       completedAt: null,
     });
+    expect(job.phase).toBeUndefined();
 
     expect(fakeMigrationService.run).not.toHaveBeenCalled();
   });
@@ -169,15 +167,19 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
   });
 
-  it('returns 400 with migrationInvalidPayload for an invalid phase', async () => {
+  it('accepts a payload with legacy phase/resume fields (they are ignored)', async () => {
+    process.env.WEA_SKIP_MIGRATION_WORKER = '1';
     const token = await createAdminToken();
+
     const res = await request(app)
       .post('/api/admin/migration/blobs')
       .set('Authorization', `Bearer ${token}`)
-      .send({ ...VALID_PAYLOAD, phase: 'nuke' });
+      .send({ ...VALID_PAYLOAD, phase: 'finalize', resume: true });
 
-    expect(res.status).toBe(400);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
+    expect(res.status).toBe(202);
+    const job = jobStore.get(res.body.jobId);
+    expect(job).toMatchObject({ direction: 'webdav-to-s3', mode: 'dry-run' });
+    expect(job.phase).toBeUndefined();
   });
 
   it('returns 400 with migrationInvalidPayload for an invalid mode', async () => {
@@ -220,7 +222,6 @@ describe('POST /api/admin/migration/blobs', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         direction: 's3-to-webdav',
-        phase: 'copy',
         mode: 'dry-run',
         dest: { type: 'webdav', url: 'http://dav' },
       });
@@ -266,9 +267,7 @@ describe('POST /api/admin/migration/blobs', () => {
 
     expect(fakeMigrationService.run).toHaveBeenCalledWith(expect.objectContaining({
       direction: 'webdav-to-s3',
-      phase: 'copy',
       mode: 'dry-run',
-      resume: false,
       force: false,
       destConfig: expect.objectContaining({ type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' }),
       onProgress: expect.any(Function),
@@ -279,7 +278,6 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(res.body).toMatchObject({
       jobId,
       direction: 'webdav-to-s3',
-      phase: 'copy',
       mode: 'dry-run',
       status: 'completed',
       progress: 3,

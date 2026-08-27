@@ -14,7 +14,7 @@ class S3BlobStore {
 
   async uploadBlob(key, buffer) {
     if (!key) throw new Error('S3 key is required');
-    if (!buffer || buffer.length === 0) throw new Error('Buffer is required');
+    if (buffer == null) throw new Error('Buffer is required');
 
     await this.client.send(new PutObjectCommand({
       Bucket: this.bucket,

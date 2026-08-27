@@ -52,7 +52,7 @@ function createFakeBlobStore(overrides = {}) {
   async function uploadBlob(key, buffer) {
     throwIfFailing(key);
     if (!key) throw new Error('FakeBlobStore: key is required');
-    if (!buffer || buffer.length === 0) throw new Error('FakeBlobStore: buffer is required');
+    if (buffer == null) throw new Error('FakeBlobStore: buffer is required');
     blobs.set(key, buffer);
     writeLog.push(key);
   }

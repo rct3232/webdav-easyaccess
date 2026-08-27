@@ -56,15 +56,20 @@ describe('S3BlobStore', () => {
       expect(stored.Body).toEqual(data);
     });
 
-    it('throws descriptive error for empty key', async () => {
+    it('throws descriptive error for missing/empty key', async () => {
       const store = new S3BlobStore(config);
       await expect(store.uploadBlob('', Buffer.from('data'))).rejects.toThrow();
     });
 
-    it('throws descriptive error for missing/empty buffer', async () => {
+    it('throws descriptive error for null buffer, but allows zero-byte buffers', async () => {
       const store = new S3BlobStore(config);
       await expect(store.uploadBlob('key', null)).rejects.toThrow();
-      await expect(store.uploadBlob('key', Buffer.from(''))).rejects.toThrow();
+      await expect(store.uploadBlob('key', undefined)).rejects.toThrow();
+      const empty = Buffer.from('');
+      await store.uploadBlob('key', empty);
+      const stored = currentMockS3.getStore().get('key');
+      expect(stored).toBeDefined();
+      expect(stored.Body).toEqual(empty);
     });
   });
 

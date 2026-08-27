@@ -48,12 +48,14 @@ describe('WebdavBlobStore', () => {
       await expect(store.uploadBlob(undefined, Buffer.from('data'))).rejects.toThrow();
     });
 
-    it('throws descriptive error for null or empty buffer', async () => {
+    it('throws descriptive error for null/undefined buffer, but allows zero-byte buffers', async () => {
       const store = new WebdavBlobStore(adapterMock);
 
       await expect(store.uploadBlob('/some/path.txt', null)).rejects.toThrow();
       await expect(store.uploadBlob('/some/path.txt', undefined)).rejects.toThrow();
-      await expect(store.uploadBlob('/some/path.txt', Buffer.from(''))).rejects.toThrow();
+      const empty = Buffer.from('');
+      await store.uploadBlob('/some/path.txt', empty);
+      expect(adapterMock.putFileContents).toHaveBeenCalledWith('/some/path.txt', empty);
     });
 
     it('propagates WebDAV server errors with original message', async () => {

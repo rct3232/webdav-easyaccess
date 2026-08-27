@@ -82,12 +82,12 @@ The adapter layer sits between domains and physical storage, providing interchan
 | Adapter | Location | Purpose |
 |---------|----------|---------|
 | Metadata adapters | `infrastructure/adapters/metadata/` | Abstracts user, permission, settings, share-link, and recent-file persistence. Factory: `createMetadataAdapter()` selects backend via `WEA_STORAGE_BACKEND`. |
-| File store adapter | `infrastructure/adapters/filestore/` | Wraps WebDAV file operations behind the `FileStoreAdapter` interface. Default implementation: `WebdavFileStoreAdapter` delegates to `utils/webdav.js`. Factory: `createFileStoreAdapter()`. |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
 | Cache adapter | `infrastructure/adapters/cache/` | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future. |
 
 **Metadata adapter implementations:**
-- `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (production default)
-- `SqliteMetadataAdapter` — SQLite via better-sqlite3 (development/testing)
+- `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (recommended for production)
+- `SqliteMetadataAdapter` — SQLite via better-sqlite3 (default, for development/testing)
 
 Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/server/store/blobstore.md`.
 
@@ -152,8 +152,8 @@ flowchart TD
 Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store API across backends.
 
 *   **Backend selection**:
-    *   `postgresql`: Normalized relational schema for metadata and locks (production default).
-    *   `sqlite`: SQLite via better-sqlite3 for development/testing.
+    *   `sqlite` (default): SQLite via better-sqlite3 for development/testing.
+    *   `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
 *   **Interface parity**:
     *   Store public interfaces remain stable across backends.
     *   `userStore`, `permissionStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, and `permissionRequestStore` keep the same exported method contracts while using backend-specific persistence.
@@ -210,7 +210,7 @@ sequenceDiagram
     participant C as Client
     participant S as Server
     participant Cache as Memory Cache
-    participant W as WebDAV
+    participant B as Blob Store (S3/WebDAV)
     
     C->>S: GET /api/thumbnails/:hash.:ext?token= (required)
     S->>Cache: Check Cache
@@ -218,7 +218,7 @@ sequenceDiagram
         Cache-->>S: Return Buffer
         S-->>C: 200 OK (Image)
     else Not In Cache
-        S->>W: Download Original (Partial/Full)
+        S->>B: Download Original (Partial/Full)
         alt Image File
             S->>S: Resize using Sharp
         else Video File

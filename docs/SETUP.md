@@ -42,13 +42,20 @@ cp .env.example .env
 
 | Variable | Required | Description | Default |
 | :--- | :---: | :--- | :--- |
-| **WEBDAV_URL** | Yes | WebDAV server base URL (e.g. `https://dav.example.com`) | - |
-| **WEBDAV_USERNAME** | Yes | WebDAV server account name | - |
-| **WEBDAV_PASSWORD** | Yes | WebDAV server password | - |
+| **WEA_FILE_STORAGE** | No | File/blob storage backend (`s3` or `webdav`) | `s3` |
+| **S3_BUCKET** | Only when `WEA_FILE_STORAGE=s3` | S3 bucket name for blob storage | - |
+| **AWS_REGION** | Only when `WEA_FILE_STORAGE=s3` | AWS region of the S3 bucket | - |
+| **AWS_ACCESS_KEY_ID** | Only when `WEA_FILE_STORAGE=s3` | AWS access key ID for S3 | - |
+| **AWS_SECRET_ACCESS_KEY** | Only when `WEA_FILE_STORAGE=s3` | AWS secret access key for S3 | - |
+| **S3_ENDPOINT** | No | Custom S3-compatible endpoint (e.g. MinIO); empty for AWS | - |
+| **WEBDAV_URL** | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server base URL (e.g. `https://dav.example.com`) | - |
+| **WEBDAV_USERNAME** | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server account name | - |
+| **WEBDAV_PASSWORD** | Only when `WEA_FILE_STORAGE=webdav` | WebDAV server password | - |
 | **JWT_SECRET** | Yes | Secret key for token signing (must change in production!) | - |
 | **PORT** | No | Server port | `5001` |
 | **CORS_ORIGINS** | No | Allowed browser origins (comma-separated) | `*` (with warning) |
-| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`postgresql` or `sqlite`) | `postgresql` |
+| **WEA_STORAGE_BACKEND** | No | Metadata storage backend (`sqlite` or `postgresql`) | `sqlite` |
+| **WEA_SQLITE_PATH** | No | Path to the SQLite metadata database file | `data/webdav.db` |
 | **WEA_PG_HOST** | No | PostgreSQL host when using `postgresql` backend | - |
 | **WEA_PG_PORT** | No | PostgreSQL port when using `postgresql` backend | `5432` |
 | **WEA_PG_DATABASE** | No | PostgreSQL database name when using `postgresql` backend | - |
@@ -77,13 +84,21 @@ The system supports PostgreSQL-backed and SQLite-backed metadata with the same s
     *   Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
     *   Recommended for stronger consistency and high-concurrency metadata operations.
     *   Set `WEA_STORAGE_BACKEND=postgresql` and provide `WEA_PG_HOST`, `WEA_PG_PORT`, `WEA_PG_DATABASE`, `WEA_PG_USER`, `WEA_PG_PASSWORD` (plus optional pool/SSL settings).
-    *   Keep WebDAV settings configured for actual file content operations; PostgreSQL stores metadata only.
+
+### File Storage (Blob) Configuration
+
+File/blob storage is selected independently of the metadata backend:
+
+- **`WEA_FILE_STORAGE=s3`** (default): blob content lives in S3. Requires `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`; optionally `S3_ENDPOINT` for an S3-compatible service (e.g. MinIO). WebDAV settings are unused in this mode.
+- **`WEA_FILE_STORAGE=webdav`**: blob content lives on the WebDAV server. Requires `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD`.
+- The file-storage backend is independent of the metadata backend (`WEA_STORAGE_BACKEND`): either blob backend can be combined with either metadata backend.
+- Migrating blob content between the two backends (WebDAV ↔ S3) is supported — see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3).
 
 ### PostgreSQL Initialization (v2)
 
 The schema is applied **automatically at startup**. On a **fresh empty database**, the server boots and `initMetadataStore()` (`server/store/bootstrap.js`) runs `applyPendingMigrations('postgresql')` (`server/infrastructure/schemaManager.js`), which applies `server/store/postgresql/ddl/*.sql` in order and records each file in `_schema_migrations`. Subsequent boots detect all files as applied and are no-ops (idempotent).
 
-**Deployment contract: point the app only at a fresh empty database. Never point it at an existing/old DB.** No "already exists" tolerance is added — a misconfigured app aimed at a pre-existing (e.g. legacy path-based) database must fail loudly at boot rather than be silently recorded as migrated. Data migration into the new instance is handled out of band by the migration script (Future Work), which applies the schema (or boots the app once on the empty DB with `WEA_DISABLE_DEFAULT_ADMIN=true`) before importing data.
+**Deployment contract: point the app only at a fresh empty database. Never point it at an existing/old DB.** No "already exists" tolerance is added — a misconfigured app aimed at a pre-existing (e.g. legacy path-based) database must fail loudly at boot rather than be silently recorded as migrated. Data migration is handled out of band: blob content is moved with the active WebDAV ↔ S3 migration tool (see [Data Migration: WebDAV ↔ S3](#data-migration-webdav--s3) and `docs/spec/server/tools/blob-migration.md`).
 
 To apply the DDL manually (equivalent to what startup does), instead:
 

@@ -26,7 +26,8 @@ Unlike a simple client, it runs via a **dedicated Node.js server**, and users ca
 flowchart LR
   Browser --> ReactClient
   ReactClient -->|"/api via proxy or same-origin"| ExpressServer
-  ExpressServer -->|"webdav library"| WebDAVServer
+  ExpressServer -->|"blobs (default: s3)"| S3[(S3 / MinIO)]
+  ExpressServer -->|"blobs (webdav option)"| WebDAVServer
   ExpressServer -->|"metadata"| MetadataDB[(PostgreSQL / SQLite)]
 ```
 
@@ -35,7 +36,7 @@ flowchart LR
 - **Backend**: Node.js, Express.js
 - **Frontend**: React, MUI (Material UI)
 - **Auth**: JWT
-- **WebDAV Client**: `webdav`
+- **Blob storage**: `@aws-sdk/client-s3` (default S3/MinIO) or the `webdav` client (webdav mode)
 - **Thumbnails**: Sharp (FFmpeg required for video)
 - **Metadata store**: DB-backed (`WEA_STORAGE_BACKEND`: `sqlite` default, `postgresql`)
 
@@ -90,13 +91,17 @@ npm start
 
 ### Required
 
-- **WEBDAV_URL**: WebDAV server URL (path prefix allowed)
-- **WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV credentials
 - **JWT_SECRET**: JWT signing key (must be changed in production; server will not start if unset)
 - **PORT**: Server port (default `5001`)
+- **WEA_FILE_STORAGE**: File content blob storage backend (default `s3`; `webdav` is an option)
+- **S3_BUCKET**: S3/MinIO bucket name (required in default `s3` mode)
+- **AWS_REGION**: AWS region (required in default `s3` mode)
+- **AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY**: S3/MinIO credentials (required in default `s3` mode)
 
 ### Optional (main)
 
+- **S3_ENDPOINT**: Custom S3 endpoint URL for MinIO/compatible services (forces path-style access; optional in `s3` mode)
+- **WEBDAV_URL / WEBDAV_USERNAME / WEBDAV_PASSWORD**: WebDAV server URL (path prefix allowed) and credentials — **required only when `WEA_FILE_STORAGE=webdav`**
 - **JWT_EXPIRES_IN**: JWT expiration (default `30m`, e.g. `15m`, `1h`)
 - **EMAIL_HOST/EMAIL_PORT/EMAIL_SECURE/EMAIL_USER/EMAIL_PASSWORD/EMAIL_FROM_NAME**: SMTP for signup/approval notifications
 - **ADMIN_DEFAULT_PASSWORD**: Default admin password (default `admin`)

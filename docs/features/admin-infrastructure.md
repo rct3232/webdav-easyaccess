@@ -64,7 +64,7 @@ Cross-cutting infrastructure modules reside in `server/infrastructure/`:
 
 - **Health routes** (`healthRoutes.js`): Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.
 - **WebDAV diagnostic routes** (`webdavRoutes.js`): No-auth endpoints `GET /api/webdav/test` and `GET /api/webdav/info` for connectivity checks and URL display. Connection test logic is extracted to `webdavTest.js`.
-- **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting file-based (webdav/fs), PostgreSQL, and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
+- **Lock manager** (`lockManager.js`): Distributed lock abstraction supporting PostgreSQL and SQLite backends with retry, TTL expiry, and stale-lock cleanup.
 - **SQLite schema init** (`sqliteSchemaInit.js`): Converts PostgreSQL DDL to SQLite-compatible SQL for bootstrap when `WEA_STORAGE_BACKEND=sqlite`.
 
 These modules are mounted in `server/index.js` alongside the domain routes.

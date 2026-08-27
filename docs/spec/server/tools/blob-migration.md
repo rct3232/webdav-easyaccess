@@ -18,7 +18,8 @@ This document is the canonical reference for the blob migration tooling and repl
 Move physical blobs between the WebDAV and S3 backends while keeping the DB metadata authoritative. The tool provides:
 
 - **Both directions:** `webdav-to-s3` and `s3-to-webdav`, selected by `--direction`.
-- **Resumability and idempotency:** re-running a copy skips already-migrated nodes; a full re-run copies nothing.
+- **Automatic resume:** resume is always on — re-running a copy skips already-migrated destination blobs; a full re-run copies nothing.
+- **Inline `object_map` flip (s3→webdav):** after each webdav upload succeeds, the node's `storage_backend` is flipped to `'webdav'` immediately, while `s3_key` is preserved. No separate finalize step exists.
 - **Mandatory dry-run before any write:** an `--apply` run first performs a dry pass; any failure blocks all writes.
 - **Per-node failure isolation:** a failing node is recorded and processing continues.
 - **Source-blob preservation:** source blobs are never deleted in the MVP.
@@ -29,10 +30,10 @@ The migration core (`migrationService`) is shared between the CLI and the admin 
 
 ## 3. Direction Overview
 
-| Direction | Copy phase | Finalize phase |
-|---|---|---|
-| `webdav-to-s3` | Download from the source WebDAV path, upload to a flat S3 UUID key, `upsertObjectMap` → `(storage_backend='s3', s3_key=UUID, active)`. | None required — safe because the webdav-mode app ignores `object_map`. |
-| `s3-to-webdav` | Download from the active `s3_key`, upload to the WebDAV path with directory structure preserved (ancestor MKCOL). `object_map` is **untouched** during copy — the running S3-mode app resolves blobs through it. | After the app is switched to webdav mode, flips migrated nodes to `storage_backend='webdav'`, `s3_key=NULL`. Idempotent. |
+| Direction | Behavior |
+|---|---|
+| `webdav-to-s3` | Download from the source WebDAV path, upload to a flat S3 UUID key, `upsertObjectMap` → `(storage_backend='s3', s3_key=UUID, active)`. Safe because the webdav-mode app ignores `object_map`. |
+| `s3-to-webdav` | Download from the active `s3_key`, upload to the WebDAV path with directory structure preserved (ancestor MKCOL). Immediately after the upload succeeds, the node's `object_map` is flipped to `storage_backend='webdav'` **inline** while `s3_key` is **preserved** — the running S3-mode app keeps serving through the retained key and rollback stays possible. |
 
 Cutover guidance and operational steps are documented in `docs/SETUP.md`.
 
@@ -83,13 +84,11 @@ Executable: `server/scripts/migrateBlobs.js`. The script is a thin wrapper; the 
 | Flag | Description |
 |---|---|
 | `--direction=webdav-to-s3\|s3-to-webdav` | **Required.** Direction implies the source backend. |
-| `--phase=copy\|finalize` | Default `copy`. `finalize` is only valid for `s3-to-webdav`. |
 | `--check-env` | Validate config + snapshot + destination connectivity. No writes. Exit `0` (valid) / `1` (invalid). |
 | `--dry-run` | Run the dry pass (validate config, enumerate snapshot, probe destination). No writes. |
 | `--apply` | Write mode. Runs the internal dry-run pass first; requires `--yes`. |
 | `--yes` | Required for `--apply`; abort otherwise. |
-| `--resume` | Skip already-migrated nodes per the resume markers (§8). |
-| `--force` | Re-copy even when a resume marker is present. |
+| `--force` | Re-copy a node even when the automatic resume skip would skip it (already-migrated destination blob). |
 | `--dest-type=s3\|webdav` | Select the destination backend. |
 | `--dest-webdav-url` / `--dest-webdav-username` / `--dest-webdav-password` | WebDAV destination connection. |
 | `--dest-webdav-auth-type` / `--dest-webdav-upstream-url` | WebDAV destination optional fields. |
@@ -120,7 +119,6 @@ The same destination config can be supplied via environment:
 
 - `--apply` requires `--yes`; a missing `--yes` aborts the run.
 - `--apply` / `--dry-run` require a valid `--direction`.
-- `--phase=finalize` is valid only for `s3-to-webdav` with `mode=apply`.
 - Unknown flag combinations → clear usage error, exit `2`.
 
 ---
@@ -133,34 +131,44 @@ The tool does **not** take the app into a write-blocking maintenance mode. Inste
 2. Read only from the **source** store.
 3. Write only to the **destination** store plus the required DB updates.
 
-The app remains fully usable during the copy phase. Directories are only relevant for WebDAV destinations (ancestor MKCOL).
+The app remains fully usable during the copy run. Directories are only relevant for WebDAV destinations (ancestor MKCOL).
 
 ---
 
 ## 7. Direction-Specific `object_map` Rules (authoritative)
 
-| Action | WebDAV→S3 copy | S3→WebDAV copy | S3→WebDAV finalize |
-|---|---|---|---|
-| read source | path → download | active `s3_key` → download | — |
-| write dest | S3 UUID key (flat) | webdav path `/username/...` + mkdir | — |
-| `object_map` | upsert `(s3, key, active)` | **untouched** | flip migrated → `(webdav, NULL)` |
-| `filecache` | size/mime/hash | hash (+size check for resume) | — |
-| resume marker | active non-null `s3_key` | dest `headBlob` size == `filecache.size` | `headBlob` check per node |
-| S3 dest | flat UUID keys, NO directory structure | — | — |
-| WebDAV dest | — | directory structure preserved (ancestor MKCOL) | — |
+| Action | WebDAV→S3 copy | S3→WebDAV copy |
+|---|---|---|
+| read source | path → download | active `s3_key` → download |
+| write dest | S3 UUID key (flat) | webdav path `/username/...` + mkdir |
+| `object_map` | upsert `(s3, key, active)` | flip `storage_backend='webdav'` inline after upload succeeds; **keep `s3_key`** |
+| `filecache` | size/mime/hash | hash (+size check for resume) |
+| resume marker | active non-null `s3_key` | dest `headBlob` size == `filecache.size` |
+| S3 dest | flat UUID keys, NO directory structure | — |
+| WebDAV dest | — | directory structure preserved (ancestor MKCOL) |
 
 - **`webdav-to-s3`:** `object_map` is updated per node during copy (`upsertObjectMap` → `storage_backend='s3'`, `s3_key=UUID`, `active`). Safe because the webdav-mode app ignores `object_map`.
-- **`s3-to-webdav`:** `object_map` is NOT touched during copy (the running S3-mode app resolves blobs through it). A separate **finalize** phase, run after the app is switched to webdav mode, flips migrated nodes to `storage_backend='webdav'`, `s3_key=NULL`.
+- **`s3-to-webdav`:** each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved**. The running S3-mode app reads only `s3_key` (`downloadBlob` in S3 mode never consults `storage_backend`), so the flip has zero functional impact on running reads; `storage_backend` is informational. Preserving `s3_key` also keeps rollback possible — the pre-migration key stays recorded on the row.
+
+### 7.1 `object_map` transitions
+
+| Direction | Transition |
+|---|---|
+| `webdav-to-s3` | Upsert row → `(storage_backend='s3', s3_key=<UUID>, active)`. |
+| `s3-to-webdav` | Flip `storage_backend='webdav'` inline after the webdav upload succeeds; `s3_key` is retained (a legacy reference; harmless; helps rollback). |
+
+There is **no** transition that nulls `s3_key`. Source blobs are never deleted (delete-mode remains a follow-up).
 
 ---
 
 ## 8. Resume Markers
 
+Resume is **automatic and always on** — there is no `--resume` flag or UI checkbox. On every run, destination-state markers are checked per node and already-migrated blobs are skipped. `--force` overrides the automatic skip.
+
 | Direction | Marker | Meaning |
 |---|---|---|
 | `webdav-to-s3` | active `object_map` row with non-null `s3_key` | Node already migrated → skip (unless `--force`). |
 | `s3-to-webdav` | dest `headBlob(nodePath).contentLength === filecache.size` | Node already uploaded to WebDAV at the right size → skip. A partial/unfinished dest blob is never treated as complete. |
-| `finalize` | dest `headBlob(path)` exists and size matches `filecache` | Node eligible for flip to `(webdav, NULL)`. |
 
 ---
 
@@ -169,7 +177,7 @@ The app remains fully usable during the copy phase. Directories are only relevan
 1. **Dry-run is mandatory before any write:** `--apply` first performs the dry-run pass (config validation + snapshot enumeration + destination connectivity); any failure blocks all writes (exit code `1`). `--dry-run` / `--check-env` never write.
 2. **Source blobs are never deleted** in the MVP. `--delete-mode` is a follow-up.
 3. **`.wea` is a normal folder** — included in migration like any other node.
-4. **`--force` re-copy** is included (overrides resume-skip); `--delete-mode` is not.
+4. **`--force` re-copy** is included (overrides the automatic resume skip); `--delete-mode` is not.
 5. **Per-node failure isolation:** a failing node is caught, recorded in `errors`, and processing continues. The run only aborts when config/snapshot/destination validation fails.
 
 ---
@@ -189,11 +197,11 @@ The app remains fully usable during the copy phase. Directories are only relevan
 - [ ] `--check-env` validates config + snapshot + destination connectivity with no writes; exit `0`/`1` accordingly
 - [ ] `--apply` without `--yes` aborts with a clear error
 - [ ] `--apply` runs the internal dry-run pass first; a failed dry-run blocks all writes (exit `1`)
-- [ ] `--dry-run` writes nothing (destination store count `0`, DB unchanged)
-- [ ] `--resume` skips already-migrated nodes per direction marker; re-run is idempotent (0 copied)
-- [ ] `--force` re-copies nodes even when the resume marker is present
+- [ ] `--dry-run` writes nothing (destination store count `0`, DB unchanged, no `object_map` flips)
+- [ ] Automatic resume skips already-migrated nodes per direction marker; a full re-run is idempotent (0 copied)
+- [ ] `--force` re-copies nodes even when the automatic resume skip would skip them
 - [ ] Missing required dest field produces a clear error listing the field(s)
 - [ ] Dest config from `--dest-*` flags and from `DEST_*` env produce the same destination store; flags win on conflict
-- [ ] `--phase=finalize` rejected for `webdav-to-s3` / missing `--direction`
+- [ ] s3-to-webdav apply flips `storage_backend='webdav'` inline per node while preserving `s3_key`; a re-run skips flipped nodes
 - [ ] Unknown flag combination exits `2` with a usage message
 - [ ] `runMigrationCli` output includes progress and a summary of copied/skipped/failed

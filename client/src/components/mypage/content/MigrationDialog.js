@@ -4,7 +4,6 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -37,9 +36,7 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   const { t } = useTranslation();
 
   const [direction, setDirection] = useState('webdav-to-s3');
-  const [phase, setPhase] = useState('copy');
   const [mode, setMode] = useState('dry-run');
-  const [resume, setResume] = useState(false);
   const [s3Dest, setS3Dest] = useState({
     bucket: '',
     accessKey: '',
@@ -105,9 +102,6 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
 
   const handleDirectionChange = (nextDirection) => {
     setDirection(nextDirection);
-    if (nextDirection === 'webdav-to-s3' && phase === 'finalize') {
-      setPhase('copy');
-    }
     setMissingFields([]);
     setFormError('');
   };
@@ -145,9 +139,7 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
           };
     const payload = {
       direction,
-      phase,
       mode,
-      resume: mode === 'apply' ? resume : false,
       force: false,
       dest,
     };
@@ -382,19 +374,6 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
           </RadioGroup>
         </FormControl>
 
-        <TextField
-          select
-          fullWidth
-          label={t('migration.phase')}
-          value={phase}
-          onChange={(e) => setPhase(e.target.value)}
-          margin="normal"
-          disabled={isRunning || starting}
-        >
-          <MenuItem value="copy">{t('migration.phaseCopy')}</MenuItem>
-          {direction === 's3-to-webdav' && <MenuItem value="finalize">{t('migration.phaseFinalize')}</MenuItem>}
-        </TextField>
-
         <FormControl component="fieldset" sx={{ mt: 1 }}>
           <FormLabel>{t('migration.mode')}</FormLabel>
           <RadioGroup row value={mode} onChange={(e) => setMode(e.target.value)}>
@@ -404,11 +383,9 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
         </FormControl>
 
         {mode === 'apply' && (
-          <FormControlLabel
-            control={<Checkbox checked={resume} onChange={(e) => setResume(e.target.checked)} disabled={isRunning || starting} />}
-            label={t('migration.resume')}
-            sx={{ mt: 1 }}
-          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {t('migration.autoResumeNote')}
+          </Typography>
         )}
 
         <Box sx={{ mt: 2 }}>{destType === 's3' ? renderS3Fields() : renderWebdavFields()}</Box>

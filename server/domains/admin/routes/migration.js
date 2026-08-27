@@ -10,7 +10,6 @@ const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 
 const VALID_DIRECTIONS = ['webdav-to-s3', 's3-to-webdav'];
-const VALID_PHASES = ['copy', 'finalize'];
 const VALID_MODES = ['dry-run', 'apply'];
 const DEST_REQUIRED_FIELDS = {
   s3: ['bucket', 'accessKey', 'secretKey'],
@@ -33,17 +32,12 @@ const isAdmin = asyncHandler(async (req, res, next) => {
 function parseMigrationPayload(body) {
   const {
     direction,
-    phase = 'copy',
     mode = 'dry-run',
-    resume = false,
     force = false,
     dest,
   } = body || {};
 
   if (!VALID_DIRECTIONS.includes(direction)) {
-    return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
-  }
-  if (!VALID_PHASES.includes(phase)) {
     return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
   }
   if (!VALID_MODES.includes(mode)) {
@@ -63,9 +57,7 @@ function parseMigrationPayload(body) {
   return {
     payload: {
       direction,
-      phase,
       mode,
-      resume: Boolean(resume),
       force: Boolean(force),
       dest,
     },
@@ -76,7 +68,7 @@ function parseMigrationPayload(body) {
  * Background worker: drives one migration job to a terminal state.
  * Progress updates are written on every onProgress callback.
  */
-function runMigrationWorker(jobId, { direction, phase, destConfig, mode, resume, force }) {
+function runMigrationWorker(jobId, { direction, destConfig, mode, force }) {
   const { getComposition } = require('../../../service/composition');
   const { migrationService, migrationJobStore } = getComposition();
 
@@ -86,10 +78,8 @@ function runMigrationWorker(jobId, { direction, phase, destConfig, mode, resume,
   return migrationService
     .run({
       direction,
-      phase,
       destConfig,
       mode,
-      resume,
       force,
       onProgress: ({ total: jobTotal, done, current, copied, skipped, failed }) => {
         total = jobTotal;
@@ -143,11 +133,11 @@ router.post('/migration/blobs', authenticateToken, isAdmin, asyncHandler(async (
     throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
   }
 
-  const { direction, phase, mode, resume, force, dest } = parsed.payload;
-  const job = migrationJobStore.create({ direction, phase, mode });
+  const { direction, mode, force, dest } = parsed.payload;
+  const job = migrationJobStore.create({ direction, mode });
   const destConfig = { type: dest.type, ...dest };
 
-  dispatchWorker(job.jobId, { direction, phase, destConfig, mode, resume, force });
+  dispatchWorker(job.jobId, { direction, destConfig, mode, force });
 
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
 }));

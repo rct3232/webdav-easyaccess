@@ -92,6 +92,7 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
     await dst.uploadBlob(nodePath, buf);
     const cache = await fileNodesStore.getCache(node.id);
     await fileNodesStore.upsertCache(node.id, buf.length, (cache && cache.mime_type) || null, sha256HexLower(buf));
+    await fileNodesStore.setObjectMapBackendWebdav(node.id);
     return { action: 'copied', path: nodePath };
   }
 
@@ -156,63 +157,17 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
     return { ...results, dryRun: true };
   }
 
-  async function runFinalize({ dst, snapshot, onProgress }) {
-    const results = { copied: 0, skipped: 0, failed: 0, errors: [] };
-    const total = snapshot.length;
-    let done = 0;
-
-    for (const { node, activeObject } of snapshot) {
-      const current = { nodeId: node.id };
-      let path = null;
-      let outcome = 'skipped';
-      try {
-        if (activeObject.storage_backend === 's3' && activeObject.s3_key) {
-          path = await fileNodeService.getNodePath(node.id);
-          current.path = path;
-          const cache = await fileNodesStore.getCache(node.id);
-          const cacheSize = cache != null ? Number(cache.size) : null;
-          const head = await dst.headBlob(path);
-          if (head && cacheSize != null && head.contentLength === cacheSize) {
-            await fileNodesStore.setObjectMapBackendWebdav(node.id);
-            outcome = 'copied';
-          }
-        }
-      } catch (error) {
-        outcome = 'failed';
-        results.errors.push({ nodeId: node.id, path, error: error.message });
-      }
-
-      if (outcome === 'copied') results.copied += 1;
-      else if (outcome === 'skipped') results.skipped += 1;
-      else results.failed += 1;
-
-      done += 1;
-      onProgress({ total, done, current, copied: results.copied, skipped: results.skipped, failed: results.failed });
-    }
-
-    return { ...results, dryRun: false };
-  }
-
-  function assertValidOptions({ direction, phase, mode }) {
+  function assertValidOptions({ direction, mode }) {
     if (!VALID_DIRECTIONS.includes(direction)) {
       throw new Error(`Invalid direction: ${direction}. Expected one of: ${VALID_DIRECTIONS.join(', ')}`);
-    }
-    if (phase !== 'copy' && phase !== 'finalize') {
-      throw new Error(`Invalid phase: ${phase}. Expected 'copy' or 'finalize'`);
     }
     if (!VALID_MODES.includes(mode)) {
       throw new Error(`Invalid mode: ${mode}. Expected one of: ${VALID_MODES.join(', ')}`);
     }
-    if (phase === 'finalize' && direction !== 's3-to-webdav') {
-      throw new Error('phase "finalize" is only valid for direction "s3-to-webdav"');
-    }
-    if (phase === 'finalize' && mode !== 'apply') {
-      throw new Error('phase "finalize" requires mode "apply"');
-    }
   }
 
-  async function run({ direction, phase = 'copy', destConfig, mode = 'dry-run', resume = false, force = false, onProgress = () => {} }) {
-    assertValidOptions({ direction, phase, mode });
+  async function run({ direction, destConfig, mode = 'dry-run', force = false, onProgress = () => {} }) {
+    assertValidOptions({ direction, mode });
 
     let lock;
     try {
@@ -232,13 +187,10 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       const snapshot = await enumerateSnapshot();
       await probeDestination(dst);
 
-      if (phase === 'finalize') {
-        return await runFinalize({ dst, snapshot, onProgress });
-      }
       if (mode === 'dry-run') {
-        return await runDry({ direction, dst, snapshot, resume, onProgress });
+        return await runDry({ direction, dst, snapshot, resume: true, onProgress });
       }
-      return await runCopy({ direction, dst, snapshot, resume, force, onProgress });
+      return await runCopy({ direction, dst, snapshot, resume: true, force, onProgress });
     } finally {
       await lock.release();
     }

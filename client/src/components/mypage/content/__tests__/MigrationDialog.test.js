@@ -1,8 +1,8 @@
 /**
  * MigrationDialog tests.
- * Verifies observable outcomes per spec: direction/phase/mode fields,
+ * Verifies observable outcomes per spec: direction/mode fields,
  * required-field validation, start → poll → progress → completed,
- * cancel, and the s3-to-webdav finalize option.
+ * cancel, and the apply-mode auto-resume note.
  * @see docs/spec/client/components/mypage/content/MigrationDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -32,7 +32,6 @@ async function fillS3Fields(user) {
 const runningJob = {
   jobId: 'mig-1',
   direction: 'webdav-to-s3',
-  phase: 'copy',
   mode: 'dry-run',
   status: 'running',
   progress: 5,
@@ -45,7 +44,7 @@ const runningJob = {
 };
 
 describe('MigrationDialog', () => {
-  it('renders S3 destination fields by default with correct direction and no finalize phase', async () => {
+  it('renders S3 destination fields by default with correct direction and no auto-resume note in dry-run', async () => {
     renderDialog();
 
     expect(screen.getByRole('radio', { name: /webdav → s3/i })).toBeChecked();
@@ -57,13 +56,10 @@ describe('MigrationDialog', () => {
     expect(screen.getByLabelText(/access key \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText(/phase/i));
-    expect(screen.getByRole('option', { name: /copy/i })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /finalize/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already migrated files are skipped automatically/i)).not.toBeInTheDocument();
   });
 
-  it('s3-to-webdav shows WebDAV destination fields and the finalize phase option', async () => {
+  it('s3-to-webdav shows WebDAV destination fields', async () => {
     const user = userEvent.setup();
     renderDialog();
 
@@ -72,20 +68,16 @@ describe('MigrationDialog', () => {
     expect(screen.getByLabelText(/url \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/username \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password \*/i)).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText(/phase/i));
-    expect(screen.getByRole('option', { name: /copy/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /finalize/i })).toBeInTheDocument();
   });
 
-  it('resume checkbox appears only in apply mode', async () => {
+  it('shows the auto-resume note only in apply mode', async () => {
     const user = userEvent.setup();
     renderDialog();
 
-    expect(screen.queryByRole('checkbox', { name: /resume from previous run/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already migrated files are skipped automatically/i)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /apply/i }));
-    expect(screen.getByRole('checkbox', { name: /resume from previous run/i })).toBeInTheDocument();
+    expect(screen.getByText(/already migrated files are skipped automatically/i)).toBeInTheDocument();
   });
 
   it('blocks start when required fields are missing', async () => {
@@ -148,9 +140,7 @@ describe('MigrationDialog', () => {
 
     expect(capturedPayload).toEqual({
       direction: 'webdav-to-s3',
-      phase: 'copy',
       mode: 'dry-run',
-      resume: false,
       force: false,
       dest: {
         type: 's3',
@@ -161,6 +151,8 @@ describe('MigrationDialog', () => {
         region: 'us-east-1',
       },
     });
+    expect(capturedPayload).not.toHaveProperty('phase');
+    expect(capturedPayload).not.toHaveProperty('resume');
   });
 
   it('shows failed summary with error list when the job fails', async () => {

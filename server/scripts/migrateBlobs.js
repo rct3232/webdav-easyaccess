@@ -23,8 +23,6 @@
  *
  * Options:
  *   --direction=webdav-to-s3|s3-to-webdav   Required. Direction implies the source backend.
- *   --phase=copy|finalize                   Default copy. finalize is only valid for s3-to-webdav.
- *   --resume                                Skip already-migrated nodes.
  *   --force                                 Re-copy even when a resume marker is present.
  *   --dest-webdav-url=URL                   WebDAV destination connection fields.
  *   --dest-webdav-username=USER
@@ -50,10 +48,10 @@
  *
  * Examples:
  *   node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --check-env
- *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dry-run --resume
+ *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dry-run
  *   node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --apply --yes \
  *     --dest-s3-bucket=target-bucket --dest-s3-access-key=AKIA... --dest-s3-secret-key=...
- *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --phase=finalize --apply --yes \
+ *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --apply --yes \
  *     --dest-webdav-url=https://dav.example.com --dest-webdav-username=user --dest-webdav-password=pass
  *
  * See docs/spec/server/tools/blob-migration.md for the full contract.
@@ -69,14 +67,12 @@ const { getComposition } = require('../service/composition');
 const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
 
 const VALID_DIRECTIONS = ['webdav-to-s3', 's3-to-webdav'];
-const VALID_PHASES = ['copy', 'finalize'];
 const PROGRESS_INTERVAL = 100;
 
-const BOOLEAN_FLAGS = new Set(['check-env', 'dry-run', 'apply', 'yes', 'resume', 'force']);
+const BOOLEAN_FLAGS = new Set(['check-env', 'dry-run', 'apply', 'yes', 'force']);
 
 const VALUE_FLAGS = new Set([
   'direction',
-  'phase',
   'dest-webdav-url',
   'dest-webdav-username',
   'dest-webdav-password',
@@ -100,8 +96,6 @@ Modes (exactly one required):
 
 Options:
   --direction=webdav-to-s3|s3-to-webdav   Required. Direction implies the source backend.
-  --phase=copy|finalize                   Default copy. finalize is only valid for s3-to-webdav.
-  --resume                                Skip already-migrated nodes.
   --force                                 Re-copy even when a resume marker is present.
   --dest-webdav-url=URL                   WebDAV destination connection fields.
   --dest-webdav-username=USER
@@ -225,13 +219,6 @@ async function runMigrationCli(argv, deps) {
     return 2;
   }
 
-  const phase = values.phase === undefined ? 'copy' : String(values.phase);
-  if (!VALID_PHASES.includes(phase)) {
-    output.error(`Invalid --phase: ${phase}. Expected one of: ${VALID_PHASES.join(', ')}`);
-    output.error(USAGE);
-    return 2;
-  }
-
   const destConfig = buildDestConfig(direction, values, process.env);
 
   if (isTruthy(values['check-env'])) {
@@ -262,16 +249,13 @@ async function runMigrationCli(argv, deps) {
     return 2;
   }
 
-  const resume = isTruthy(values.resume);
   const force = isTruthy(values.force);
 
   try {
     const result = await migrationService.run({
       direction,
-      phase,
       destConfig,
       mode,
-      resume,
       force,
       onProgress: makeOnProgress(output),
     });

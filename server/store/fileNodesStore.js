@@ -626,7 +626,7 @@ function createFileNodesStore() {
       try {
         const pool = storage.getPgPool();
         const res = await pool.query(
-          `UPDATE object_map SET storage_backend = 'webdav', s3_key = NULL
+          `UPDATE object_map SET storage_backend = 'webdav'
            WHERE file_node_id = $1 AND status = 'active'`,
           [Number(fileNodeId)]
         );
@@ -638,7 +638,7 @@ function createFileNodesStore() {
 
     try {
       const res = await storage.sqliteRun(
-        `UPDATE object_map SET storage_backend = 'webdav', s3_key = NULL
+        `UPDATE object_map SET storage_backend = 'webdav'
          WHERE file_node_id = ? AND status = 'active'`,
         [Number(fileNodeId)]
       );

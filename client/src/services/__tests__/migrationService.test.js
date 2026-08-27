@@ -28,9 +28,7 @@ describe('migrationService', () => {
 
       const payload = {
         direction: 'webdav-to-s3',
-        phase: 'copy',
         mode: 'dry-run',
-        resume: false,
         force: false,
         dest: { type: 's3', bucket: 'bucket-1', accessKey: 'AK', secretKey: 'SK' },
       };
@@ -53,7 +51,6 @@ describe('migrationService', () => {
       const job = {
         jobId: 'mig-1',
         direction: 'webdav-to-s3',
-        phase: 'copy',
         mode: 'dry-run',
         status: 'running',
         progress: 3,

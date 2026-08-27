@@ -114,13 +114,15 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 **How it works**
 
 - The **source** backend is auto-determined from the current app config (`WEA_FILE_STORAGE` + its env vars); direction implies source. Only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...).
-- The copy phase uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy phase.
+- The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
 - **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
 
 **Direction and cutover**
 
-- **WebDAV → S3:** run the copy while the app is in webdav mode (`WEA_FILE_STORAGE=webdav`). `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize phase is needed.
-- **S3 → WebDAV:** run the copy while the app is in s3 mode (`WEA_FILE_STORAGE=s3`); `object_map` is left untouched so the running S3-mode app keeps resolving blobs. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. Finally run the **finalize** phase, which flips migrated nodes to `storage_backend='webdav'`, `s3_key=NULL` (idempotent; re-running flips nothing new).
+Both directions follow the same cutover shape — run the copy (`apply`), switch `WEA_FILE_STORAGE` + the backend's storage env in `.env`, restart the app, then verify:
+
+- **WebDAV → S3:** run the copy while the app is in webdav mode (`WEA_FILE_STORAGE=webdav`). `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize step is needed.
+- **S3 → WebDAV:** run the copy while the app is in s3 mode (`WEA_FILE_STORAGE=s3`). Each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved** — the running S3-mode app keeps serving via the retained key and rollback stays possible. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. No separate finalize step is needed.
 
 **Execution order**
 
@@ -136,11 +138,11 @@ node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
 node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
   --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --apply --yes
 
-# 4) Re-run to resume: skips already-migrated nodes; a full re-run copies nothing
-node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 ... --apply --yes --resume
+# 4) Re-run to resume (automatic): already-migrated nodes are skipped; a full re-run copies nothing
+node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 ... --apply --yes
 
-# s3-to-webdav: after cutover to webdav mode, run finalize
-node server/scripts/migrateBlobs.js --direction=s3-to-webdav --phase=finalize --dest-type=webdav \
+# s3-to-webdav copy: the object_map flip happens inline per node during apply; then cut over (see above)
+node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dest-type=webdav \
   --dest-webdav-url=... --dest-webdav-username=... --dest-webdav-password=... --apply --yes
 ```
 
@@ -150,7 +152,7 @@ node server/scripts/migrateBlobs.js --direction=s3-to-webdav --phase=finalize --
 - `--apply` requires `--yes`; abort otherwise.
 - `.wea` is a normal folder — migrated like any other node.
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
-- Re-run with `--resume` to continue an interrupted migration; `--force` re-copies nodes even when a resume marker is present.
+- **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.
 
 ### Transaction and Concurrency Notes (postgresql)
 
@@ -165,7 +167,7 @@ Use this checklist for deployment/runtime validation only:
 
 - [ ] `WEA_STORAGE_BACKEND` and backend-specific env keys are set as intended.
 - [ ] Required DDL has been applied (`001`). On a fresh DB the server applies it automatically at startup; on a migrated target DB the migration tool applies it first.
-- [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran `--check-env` and `--dry-run` before `--apply`, and report warnings are resolved; cutover/finalize steps followed.
+- [ ] Blob migration (WebDAV ↔ S3, `docs/spec/server/tools/blob-migration.md`) ran `--check-env` and `--dry-run` before `--apply`, and report warnings are resolved; cutover steps followed.
 - [ ] `/api/health` returns healthy status after server start.
 
 For store contract validation, use `docs/spec/server/store/*.md`.

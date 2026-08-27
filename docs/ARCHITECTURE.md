@@ -89,6 +89,8 @@ The adapter layer sits between domains and physical storage, providing interchan
 - `PostgresqlMetadataAdapter` — normalized PostgreSQL schema (production default)
 - `SqliteMetadataAdapter` — SQLite via better-sqlite3 (development/testing)
 
+Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/server/store/blobstore.md`.
+
 ### 1.2 Infrastructure Layer
 
 Cross-cutting infrastructure modules live in `server/infrastructure/`:
@@ -167,7 +169,7 @@ This document intentionally omits full constraints/indexes. Treat
 
 #### Metadata Migration Path (One-shot)
 
-> **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. New-architecture migration tooling is planned as Future Work (see PLAN.md).
+> **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. Blob migration between the current backends is handled by the bidirectional WebDAV ↔ S3 migration tool — see `docs/spec/server/tools/blob-migration.md` (admin API + `server/scripts/migrateBlobs.js` CLI).
 - command sequence and operator checks are maintained in `docs/SETUP.md`.
 
 ### 2.2 Concurrency Control (Metadata Locking)

@@ -621,6 +621,33 @@ function createFileNodesStore() {
     }
   }
 
+  async function setObjectMapBackendWebdav(fileNodeId) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          `UPDATE object_map SET storage_backend = 'webdav', s3_key = NULL
+           WHERE file_node_id = $1 AND status = 'active'`,
+          [Number(fileNodeId)]
+        );
+        return { changes: res.rowCount };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteRun(
+        `UPDATE object_map SET storage_backend = 'webdav', s3_key = NULL
+         WHERE file_node_id = ? AND status = 'active'`,
+        [Number(fileNodeId)]
+      );
+      return { changes: res.changes };
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   async function insertObject(fileNodeId, s3Key, status) {
     if (isPg) {
       try {
@@ -959,6 +986,31 @@ function createFileNodesStore() {
     }
   }
 
+  async function getCache(fileNodeId) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          'SELECT * FROM filecache WHERE file_node_id = $1 LIMIT 1',
+          [Number(fileNodeId)]
+        );
+        return res.rows[0] || null;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        'SELECT * FROM filecache WHERE file_node_id = ? LIMIT 1',
+        [Number(fileNodeId)]
+      );
+      return res.rows[0] || null;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
   async function deleteCache(fileNodeId) {
     if (isPg) {
       try {
@@ -1012,7 +1064,9 @@ function createFileNodesStore() {
     activateObject,
     orphanObject,
     countActiveObjectsByS3Key,
+    setObjectMapBackendWebdav,
     upsertCache,
+    getCache,
     deleteCache,
     getOrphanedObjects,
     getAllActiveS3Keys,

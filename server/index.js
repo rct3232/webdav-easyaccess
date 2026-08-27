@@ -75,6 +75,7 @@ app.use('/api/users', require('./domains/admin/routes/users'));
 app.use('/api/admin', require('./domains/admin/routes/userManagement'));
 app.use('/api/admin', require('./domains/admin/routes/settings'));
 app.use('/api/admin', require('./domains/admin/routes/maintenance'));
+app.use('/api/admin', require('./domains/admin/routes/migration'));
 app.use('/api/settings', require('./domains/admin/routes/settings'));
 // Files domain routes (Phase 6 split)
 app.use('/api/files', require('./domains/files/routes/crud'));

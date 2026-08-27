@@ -74,6 +74,17 @@ Current layout is summarized in [client/TEST_SUMMARY.md](../client/TEST_SUMMARY.
 - **Timer hygiene:** Unref non-essential timers that would otherwise hold the event loop open during tests (e.g. the 5-minute download-progress cleanup timer in `operationProgress.js` uses `.unref()`). This prevents Jest's "worker failed to exit gracefully / force exited" stall. Use `--detectOpenHandles` to confirm the leak source before editing.
 - **Console output policy:** In `server/test-setup.js`, silence `console.log` (`jest.spyOn(console, 'log').mockImplementation(() => {})`) to suppress per-request `requestLogger` noise, but preserve `console.warn` and `console.error` so tests that assert on deprecation warnings (e.g. `storage.test.js`) keep working. Tests that assert on `console.log` output must re-spy the implementation themselves (see `requestLogger.test.js`). Keep `verbose: false` in `jest.config.js` to reduce printed test-name overhead.
 
+### Blob migration testing policy
+
+The blob-migration feature (bidirectional WebDAV ↔ S3; spec: `docs/spec/server/tools/blob-migration.md`) is enforced by injection and a local network guard — real environments are never touched. Integrity is enforced by code, not convention.
+
+- **Injection only:** `migrationService` takes `srcBlobStore` and `buildDestBlobStore` as injected deps. Tests inject `createFakeBlobStore()` (`server/testing/mocks/fakeBlobStore.js`) and a fake `buildDestBlobStore`; real adapters (`WebdavBlobStore`/`S3BlobStore`) are never constructed inside tests. Assert via `jest.spyOn` on their constructors where feasible.
+- **Fake BlobStore contract:** `createFakeBlobStore()` is an in-memory store with REAL behavior (`uploadBlob`, `downloadBlob`, `deleteBlob`, `headBlob`, `createDirectory`/`ensureDirectoryExists`, `listKeys`). It supports failure injection (`failOn(key)`, `failNextN(n)`) and records writes (`writtenKeys()`/`writtenPaths()`, `count()`) for "only destination written", "no duplicate copy", and dry-run no-write assertions. This is contract fidelity (a real adapter mock honoring `docs/spec/server/store/blobstore.md`), not speculative logic.
+- **Temp sqlite only:** tests run against temp sqlite via `createTestDatabase()` (`WEA_STORAGE_BACKEND=sqlite`). No real PG host, no network.
+- **CLI tests are in-process:** call the exported `runMigrationCli(argv, { migrationService: fake, output })` directly — no subprocess, no network. Cover usage errors, the `--yes`/`--apply` gate, `--check-env`, dry-run-first, and dest config from flags + env.
+- **Network guard:** migration test suites stub `net.Socket.connect` and `http.request` to throw, so any accidental socket attempt FAILS the test. Combined with CI lacking real credentials (`.env` gitignored), this is defense in depth.
+- **Never use real WebDAV/S3/PG** in migration tests; the migration admin route tests assert the 202 + poll + cancel contract with the worker disabled (`WEA_SKIP_MIGRATION_WORKER`).
+
 ### Recommended factory pattern
 
 ```javascript

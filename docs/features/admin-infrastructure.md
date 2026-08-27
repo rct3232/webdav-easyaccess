@@ -34,6 +34,7 @@ Administrators are users with `is_admin` set. Admin routes require a valid JWT a
 | Permissions | `GET /api/admin/folders/list`, `PUT /api/admin/users/:id/permissions` | List folders for permission UI; set user folder permissions. |
 | Cleanup | `POST /api/admin/permissions/ensure-home-owner-admin`, `POST /api/admin/cleanup/orphaned` | Ensure home owner has admin on home folder; remove redundant self-grants on users' own subtrees; clean orphaned metadata. |
 | Maintenance (GC) | `POST /api/admin/maintenance/gc`, `POST /api/admin/maintenance/repair-sync` | Run one orphaned-blob GC cycle; manually resolve `orphaned_node` rows. |
+| Blob migration | `POST /api/admin/migration/blobs`, `GET /api/admin/migration/jobs/:jobId`, `POST /api/admin/migration/jobs/:jobId/cancel` | Start a bidirectional WebDAV ↔ S3 blob migration, poll its status, cancel it. Spec: `docs/spec/server/tools/blob-migration.md`. |
 
 See [api.md](../api.md) for exact methods, paths, and bodies.
 
@@ -55,7 +56,7 @@ Canonical middleware flow, middleware responsibilities, and route exclusions are
 - **Canonical schema/constraints:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`.
 - **Canonical env/runtime parser:** `server/store/storage.js`.
 - **Locking contract:** `server/infrastructure/lockManager.js` (backend-specific lock implementation; feature-level guarantee is race-safe metadata writes). Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()` and `withLock()`.
-- **Migration workflow:** the FsJSON/webdav metadata migrator (`server/scripts/migrateMetadataToPostgresql.js`) was removed in Phase 7; new-architecture migration tooling is Future Work (see PLAN.md).
+- **Blob migration workflow:** bidirectional WebDAV ↔ S3 blob migration is available in-app (admin API `POST/GET/cancel /api/admin/migration/*` with a settings-tab "Storage migration" UI) and as a standalone CLI (`server/scripts/migrateBlobs.js`). Full spec: `docs/spec/server/tools/blob-migration.md`; service contract: `docs/spec/server/services/migrationService.md`.
 
 ### Infrastructure layer
 

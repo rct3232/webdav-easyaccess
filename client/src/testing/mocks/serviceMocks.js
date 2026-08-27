@@ -134,6 +134,15 @@ export function createFileUtilsMock(overrides = {}) {
   };
 }
 
+export function createMigrationServiceMock(overrides = {}) {
+  return {
+    startBlobMigration: jest.fn(),
+    getBlobMigrationStatus: jest.fn(),
+    cancelBlobMigration: jest.fn(),
+    ...overrides,
+  };
+}
+
 export function createErrorUtilsMock(overrides = {}) {
   return {
     getServerErrorDisplay: jest.fn((data) => data?.errorCode || 'error'),

@@ -279,6 +279,29 @@ describe('createMigrationService', () => {
     expect(row.s3_key).toBeNull();
   });
 
+  it('dry-run tolerates a NotFound probe response from S3 (minio $metadata 404)', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    await seedWebdavFile({ parentId: rootNodeId, name: 'a.txt', content: 'alpha', srcStore: src });
+
+    const notFound = Object.assign(new Error('UnknownError'), {
+      name: 'NotFound',
+      $metadata: { httpStatusCode: 404 },
+    });
+    const dst = createFakeBlobStore({ headBlob: async () => { throw notFound; } });
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const result = await service.run({
+      direction: 'webdav-to-s3',
+      destConfig: { type: 's3' },
+      mode: 'dry-run',
+    });
+
+    expect(result.dryRun).toBe(true);
+    expect(dst.count()).toBe(0);
+  });
+
   it('resume: completed nodes skipped, failed nodes copied, no duplicates', async () => {
     const { rootNodeId } = await createUserTree();
     const src = createFakeBlobStore();

@@ -12,8 +12,9 @@ const VALID_MODES = ['dry-run', 'apply'];
 function isNotFoundError(error) {
   if (!error) return false;
   if (error.status === 404 || error.statusCode === 404) return true;
+  if (error.$metadata && error.$metadata.httpStatusCode === 404) return true;
   const haystack = `${error.name || ''} ${error.message || ''}`;
-  return /404|not found|nosuchkey/i.test(haystack);
+  return /404|not found|notfound|nosuchkey/i.test(haystack);
 }
 
 function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager }) {
@@ -35,8 +36,12 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
   }
 
   async function probeDestination(dst) {
+    // Probe a random key, not '/': MinIO returns a response the S3 SDK cannot
+    // parse for the bare root key (UnknownError). A missing random key yields a
+    // clean 404/NotFound on both S3 and WebDAV destinations, which is what a
+    // connectivity probe should expect.
     try {
-      await dst.headBlob('/');
+      await dst.headBlob(`__wea_migration_probe_${crypto.randomUUID()}`);
     } catch (error) {
       if (!isNotFoundError(error)) throw error;
     }

@@ -8,7 +8,6 @@ const multer = require('multer');
 const { authenticateToken, authenticateTokenOrShare } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
 const { requireAuth } = requireUser;
-const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../../../utils/errorHandler');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
@@ -34,7 +33,7 @@ function requireTokenNotShare(req, res, next) {
 
 const METADATA_PATHS_LIMIT = 100;
 
-router.post('/check-conflicts', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/check-conflicts', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { operations, limit = true } = req.body;
   if (!operations || !Array.isArray(operations)) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -61,7 +60,7 @@ router.post('/resolve-path', authenticateToken, requireUser, asyncHandler(async 
   res.json({ nodeId: node.id });
 }));
 
-router.post('/metadata', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/metadata', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const nodeIds = req.body.nodeIds;
   if (!Array.isArray(nodeIds)) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -101,7 +100,7 @@ router.post('/metadata', authenticateTokenOrShare, requireAuth, checkMetaPathAcc
   res.json(results);
 }));
 
-router.get('/list', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/list', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const principalId = req.principalId;
   const isShare = isSharePrincipal(principalId);
 
@@ -119,7 +118,7 @@ router.get('/list', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, 
   res.json(itemsWithThumbnails);
 }));
 
-router.get('/ancestors', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/ancestors', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const nodeId = parseNodeId(req.query.nodeId, 'nodeId');
 
   const { fileNodeService, fileNodesStore } = getComposition();
@@ -145,7 +144,7 @@ router.get('/ancestors', authenticateTokenOrShare, requireAuth, checkMetaPathAcc
   res.json({ ancestors });
 }));
 
-router.get('/download', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/download', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const nodeIdValue = req.query.nodeId;
   const inline = req.query.inline === 'true';
 
@@ -181,7 +180,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, checkMetaPathAcce
   await sendBufferAsChunks(res, buffer);
 }));
 
-router.post('/upload', authenticateToken, requireAuth, checkMetaPathAccess, upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/upload', authenticateToken, requireAuth, upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file) {
     throw validationError(SERVER_ERROR_CODES.files.invalidPath);
   }
@@ -233,7 +232,7 @@ router.post('/upload', authenticateToken, requireAuth, checkMetaPathAccess, uplo
   }
 }));
 
-router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShare, requireUser, asyncHandler(async (req, res) => {
   const { nodeId, newName } = req.body;
   if (!nodeId || !newName) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -249,7 +248,7 @@ router.put('/rename', authenticateTokenOrShare, requireAuth, requireTokenNotShar
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.renameSuccess, nodeId: result.nodeId, newName: result.newName });
 }));
 
-router.post('/move', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/move', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
   const { nodeId, destinationParentNodeId } = req.body;
   if (!nodeId || !destinationParentNodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -266,7 +265,7 @@ router.post('/move', authenticateToken, requireAuth, checkMetaPathAccess, asyncH
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.moveSuccess, nodeId: result.nodeId, newParentId: result.newParentId });
 }));
 
-router.post('/copy', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/copy', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
   const { nodeId, destinationParentNodeId, newName } = req.body;
   if (!nodeId || !destinationParentNodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -289,7 +288,7 @@ router.post('/copy', authenticateToken, requireAuth, checkMetaPathAccess, asyncH
   res.json({ messageCode: SERVER_MESSAGE_CODES.files.copySuccess, sourceNodeId: result.sourceNodeId, copiedNodeId: result.copiedNodeId });
 }));
 
-router.delete('/delete', authenticateToken, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.delete('/delete', authenticateToken, requireAuth, asyncHandler(async (req, res) => {
   const { nodeId } = req.body;
   if (!nodeId) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);

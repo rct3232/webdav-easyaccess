@@ -121,7 +121,7 @@ expected one. Treat this section as the governing policy for that class of bugs.
 | D | Storage consistency | Do DB nodes and blobs agree? | Server integration + S3+PG infra | Copy shares a blob; overwriting the copy leaves the original intact; orphaned blobs are GC'd |
 | E | State transitions | Are lifecycle transitions atomic and terminal-state-enforcing? | Server route integration | Approving grants the requested permission; an already-cancelled request cannot be approved again |
 | F | Freshness / cache | Do cache, ETag, and existence index stay fresh? | Server integration + client unit | A grant is visible within cache TTL; a revoke is reflected immediately; `If-None-Match` gets a correct `304` |
-| G | Security surfaces | Can tokens / IDOR / reserved paths leak? | Server route integration | Expired/invalid share token blocks download; `/.wea` stays blocked for non-admin |
+| G | Security surfaces | Can tokens / IDOR / path traversal leak? | Server route integration | Expired/invalid share token blocks download; share-token scope traversal is denied |
 | H | Cleanup / migration | Are cascades and reconciliations complete? | Server route integration + store | Deleting a user removes permission/share/recent rows while the home-root ADMIN anchor is preserved |
 
 ### 2. Common principles

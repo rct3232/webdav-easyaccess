@@ -165,7 +165,6 @@ No backward-compatibility tests are retained. All path-based test cases listed i
 | `POST /batch-move` | Returns 202 + jobId for valid batch-move | `{ moves: [{ sourceNodeId: ${id1}, destinationParentNodeId: ${destId} }] }` | status=202, body.jobId defined |
 | `POST /batch-copy` | Returns 202 + jobId for valid batch-copy | `{ copies: [{ sourceNodeId: ${id1}, destinationParentNodeId: ${destId} }] }` | status=202, body.jobId defined |
 | `POST /batch-delete` | Returns 202 + jobId for valid batch-delete | `{ nodeIds: [${id1}, ${id2}] }` | status=202, body.jobId defined |
-| `POST /batch-delete` | Returns 403 when nodeIds include meta-path nodes for non-admin | `{ nodeIds: [${normalId}, ${metaNodeId}] }` | status=403, body.errorCode defined |
 | `GET /bulk-operation/:jobId` | Returns 404 for unknown jobId | path param = `'nonexistent-job-id'` | status=404, body.errorCode defined |
 | `POST /bulk-operation/:jobId/cancel` | Cancels job and returns messageCode | Create batch-move → cancel with jobId from response | move: status=202; cancel: status=200, messageCode=`cancelRequested`, body.jobId matches |
 
@@ -245,7 +244,6 @@ const FIXTURE_IDS = {
   file1: 3,             // file1.txt under home
   videoFile: 4,         // video.mp4 under home
   otherUserFolder: 10,  // another user's home (no permission)
-  metaNode: 99,          // /.wea meta-path node (blocked for non-admin)
 };
 ```
 

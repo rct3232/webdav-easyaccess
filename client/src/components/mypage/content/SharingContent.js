@@ -36,7 +36,6 @@ import {
   rejectPermissionRequest,
   approvePermissionRequest,
 } from '../../../services/permissionRequestService';
-import { grantPermission } from '../../../services/permissionService';
 import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 import { formatDate, formatDateOnly } from '../../../utils/format';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
@@ -351,12 +350,6 @@ const SharingContent = ({ selectedContentItem, onSelectContentItem, user, onMess
                           disabled={!isPending || isActionLoading}
                           onClick={() =>
                             withRequestActionLoading(r.id, async () => {
-                              await grantPermission({
-                                userId: r.requester_id,
-                                nodeId: r.file_node_id,
-                                permission: r.requested_permission || PERMISSIONS.READ,
-                                target: 'file',
-                              });
                               await approvePermissionRequest(r.id);
                               setMessage({ type: 'success', text: t('mypage.permissionApproved') });
                               await loadPermissionRequests();

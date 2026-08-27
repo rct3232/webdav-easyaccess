@@ -306,6 +306,86 @@ describe('FileManagerView', () => {
     expect(props.explorerHandlers.commands.openCreateFolderDialog).toHaveBeenCalled();
   });
 
+  it('shows fab create/upload affordances for write-granted shared targets', async () => {
+    const props = createProps({
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/shared/docs',
+        },
+      },
+      explorerActionState: {
+        ...createProps().explorerActionState,
+        capabilityState: { hasWritePermission: true },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /file actions/i }));
+
+    expect(screen.getByRole('menuitem', { name: /upload file/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /create folder/i })).toBeInTheDocument();
+  });
+
+  it('hides fab create/upload affordances for read-granted targets', async () => {
+    const props = createProps({
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/shared/docs',
+        },
+      },
+      explorerActionState: {
+        ...createProps().explorerActionState,
+        capabilityState: { hasWritePermission: false },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByRole('button', { name: /file actions/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('file-actions-speed-dial')).not.toBeInTheDocument();
+  });
+
+  it('renders real folder names in the shared tree (no placeholder names)', async () => {
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { nodeId: 21, name: 'Reports', permission: 'write', type: 'directory' },
+    ]);
+
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        isMobile: false,
+      },
+      explorerSession: {
+        ...createProps().explorerSession,
+        controlsState: {
+          ...createProps().explorerSession.controlsState,
+          currentPath: '/__shared__',
+        },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Reports')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Shared (21)')).not.toBeInTheDocument();
+  });
+
   it('uses share-link fab actions for login and add-to-shared states', async () => {
     const loginProps = createProps({
       shareContext: {

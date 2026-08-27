@@ -23,11 +23,11 @@
 
 ### 2.3 Storage Paths
 
-- /.wea/... (paths and shapes)
+- (DB tables / storage keys and shapes)
 
 ### 2.4 Dependencies
 
-- storage, metaPaths, locks, etc.
+- storage, locks, etc.
 
 ### 2.5 Verification Scenarios
 

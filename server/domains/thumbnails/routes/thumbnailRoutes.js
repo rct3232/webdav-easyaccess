@@ -5,12 +5,11 @@ const { ensureThumbnailsBatch } = require('../services/thumbnailService');
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { requireAuth } = require('../../../middleware/requireUser');
-const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError } = require('../../../utils/errorHandler');
 const { checkFilePermission } = require('../../permissions/services/aclService');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
-router.post('/batch', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/batch', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const { nodeIds } = req.body;
 
   if (!Array.isArray(nodeIds) || nodeIds.length === 0) {

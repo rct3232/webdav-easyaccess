@@ -11,12 +11,15 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const ShareLink = require('../../../../models/ShareLink');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
 
 let fileNodeService;
 let webdavMock;
+let blobStorageService;
 
 async function createUserWithHomeNode(opts = {}) {
   const { user, token } = await createAuthenticatedTestUser(opts);
@@ -28,6 +31,12 @@ async function createFileForUser({ user, homeNodeId, name }) {
   await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
   const file = await fileNodeService.createFile(homeNodeId, name);
   return file.id;
+}
+
+async function createFileWithBlob({ user, homeNodeId, name, content }) {
+  const fileNodeId = await createFileForUser({ user, homeNodeId, name });
+  await blobStorageService.uploadToWebdav(fileNodeId, Buffer.from(content), 'text/plain');
+  return fileNodeId;
 }
 
 let app;
@@ -47,6 +56,7 @@ beforeAll(async () => {
     blobStore,
     fileNodeService,
   });
+  blobStorageService = composition.getComposition().blobStorageService;
 
   app = require('../../../../index');
 });
@@ -111,6 +121,41 @@ describe('POST /api/share-links', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.share.fileNotFound);
+  });
+
+  it('forbids creating a share link for a node the creator cannot read (IDOR)', async () => {
+    const userA = await createUserWithHomeNode({
+      username: `share-owner-a-${Date.now()}`,
+    });
+    const fileNodeId = await createFileForUser({ user: userA.user, homeNodeId: userA.homeNodeId, name: 'secret.pdf' });
+
+    const userB = await createAuthenticatedTestUser({
+      username: `share-intruder-b-${Date.now()}`,
+    });
+
+    const res = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${userB.token}`)
+      .send({ fileNodeId });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+  });
+
+  it('allows the owner to create a share link for their own node', async () => {
+    const userA = await createUserWithHomeNode({
+      username: `share-owner-ok-${Date.now()}`,
+    });
+    const fileNodeId = await createFileForUser({ user: userA.user, homeNodeId: userA.homeNodeId, name: 'mine.pdf' });
+
+    const res = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${userA.token}`)
+      .send({ fileNodeId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeDefined();
+    expect(res.body.nodeId).toBe(fileNodeId);
   });
 });
 
@@ -221,5 +266,94 @@ describe('DELETE /api/share-links/:token', () => {
       .get('/api/share-links')
       .set('Authorization', `Bearer ${token}`);
     expect(listRes.body.some((l) => l.token === linkToken)).toBe(false);
+  });
+});
+
+describe('Share link lifecycle (public access)', () => {
+  it('public download works while the link is valid', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `share-life-${Date.now()}`,
+    });
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'life.txt',
+      content: 'lifecycle-content',
+    });
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId });
+    const linkToken = createRes.body.token;
+
+    webdavMock.getFileContents.mockResolvedValue(Buffer.from('lifecycle-content'));
+    const infoRes = await request(app).get(`/api/share/${linkToken}/info`);
+    expect(infoRes.status).toBe(200);
+    expect(infoRes.body.isExpired).toBe(false);
+
+    const downloadRes = await request(app).get(`/api/share/${linkToken}`);
+    expect(downloadRes.status).toBe(200);
+    expect(Buffer.from(downloadRes.body).toString()).toBe('lifecycle-content');
+    expect(downloadRes.headers['content-disposition']).toContain('attachment');
+  });
+
+  it('expired link returns 410 for both info and download', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `share-life-exp-${Date.now()}`,
+    });
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'exp.txt',
+      content: 'expired-content',
+    });
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId, expiresInDays: 1 });
+    const linkToken = createRes.body.token;
+
+    await ShareLink.update(linkToken, { expiresAt: new Date(0).toISOString() });
+
+    const infoRes = await request(app).get(`/api/share/${linkToken}/info`);
+    expect(infoRes.status).toBe(HTTP_STATUS.GONE);
+    expect(infoRes.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkExpired);
+
+    const downloadRes = await request(app).get(`/api/share/${linkToken}`);
+    expect(downloadRes.status).toBe(HTTP_STATUS.GONE);
+    expect(downloadRes.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkExpired);
+  });
+
+  it('deleted link returns 404 for both info and download', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `share-life-del-${Date.now()}`,
+    });
+    const fileNodeId = await createFileWithBlob({
+      user,
+      homeNodeId,
+      name: 'del.txt',
+      content: 'deleted-content',
+    });
+
+    const createRes = await request(app)
+      .post('/api/share-links')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId });
+    const linkToken = createRes.body.token;
+
+    const delRes = await request(app)
+      .delete(`/api/share-links/${linkToken}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(delRes.status).toBe(200);
+
+    const infoRes = await request(app).get(`/api/share/${linkToken}/info`);
+    expect(infoRes.status).toBe(HTTP_STATUS.NOT_FOUND);
+    expect(infoRes.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkNotFound);
+
+    const downloadRes = await request(app).get(`/api/share/${linkToken}`);
+    expect(downloadRes.status).toBe(HTTP_STATUS.NOT_FOUND);
+    expect(downloadRes.body.errorCode).toBe(SERVER_ERROR_CODES.share.shareLinkNotFound);
   });
 });

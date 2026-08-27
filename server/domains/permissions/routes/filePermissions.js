@@ -149,6 +149,15 @@ router.get('/file/list', authenticateToken, requireUser, asyncHandler(async (req
 
   let list = await permissionStore.getUserFilePermissions(userId);
 
+  // Exclude the user's own home subtree: file-level self-grants on files under
+  // the user's home root must never surface (mirrors GET /shared exclusion).
+  const homeRoot = await fileNodesStore.getUserRootNode(userId);
+  if (homeRoot) {
+    const ownDescendants = await fileNodesStore.getDescendants(homeRoot.id);
+    const ownIds = new Set(ownDescendants.map(d => d.id));
+    list = list.filter(({ file_node_id }) => !ownIds.has(file_node_id));
+  }
+
   if (parentNodeId != null && parentNodeId !== '') {
     // Filter to files that are descendants of the given parent node
     const descendants = await fileNodesStore.getDescendants(Number(parentNodeId));

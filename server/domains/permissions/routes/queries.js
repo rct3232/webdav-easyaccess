@@ -24,6 +24,19 @@ router.get('/check', authenticateToken, requireUser, asyncHandler(async (req, re
     throw notFoundError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound);
   }
 
+  // Admin users bypass ACL checks: their home is the filesystem root `/`, so they
+  // hold no grant rows and any nested folder would otherwise report no access,
+  // hiding the create/upload FAB and drag-drop in the admin UI. Mirrors the admin
+  // bypass applied by every other server check.
+  if (req.user.is_admin || req.user.full?.is_admin) {
+    return res.json({
+      nodeId: Number(nodeId),
+      hasRead: true,
+      hasWrite: true,
+      source: 'admin',
+    });
+  }
+
   const userId = req.user.id;
 
   // File-specific permission takes precedence for file nodes

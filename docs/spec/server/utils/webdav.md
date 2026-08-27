@@ -70,7 +70,7 @@ segment from root to deepest, tolerating already-existing collections.
   messages matching `already exists`/`method not allowed` are treated as success. A `409`
   is disambiguated with a `client.exists()` probe before being treated as a real failure.
 - **Callers:** `WebdavFileStoreAdapter.createDirectory` (and thus `WebdavBlobStore.createDirectory`,
-  used by `blobStorageService.createDirectoryWebdav`), `selectiveTransfer`, and the
+  used by `blobStorageService.createDirectoryWebdav`), and the
   streamed move/copy fallbacks. The tolerance makes these callers' existing
   "already exists" error swallowing redundant but harmless.
 

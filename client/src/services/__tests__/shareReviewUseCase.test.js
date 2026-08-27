@@ -19,7 +19,7 @@ describe('shareReviewUseCase', () => {
     sharePermissionGateway.approvePermissionRequest.mockResolvedValue(undefined);
   });
 
-  it('revokes removed assignments (best-effort), grants changes, then approves', async () => {
+  it('revokes removed assignments (best-effort), never pre-grants, then approves', async () => {
     const initialNodePermissions = new Map([
       [
         1001,
@@ -34,8 +34,8 @@ describe('shareReviewUseCase', () => {
       [
         1001,
         new Map([
-          ['u1', 'write'], // permission change => grant
-          ['u3', 'read'], // extra user => grant
+          ['u1', 'write'], // permission change
+          ['u3', 'read'], // extra user
         ]),
       ],
     ]);
@@ -53,23 +53,17 @@ describe('shareReviewUseCase', () => {
       nodeId: 1001,
     });
 
-    // Grants for u1 and u3 should be attempted.
-    expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
-      userId: 'u1',
-      nodeId: 1001,
-      permission: 'write',
-    });
-    expect(sharePermissionGateway.grantPermission).toHaveBeenCalledWith({
-      userId: 'u3',
-      nodeId: 1001,
-      permission: 'read',
-    });
+    // The requested permission is granted atomically by the server on approve;
+    // the client must not issue a pre-approve grant.
+    expect(sharePermissionGateway.grantPermission).not.toHaveBeenCalled();
 
     expect(sharePermissionGateway.approvePermissionRequest).toHaveBeenCalledWith('req-1');
   });
 
-  it('does not approve when grant fails', async () => {
-    sharePermissionGateway.grantPermission.mockRejectedValueOnce(new Error('Grant failed'));
+  it('propagates approve failures to the caller', async () => {
+    sharePermissionGateway.approvePermissionRequest.mockRejectedValueOnce(
+      new Error('Approve failed')
+    );
 
     const initialNodePermissions = new Map([[1001, new Map([['u1', 'read']])]]);
     const nodePermissions = new Map([[1001, new Map([['u1', 'write']])]]);
@@ -81,8 +75,5 @@ describe('shareReviewUseCase', () => {
         nodePermissions,
       })
     ).rejects.toBeTruthy();
-
-    expect(sharePermissionGateway.approvePermissionRequest).not.toHaveBeenCalled();
   });
 });
-

@@ -114,8 +114,8 @@ describe('useFolderTreeController', () => {
     getRecentFiles.mockResolvedValue([]);
 
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
-      { nodeId: 10, permission: 'read' },
-      { nodeId: 20, permission: 'read' },
+      { nodeId: 10, name: 'Shared Docs', permission: 'read', type: 'directory' },
+      { nodeId: 20, name: 'Team Assets', permission: 'read', type: 'directory' },
     ]);
 
     const { result } = renderControllerHook({
@@ -129,14 +129,14 @@ describe('useFolderTreeController', () => {
     await waitFor(() => {
       expect(result.current.sharedFolders).toHaveLength(2);
     });
-    expect(result.current.sharedFolders[0]).toMatchObject({ nodeId: 10, permission: 'read' });
+    expect(result.current.sharedFolders[0]).toMatchObject({ nodeId: 10, name: 'Shared Docs', permission: 'read' });
   });
 
   it('does not load shared folders for admin users', async () => {
     const { result } = renderControllerHook({
       currentNodeId: null,
       currentPath: '/',
-      user: { id: '1', username: 'admin', is_admin: true },
+      user: { id: '1', username: 'admin', is_admin: true, rootNodeId: 999 },
       onNodeClick: jest.fn(),
       ancestors: [],
     });
@@ -215,6 +215,31 @@ describe('useFolderTreeController', () => {
     await waitFor(() => {
       expect(result.current.sharedExpanded).toBe(true);
     });
+  });
+
+  it('builds shared tree nodes with real folder names from the gateway result', async () => {
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { nodeId: 10, name: 'Team Docs', permission: 'write', type: 'directory' },
+    ]);
+
+    const { result } = renderControllerHook({
+      currentNodeId: null,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+
+    await waitFor(() => {
+      expect(result.current.sharedFolders).toHaveLength(1);
+    });
+
+    const tree = result.current.buildSharedFolderTree();
+
+    expect(tree).toEqual([
+      expect.objectContaining({ nodeId: 10, name: 'Team Docs', permission: 'write' }),
+    ]);
+    expect(JSON.stringify(tree)).not.toContain('Shared (10)');
   });
 
   it('expands home, ancestor node ids and the current node; handleSharedToggle navigates to /__shared__', async () => {

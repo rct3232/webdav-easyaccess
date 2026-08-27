@@ -167,3 +167,27 @@ describe('DELETE /api/recent-files', () => {
     expect(res.body.some((f) => f.fileNodeId === other.id)).toBe(true);
   });
 });
+
+describe('recent entries and node deletion (reference stability)', () => {
+  it('removes recent entries when the referenced node is deleted (cascade)', async () => {
+    const { token, fileNode } = await createUserWithFile();
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileNodeId: fileNode.id });
+
+    const before = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(before.status).toBe(200);
+    expect(before.body.some((f) => f.fileNodeId === fileNode.id)).toBe(true);
+
+    await fileNodeService.deleteNode(fileNode.id);
+
+    const after = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${token}`);
+    expect(after.status).toBe(200);
+    expect(after.body.some((f) => f.fileNodeId === fileNode.id)).toBe(false);
+  });
+});

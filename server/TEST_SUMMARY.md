@@ -25,7 +25,6 @@ Single modules in isolation (models, middleware, utils, domain-internal stores).
 | `models/__tests__/PermissionRequest.test.js` | Permission request model |
 | `middleware/__tests__/requireUser.test.js` | JWT auth, 401 handling |
 | `middleware/__tests__/permissions.test.js` | Permission checks, read/write validation |
-| `middleware/__tests__/metaPathGuard.test.js` | Meta path protection |
 | `middleware/__tests__/requestLogger.test.js` | Request logging middleware |
 | `utils/__tests__/auth.test.js` | Token generation, verification, password hashing |
 | `utils/__tests__/email.test.js` | Email utilities |
@@ -48,9 +47,6 @@ Domain services, policies, and stores plus the shared service/store layer. Persi
 | `domains/files/services/__tests__/batchOperationService.test.js` | Batch operations service |
 | `domains/files/services/__tests__/downloadService.test.js` | Download service |
 | `domains/files/services/__tests__/fileService.test.js` | File service operations |
-| `domains/files/services/__tests__/selectiveDelete.test.js` | Selective delete |
-| `domains/files/services/__tests__/selectiveDownload.test.js` | Selective download |
-| `domains/files/services/__tests__/selectiveTransfer.test.js` | Selective transfer service |
 | `domains/permissions/policy/__tests__/inheritancePolicy.test.js` | Permission inheritance policy |
 | `domains/permissions/policy/__tests__/ownerNodeResolver.test.js` | Owner node resolution |
 | `domains/permissions/policy/__tests__/permissionPolicy.test.js` | Permission policy |

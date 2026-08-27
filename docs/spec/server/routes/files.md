@@ -22,7 +22,7 @@ The monolithic `server/routes/files.js` was split into domain-bounded modules:
 | Preview & thumbnails | `domains/files/routes/preview.js` | `/api/files` | preview-ticket, preview-stream, download-multiple, download-progress/:id, thumbnail/:hash, thumbnails/batch |
 
 - **Test file:** `server/domains/files/__tests__/files.test.js` (relocated from routes)
-- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService, selectiveDelete
+- **Services:** `domains/files/services/` — conflictResolver, batchOperationService, fileService
 - **Stores:** `domains/files/stores/operationProgress.js`
 
 ### 2.2 Route List
@@ -66,7 +66,6 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 ### 2.4 Middleware Used
 
 - `authenticateTokenOrShare`, `authenticateToken`, `requireUser`, `requireAuth`
-- `checkMetaPathAccess`
 - ~~`normalizePathParam`~~ — removed in Phase 4; replaced by nodeId integer validation at route level.
 
 ### 2.5 Test Mock Strategy
@@ -82,7 +81,6 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
   - `POST /preview-ticket`: validates `nodeId` references an existing file, caller has read permission, and file type is `video`. Returns `{ ticket }`.
   - `GET /preview-stream`: validates `{ nodeId, ticket }` and responds with `Content-Disposition: inline` + `Content-Type` derived from filename.
   - Tickets are short-lived (e.g. 60–120s) and must not embed JWT in query params.
-- Meta path (/.wea) blocked for non-admin
 - **GET /list:** When `user.is_admin`, items are not filtered by permission (admin bypass); each item's read permission is also treated as true for admin. Non-admin: permission-based filter as before.
 - Bulk ops: returns jobId; poll via bulk-operation
 - Upload 413 (payload too large): body-parser 또는 서버 제한; 413 반환
@@ -94,7 +92,6 @@ Route handlers delegate to `fileService` instead of calling WebDAV directly. No 
 ### 2.7 Related Documents
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md)
-- selectiveDelete service
 
 ### 2.8 Integration Test Scenarios
 

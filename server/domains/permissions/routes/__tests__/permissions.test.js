@@ -223,6 +223,43 @@ describe('DELETE /api/permissions/revoke (nodeId)', () => {
 
     expect(res.status).toBe(404);
   });
+
+  it('revoke with includeDescendants=true clears grants stored on descendant nodes', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `rev-inc-owner-${Date.now()}` });
+    const targetUser = await createAuthenticatedTestUser({ username: `rev-inc-target-${Date.now()}` });
+
+    const parentDir = await createTestDirectory(null, `rev-inc-parent-${Date.now()}`);
+    const childDir = await createTestDirectory(parentDir.id, `rev-inc-child-${Date.now()}`);
+    const grandchildDir = await createTestDirectory(childDir.id, `rev-inc-grandchild-${Date.now()}`);
+
+    await permissionStore.grant(owner.user.id, parentDir.id, PERMISSIONS.ADMIN);
+    await permissionStore.grant(targetUser.user.id, parentDir.id, PERMISSIONS.READ);
+    await permissionStore.grant(targetUser.user.id, childDir.id, PERMISSIONS.WRITE);
+    await permissionStore.grant(targetUser.user.id, grandchildDir.id, PERMISSIONS.ADMIN);
+
+    const res = await request(app)
+      .delete('/api/permissions/revoke')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .query({ userId: targetUser.user.id, nodeId: parentDir.id, includeDescendants: 'true' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.messageCode).toBeDefined();
+
+    // All direct grant rows on the parent and its descendants are gone
+    const remaining = await permissionStore.getUserPermissions(targetUser.user.id);
+    const remainingIds = remaining.map(r => r.file_node_id);
+    expect(remainingIds).not.toContain(parentDir.id);
+    expect(remainingIds).not.toContain(childDir.id);
+    expect(remainingIds).not.toContain(grandchildDir.id);
+
+    // Route-level freshness: the child reports no access immediately
+    const checkRes = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${targetUser.token}`)
+      .query({ nodeId: childDir.id });
+    expect(checkRes.status).toBe(200);
+    expect(checkRes.body.hasRead).toBe(false);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -308,6 +345,72 @@ describe('GET /api/permissions/check (nodeId)', () => {
       .query({ nodeId: 999999 });
 
     expect(res.status).toBe(404);
+  });
+
+  it('returns no access immediately after revoke', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `check-revoke-owner-${Date.now()}` });
+    const targetUser = await createAuthenticatedTestUser({ username: `check-revoke-target-${Date.now()}` });
+    const dirNode = await createTestDirectory(null, `check-revoke-dir-${Date.now()}`);
+
+    await permissionStore.grant(owner.user.id, dirNode.id, PERMISSIONS.ADMIN);
+    await permissionStore.grant(targetUser.user.id, dirNode.id, PERMISSIONS.READ);
+
+    const beforeRes = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${targetUser.token}`)
+      .query({ nodeId: dirNode.id });
+    expect(beforeRes.status).toBe(200);
+    expect(beforeRes.body.hasRead).toBe(true);
+
+    const revokeRes = await request(app)
+      .delete('/api/permissions/revoke')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .query({ userId: targetUser.user.id, nodeId: dirNode.id });
+    expect(revokeRes.status).toBe(200);
+
+    const afterRes = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${targetUser.token}`)
+      .query({ nodeId: dirNode.id });
+    expect(afterRes.status).toBe(200);
+    expect(afterRes.body.hasRead).toBe(false);
+    expect(afterRes.body.hasWrite).toBe(false);
+  });
+
+  // D1: admin users hold no grant rows (their home is the filesystem root `/`),
+  // so the check must bypass ACLs and grant full access on nested folders. The
+  // node lookup still runs first (a missing node must still 404).
+  it('returns full access for an admin on a node with no grant row', async () => {
+    const admin = await createAuthenticatedTestUser({ grantRoot: true });
+    const dirNode = await createTestDirectory(null, `check-admin-dir-${Date.now()}`);
+
+    const res = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .query({ nodeId: dirNode.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      nodeId: dirNode.id,
+      hasRead: true,
+      hasWrite: true,
+      source: 'admin',
+    });
+  });
+
+  it('returns no access for a non-admin on the same node', async () => {
+    const nonAdmin = await createAuthenticatedTestUser({ username: `check-nonadmin-${Date.now()}` });
+    const dirNode = await createTestDirectory(null, `check-nonadmin-dir-${Date.now()}`);
+
+    const res = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${nonAdmin.token}`)
+      .query({ nodeId: dirNode.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.hasRead).toBe(false);
+    expect(res.body.hasWrite).toBe(false);
+    expect(res.body.source).toBe('none');
   });
 });
 
@@ -424,6 +527,30 @@ describe('GET /api/permissions/user/:userId (nodeId)', () => {
       .set('Authorization', `Bearer ${user1.token}`);
 
     expect(res.status).toBe(403);
+  });
+
+  // Regression guard: the full ACL must keep the home-root ADMIN anchor (it feeds
+  // client listDirectory admin prefixes and the admin "user permissions" view),
+  // even though the home subtree is excluded from GET /api/permissions/shared.
+  it('returns the full ACL including the home-root ADMIN row', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `user-acl-${Date.now()}` });
+    const ownerHome = await createUserRootNode({ userId: owner.user.id });
+
+    // Home-root ADMIN anchor (ensure-home-owner-admin equivalent)
+    await permissionStore.grant(owner.user.id, ownerHome.nodeId, PERMISSIONS.ADMIN);
+
+    // Genuine grant on a folder inside the home
+    const dirNode = await fileNodeService.createDirectory(ownerHome.nodeId, `user-acl-dir-${Date.now()}`);
+    await permissionStore.grant(owner.user.id, dirNode.id, PERMISSIONS.READ);
+
+    const res = await request(app)
+      .get(`/api/permissions/user/${owner.user.id}`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(res.status).toBe(200);
+    const byId = new Map(res.body.map(p => [p.nodeId, p]));
+    expect(byId.get(ownerHome.nodeId)).toMatchObject({ permission: 'admin' });
+    expect(byId.get(dirNode.id)).toMatchObject({ permission: 'read' });
   });
 });
 
@@ -609,6 +736,27 @@ describe('GET /api/permissions/file/check (nodeId)', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('file-level grant overrides an inherited directory grant on the same file', async () => {
+    const targetUser = await createAuthenticatedTestUser({ username: `file-override-target-${Date.now()}` });
+    const parentDir = await createTestDirectory(null, `file-override-parent-${Date.now()}`);
+    const fileNode = await createTestFile(parentDir.id, `file-override-${Date.now()}.txt`);
+
+    // Inherited directory grant: read-only on the parent directory
+    await permissionStore.grant(targetUser.user.id, parentDir.id, PERMISSIONS.READ);
+    // Direct file-level grant: write on the file itself
+    await permissionStore.grantFilePermission(targetUser.user.id, fileNode.id, PERMISSIONS.WRITE);
+
+    const res = await request(app)
+      .get('/api/permissions/file/check')
+      .set('Authorization', `Bearer ${targetUser.token}`)
+      .query({ fileNodeId: fileNode.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.hasRead).toBe(true);
+    expect(res.body.hasWrite).toBe(true);
+    expect(res.body.source).toBe('file');
+  });
 });
 
 describe('GET /api/permissions/file/list (nodeId)', () => {
@@ -654,6 +802,31 @@ describe('GET /api/permissions/file/list (nodeId)', () => {
     const ids = res.body.map(item => item.file_node_id);
     expect(ids).toContain(fileNode1.id);
     expect(ids).toContain(fileNode2.id);
+  });
+
+  it('excludes file-level grants on the user own subtree', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `file-list-own-owner-${Date.now()}` });
+    const giver = await createAuthenticatedTestUser({ username: `file-list-own-giver-${Date.now()}` });
+
+    const ownerHome = await createUserRootNode({ userId: owner.user.id });
+    const giverHome = await createUserRootNode({ userId: giver.user.id });
+
+    // Genuine share: file inside the giver's home granted to the owner
+    const genuineFile = await fileNodeService.createFile(giverHome.nodeId, `file-list-genuine-${Date.now()}.txt`);
+    await permissionStore.grantFilePermission(owner.user.id, genuineFile.id, PERMISSIONS.READ);
+
+    // Own-subtree file-level grant (historical self-grant pollution) — must never surface
+    const ownFile = await fileNodeService.createFile(ownerHome.nodeId, `file-list-own-${Date.now()}.txt`);
+    await permissionStore.grantFilePermission(owner.user.id, ownFile.id, PERMISSIONS.WRITE);
+
+    const res = await request(app)
+      .get('/api/permissions/file/list')
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(res.status).toBe(200);
+    const ids = res.body.map(item => item.file_node_id);
+    expect(ids).toContain(genuineFile.id);
+    expect(ids).not.toContain(ownFile.id);
   });
 });
 
@@ -711,5 +884,64 @@ describe('GET /api/permissions/shared', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+
+  it('returns a node exactly once when granted through both the directory and file grant tables', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `shared-dedupe-owner-${Date.now()}` });
+    const recipient = await createAuthenticatedTestUser({ username: `shared-dedupe-recipient-${Date.now()}` });
+
+    const ownerHome = await createUserRootNode({ userId: owner.user.id });
+    const recipientHome = await createUserRootNode({ userId: recipient.user.id });
+
+    // Genuine share: a file inside the recipient's home granted to the owner
+    // through BOTH tables (directory-level row + file-level row on the same node).
+    const sharedFile = await fileNodeService.createFile(recipientHome.nodeId, `shared-dedupe-file-${Date.now()}.txt`);
+    await permissionStore.grant(owner.user.id, sharedFile.id, PERMISSIONS.READ);
+    await permissionStore.grantFilePermission(owner.user.id, sharedFile.id, PERMISSIONS.READ);
+
+    // Owner's own folder with a legacy self-grant — must never surface
+    const ownDir = await fileNodeService.createDirectory(ownerHome.nodeId, `shared-dedupe-own-${Date.now()}`);
+    await permissionStore.grant(owner.user.id, ownDir.id, PERMISSIONS.WRITE);
+
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    expect(res.status).toBe(200);
+    const matches = res.body.filter(p => p.nodeId === sharedFile.id);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ name: sharedFile.name, type: 'file' });
+    expect(res.body.some(p => p.nodeId === ownDir.id)).toBe(false);
+  });
+
+  it('removes a node from the listing immediately after revoke', async () => {
+    const owner = await createAuthenticatedTestUser({ username: `shared-revoke-owner-${Date.now()}` });
+    const recipient = await createAuthenticatedTestUser({ username: `shared-revoke-recipient-${Date.now()}` });
+
+    await createUserRootNode({ userId: owner.user.id });
+    const recipientHome = await createUserRootNode({ userId: recipient.user.id });
+
+    // Genuine share: folder inside the recipient's home granted to the owner
+    const sharedDir = await fileNodeService.createDirectory(recipientHome.nodeId, `shared-revoke-dir-${Date.now()}`);
+    await permissionStore.grant(owner.user.id, sharedDir.id, PERMISSIONS.READ);
+
+    const beforeRes = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(beforeRes.status).toBe(200);
+    expect(beforeRes.body.some(p => p.nodeId === sharedDir.id)).toBe(true);
+
+    // Recipient owns the folder (descendant of their home) and can revoke
+    const revokeRes = await request(app)
+      .delete('/api/permissions/revoke')
+      .set('Authorization', `Bearer ${recipient.token}`)
+      .query({ userId: owner.user.id, nodeId: sharedDir.id });
+    expect(revokeRes.status).toBe(200);
+
+    const afterRes = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(afterRes.status).toBe(200);
+    expect(afterRes.body.some(p => p.nodeId === sharedDir.id)).toBe(false);
   });
 });

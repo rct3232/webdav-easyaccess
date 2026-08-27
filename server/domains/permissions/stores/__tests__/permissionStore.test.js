@@ -75,12 +75,15 @@ function createMockSQLiteClient() {
       );
     }
 
-    // DELETE ... WHERE user_id = ? AND file_node_id IN (SELECT ... node_ancestors ...) — removeOwnSubtreePermissions
+    // DELETE ... WHERE user_id = ? AND file_node_id IN (SELECT ... node_ancestors ...)
+    // removeOwnSubtreePermissions uses `AND depth > 0` (preserves home-root);
+    // revokeUserSubtreePermissions has no depth filter (revokes root too).
     if (s.startsWith('DELETE') && s.includes('node_ancestors')) {
       const ownRootId = params[1];
+      const depthFilter = s.includes('depth > 0');
       const ownDescendantIds = new Set(
         state.ancestors
-          .filter((a) => a.ancestor_id === ownRootId && a.depth > 0)
+          .filter((a) => a.ancestor_id === ownRootId && (depthFilter ? a.depth > 0 : true))
           .map((a) => a.descendant_id)
       );
       const target = targetsUserPaths ? 'userPaths' : 'userFiles';
@@ -413,5 +416,110 @@ describe('permissionStore (nodeId)', () => {
     expect(remainingIds).toContain(7); // external grant preserved
     expect(remainingIds).not.toContain(2);
     expect(remainingIds).not.toContain(3);
+  });
+
+  // V14: getSharedPermissions — no cross-table duplicate for the same node
+  it('V14: getSharedPermissions never returns the same node twice across the paths and files tables', async () => {
+    const { state } = mockClient;
+    // home root = 1; external dir = 7; external file = 8 (under 7)
+    state.files.push(
+      { id: 7, parent_id: null, name: 'external', type: 'directory' },
+      { id: 8, parent_id: 7, name: 'doc.txt', type: 'file' }
+    );
+    state.ancestors.push(
+      { ancestor_id: 7, descendant_id: 7, depth: 0 },
+      { ancestor_id: 7, descendant_id: 8, depth: 1 },
+      { ancestor_id: 8, descendant_id: 8, depth: 0 }
+    );
+
+    // Genuine directory grant (paths table)
+    await permissionStore.grant(userId, 7, PERMISSIONS.READ);
+    // The same file node 8 is granted through BOTH APIs: a directory-level row
+    // (permissions_user_paths) and a file-level row (permissions_user_files).
+    await permissionStore.grant(userId, 8, PERMISSIONS.READ);
+    await permissionStore.grantFilePermission(userId, 8, PERMISSIONS.WRITE);
+
+    const shared = await permissionStore.getSharedPermissions(userId, 1);
+
+    const ids = shared.map(r => r.file_node_id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(shared.filter(r => r.file_node_id === 8)).toHaveLength(1);
+    expect(shared).toHaveLength(2);
+  });
+
+  // V15: checkPermission — depth-0 direct grant beats a weaker inherited depth-N grant
+  it('V15: checkPermission — direct depth-0 grant beats a weaker inherited depth-N grant', async () => {
+    // READ inherited from root (depth 2 for node 3), WRITE granted directly on subdir (depth 0 for node 2)
+    await permissionStore.grant(userId, 1, PERMISSIONS.READ);
+    await permissionStore.grant(userId, 2, PERMISSIONS.WRITE);
+
+    // Direct grant on node 2 is authoritative: WRITE wins over the inherited READ from root
+    expect(await permissionStore.checkPermission(userId, 2, PERMISSIONS.WRITE)).toBe(true);
+    // The weaker inherited READ must not grant anything above WRITE on the node itself
+    expect(await permissionStore.checkPermission(userId, 2, PERMISSIONS.ADMIN)).toBe(false);
+    // Closest ancestor grant for node 3 is subdir WRITE (depth 1), not root READ (depth 2)
+    expect(await permissionStore.checkPermission(userId, 3, PERMISSIONS.WRITE)).toBe(true);
+  });
+
+  // V16: revoke — immediate reflection and row removal at the store level
+  it('V16: revoke reflects immediately — checkPermission false and getUserPermissions drops the revoked row', async () => {
+    await permissionStore.grant(userId, 2, PERMISSIONS.WRITE);
+    await permissionStore.grantFilePermission(userId, 3, PERMISSIONS.READ);
+
+    await permissionStore.revoke(userId, 2);
+
+    expect(await permissionStore.checkPermission(userId, 2, PERMISSIONS.READ)).toBe(false);
+    const remaining = await permissionStore.getUserPermissions(userId);
+    const remainingIds = remaining.map(r => r.file_node_id);
+    expect(remainingIds).not.toContain(2);
+    expect(remainingIds).toContain(3);
+
+    // file-level row untouched by the directory revoke
+    const filePerms = await permissionStore.getUserFilePermissions(userId);
+    expect(filePerms.map(r => r.file_node_id)).toEqual([3]);
+  });
+
+  // V17: grant upsert — read→write→admin keeps a single row; admin preserved on read
+  it('V17: grant upsert read→write→admin keeps a single row and admin is preserved on read', async () => {
+    await permissionStore.grant(userId, 1, PERMISSIONS.READ);
+    await permissionStore.grant(userId, 1, PERMISSIONS.WRITE);
+    await permissionStore.grant(userId, 1, PERMISSIONS.ADMIN);
+
+    expect(mockClient.state.userPaths).toHaveLength(1);
+
+    const perms = await permissionStore.getUserPermissions(userId);
+    expect(perms).toHaveLength(1);
+    expect(perms[0]).toMatchObject({ file_node_id: 1, permission: PERMISSIONS.ADMIN });
+
+    expect(await permissionStore.checkPermission(userId, 1, PERMISSIONS.ADMIN)).toBe(true);
+    expect(await permissionStore.checkPermission(userId, 3, PERMISSIONS.ADMIN)).toBe(true);
+  });
+
+  // V18: revokeUserSubtreePermissions removes rows on the subtree root AND all
+  // descendants (depth >= 0) from both tables, preserving rows outside.
+  it('V18: revokeUserSubtreePermissions removes rows on subtree root + descendants, keeps external rows', async () => {
+    const { state } = mockClient;
+    state.files.push({ id: 7, parent_id: null, name: 'external', type: 'directory' });
+    state.ancestors.push({ ancestor_id: 7, descendant_id: 7, depth: 0 });
+
+    // Own rows: home root (1), descendants (2, file 3) — INCLUDING the root itself
+    await permissionStore.grant(userId, 1, PERMISSIONS.ADMIN);
+    await permissionStore.grant(userId, 2, PERMISSIONS.WRITE);
+    await permissionStore.grantFilePermission(userId, 3, PERMISSIONS.READ);
+    // External row (kept)
+    await permissionStore.grant(userId, 7, PERMISSIONS.READ);
+
+    const result = await permissionStore.revokeUserSubtreePermissions(userId, 1);
+
+    expect(result).toEqual({ removedPaths: 2, removedFiles: 1 });
+
+    const remaining = await permissionStore.getUserPermissions(userId);
+    const remainingIds = remaining.map(r => r.file_node_id);
+    expect(remainingIds).not.toContain(1); // home-root row revoked too (depth 0)
+    expect(remainingIds).not.toContain(2);
+    expect(remainingIds).toContain(7); // external grant preserved
+
+    const remainingFiles = await permissionStore.getUserFilePermissions(userId);
+    expect(remainingFiles.map(r => r.file_node_id)).not.toContain(3);
   });
 });

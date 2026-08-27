@@ -15,7 +15,7 @@
 - **Source:** `server/domains/admin/services/cleanupService.js`
 - **Test file:** None yet
 
-> **Status — not a nodeId end-state:** This server-side util remains **partially path-based**. Its return fields `upgradedPaths`/`grantedPaths` count upgraded/granted permission **paths**, and it depends on path- and storage-oriented helpers: `listDirectory` from `utils/webdav`, `metaPaths` constants/helpers, and storage helpers (`listDir`, `deletePath`, `exists`, `readFile`, `writeFile`, `ensureDir`). Do not treat this spec as nodeId-migrated; it is explicitly out of scope for the Phase 4 nodeId closure and is pending Phase 7 cleanup (legacy path permission checkers / residual path state).
+> **Status — not a nodeId end-state:** This server-side util remains **partially path-based**. Its return fields `upgradedPaths`/`grantedPaths` count upgraded/granted permission **paths**, and it depends on path- and storage-oriented helpers: `listDirectory` from `utils/webdav`, and storage helpers (`listDir`, `deletePath`, `exists`, `readFile`, `writeFile`, `ensureDir`). Do not treat this spec as nodeId-migrated; it is explicitly out of scope for the Phase 4 nodeId closure and is pending Phase 7 cleanup (legacy path permission checkers / residual path state).
 
 ### 2.2 Functions / Exports
 
@@ -47,7 +47,6 @@
 - permissionStore (getPermissionDoc, grant, checkPermission)
 - `listDirectory` from `../../../utils/webdav`
 - storage (listDir, deletePath, exists, readFile, writeFile, ensureDir)
-- metaPaths constants and helpers
 - withLock + permissionRequestStore (PERMISSION_REQUESTS_PATH) for permission request cleanup
 - `normalizePath` and `PERMISSIONS` from `@webdav-easyaccess/shared`
 

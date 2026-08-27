@@ -141,6 +141,349 @@ describe('POST /api/permission-requests (nodeId)', () => {
 
     expect(res.status).toBe(404);
   });
+
+  it('blocks a request against the requester own folder (self-reference)', async () => {
+    const user = await createAuthenticatedTestUser({
+      username: `self-req-${Date.now()}`,
+    });
+    const ownDir = await createOwnerDirectory(user.user.username);
+
+    const res = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: ownDir.id, permission: PERMISSIONS.READ });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe('serverErrors.permissionRequests.ownPath');
+
+    const inbox = await request(app)
+      .get('/api/permission-requests/inbox')
+      .set('Authorization', `Bearer ${user.token}`);
+    const outbox = await request(app)
+      .get('/api/permission-requests/outbox')
+      .set('Authorization', `Bearer ${user.token}`);
+    const selfPair = (r) =>
+      r.requester_id === user.user.id &&
+      r.owner_id === user.user.id &&
+      r.file_node_id === ownDir.id;
+    expect(inbox.body.some(selfPair)).toBe(false);
+    expect(outbox.body.some(selfPair)).toBe(false);
+  });
+});
+
+describe('Permission request lifecycle (state transitions)', () => {
+  it('owner approve grants exactly the requested permission (read)', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+    expect(createRes.body.status).toBe('pending');
+
+    const approveRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(approveRes.body.status).toBe('approved');
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .query({ nodeId: ownerDir.id });
+    expect(check.status).toBe(200);
+    expect(check.body).toMatchObject({ hasRead: true, hasWrite: false });
+
+    const shared = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const entry = shared.body.find((p) => p.nodeId === ownerDir.id);
+    expect(entry).toBeDefined();
+    expect(entry.permission).toBe(PERMISSIONS.READ);
+  });
+
+  it('owner approve grants exactly the requested permission (write)', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-w-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-w-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.WRITE });
+
+    const approveRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(approveRes.body.status).toBe('approved');
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .query({ nodeId: ownerDir.id });
+    expect(check.body).toMatchObject({ hasRead: true, hasWrite: true });
+
+    const shared = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const entry = shared.body.find((p) => p.nodeId === ownerDir.id);
+    expect(entry).toBeDefined();
+    expect(entry.permission).toBe(PERMISSIONS.WRITE);
+  });
+
+  it('owner approve on a file request grants the file-level permission', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-f-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const testFile = await fileNodeService.createFile(ownerDir.id, `lifecycle-f-file-${Date.now()}.txt`);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-f-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ fileNodeId: testFile.id, permission: PERMISSIONS.READ });
+    expect(createRes.body.status).toBe('pending');
+
+    const approveRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(approveRes.body.status).toBe('approved');
+
+    const filePerm = await permissionStore.getFilePermission(requester.user.id, testFile.id);
+    expect(filePerm).not.toBeNull();
+    expect(filePerm.permission).toBe(PERMISSIONS.READ);
+
+    const shared = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const entry = shared.body.find((p) => p.nodeId === testFile.id);
+    expect(entry).toBeDefined();
+    expect(entry.permission).toBe(PERMISSIONS.READ);
+  });
+
+  it('approve on a deleted target node returns 404 and grants nothing', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-d-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-d-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+    expect(createRes.body.status).toBe('pending');
+
+    await fileNodeService.deleteNode(ownerDir.id);
+
+    const approveRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(approveRes.status).toBe(404);
+
+    const userPerms = await permissionStore.getUserPermissions(requester.user.id);
+    expect(userPerms.some((p) => p.file_node_id === ownerDir.id)).toBe(false);
+  });
+
+  it('owner reject grants nothing to the requester', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-r-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-r-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+
+    const rejectRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/reject`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(rejectRes.body.status).toBe('rejected');
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .query({ nodeId: ownerDir.id });
+    expect(check.body).toMatchObject({ hasRead: false, hasWrite: false });
+
+    const shared = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${requester.token}`);
+    expect(shared.body.some((p) => p.nodeId === ownerDir.id)).toBe(false);
+  });
+
+  it('approve is reflected in inbox and outbox statuses', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-in-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-in-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+
+    await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    const inbox = await request(app)
+      .get('/api/permission-requests/inbox')
+      .set('Authorization', `Bearer ${owner.token}`);
+    const inboxTarget = inbox.body.find((r) => r.id === createRes.body.id);
+    expect(inboxTarget.status).toBe('approved');
+
+    const outbox = await request(app)
+      .get('/api/permission-requests/outbox')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const outboxTarget = outbox.body.find((r) => r.id === createRes.body.id);
+    expect(outboxTarget.status).toBe('approved');
+  });
+
+  it('reject is reflected in inbox and outbox statuses', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-rej-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-rej-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+
+    await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/reject`)
+      .set('Authorization', `Bearer ${owner.token}`);
+
+    const inbox = await request(app)
+      .get('/api/permission-requests/inbox')
+      .set('Authorization', `Bearer ${owner.token}`);
+    const inboxTarget = inbox.body.find((r) => r.id === createRes.body.id);
+    expect(inboxTarget.status).toBe('rejected');
+
+    const outbox = await request(app)
+      .get('/api/permission-requests/outbox')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const outboxTarget = outbox.body.find((r) => r.id === createRes.body.id);
+    expect(outboxTarget.status).toBe('rejected');
+  });
+
+  it('cancel is terminal: later approve fails and the status stays cancelled', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-c-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-c-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+
+    const cancelRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/cancel`)
+      .set('Authorization', `Bearer ${requester.token}`);
+    expect(cancelRes.body.status).toBe('cancelled');
+
+    const approveRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/approve`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(approveRes.status).toBe(400);
+    expect(approveRes.body.errorCode).toBe(
+      'serverErrors.permissionRequests.onlyPendingApprove'
+    );
+
+    const outbox = await request(app)
+      .get('/api/permission-requests/outbox')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const target = outbox.body.find((r) => r.id === createRes.body.id);
+    expect(target.status).toBe('cancelled');
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .query({ nodeId: ownerDir.id });
+    expect(check.body).toMatchObject({ hasRead: false, hasWrite: false });
+  });
+
+  it('cancel is terminal: later reject fails and the status stays cancelled', async () => {
+    const owner = await createAuthenticatedTestUser({
+      username: `lifecycle-cr-owner-${Date.now()}`,
+    });
+    const ownerDir = await createOwnerDirectory(owner.user.username);
+    await grantNodePermission(owner.user.id, ownerDir.id, PERMISSIONS.ADMIN);
+
+    const requester = await createAuthenticatedTestUser({
+      username: `lifecycle-cr-req-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/permission-requests')
+      .set('Authorization', `Bearer ${requester.token}`)
+      .send({ nodeId: ownerDir.id, permission: PERMISSIONS.READ });
+
+    const cancelRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/cancel`)
+      .set('Authorization', `Bearer ${requester.token}`);
+    expect(cancelRes.body.status).toBe('cancelled');
+
+    const rejectRes = await request(app)
+      .post(`/api/permission-requests/${createRes.body.id}/reject`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(rejectRes.status).toBe(400);
+    expect(rejectRes.body.errorCode).toBe(
+      'serverErrors.permissionRequests.onlyPendingApprove'
+    );
+
+    const outbox = await request(app)
+      .get('/api/permission-requests/outbox')
+      .set('Authorization', `Bearer ${requester.token}`);
+    const target = outbox.body.find((r) => r.id === createRes.body.id);
+    expect(target.status).toBe('cancelled');
+  });
 });
 
 describe('GET /api/permission-requests/inbox (nodeId)', () => {

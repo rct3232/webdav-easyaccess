@@ -26,6 +26,7 @@
 | getUserPermissions | (userId) => Promise\<Array\<{ file_node_id, permission }\>\> | List directory permissions for user |
 | getSharedPermissions | (userId, homeRootNodeId?) => Promise\<Array\> | List grants where user is grantee, excluding nodes inside the user's own subtree (closure-table); each row includes `name` and `type` from `file_nodes` |
 | removeOwnSubtreePermissions | (userId, homeRootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on proper descendants of their home root (depth > 0); preserves the home-root ADMIN grant |
+| revokeUserSubtreePermissions | (userId, rootNodeId) => Promise\<{ removedPaths, removedFiles }\> | Delete the user's permission rows on every node in the subtree rooted at `rootNodeId`, INCLUDING the root itself (depth 0). Used on ownership transfer (D6): when a node the user owned is moved into another user's home subtree, the mover's explicit rows on the moved subtree (historical self-grants, admin-assigned rows) would otherwise resurface in `getSharedPermissions` as "shared with me" leaks. |
 | checkPermission | (userId, nodeId, requiredPermission) => Promise\<boolean\> | Check directory permission via ancestor traversal (§2.7) |
 | checkPermissions | (userId, nodeIds, requiredPermission) => Promise\<boolean\> | Batch permission check across multiple nodes |
 | getFolderPermissions | (nodeId, fileNodeId?) => Promise\<Array\> | List users with access to directory; optional `fileNodeId` for file-scoped results |
@@ -110,6 +111,7 @@ Constraint/index details are canonical in:
 - [ ] PostgreSQL: permission check constraint rejects invalid values
 - [ ] PostgreSQL: `grant(..., 'admin')` is preserved on read and `checkPermission(..., 'admin')` returns true
 - [ ] Ancestor inheritance (§2.7): granting on ancestor nodeId propagates to descendants via closure table traversal
+- [ ] `revokeUserSubtreePermissions`: removes the user's rows on the subtree root AND all descendants (depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`; rows outside the subtree are preserved
 
 ### 2.7 Ancestor Inheritance
 

@@ -64,6 +64,21 @@ describe('filterOutUserOwnFolders', () => {
   it('returns empty array when no permissions', () => {
     expect(filterOutUserOwnFolders([], user)).toEqual([]);
   });
+
+  it('acts as a root-only safety net: removes only the exact root node, not descendants', () => {
+    const perms = [
+      { nodeId: 10, permission: 'admin' },
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 20, permission: 'read' },
+    ];
+
+    const result = filterOutUserOwnFolders(perms, user);
+
+    expect(result).toEqual([
+      { nodeId: 100, permission: 'write' },
+      { nodeId: 20, permission: 'read' },
+    ]);
+  });
 });
 
 describe('filterDisplayUsers', () => {

@@ -74,7 +74,7 @@ describe('folderTreeGateway', () => {
   });
 
   it('returns only directory entries with real names from shared permissions', async () => {
-    const user = { id: 'u1', username: 'alice', is_admin: false };
+    const user = { id: 'u1', username: 'alice', is_admin: false, rootNodeId: 500 };
     getSharedPermissions.mockResolvedValue([
       { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
       { nodeId: 200, name: 'Read Only', permission: 'read', type: 'directory' },
@@ -88,6 +88,8 @@ describe('folderTreeGateway', () => {
       { nodeId: 100, name: 'Shared Docs', permission: 'write', type: 'directory' },
       { nodeId: 200, name: 'Read Only', permission: 'read', type: 'directory' },
     ]);
+    expect(result).toHaveLength(2);
+    expect(JSON.stringify(result)).not.toContain('node-100');
   });
 
   it('filters out the user root node defensively when the server still returns it', async () => {
@@ -104,7 +106,7 @@ describe('folderTreeGateway', () => {
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {
     const result = await getUserSharedFolderPermissions({
-      user: { id: 'admin', username: 'admin', is_admin: true },
+      user: { id: 'admin', username: 'admin', is_admin: true, rootNodeId: 999 },
     });
 
     expect(result).toEqual([]);
@@ -123,7 +125,7 @@ describe('folderTreeGateway', () => {
   });
 
   it('propagates getUserSharedFolderPermissions errors for non-admin users', async () => {
-    const user = { id: 'u1', username: 'alice', is_admin: false };
+    const user = { id: 'u1', username: 'alice', is_admin: false, rootNodeId: 500 };
     getSharedPermissions.mockRejectedValue(new Error('permissions failed'));
 
     await expect(getUserSharedFolderPermissions({ user })).rejects.toThrow('permissions failed');

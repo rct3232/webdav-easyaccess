@@ -6,7 +6,7 @@ This document describes the product behavior around browsing and operating on fi
 
 ## Overview
 
-Users manage files and folders through a nodeId-based API. The server enforces ACL on every request; list/read require effective read permission on the target node, write operations require write (or admin) on the target folder, and directory-level permissions are inherited by descendants through the `node_ancestors` closure table. Batch operations (move/copy/delete) use selective transfer/delete logic: the server traverses trees, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Since nodeIds are stable across rename/move operations, no post-operation synchronization of recent files is needed. Thumbnails are generated server-side and cached. Sharing features provide time-limited public access to a file or folder (share links) and controlled access via permissions. Recent files are stored per user using nodeId references.
+Users manage files and folders through a nodeId-based API. The server enforces ACL on every request; list/read require effective read permission on the target node, write operations require write (or admin) on the target folder, and directory-level permissions are inherited by descendants through the `node_ancestors` closure table. Batch operations (move/copy/delete) run in the batch worker: the server traverses the subtree via the closure table, checks ACL at each node, and only acts on allowed items; after completion it updates or revokes permission metadata. Since nodeIds are stable across rename/move operations, no post-operation synchronization of recent files is needed. Thumbnails are generated server-side and cached. Sharing features provide time-limited public access to a file or folder (share links) and controlled access via permissions. Recent files are stored per user using nodeId references.
 
 ---
 
@@ -67,7 +67,7 @@ This section is a reference summary of the existing endpoints that back the abov
 - **Download multiple (ZIP):** `POST /api/files/download-multiple` — Body: `{ nodeIds, downloadId }`; `GET /api/files/download-progress/:id`.
 - **Bulk operation progress:** `GET /api/files/bulk-operation/:jobId`, `POST /api/files/bulk-operation/:jobId/cancel`.
 
-All file/folder endpoints identify resources by `nodeId` / `parentNodeId`; path strings are not used. Access to the reserved `/.wea` path is blocked for non-admin (see [ARCHITECTURE.md](../ARCHITECTURE.md) and [permissions.md](permissions.md)).
+All file/folder endpoints identify resources by `nodeId` / `parentNodeId`; path strings are not used.
 
 ### Thumbnails and Preview
 
@@ -147,7 +147,7 @@ sequenceDiagram
 ### Batch move and ACL / recent files
 
 1. Client sends `POST /api/files/batch-move` with `moves: [{ sourceNodeId, destinationParentNodeId }]`.
-2. Server runs selective transfer: traverse source trees, check current user ACL at each nodeId, move only allowed items. Since nodeIds are stable, permission metadata requires no path-based rewriting.
+2. Server runs the batch move: traverse source subtree, check current user ACL at each nodeId, move only allowed items. Since nodeIds are stable, permission metadata requires no path-based rewriting.
 3. No recent-files synchronization needed — nodeIds remain valid after rename/move operations.
 
 ### Share link (public)
@@ -166,7 +166,7 @@ flowchart TD
 ### Permission request lifecycle
 
 - Requester: `POST /api/permission-requests` → request created (pending).
-- Owner: `GET /api/permission-requests/inbox` → see request; `POST .../approve` or `.../reject`.
+- Owner: `GET /api/permission-requests/inbox` → see request; `POST .../approve` or `.../reject`. Approve grants exactly the requested permission on the target node atomically (directory or file-level) before marking the request `approved`, so an approved request always yields access; a deleted target yields 404 and no grant.
 - Requester: `GET /api/permission-requests/outbox` → see status; `POST .../cancel` to cancel pending.
 - State transitions: pending → approved | rejected | cancelled (see [shared-contracts.md](../shared-contracts.md) for `PERMISSION_REQUEST_STATUS`).
 

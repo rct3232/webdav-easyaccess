@@ -10,7 +10,7 @@ import { closePgPool, queryPg } from './helpers/pg';
 import { gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
 
 /**
- * S3 + PostgreSQL new-architecture integration (E2E-S3PG-001..008).
+ * S3 + PostgreSQL new-architecture integration (E2E-S3PG-001..009).
  *
  * S3-mode only: the scenarios assert blob-level / GC behavior that does not
  * exist in WebDAV mode. The suite self-guards via `E2E_BACKEND_MODE` so the
@@ -20,6 +20,13 @@ import { gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
  * (~1.7 s) so a freshly orphaned/untracked blob is collectable in a test run.
  * The GC tests therefore wait past that cutoff before invoking
  * `POST /api/admin/maintenance/gc`.
+ *
+ * E2E-S3PG-005 also guards the reverse side of GC: a blob still referenced by
+ * an ACTIVE node (active object_map row) is excluded from Tier 2 and survives
+ * the run. E2E-S3PG-009 asserts DB/blob agreement: upload -> node listed with
+ * an active object_map row AND a physical blob; delete -> node gone AND its
+ * object_map reference gone (the physical blob remains pending GC, since S3
+ * delete is lazy).
  */
 
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
@@ -335,17 +342,20 @@ test.describe('S3 + PostgreSQL integration scenarios', () => {
     ).toBeTruthy();
   });
 
-  test('[P1] E2E-S3PG-005: delete -> orphaned blob -> GC admin endpoint cleans it up', async ({
+  test("[P1] E2E-S3PG-005: delete -> orphaned blob -> GC removes it while active nodes' blobs survive", async ({
     request,
   }, testInfo) => {
     const dirName = buildName(testInfo, 's3pg-005-dir');
     const fileName = buildName(testInfo, 's3pg-005-file', '.txt');
+    const activeName = buildName(testInfo, 's3pg-005-active', '.txt');
     const dirPath = `/user1/${dirName}`;
 
     const token = await user1Token(request);
     const gcAdmin = await adminToken(request);
     const homeNodeId = await resolveNodeId(request, token, '/user1');
     const dirNodeId = await createFolderAt(request, token, homeNodeId, dirName);
+
+    // Orphaned candidate: uploaded, then deleted below.
     const fileNodeId = await uploadFileAt(
       request,
       token,
@@ -365,6 +375,26 @@ test.describe('S3 + PostgreSQL integration scenarios', () => {
     const s3Key = activeRows[0].s3_key;
     expect(s3Key.length).toBeGreaterThan(0);
     expect(await blobExists(s3Key)).toBeTruthy();
+
+    // Active control node: uploaded before the GC run so its blob ages past
+    // the orphan TTL and becomes a Tier-2 candidate — but it must survive
+    // because an ACTIVE node still references it (active-set exclusion).
+    const activeContent = Buffer.from(`active-control-${testInfo.title}`);
+    const activeNodeId = await uploadFileAt(
+      request,
+      token,
+      dirNodeId,
+      activeName,
+      'text/plain',
+      activeContent
+    );
+    const activeKeyRows = await queryPg<{ s3_key: string }>(
+      `SELECT s3_key FROM object_map WHERE file_node_id = $1 AND status = 'active'`,
+      [activeNodeId]
+    );
+    expect(activeKeyRows).toHaveLength(1);
+    const activeS3Key = activeKeyRows[0].s3_key;
+    expect(await blobExists(activeS3Key)).toBeTruthy();
 
     const delRes = await request.delete('/api/files/delete', {
       headers: { Authorization: `Bearer ${token}` },
@@ -388,6 +418,18 @@ test.describe('S3 + PostgreSQL integration scenarios', () => {
     expect(gcBody.results.tier2.untrackedKeys).toBeGreaterThanOrEqual(1);
     expect(gcBody.results.tier2.deletedKeys).toBeGreaterThanOrEqual(1);
     expect(await blobExists(s3Key)).toBeFalsy();
+
+    // The blob of an ACTIVE node must NOT be reclaimed by the same GC run:
+    // it is excluded from the untracked set, remains readable, and keeps its
+    // active object_map row.
+    expect(await blobExists(activeS3Key)).toBeTruthy();
+    expect((await downloadFile(request, token, activeNodeId)).equals(activeContent)).toBeTruthy();
+    const activeRowsAfter = await queryPg<{ s3_key: string }>(
+      `SELECT s3_key FROM object_map WHERE file_node_id = $1 AND status = 'active'`,
+      [activeNodeId]
+    );
+    expect(activeRowsAfter).toHaveLength(1);
+    expect(activeRowsAfter[0].s3_key).toBe(activeS3Key);
   });
 
   test('[P0] E2E-S3PG-006: grant folder read -> child/grandchild accessible via __shared__', async ({
@@ -556,5 +598,70 @@ test.describe('S3 + PostgreSQL integration scenarios', () => {
 
     expect(await blobExists(untrackedKey)).toBeFalsy();
     expect((await listS3Keys()).includes(untrackedKey)).toBeFalsy();
+  });
+
+  test('[P1] E2E-S3PG-009: DB/blob agreement -> upload is listed with a blob; delete removes node and DB blob reference', async ({
+    request,
+  }, testInfo) => {
+    const dirName = buildName(testInfo, 's3pg-009-dir');
+    const fileName = buildName(testInfo, 's3pg-009-file', '.txt');
+    const dirPath = `/user1/${dirName}`;
+    const content = Buffer.from(`agreement-${testInfo.title}`);
+
+    const token = await user1Token(request);
+    const homeNodeId = await resolveNodeId(request, token, '/user1');
+    const dirNodeId = await createFolderAt(request, token, homeNodeId, dirName);
+    const fileNodeId = await uploadFileAt(
+      request,
+      token,
+      dirNodeId,
+      fileName,
+      'text/plain',
+      content
+    );
+
+    // Upload side of the agreement: the node is listed AND has an active
+    // object_map row AND the physical blob exists in MinIO.
+    const listing = await listNodeChildren(request, token, dirNodeId);
+    expect(listing.some((item) => item.nodeId === fileNodeId)).toBeTruthy();
+    const activeRows = await queryPg<{ s3_key: string }>(
+      `SELECT s3_key FROM object_map WHERE file_node_id = $1 AND status = 'active'`,
+      [fileNodeId]
+    );
+    expect(activeRows).toHaveLength(1);
+    const s3Key = activeRows[0].s3_key;
+    expect(s3Key.length).toBeGreaterThan(0);
+    expect(await blobExists(s3Key)).toBeTruthy();
+
+    // Delete side of the agreement: the node disappears and its object_map
+    // reference (the DB's view of the blob) is gone. S3 delete is lazy, so the
+    // physical blob remains until the GC run reclaims it (covered by
+    // E2E-S3PG-005); the DB and storage agree that no node owns the blob while
+    // MinIO still holds it pending reclamation.
+    const delRes = await request.delete('/api/files/delete', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { nodeId: fileNodeId },
+    });
+    expect(delRes.ok()).toBeTruthy();
+
+    // The parent directory still resolves, but the deleted file's path is gone.
+    expect(await resolvePathOrNull(request, token, dirPath)).toBe(dirNodeId);
+    expect(await resolvePathOrNull(request, token, `${dirPath}/${fileName}`)).toBeNull();
+
+    const listingAfter = await listNodeChildren(request, token, dirNodeId);
+    expect(listingAfter.some((item) => item.nodeId === fileNodeId)).toBeFalsy();
+
+    const nodeRows = await queryPg<{ id: number }>(`SELECT id FROM file_nodes WHERE id = $1`, [
+      fileNodeId,
+    ]);
+    expect(nodeRows).toHaveLength(0);
+    const mapRowsAfter = await queryPg<{ s3_key: string }>(
+      `SELECT s3_key FROM object_map WHERE file_node_id = $1`,
+      [fileNodeId]
+    );
+    expect(mapRowsAfter).toHaveLength(0);
+
+    // Lazy-delete boundary: the physical blob is not yet reclaimed.
+    expect(await blobExists(s3Key)).toBeTruthy();
   });
 });

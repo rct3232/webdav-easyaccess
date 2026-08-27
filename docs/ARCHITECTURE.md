@@ -53,7 +53,7 @@ server/domains/
 │   └── tokenStore.js  # token persistence
 ├── files/
 │   ├── routes/        # crud.js, batch.js, folders.js, preview.js
-│   ├── services/      # fileService.js, downloadService.js, selectiveTransfer.js, etc.
+│   ├── services/      # fileService.js, downloadService.js, etc.
 │   └── stores/        # operationProgress.js
 ├── permissions/
 │   ├── policy/        # permissionPolicy.js, inheritancePolicy.js, ownerPathResolver.js, permissionRank.js
@@ -103,18 +103,17 @@ Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
 ### 1.3 Middleware Pipeline
 
-For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth, User Loader, or Meta Path Guard.
+For routes that require it, a standardized middleware chain runs for security. Routes such as `/api/health`, `/api/webdav/*`, `/api/share/:token/*`, and `/api/settings/public` do not use Auth or User Loader.
 
 ```
-Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader → Meta Path Guard] (per route) → Route Handler → Error Handler
+Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loader] (per route) → Route Handler → Error Handler
 ```
 
 #### Core Middleware
 1.  **authenticateToken** (`server/utils/auth.js`): Validates `Authorization: Bearer <JWT>` header and sets `req.user.id`.
 2.  **requireUser** (`server/middleware/requireUser.js`): Loads user details from Metadata Store into `req.user.full`.
 3.  **parseNodeId** (`server/middleware/validateNodeIdParam.js`): Parses and validates opaque `nodeId` / `parentNodeId` / `fileNodeId` payload fields inside route handlers; invalid nodeIds are rejected rather than normalized.
-4.  **checkMetaPathAccess** (`server/middleware/metaPathGuard.js`): Blocks non-admin access to reserved path `/.wea`.
-5.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
+4.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
 ### 1.4 Permission Policy (ACL)
 
@@ -151,9 +150,8 @@ flowchart TD
 Metadata storage is selected by `WEA_STORAGE_BACKEND` and keeps the same store API across backends.
 
 *   **Backend selection**:
-    *   `webdav` (default): Metadata JSON files under `/.wea` on WebDAV.
-    *   `fs`: Metadata JSON files on local server disk.
-    *   `postgresql`: Normalized relational schema for metadata and locks.
+    *   `postgresql`: Normalized relational schema for metadata and locks (production default).
+    *   `sqlite`: SQLite via better-sqlite3 for development/testing.
 *   **Interface parity**:
     *   Store public interfaces remain stable across backends.
     *   `userStore`, `permissionStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, and `permissionRequestStore` keep the same exported method contracts while using backend-specific persistence.
@@ -172,34 +170,11 @@ This document intentionally omits full constraints/indexes. Treat
 > **Removed in Phase 7.** The FsJSON/webdav metadata backends and `server/scripts/migrateMetadataToPostgresql.js` were removed. New-architecture migration tooling is planned as Future Work (see PLAN.md).
 - command sequence and operator checks are maintained in `docs/SETUP.md`.
 
-#### Storage Layout (Remote/Local)
-```
-/.wea/
-├── users/
-│   ├── _index.json      # User ID–username mapping and auto-increment ID
-│   └── <username>.json  # User profile, password hash, status, etc. (e.g. admin.json)
-├── permissions/
-│   ├── users/
-│   │   └── <userId>.json   # Per-folder permissions for user (ACL)
-│   └── shares/
-│       └── <token>.json    # Share-link permission scope
-├── index/
-│   └── email/
-│       └── <hash>.txt   # Reverse index for email deduplication and lookup
-├── locks/
-│   └── <hash>.lock      # Distributed lock files (concurrency control)
-├── share-links/         # Share link metadata (if stored as files)
-├── recent-files/        # Per-user recent file lists (if stored as files)
-├── permission_requests.json   # Permission request queue
-└── settings.json        # Global settings (e.g. signup enabled)
-```
-
 ### 2.2 Concurrency Control (Metadata Locking)
 
-A **distributed lock** mechanism (`server/store/locks.js`) prevents metadata races across all backends.
+A **distributed lock** mechanism (`server/infrastructure/lockManager.js`, exported via `server/store/locks.js`) prevents metadata races across all backends.
 
-*   **webdav/fs**: lock files are created atomically, retried with backoff, and auto-expired via TTL.
-*   **postgresql**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup.
+*   **postgresql/sqlite**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
 
 #### Transaction Boundaries (PostgreSQL Backend)
 
@@ -259,13 +234,13 @@ sequenceDiagram
     *   Clients request multiple thumbnails in viewport via batch API.
     *   Video thumbnails require FFmpeg; availability is checked once at server startup.
 
-### 3.2 Recursive Operations (Selective Transfer/Delete)
+### 3.2 Recursive Operations (Batch Move/Copy/Delete)
 
-Directory move/delete can be complex depending on WebDAV server behavior. The system uses `selective*` services to handle this.
+Directory move/copy/delete can be complex depending on WebDAV server behavior. Recursive operations run in the batch worker (`batchOperationService`) on top of the node graph.
 
 *   **Flow**:
-    1.  Recursively traverse the target folder tree.
-    2.  Check **current user ACL** at each step.
+    1.  Resolve the target subtree via the `node_ancestors` closure table.
+    2.  Check **current user ACL** at each node.
     3.  Move/copy/delete only items the user is allowed to access.
     4.  After completion, permission metadata is preserved because grants reference stable nodeIds; the `node_ancestors` closure table is rebuilt for moved subtrees.
 
@@ -296,7 +271,7 @@ Use architecture verification for high-level reasoning only:
 
 - middleware chain remains consistent with documented route exclusions
 - ACL model preserves owner exception and explicit permission rank behavior
-- backend swap (`webdav`/`fs`/`postgresql`) preserves route-level contracts
+- backend swap (`postgresql`/`sqlite`) preserves route-level contracts
 
 Detailed executable verification belongs in:
 

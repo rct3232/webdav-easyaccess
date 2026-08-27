@@ -13,6 +13,7 @@ const {
   PERMISSIONS,
 } = require('../../../../test-utils');
 const Settings = require('../../../../models/Settings');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 
 var mockWebdav;
@@ -46,6 +47,41 @@ afterAll(async () => {
 });
 
 beforeEach(jest.clearAllMocks);
+
+describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
+  const ADMIN_ROUTES = [
+    ['get', '/api/admin/settings'],
+    ['put', '/api/admin/settings'],
+    ['get', '/api/admin/users'],
+    ['get', '/api/admin/users/pending'],
+    ['post', '/api/admin/users'],
+    ['post', '/api/admin/users/1/approve'],
+    ['post', '/api/admin/users/1/reject'],
+    ['delete', '/api/admin/users/1'],
+    ['put', '/api/admin/users/1/permissions'],
+    ['get', '/api/admin/folders/list'],
+    ['post', '/api/admin/permissions/ensure-home-owner-admin'],
+    ['post', '/api/admin/cleanup/orphaned'],
+    ['post', '/api/admin/maintenance/gc'],
+    ['post', '/api/admin/maintenance/repair-sync'],
+  ];
+
+  it('returns 403 for a non-admin on every admin route', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `admin-matrix-${Date.now()}`,
+      isAdmin: false,
+    });
+
+    for (const [method, url] of ADMIN_ROUTES) {
+      const res = await request(app)[method](url)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+    }
+  });
+});
 
 describe('GET /api/admin/settings', () => {
   it('returns 403 when non-admin', async () => {

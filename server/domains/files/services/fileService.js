@@ -5,6 +5,8 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError, forbiddenError, validationError } = require('../../../utils/errorHandler');
+const ownerNodeResolver = require('../../permissions/policy/ownerNodeResolver');
+const permissionStore = require('../../../store/permissionStore');
 
 function createFileService(options = {}) {
   const fileNodeService = options.fileNodeService;
@@ -12,6 +14,8 @@ function createFileService(options = {}) {
   const uploadService = options.uploadService;
   const aclService = options.aclService;
   const fileStorageMode = options.fileStorageMode || 's3';
+  const _ownerNodeResolver = options.ownerNodeResolver || ownerNodeResolver;
+  const _permissionStore = options.permissionStore || permissionStore;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
 
@@ -23,6 +27,7 @@ function createFileService(options = {}) {
     }
 
     const isAdmin = user && aclService.isAdminUser(user);
+    const isShareCaller = aclService.isSharePrincipal(userId);
 
     const results = [];
     for (const child of children) {
@@ -41,6 +46,17 @@ function createFileService(options = {}) {
           hasReadPermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.READ);
           hasWritePermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.WRITE);
         }
+      }
+
+      // For SHARE principals only, exclude children the principal cannot read.
+      // Share tokens must never disclose sibling/parent nodes outside the share
+      // scope (the share-scope metadata leak, D2). Regular user listings RETAIN
+      // unreadable children with their hasReadPermission:false flags — the
+      // request-access flow (E2E-OVERLAY-003) needs to see them in another
+      // user's folder. Admin bypass sets both flags true, so admin listings are
+      // unaffected.
+      if (isShareCaller && !hasReadPermission) {
+        continue;
       }
 
       const display_path = await fileNodeService.getNodePath(child.id);
@@ -191,6 +207,26 @@ function createFileService(options = {}) {
       }
     }
 
+    // Ownership-transfer detection (D6). A non-admin mover that OWNS the node
+    // (node inside its home subtree) and moves it OUTSIDE that home subtree
+    // loses ownership: its explicit permission rows on the moved subtree
+    // (historical self-grants, admin-assigned rows) would otherwise resurface
+    // in `GET /api/permissions/shared` as "shared with me" leaks. Resolved
+    // BEFORE the move because the closure-table rebuild afterwards rewrites the
+    // moved subtree's ancestry. A mover that merely received a grant (node not
+    // under its home) does NOT own it — the received grant must persist.
+    const isAdmin = !!user && aclService.isAdminUser(user);
+    let ownershipTransfer = false;
+    if (user && !isAdmin) {
+      const ownedBeforeMove = await _ownerNodeResolver.isOwnerNode(userId, nodeId);
+      if (ownedBeforeMove) {
+        const destInsideMoverHome =
+          newParentNodeId != null &&
+          (await _ownerNodeResolver.isOwnerNode(userId, newParentNodeId));
+        ownershipTransfer = !destInsideMoverHome;
+      }
+    }
+
    // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
     let webdavBuffer = null;
     if (fileStorageMode === 'webdav') {
@@ -210,6 +246,15 @@ function createFileService(options = {}) {
       } catch (error) {
         await fileNodeService.updateSyncStatus(nodeId, 'orphaned_node');
       }
+    }
+
+    // After the closure rebuild: on ownership transfer, revoke the mover's rows
+    // on the moved subtree (root + descendants, depth >= 0) so the moved folder
+    // can never resurface in the mover's `__shared__` listing. Admin movers are
+    // skipped (no home, no self-grant rows to leak). Best-effort: the DB move
+    // already committed; a failed cleanup must not abort the move.
+    if (ownershipTransfer) {
+      await _permissionStore.revokeUserSubtreePermissions(userId, nodeId);
     }
 
     return { nodeId, newParentId: newParentNodeId };

@@ -34,7 +34,7 @@
 
 - **imports:** useTranslation, usePageHeader (PageHeaderContext), adminService, ShareDialog, validation utils, formatDate, getServerErrorDisplay
 - **Header:** Uses `usePageHeader()` to set title `admin.users` and Add button (`common.add`) as actions. Resets on unmount.
-- **Reference implementation:** AdminContent (users detail section)
+- **Origin:** extracted from the earlier admin detail panel (removed as dead code).
 
 ### 2.5 i18n Keys
 

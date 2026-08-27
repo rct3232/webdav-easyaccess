@@ -17,7 +17,7 @@ This document is the canonical reference for the blob migration tooling and repl
 
 Move physical blobs between the WebDAV and S3 backends while keeping the DB metadata authoritative. The tool provides:
 
-- **Both directions:** `webdav-to-s3` and `s3-to-webdav`, selected by `--direction`.
+- **Automatic direction:** `webdav-to-s3` or `s3-to-webdav`, derived from the current app config (`WEA_FILE_STORAGE`). There is no direction selection anywhere — not in the CLI, the admin API, or the UI; the server is the single source of truth.
 - **Automatic resume:** resume is always on — re-running a copy skips already-migrated destination blobs; a full re-run copies nothing.
 - **Inline `object_map` flip (s3→webdav):** after each webdav upload succeeds, the node's `storage_backend` is flipped to `'webdav'` immediately, while `s3_key` is preserved. No separate finalize step exists.
 - **Mandatory dry-run before any write:** an `--apply` run first performs a dry pass; any failure blocks all writes.
@@ -30,10 +30,12 @@ The migration core (`migrationService`) is shared between the CLI and the admin 
 
 ## 3. Direction Overview
 
+The direction is never chosen by the user. It is derived from the current app config (`WEA_FILE_STORAGE`): the **source** is the env mode and the **destination** is the other backend. The table below describes the per-direction behavior.
+
 | Direction | Behavior |
 |---|---|
-| `webdav-to-s3` | Download from the source WebDAV path, upload to a flat S3 UUID key, `upsertObjectMap` → `(storage_backend='s3', s3_key=UUID, active)`. Safe because the webdav-mode app ignores `object_map`. |
-| `s3-to-webdav` | Download from the active `s3_key`, upload to the WebDAV path with directory structure preserved (ancestor MKCOL). Immediately after the upload succeeds, the node's `object_map` is flipped to `storage_backend='webdav'` **inline** while `s3_key` is **preserved** — the running S3-mode app keeps serving through the retained key and rollback stays possible. |
+| `webdav-to-s3` | Derived when `WEA_FILE_STORAGE=webdav`. Download from the source WebDAV path, upload to a flat S3 UUID key, `upsertObjectMap` → `(storage_backend='s3', s3_key=UUID, active)`. Safe because the webdav-mode app ignores `object_map`. |
+| `s3-to-webdav` | Derived when `WEA_FILE_STORAGE=s3`. Download from the active `s3_key`, upload to the WebDAV path with directory structure preserved (ancestor MKCOL). Immediately after the upload succeeds, the node's `object_map` is flipped to `storage_backend='webdav'` **inline** while `s3_key` is **preserved** — the running S3-mode app keeps serving through the retained key and rollback stays possible. |
 
 Cutover guidance and operational steps are documented in `docs/SETUP.md`.
 
@@ -41,20 +43,20 @@ Cutover guidance and operational steps are documented in `docs/SETUP.md`.
 
 ## 4. Source and Destination
 
-### 4.1 Source is auto-determined
+### 4.1 Direction is auto-derived
 
-The source backend is **auto-determined from the current app config** (`WEA_FILE_STORAGE` + its env vars). Direction implies source; only the **destination** config is user input.
+The direction is **derived from the current app config** (`WEA_FILE_STORAGE` + its env vars): the source is the env mode and the destination is the other backend. The server is the single source of truth; only the **destination** config is user input.
 
-- `--direction=webdav-to-s3` ⇒ source is the WebDAV backend.
-- `--direction=s3-to-webdav` ⇒ source is the S3 backend.
+- `WEA_FILE_STORAGE=webdav` ⇒ direction `webdav-to-s3`; source is the WebDAV backend, destination is S3.
+- `WEA_FILE_STORAGE=s3` ⇒ direction `s3-to-webdav`; source is the S3 backend, destination is WebDAV.
 
 ### 4.2 Destination config fields
 
-Destination config is user input (`*` = required):
+Destination config is user input (`*` = required). The destination `type` is validated server-side against the derived destination:
 
 | Field | Backend | Required | Default | Notes |
 |---|---|---|---|---|
-| `type` | both | yes | — | `'webdav'` or `'s3'`; selects the destination backend |
+| `type` | both | yes | — | `'webdav'` or `'s3'`; **must equal the derived destination backend** (webdav source → `'s3'`, s3 source → `'webdav'`) |
 | `url` | webdav | yes | — | WebDAV base URL |
 | `username` | webdav | yes | — | WebDAV account name |
 | `password` | webdav | yes | — | WebDAV account password |
@@ -67,7 +69,21 @@ Destination config is user input (`*` = required):
 | `region` | s3 | no | `'us-east-1'` | AWS region |
 
 - Missing required field → a clear error listing the missing field(s); nothing runs.
+- A destination `type` that does not match the derived destination backend → a clear error; nothing runs.
 - The destination summary logged/printed is sanitized (no secrets).
+
+### 4.3 `/info` endpoint and in-app popup
+
+`GET /api/admin/migration/info` (admin-gated) returns the derived migration context:
+
+```json
+{
+  "source": "webdav" | "s3",
+  "direction": "webdav-to-s3" | "s3-to-webdav"
+}
+```
+
+The in-app UI calls this endpoint when the migration dialog opens to show a read-only "Source: WebDAV → Destination: S3" label and to decide which destination fields to render (the derived destination type). After an `apply` job reaches `completed`, the UI shows a popup instructing the admin to change `WEA_FILE_STORAGE` + the target storage env block in `.env`, then restart the server process. A `dry-run` completion does **not** show the popup.
 
 ---
 
@@ -77,19 +93,18 @@ Executable: `server/scripts/migrateBlobs.js`. The script is a thin wrapper; the 
 
 ### 5.1 Entry flow
 
-`dotenv` (with `DOTENV_CONFIG_PATH` support) → `storage.js` → `initMetadataStore()` → `getComposition()` → build dest store from `--dest-*` flags or `DEST_*` env → `migrationService.run` → print progress + summary → `closePgPool()` / `closeSqliteDb()`.
+`dotenv` (with `DOTENV_CONFIG_PATH` support) → `storage.js` → `initMetadataStore()` → `getComposition()` → derive direction + expected destination type from `process.env.WEA_FILE_STORAGE` → build dest store from `--dest-*` flags or `DEST_*` env → `migrationService.run` → print progress + summary → `closePgPool()` / `closeSqliteDb()`.
 
 ### 5.2 Flags
 
 | Flag | Description |
 |---|---|
-| `--direction=webdav-to-s3\|s3-to-webdav` | **Required.** Direction implies the source backend. |
 | `--check-env` | Validate config + snapshot + destination connectivity. No writes. Exit `0` (valid) / `1` (invalid). |
 | `--dry-run` | Run the dry pass (validate config, enumerate snapshot, probe destination). No writes. |
 | `--apply` | Write mode. Runs the internal dry-run pass first; requires `--yes`. |
 | `--yes` | Required for `--apply`; abort otherwise. |
 | `--force` | Re-copy a node even when the automatic resume skip would skip it (already-migrated destination blob). |
-| `--dest-type=s3\|webdav` | Select the destination backend. |
+| `--dest-type=s3\|webdav` | Destination backend. Must equal the derived destination (webdav source → `s3`, s3 source → `webdav`). |
 | `--dest-webdav-url` / `--dest-webdav-username` / `--dest-webdav-password` | WebDAV destination connection. |
 | `--dest-webdav-auth-type` / `--dest-webdav-upstream-url` | WebDAV destination optional fields. |
 | `--dest-s3-bucket` / `--dest-s3-access-key` / `--dest-s3-secret-key` | S3 destination connection. |
@@ -113,12 +128,12 @@ The same destination config can be supplied via environment:
 | `DEST_S3_ENDPOINT` | `endpoint` |
 | `DEST_S3_REGION` | `region` |
 
-`--dest-*` flags take precedence over `DEST_*` env. At least one complete set (flags or env) must be provided for the selected backend.
+`--dest-*` flags take precedence over `DEST_*` env. At least one complete set (flags or env) must be provided for the derived destination backend; `DEST_TYPE` must equal the derived destination (`s3` for webdav source, `webdav` for s3 source).
 
 ### 5.4 Preflight rules
 
 - `--apply` requires `--yes`; a missing `--yes` aborts the run.
-- `--apply` / `--dry-run` require a valid `--direction`.
+- `--apply` / `--dry-run` validate that the destination type matches the derived destination backend; a mismatch aborts with exit `1` before any work.
 - Unknown flag combinations → clear usage error, exit `2`.
 
 ---
@@ -187,8 +202,8 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 | Code | Meaning |
 |---|---|
 | `0` | Success — `--check-env` valid, `--dry-run` passed, or `--apply` completed. |
-| `1` | Preflight/config/snapshot/destination failure, or failed dry-run pass — nothing written. |
-| `2` | Usage error — unknown flags/combinations, missing or invalid `--direction`. |
+| `1` | Preflight/config/snapshot/destination failure — including a destination `type` that does not match the derived destination — or failed dry-run pass; nothing written. |
+| `2` | Usage error — unknown flags/combinations. |
 
 ---
 
@@ -201,6 +216,8 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 - [ ] Automatic resume skips already-migrated nodes per direction marker; a full re-run is idempotent (0 copied)
 - [ ] `--force` re-copies nodes even when the automatic resume skip would skip them
 - [ ] Missing required dest field produces a clear error listing the field(s)
+- [ ] A destination `type` that does not match the derived destination backend is rejected before any work (exit `1`)
+- [ ] Direction is derived from `WEA_FILE_STORAGE` at bootstrap; no `--direction` flag or other user selection exists
 - [ ] Dest config from `--dest-*` flags and from `DEST_*` env produce the same destination store; flags win on conflict
 - [ ] s3-to-webdav apply flips `storage_backend='webdav'` inline per node while preserving `s3_key`; a re-run skips flipped nodes
 - [ ] Unknown flag combination exits `2` with a usage message

@@ -9,6 +9,14 @@ const SUPPORTED_TYPES = ['s3', 'webdav'];
 const S3_REQUIRED_FIELDS = ['bucket', 'accessKey', 'secretKey'];
 const WEBDAV_REQUIRED_FIELDS = ['url', 'username', 'password'];
 
+function deriveDirection(fileStorageMode) {
+  return fileStorageMode === 'webdav' ? 'webdav-to-s3' : 's3-to-webdav';
+}
+
+function destinationTypeForDirection(direction) {
+  return direction === 'webdav-to-s3' ? 's3' : 'webdav';
+}
+
 let createClient = null;
 function getCreateClient() {
   if (!createClient) {
@@ -232,4 +240,4 @@ function buildDestBlobStore(destConfig) {
   return buildWebdavBlobStore(destConfig);
 }
 
-module.exports = { buildDestBlobStore };
+module.exports = { buildDestBlobStore, deriveDirection, destinationTypeForDirection };

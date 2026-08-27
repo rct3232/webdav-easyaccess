@@ -44,6 +44,10 @@ export const mockAdminUsers = {
 // Mock migration job state (tests may override via server.use)
 export const mockMigrationJobs = new Map();
 
+// Mock migration info (source backend + server-derived direction). Tests may
+// override via server.use. Default: webdav source → s3 destination.
+export const mockMigrationInfo = { source: 'webdav', direction: 'webdav-to-s3' };
+
 // Restore module-level mock state between tests so POST-handler mutations
 // (bulk jobs, permission requests, share links, admin users) do not leak.
 // Wired into client/src/setupTests.js beforeEach (docs/TESTING_STRATEGY.md).
@@ -63,6 +67,8 @@ export function __resetHandlersState() {
   mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
     { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
   mockMigrationJobs.clear();
+  mockMigrationInfo.source = 'webdav';
+  mockMigrationInfo.direction = 'webdav-to-s3';
 }
 
 function nextJobId() {
@@ -702,14 +708,17 @@ export const handlers = [
   }),
 
   // --- Admin: blob migration (aligned with PLAN.md module E / api contract) ---
-  // POST returns { jobId } (202); GET returns the job shape; cancel flips to cancelled.
+  // GET /info returns { source, direction } (direction server-derived from WEA_FILE_STORAGE);
+  // POST returns { jobId } (202) and takes NO direction (server derives it, validates dest.type);
+  // GET returns the job shape; cancel flips to cancelled.
   // Tests override per scenario via server.use (same pattern as mockBulkJobs).
+  http.get(`${API_BASE}/admin/migration/info`, () => {
+    return HttpResponse.json(mockMigrationInfo);
+  }),
+
   http.post(`${API_BASE}/admin/migration/blobs`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { direction, mode = 'dry-run', dest } = body;
-    if (!direction || !['webdav-to-s3', 's3-to-webdav'].includes(direction)) {
-      return errorResponse('serverErrors.admin.migrationInvalidPayload', 400);
-    }
+    const { mode = 'dry-run', dest } = body;
     if (!dest || !dest.type) {
       return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
     }
@@ -719,6 +728,7 @@ export const handlers = [
     if (dest.type === 'webdav' && (!dest.url || !dest.username || !dest.password)) {
       return errorResponse('serverErrors.admin.migrationMissingRequired', 400);
     }
+    const direction = dest.type === 's3' ? 'webdav-to-s3' : 's3-to-webdav';
     const jobId = 'mig-1';
     const now = new Date().toISOString();
     mockMigrationJobs.set(jobId, {

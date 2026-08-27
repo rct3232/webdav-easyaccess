@@ -1,8 +1,9 @@
 /**
  * MigrationDialog tests.
- * Verifies observable outcomes per spec: direction/mode fields,
- * required-field validation, start → poll → progress → completed,
- * cancel, and the apply-mode auto-resume note.
+ * Verifies observable outcomes per spec: info load + read-only source→dest label,
+ * destination fields derived from /info, required-field validation,
+ * start → poll → progress → completed, cancel, the apply-mode auto-resume note,
+ * and the apply-completion restart popup.
  * @see docs/spec/client/components/mypage/content/MigrationDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -24,7 +25,7 @@ function renderDialog(options = {}) {
 }
 
 async function fillS3Fields(user) {
-  await user.type(screen.getByLabelText(/bucket \*/i), 'bucket-1');
+  await user.type(await screen.findByLabelText(/bucket \*/i), 'bucket-1');
   await user.type(screen.getByLabelText(/access key \*/i), 'AKIA123');
   await user.type(screen.getByLabelText(/secret key \*/i), 'secret123');
 }
@@ -44,36 +45,48 @@ const runningJob = {
 };
 
 describe('MigrationDialog', () => {
-  it('renders S3 destination fields by default with correct direction and no auto-resume note in dry-run', async () => {
+  it('loads migration info and shows the read-only source → destination label', async () => {
     renderDialog();
 
-    expect(screen.getByRole('radio', { name: /webdav → s3/i })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /s3 → webdav/i })).not.toBeChecked();
+    expect(await screen.findByText(/source: webdav/i)).toBeInTheDocument();
+    expect(screen.getByText(/destination: s3/i)).toBeInTheDocument();
+
     expect(screen.getByRole('radio', { name: /dry run/i })).toBeChecked();
     expect(screen.getByRole('radio', { name: /apply/i })).not.toBeChecked();
-
-    expect(screen.getByLabelText(/bucket \*/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/access key \*/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();
-
-    expect(screen.queryByText(/already migrated files are skipped automatically/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /webdav → s3/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /s3 → webdav/i })).not.toBeInTheDocument();
   });
 
-  it('s3-to-webdav shows WebDAV destination fields', async () => {
-    const user = userEvent.setup();
+  it('renders S3 destination fields when info source is webdav', async () => {
     renderDialog();
 
-    await user.click(screen.getByRole('radio', { name: /s3 → webdav/i }));
+    expect(await screen.findByLabelText(/bucket \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/access key \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/region/i)).toHaveValue('us-east-1');
+    expect(screen.queryByLabelText(/url \*/i)).not.toBeInTheDocument();
+  });
 
+  it('renders WebDAV destination fields when info source is s3', async () => {
+    server.use(
+      http.get('/api/admin/migration/info', () => HttpResponse.json({ source: 's3', direction: 's3-to-webdav' }))
+    );
+
+    renderDialog();
+
+    expect(await screen.findByText(/destination: webdav/i)).toBeInTheDocument();
+    expect(screen.getByText(/source: s3/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/url \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/username \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password \*/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/bucket \*/i)).not.toBeInTheDocument();
   });
 
   it('shows the auto-resume note only in apply mode', async () => {
     const user = userEvent.setup();
     renderDialog();
 
+    await screen.findByText(/source: webdav/i);
     expect(screen.queryByText(/already migrated files are skipped automatically/i)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /apply/i }));
@@ -91,13 +104,14 @@ describe('MigrationDialog', () => {
 
     const user = userEvent.setup();
     renderDialog();
+    await screen.findByText(/source: webdav/i);
     await user.click(screen.getByRole('button', { name: /^start$/i }));
 
     expect(await screen.findByText(/please fill in all required fields/i)).toBeInTheDocument();
     expect(startCalled).toBe(false);
   });
 
-  it('starts migration, polls status, and shows completed summary', async () => {
+  it('starts migration, polls status, and shows completed summary with no direction in payload', async () => {
     let job = runningJob;
     let capturedPayload;
     server.use(
@@ -110,6 +124,7 @@ describe('MigrationDialog', () => {
 
     const user = userEvent.setup();
     renderDialog();
+    await screen.findByText(/source: webdav/i);
     await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /^start$/i }));
 
@@ -139,7 +154,6 @@ describe('MigrationDialog', () => {
     }, { timeout: 5000 });
 
     expect(capturedPayload).toEqual({
-      direction: 'webdav-to-s3',
       mode: 'dry-run',
       force: false,
       dest: {
@@ -151,8 +165,75 @@ describe('MigrationDialog', () => {
         region: 'us-east-1',
       },
     });
+    expect(capturedPayload).not.toHaveProperty('direction');
     expect(capturedPayload).not.toHaveProperty('phase');
     expect(capturedPayload).not.toHaveProperty('resume');
+  });
+
+  it('shows the restart popup when an apply job completes', async () => {
+    let job = { ...runningJob, mode: 'apply' };
+    server.use(
+      http.post('/api/admin/migration/blobs', () => HttpResponse.json({ jobId: 'mig-1' }, { status: 202 })),
+      http.get('/api/admin/migration/jobs/mig-1', () => HttpResponse.json(job))
+    );
+
+    const user = userEvent.setup();
+    renderDialog();
+    await screen.findByText(/source: webdav/i);
+    await fillS3Fields(user);
+    await user.click(screen.getByRole('radio', { name: /apply/i }));
+    await user.click(screen.getByRole('button', { name: /^start$/i }));
+
+    job = {
+      ...runningJob,
+      mode: 'apply',
+      status: 'completed',
+      progress: 10,
+      total: 10,
+      current: null,
+      results: { copied: 8, skipped: 1, failed: 1, errors: [] },
+    };
+
+    const popup = await screen.findByRole('dialog', { name: /restart required/i }, { timeout: 5000 });
+    expect(popup).toBeInTheDocument();
+    expect(screen.getByText(/update wea_file_storage/i)).toBeInTheDocument();
+    expect(screen.getByText(/restart the server process/i)).toBeInTheDocument();
+    expect(screen.getByText('Migration completed.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^ok$/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /restart required/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not show the restart popup when a dry-run job completes', async () => {
+    let job = runningJob;
+    server.use(
+      http.post('/api/admin/migration/blobs', () => HttpResponse.json({ jobId: 'mig-1' }, { status: 202 })),
+      http.get('/api/admin/migration/jobs/mig-1', () => HttpResponse.json(job))
+    );
+
+    const user = userEvent.setup();
+    renderDialog();
+    await screen.findByText(/source: webdav/i);
+    await fillS3Fields(user);
+    await user.click(screen.getByRole('button', { name: /^start$/i }));
+
+    job = {
+      ...runningJob,
+      status: 'completed',
+      progress: 10,
+      total: 10,
+      current: null,
+      results: { copied: 8, skipped: 1, failed: 1, errors: [] },
+    };
+
+    await waitFor(() => {
+      expect(screen.getByText(/migration completed/i)).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    expect(screen.queryByRole('dialog', { name: /restart required/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/restart the server process/i)).not.toBeInTheDocument();
   });
 
   it('shows failed summary with error list when the job fails', async () => {
@@ -164,6 +245,7 @@ describe('MigrationDialog', () => {
 
     const user = userEvent.setup();
     renderDialog();
+    await screen.findByText(/source: webdav/i);
     await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /^start$/i }));
 
@@ -191,6 +273,7 @@ describe('MigrationDialog', () => {
     expect(screen.getByText(/\/testuser\/docs\/a\.txt/i)).toBeInTheDocument();
     expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
     expect(screen.getByText(/\/testuser\/docs\/b\.txt/i)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /restart required/i })).not.toBeInTheDocument();
   });
 
   it('cancels a running job and stops on cancelled', async () => {
@@ -208,6 +291,7 @@ describe('MigrationDialog', () => {
 
     const user = userEvent.setup();
     const { onMessage } = renderDialog();
+    await screen.findByText(/source: webdav/i);
     await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /^start$/i }));
 
@@ -225,6 +309,18 @@ describe('MigrationDialog', () => {
     });
   });
 
+  it('info-load failure shows an inline error and disables Start', async () => {
+    server.use(
+      http.get('/api/admin/migration/info', () => HttpResponse.json({ errorCode: 'serverErrors.msw.unhandled' }, { status: 500 }))
+    );
+
+    renderDialog();
+
+    expect(await screen.findByText(/failed to load migration info/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^start$/i })).toBeDisabled();
+    expect(screen.queryByLabelText(/bucket \*/i)).not.toBeInTheDocument();
+  });
+
   it('close stops polling and calls onClose', async () => {
     let job = runningJob;
     server.use(
@@ -234,6 +330,7 @@ describe('MigrationDialog', () => {
 
     const user = userEvent.setup();
     const { onClose } = renderDialog();
+    await screen.findByText(/source: webdav/i);
     await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /^start$/i }));
 

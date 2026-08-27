@@ -22,10 +22,32 @@ jest.mock('../WebdavBlobStore', () => {
 const RealS3BlobStore = jest.requireActual('../S3BlobStore');
 const RealWebdavBlobStore = jest.requireActual('../WebdavBlobStore');
 
-const { buildDestBlobStore } = require('../config');
+const { buildDestBlobStore, deriveDirection, destinationTypeForDirection } = require('../config');
 const S3BlobStore = require('../S3BlobStore');
 const WebdavBlobStore = require('../WebdavBlobStore');
 const { createClient } = require('webdav');
+
+describe('deriveDirection', () => {
+  it('derives webdav-to-s3 when fileStorageMode is webdav', () => {
+    expect(deriveDirection('webdav')).toBe('webdav-to-s3');
+  });
+
+  it('derives s3-to-webdav for any other fileStorageMode', () => {
+    expect(deriveDirection('s3')).toBe('s3-to-webdav');
+    expect(deriveDirection(undefined)).toBe('s3-to-webdav');
+    expect(deriveDirection('gcs')).toBe('s3-to-webdav');
+  });
+});
+
+describe('destinationTypeForDirection', () => {
+  it('maps webdav-to-s3 to an s3 destination', () => {
+    expect(destinationTypeForDirection('webdav-to-s3')).toBe('s3');
+  });
+
+  it('maps s3-to-webdav to a webdav destination', () => {
+    expect(destinationTypeForDirection('s3-to-webdav')).toBe('webdav');
+  });
+});
 
 describe('buildDestBlobStore', () => {
   beforeEach(() => {

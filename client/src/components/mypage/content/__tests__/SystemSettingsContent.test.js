@@ -189,7 +189,7 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByRole('button', { name: /^start$/i })).toBeInTheDocument();
   });
 
-  it('opens with S3 destination fields default for webdav-to-s3', async () => {
+  it('opens with S3 destination fields default for a webdav source', async () => {
     const user = userEvent.setup();
     renderSystemSettingsContent();
 
@@ -198,7 +198,8 @@ describe('SystemSettingsContent', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /storage migration/i });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /webdav → s3/i })).toBeChecked();
+    expect(await screen.findByText(/source: webdav/i)).toBeInTheDocument();
+    expect(screen.getByText(/destination: s3/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bucket \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/access key \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();

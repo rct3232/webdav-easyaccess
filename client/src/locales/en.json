@@ -335,9 +335,12 @@
   },
   "migration": {
     "title": "Storage migration",
-    "direction": "Direction",
-    "directionWebdavToS3": "WebDAV → S3",
-    "directionS3ToWebdav": "S3 → WebDAV",
+    "sourceLabel": "Source: {{backend}}",
+    "destinationLabel": "Destination: {{backend}}",
+    "backendWebdav": "WebDAV",
+    "backendS3": "S3",
+    "infoLoading": "Loading migration info...",
+    "infoLoadFail": "Failed to load migration info.",
     "mode": "Mode",
     "modeDryRun": "Dry run",
     "modeApply": "Apply",
@@ -375,7 +378,10 @@
     "startFail": "Failed to start migration.",
     "statusLoadFail": "Failed to load migration status.",
     "cancelFail": "Failed to cancel migration.",
-    "cancelSuccess": "Migration cancellation requested."
+    "cancelSuccess": "Migration cancellation requested.",
+    "restartRequiredTitle": "Restart required",
+    "restartRequiredBody": "Migration completed. Update WEA_FILE_STORAGE and the target storage env block in .env, then restart the server process to finish the cutover.",
+    "ok": "OK"
   },
   "mypage": {
     "accountInfo": "Account info",

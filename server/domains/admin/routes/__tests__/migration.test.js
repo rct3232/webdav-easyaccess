@@ -34,7 +34,6 @@ const previousFileStorage = process.env.WEA_FILE_STORAGE;
 const previousSkipWorker = process.env.WEA_SKIP_MIGRATION_WORKER;
 
 const VALID_PAYLOAD = {
-  direction: 'webdav-to-s3',
   mode: 'dry-run',
   force: false,
   dest: { type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' },
@@ -96,12 +95,18 @@ beforeEach(() => {
 });
 
 describe('Route matrix: non-admin denied on every /api/admin/migration/* route', () => {
-  it('returns 403 for a non-admin on all 3 migration endpoints', async () => {
+  it('returns 403 for a non-admin on all 4 migration endpoints', async () => {
     const { token } = await createAuthenticatedTestUser({
       username: `migration-nonadmin-${Date.now()}`,
       isAdmin: false,
     });
     const auth = { Authorization: `Bearer ${token}` };
+
+    const infoRes = await request(app)
+      .get('/api/admin/migration/info')
+      .set(auth);
+    expect(infoRes.status).toBe(403);
+    expect(infoRes.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
 
     const postRes = await request(app)
       .post('/api/admin/migration/blobs')
@@ -121,6 +126,18 @@ describe('Route matrix: non-admin denied on every /api/admin/migration/* route',
       .set(auth);
     expect(cancelRes.status).toBe(403);
     expect(cancelRes.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+  });
+});
+
+describe('GET /api/admin/migration/info', () => {
+  it('returns source and derived direction for an admin', async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .get('/api/admin/migration/info')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ source: 'webdav', direction: 'webdav-to-s3' });
   });
 });
 
@@ -156,12 +173,15 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(fakeMigrationService.run).not.toHaveBeenCalled();
   });
 
-  it('returns 400 with migrationInvalidPayload for an invalid direction', async () => {
+  it('returns 400 with migrationInvalidPayload when dest.type does not match the derived direction', async () => {
     const token = await createAdminToken();
     const res = await request(app)
       .post('/api/admin/migration/blobs')
       .set('Authorization', `Bearer ${token}`)
-      .send({ ...VALID_PAYLOAD, direction: 'sideways' });
+      .send({
+        mode: 'dry-run',
+        dest: { type: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationInvalidPayload);
@@ -215,21 +235,6 @@ describe('POST /api/admin/migration/blobs', () => {
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
   });
 
-  it('returns 400 with migrationMissingRequired when webdav dest fields are missing', async () => {
-    const token = await createAdminToken();
-    const res = await request(app)
-      .post('/api/admin/migration/blobs')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        direction: 's3-to-webdav',
-        mode: 'dry-run',
-        dest: { type: 'webdav', url: 'http://dav' },
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.migrationMissingRequired);
-  });
-
   it('returns 409 with migrationAlreadyRunning while a job is pending/running', async () => {
     process.env.WEA_SKIP_MIGRATION_WORKER = '1';
     const token = await createAdminToken();
@@ -266,12 +271,12 @@ describe('POST /api/admin/migration/blobs', () => {
     const { jobId } = postRes.body;
 
     expect(fakeMigrationService.run).toHaveBeenCalledWith(expect.objectContaining({
-      direction: 'webdav-to-s3',
       mode: 'dry-run',
       force: false,
       destConfig: expect.objectContaining({ type: 's3', bucket: 'test-bucket', accessKey: 'ak', secretKey: 'sk' }),
       onProgress: expect.any(Function),
     }));
+    expect(fakeMigrationService.run.mock.calls[0][0].direction).toBeUndefined();
 
     const res = await waitForJobStatus(token, jobId, 'completed');
     expect(res.status).toBe(200);

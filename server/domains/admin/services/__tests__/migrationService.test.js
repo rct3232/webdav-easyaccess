@@ -28,13 +28,14 @@ let fileNodeService;
 let buildDestBlobStore;
 let dbCleanup;
 
-function makeService(srcBlobStore) {
+function makeService(srcBlobStore, fileStorageMode = 'webdav') {
   return createMigrationService({
     srcBlobStore,
     fileNodesStore,
     fileNodeService,
     buildDestBlobStore,
     lockManager,
+    fileStorageMode,
   });
 }
 
@@ -136,7 +137,7 @@ describe('createMigrationService', () => {
     buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
     const service = makeService(src);
 
-    const result = await service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' });
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
 
     expect(result).toEqual({ copied: 3, skipped: 0, failed: 0, errors: [], dryRun: false });
 
@@ -171,9 +172,9 @@ describe('createMigrationService', () => {
 
     const dst = createFakeBlobStore();
     buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
-    const service = makeService(src);
+    const service = makeService(src, 's3');
 
-    const result = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'apply' });
+    const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
 
     expect(result.copied).toBe(2);
     expect(result.dryRun).toBe(false);
@@ -201,9 +202,9 @@ describe('createMigrationService', () => {
 
     const dst = createFakeBlobStore();
     buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
-    const service = makeService(src);
+    const service = makeService(src, 's3');
 
-    const result = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'apply' });
+    const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
     expect(result.copied).toBe(2);
 
     for (const file of [f1, f2]) {
@@ -221,13 +222,13 @@ describe('createMigrationService', () => {
 
     const dst = createFakeBlobStore();
     buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
-    const service = makeService(src);
+    const service = makeService(src, 's3');
 
-    const first = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'apply' });
+    const first = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
     expect(first.copied).toBe(1);
     expect((await getActiveObjectRow(f1.nodeId)).storage_backend).toBe('webdav');
 
-    const second = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'apply' });
+    const second = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
     expect(second.copied).toBe(0);
     expect(second.skipped).toBe(1);
     expect(dst.count()).toBe(1);
@@ -240,9 +241,9 @@ describe('createMigrationService', () => {
 
     const dst = createFakeBlobStore();
     buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
-    const service = makeService(src);
+    const service = makeService(src, 's3');
 
-    const result = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'dry-run' });
+    const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'dry-run' });
 
     expect(result.dryRun).toBe(true);
     expect(result.copied).toBe(0);
@@ -279,6 +280,44 @@ describe('createMigrationService', () => {
     }
   });
 
+  it('webdav source rejects a webdav destination before any work', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const f1 = await seedWebdavFile({ parentId: rootNodeId, name: 'a.txt', content: 'alpha', srcStore: src });
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
+    const service = makeService(src, 'webdav');
+
+    await expect(
+      service.run({ destConfig: { type: 'webdav', url: 'http://dav', username: 'u', password: 'p' }, mode: 'apply' })
+    ).rejects.toThrow('Destination type mismatch: expected s3 for direction webdav-to-s3');
+
+    expect(dst.count()).toBe(0);
+    const row = await getActiveObjectRow(f1.nodeId);
+    expect(row.storage_backend).toBe('webdav');
+    expect(row.s3_key).toBeNull();
+  });
+
+  it('s3 source rejects an s3 destination before any work', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const f1 = await seedS3File({ parentId: rootNodeId, name: 'a.txt', content: 'alpha', srcStore: src });
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src, 's3');
+
+    await expect(
+      service.run({ destConfig: { type: 's3', bucket: 'b', accessKey: 'ak', secretKey: 'sk' }, mode: 'apply' })
+    ).rejects.toThrow('Destination type mismatch: expected webdav for direction s3-to-webdav');
+
+    expect(dst.count()).toBe(0);
+    const row = await getActiveObjectRow(f1.nodeId);
+    expect(row.storage_backend).toBe('s3');
+    expect(row.s3_key).toBe(f1.s3Key);
+  });
+
   it('apply aborts with no writes when the internal dry pass (dest probe) fails', async () => {
     const { rootNodeId } = await createUserTree();
     const src = createFakeBlobStore();
@@ -293,7 +332,7 @@ describe('createMigrationService', () => {
     const service = makeService(src);
 
     await expect(
-      service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' })
+      service.run({ destConfig: { type: 's3' }, mode: 'apply' })
     ).rejects.toThrow('destination unreachable');
 
     expect(dst.count()).toBe(0);
@@ -316,7 +355,6 @@ describe('createMigrationService', () => {
     const service = makeService(src);
 
     const result = await service.run({
-      direction: 'webdav-to-s3',
       destConfig: { type: 's3' },
       mode: 'dry-run',
     });
@@ -345,13 +383,12 @@ describe('createMigrationService', () => {
     buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
     const service = makeService(src);
 
-    const first = await service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' });
+    const first = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
     expect(first.copied).toBe(1);
     expect(first.failed).toBe(2);
 
     failUploads = 0;
     const second = await service.run({
-      direction: 'webdav-to-s3',
       destConfig: { type: 's3' },
       mode: 'apply',
     });
@@ -375,10 +412,10 @@ describe('createMigrationService', () => {
     buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
     const service = makeService(src);
 
-    const first = await service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' });
+    const first = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
     expect(first.copied).toBe(3);
 
-    const second = await service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' });
+    const second = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
     expect(second.copied).toBe(0);
     expect(second.skipped).toBe(3);
     expect(dst.count()).toBe(3);
@@ -395,7 +432,7 @@ describe('createMigrationService', () => {
     buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
     const service = makeService(src);
 
-    const result = await service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' });
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
 
     expect(result.copied).toBe(1);
     expect(result.failed).toBe(1);
@@ -418,12 +455,12 @@ describe('createMigrationService', () => {
 
     const dst = createFakeBlobStore();
     buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
-    const service = makeService(src);
+    const service = makeService(src, 's3');
 
     // Simulate a crashed run that left a truncated destination blob before the flip.
     await dst.uploadBlob(f1.path, Buffer.from('partial'));
 
-    const result = await service.run({ direction: 's3-to-webdav', destConfig: { type: 'webdav' }, mode: 'apply' });
+    const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
     expect(result.copied).toBe(1);
     expect(result.skipped).toBe(0);
     expect(dst.getBuffer(f1.path).toString()).toBe('alpha');
@@ -440,7 +477,7 @@ describe('createMigrationService', () => {
     const held = await lockManager.acquireLock('migration:blobs', { ttlMs: 60 * 1000, waitMs: 1000 });
     try {
       await expect(
-        service.run({ direction: 'webdav-to-s3', destConfig: { type: 's3' }, mode: 'apply' })
+        service.run({ destConfig: { type: 's3' }, mode: 'apply' })
       ).rejects.toThrow('migration already in progress');
     } finally {
       await held.release();
@@ -459,7 +496,6 @@ describe('createMigrationService', () => {
 
     const progressCalls = [];
     const result = await service.run({
-      direction: 'webdav-to-s3',
       destConfig: { type: 's3' },
       mode: 'apply',
       onProgress: (progress) => progressCalls.push(progress),

@@ -335,9 +335,12 @@
   },
   "migration": {
     "title": "스토리지 마이그레이션",
-    "direction": "방향",
-    "directionWebdavToS3": "WebDAV → S3",
-    "directionS3ToWebdav": "S3 → WebDAV",
+    "sourceLabel": "소스: {{backend}}",
+    "destinationLabel": "대상: {{backend}}",
+    "backendWebdav": "WebDAV",
+    "backendS3": "S3",
+    "infoLoading": "마이그레이션 정보를 불러오는 중...",
+    "infoLoadFail": "마이그레이션 정보를 불러오지 못했습니다.",
     "mode": "모드",
     "modeDryRun": "시뮬레이션",
     "modeApply": "적용",
@@ -375,7 +378,10 @@
     "startFail": "마이그레이션을 시작하지 못했습니다.",
     "statusLoadFail": "마이그레이션 상태를 불러오지 못했습니다.",
     "cancelFail": "마이그레이션을 취소하지 못했습니다.",
-    "cancelSuccess": "마이그레이션 취소가 요청되었습니다."
+    "cancelSuccess": "마이그레이션 취소가 요청되었습니다.",
+    "restartRequiredTitle": "재시작 필요",
+    "restartRequiredBody": "마이그레이션이 완료되었습니다. .env에서 WEA_FILE_STORAGE와 대상 스토리지 환경 변수 블록을 업데이트한 후 서버 프로세스를 재시작하여 전환을 완료하세요.",
+    "ok": "확인"
   },
   "mypage": {
     "accountInfo": "계정 정보",

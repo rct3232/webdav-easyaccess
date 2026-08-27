@@ -17,7 +17,7 @@ The service operates on injected dependencies only. It never constructs real ada
 
 ### 2.1 Factory
 
-`createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager })`
+`createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager, fileStorageMode })`
 
 | Param | Type | Description |
 |-------|------|-------------|
@@ -26,16 +26,18 @@ The service operates on injected dependencies only. It never constructs real ada
 | `fileNodeService` | object | fileNodeService (tree ops: `getNodePath`, node lookup) |
 | `buildDestBlobStore` | function | `(destConfig) => { blobStore, summary }` from `server/infrastructure/adapters/blobstore/config.js` (or injected fake) |
 | `lockManager` | object | Metadata locking for the required DB updates |
+| `fileStorageMode` | string | `'webdav'` or `'s3'` — the current app config mode (`WEA_FILE_STORAGE`). Drives direction derivation: source = this mode, destination = the other backend |
 
-### 2.2 `run({ direction, destConfig, mode, force, onProgress })`
+### 2.2 `run({ destConfig, mode, force, onProgress })`
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `direction` | string | — | `'webdav-to-s3'` or `'s3-to-webdav'` |
-| `destConfig` | object | — | User-supplied destination config (see `docs/spec/server/tools/blob-migration.md` §4.2) |
+| `destConfig` | object | — | User-supplied destination config (see `docs/spec/server/tools/blob-migration.md` §4.2); its `type` must equal the derived destination backend |
 | `mode` | string | `'dry-run'` | `'dry-run'` or `'apply'` |
 | `force` | boolean | `false` | Re-copy even when an automatic resume marker is present |
 | `onProgress` | function | — | Called after each node; see §2.5 |
+
+There is no `direction` parameter: the direction is derived internally from the injected `fileStorageMode` (source = that mode, destination = the other backend). Before any work the service validates that `destConfig.type` equals the expected destination type (webdav source → `'s3'`, s3 source → `'webdav'`) and throws a clear error on mismatch.
 
 There is no `phase` or `resume` parameter: resume is internal and always on (destination-state markers per §2.4), and there is no separate finalize operation.
 
@@ -52,13 +54,14 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 
 ### 2.3 Behavior (per run)
 
-1. Build the destination store from `destConfig` (dry-run validates it; a missing required field fails before anything runs).
-2. **Snapshot** = enumerate `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row). Directories are only relevant for webdav-destination mkdir.
-3. Process each node (order by id).
-4. Per-node failures are caught, recorded in `results.errors`, and processing continues — a single failing node never aborts the run. Only config/snapshot/destination-validation failures abort.
-5. **Automatic resume:** already-migrated destination blobs are skipped per the direction marker in §2.4. No flag or checkbox is involved; `force` re-copies even when a marker is present.
-6. `dry-run`: perform snapshot + destination connectivity + count skippable nodes, but write nothing; return `{ ...results, dryRun: true }`.
-7. `mode='apply'` runs an internal dry-run pass first; failure blocks writes.
+1. **Derive direction** from the injected `fileStorageMode` (source = that mode, destination = the other backend); validate `destConfig.type` equals the expected destination (webdav source → `'s3'`, s3 source → `'webdav'`). A mismatch throws before anything runs.
+2. Build the destination store from `destConfig` (dry-run validates it; a missing required field fails before anything runs).
+3. **Snapshot** = enumerate `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row). Directories are only relevant for webdav-destination mkdir.
+4. Process each node (order by id).
+5. Per-node failures are caught, recorded in `results.errors`, and processing continues — a single failing node never aborts the run. Only config/snapshot/destination-validation failures abort.
+6. **Automatic resume:** already-migrated destination blobs are skipped per the direction marker in §2.4. No flag or checkbox is involved; `force` re-copies even when a marker is present.
+7. `dry-run`: perform snapshot + destination connectivity + count skippable nodes, but write nothing; return `{ ...results, dryRun: true }`.
+8. `mode='apply'` runs an internal dry-run pass first; failure blocks writes.
 
 ### 2.4 Per-direction copy behavior
 
@@ -117,3 +120,4 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 - [ ] partial-blob safety: an unfinished destination blob (size mismatch) is not treated as complete
 - [ ] `onProgress` called after each node with the documented shape
 - [ ] `mode='apply'` blocks writes when the internal dry-run pass fails
+- [ ] `run` derives the direction internally from `fileStorageMode`; a `destConfig.type` that does not match the expected destination throws before any work

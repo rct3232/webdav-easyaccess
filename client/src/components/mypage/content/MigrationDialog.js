@@ -26,16 +26,22 @@ import {
   startBlobMigration,
   getBlobMigrationStatus,
   cancelBlobMigration,
+  getMigrationInfo,
 } from '../../../services/migrationService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 
 const POLL_INTERVAL_MS = 400;
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'];
 
+const backendDisplayName = (t, backend) =>
+  backend === 's3' ? t('migration.backendS3') : t('migration.backendWebdav');
+
 const MigrationDialog = ({ open, onClose, onMessage }) => {
   const { t } = useTranslation();
 
-  const [direction, setDirection] = useState('webdav-to-s3');
+  const [info, setInfo] = useState(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoError, setInfoError] = useState('');
   const [mode, setMode] = useState('dry-run');
   const [s3Dest, setS3Dest] = useState({
     bucket: '',
@@ -57,11 +63,13 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   const [cancelling, setCancelling] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
+  const [restartPopupOpen, setRestartPopupOpen] = useState(false);
   const pollRef = useRef(null);
 
-  const destType = direction === 'webdav-to-s3' ? 's3' : 'webdav';
+  const destType = info && info.source === 'webdav' ? 's3' : 'webdav';
   const destConfig = destType === 's3' ? s3Dest : webdavDest;
   const isRunning = Boolean(job && !TERMINAL_STATUSES.includes(job.status));
+  const startDisabled = isRunning || starting || infoLoading || !info || Boolean(infoError);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -71,6 +79,33 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    setInfoLoading(true);
+    setInfoError('');
+    setInfo(null);
+    getMigrationInfo()
+      .then((data) => {
+        if (!cancelled) setInfo(data);
+      })
+      .catch(() => {
+        if (!cancelled) setInfoError(t('migration.infoLoadFail'));
+      })
+      .finally(() => {
+        if (!cancelled) setInfoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, t]);
+
+  useEffect(() => {
+    if (job && job.status === 'completed' && job.mode === 'apply') {
+      setRestartPopupOpen(true);
+    }
+  }, [job]);
 
   const handleClose = () => {
     stopPolling();
@@ -100,12 +135,6 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
     [onMessage, stopPolling, t]
   );
 
-  const handleDirectionChange = (nextDirection) => {
-    setDirection(nextDirection);
-    setMissingFields([]);
-    setFormError('');
-  };
-
   const handleStart = async () => {
     const requiredFields = destType === 's3' ? ['bucket', 'accessKey', 'secretKey'] : ['url', 'username', 'password'];
     const missing = requiredFields.filter((field) => !destConfig[field].trim());
@@ -118,6 +147,7 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
     setFormError('');
     setJob(null);
     setJobId(null);
+    setRestartPopupOpen(false);
     setStarting(true);
     const dest =
       destType === 's3'
@@ -138,7 +168,6 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
             upstreamUrl: webdavDest.upstreamUrl.trim() || undefined,
           };
     const payload = {
-      direction,
       mode,
       force: false,
       dest,
@@ -363,55 +392,86 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen>
-      <DialogTitle>{t('migration.title')}</DialogTitle>
-      <DialogContent>
-        <FormControl component="fieldset" sx={{ mt: 1 }}>
-          <FormLabel>{t('migration.direction')}</FormLabel>
-          <RadioGroup row value={direction} onChange={(e) => handleDirectionChange(e.target.value)}>
-            <FormControlLabel value="webdav-to-s3" control={<Radio />} label={t('migration.directionWebdavToS3')} disabled={isRunning || starting} />
-            <FormControlLabel value="s3-to-webdav" control={<Radio />} label={t('migration.directionS3ToWebdav')} disabled={isRunning || starting} />
-          </RadioGroup>
-        </FormControl>
+    <>
+      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth fullScreen>
+        <DialogTitle>{t('migration.title')}</DialogTitle>
+        <DialogContent>
+          {infoLoading && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2">{t('migration.infoLoading')}</Typography>
+            </Box>
+          )}
 
-        <FormControl component="fieldset" sx={{ mt: 1 }}>
-          <FormLabel>{t('migration.mode')}</FormLabel>
-          <RadioGroup row value={mode} onChange={(e) => setMode(e.target.value)}>
-            <FormControlLabel value="dry-run" control={<Radio />} label={t('migration.modeDryRun')} disabled={isRunning || starting} />
-            <FormControlLabel value="apply" control={<Radio />} label={t('migration.modeApply')} disabled={isRunning || starting} />
-          </RadioGroup>
-        </FormControl>
+          {!infoLoading && info && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              {t('migration.sourceLabel', { backend: backendDisplayName(t, info.source) })} →{' '}
+              {t('migration.destinationLabel', { backend: backendDisplayName(t, destType) })}
+            </Typography>
+          )}
 
-        {mode === 'apply' && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            {t('migration.autoResumeNote')}
-          </Typography>
-        )}
+          {infoError && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {infoError}
+            </Alert>
+          )}
 
-        <Box sx={{ mt: 2 }}>{destType === 's3' ? renderS3Fields() : renderWebdavFields()}</Box>
+          <FormControl component="fieldset" sx={{ mt: 1 }}>
+            <FormLabel>{t('migration.mode')}</FormLabel>
+            <RadioGroup row value={mode} onChange={(e) => setMode(e.target.value)}>
+              <FormControlLabel value="dry-run" control={<Radio />} label={t('migration.modeDryRun')} disabled={isRunning || starting} />
+              <FormControlLabel value="apply" control={<Radio />} label={t('migration.modeApply')} disabled={isRunning || starting} />
+            </RadioGroup>
+          </FormControl>
 
-        {formError && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {formError}
-          </Alert>
-        )}
+          {mode === 'apply' && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              {t('migration.autoResumeNote')}
+            </Typography>
+          )}
 
-        {renderProgress()}
-      </DialogContent>
-      <DialogActions>
-        {isRunning && (
-          <Button color="error" onClick={handleCancel} disabled={cancelling} startIcon={cancelling ? <CircularProgress size={16} /> : null}>
-            {cancelling ? t('migration.cancelling') : t('migration.cancelJob')}
+          {info && !infoLoading && <Box sx={{ mt: 2 }}>{destType === 's3' ? renderS3Fields() : renderWebdavFields()}</Box>}
+
+          {formError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {formError}
+            </Alert>
+          )}
+
+          {renderProgress()}
+        </DialogContent>
+        <DialogActions>
+          {isRunning && (
+            <Button color="error" onClick={handleCancel} disabled={cancelling} startIcon={cancelling ? <CircularProgress size={16} /> : null}>
+              {cancelling ? t('migration.cancelling') : t('migration.cancelJob')}
+            </Button>
+          )}
+          <Button onClick={handleClose} disabled={starting}>
+            {t('common.close')}
           </Button>
-        )}
-        <Button onClick={handleClose} disabled={starting}>
-          {t('common.close')}
-        </Button>
-        <Button variant="contained" onClick={handleStart} disabled={isRunning || starting} startIcon={starting ? <CircularProgress size={16} color="inherit" /> : null}>
-          {starting ? t('migration.starting') : t('migration.start')}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          <Button
+            variant="contained"
+            onClick={handleStart}
+            disabled={startDisabled}
+            startIcon={starting ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {starting ? t('migration.starting') : t('migration.start')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={restartPopupOpen} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('migration.restartRequiredTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{t('migration.restartRequiredBody')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setRestartPopupOpen(false)}>
+            {t('migration.ok')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 

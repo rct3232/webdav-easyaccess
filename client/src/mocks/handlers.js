@@ -136,13 +136,13 @@ export const handlers = [
     const custom = mockFiles.get(nodeIdParam);
     if (custom) return HttpResponse.json(custom);
     const rootItems = [
-      { nodeId: 1, name: 'test.txt', type: 'file', display_path: '/testuser/test.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 2, name: 'docs', type: 'directory', display_path: '/testuser/docs', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 3, name: 'folder', type: 'directory', display_path: '/testuser/folder', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 1, name: 'test.txt', type: 'file', display_path: '/testuser/test.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 2, name: 'docs', type: 'directory', display_path: '/testuser/docs', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 3, name: 'folder', type: 'directory', display_path: '/testuser/folder', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
     ];
     const folderItems = [
-      { nodeId: 4, name: 'sub.txt', type: 'file', display_path: '/testuser/folder/sub.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
-      { nodeId: 5, name: 'nested', type: 'directory', display_path: '/testuser/folder/nested', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, isHidden: false },
+      { nodeId: 4, name: 'sub.txt', type: 'file', display_path: '/testuser/folder/sub.txt', size: 0, mimeType: 'text/plain', modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
+      { nodeId: 5, name: 'nested', type: 'directory', display_path: '/testuser/folder/nested', size: 0, mimeType: null, modifiedAt: '2024-01-01T10:00:00Z', hasReadPermission: true, hasWritePermission: true, hasAdminPermission: true, isHidden: false },
     ];
     if (nodeIdParam === '3') {
       return HttpResponse.json(folderItems);

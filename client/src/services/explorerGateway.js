@@ -1,14 +1,9 @@
 import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from './fileService';
-import { checkPermission, getSharedPermissions, getUserPermissions } from './permissionService';
+import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
-
-const hasAdminPermissionForNodeId = (itemNodeId, adminNodeIds) => {
-  if (itemNodeId == null || adminNodeIds.length === 0) return false;
-  return adminNodeIds.has(itemNodeId);
-};
 
 const normalizeFileEntry = (item) => {
   if (!item || item.nodeId == null) return item;
@@ -46,23 +41,17 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
     return files;
   }
 
-  try {
-    const permissions = await getUserPermissions(user.id);
-    const adminNodeIds = new Set(
-      (permissions || [])
-        .filter((permission) => permission.permission === 'admin')
-        .map((permission) => permission.nodeId)
-    );
-
-    return files.map((item) => (
-      item?.nodeId != null
-        ? { ...item, hasAdminPermission: hasAdminPermissionForNodeId(item.nodeId, adminNodeIds) }
-        : item
-    ));
-  } catch (error) {
-    console.error('[explorerGateway] Failed to load admin prefixes for listing:', error);
-    return files;
-  }
+  // hasAdminPermission is now computed server-side per listing row
+  // (admin bypass || owner of the node || explicit admin grant — see
+  // docs/spec/server/services/fileService.md). The gateway only normalizes it
+  // to a boolean; it no longer recomputes it from getUserPermissions rows,
+  // which under the "No self-grants" policy would hide the owner's admin
+  // capability on their own folders.
+  return files.map((item) => (
+    item?.nodeId != null
+      ? { ...item, hasAdminPermission: item.hasAdminPermission === true }
+      : item
+  ));
 };
 
 export const getPathAccess = async ({ nodeId, options = {} } = {}) => {

@@ -64,9 +64,18 @@ Lists children of a directory node with permission flags computed per item via t
   mimeType: string \| null, // from filecache LEFT JOIN
   modifiedAt: Date \| null, // file_nodes.updated_at
   hasReadPermission: boolean,
-  hasWritePermission: boolean
+  hasWritePermission: boolean,
+  hasAdminPermission: boolean // admin bypass || owner of node || explicit admin grant
 }
 ```
+
+`hasAdminPermission` is the "can manage permissions on this node" capability. It is
+**ownership-derived** (`ownerNodeResolver.isOwnerNode` — the node lies under the
+principal's home root in the closure table), matching the "No self-grants" policy in
+`docs/features/permissions.md` §3: the owner is an effective admin on owned nodes with
+**no explicit permission record required**. This is what keeps the Share dialog's
+user-management UI working for a user's own folders after the own-subtree self-grant
+cleanup.
 
 Children the principal cannot read (`hasReadPermission === false`) are **excluded** from the returned array **only for share principals** (a `share:`-prefixed principal ID, detected via `aclService.isSharePrincipal`). This prevents a directory share token from disclosing sibling/parent nodes outside the share scope. For **regular user** listings unreadable children are **retained** with their per-row `hasReadPermission: false` / `hasWritePermission: false` flags — this is what the request-access flow relies on to discover (and request access to) unreadable children in another user's folder. Admin listings are unaffected because the admin bypass sets both flags true.
 
@@ -79,9 +88,13 @@ Children the principal cannot read (`hasReadPermission === false`) are **exclude
       - If child type is `'directory'`: call `aclService.checkFolderPermission(userId, childNodeId, PERMISSIONS.READ)` for read flag and `aclService.checkFolderPermission(userId, childNodeId, PERMISSIONS.WRITE)` for write flag.
       - If child type is `'file'`: call `aclService.checkFilePermission(userId, childNodeId, PERMISSIONS.READ)` for read flag and `aclService.checkFilePermission(userId, childNodeId, PERMISSIONS.WRITE)` for write flag.
 3. For **share principals only** (`aclService.isSharePrincipal(principalId)` true), skip (exclude from results) any child whose `hasReadPermission` is `false`. This filtering happens before path resolution and response-row construction, so `getNodePath` is never called for out-of-scope nodes. Regular user listings do not skip — every child is mapped with its boolean flags so unreadable children stay visible to the request-access flow.
-4. Map each remaining child into the response shape above.
+4. Compute the admin capability once per listing (skip entirely when `isAdminUser(user)` or a share principal):
+   - `parentOwned = ownerNodeResolver.isOwnerNode(userId, parentNodeId)` — all children of an owned directory are owned (ownership is inherited down the tree), so one check covers the whole listing.
+   - `adminGrantNodeIds` = set of `file_node_id` from `permissionStore.getUserPermissions(userId)` where `permission === 'admin'` (literal grants, e.g. admin received on a shared folder).
+   - Per child: `hasAdminPermission = isAdmin || parentOwned || adminGrantNodeIds.has(child.id)`.
+5. Map each remaining child into the response shape above.
 
-**DB operations:** Single SELECT via listDirectory (file_nodes + filecache LEFT JOIN). Permission checks are separate async queries per item unless admin bypass applies.
+**DB operations:** Single SELECT via listDirectory (file_nodes + filecache LEFT JOIN). Permission checks are separate async queries per item unless admin bypass applies. The admin-capability step adds `getUserRootNode` + one closure check (owner detection) and one `getUserPermissions` query per listing.
 
 ---
 
@@ -293,6 +306,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - [ ] Returns children with correct nodeId, name, type from file_nodes for given parentNodeId
 - [ ] Includes size and mimeType from filecache LEFT JOIN; null for directories and uncached files
 - [ ] Regular (non-share) user listing: unreadable children are RETAINED with `hasReadPermission=false` / `hasWritePermission=false` and `getNodePath` still resolved for them (request-access discovery)
+- [ ] Owned listing (only the home-root admin grant present, no per-folder rows): every child reports `hasAdminPermission=true`
+- [ ] Non-owned listing: `hasAdminPermission=false` except children with an explicit admin grant
+- [ ] Share-principal listing: `hasAdminPermission` is always `false`
 - [ ] Share-principal listing (`principalId: 'share:token'`): unreadable children are EXCLUDED — out-of-scope names/paths are never disclosed (share-token scope boundary)
 - [ ] Admin bypass: all items return hasRead=true, hasWrite=true without querying aclService per item
 - [ ] Returns empty array for leaf directory with no children

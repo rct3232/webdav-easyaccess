@@ -29,6 +29,30 @@ function createFileService(options = {}) {
     const isAdmin = user && aclService.isAdminUser(user);
     const isShareCaller = aclService.isSharePrincipal(userId);
 
+    // Admin capability ("can manage permissions on this node") is derived once
+    // per listing:
+    // - Admin bypass covers every node.
+    // - The owner is an effective admin on every node under their own home root
+    //   (ownership derived via the closure table, NOT stored grant rows — see
+    //   "No self-grants" in docs/features/permissions.md). Children of an owned
+    //   directory are owned, so a single isOwnerNode(parent) check suffices.
+    // - A user additionally keeps the admin capability on nodes where they hold
+    //   an explicit admin grant (e.g. admin received on a shared folder).
+    // Share principals never carry an admin capability.
+    let parentOwned = false;
+    let adminGrantNodeIds = null;
+    if (!isAdmin && !isShareCaller && children.length > 0) {
+      parentOwned = parentNodeId != null
+        ? await _ownerNodeResolver.isOwnerNode(userId, Number(parentNodeId))
+        : false;
+      const grants = await _permissionStore.getUserPermissions(userId);
+      adminGrantNodeIds = new Set(
+        (grants || [])
+          .filter((grant) => grant.permission === 'admin')
+          .map((grant) => Number(grant.file_node_id))
+      );
+    }
+
     const results = [];
     for (const child of children) {
       let hasReadPermission;
@@ -59,6 +83,10 @@ function createFileService(options = {}) {
         continue;
       }
 
+      const hasAdminPermission = isAdmin
+        || parentOwned
+        || (adminGrantNodeIds != null && adminGrantNodeIds.has(Number(child.id)));
+
       const display_path = await fileNodeService.getNodePath(child.id);
 
       let thumbnailUrl = null;
@@ -77,6 +105,7 @@ function createFileService(options = {}) {
         modifiedAt: child.updatedAt ?? null,
         hasReadPermission,
         hasWritePermission,
+        hasAdminPermission,
         isHidden: (child.name || '').startsWith('.'),
         thumbnailUrl,
       });

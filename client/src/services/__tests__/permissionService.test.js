@@ -164,6 +164,25 @@ describe('permissionService', () => {
       expect(afterGrant).toEqual([{ nodeId: 10, permission: 'admin' }]);
       expect(get).toHaveBeenCalledTimes(2);
     });
+
+    it('invalidates only the granted user cache, keeping other users cached', async () => {
+      get.mockResolvedValueOnce({ data: [{ nodeId: 1, permission: 'read' }] });
+      get.mockResolvedValueOnce({ data: [{ nodeId: 10, permission: 'write' }] });
+      post.mockResolvedValueOnce(undefined);
+
+      await getUserPermissions('me');
+      await grantPermission({
+        userId: 'target',
+        nodeId: 10,
+        permission: 'write',
+      });
+      const actorCached = await getUserPermissions('me');
+      const targetRefreshed = await getUserPermissions('target');
+
+      expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
+      expect(targetRefreshed).toEqual([{ nodeId: 10, permission: 'write' }]);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('revokePermission', () => {
@@ -229,6 +248,24 @@ describe('permissionService', () => {
 
       expect(beforeRevoke).toEqual([{ nodeId: 10, permission: 'admin' }]);
       expect(afterRevoke).toEqual([]);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates only the revoked user cache, keeping other users cached', async () => {
+      get.mockResolvedValueOnce({ data: [{ nodeId: 1, permission: 'read' }] });
+      get.mockResolvedValueOnce({ data: [] });
+      del.mockResolvedValueOnce(undefined);
+
+      await getUserPermissions('me');
+      await revokePermission({
+        userId: 'target',
+        nodeId: 10,
+      });
+      const actorCached = await getUserPermissions('me');
+      const targetRefreshed = await getUserPermissions('target');
+
+      expect(actorCached).toEqual([{ nodeId: 1, permission: 'read' }]);
+      expect(targetRefreshed).toEqual([]);
       expect(get).toHaveBeenCalledTimes(2);
     });
   });

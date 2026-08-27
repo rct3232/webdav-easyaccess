@@ -103,8 +103,6 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 #### Previously untested server modules — now covered:
 | File | Risk |
 |------|------|
-| `server/services/selectiveDelete.js` | Data loss risk if buggy |
-| `server/services/selectiveDownload.js` | Data loss risk if buggy |
 | `server/utils/permissionPolicy.js` | Core security logic untested |
 | `server/utils/thumbnail.js` | Image processing untested |
 | `server/utils/email.js` | Email sending untested |
@@ -160,7 +158,7 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 
 ### 16. `server/undefined/` Directory Cleanup ✅ COMPLETE
 - **Commit: `ace302b`**
-- `.wea` metadata files committed to repo; not in `.gitignore`.
+- Stray metadata files committed to repo; not in `.gitignore`.
 - **Fix**: Add `server/undefined/` to `.gitignore`; investigate root cause of undefined storage path.
 
 ### 17. Default JWT Secret Warning ✅ COMPLETE
@@ -196,7 +194,7 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 | **P1** | Translate Korean comments to English (multiple files) | 2-3 hours |
 | **P1** | Standardize error handling — convert all routes to asyncHandler | 2-3 hours |
 | **P1** | Replace hardcoded status codes with HTTP_STATUS constants | 1 hour |
-| **P2** | Add tests for critical untested server modules (selectiveDelete, permissionPolicy) | 4-6 hours |
+| **P2** | Add tests for critical untested server modules (permissionPolicy) | 4-6 hours |
 | **P2** | Add tests for FilePreviewDialog subsystem | 3-4 hours |
 | **P2** | Fix performance issues (useRef, reduce useMemo, MutationObserver) | 2-3 hours |
 | **P2** | Add root-level ESLint + Prettier configuration | 1 hour |

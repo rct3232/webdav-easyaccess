@@ -1,17 +1,16 @@
 const crypto = require('crypto');
 
 const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun } = require('../store/storage');
-const { lockPathByKey, sha256HexLower } = require('../store/metaPaths');
+const { sha256HexLower } = require('../utils/hash');
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function makeTimeoutError(lockName, lockPath, waitMs) {
+function makeTimeoutError(lockName, waitMs) {
   const err = new Error(`Failed to acquire lock "${lockName}" within ${waitMs}ms`);
   err.code = 'LOCK_TIMEOUT';
   err.lockName = lockName;
-  err.lockPath = lockPath;
   return err;
 }
 
@@ -50,7 +49,7 @@ function createSqliteLockRelease(lockKey, token) {
   };
 }
 
-async function acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs) {
+async function acquirePostgresqlLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs) {
   const deadline = Date.now() + waitMs;
   while (true) {
     const createdAt = new Date();
@@ -72,19 +71,18 @@ async function acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, 
     if (insertResult.rowCount > 0) {
       return {
         token,
-        lockPath,
         release: createPostgresqlLockRelease(lockKey, token),
       };
     }
 
     if (Date.now() >= deadline) {
-      throw makeTimeoutError(lockName, lockPath, waitMs);
+      throw makeTimeoutError(lockName, waitMs);
     }
     await sleep(retryDelayMs);
   }
 }
 
-async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs) {
+async function acquireSqliteLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs) {
   const deadline = Date.now() + waitMs;
   while (true) {
     const createdAt = new Date();
@@ -108,7 +106,6 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
         if (insertResult.changes > 0) {
           return {
             token,
-            lockPath,
             release: createSqliteLockRelease(lockKey, token),
           };
         }
@@ -120,7 +117,7 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
     }
 
     if (Date.now() >= deadline) {
-      throw makeTimeoutError(lockName, lockPath, waitMs);
+      throw makeTimeoutError(lockName, waitMs);
     }
     await sleep(retryDelayMs);
   }
@@ -138,7 +135,7 @@ async function acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlM
  * @param {number} [options.waitMs=30000]
  * @param {number} [options.retryDelayMs=250]
  * @param {string} [options.owner] - identifier for debugging (hostname/pid)
- * @returns {Promise<{token: string, lockPath: string, release: function(): Promise<void>}>}
+ * @returns {Promise<{token: string, release: function(): Promise<void>}>}
  */
 async function acquireLock(lockName, options = {}) {
   const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : 30_000;
@@ -147,16 +144,15 @@ async function acquireLock(lockName, options = {}) {
   const owner = options.owner || `${process.env.HOSTNAME || 'host'}:${process.pid}`;
 
   const lockKey = sha256HexLower(lockName);
-  const lockPath = lockPathByKey(lockKey);
   const token = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
   const backend = getBackend();
 
   if (backend === 'postgresql') {
-    return acquirePostgresqlLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
+    return acquirePostgresqlLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs);
   }
 
   if (isSqliteBackend()) {
-    return acquireSqliteLock(lockName, lockKey, lockPath, token, owner, ttlMs, waitMs, retryDelayMs);
+    return acquireSqliteLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs);
   }
 
   throw new Error(`No lock strategy for backend: ${backend}`);

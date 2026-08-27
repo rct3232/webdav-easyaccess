@@ -110,7 +110,7 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 
 | Function | Description |
 |----------|-------------|
-| `cleanupOrphanedData()` | Scans `.wea` meta directories for orphaned permission files, user files, email index entries, and stale permission requests. |
+| `cleanupOrphanedData()` | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB. |
 | `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). |
 
 ### 2.6 Related Documents

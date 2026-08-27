@@ -268,6 +268,64 @@ describe('explorerGateway', () => {
       expect.objectContaining({ nodeId: 101, name: 'Read Only', type: 'directory' }),
       expect.objectContaining({ nodeId: 300, name: 'report.txt', basename: 'report.txt', type: 'file', size: 50, mime: 'text/plain' }),
     ]);
+    expect(result).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain('node-100');
+    expect(JSON.stringify(result)).not.toContain('node-101');
+    expect(JSON.stringify(result)).not.toContain('file-300');
+  });
+
+  it('derives hasWritePermission and hasAdminPermission from the granted permission, not ownership', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Admin Folder', permission: 'admin', type: 'directory' },
+      { nodeId: 101, name: 'Write Folder', permission: 'write', type: 'directory' },
+      { nodeId: 102, name: 'Read Folder', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'read-only.txt', permission: 'read', type: 'file' },
+    ]);
+    getFilesMetadata.mockResolvedValueOnce([]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ nodeId: 100, hasWritePermission: true, hasAdminPermission: true }),
+      expect.objectContaining({ nodeId: 101, hasWritePermission: true, hasAdminPermission: false }),
+      expect.objectContaining({ nodeId: 102, hasWritePermission: false, hasAdminPermission: false }),
+      expect.objectContaining({ nodeId: 300, type: 'file', hasWritePermission: false, hasAdminPermission: false }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('node-100');
+    expect(JSON.stringify(result)).not.toContain('file-300');
+  });
+
+  it('excludes the user own root node from shared entries', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 200, name: 'owner-home', permission: 'admin', type: 'directory' },
+      { nodeId: 300, name: 'Genuine Share', permission: 'read', type: 'directory' },
+    ]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ nodeId: 300, name: 'Genuine Share', type: 'directory' });
+  });
+
+  it('dedupes shared entries by nodeId and keeps directory entries before file entries', async () => {
+    getSharedPermissions.mockResolvedValueOnce([
+      { nodeId: 100, name: 'Docs', permission: 'read', type: 'directory' },
+      { nodeId: 100, name: 'Docs', permission: 'read', type: 'directory' },
+      { nodeId: 300, name: 'note.txt', permission: 'read', type: 'file' },
+    ]);
+    getFilesMetadata.mockResolvedValueOnce([{ nodeId: 300, size: 5 }]);
+
+    const result = await loadSharedEntries({
+      user: { id: '1', username: 'owner-home', is_admin: false, rootNodeId: 200 },
+    });
+
+    expect(result.map((entry) => entry.nodeId)).toEqual([100, 300]);
+    expect(result[0]).toMatchObject({ type: 'directory', name: 'Docs' });
+    expect(result[1]).toMatchObject({ type: 'file', name: 'note.txt' });
   });
 
   it('delegates addRecentFile through the default gateway', async () => {

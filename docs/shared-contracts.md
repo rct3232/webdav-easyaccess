@@ -87,7 +87,6 @@ Defined in `shared/validation.js`. Used by both client and server for form and i
 
 ## Path Rules
 
-- **Normalization:** Paths are normalized with `normalizePath` from `shared/pathUtils.js`: leading slash, no duplicate slashes, backslashes replaced by forward slashes, trailing slash removed unless the path is treated as a directory. The server applies this via `normalizePathParam` middleware to `req.query.path`, `req.body.path`, `req.body.sourcePath`, `req.body.destinationPath`, `req.body.oldPath`, `req.body.folderPath`, and `req.query.folderPath`.
-- **Reserved path:** The path `/.wea` is reserved for metadata storage. Non-admin access is blocked by `checkMetaPathAccess` in `server/middleware/metaPathGuard.js`. See [ARCHITECTURE.md](ARCHITECTURE.md) and [features/permissions.md](features/permissions.md).
+- **Normalization:** Paths are normalized with `normalizePath` from `shared/pathUtils.js`: leading slash, no duplicate slashes, backslashes replaced by forward slashes, trailing slash removed unless the path is treated as a directory. Display paths are resolved server-side via the node graph; request payloads accept nodeId-based fields, not raw path strings.
 
-Client and server should use the same normalization and treat `/.wea` as inaccessible to normal users.
+Client and server should use the same normalization so display paths and name comparisons stay consistent.

@@ -2,7 +2,7 @@
  * Files routes integration tests.
  * @see docs/api.md, docs/spec/server/routes/files.md
  *
- * Note: Full batch-move worker execution is complex (selectiveTransfer, etc.).
+ * Note: Full batch-move worker execution is complex.
  * We verify the API contract: batch-move returns 202 + jobId, bulk-operation returns 404 for unknown job.
  */
 const request = require('supertest');

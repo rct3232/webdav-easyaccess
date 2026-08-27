@@ -18,7 +18,7 @@
 ### 2.2 Factory Function Signature
 
 ```js
-function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode }) {
+function createFileService({ fileNodeService, blobStorageService, uploadService, aclService, fileStorageMode, permissionStore, ownerNodeResolver }) {
   return {
     listDirectoryWithPermissions(userId, parentNodeId, user),
     uploadFile(userId, parentNodeId, name, buffer, mimeType, user, onConflict),
@@ -38,6 +38,8 @@ function createFileService({ fileNodeService, blobStorageService, uploadService,
 | uploadService | object | yes | 4-step upload orchestration (uploadFile, overwriteFile, downloadFile) — see `uploadService.md` |
 | aclService | object | yes | Permission checks (checkFolderPermission, checkFilePermission, isAdminUser) — see `aclService.js` |
 | fileStorageMode | string | yes | `'s3'` or `'webdav'`. Determined by injected blobStorageService capability at composition time, not read from environment variables inside this service. |
+| permissionStore | object | no | Store-level permission CRUD (`revokeUserSubtreePermissions`). Defaults to the real store when omitted. Used only by `moveNode` for the ownership-transfer cleanup (D6). |
+| ownerNodeResolver | object | no | Owner detection via closure-table ancestry (`isOwnerNode`). Defaults to the real resolver when omitted. Used only by `moveNode` to decide whether a move is an ownership transfer (D6). |
 
 ### 2.3 Methods
 
@@ -47,7 +49,7 @@ Lists children of a directory node with permission flags computed per item via t
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| userId | number | yes | ID of the requesting user (principal) |
+| userId | number \| string | yes | ID of the requesting principal. A numeric userId for authenticated users, or a `'share:<token>'` string for share-token callers (`GET /api/files/list` passes `req.principalId`). Determines admin bypass (`user` object) and whether the unreadable-child exclusion applies (`aclService.isSharePrincipal`). |
 | parentNodeId | number | yes | Node ID of the directory to list |
 | user | object | yes | Full user object with `is_admin` flag for admin bypass resolution |
 
@@ -66,6 +68,8 @@ Lists children of a directory node with permission flags computed per item via t
 }
 ```
 
+Children the principal cannot read (`hasReadPermission === false`) are **excluded** from the returned array **only for share principals** (a `share:`-prefixed principal ID, detected via `aclService.isSharePrincipal`). This prevents a directory share token from disclosing sibling/parent nodes outside the share scope. For **regular user** listings unreadable children are **retained** with their per-row `hasReadPermission: false` / `hasWritePermission: false` flags — this is what the request-access flow relies on to discover (and request access to) unreadable children in another user's folder. Admin listings are unaffected because the admin bypass sets both flags true.
+
 **Operations:**
 
 1. `fileNodeService.listDirectory(parentNodeId)` — retrieves children rows with filecache metadata (LEFT JOIN). If parentNodeId does not exist or is not a directory, throws 404-style error.
@@ -74,7 +78,8 @@ Lists children of a directory node with permission flags computed per item via t
    - Otherwise:
       - If child type is `'directory'`: call `aclService.checkFolderPermission(userId, childNodeId, PERMISSIONS.READ)` for read flag and `aclService.checkFolderPermission(userId, childNodeId, PERMISSIONS.WRITE)` for write flag.
       - If child type is `'file'`: call `aclService.checkFilePermission(userId, childNodeId, PERMISSIONS.READ)` for read flag and `aclService.checkFilePermission(userId, childNodeId, PERMISSIONS.WRITE)` for write flag.
-3. Map each result into the response shape above.
+3. For **share principals only** (`aclService.isSharePrincipal(principalId)` true), skip (exclude from results) any child whose `hasReadPermission` is `false`. This filtering happens before path resolution and response-row construction, so `getNodePath` is never called for out-of-scope nodes. Regular user listings do not skip — every child is mapped with its boolean flags so unreadable children stay visible to the request-access flow.
+4. Map each remaining child into the response shape above.
 
 **DB operations:** Single SELECT via listDirectory (file_nodes + filecache LEFT JOIN). Permission checks are separate async queries per item unless admin bypass applies.
 
@@ -186,11 +191,16 @@ Moves a node (and its subtree) to a new parent directory with closure table rebu
    - Check write on source via `aclService.checkFilePermission(userId, nodeId, 'write')` (string literal). If false, throw 403.
    - Check write on destination parent via `aclService.checkFolderPermission(userId, newParentNodeId, 'write')` (string literal). If false, throw 403.
    Admin or null-user bypasses this gate entirely.
-2. Storage-side sync (mode-dependent):
+2. **Ownership-transfer detection (D6):** for a non-admin mover, resolve BEFORE the move (the closure-table rebuild afterwards rewrites the subtree ancestry, so post-move ownership would be misreported):
+   - `ownedBeforeMove = ownerNodeResolver.isOwnerNode(userId, nodeId)` — the node is currently inside the mover's home subtree.
+   - `destInsideMoverHome` — `newParentNodeId != null` AND `ownerNodeResolver.isOwnerNode(userId, newParentNodeId)` — the destination is inside the mover's home subtree (stable: the destination's ancestry is unchanged by the move).
+   - If `ownedBeforeMove && !destInsideMoverHome`, the move transfers ownership out of the mover's home. Admin movers are skipped (no home, no self-grant rows to leak).
+3. Storage-side sync (mode-dependent):
    - **S3 mode:** No storage operation needed. Blob keys are decoupled from tree position.
    - **WebDAV mode:** Uses "download content → DB move → re-upload" pattern (not native WebDAV MOVE). Before the DB move, download file content via `blobStorageService.downloadBlob(nodeId)` — if download fails, proceed with DB-only move (storage sync is best-effort). After the DB move, re-upload the buffered content to the new path via `blobStorageService.uploadToWebdav(nodeId, webdavBuffer)`. If re-upload fails, set `sync_status = 'orphaned_node'` via `fileNodeService.updateSyncStatus(nodeId, 'orphaned_node')`. Do not abort DB move — metadata is authoritative.
-3. DB move: `fileNodeService.moveNode(nodeId, newParentNodeId)` — updates parent_id + rebuilds closure table in TX. Cycle detection handled internally by fileNodeService (calls getDescendantIds and rejects if newParentId is a descendant).
-4. Return confirmation.
+4. DB move: `fileNodeService.moveNode(nodeId, newParentNodeId)` — updates parent_id + rebuilds closure table in TX. Cycle detection handled internally by fileNodeService (calls getDescendantIds and rejects if newParentId is a descendant).
+5. **Ownership-transfer cleanup (D6):** after the closure rebuild, if step 2 detected an ownership transfer, call `permissionStore.revokeUserSubtreePermissions(userId, nodeId)` to delete the mover's explicit permission rows on the moved subtree (root + descendants, depth ≥ 0) from both `permissions_user_paths` and `permissions_user_files`. Without this, the mover's historical self-grants / admin-assigned rows on the subtree would resurface in `GET /api/permissions/shared` as "shared with me" leaks even though the mover no longer owns the subtree. The mover's home-root ADMIN grant is untouched (it lives on the home root, not inside the moved subtree). This cleanup is best-effort: it runs after the DB move committed and does not abort or roll back the move.
+6. Return confirmation.
 
 ---
 
@@ -265,6 +275,8 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 | blobStorageService | Blob lifecycle: prepareUpload/completeUpload for S3 mode; downloadBlob for both modes; uploadToWebdav/deleteBlob for WebDAV operations; getActiveS3Key/duplicateBlob/linkObject for copy-on-write |
 | uploadService | Orchestrates 4-step S3 upload flow (TX1 → PUT → TX2) with failure recovery states |
 | aclService | Async permission gates: checkFolderPermission, checkFilePermission, isAdminUser |
+| permissionStore | Ownership-transfer cleanup in moveNode: revokeUserSubtreePermissions (D6) |
+| ownerNodeResolver | Ownership detection in moveNode: isOwnerNode (D6) |
 
 ### 2.5 Error Cases
 
@@ -280,7 +292,8 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 #### listDirectoryWithPermissions
 - [ ] Returns children with correct nodeId, name, type from file_nodes for given parentNodeId
 - [ ] Includes size and mimeType from filecache LEFT JOIN; null for directories and uncached files
-- [ ] Sets hasReadPermission=false / hasWritePermission=false when user lacks access on child node (non-admin)
+- [ ] Regular (non-share) user listing: unreadable children are RETAINED with `hasReadPermission=false` / `hasWritePermission=false` and `getNodePath` still resolved for them (request-access discovery)
+- [ ] Share-principal listing (`principalId: 'share:token'`): unreadable children are EXCLUDED — out-of-scope names/paths are never disclosed (share-token scope boundary)
 - [ ] Admin bypass: all items return hasRead=true, hasWrite=true without querying aclService per item
 - [ ] Returns empty array for leaf directory with no children
 - [ ] Throws 404-style error when parentNodeId does not exist or is a file node
@@ -315,6 +328,9 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 - [ ] S3 mode: no storage operation (blob key decoupled from tree position)
 - [ ] WebDAV mode: attempts best-effort MOVE; marks orphaned_node on failure without rolling back DB move
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
+- [ ] Ownership transfer (D6): a non-admin mover that owns the node and moves it OUTSIDE the mover's home subtree has its explicit rows on the moved subtree revoked via revokeUserSubtreePermissions (root + descendants); the mover's home-root ADMIN row is preserved
+- [ ] Non-transfer: moving within the mover's own home, or moving a node the mover merely received a grant on (does not own it), does NOT revoke any rows
+- [ ] Admin mover: ownership detection and revocation are skipped entirely
 
 #### deleteNode
 - [ ] Deletes leaf file node via fileNodeService.deleteNode after write-permission gate
@@ -339,11 +355,11 @@ Every public method performs a permission gate before proceeding with its core o
 
 1. **Null guard + Admin bypass:** Every blocking gate uses the outer condition `if (!user || !aclService.isAdminUser(user))`. When `user` is null/undefined or when `isAdminUser()` returns true, the gate is skipped entirely and the method proceeds to its core operation. Only non-admin, non-null users are subject to permission checks.
 2. **Blocking permission gates use string literals:** The blocking gates in `uploadFile`, `downloadFile`, `renameNode`, `moveNode`, `deleteNode`, and `copyFile` pass literal strings (`'read'` / `'write'`) as the permission argument, not `PERMISSIONS.READ` / `PERMISSIONS.WRITE` constants.
-3. **Per-item permission checks use constants:** The per-item checks inside `listDirectoryWithPermissions` (which are non-blocking — they only set boolean flags on each result row) use `PERMISSIONS.READ` and `PERMISSIONS.WRITE` constants.
+3. **Per-item permission checks use constants:** The per-item checks inside `listDirectoryWithPermissions` use `PERMISSIONS.READ` and `PERMISSIONS.WRITE` constants. They are **blocking for share principals only** — a share-principal child with `hasReadPermission=false` is excluded from the response (never disclosed), which is the share-token scope boundary. Regular user listings keep every child with its boolean flags so unreadable children remain visible to the request-access flow.
 
 | Method | Gate Type | Action | ACL Call (blocking gate) |
 |--------|-----------|--------|--------------------------|
-| listDirectoryWithPermissions | Per-item flags, not blocking | Read/write enumeration per child | `checkFolderPermission(userId, childId, PERMISSIONS.READ/WRITE)` for dirs; `checkFilePermission(userId, childId, PERMISSIONS.READ/WRITE)` for files — skipped entirely if admin. Uses **constant** values. |
+| listDirectoryWithPermissions | Per-item blocking for share principals only | Read/write enumeration per child; for share principals children with `hasReadPermission=false` are filtered out before response construction, regular user listings retain them with their flags | `checkFolderPermission(userId, childId, PERMISSIONS.READ/WRITE)` for dirs; `checkFilePermission(userId, childId, PERMISSIONS.READ/WRITE)` for files — skipped entirely if admin. Uses **constant** values. |
 | uploadFile | Blocking before create | Write on parent folder | `checkFolderPermission(userId, parentNodeId, 'write')` — **string literal**. |
 | downloadFile | Blocking before download | Read on file node | `checkFilePermission(userId, fileNodeId, 'read')` — **string literal**. |
 | renameNode | Blocking before rename | Write on target node | `checkFilePermission(userId, nodeId, 'write')` — **string literal**. |
@@ -431,6 +447,10 @@ Complete checklist of testable behaviors per method, organized to drive the test
 - [ ] S3 mode: no storage operation invoked (blob key decoupled from tree position)
 - [ ] WebDAV mode: attempts best-effort MOVE on remote; sets orphaned_node on failure without rolling back DB move
 - [ ] Rejects cycle: throws when newParentNodeId is a descendant of nodeId
+- [ ] Ownership transfer (D6): non-admin mover that owned the node moves it into another user's home subtree → mover's rows on the moved subtree are revoked (both tables, root included); shared listing no longer surfaces it
+- [ ] Received grant preserved: a mover that does NOT own the node (merely received a grant) moving it within the owning user's home keeps its grant row intact
+- [ ] Within-own-home move: no rows revoked
+- [ ] Admin mover: no ownership detection, no revocation
 
 ### deleteNode
 - [ ] Deletes leaf file node via fileNodeService.deleteNode after write-permission gate passes

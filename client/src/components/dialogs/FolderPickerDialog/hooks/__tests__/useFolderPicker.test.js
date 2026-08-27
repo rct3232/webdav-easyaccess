@@ -360,6 +360,72 @@ describe('useFolderPicker', () => {
     });
   });
 
+  it('treats read-granted shared folders as non-writable and write/admin grants as writable', async () => {
+    folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
+      { nodeId: 10, name: 'ReadOnly', permission: 'read' },
+      { nodeId: 20, name: 'Writable', permission: 'write' },
+      { nodeId: 30, name: 'AdminShared', permission: 'admin' },
+    ]);
+
+    const { result, openPicker } = renderFolderPickerHook({
+      action: 'move',
+      sourceNodeId: 50,
+    });
+
+    await openPicker();
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      result.current.handleTogglePath({}, 'shared');
+    });
+
+    await waitFor(() => {
+      expect(result.current.getCurrentPathType()).toBe('shared');
+    });
+
+    const folders = result.current.folders;
+    const byNodeId = new Map(folders.map((folder) => [folder.nodeId, folder]));
+
+    expect(folders).toHaveLength(3);
+    expect(byNodeId.get(10)).toMatchObject({
+      nodeId: 10,
+      name: 'ReadOnly',
+      hasReadPermission: true,
+      hasWritePermission: false,
+    });
+    expect(byNodeId.get(20)).toMatchObject({
+      nodeId: 20,
+      name: 'Writable',
+      hasReadPermission: true,
+      hasWritePermission: true,
+    });
+    expect(byNodeId.get(30)).toMatchObject({
+      nodeId: 30,
+      name: 'AdminShared',
+      hasReadPermission: true,
+      hasWritePermission: true,
+    });
+    expect(folders.every((folder) => !String(folder.name).includes('Shared ('))).toBe(true);
+
+    await act(async () => {
+      result.current.handleFolderClick(byNodeId.get(10));
+    });
+    expect(result.current.hasWritePermission).toBe(false);
+
+    await act(async () => {
+      result.current.handleFolderClick(byNodeId.get(20));
+    });
+    expect(result.current.hasWritePermission).toBe(true);
+
+    await act(async () => {
+      result.current.handleFolderClick(byNodeId.get(30));
+    });
+    expect(result.current.hasWritePermission).toBe(true);
+  });
+
   it('handleTogglePath(shared) lands on a top-level shared root for shared-origin sources', async () => {
     folderPickerGateway.getUserSharedFolderPermissions.mockResolvedValue([
       { nodeId: 10, permission: 'read' },

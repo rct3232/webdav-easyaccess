@@ -92,15 +92,15 @@ Reject flow: `POST /api/admin/users/:id/reject`; optional `sendRejectionEmail`.
 
 ### Admin: user permissions and cleanup
 
-- **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server updates `/.wea/permissions/users/<userId>.json`.
+- **Set permissions:** Admin calls `PUT /api/admin/users/:id/permissions` with body containing permission list; server revokes existing grants and applies the new permission set in the DB (`permissions_user_paths` / `permissions_user_files`).
 - **Ensure home owner admin:** `POST /api/admin/permissions/ensure-home-owner-admin` ensures each user’s home folder has that user as admin (e.g. after recovery), and removes redundant self-grants the user holds on their own subtree (a one-time reconciliation for data created before self-grants were removed).
 - **Orphan cleanup:** `POST /api/admin/cleanup/orphaned` removes orphaned metadata (e.g. permissions/shares pointing to missing paths); response includes result summary.
 - **Garbage collection:** `POST /api/admin/maintenance/gc` runs a two-tier GC cycle (DB-driven orphaned `object_map` rows → S3 blob delete; S3 `ListObjectsV2` reconciliation against the active `s3_key` set). Optionally scheduled via `GC_INTERVAL_MS`; orphan age threshold via `GC_ORPHAN_TTL_DAYS`. Service contract: `docs/spec/server/services/gcService.md`.
 - **Fail-safe recovery:** `POST /api/admin/maintenance/repair-sync` resolves `file_nodes` stuck in `sync_status='orphaned_node'` (`retry-delete` or `force-active`). A startup hook scans and reports stuck nodes without auto-deleting. Service contract: `docs/spec/server/services/gcService.md`.
 
-### API pipeline and meta path
+### API pipeline
 
-- Authenticated file/folder request: Auth → User Loader → Normalize path params → If path is `/.wea`, Meta Path Guard allows only when `user.is_admin`; otherwise 403. Then route handler runs (and may perform further ACL checks per [permissions.md](permissions.md)).
+- Authenticated file/folder request: Auth → User Loader → Route handler (nodeId-based; may perform further ACL checks per [permissions.md](permissions.md)).
 
 ### Metadata lock usage
 

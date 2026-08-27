@@ -311,6 +311,13 @@ export const useFileManager = (user, options = {}) => {
     const loadPermission = async () => {
       const permId = ++permRequestIdRef.current;
       const targetNodeId = isShareMode ? null : currentNodeId;
+      // Admin's home is the filesystem root; there are no grant rows for nested
+      // folders, so the check would report no write access and hide the FAB and
+      // drag-drop. Defense-in-depth mirror of the server-side admin bypass.
+      if (user?.is_admin) {
+        setHasWritePermission(true);
+        return;
+      }
       try {
         const permission = await explorerGateway.getPathAccess({ nodeId: targetNodeId ?? null });
         if (permId !== permRequestIdRef.current) return;

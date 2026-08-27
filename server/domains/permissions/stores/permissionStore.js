@@ -701,10 +701,18 @@ async function getSharedPermissions(userId, homeRootNodeId) {
     throw new Error('No database backend configured');
   }
 
-  return [
+  // Dedupe across the two permission tables: at most one entry per file_node_id.
+  const seen = new Set();
+  const result = [];
+  for (const row of [
     ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
     ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
-  ];
+  ]) {
+    if (seen.has(row.file_node_id)) continue;
+    seen.add(row.file_node_id);
+    result.push(row);
+  }
+  return result;
 }
 
 const buildRemovalSql = (table, ph1, ph2) =>
@@ -755,9 +763,58 @@ async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
   return { removedPaths, removedFiles };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Effective Permission Resolution                                    */
-/* ------------------------------------------------------------------ */
+const buildSubtreeRemovalSql = (table, ph1, ph2) =>
+  `DELETE FROM ${table}
+   WHERE user_id = ${ph1} AND file_node_id IN (
+     SELECT descendant_id FROM node_ancestors WHERE ancestor_id = ${ph2}
+   )`;
+
+/**
+ * Delete the user's permission rows on every node in the subtree rooted at
+ * rootNodeId, INCLUDING the root itself (depth 0). Used on ownership transfer
+ * (D6): when a node the user owned is moved into another user's home subtree,
+ * the mover's explicit rows on the moved subtree (historical self-grants,
+ * admin-assigned rows) would otherwise resurface in getSharedPermissions as
+ * "shared with me" leaks. Unlike removeOwnSubtreePermissions there is no
+ * depth > 0 filter — the subtree root's own row is revoked too.
+ * @returns {Promise<{ removedPaths: number, removedFiles: number }>}
+ */
+async function revokeUserSubtreePermissions(userId, rootNodeId) {
+  const uid = Number(userId);
+  const root = Number(rootNodeId);
+  if (!Number.isFinite(root)) {
+    return { removedPaths: 0, removedFiles: 0 };
+  }
+
+  let removedPaths = 0;
+  let removedFiles = 0;
+
+  if (isPostgresqlBackend()) {
+    try {
+      const pool = getPgPool();
+      const pathRes = await pool.query(buildSubtreeRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
+      const fileRes = await pool.query(buildSubtreeRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      removedPaths = pathRes.rowCount || 0;
+      removedFiles = fileRes.rowCount || 0;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else if (isSqliteBackend()) {
+    try {
+      const pathRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
+      const fileRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      removedPaths = pathRes.changes || 0;
+      removedFiles = fileRes.changes || 0;
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  } else {
+    throw new Error('No database backend configured');
+  }
+
+  cache.delete(String(uid));
+  return { removedPaths, removedFiles };
+}
 
 async function getEffectivePermission(userId, fileNodeId) {
   const uid = Number(userId);
@@ -1026,5 +1083,6 @@ module.exports = {
   getUserFilePermissions,
   getSharedPermissions,
   removeOwnSubtreePermissions,
+  revokeUserSubtreePermissions,
   getPathEffectivePermission,
 };

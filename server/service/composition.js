@@ -8,6 +8,8 @@ const { createUploadService } = require('./uploadService');
 const { createGcService } = require('./gcService');
 const { createFailSafeService } = require('./failSafeService');
 const aclService = require('../domains/permissions/services/aclService');
+const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
+const permissionStore = require('../store/permissionStore');
 const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
 const { createDownloadService } = require('../domains/files/services/downloadService');
@@ -40,6 +42,8 @@ function createComposition(overrides = {}) {
     uploadService,
     aclService: effectiveAclService,
     fileStorageMode,
+    permissionStore,
+    ownerNodeResolver,
   });
 
   const batchOperationService = overrides.batchOperationService || createBatchOperationService({

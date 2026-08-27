@@ -26,11 +26,13 @@ jest.mock('@aws-sdk/client-s3', () => {
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
+  createUserRootNode,
   grantTestPermissionByNodeId,
   dbQuery,
   dbRun,
 } = require('@server/test-utils');
 const request = require('supertest');
+const permissionStore = require('@server/store/permissionStore');
 
 let app; // Express app (lazy-loaded)
 
@@ -89,6 +91,19 @@ async function pollJob(user, jobId, maxPolls = 50) {
     await new Promise((r) => setImmediate(r));
   }
   throw new Error(`Job ${jobId} did not complete within ${maxPolls} polls`);
+}
+
+/**
+ * Create a non-admin user with a home-root node and the home-root ADMIN grant
+ * (mirrors the production user creation/ensure-home-owner-admin flow).
+ * Returns { user, token, homeNodeId }.
+ */
+async function createUserWithHomeNode(prefix) {
+  const username = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const auth = await createAuthenticatedTestUser({ isAdmin: false, username });
+  const home = await createUserRootNode({ userId: auth.user.id });
+  await grantTestPermissionByNodeId({ userId: auth.user.id, fileNodeId: home.nodeId, permission: 'admin' });
+  return { ...auth, homeNodeId: home.nodeId };
 }
 
 /* ─── Lifecycle ──────────────────────────────────────────────────────── */
@@ -704,5 +719,785 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   it('WebDAV: putFileContents was called during recovery upload', async () => {
     const calls = webdavMock.putFileContents.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
+  });
+});
+
+/* ========================================================================
+   C1 - Reference stability (class C): move a granted folder
+   Grantee keeps access after the move; ancestor chain is rebuilt;
+   permissions_user_paths rows stay intact (nodeId-stable).
+   ======================================================================== */
+describe('C1: move granted folder → grantee access + ancestor chain rebuild', () => {
+  let owner, grantee, grantFolder, childFileId, destFolder;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    owner = await createUserWithHomeNode('c1-owner');
+    grantee = await createAuthenticatedTestUser({
+      isAdmin: false,
+      username: `c1-grantee-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ parentNodeId: owner.homeNodeId, name: `grant-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    grantFolder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(owner, grantFolder, 'inside.txt', 'granted-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    const destRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ parentNodeId: owner.homeNodeId, name: `c1-dest-${Date.now()}` });
+    expect(destRes.status).toBe(200);
+    destFolder = destRes.body.nodeId;
+
+    await grantTestPermissionByNodeId({
+      userId: grantee.user.id,
+      fileNodeId: grantFolder,
+      permission: 'read',
+    });
+  });
+
+  it('precondition: grantee has read access before the move', async () => {
+    const res = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .query({ nodeId: grantFolder });
+    expect(res.status).toBe(200);
+    expect(res.body.hasRead).toBe(true);
+  });
+
+  it('moves the granted folder under the destination folder', async () => {
+    const res = await request(app)
+      .post('/api/files/move')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeId: grantFolder, destinationParentNodeId: destFolder });
+    expect(res.status).toBe(200);
+    expect(res.body.newParentId).toBe(destFolder);
+  });
+
+  it('DB: parent_id is updated and the closure table is rebuilt around the new parent', async () => {
+    const node = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [grantFolder]);
+    expect(node.rows[0].parent_id).toBe(destFolder);
+
+    const chain = await dbQuery(
+      'SELECT ancestor_id, depth FROM node_ancestors WHERE descendant_id = ? ORDER BY depth DESC',
+      [grantFolder]
+    );
+    expect(chain.rows).toHaveLength(3);
+    const byDepth = new Map(chain.rows.map((r) => [Number(r.ancestor_id), Number(r.depth)]));
+    expect(byDepth.get(grantFolder)).toBe(0);
+    expect(byDepth.get(destFolder)).toBe(1);
+    expect(byDepth.get(owner.homeNodeId)).toBe(2);
+  });
+
+  it('DB: permissions_user_paths row for the grantee is intact (nodeId-stable)', async () => {
+    const perm = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [grantee.user.id, grantFolder]
+    );
+    expect(perm.rows).toHaveLength(1);
+    expect(perm.rows[0].permission).toBe('read');
+  });
+
+  it('GET /api/files/ancestors returns the rebuilt chain (old parent dropped)', async () => {
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .query({ nodeId: grantFolder });
+    expect(res.status).toBe(200);
+    expect(res.body.ancestors.map((a) => a.nodeId)).toEqual([
+      owner.homeNodeId,
+      destFolder,
+      grantFolder,
+    ]);
+  });
+
+  it('grantee still accesses the folder and its child after the move', async () => {
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .query({ nodeId: grantFolder });
+    expect(check.status).toBe(200);
+    expect(check.body.hasRead).toBe(true);
+
+    const dl = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .query({ nodeId: childFileId });
+    expect(dl.status).toBe(200);
+    expect(Buffer.from(dl.body).toString()).toBe('granted-content');
+  });
+});
+
+/* ========================================================================
+   C2 - Reference stability (class C): move an owned folder into another
+   user's home subtree → subtree ownership transfers; the folder leaves the
+   mover's shared surface and the new home owner resolves it as own.
+   ======================================================================== */
+describe('C2: move owned folder into another user home → subtree + surface transfer', () => {
+  let mover, recipient, sharedFolder, childFileId;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    mover = await createUserWithHomeNode('c2-mover');
+    recipient = await createUserWithHomeNode('c2-recipient');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .send({ parentNodeId: mover.homeNodeId, name: `transfer-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    sharedFolder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(mover, sharedFolder, 'inside.txt', 'transfer-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    // mover shares the folder with the recipient → it appears in the
+    // recipient's "shared with me" surface before the move.
+    await grantTestPermissionByNodeId({
+      userId: recipient.user.id,
+      fileNodeId: sharedFolder,
+      permission: 'read',
+    });
+
+    // recipient grants the mover write on the recipient home so the move into
+    // that home subtree is permitted by the ACL.
+    await grantTestPermissionByNodeId({
+      userId: mover.user.id,
+      fileNodeId: recipient.homeNodeId,
+      permission: 'write',
+    });
+  });
+
+  it('precondition: recipient sees the folder as shared before the move', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${recipient.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).toContain(sharedFolder);
+  });
+
+  it('mover moves the owned folder into the recipient home root', async () => {
+    const res = await request(app)
+      .post('/api/files/move')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .send({ nodeId: sharedFolder, destinationParentNodeId: recipient.homeNodeId });
+    expect(res.status).toBe(200);
+    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+  });
+
+  it('DB: closure table transfers the subtree to the recipient home', async () => {
+    const chain = await dbQuery(
+      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
+      [sharedFolder]
+    );
+    const ids = chain.rows.map((r) => Number(r.ancestor_id));
+    expect(ids).toContain(recipient.homeNodeId);
+    expect(ids).toContain(sharedFolder);
+    expect(ids).not.toContain(mover.homeNodeId);
+  });
+
+  it('mover no longer sees the folder as shared', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${mover.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).not.toContain(sharedFolder);
+  });
+
+  it('new home owner resolves the folder as own (not shared; full access)', async () => {
+    const sharedRes = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${recipient.token}`);
+    expect(sharedRes.status).toBe(200);
+    expect(sharedRes.body).toHaveLength(0);
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${recipient.token}`)
+      .query({ nodeId: sharedFolder });
+    expect(check.status).toBe(200);
+    expect(check.body.hasRead).toBe(true);
+
+    const dl = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${recipient.token}`)
+      .query({ nodeId: childFileId });
+    expect(dl.status).toBe(200);
+    expect(Buffer.from(dl.body).toString()).toBe('transfer-content');
+  });
+});
+
+/* ========================================================================
+   D6 - Cross-user move = ownership transfer (accepted fix)
+   A mover that OWNS a node and moves it into another user's home subtree
+   loses ownership; its explicit permission rows on the moved subtree are
+   revoked so the folder never resurfaces as "shared with me". A mover that
+   merely RECEIVED a grant (does not own) keeps the grant. Moves within the
+   mover's own home never revoke rows.
+   ======================================================================== */
+describe('D6: move owned folder into another home revokes mover historical self-grants', () => {
+  let mover, recipient, folder, childFileId;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    mover = await createUserWithHomeNode('d6a-mover');
+    recipient = await createUserWithHomeNode('d6a-recipient');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .send({ parentNodeId: mover.homeNodeId, name: `d6a-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    folder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(mover, folder, 'inside.txt', 'd6a-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    // Historical self-grant rows on the moved subtree: a directory-level WRITE
+    // on the folder and a file-level READ on its child.
+    await grantTestPermissionByNodeId({
+      userId: mover.user.id,
+      fileNodeId: folder,
+      permission: 'write',
+    });
+    await permissionStore.grantFilePermission(mover.user.id, childFileId, 'read');
+
+    // Recipient grants the mover write on the recipient home so the move into
+    // that home subtree is permitted by the ACL.
+    await grantTestPermissionByNodeId({
+      userId: mover.user.id,
+      fileNodeId: recipient.homeNodeId,
+      permission: 'write',
+    });
+  });
+
+  it('precondition: mover holds self-grant rows on the subtree (paths + files)', async () => {
+    const pathRow = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, folder]
+    );
+    expect(pathRow.rows).toHaveLength(1);
+    expect(pathRow.rows[0].permission).toBe('write');
+
+    const fileRow = await dbQuery(
+      'SELECT permission FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, childFileId]
+    );
+    expect(fileRow.rows).toHaveLength(1);
+  });
+
+  it('precondition: own subtree rows are NOT shared with the mover', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${mover.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).not.toContain(folder);
+  });
+
+  it('mover moves the owned folder into the recipient home root', async () => {
+    const res = await request(app)
+      .post('/api/files/move')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .send({ nodeId: folder, destinationParentNodeId: recipient.homeNodeId });
+    expect(res.status).toBe(200);
+    expect(res.body.newParentId).toBe(recipient.homeNodeId);
+  });
+
+  it('DB: mover self-grant rows on the moved subtree are GONE (ownership transfer)', async () => {
+    const pathRow = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, folder]
+    );
+    expect(pathRow.rows).toHaveLength(0);
+
+    const fileRow = await dbQuery(
+      'SELECT permission FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, childFileId]
+    );
+    expect(fileRow.rows).toHaveLength(0);
+
+    // The mover's home-root ADMIN grant is untouched (it lives on the home root,
+    // not inside the moved subtree).
+    const homeRow = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, mover.homeNodeId]
+    );
+    expect(homeRow.rows).toHaveLength(1);
+    expect(homeRow.rows[0].permission).toBe('admin');
+  });
+
+  it('moved folder does not resurface in the mover shared listing', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${mover.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).not.toContain(folder);
+  });
+
+  it('recipient resolves the moved folder as own (not shared; full access)', async () => {
+    const sharedRes = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${recipient.token}`);
+    expect(sharedRes.status).toBe(200);
+    expect(sharedRes.body).toHaveLength(0);
+
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${recipient.token}`)
+      .query({ nodeId: folder });
+    expect(check.status).toBe(200);
+    expect(check.body.hasRead).toBe(true);
+
+    const dl = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${recipient.token}`)
+      .query({ nodeId: childFileId });
+    expect(dl.status).toBe(200);
+    expect(Buffer.from(dl.body).toString()).toBe('d6a-content');
+  });
+
+  it('mover access now follows the new owner rules (recipient home grant, not the revoked self-grant)', async () => {
+    // The mover's continued access derives from the recipient's write grant on
+    // the recipient home root (the same grant that permitted the move), not
+    // from the mover's historical self-grant rows.
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .query({ nodeId: folder });
+    expect(check.status).toBe(200);
+    expect(check.body.hasRead).toBe(true);
+
+    const dl = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .query({ nodeId: childFileId });
+    expect(dl.status).toBe(200);
+    expect(Buffer.from(dl.body).toString()).toBe('d6a-content');
+  });
+});
+
+describe('D6: received grant on another user home is preserved when moved within that home', () => {
+  let owner, mover, folder, childFileId, destFolder;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    owner = await createUserWithHomeNode('d6b-owner');
+    mover = await createUserWithHomeNode('d6b-mover');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ parentNodeId: owner.homeNodeId, name: `d6b-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    folder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(owner, folder, 'inside.txt', 'd6b-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    const destRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ parentNodeId: owner.homeNodeId, name: `d6b-dest-${Date.now()}` });
+    expect(destRes.status).toBe(200);
+    destFolder = destRes.body.nodeId;
+
+    // The mover merely RECEIVED grants on the folder and the destination folder
+    // (both under the OWNER's home). The mover does not own any of them.
+    await grantTestPermissionByNodeId({
+      userId: mover.user.id,
+      fileNodeId: folder,
+      permission: 'write',
+    });
+    await grantTestPermissionByNodeId({
+      userId: mover.user.id,
+      fileNodeId: destFolder,
+      permission: 'write',
+    });
+  });
+
+  it('precondition: mover holds a received grant on the folder', async () => {
+    const row = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, folder]
+    );
+    expect(row.rows).toHaveLength(1);
+  });
+
+  it('mover moves the folder within the owner home (folder → destFolder)', async () => {
+    const res = await request(app)
+      .post('/api/files/move')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .send({ nodeId: folder, destinationParentNodeId: destFolder });
+    expect(res.status).toBe(200);
+    expect(res.body.newParentId).toBe(destFolder);
+  });
+
+  it('DB: the received grant is PRESERVED (mover never owned the node)', async () => {
+    const row = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [mover.user.id, folder]
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].permission).toBe('write');
+  });
+
+  it('mover still accesses the moved folder through the preserved grant', async () => {
+    const check = await request(app)
+      .get('/api/permissions/check')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .query({ nodeId: folder });
+    expect(check.status).toBe(200);
+    expect(check.body.hasRead).toBe(true);
+
+    const dl = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${mover.token}`)
+      .query({ nodeId: childFileId });
+    expect(dl.status).toBe(200);
+    expect(Buffer.from(dl.body).toString()).toBe('d6b-content');
+  });
+
+  it('the folder stays in the mover shared listing (genuine received grant)', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${mover.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).toContain(folder);
+  });
+});
+
+describe('D6: moving within the mover own home never revokes rows', () => {
+  let user, folder, childFileId, destFolder;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    user = await createUserWithHomeNode('d6c-user');
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ parentNodeId: user.homeNodeId, name: `d6c-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    folder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(user, folder, 'inside.txt', 'd6c-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    const destRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ parentNodeId: user.homeNodeId, name: `d6c-dest-${Date.now()}` });
+    expect(destRes.status).toBe(200);
+    destFolder = destRes.body.nodeId;
+
+    // Historical self-grant rows on the subtree.
+    await grantTestPermissionByNodeId({
+      userId: user.user.id,
+      fileNodeId: folder,
+      permission: 'write',
+    });
+    await permissionStore.grantFilePermission(user.user.id, childFileId, 'read');
+  });
+
+  it('user moves the folder within the own home (folder → destFolder)', async () => {
+    const res = await request(app)
+      .post('/api/files/move')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: folder, destinationParentNodeId: destFolder });
+    expect(res.status).toBe(200);
+    expect(res.body.newParentId).toBe(destFolder);
+  });
+
+  it('DB: self-grant rows on the moved subtree are PRESERVED (no ownership transfer)', async () => {
+    const pathRow = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [user.user.id, folder]
+    );
+    expect(pathRow.rows).toHaveLength(1);
+    expect(pathRow.rows[0].permission).toBe('write');
+
+    const fileRow = await dbQuery(
+      'SELECT permission FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
+      [user.user.id, childFileId]
+    );
+    expect(fileRow.rows).toHaveLength(1);
+  });
+
+  it('the folder still does not resurface in the own shared listing', async () => {
+    const res = await request(app)
+      .get('/api/permissions/shared')
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.map((p) => p.nodeId)).not.toContain(folder);
+  });
+});
+
+/* ========================================================================
+   C3 - Reference stability (class C): copy keeps original and copy
+   independent, both accessible, closure rows for both (listing + chain).
+   ======================================================================== */
+describe('C3: copy keeps original and copy independent with closure rows for both', () => {
+  let user, home, destFolder, sourceFileId, copyFileId;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    user = await createUserWithHomeNode('c3-user');
+    home = user.homeNodeId;
+
+    const destRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ parentNodeId: home, name: `copy-dest-${Date.now()}` });
+    expect(destRes.status).toBe(200);
+    destFolder = destRes.body.nodeId;
+
+    const uploadRes = await uploadFile(user, home, 'original.txt', 'original-content');
+    expect(uploadRes.status).toBe(200);
+    sourceFileId = uploadRes.body.nodeId;
+  });
+
+  it('copies the file into the destination folder as a distinct node', async () => {
+    const res = await request(app)
+      .post('/api/files/copy')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: sourceFileId, destinationParentNodeId: destFolder, newName: 'copy.txt' });
+    expect(res.status).toBe(200);
+    expect(res.body.copiedNodeId).toBeDefined();
+    expect(res.body.copiedNodeId).not.toBe(sourceFileId);
+    copyFileId = res.body.copiedNodeId;
+  });
+
+  it('both original and copy remain downloadable with identical content', async () => {
+    const orig = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: sourceFileId });
+    const copy = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: copyFileId });
+    expect(orig.status).toBe(200);
+    expect(copy.status).toBe(200);
+    expect(Buffer.from(orig.body).toString()).toBe('original-content');
+    expect(Buffer.from(copy.body).toString()).toBe('original-content');
+  });
+
+  it('lists the copy in the destination and only the original in the source', async () => {
+    const dest = await request(app)
+      .get('/api/files/list')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: destFolder });
+    expect(dest.status).toBe(200);
+    const destItems = Array.isArray(dest.body) ? dest.body : dest.body.items;
+    expect(destItems.map((i) => i.name)).toContain('copy.txt');
+
+    const homeList = await request(app)
+      .get('/api/files/list')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: home });
+    expect(homeList.status).toBe(200);
+    const homeItems = Array.isArray(homeList.body) ? homeList.body : homeList.body.items;
+    const homeNames = homeItems.map((i) => i.name);
+    expect(homeNames).toContain('original.txt');
+    expect(homeNames).not.toContain('copy.txt');
+  });
+
+  it('DB: closure rows exist for both nodes and place the copy under the destination', async () => {
+    const copyChain = await dbQuery(
+      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
+      [copyFileId]
+    );
+    const copyAncestors = copyChain.rows.map((r) => Number(r.ancestor_id));
+    expect(copyAncestors).toContain(copyFileId);
+    expect(copyAncestors).toContain(destFolder);
+
+    const origChain = await dbQuery(
+      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
+      [sourceFileId]
+    );
+    const origAncestors = origChain.rows.map((r) => Number(r.ancestor_id));
+    expect(origAncestors).toContain(sourceFileId);
+    expect(origAncestors).toContain(home);
+    expect(origAncestors).not.toContain(destFolder);
+  });
+
+  it('GET /api/files/ancestors returns the copy ancestor chain', async () => {
+    const res = await request(app)
+      .get('/api/files/ancestors')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: copyFileId });
+    expect(res.status).toBe(200);
+    expect(res.body.ancestors.map((a) => a.nodeId)).toEqual([home, destFolder, copyFileId]);
+  });
+
+  it('original and copy are independent: deleting the copy leaves the original intact', async () => {
+    const del = await request(app)
+      .delete('/api/files/delete')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: copyFileId });
+    expect(del.status).toBe(200);
+
+    const orig = await request(app)
+      .get('/api/files/download')
+      .set('Authorization', `Bearer ${user.token}`)
+      .query({ nodeId: sourceFileId });
+    expect(orig.status).toBe(200);
+    expect(Buffer.from(orig.body).toString()).toBe('original-content');
+
+    const gone = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [copyFileId]);
+    expect(gone.rows).toHaveLength(0);
+  });
+});
+
+/* ========================================================================
+   C4 - Reference stability (class C): delete a folder cascades descendant
+   permission rows and recent-file entries pointing into the subtree.
+   ======================================================================== */
+describe('C4: delete folder → permission rows + recent entries cascade', () => {
+  let owner, grantee, folder, childFileId;
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    owner = await createUserWithHomeNode('c4-owner');
+    grantee = await createAuthenticatedTestUser({
+      isAdmin: false,
+      username: `c4-grantee-${Date.now()}`,
+    });
+
+    const createRes = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ parentNodeId: owner.homeNodeId, name: `cascade-folder-${Date.now()}` });
+    expect(createRes.status).toBe(200);
+    folder = createRes.body.nodeId;
+
+    const uploadRes = await uploadFile(owner, folder, 'inner.txt', 'inner-content');
+    expect(uploadRes.status).toBe(200);
+    childFileId = uploadRes.body.nodeId;
+
+    await grantTestPermissionByNodeId({
+      userId: grantee.user.id,
+      fileNodeId: folder,
+      permission: 'read',
+    });
+
+    // Both users have the child file in their recent list.
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ fileNodeId: childFileId });
+    await request(app)
+      .post('/api/recent-files')
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .send({ fileNodeId: childFileId });
+  });
+
+  it('precondition: grant row exists and both users list the recent entry', async () => {
+    const perm = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [grantee.user.id, folder]
+    );
+    expect(perm.rows).toHaveLength(1);
+
+    const ownerRecent = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(ownerRecent.status).toBe(200);
+    expect(ownerRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(true);
+
+    const granteeRecent = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${grantee.token}`);
+    expect(granteeRecent.status).toBe(200);
+    expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(true);
+  });
+
+  it('deletes the folder via the single-item endpoint', async () => {
+    const res = await request(app)
+      .delete('/api/files/delete')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeId: folder });
+    expect(res.status).toBe(200);
+  });
+
+  it('DB: folder and child nodes are gone', async () => {
+    const rows = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [folder, childFileId]);
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it('DB: descendant permission row on the deleted folder is cascade-removed', async () => {
+    const perm = await dbQuery(
+      'SELECT permission FROM permissions_user_paths WHERE user_id = ? AND file_node_id = ?',
+      [grantee.user.id, folder]
+    );
+    expect(perm.rows).toHaveLength(0);
+  });
+
+  it('DB: closure rows for the deleted subtree are cleaned up', async () => {
+    const rows = await dbQuery(
+      'SELECT * FROM node_ancestors WHERE descendant_id IN (?, ?) OR ancestor_id IN (?, ?)',
+      [folder, childFileId, folder, childFileId]
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it('recent entries pointing into the deleted subtree are removed for both users', async () => {
+    const ownerRecent = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(ownerRecent.status).toBe(200);
+    expect(ownerRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(false);
+
+    const granteeRecent = await request(app)
+      .get('/api/recent-files')
+      .set('Authorization', `Bearer ${grantee.token}`);
+    expect(granteeRecent.status).toBe(200);
+    expect(granteeRecent.body.some((f) => f.fileNodeId === childFileId)).toBe(false);
   });
 });

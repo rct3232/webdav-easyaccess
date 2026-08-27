@@ -303,6 +303,44 @@ describe('useFileManager', () => {
     expect(result.current.files.some((f) => f.isRecentFile)).toBe(true);
   });
 
+  it('refetches the recent list when a recent-files change notification fires', async () => {
+    let notifyRecentChange;
+    explorerGateway.subscribeToRecentFiles.mockImplementationOnce((callback) => {
+      notifyRecentChange = callback;
+      return jest.fn();
+    });
+
+    explorerGateway.loadRecentFiles.mockResolvedValueOnce([
+      { path: '/recent/a.txt', name: 'a.txt', type: 'file', lastAccessed: '2024-01-01' },
+    ]);
+
+    const { result } = renderWithPath('__recent__');
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.files.some((file) => file.basename === 'a.txt')).toBe(true);
+
+    expect(explorerGateway.subscribeToRecentFiles).toHaveBeenCalled();
+    expect(notifyRecentChange).toBeInstanceOf(Function);
+
+    explorerGateway.loadRecentFiles.mockResolvedValueOnce([
+      { path: '/recent/a.txt', name: 'a.txt', type: 'file', lastAccessed: '2024-01-01' },
+      { path: '/recent/b.txt', name: 'b.txt', type: 'file', lastAccessed: '2024-01-02' },
+    ]);
+
+    act(() => {
+      notifyRecentChange();
+    });
+
+    await waitFor(() => {
+      expect(explorerGateway.loadRecentFiles).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.files.some((file) => file.basename === 'b.txt')).toBe(true);
+    });
+  });
+
   it('__shared__ path loads shared folders through explorerGateway', async () => {
     const sharedEntries = [
       { nodeId: 21, path: '/other/dir', basename: 'dir', type: 'directory', hasReadPermission: true },
@@ -321,5 +359,39 @@ describe('useFileManager', () => {
     await renderAndResolveNormalLoad('', { onLoadComplete });
 
     expect(onLoadComplete).toHaveBeenCalled();
+  });
+
+  // D1: admins hold no grant rows (home is the filesystem root `/`), so write
+  // capability must short-circuit client-side without a getPathAccess round-trip
+  // that would otherwise report no access and hide the FAB / drag-drop.
+  it('grants write capability to admin users without a getPathAccess round-trip', async () => {
+    const adminUser = { ...mockUser, is_admin: true, rootNodeId: null };
+
+    const listDeferred = createDeferred();
+    explorerGateway.listDirectory.mockReturnValueOnce(listDeferred.promise);
+
+    const wrapper = ({ children }) => (
+      <TestWrapper initialPath="node/2">{children}</TestWrapper>
+    );
+    const { result } = renderHook(() => useFileManager(adminUser), { wrapper });
+
+    await act(async () => {
+      listDeferred.resolve(defaultListedFiles);
+      await listDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.hasWritePermission).toBe(true);
+    expect(explorerGateway.getPathAccess).not.toHaveBeenCalled();
+  });
+
+  it('still calls getPathAccess for non-admin users to derive write capability', async () => {
+    const { result } = await renderAndResolveNormalLoad('node/2');
+
+    expect(explorerGateway.getPathAccess).toHaveBeenCalled();
+    expect(result.current.hasWritePermission).toBe(true);
   });
 });

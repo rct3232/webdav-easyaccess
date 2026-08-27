@@ -61,7 +61,7 @@ This document lists all REST API endpoints. The server serves under the `/api` p
 | POST | `/api/folders/create` | Token | Create folder. Body: `{ parentNodeId, name }`. |
 | GET | `/api/folders/stats` | Token | Recursive folder statistics. Query: `nodeId`. |
 
-All file/folder endpoints identify resources by `nodeId`/`parentNodeId`; path strings are not accepted. The reserved `/.wea` path is blocked for non-admin via `checkMetaPathAccess`.
+All file/folder endpoints identify resources by `nodeId`/`parentNodeId`; path strings are not accepted.
 
 ## Thumbnails
 
@@ -100,7 +100,7 @@ All permission endpoints are nodeId-based. Directory-level grants inherit to des
 | GET | `/api/permission-requests/inbox` | Token | Incoming requests (for owners). |
 | GET | `/api/permission-requests/outbox` | Token | Outgoing requests (for requesters). |
 | GET | `/api/permission-requests/check-owner` | Token | Check if a node has an owner. Query: `nodeId`. |
-| POST | `/api/permission-requests/:id/approve` | Token | Approve (owner). |
+| POST | `/api/permission-requests/:id/approve` | Token | Approve (owner); atomically grants `requested_permission` on the target node, then sets status `approved`. |
 | POST | `/api/permission-requests/:id/reject` | Token | Reject (owner). |
 | POST | `/api/permission-requests/:id/cancel` | Token | Cancel own request (requester). |
 

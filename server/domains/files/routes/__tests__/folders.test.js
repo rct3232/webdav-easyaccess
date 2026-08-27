@@ -130,21 +130,6 @@ describe('POST /api/folders/create', () => {
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
   });
-
-  it('returns 403 for meta path when non-admin', async () => {
-    const { token } = await createAuthenticatedTestUser({
-      username: `folders-meta-${Date.now()}`,
-      isAdmin: false,
-    });
-
-    const res = await request(app)
-      .post('/api/folders/create')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ parentNodeId: homeNodeId, name: '.wea_secret' });
-
-    expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBeDefined();
-  });
 });
 
 describe('GET /api/folders/stats', () => {

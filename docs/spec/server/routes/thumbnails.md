@@ -39,7 +39,6 @@ Two modules are mounted under `/api/thumbnails` (`server/index.js`):
 ### 2.4 Middleware Used
 
 - `authenticateTokenOrShare`, `requireAuth` — POST `/batch`
-- `checkMetaPathAccess` — POST `/batch`
 - `verifyThumbnailToken` — GET `/:hash.:ext`
 
 ### 2.5 Request/Response Spec

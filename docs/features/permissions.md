@@ -45,10 +45,6 @@ Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is
 - **Write** on a directory node grants create, upload, rename, move, copy, and delete within that folder and, via inheritance, its subtree (subject to more specific grants).
 - A **file-specific grant** (`permissions_user_files`) always takes precedence over any inherited directory-level permission on that file node.
 
-### Reserved path
-
-- The reserved path `/.wea` holds application metadata and sits outside the node-based permission model. It is hidden and blocked in the UI and in the API for non-admin users (middleware `checkMetaPathAccess`); only admins can access `/.wea`. See [shared-contracts.md](../shared-contracts.md#path-rules) and [ARCHITECTURE.md](../ARCHITECTURE.md).
-
 ---
 
 ## Decision Flow

@@ -598,6 +598,64 @@ describe('useShareDialog', () => {
     );
   });
 
+  it('drops a revoked user permission from the derived shared list (absence)', async () => {
+    permissionService.getFolderPermissions.mockResolvedValue([
+      { id: '2', username: 'bob', email: 'bob@example.com', is_admin: false, permission: 'read', node_id: 1 },
+    ]);
+    fileService.listFiles.mockResolvedValue([]);
+
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'share',
+        folderPath: '/docs',
+        folderName: 'docs',
+        onClose: mockOnClose,
+      });
+
+    await waitFor(() => {
+      expect(result.current.permissionManager.folderPermissions.get(1)?.get('2')).toBe('read');
+    });
+
+    act(() => {
+      result.current.permissionManager.handleRemoveUserPermission(1, '2', []);
+    });
+
+    expect(result.current.permissionManager.folderPermissions.has(1)).toBe(false);
+  });
+
+  it('drops a rejected requester from the derived shared list in review mode (absence)', async () => {
+    const permissionRequest = {
+      id: 'req-1',
+      requester_id: '2',
+      requested_paths: ['/docs'],
+      file_node_id: 1,
+      requested_permission: 'read',
+      requester_username: 'bob',
+    };
+    permissionService.getFolderPermissions.mockResolvedValue([]);
+    fileService.listFiles.mockResolvedValue([]);
+
+    const { result } = await renderOpenUseShareDialog({
+        open: true,
+        mode: 'review',
+        folderPath: '/docs',
+        folderName: 'docs',
+        permissionRequest,
+        onClose: mockOnClose,
+        onApprove: mockOnApprove,
+      });
+
+    await waitFor(() => {
+      expect(result.current.permissionManager.folderPermissions.get(1)?.get('2')).toBe('read');
+    });
+
+    act(() => {
+      result.current.permissionManager.handleRemoveUserPermission(1, '2', []);
+    });
+
+    expect(result.current.permissionManager.folderPermissions.has(1)).toBe(false);
+  });
+
   it('returns externalShare state when enableExternalShare', async () => {
     const { result } = await renderOpenUseShareDialog({
         open: true,

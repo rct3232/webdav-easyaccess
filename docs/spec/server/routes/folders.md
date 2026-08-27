@@ -25,7 +25,7 @@
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser`, `checkMetaPathAccess`
+- `authenticateToken`, `requireUser`
 
 ### 2.3.1 Test Mock Strategy
 
@@ -36,10 +36,10 @@
 
 ### 2.4 Request/Response Spec
 
-- **POST /create:** Body: `{ parentNodeId, name }`. 200 or 201. Errors: 403 (meta path), 400, 404.
+- **POST /create:** Body: `{ parentNodeId, name }`. 200 or 201. Errors: 400, 404.
 - 동일 경로에 폴더 이미 존재: 409 (duplicate)
 - 부모 경로 없음: 404
-- **GET /stats:** Query `nodeId` required. 200: `{ fileCount, totalSize }`. 403 when non-admin and canReadFolder fails. Uses checkMetaPathAccess, requireUser.
+- **GET /stats:** Query `nodeId` required. 200: `{ fileCount, totalSize }`. 403 when non-admin and canReadFolder fails. Uses requireUser.
 
 ### 2.4.1 POST /create — WebDAV Mode (MKCOL-on-create)
 
@@ -69,7 +69,6 @@ so S3 folder creation remains DB-only and unchanged.
 ### 2.6 Integration Test Scenarios
 
 - [ ] Create folder requires auth and write permission
-- [ ] Meta path returns 403 for non-admin
 - [ ] 동일 폴더명 create → 409
 - [ ] 부모 경로 없음 → 404
 - [ ] GET /stats: requires auth; nodeId required; returns fileCount, totalSize; 403 for non-admin when no read permission

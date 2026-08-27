@@ -5,7 +5,6 @@ const router = express.Router();
 
 const { authenticateToken } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
-const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, forbiddenError, notFoundError } = require('../../../utils/errorHandler');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
@@ -17,7 +16,7 @@ const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 // POST /batch-delete
-router.post('/batch-delete', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/batch-delete', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { nodeIds } = req.body;
   if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -31,7 +30,7 @@ router.post('/batch-delete', authenticateToken, requireUser, checkMetaPathAccess
 }));
 
 // POST /batch-move
-router.post('/batch-move', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/batch-move', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { moves } = req.body;
   if (!moves || !Array.isArray(moves) || moves.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);
@@ -48,7 +47,7 @@ router.post('/batch-move', authenticateToken, requireUser, checkMetaPathAccess, 
 }));
 
 // POST /batch-copy
-router.post('/batch-copy', authenticateToken, requireUser, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/batch-copy', authenticateToken, requireUser, asyncHandler(async (req, res) => {
   const { copies } = req.body;
   if (!copies || !Array.isArray(copies) || copies.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);

@@ -21,7 +21,6 @@ describe('locks store', () => {
     it('acquires lock and returns token and release function', async () => {
       const lock = await locks.acquireLock('test-lock-1', { ttlMs: 5000, waitMs: 1000 });
       expect(lock.token).toBeDefined();
-      expect(lock.lockPath).toBeDefined();
       expect(typeof lock.release).toBe('function');
       await lock.release();
     });
@@ -133,7 +132,7 @@ describe('locks store', () => {
       });
 
       let isolatedLocks;
-      const { sha256HexLower } = require('../../store/metaPaths');
+      const { sha256HexLower } = require('../../utils/hash');
       const expectedKey = sha256HexLower('pg-lock-stale-cleanup');
       fakePool.state.row.lockKey = expectedKey;
 

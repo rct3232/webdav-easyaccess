@@ -29,6 +29,21 @@ function createMockUploadService(overrides = {}) {
   return { ...defaults, ...overrides };
 }
 
+function createOwnerNodeResolverMock(overrides = {}) {
+  const defaults = {
+    isOwnerNode: jest.fn().mockResolvedValue(false),
+    getUserRootNodeId: jest.fn().mockResolvedValue(null),
+  };
+  return { ...defaults, ...overrides };
+}
+
+function createPermissionStoreMock(overrides = {}) {
+  const defaults = {
+    revokeUserSubtreePermissions: jest.fn().mockResolvedValue({ removedPaths: 0, removedFiles: 0 }),
+  };
+  return { ...defaults, ...overrides };
+}
+
 // ── listDirectoryWithPermissions ────────────────────────────────────
 
 describe('listDirectoryWithPermissions', () => {
@@ -95,18 +110,25 @@ describe('listDirectoryWithPermissions', () => {
     expect(result[1].mimeType).toBeNull();
   });
 
-  it('sets hasReadPermission=false when user lacks read access on child node', async () => {
+  it('retains unreadable children with hasReadPermission=false for a regular user listing', async () => {
     const mockChildren = [
       { id: 1, name: 'secret.txt', type: 'file', size: 50, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'readable.txt', type: 'file', size: 30, mimeType: 'text/plain', updatedAt: null },
     ];
 
     const fileNodeService = createFileNodeServiceMock({
       listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      getNodePath: jest.fn().mockResolvedValue('/some/path'),
     });
     const aclService = createAclServiceMock({
+      isSharePrincipal: jest.fn().mockReturnValue(false), // regular (non-share) user
       checkFilePermission: jest.fn()
-        .mockResolvedValueOnce(false) // read denied
-        .mockResolvedValueOnce(false), // write denied
+        // secret.txt: read denied, write denied
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false)
+        // readable.txt: read allowed, write allowed
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true),
     });
 
     const service = createFileService({
@@ -121,8 +143,53 @@ describe('listDirectoryWithPermissions', () => {
 
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'read');
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'write');
+    // Unreadable child is RETAINED with its flags false — the request-access
+    // flow (E2E-OVERLAY-003) discovers unreadable children in another user's
+    // folder via this listing.
+    expect(result.map((i) => i.name)).toEqual(['secret.txt', 'readable.txt']);
     expect(result[0].hasReadPermission).toBe(false);
     expect(result[0].hasWritePermission).toBe(false);
+    expect(result[1].hasReadPermission).toBe(true);
+    // getNodePath is still resolved for the unreadable child, as before D2.
+    expect(fileNodeService.getNodePath).toHaveBeenCalledWith(1);
+  });
+
+  it('excludes unreadable children for a share-principal listing', async () => {
+    const mockChildren = [
+      { id: 1, name: 'secret.txt', type: 'file', size: 50, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'readable.txt', type: 'file', size: 30, mimeType: 'text/plain', updatedAt: null },
+    ];
+
+    const fileNodeService = createFileNodeServiceMock({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      getNodePath: jest.fn().mockResolvedValue('/some/path'),
+    });
+    const aclService = createAclServiceMock({
+      isSharePrincipal: jest.fn().mockReturnValue(true), // share-token caller
+      checkFilePermission: jest.fn()
+        // secret.txt: read denied, write denied
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false)
+        // readable.txt: read allowed, write allowed
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true),
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.listDirectoryWithPermissions('share:token', 99, null);
+
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith('share:token', 1, 'read');
+    expect(aclService.checkFilePermission).toHaveBeenCalledWith('share:token', 1, 'write');
+    // Out-of-scope child is absent — name/path/type never disclosed to a share token.
+    expect(result.map((i) => i.name)).toEqual(['readable.txt']);
+    expect(fileNodeService.getNodePath).not.toHaveBeenCalledWith(1);
   });
 
   it('admin user bypass: all items return hasRead=true, hasWrite=true regardless of permissions', async () => {
@@ -779,6 +846,8 @@ describe('moveNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ownerNodeResolver: createOwnerNodeResolverMock(),
+      permissionStore: createPermissionStoreMock(),
       fileStorageMode: 's3',
     });
 
@@ -805,6 +874,8 @@ describe('moveNode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ownerNodeResolver: createOwnerNodeResolverMock(),
+      permissionStore: createPermissionStoreMock(),
       fileStorageMode: 's3',
     });
 
@@ -836,6 +907,8 @@ describe('moveNode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ownerNodeResolver: createOwnerNodeResolverMock(),
+      permissionStore: createPermissionStoreMock(),
       fileStorageMode: 'webdav',
     });
 
@@ -861,6 +934,8 @@ describe('moveNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ownerNodeResolver: createOwnerNodeResolverMock(),
+      permissionStore: createPermissionStoreMock(),
       fileStorageMode: 's3',
     });
 
@@ -884,6 +959,8 @@ describe('moveNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ownerNodeResolver: createOwnerNodeResolverMock(),
+      permissionStore: createPermissionStoreMock(),
       fileStorageMode: 's3',
     });
 
@@ -891,6 +968,126 @@ describe('moveNode', () => {
 
     expect(aclService.isAdminUser).toHaveBeenCalled();
     expect(fileNodeService.moveNode).toHaveBeenCalledWith(10, 20);
+  });
+
+  // ── D6: ownership transfer (cross-user move) ─────────────────────
+
+  it('D6: moving an owned node OUT of the mover home revokes the mover rows on the moved subtree', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      moveNode: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const ownerNodeResolver = createOwnerNodeResolverMock({
+      // node 10 is under mover home; destination 20 is NOT
+      isOwnerNode: jest
+        .fn()
+        .mockImplementation(async (userId, nodeId) => (nodeId === 10)),
+    });
+    const permissionStore = createPermissionStoreMock();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    await service.moveNode(10, 20, 1, { id: 1 });
+
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 10);
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 20);
+    expect(permissionStore.revokeUserSubtreePermissions).toHaveBeenCalledWith(1, 10);
+  });
+
+  it('D6: moving within the mover own home does NOT revoke rows', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      moveNode: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const ownerNodeResolver = createOwnerNodeResolverMock({
+      isOwnerNode: jest.fn().mockResolvedValue(true), // source AND destination inside own home
+    });
+    const permissionStore = createPermissionStoreMock();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    await service.moveNode(10, 20, 1, { id: 1 });
+
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 10);
+    expect(permissionStore.revokeUserSubtreePermissions).not.toHaveBeenCalled();
+  });
+
+  it('D6: mover that merely RECEIVED a grant (does not own) moving the node does NOT revoke rows', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      moveNode: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const ownerNodeResolver = createOwnerNodeResolverMock({
+      isOwnerNode: jest.fn().mockResolvedValue(false), // not under mover home
+    });
+    const permissionStore = createPermissionStoreMock();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    await service.moveNode(10, 20, 1, { id: 1 });
+
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(1, 10);
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledTimes(1); // dest check short-circuited
+    expect(permissionStore.revokeUserSubtreePermissions).not.toHaveBeenCalled();
+  });
+
+  it('D6: admin mover skips ownership detection and revocation entirely', async () => {
+    const fileNodeService = createFileNodeServiceMock({
+      moveNode: jest.fn().mockResolvedValue(true),
+    });
+    const aclService = createAclServiceMock({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+    const ownerNodeResolver = createOwnerNodeResolverMock();
+    const permissionStore = createPermissionStoreMock();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    await service.moveNode(10, 20, 1, { id: 1 });
+
+    expect(ownerNodeResolver.isOwnerNode).not.toHaveBeenCalled();
+    expect(permissionStore.revokeUserSubtreePermissions).not.toHaveBeenCalled();
   });
 });
 

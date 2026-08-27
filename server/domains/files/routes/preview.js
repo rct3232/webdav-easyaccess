@@ -9,7 +9,6 @@ const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constant
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const { requireAuth } = require('../../../middleware/requireUser');
-const { checkMetaPathAccess } = require('../../../middleware/metaPathGuard');
 const { asyncHandler, validationError, notFoundError } = require('../../../utils/errorHandler');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 const { sendBufferAsChunks } = require('../../../utils/responseWriter');
@@ -21,7 +20,7 @@ const opStore = createOperationProgressStore();
 /* ------------------------------------------------------------------ */
 /* 1. POST /preview-ticket                                            */
 /* ------------------------------------------------------------------ */
-router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const { nodeId } = req.body || {};
   if (!nodeId) {
     throw validationError(SERVER_ERROR_CODES.permissionsMiddleware.pathRequired);
@@ -53,7 +52,7 @@ router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, checkMetaP
 /* ------------------------------------------------------------------ */
 /* 2. GET /preview-stream                                             */
 /* ------------------------------------------------------------------ */
-router.get('/preview-stream', checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.get('/preview-stream', asyncHandler(async (req, res) => {
   const nodeIdValue = req.query.nodeId;
   const ticket = req.query.ticket;
 
@@ -100,7 +99,7 @@ router.get('/preview-stream', checkMetaPathAccess, asyncHandler(async (req, res)
 /* ------------------------------------------------------------------ */
 /* 3. POST /download-multiple                                         */
 /* ------------------------------------------------------------------ */
-router.post('/download-multiple', authenticateTokenOrShare, requireAuth, checkMetaPathAccess, asyncHandler(async (req, res) => {
+router.post('/download-multiple', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const { nodeIds } = req.body || {};
   if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
     throw validationError(SERVER_ERROR_CODES.files.sourceDestRequired);

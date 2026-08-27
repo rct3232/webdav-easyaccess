@@ -27,9 +27,7 @@ flowchart LR
   Browser --> ReactClient
   ReactClient -->|"/api via proxy or same-origin"| ExpressServer
   ExpressServer -->|"webdav library"| WebDAVServer
-  ExpressServer -->|"metadata JSON"| MetaStore
-  MetaStore --> WebDAVMeta["WebDAV /.wea"]
-  MetaStore --> FSMeta["Local FS (optional)"]
+  ExpressServer -->|"metadata"| MetadataDB[(PostgreSQL / SQLite)]
 ```
 
 ## Tech Stack
@@ -39,7 +37,7 @@ flowchart LR
 - **Auth**: JWT
 - **WebDAV Client**: `webdav`
 - **Thumbnails**: Sharp (FFmpeg required for video)
-- **Metadata store**: JSON under WebDAV `/.wea/` (optional local filesystem storage)
+- **Metadata store**: DB-backed (`WEA_STORAGE_BACKEND`: `sqlite` default, `postgresql`)
 
 ## Documentation
 
@@ -125,7 +123,6 @@ npm start
 - **Read**: **Direct-only** (no inheritance). Read is required on each folder to list it, and on a file's parent folder to read the file. Read on `/share` does not grant read on `/share/sub` unless explicitly granted.
 - **Write**: Shared paths use **direct-only write** (no inheritance).
   - Example: Write on `/share` does not imply write on `/share/sub` unless explicitly granted.
-- **Reserved path**: `/.wea` is reserved for metadata; hidden/blocked in UI and server.
 
 ## Usage
 
@@ -205,10 +202,6 @@ Without `EMAIL_HOST`, `EMAIL_USER`, and `EMAIL_PASSWORD`, emails are not sent; o
 ### Upload fails with 409 (Conflict)
 
 Normal when a file with the same name already exists. Rename the file or change the target path.
-
-### `/.wea` path not visible
-
-`/.wea` is a reserved path for metadata; it is hidden and blocked in the UI and server.
 
 ## License
 

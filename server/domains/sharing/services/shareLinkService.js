@@ -1,6 +1,8 @@
 const ShareLink = require('../../../models/ShareLink');
 const permissionStore = require('../../../store/permissionStore');
 const { getFileType } = require('@webdav-easyaccess/shared/fileTypes');
+const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const { checkFilePermission } = require('../../permissions/services/aclService');
 
 function validateExpiration(expiresInDays) {
   if (expiresInDays === null || expiresInDays === undefined) {
@@ -53,6 +55,13 @@ async function createShareLink(fileNodeId, userId, expiresInDays) {
   if (!node) {
     const error = new Error('fileNotFound');
     error.status = 404;
+    throw error;
+  }
+
+  const canRead = await checkFilePermission(userId, nodeId, PERMISSIONS.READ);
+  if (!canRead) {
+    const error = new Error('accessDenied');
+    error.status = 403;
     throw error;
   }
 

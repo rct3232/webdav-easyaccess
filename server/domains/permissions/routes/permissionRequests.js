@@ -11,6 +11,7 @@ const { authenticateToken } = require('../../../utils/auth');
 const User = require('../../../models/User');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { createFileNodesStore } = require('../../../store/fileNodesStore');
+const permissionStore = require('../stores/permissionStore');
 const { getComposition } = require('../../../service/composition');
 const { asyncHandler, createError, validationError } = require('../../../utils/errorHandler');
 
@@ -140,9 +141,16 @@ router.post('/:id/approve', authenticateToken, asyncHandler(async (req, res) => 
     throw validationError(SERVER_ERROR_CODES.permissionRequests.onlyPendingApprove);
   }
 
-  // Note: Permission granting is handled by the client in review mode.
-  // The client calls /api/permissions/grant before calling this approve endpoint.
-  // We only update the request status here.
+  const targetNode = await fileNodesStore.getNode(pr.file_node_id);
+  if (!targetNode) {
+    throw createError(SERVER_ERROR_CODES.webdav.fileOrFolderNotFound, HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (targetNode.type === 'file') {
+    await permissionStore.grantFilePermission(pr.requester_id, pr.file_node_id, pr.requested_permission);
+  } else {
+    await permissionStore.grant(pr.requester_id, pr.file_node_id, pr.requested_permission);
+  }
 
   const updated = await PermissionRequest.updateStatus(id, { status: PERMISSION_REQUEST_STATUS.APPROVED, resolvedBy: req.user.id });
   res.json(updated);

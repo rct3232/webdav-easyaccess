@@ -45,7 +45,7 @@
 ### 2.5 Dependencies
 
 - storage (getBackend, getPgPool, sqliteRun, withSqliteTransaction)
-- metaPaths (lockPathByKey, sha256HexLower)
+- hash (sha256HexLower)
 - crypto (randomUUID)
 - storage.getBackend / storage.getPgPool for backend selection and PostgreSQL queries
 

@@ -267,7 +267,7 @@ Also add documentation for the 5 legacy permission helpers (lines 485-507) notin
 Specific changes:
 - `POST /api/folders/create`: Body should be documented as `{ parentNodeId, name }` (not `{ path }`)
 - `GET /api/folders/stats`: Query param should be `?nodeId=...` (not `?path=...`)
-- Remove mention of `normalizePathParam` middleware — it was removed per Task 4.8
+- ✅ Remove mention of `normalizePathParam` middleware — it was removed per Task 4.8 (done: `folders.md` no longer references it)
 
 ### Spec C: Composition Root — New Spec File Suggested
 

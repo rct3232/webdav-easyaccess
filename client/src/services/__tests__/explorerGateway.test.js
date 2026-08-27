@@ -105,13 +105,10 @@ describe('explorerGateway', () => {
     });
   });
 
-  it('lists a normal directory with hidden filtering and admin permission enrichment', async () => {
+  it('lists a normal directory with hidden filtering and server-provided admin capability', async () => {
     listFiles.mockResolvedValueOnce([
-      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false },
-      { nodeId: 11, display_path: '/docs/.draft.txt', isHidden: true },
-    ]);
-    getUserPermissions.mockResolvedValueOnce([
-      { nodeId: 10, permission: 'admin' },
+      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false, hasAdminPermission: true },
+      { nodeId: 11, display_path: '/docs/.draft.txt', isHidden: true, hasAdminPermission: true },
     ]);
 
     const result = await listDirectory({
@@ -126,6 +123,9 @@ describe('explorerGateway', () => {
     expect(result).toEqual([
       expect.objectContaining({ nodeId: 10, hasAdminPermission: true }),
     ]);
+    expect(result).toHaveLength(1); // hidden file filtered out
+    // hasAdminPermission comes from the server listing row, not getUserPermissions.
+    expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
   it('returns raw share listings without hidden or permission enrichment', async () => {

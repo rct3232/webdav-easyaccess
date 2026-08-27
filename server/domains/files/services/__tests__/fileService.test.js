@@ -40,8 +40,20 @@ function createOwnerNodeResolverMock(overrides = {}) {
 function createPermissionStoreMock(overrides = {}) {
   const defaults = {
     revokeUserSubtreePermissions: jest.fn().mockResolvedValue({ removedPaths: 0, removedFiles: 0 }),
+    getUserPermissions: jest.fn().mockResolvedValue([]),
   };
   return { ...defaults, ...overrides };
+}
+
+// Shared listing deps: the real permissionStore/ownerNodeResolver require a DB,
+// so listing tests inject mocks. Ownership (isOwnerNode) is the seam that
+// decides hasAdminPermission for own nodes; getUserPermissions provides the
+// literal-admin-grant rows (admin received on shared folders).
+function createListingDeps(overrides = {}) {
+  return {
+    ownerNodeResolver: createOwnerNodeResolverMock(overrides.ownerNodeResolver),
+    permissionStore: createPermissionStoreMock(overrides.permissionStore),
+  };
 }
 
 // ── listDirectoryWithPermissions ────────────────────────────────────
@@ -64,6 +76,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -82,6 +95,9 @@ describe('listDirectoryWithPermissions', () => {
     expect(result[1]).toMatchObject({ nodeId: 2, name: 'subdir', type: 'directory' });
     expect(aclService.checkFilePermission).toHaveBeenCalledWith(1, 1, 'read');
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 2, 'read');
+    // Default deps: not an owner and no explicit admin grant → no admin capability.
+    expect(result[0].hasAdminPermission).toBe(false);
+    expect(result[1].hasAdminPermission).toBe(false);
   });
 
   it('includes size and mimeType from filecache LEFT JOIN', async () => {
@@ -100,6 +116,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -136,6 +153,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -180,6 +198,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -210,6 +229,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -219,6 +239,7 @@ describe('listDirectoryWithPermissions', () => {
     expect(result[0].hasWritePermission).toBe(true);
     expect(result[1].hasReadPermission).toBe(true);
     expect(result[1].hasWritePermission).toBe(true);
+    expect(result[0].hasAdminPermission).toBe(true);
     // Admin bypass: no per-item permission calls.
     expect(aclService.checkFilePermission).not.toHaveBeenCalled();
     expect(aclService.checkFolderPermission).not.toHaveBeenCalled();
@@ -235,6 +256,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -254,6 +276,7 @@ describe('listDirectoryWithPermissions', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -261,6 +284,149 @@ describe('listDirectoryWithPermissions', () => {
       service.listDirectoryWithPermissions(1, 9999, { id: 1 })
     ).rejects.toThrow();
     expect(fileNodeService.listDirectory).toHaveBeenCalledWith(9999);
+  });
+
+  it('owner listing: every child reports hasAdminPermission=true via home-root ownership (no self-grant rows)', async () => {
+    const mockChildren = [
+      { id: 1, name: 'a.txt', type: 'file', size: 10, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'subdir', type: 'directory', size: null, mimeType: null, updatedAt: null },
+    ];
+
+    const fileNodeService = createFileNodeServiceMock({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      getNodePath: jest.fn().mockResolvedValue('/own/a.txt'),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+      checkFolderPermission: jest.fn().mockResolvedValue(true),
+    });
+    const { ownerNodeResolver, permissionStore } = createListingDeps({
+      ownerNodeResolver: {
+        isOwnerNode: jest.fn().mockResolvedValue(true), // parent under own home root
+      },
+      permissionStore: {
+        getUserPermissions: jest.fn().mockResolvedValue([]), // no explicit grants at all
+      },
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.listDirectoryWithPermissions(2, 42, { id: 2 });
+
+    expect(ownerNodeResolver.isOwnerNode).toHaveBeenCalledWith(2, 42);
+    expect(result[0].hasAdminPermission).toBe(true);
+    expect(result[1].hasAdminPermission).toBe(true);
+  });
+
+  it('non-owned listing: only children with an explicit admin grant report hasAdminPermission', async () => {
+    const mockChildren = [
+      { id: 1, name: 'granted.txt', type: 'file', size: 10, mimeType: 'text/plain', updatedAt: null },
+      { id: 2, name: 'plain.txt', type: 'file', size: 20, mimeType: 'text/plain', updatedAt: null },
+    ];
+
+    const fileNodeService = createFileNodeServiceMock({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      getNodePath: jest.fn().mockResolvedValue('/shared/granted.txt'),
+    });
+    const aclService = createAclServiceMock({
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+    });
+    const { ownerNodeResolver, permissionStore } = createListingDeps({
+      ownerNodeResolver: {
+        isOwnerNode: jest.fn().mockResolvedValue(false), // not under own home root
+      },
+      permissionStore: {
+        getUserPermissions: jest.fn().mockResolvedValue([
+          { file_node_id: 1, permission: 'admin', type: 'file' },
+          { file_node_id: 5, permission: 'write', type: 'directory' },
+        ]),
+      },
+    });
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.listDirectoryWithPermissions(2, 42, { id: 2 });
+
+    expect(result[0].hasAdminPermission).toBe(true); // explicit admin grant
+    expect(result[1].hasAdminPermission).toBe(false);
+  });
+
+  it('share-principal listing never reports admin capability and skips ownership queries', async () => {
+    const mockChildren = [
+      { id: 1, name: 'readable.txt', type: 'file', size: 10, mimeType: 'text/plain', updatedAt: null },
+    ];
+
+    const fileNodeService = createFileNodeServiceMock({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+      getNodePath: jest.fn().mockResolvedValue('/shared/readable.txt'),
+    });
+    const aclService = createAclServiceMock({
+      isSharePrincipal: jest.fn().mockReturnValue(true),
+      checkFilePermission: jest.fn().mockResolvedValue(true),
+    });
+    const { ownerNodeResolver, permissionStore } = createListingDeps();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.listDirectoryWithPermissions('share:tok', 42, null);
+
+    expect(result[0].hasAdminPermission).toBe(false);
+    expect(ownerNodeResolver.isOwnerNode).not.toHaveBeenCalled();
+    expect(permissionStore.getUserPermissions).not.toHaveBeenCalled();
+  });
+
+  it('admin listing reports hasAdminPermission=true without ownership or grant queries', async () => {
+    const mockChildren = [
+      { id: 1, name: 'a.txt', type: 'file', size: 10, mimeType: 'text/plain', updatedAt: null },
+    ];
+
+    const fileNodeService = createFileNodeServiceMock({
+      listDirectory: jest.fn().mockResolvedValue(mockChildren),
+    });
+    const aclService = createAclServiceMock({
+      isAdminUser: jest.fn().mockReturnValue(true),
+    });
+    const { ownerNodeResolver, permissionStore } = createListingDeps();
+
+    const service = createFileService({
+      fileNodeService,
+      blobStorageService: createBlobStorageServiceMock(),
+      uploadService: createMockUploadService(),
+      aclService,
+      ownerNodeResolver,
+      permissionStore,
+      fileStorageMode: 's3',
+    });
+
+    const result = await service.listDirectoryWithPermissions(1, 42, { id: 1 });
+
+    expect(result[0].hasAdminPermission).toBe(true);
+    expect(ownerNodeResolver.isOwnerNode).not.toHaveBeenCalled();
+    expect(permissionStore.getUserPermissions).not.toHaveBeenCalled();
   });
 });
 
@@ -280,6 +446,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -305,6 +472,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -329,6 +497,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -353,6 +522,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -387,6 +557,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: uploadSvc,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -419,6 +590,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: uploadSvc,
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -449,6 +621,7 @@ describe('uploadFile — S3 mode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -570,6 +743,7 @@ describe('downloadFile', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -617,6 +791,7 @@ describe('downloadFile', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -667,6 +842,7 @@ describe('downloadFile', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -698,6 +874,7 @@ describe('renameNode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -754,6 +931,7 @@ describe('renameNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -794,6 +972,7 @@ describe('renameNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -819,6 +998,7 @@ describe('renameNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1109,6 +1289,7 @@ describe('deleteNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1136,6 +1317,7 @@ describe('deleteNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1200,6 +1382,7 @@ describe('deleteNode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1228,6 +1411,7 @@ describe('deleteNode', () => {
       blobStorageService: createBlobStorageServiceMock(),
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1260,6 +1444,7 @@ describe('copyFile — S3 mode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1294,6 +1479,7 @@ describe('copyFile — S3 mode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 
@@ -1323,6 +1509,7 @@ describe('copyFile — S3 mode', () => {
       blobStorageService,
       uploadService: createMockUploadService(),
       aclService,
+      ...createListingDeps(),
       fileStorageMode: 's3',
     });
 

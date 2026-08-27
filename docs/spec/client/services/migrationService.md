@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | Admin blob-migration API: start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
+| Role | Admin blob-migration API: get the derived migration direction, start a migration job, poll its status, cancel it. Thin wrapper around `apiClient` (same style as `adminService`). |
 | Related docs | `PLAN.md` module G (client) + module E (admin routes contract); `docs/spec/client/components/mypage/content/MigrationDialog.md` |
 
 ---
@@ -20,6 +20,7 @@
 
 | Function | Input | Return | API called |
 |----------|-------|--------|------------|
+| getMigrationInfo | () | Promise\<{ source, direction }\> | GET /api/admin/migration/info |
 | startBlobMigration | (payload) | Promise\<{ jobId }\> | POST /api/admin/migration/blobs |
 | getBlobMigrationStatus | (jobId) | Promise\<Job\> | GET /api/admin/migration/jobs/:jobId |
 | cancelBlobMigration | (jobId) | Promise\<Object\> | POST /api/admin/migration/jobs/:jobId/cancel |
@@ -28,13 +29,23 @@
 
 ### 2.3 Request/Response Contract (aligned with PLAN.md module E)
 
-**POST /api/admin/migration/blobs**
+**GET /api/admin/migration/info**
 
-Request body:
+Returns the migration direction derived from the current app config (`WEA_FILE_STORAGE`):
 
 ```json
 {
-  "direction": "webdav-to-s3" | "s3-to-webdav",
+  "source": "webdav" | "s3",
+  "direction": "webdav-to-s3" | "s3-to-webdav"
+}
+```
+
+**POST /api/admin/migration/blobs**
+
+Request body (no `direction`; the server derives it and validates `dest.type`):
+
+```json
+{
   "mode": "dry-run" | "apply",
   "force": false,
   "dest": {
@@ -61,7 +72,7 @@ For `dest.type === 'webdav'`:
 }
 ```
 
-Response: `202 { jobId }`; `400` invalid payload / missing required destination fields; `409` a migration job is already running.
+Response: `202 { jobId }`; `400` invalid payload / missing required destination fields / `dest.type` mismatch; `409` a migration job is already running.
 
 **GET /api/admin/migration/jobs/:jobId** → `200` job object:
 
@@ -97,6 +108,7 @@ Response: `202 { jobId }`; `400` invalid payload / missing required destination 
 
 ### 2.5 Verification Scenarios
 
+- [ ] getMigrationInfo GETs `/admin/migration/info` and returns `{ source, direction }`
 - [ ] startBlobMigration POSTs `/admin/migration/blobs` with payload and returns `{ jobId }`
 - [ ] getBlobMigrationStatus GETs `/admin/migration/jobs/:jobId` and returns the job
 - [ ] cancelBlobMigration POSTs `/admin/migration/jobs/:jobId/cancel`

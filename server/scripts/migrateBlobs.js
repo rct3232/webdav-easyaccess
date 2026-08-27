@@ -11,10 +11,11 @@
  *
  * The source backend is auto-determined from the current app config
  * (WEA_FILE_STORAGE + its env vars); only the destination is user input.
- * Direction implies destination type: webdav-to-s3 → s3, s3-to-webdav → webdav.
+ * Direction is derived from WEA_FILE_STORAGE: webdav source → s3 destination,
+ * s3 source → webdav destination.
  *
  * Usage:
- *   node server/scripts/migrateBlobs.js --direction=<dir> <mode> [options]
+ *   node server/scripts/migrateBlobs.js <mode> [options]
  *
  * Modes (exactly one required):
  *   --check-env     Validate config + snapshot + destination connectivity. No writes. Exit 0/1.
@@ -22,14 +23,13 @@
  *   --apply         Write mode; runs an internal dry-run pass first. Requires --yes.
  *
  * Options:
- *   --direction=webdav-to-s3|s3-to-webdav   Required. Direction implies the source backend.
  *   --force                                 Re-copy even when a resume marker is present.
- *   --dest-webdav-url=URL                   WebDAV destination connection fields.
+ *   --dest-webdav-url=URL                   WebDAV destination connection fields (used when source is s3).
  *   --dest-webdav-username=USER
  *   --dest-webdav-password=PASSWORD
  *   --dest-webdav-auth-type=auto|basic|digest
  *   --dest-webdav-upstream-url=URL
- *   --dest-s3-bucket=BUCKET                 S3 destination connection fields.
+ *   --dest-s3-bucket=BUCKET                 S3 destination connection fields (used when source is webdav).
  *   --dest-s3-access-key=KEY
  *   --dest-s3-secret-key=SECRET
  *   --dest-s3-endpoint=URL
@@ -44,14 +44,14 @@
  * Exit codes:
  *   0  Success (--check-env valid, --dry-run passed, or --apply completed).
  *   1  Runtime/config/snapshot/destination failure; nothing was written.
- *   2  Usage error (unknown flag, missing or invalid --direction, bad combination).
+ *   2  Usage error (unknown flag, bad combination).
  *
  * Examples:
- *   node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --check-env
- *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dry-run
- *   node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --apply --yes \
+ *   node server/scripts/migrateBlobs.js --check-env
+ *   node server/scripts/migrateBlobs.js --dry-run
+ *   node server/scripts/migrateBlobs.js --apply --yes \
  *     --dest-s3-bucket=target-bucket --dest-s3-access-key=AKIA... --dest-s3-secret-key=...
- *   node server/scripts/migrateBlobs.js --direction=s3-to-webdav --apply --yes \
+ *   node server/scripts/migrateBlobs.js --apply --yes \
  *     --dest-webdav-url=https://dav.example.com --dest-webdav-username=user --dest-webdav-password=pass
  *
  * See docs/spec/server/tools/blob-migration.md for the full contract.
@@ -64,15 +64,13 @@ const dotenv = require('dotenv');
 const { getBackend, closePgPool, closeSqliteDb } = require('../store/storage');
 const { initMetadataStore } = require('../store/bootstrap');
 const { getComposition } = require('../service/composition');
-const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
+const { buildDestBlobStore, deriveDirection, destinationTypeForDirection } = require('../infrastructure/adapters/blobstore/config');
 
-const VALID_DIRECTIONS = ['webdav-to-s3', 's3-to-webdav'];
 const PROGRESS_INTERVAL = 100;
 
 const BOOLEAN_FLAGS = new Set(['check-env', 'dry-run', 'apply', 'yes', 'force']);
 
 const VALUE_FLAGS = new Set([
-  'direction',
   'dest-webdav-url',
   'dest-webdav-username',
   'dest-webdav-password',
@@ -87,7 +85,7 @@ const VALUE_FLAGS = new Set([
 
 const USAGE = `
 Usage:
-  node server/scripts/migrateBlobs.js --direction=<dir> <mode> [options]
+  node server/scripts/migrateBlobs.js <mode> [options]
 
 Modes (exactly one required):
   --check-env          Validate config + snapshot + destination connectivity. No writes. Exit 0/1.
@@ -95,14 +93,13 @@ Modes (exactly one required):
   --apply              Write mode; runs an internal dry-run pass first. Requires --yes.
 
 Options:
-  --direction=webdav-to-s3|s3-to-webdav   Required. Direction implies the source backend.
   --force                                 Re-copy even when a resume marker is present.
-  --dest-webdav-url=URL                   WebDAV destination connection fields.
+  --dest-webdav-url=URL                   WebDAV destination connection fields (used when source is s3).
   --dest-webdav-username=USER
   --dest-webdav-password=PASSWORD
   --dest-webdav-auth-type=auto|basic|digest
   --dest-webdav-upstream-url=URL
-  --dest-s3-bucket=BUCKET                 S3 destination connection fields.
+  --dest-s3-bucket=BUCKET                 S3 destination connection fields (used when source is webdav).
   --dest-s3-access-key=KEY
   --dest-s3-secret-key=SECRET
   --dest-s3-endpoint=URL
@@ -116,7 +113,7 @@ DEST_S3_SECRET_KEY, DEST_S3_ENDPOINT, DEST_S3_REGION.
 Exit codes:
   0  Success (--check-env valid, --dry-run passed, or --apply completed).
   1  Runtime/config/snapshot/destination failure; nothing was written.
-  2  Usage error (unknown flag, missing or invalid --direction, bad combination).
+  2  Usage error (unknown flag, bad combination).
 `;
 
 class UsageError extends Error {}
@@ -150,8 +147,8 @@ function parseArgs(argv) {
   return values;
 }
 
-function buildDestConfig(direction, values, env) {
-  const isWebdavDest = direction === 's3-to-webdav';
+function buildDestConfig(expectedDestType, values, env) {
+  const isWebdavDest = expectedDestType === 'webdav';
   const pairs = isWebdavDest
     ? [
         ['url', values['dest-webdav-url'], env.DEST_WEBDAV_URL],
@@ -207,19 +204,11 @@ async function runMigrationCli(argv, deps) {
     throw error;
   }
 
-  if (values.direction === undefined) {
-    output.error('Missing required flag: --direction');
-    output.error(USAGE);
-    return 2;
-  }
-  const direction = String(values.direction);
-  if (!VALID_DIRECTIONS.includes(direction)) {
-    output.error(`Invalid --direction: ${direction}. Expected one of: ${VALID_DIRECTIONS.join(', ')}`);
-    output.error(USAGE);
-    return 2;
-  }
+  const fileStorageMode = process.env.WEA_FILE_STORAGE || 's3';
+  const direction = deriveDirection(fileStorageMode);
+  const expectedDestType = destinationTypeForDirection(direction);
 
-  const destConfig = buildDestConfig(direction, values, process.env);
+  const destConfig = buildDestConfig(expectedDestType, values, process.env);
 
   if (isTruthy(values['check-env'])) {
     try {
@@ -253,7 +242,6 @@ async function runMigrationCli(argv, deps) {
 
   try {
     const result = await migrationService.run({
-      direction,
       destConfig,
       mode,
       force,

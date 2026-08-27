@@ -113,36 +113,40 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 
 **How it works**
 
-- The **source** backend is auto-determined from the current app config (`WEA_FILE_STORAGE` + its env vars); direction implies source. Only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...).
+- The **direction** is auto-derived from the current app config (`WEA_FILE_STORAGE`): source = the env mode, destination = the other backend. The server is the single source of truth; only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...). `DEST_TYPE` must match the derived destination (`s3` for a webdav source, `webdav` for an s3 source).
 - The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
 - **Source blobs are never deleted** in the MVP (a delete mode is a follow-up).
 
 **Direction and cutover**
 
+The migration direction is never selected — it follows from the current `WEA_FILE_STORAGE`. `GET /api/admin/migration/info` reports the derived `{ source, direction }`. After an `apply` run completes, the in-app UI shows a popup instructing you to change `WEA_FILE_STORAGE` + the target storage env block in `.env` and restart the server process (a dry-run completion does not show it).
+
 Both directions follow the same cutover shape — run the copy (`apply`), switch `WEA_FILE_STORAGE` + the backend's storage env in `.env`, restart the app, then verify:
 
-- **WebDAV → S3:** run the copy while the app is in webdav mode (`WEA_FILE_STORAGE=webdav`). `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize step is needed.
-- **S3 → WebDAV:** run the copy while the app is in s3 mode (`WEA_FILE_STORAGE=s3`). Each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved** — the running S3-mode app keeps serving via the retained key and rollback stays possible. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. No separate finalize step is needed.
+- **WebDAV → S3 (derived when `WEA_FILE_STORAGE=webdav`):** run the copy while the app is in webdav mode. `object_map` is updated per node during copy (safe because the webdav-mode app ignores it). After the copy completes, stop the app, set `WEA_FILE_STORAGE=s3` (+ `S3_*` env), and restart — no finalize step is needed.
+- **S3 → WebDAV (derived when `WEA_FILE_STORAGE=s3`):** run the copy while the app is in s3 mode. Each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved** — the running S3-mode app keeps serving via the retained key and rollback stays possible. Then **cut over**: stop the app, set `WEA_FILE_STORAGE=webdav` (+ `WEBDAV_*` env), and restart. No separate finalize step is needed.
 
 **Execution order**
 
+Direction is derived from `WEA_FILE_STORAGE`, so it is not passed on the command line. The examples below assume `WEA_FILE_STORAGE=webdav` (webdav → s3); for the reverse, set `WEA_FILE_STORAGE=s3` and use `--dest-type=webdav` + `--dest-webdav-*`.
+
 ```bash
 # 1) Preflight validation: config + snapshot + destination connectivity, no writes
-node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --check-env
+node server/scripts/migrateBlobs.js --check-env
 
 # 2) Dry run (mandatory before any apply) — writes nothing
-node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
+node server/scripts/migrateBlobs.js --dest-type=s3 \
   --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --dry-run
 
 # 3) Apply — requires --yes; runs the internal dry-run pass first
-node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 \
+node server/scripts/migrateBlobs.js --dest-type=s3 \
   --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --apply --yes
 
 # 4) Re-run to resume (automatic): already-migrated nodes are skipped; a full re-run copies nothing
-node server/scripts/migrateBlobs.js --direction=webdav-to-s3 --dest-type=s3 ... --apply --yes
+node server/scripts/migrateBlobs.js --dest-type=s3 ... --apply --yes
 
-# s3-to-webdav copy: the object_map flip happens inline per node during apply; then cut over (see above)
-node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dest-type=webdav \
+# s3-to-webdav copy (with WEA_FILE_STORAGE=s3): the object_map flip happens inline per node during apply; then cut over (see above)
+node server/scripts/migrateBlobs.js --dest-type=webdav \
   --dest-webdav-url=... --dest-webdav-username=... --dest-webdav-password=... --apply --yes
 ```
 
@@ -150,6 +154,7 @@ node server/scripts/migrateBlobs.js --direction=s3-to-webdav --dest-type=webdav 
 
 - Dry-run is **mandatory** before every `--apply` run; `--apply` itself performs the dry-run pass first, and a failed dry-run blocks all writes (exit 1, nothing written).
 - `--apply` requires `--yes`; abort otherwise.
+- The destination `type` (`--dest-type` / `DEST_TYPE`) must match the derived destination backend; a mismatch aborts before any work (exit 1).
 - `.wea` is a normal folder — migrated like any other node.
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
 - **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.

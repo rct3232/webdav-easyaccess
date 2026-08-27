@@ -8,8 +8,8 @@ const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess
 const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
+const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
 
-const VALID_DIRECTIONS = ['webdav-to-s3', 's3-to-webdav'];
 const VALID_MODES = ['dry-run', 'apply'];
 const DEST_REQUIRED_FIELDS = {
   s3: ['bucket', 'accessKey', 'secretKey'],
@@ -27,19 +27,17 @@ const isAdmin = asyncHandler(async (req, res, next) => {
 
 /**
  * Validate and normalize the migration request payload.
+ * `expectedDestType` is derived server-side from the composition's
+ * fileStorageMode; a dest.type that does not match it is invalid.
  * Returns `{ errorCode }` for a 400, or `{ payload }` for a valid body.
  */
-function parseMigrationPayload(body) {
+function parseMigrationPayload(body, expectedDestType) {
   const {
-    direction,
     mode = 'dry-run',
     force = false,
     dest,
   } = body || {};
 
-  if (!VALID_DIRECTIONS.includes(direction)) {
-    return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
-  }
   if (!VALID_MODES.includes(mode)) {
     return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
   }
@@ -49,6 +47,9 @@ function parseMigrationPayload(body) {
   if (dest.type !== 's3' && dest.type !== 'webdav') {
     return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
   }
+  if (dest.type !== expectedDestType) {
+    return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
+  }
   const missing = DEST_REQUIRED_FIELDS[dest.type].filter((field) => !dest[field]);
   if (missing.length > 0) {
     return { errorCode: SERVER_ERROR_CODES.admin.migrationMissingRequired };
@@ -56,7 +57,6 @@ function parseMigrationPayload(body) {
 
   return {
     payload: {
-      direction,
       mode,
       force: Boolean(force),
       dest,
@@ -68,7 +68,7 @@ function parseMigrationPayload(body) {
  * Background worker: drives one migration job to a terminal state.
  * Progress updates are written on every onProgress callback.
  */
-function runMigrationWorker(jobId, { direction, destConfig, mode, force }) {
+function runMigrationWorker(jobId, { destConfig, mode, force }) {
   const { getComposition } = require('../../../service/composition');
   const { migrationService, migrationJobStore } = getComposition();
 
@@ -77,7 +77,6 @@ function runMigrationWorker(jobId, { direction, destConfig, mode, force }) {
   let total = 0;
   return migrationService
     .run({
-      direction,
       destConfig,
       mode,
       force,
@@ -119,25 +118,34 @@ function dispatchWorker(jobId, params) {
 
 const router = express.Router();
 
+// Migration info: source + direction derived from the current config
+router.get('/migration/info', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
+  const { getComposition } = require('../../../service/composition');
+  const { fileStorageMode } = getComposition();
+  res.json({ source: fileStorageMode, direction: deriveDirection(fileStorageMode) });
+}));
+
 // Start a blob migration job (202 + poll contract)
 router.post('/migration/blobs', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const parsed = parseMigrationPayload(req.body);
+  const { getComposition } = require('../../../service/composition');
+  const { migrationJobStore, fileStorageMode } = getComposition();
+
+  const direction = deriveDirection(fileStorageMode);
+  const expectedDestType = destinationTypeForDirection(direction);
+  const parsed = parseMigrationPayload(req.body, expectedDestType);
   if (parsed.errorCode) {
     throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
   }
-
-  const { getComposition } = require('../../../service/composition');
-  const { migrationJobStore } = getComposition();
 
   if (migrationJobStore.hasRunning()) {
     throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
   }
 
-  const { direction, mode, force, dest } = parsed.payload;
+  const { mode, force, dest } = parsed.payload;
   const job = migrationJobStore.create({ direction, mode });
   const destConfig = { type: dest.type, ...dest };
 
-  dispatchWorker(job.jobId, { direction, destConfig, mode, force });
+  dispatchWorker(job.jobId, { destConfig, mode, force });
 
   res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
 }));

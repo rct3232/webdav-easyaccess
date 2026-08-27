@@ -81,9 +81,11 @@ function createComposition(overrides = {}) {
     fileNodeService,
     buildDestBlobStore,
     lockManager,
+    fileStorageMode,
   });
 
   return {
+    fileStorageMode,
     fileNodesStore,
     blobStore,
     fileNodeService,

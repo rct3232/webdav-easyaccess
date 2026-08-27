@@ -2,11 +2,11 @@
 
 const crypto = require('crypto');
 const { sha256HexLower } = require('../../../utils/hash');
+const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
 
 const MIGRATION_LOCK_NAME = 'migration:blobs';
 const MIGRATION_LOCK_TTL_MS = 24 * 60 * 60 * 1000;
 
-const VALID_DIRECTIONS = ['webdav-to-s3', 's3-to-webdav'];
 const VALID_MODES = ['dry-run', 'apply'];
 
 function isNotFoundError(error) {
@@ -17,8 +17,8 @@ function isNotFoundError(error) {
   return /404|not found|notfound|nosuchkey/i.test(haystack);
 }
 
-function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager }) {
-  if (!srcBlobStore || !fileNodesStore || !fileNodeService || !buildDestBlobStore || !lockManager) {
+function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager, fileStorageMode }) {
+  if (!srcBlobStore || !fileNodesStore || !fileNodeService || !buildDestBlobStore || !lockManager || !fileStorageMode) {
     throw new Error('createMigrationService: missing required dependency');
   }
 
@@ -157,17 +157,19 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
     return { ...results, dryRun: true };
   }
 
-  function assertValidOptions({ direction, mode }) {
-    if (!VALID_DIRECTIONS.includes(direction)) {
-      throw new Error(`Invalid direction: ${direction}. Expected one of: ${VALID_DIRECTIONS.join(', ')}`);
-    }
+  function assertValidOptions({ mode }) {
     if (!VALID_MODES.includes(mode)) {
       throw new Error(`Invalid mode: ${mode}. Expected one of: ${VALID_MODES.join(', ')}`);
     }
   }
 
-  async function run({ direction, destConfig, mode = 'dry-run', force = false, onProgress = () => {} }) {
-    assertValidOptions({ direction, mode });
+  async function run({ destConfig, mode = 'dry-run', force = false, onProgress = () => {} }) {
+    const direction = deriveDirection(fileStorageMode);
+    const expectedDestType = destinationTypeForDirection(direction);
+    if (!destConfig || destConfig.type !== expectedDestType) {
+      throw new Error(`Destination type mismatch: expected ${expectedDestType} for direction ${direction}`);
+    }
+    assertValidOptions({ mode });
 
     let lock;
     try {

@@ -7,6 +7,7 @@
 import { get, post } from '../apiClient';
 
 import {
+  getMigrationInfo,
   startBlobMigration,
   getBlobMigrationStatus,
   cancelBlobMigration,
@@ -22,12 +23,31 @@ describe('migrationService', () => {
     jest.clearAllMocks();
   });
 
+  describe('getMigrationInfo', () => {
+    it('GETs /admin/migration/info and returns { source, direction }', async () => {
+      const info = { source: 'webdav', direction: 'webdav-to-s3' };
+      get.mockResolvedValueOnce({ data: info });
+
+      const result = await getMigrationInfo();
+
+      expect(get).toHaveBeenCalledWith('/admin/migration/info');
+      expect(result).toEqual(info);
+      expect(result).toHaveProperty('source');
+      expect(result).toHaveProperty('direction');
+    });
+
+    it('rejects when the request fails', async () => {
+      get.mockRejectedValueOnce(new Error('Request failed'));
+
+      await expect(getMigrationInfo()).rejects.toThrow();
+    });
+  });
+
   describe('startBlobMigration', () => {
     it('POSTs /admin/migration/blobs with payload and returns { jobId }', async () => {
       post.mockResolvedValueOnce({ data: { jobId: 'mig-1' } });
 
       const payload = {
-        direction: 'webdav-to-s3',
         mode: 'dry-run',
         force: false,
         dest: { type: 's3', bucket: 'bucket-1', accessKey: 'AK', secretKey: 'SK' },

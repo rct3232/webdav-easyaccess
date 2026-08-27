@@ -21,7 +21,7 @@
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| uploadBlob | (key: string, buffer: Buffer) => Promise\<void\> | Upload binary data to S3 with given key |
+| uploadBlob | (key: string, buffer: Buffer) => Promise\<void\> | Upload binary data to S3 with given key. `null`/`undefined` buffer rejected; **zero-byte (`Buffer.alloc(0)`) buffers are allowed** (empty files migrate/upload correctly) |
 | downloadBlob | (key: string) => Promise\<Buffer\> | Download blob as Buffer from S3 |
 | deleteBlob | (key: string) => Promise\<void\> | Delete blob from S3 (idempotent) |
 | headBlob | (key: string) => Promise\<{contentLength, contentType}\> | Get metadata without downloading body |

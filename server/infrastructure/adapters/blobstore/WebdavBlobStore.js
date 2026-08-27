@@ -10,7 +10,7 @@ class WebdavBlobStore {
 
   async uploadBlob(filepath, buffer) {
     if (!filepath) throw new Error('WebDAV filepath is required');
-    if (!buffer || buffer.length === 0) throw new Error('Buffer is required');
+    if (buffer == null) throw new Error('Buffer is required');
     await this.webdav.putFileContents(filepath, buffer);
   }
 

@@ -163,6 +163,26 @@ describe('createMigrationService', () => {
     expect(cache.rows[0].content_hash).toBe(sha256HexLower('alpha'));
   });
 
+  it('webdav→s3: zero-byte source files are copied, not failed', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const empty = await seedWebdavFile({ parentId: rootNodeId, name: 'empty.txt', content: '', srcStore: src });
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+
+    expect(result).toEqual({ copied: 1, skipped: 0, failed: 0, errors: [], dryRun: false });
+    expect(dst.count()).toBe(1);
+    const key = dst.listKeys()[0];
+    expect(dst.getBuffer(key).length).toBe(0);
+    const row = await getActiveObjectRow(empty.nodeId);
+    expect(row.storage_backend).toBe('s3');
+    expect(row.s3_key).toMatch(UUID_RE);
+  });
+
   it('s3→webdav: dest paths preserve the tree, ancestor dirs recorded, object_map flipped to webdav', async () => {
     const { rootNodeId, rootPath } = await createUserTree();
     const src = createFakeBlobStore();

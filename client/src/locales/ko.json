@@ -381,6 +381,12 @@
     "cancelSuccess": "마이그레이션 취소가 요청되었습니다.",
     "restartRequiredTitle": "재시작 필요",
     "restartRequiredBody": "마이그레이션이 완료되었습니다. .env에서 WEA_FILE_STORAGE와 대상 스토리지 환경 변수 블록을 업데이트한 후 서버 프로세스를 재시작하여 전환을 완료하세요.",
+    "dryRunDoneTitle": "드라이런 완료",
+    "dryRunDoneBody": "드라이런이 완료되었습니다 — 기록된 변경은 없습니다. 스캔 결과: 복사 {{copied}} / 건너뜀 {{skipped}} / 실패 {{failed}}. 실제 마이그레이션은 Apply 모드로 재실행하세요. 이미 옮겨진 파일은 자동으로 건너뜁니다.",
+    "failedTitle": "마이그레이션 실패",
+    "failedBody": "마이그레이션이 실패했습니다. 다이얼로그의 오류 목록을 확인하세요. Apply 모드로 다시 실행하면 이미 완료된 파일은 자동으로 건너뜁니다(재개).",
+    "cancelledTitle": "마이그레이션 취소",
+    "cancelledBody": "마이그레이션이 취소되었습니다. Apply 모드로 다시 실행하면 이어서 진행됩니다 — 이미 완료된 파일은 자동으로 건너뜁니다.",
     "ok": "확인"
   },
   "mypage": {

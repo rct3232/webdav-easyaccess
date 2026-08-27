@@ -43,14 +43,20 @@
 - **Start:** validates required fields client-side; on success calls `startBlobMigration` with `{ mode, force: false, dest }` (no `direction`), then polls `getBlobMigrationStatus(jobId)` immediately and every 400ms (mirrors `useBulkOperations`).
 - **Polling:** stops on terminal status (`completed`, `failed`, `cancelled`); interval cleared on unmount/close.
 - **Progress UI:** LinearProgress (`progress/total`), current path, copied/skipped/failed counts, error list (first 5) when failed, result summary on terminal. `jobId` stays visible.
-- **Restart popup:** when a job reaches `status === 'completed'` AND `mode === 'apply'`, a separate Dialog (shown once) instructs the admin to update `WEA_FILE_STORAGE` + the target storage env block in `.env` and restart the server process. Not shown for dry-run, failed, or cancelled runs (the inline completed summary still covers dry-run).
+- **Terminal popups:** when a job reaches a terminal status (`completed`, `failed`, `cancelled`), a separate Dialog is shown **exactly once per job run** (a `useRef` guard records the `jobId` whose popup was already shown; `handleStart` resets the guard so the next run can popup again). The popup content depends on the terminal state:
+  - `completed` + `mode === 'apply'` → **Restart popup** (`migration.restartRequiredTitle`/`restartRequiredBody`): instructs the admin to update `WEA_FILE_STORAGE` + the target storage env block in `.env` and restart the server process.
+  - `completed` + `mode === 'dry-run'` → **Dry-run popup** (`migration.dryRunDoneTitle`/`dryRunDoneBody`): reports nothing was written and interpolates the scan result counts from `job.results` (`copied`, `skipped`, `failed`). No restart instructions.
+  - `failed` → **Failed popup** (`migration.failedTitle`/`migration.failedBody`): points at the error list in the dialog and the Apply-mode resume behavior.
+  - `cancelled` → **Cancelled popup** (`migration.cancelledTitle`/`migration.cancelledBody`): points at the Apply-mode resume behavior.
+  Dismissal is via the OK button; the inline terminal summary UI is unaffected and always rendered.
 - **Cancel:** calls `cancelBlobMigration(jobId)`; polling continues until the job reaches `cancelled`.
 - **Start disabled** while a job is running, while starting, while info is loading, or when info failed to load; **Cancel job** shown only while running.
 - **Errors:** missing required fields and `400` start failures show an inline Alert; polling/cancel failures use `onMessage`.
 
 ### 2.5 i18n Keys
 
-- `migration.*` (title, sourceLabel, destinationLabel, backendWebdav, backendS3, infoLoading, infoLoadFail, mode*, dest*, field labels, autoResume, start, cancelJob, status*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess, restartRequiredTitle, restartRequiredBody, ok) — added to `client/src/locales/en.json` and `ko.json`.
+- `migration.*` (title, sourceLabel, destinationLabel, backendWebdav, backendS3, infoLoading, infoLoadFail, mode*, dest*, field labels, autoResume, start, cancelJob, status*, progress, current, copied/skipped/failed, errorsTitle, jobId, requiredFields, startFail, statusLoadFail, cancelFail, cancelSuccess, ok) — added to `client/src/locales/en.json` and `ko.json`.
+- Terminal popup copy: `migration.restartRequiredTitle`, `migration.restartRequiredBody`, `migration.dryRunDoneTitle`, `migration.dryRunDoneBody` (interpolates `copied`/`skipped`/`failed`), `migration.failedTitle`, `migration.failedBody`, `migration.cancelledTitle`, `migration.cancelledBody`.
 - `admin.storageMigration`, `admin.storageMigrationDesc`, `admin.runMigration` — SystemSettingsContent settings row.
 - `serverErrors.admin.migration*` and `serverMessages.admin.migrationCancelled` for server codes.
 
@@ -60,7 +66,9 @@
 - [ ] WebDAV source renders S3 destination fields; S3 source (override) renders WebDAV destination fields; apply mode shows the auto-resume note
 - [ ] Required-field validation blocks Start without a network call
 - [ ] Start → poll → running progress → completed summary
-- [ ] Apply-mode completion shows the restart popup; dry-run completion does not
+- [ ] Apply-mode completion shows the restart popup; dry-run completion shows the dry-run popup (with interpolated counts), not the restart popup
+- [ ] Failed completion shows the failed popup; cancelled completion shows the cancelled popup
+- [ ] Each terminal popup is shown exactly once per job run
 - [ ] Info-load failure shows an inline error and disables Start
 - [ ] Cancel calls the cancel API and stops on `cancelled`
 

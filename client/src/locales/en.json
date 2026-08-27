@@ -381,6 +381,12 @@
     "cancelSuccess": "Migration cancellation requested.",
     "restartRequiredTitle": "Restart required",
     "restartRequiredBody": "Migration completed. Update WEA_FILE_STORAGE and the target storage env block in .env, then restart the server process to finish the cutover.",
+    "dryRunDoneTitle": "Dry-run completed",
+    "dryRunDoneBody": "Dry-run finished — nothing was written. Scan result: {{copied}} copied / {{skipped}} skipped / {{failed}} failed. To actually migrate, run again in Apply mode; already-migrated files are skipped automatically.",
+    "failedTitle": "Migration failed",
+    "failedBody": "The migration failed. Review the error list in the dialog. You can re-run in Apply mode — files that already completed are skipped automatically (resume).",
+    "cancelledTitle": "Migration cancelled",
+    "cancelledBody": "The migration was cancelled. Re-run in Apply mode to resume — files that already completed are skipped automatically.",
     "ok": "OK"
   },
   "mypage": {

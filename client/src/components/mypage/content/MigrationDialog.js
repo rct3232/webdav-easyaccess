@@ -63,7 +63,8 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   const [cancelling, setCancelling] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
-  const [restartPopupOpen, setRestartPopupOpen] = useState(false);
+  const [popup, setPopup] = useState(null);
+  const popupJobRef = useRef(null);
   const pollRef = useRef(null);
 
   const destType = info && info.source === 'webdav' ? 's3' : 'webdav';
@@ -102,8 +103,21 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   }, [open, t]);
 
   useEffect(() => {
-    if (job && job.status === 'completed' && job.mode === 'apply') {
-      setRestartPopupOpen(true);
+    if (!job || !TERMINAL_STATUSES.includes(job.status)) return;
+    if (popupJobRef.current === job.jobId) return;
+    let nextPopup = null;
+    if (job.status === 'completed' && job.mode === 'apply') {
+      nextPopup = 'restart';
+    } else if (job.status === 'completed' && job.mode === 'dry-run') {
+      nextPopup = 'dryRunDone';
+    } else if (job.status === 'failed') {
+      nextPopup = 'failed';
+    } else if (job.status === 'cancelled') {
+      nextPopup = 'cancelled';
+    }
+    if (nextPopup) {
+      popupJobRef.current = job.jobId;
+      setPopup(nextPopup);
     }
   }, [job]);
 
@@ -147,7 +161,8 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
     setFormError('');
     setJob(null);
     setJobId(null);
-    setRestartPopupOpen(false);
+    setPopup(null);
+    popupJobRef.current = null;
     setStarting(true);
     const dest =
       destType === 's3'
@@ -201,6 +216,42 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
     } finally {
       setCancelling(false);
     }
+  };
+
+  const renderTerminalPopup = () => {
+    if (!popup) return null;
+    let title;
+    let body;
+    if (popup === 'restart') {
+      title = t('migration.restartRequiredTitle');
+      body = t('migration.restartRequiredBody');
+    } else if (popup === 'dryRunDone') {
+      title = t('migration.dryRunDoneTitle');
+      body = t('migration.dryRunDoneBody', {
+        copied: job?.results?.copied ?? 0,
+        skipped: job?.results?.skipped ?? 0,
+        failed: job?.results?.failed ?? 0,
+      });
+    } else if (popup === 'failed') {
+      title = t('migration.failedTitle');
+      body = t('migration.failedBody');
+    } else {
+      title = t('migration.cancelledTitle');
+      body = t('migration.cancelledBody');
+    }
+    return (
+      <Dialog open maxWidth="sm" fullWidth>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{body}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setPopup(null)}>
+            {t('migration.ok')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
   };
 
   const renderS3Fields = () => (
@@ -460,17 +511,7 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={restartPopupOpen} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('migration.restartRequiredTitle')}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">{t('migration.restartRequiredBody')}</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => setRestartPopupOpen(false)}>
-            {t('migration.ok')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {renderTerminalPopup()}
     </>
   );
 };

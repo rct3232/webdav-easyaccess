@@ -3,7 +3,8 @@
  * Verifies observable outcomes per spec: info load + read-only source→dest label,
  * destination fields derived from /info, required-field validation,
  * start → poll → progress → completed, cancel, the apply-mode auto-resume note,
- * and the apply-completion restart popup.
+ * and the terminal-state popups (apply-completed restart, dry-run summary,
+ * failed, cancelled) shown once per job run.
  * @see docs/spec/client/components/mypage/content/MigrationDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
@@ -206,7 +207,7 @@ describe('MigrationDialog', () => {
     });
   });
 
-  it('does not show the restart popup when a dry-run job completes', async () => {
+  it('shows the dry-run popup with scan results when a dry-run job completes', async () => {
     let job = runningJob;
     server.use(
       http.post('/api/admin/migration/blobs', () => HttpResponse.json({ jobId: 'mig-1' }, { status: 202 })),
@@ -228,12 +229,53 @@ describe('MigrationDialog', () => {
       results: { copied: 8, skipped: 1, failed: 1, errors: [] },
     };
 
-    await waitFor(() => {
-      expect(screen.getByText(/migration completed/i)).toBeInTheDocument();
-    }, { timeout: 5000 });
+    const popup = await screen.findByRole('dialog', { name: /^dry-run completed$/i }, { timeout: 5000 });
+    expect(popup).toBeInTheDocument();
+    expect(screen.getByText(/scan result: 8 copied \/ 1 skipped \/ 1 failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/run again in apply mode/i)).toBeInTheDocument();
+    expect(screen.getByText(/^migration completed\.$/i)).toBeInTheDocument();
 
-    expect(screen.queryByRole('dialog', { name: /restart required/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /^restart required$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/restart the server process/i)).not.toBeInTheDocument();
+  });
+
+  it('shows each terminal popup exactly once per job run', async () => {
+    let job = runningJob;
+    server.use(
+      http.post('/api/admin/migration/blobs', () => HttpResponse.json({ jobId: 'mig-1' }, { status: 202 })),
+      http.get('/api/admin/migration/jobs/mig-1', () => HttpResponse.json(job))
+    );
+
+    const user = userEvent.setup();
+    const { onClose, onMessage, rerender } = renderDialog();
+    await screen.findByText(/source: webdav/i);
+    await fillS3Fields(user);
+    await user.click(screen.getByRole('button', { name: /^start$/i }));
+
+    job = {
+      ...runningJob,
+      status: 'completed',
+      progress: 10,
+      total: 10,
+      current: null,
+      results: { copied: 8, skipped: 1, failed: 1, errors: [] },
+    };
+
+    const popup = await screen.findByRole('dialog', { name: /^dry-run completed$/i }, { timeout: 5000 });
+    expect(popup).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^ok$/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /^dry-run completed$/i })).not.toBeInTheDocument();
+    });
+
+    rerender(<MigrationDialog open={false} onClose={onClose} onMessage={onMessage} />);
+    rerender(<MigrationDialog open={true} onClose={onClose} onMessage={onMessage} />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /^dry-run completed$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: /^restart required$/i })).not.toBeInTheDocument();
+    });
   });
 
   it('shows failed summary with error list when the job fails', async () => {
@@ -266,14 +308,15 @@ describe('MigrationDialog', () => {
       },
     };
 
-    await waitFor(() => {
-      expect(screen.getByText(/migration failed/i)).toBeInTheDocument();
-    }, { timeout: 5000 });
+    const popup = await screen.findByRole('dialog', { name: /^migration failed$/i }, { timeout: 5000 });
+    expect(popup).toBeInTheDocument();
+    expect(screen.getByText(/^migration failed\.$/i)).toBeInTheDocument();
+    expect(screen.getByText(/review the error list in the dialog/i)).toBeInTheDocument();
 
     expect(screen.getByText(/\/testuser\/docs\/a\.txt/i)).toBeInTheDocument();
     expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
     expect(screen.getByText(/\/testuser\/docs\/b\.txt/i)).toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: /restart required/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /^restart required$/i })).not.toBeInTheDocument();
   });
 
   it('cancels a running job and stops on cancelled', async () => {
@@ -301,9 +344,11 @@ describe('MigrationDialog', () => {
     await waitFor(() => {
       expect(cancelCalled).toBe(true);
     });
-    await waitFor(() => {
-      expect(screen.getByText(/migration cancelled/i)).toBeInTheDocument();
-    });
+    const popup = await screen.findByRole('dialog', { name: /^migration cancelled$/i }, { timeout: 5000 });
+    expect(popup).toBeInTheDocument();
+    expect(screen.getByText(/^migration cancelled\.$/i)).toBeInTheDocument();
+    expect(screen.getByText(/re-run in apply mode to resume/i)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /^restart required$/i })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(onMessage).toHaveBeenCalledWith({ type: 'info', text: 'Migration cancellation requested.' });
     });

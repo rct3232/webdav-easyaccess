@@ -121,12 +121,18 @@ are written to `.env`.**
   (comment must state "keep in sync with 001"). The full app schema (`users`, `_schema_migrations`,
   …) is still created by normal boot migrations on restart — no conflict (IF NOT EXISTS +
   file-based tracking).
-- **Prefill from existing DB (resolved, Q1b)**: `setupStatus.current` becomes the **effective**
-  view = env-first over DB rows. Two scenarios:
-  1. Fresh setup (app metadata = sqlite, T0 unset) → the wizard reads existing config rows from
-     the **entered target PG via a direct connection** (after a successful connection test) to
-     prefill; masked secrets shown.
-  2. Existing PG deployment (.env has `WEA_PG_*`) → app's own `settingsStore` supplies prefill.
+- **Setup-phase reads are always direct (resolved, Q1b)**: during setup the wizard
+  **always reads/prefills from the target metadata DB via a direct connection** (whether or not
+  the `.env` already has the PG connection info). `settingsStore` (the app's own store) is used
+  only **after** setup completes — runtime T2 reads and the admin config page (Q3). No
+  "app's-current-metadata vs target" distinction in the setup phase.
+- **Setup-vs-boot decision (resolved, Q1b)**: `setup_complete` = T0 resolvable (metadata
+  connection from `.env`) **AND** the required non-T0 blocks are satisfiable from the
+  **effective config** (env-first over DB rows). Consequently, when the `.env` has the PG
+  connection info, boot still branches on what the DB holds:
+  1. **DB lacks required non-T0 config** → `setup_complete=false` → wizard shown; it reads and
+     applies against the target DB directly.
+  2. **DB already has all required config** → `setup_complete=true` → no wizard; boot normally.
   - **Encryption-key consistency (critical)**: existing DB secrets are encrypted with the
     original `encrypt_secret_key` — if `.env` already has a key, apply/prefill must **keep it**
     (never regenerate, D1); if no key exists but encrypted DB secrets are present, surface a
@@ -134,10 +140,16 @@ are written to `.env`.**
 
 ## 8. Boot Order
 
-1. Load `.env` → T0.
-2. Connect to the metadata DB using T0 only (D10: failure = boot failure).
-3. Load T1 snapshot = env-first over DB rows (decrypt DB secrets when env absent).
-4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver.
+1. Load `.env` → T0 (metadata connection + `NODE_ENV` + `encrypt_secret_key` + `JWT_SECRET`).
+2. Connect to the metadata DB using T0 only (D10: failure = boot failure). For sqlite this is the
+   local store; for postgresql the `WEA_PG_*` connection.
+3. Compute the **effective config** = env-first over DB `settings` rows (decrypt DB secrets when
+   env absent) and derive `setup_complete` from it.
+   - `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
+     target DB directly, §7).
+   - `setup_complete=true` → load the T1 snapshot and boot normally.
+4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver
+   (env → DB → default, TTL + invalidate-on-write).
 
 ## 9. Future Scope (not in this phase)
 
@@ -200,3 +212,7 @@ are written to `.env`.**
   connection; prefill scenarios + encrypt_secret_key keep-existing) — recorded in §7; Q2
   invalidate-on-write + TTL; Q3 full admin config API + UI; Q4 auto-generate key; Q5 raw env
   names; Q6 JWT_EXPIRES_IN as T2 lazy sign-time read.
+- 2026-08-28: Q1b corrected (user feedback): setup-phase reads are **always direct** (no
+  app-metadata-vs-target distinction; settingsStore is admin/runtime-only, post-setup); boot
+  branches on DB contents — DB lacks config → wizard, DB has all → boot normally. Recorded in
+  §7/§8.

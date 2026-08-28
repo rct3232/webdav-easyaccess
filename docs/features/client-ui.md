@@ -56,7 +56,10 @@ These boundaries are intentionally written at the **feature level** (not as a fi
 
 ### Routing
 
-- **Public:** `/login`, `/register`. No auth required.
+- **Public:** `/login`, `/register`, `/setup`. No auth required.
+- **Setup wizard:** `/setup` — first-run setup wizard, rendered outside `MainLayout` (standalone, like Login). Full flow, gating, and security contract in [setup-wizard.md](setup-wizard.md). Redirect rules:
+  - The login page redirects to `/setup` when `setup_complete` is `false` (fetched from `GET /api/settings/public`; see `docs/spec/server/routes/settings.md`).
+  - `/setup` redirects to `/login` when setup is already complete (covers revisits after restart).
 - **Default:** `/` redirects to `/files`.
 - **Authenticated (under MainLayout):** `/files/*` (FileManager), `/mypage` (MyPage). `/admin` redirects to `/mypage` with `state: { category: 'admin' }` for admin users. Wrapped in `PrivateRoute`: if not authenticated, redirect to `/login`; while loading auth state, show loading spinner.
 - **Share link:** `/share/:token` — Renders `ShareLinkLoader`, which fetches `GET /api/share/:token/info` then either `FileManager` (folder) or `ShareLinkSingleFileView` (single file). No auth required for viewing; login/add-to-my-permissions available in share UI.

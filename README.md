@@ -49,7 +49,7 @@ flowchart LR
 - [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md) — Running tests, Git workflow, CI, coverage
 - [docs/api.md](docs/api.md) — REST API reference (endpoints, auth, request/response)
 - [docs/shared-contracts.md](docs/shared-contracts.md) — Shared contracts (errors, validation, constants, paths)
-- **Feature docs:** [permissions](docs/features/permissions.md) · [auth, users & settings](docs/features/auth-users-settings.md) · [files & sharing](docs/features/files-sharing.md) · [admin & infrastructure](docs/features/admin-infrastructure.md) · [client UI](docs/features/client-ui.md)
+- **Feature docs:** [permissions](docs/features/permissions.md) · [auth, users & settings](docs/features/auth-users-settings.md) · [files & sharing](docs/features/files-sharing.md) · [admin & infrastructure](docs/features/admin-infrastructure.md) · [client UI](docs/features/client-ui.md) · [first-run setup wizard](docs/features/setup-wizard.md)
 
 ## Installation & Running
 
@@ -69,6 +69,11 @@ npm run dev
 ```
 
 - Access: `http://localhost:3000`
+
+> **First run:** If no `.env` exists yet, the server boots into **setup mode** and a
+> browser-based **setup wizard** (`/setup`) configures the metadata/blob backends, the
+> admin account, and the JWT secret, then writes `.env` and asks for a restart. See
+> [docs/features/setup-wizard.md](docs/features/setup-wizard.md).
 
 ## Production
 

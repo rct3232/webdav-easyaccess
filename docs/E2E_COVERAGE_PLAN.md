@@ -124,6 +124,7 @@ Planning note:
 - The baseline `.env.e2e` setup provides a local WebDAV target and a deterministic admin password.
 - The E2E Docker stack is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose -f docker-compose.e2e.yml up -d` and waits for the mode's required containers to be healthy. There is no manual `dev:webdav:start` prerequisite.
 - `e2e/global-setup.ts` never tears the stack down (that would wipe the Postgres volume out from under the running server). It resets the data state instead: TRUNCATE all app tables (preserving `_schema_migrations`) + re-seed admin and base users with home `file_nodes` roots, and (s3 mode) empty then ensure the MinIO bucket. `e2e/global-teardown.ts` empties the bucket (s3 mode) and stops the stack (`down -v`).
+- **Setup-wizard runtime assumption (hermetic):** the setup spec is fully isolated from the shared E2E state above. It spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle because restart is the behavior under test (PLAN.md §7). The shared `:5002` server and `:3000` client still boot for the run but are unused by the setup projects.
 
 ## Scenario Classification
 
@@ -185,6 +186,7 @@ This is the target ownership map for future Playwright growth.
 | `e2e/explorer-advanced.desktop.spec.ts` | desktop-only advanced explorer interactions |
 | `e2e/explorer-advanced.mobile.spec.ts` | mobile-only advanced explorer interactions |
 | `e2e/s3-pg-integration.spec.ts` | S3+PostgreSQL new-architecture scenarios (E2E-S3PG-001..008); S3 mode only |
+| `e2e/setup-wizard.spec.ts` | first-run setup wizard cases 1–4 (hermetic scratch instance on `:5003`, sqlite/PG-scratch isolation); runs in both `setup-wizard-desktop` and `setup-wizard-mobile` projects |
 
 The shared core-flow coverage now lives in `e2e/core-flow.shared.spec.ts`, with platform-specific bulk interactions remaining in `e2e/desktop-core-flow.spec.ts` and `e2e/mobile-core-flow.spec.ts`. These files replace the earlier `e2e/desktop-flow.spec.ts` and `e2e/mobile-flow.spec.ts` seed filenames.
 
@@ -327,6 +329,15 @@ Current expansion note:
 | E2E-ADMIN-006 | MyPage admin | Delete standard user from admin UI | admin | `/mypage` | both | deletable standard user exists | user disappears from admin list | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
 | E2E-ADMIN-007 | MyPage admin | Toggle registration-related settings | admin | `/mypage` | both | authenticated admin session | settings save succeeds and the next public auth visit reflects the new state | P0 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
 | E2E-ADMIN-008 | MyPage admin | Cleanup actions show confirmation and completion feedback | admin | `/mypage` | both | authenticated admin session | cleanup flow completes with visible result | P1 | playwright | `e2e/mypage-admin.spec.ts` | covered | |
+
+### First-run setup wizard
+
+| ID | Domain | Flow | Role | Entry route | Viewport | Preconditions | Expected outcome | Priority | Recommended layer | Planned spec file | Status | Notes |
+|----|--------|------|------|-------------|----------|---------------|------------------|----------|-------------------|-------------------|--------|-------|
+| E2E-SETUP-001 | Setup wizard | First-run sqlite+webdav configure-and-restart | anonymous | `/setup` | both | no `.env`, scratch instance on `:5003` | wizard writes the scratch `.env`; after restart login with the wizard-chosen admin works, upload/download round-trip succeeds, and `/setup` redirects to `/login` | P0 | playwright | `e2e/setup-wizard.spec.ts` | planned | Case 1; both modes (webdav container always-up) |
+| E2E-SETUP-002 | Setup wizard | First-run sqlite+s3 configure-and-restart writes `S3_*` keys | anonymous | `/setup` | both | no `.env`, scratch instance on `:5003`, MinIO `:9010` | scratch `.env` contains the expected `S3_*`/`AWS_*` keys; restart lands in a configured app | P0 | playwright | `e2e/setup-wizard.spec.ts` | planned | Case 2; s3 mode only (`test.skip` pattern) |
+| E2E-SETUP-003 | Setup wizard | First-run postgresql+webdav seeds scratch PG, not scratch sqlite | anonymous | `/setup` | both | no `.env`, scratch instance on `:5003`, scratch PG DB `webdav_e2e_setup` | after restart `_schema_migrations` + users exist in the scratch PG DB; the scratch sqlite file has no users table seeded by the wizard | P0 | playwright | `e2e/setup-wizard.spec.ts` | planned | Case 3; both modes |
+| E2E-SETUP-004 | Setup wizard | Complete-state gate locks wizard and admin writes | anonymous | `/setup` | both | completed setup (post-restart) | `POST /api/setup/apply` → 403; `/setup` redirects to `/login`; file APIs work | P0 | playwright | `e2e/setup-wizard.spec.ts` | planned | Case 4 (security); both modes |
 
 ### S3+PostgreSQL new-architecture integration
 

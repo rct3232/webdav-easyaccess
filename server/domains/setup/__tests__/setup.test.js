@@ -3,10 +3,17 @@
 /**
  * Setup routes unit/integration tests.
  * Builds a minimal express app mounting the setup router directly (T5 will
- * mount it in server/index.js). Real envFileWriter writes to a temp env file;
- * the metadata store is a real isolated sqlite DB (createTestDatabase).
+ * mount it in server/index.js). envFileWriter is mocked so the test can assert
+ * exactly which (T0) keys reach .env; the metadata store is a real isolated
+ * sqlite DB (createTestDatabase).
  * @see docs/spec/server/routes/setup.md
  */
+const mockWriteEnv = jest.fn();
+jest.mock('../../../infrastructure/envFileWriter', () => {
+  const actual = jest.requireActual('../../../infrastructure/envFileWriter');
+  return { ...actual, writeEnv: mockWriteEnv };
+});
+
 const mockWebdavTestConnection = jest.fn();
 jest.mock('../../../infrastructure/webdavTest', () => ({
   testConnection: mockWebdavTestConnection,
@@ -28,6 +35,13 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { createTestDatabase } = require('../../../test-utils');
 const { initMetadataStore } = require('../../../store/bootstrap');
 const User = require('../../../models/User');
+const Settings = require('../../../models/Settings');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
+const {
+  encryptSecret,
+  decryptSecret,
+  isEncryptedPayload,
+} = require('../../../utils/configEncryption');
 const { errorHandler } = require('../../../utils/errorHandler');
 const requestLogger = require('../../../middleware/requestLogger');
 const { Client: MockPgClient } = require('pg');
@@ -69,6 +83,7 @@ const WIZARD_ENV_KEYS = [
   'EMAIL_FROM_NAME',
   'DOTENV_CONFIG_PATH',
   'WEA_SQLITE_PATH',
+  'encrypt_secret_key',
 ];
 const SAVED_ENV = {};
 
@@ -206,12 +221,73 @@ describe('GET /api/setup/status', () => {
     expect(res.body.current.JWT_SECRET).toBe('****');
     expect(res.body.current.WEBDAV_PASSWORD).toBe('****');
   });
+
+  it('reports key_lost_warning when an encrypted DB row exists and encrypt_secret_key is absent', async () => {
+    setIncompleteBaseline();
+    delete process.env.encrypt_secret_key;
+    const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
+      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'previously-used-key')),
+    });
+
+    try {
+      const res = await request(app).get('/api/setup/status');
+
+      expect(res.status).toBe(200);
+      expect(res.body.key_lost_warning).toBe(true);
+      expect(res.body.setup_complete).toBe(false);
+      expect(res.body.missing).toContain('S3_BUCKET');
+    } finally {
+      getAllSpy.mockRestore();
+    }
+  });
+
+  it('does not report key_lost_warning when encrypt_secret_key is present', async () => {
+    setIncompleteBaseline();
+    process.env.encrypt_secret_key = 'current-key';
+    const getAllSpy = jest.spyOn(Settings, 'getAll').mockResolvedValue({
+      EMAIL_PASSWORD: JSON.stringify(encryptSecret('smtp-secret', 'current-key')),
+    });
+
+    try {
+      const res = await request(app).get('/api/setup/status');
+
+      expect(res.status).toBe(200);
+      expect(res.body.key_lost_warning).toBe(false);
+      expect(res.body.current.EMAIL_PASSWORD).toBe('****');
+    } finally {
+      getAllSpy.mockRestore();
+      delete process.env.encrypt_secret_key;
+    }
+  });
+
+  it('does not report key_lost_warning when no encrypted rows exist', async () => {
+    setIncompleteBaseline();
+    delete process.env.encrypt_secret_key;
+
+    const res = await request(app).get('/api/setup/status');
+
+    expect(res.body.key_lost_warning).toBe(false);
+  });
 });
 
 describe('POST /api/setup/apply', () => {
-  it('sqlite + webdav: writes expected env keys, merges existing file, updates the admin password', async () => {
+  let settingsSetSpy;
+  let invalidateSpy;
+
+  beforeEach(() => {
+    settingsSetSpy = jest
+      .spyOn(Settings, 'set')
+      .mockImplementation(async () => ({ success: true }));
+    invalidateSpy = jest.spyOn(getSharedResolver(), 'invalidateCache');
+  });
+
+  afterEach(() => {
+    settingsSetSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('sqlite + webdav: writes only T0 keys to .env, non-T0 keys to the DB (secrets encrypted), updates the admin password', async () => {
     const envPath = makeEnvPath('sqlite-webdav');
-    fs.writeFileSync(envPath, 'CUSTOM_FLAG=keep-me\nPORT=9000\n');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
     const res = await request(app)
@@ -241,39 +317,101 @@ describe('POST /api/setup/apply', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
 
-    const contents = fs.readFileSync(envPath, 'utf8');
-    expect(contents).toContain('CUSTOM_FLAG=keep-me');
-    expect(contents).toContain('PORT=5001');
-    expect(contents).toContain('WEA_STORAGE_BACKEND=sqlite');
-    expect(contents).toContain('WEA_FILE_STORAGE=webdav');
-    expect(contents).toContain('WEBDAV_URL=https://dav.example.com');
-    expect(contents).toContain('WEBDAV_USERNAME=dav-user');
-    expect(contents).toContain('WEBDAV_PASSWORD=dav-pass');
-    expect(contents).toContain('WEBDAV_AUTH_TYPE=auto');
-    expect(contents).toContain('JWT_SECRET=super-secret-jwt');
-    expect(contents).toContain('JWT_EXPIRES_IN=30m');
-    expect(contents).toContain('CORS_ORIGINS=http://localhost:3000');
-    expect(contents).toContain('EMAIL_HOST=smtp.example.com');
-    expect(contents).toContain('EMAIL_PORT=587');
-    expect(contents).toContain('EMAIL_USER=mail-user');
-    expect(contents).toContain('EMAIL_PASSWORD=mail-pass');
-    expect(contents).toContain('EMAIL_SECURE=false');
-    expect(contents).toContain('EMAIL_FROM_NAME=WebDAV');
-    expect(contents).not.toContain('WEA_PG_');
-    expect(contents).not.toContain('S3_');
-    expect(contents).not.toContain('ADMIN_DEFAULT_PASSWORD');
+    expect(mockWriteEnv).toHaveBeenCalledTimes(1);
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual([
+      'JWT_SECRET',
+      'WEA_STORAGE_BACKEND',
+      'encrypt_secret_key',
+    ]);
+    expect(envEntries.WEA_STORAGE_BACKEND).toBe('sqlite');
+    expect(envEntries.JWT_SECRET).toBe('super-secret-jwt');
+    expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
+    expect(envEntries).not.toHaveProperty('WEBDAV_URL');
+    expect(envEntries).not.toHaveProperty('EMAIL_HOST');
+    expect(envEntries).not.toHaveProperty('ADMIN_DEFAULT_PASSWORD');
 
-    expect(fs.statSync(envPath).mode & 0o777).toBe(0o600);
+    const masterKey = envEntries.encrypt_secret_key;
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(Object.keys(written).sort()).toEqual([
+      'CORS_ORIGINS',
+      'EMAIL_FROM_NAME',
+      'EMAIL_HOST',
+      'EMAIL_PASSWORD',
+      'EMAIL_PORT',
+      'EMAIL_SECURE',
+      'EMAIL_USER',
+      'JWT_EXPIRES_IN',
+      'PORT',
+      'WEA_FILE_STORAGE',
+      'WEBDAV_AUTH_TYPE',
+      'WEBDAV_PASSWORD',
+      'WEBDAV_URL',
+      'WEBDAV_USERNAME',
+    ]);
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_URL).toBe('https://dav.example.com');
+    expect(written.WEBDAV_USERNAME).toBe('dav-user');
+    expect(written.WEBDAV_AUTH_TYPE).toBe('auto');
+    expect(written.PORT).toBe('5001');
+    expect(written.CORS_ORIGINS).toBe('http://localhost:3000');
+    expect(written.JWT_EXPIRES_IN).toBe('30m');
+    expect(written.EMAIL_HOST).toBe('smtp.example.com');
+    expect(written.EMAIL_PORT).toBe('587');
+    expect(written.EMAIL_USER).toBe('mail-user');
+    expect(written.EMAIL_SECURE).toBe('false');
+    expect(written.EMAIL_FROM_NAME).toBe('WebDAV');
+    expect(written).not.toHaveProperty('WEA_STORAGE_BACKEND');
+    expect(written).not.toHaveProperty('WEA_PG_HOST');
+    expect(written).not.toHaveProperty('JWT_SECRET');
+
+    expect(isEncryptedPayload(JSON.parse(written.WEBDAV_PASSWORD))).toBe(true);
+    expect(isEncryptedPayload(JSON.parse(written.EMAIL_PASSWORD))).toBe(true);
+    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), masterKey)).toBe('dav-pass');
+    expect(decryptSecret(JSON.parse(written.EMAIL_PASSWORD), masterKey)).toBe('mail-pass');
 
     const admin = await User.findByUsername('admin');
     expect(admin).toBeTruthy();
     expect(await bcrypt.compare('new-admin-pass', admin.password)).toBe(true);
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(false);
+
+    expect(invalidateSpy).toHaveBeenCalled();
   });
 
-  it('sqlite + webdav: empty-string optional server/email ports are tolerated and PORT is not written', async () => {
+  it('keeps an existing encrypt_secret_key: not regenerated, not written to .env, used to encrypt', async () => {
+    process.env.encrypt_secret_key = 'pre-existing-key';
+    const envPath = makeEnvPath('sqlite-webdav-keep-key');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'dav-user',
+          password: 'dav-pass',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'WEA_STORAGE_BACKEND']);
+    expect(envEntries).not.toHaveProperty('encrypt_secret_key');
+    expect(process.env.encrypt_secret_key).toBe('pre-existing-key');
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(decryptSecret(JSON.parse(written.WEBDAV_PASSWORD), 'pre-existing-key')).toBe('dav-pass');
+  });
+
+  it('sqlite + webdav: empty-string optional server/email ports are tolerated and PORT/EMAIL_PORT are not stored', async () => {
     const envPath = makeEnvPath('sqlite-webdav-empty-port');
-    fs.writeFileSync(envPath, 'CUSTOM_FLAG=keep-me\n');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
     const res = await request(app)
@@ -296,14 +434,27 @@ describe('POST /api/setup/apply', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
 
-    const contents = fs.readFileSync(envPath, 'utf8');
-    expect(contents).toContain('CUSTOM_FLAG=keep-me');
-    expect(contents).not.toContain('PORT=');
-    expect(contents).not.toContain('EMAIL_PORT=');
-    expect(contents).toContain('WEA_FILE_STORAGE=webdav');
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual([
+      'JWT_SECRET',
+      'WEA_STORAGE_BACKEND',
+      'encrypt_secret_key',
+    ]);
+    expect(envEntries).not.toHaveProperty('PORT');
+    expect(envEntries).not.toHaveProperty('EMAIL_PORT');
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written).not.toHaveProperty('PORT');
+    expect(written).not.toHaveProperty('EMAIL_PORT');
+    expect(written).not.toHaveProperty('EMAIL_HOST');
+    expect(written).not.toHaveProperty('CORS_ORIGINS');
+    expect(written.WEA_FILE_STORAGE).toBe('webdav');
+    expect(written.WEBDAV_URL).toBe('https://dav.example.com');
+    expect(written.JWT_EXPIRES_IN).toBe('30m');
+    expect(written.EMAIL_SECURE).toBe('false');
   });
 
-  it('postgresql + s3: writes WEA_PG_* and S3_* keys plus ADMIN_DEFAULT_PASSWORD without touching sqlite admin', async () => {
+  it('postgresql + s3: writes WEA_PG_* to .env and non-T0 keys (incl. ADMIN_DEFAULT_PASSWORD) to the target PG without touching sqlite admin', async () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -335,28 +486,68 @@ describe('POST /api/setup/apply', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
 
-    const contents = fs.readFileSync(envPath, 'utf8');
-    expect(contents).toContain('WEA_STORAGE_BACKEND=postgresql');
-    expect(contents).toContain('WEA_PG_HOST=db.local');
-    expect(contents).toContain('WEA_PG_PORT=5433');
-    expect(contents).toContain('WEA_PG_DATABASE=webdav');
-    expect(contents).toContain('WEA_PG_USER=pg-user');
-    expect(contents).toContain('WEA_PG_PASSWORD=pg-pass');
-    expect(contents).toContain('WEA_PG_SSL=true');
-    expect(contents).toContain('WEA_PG_MAX=20');
-    expect(contents).toContain('WEA_FILE_STORAGE=s3');
-    expect(contents).toContain('S3_BUCKET=wea-bucket');
-    expect(contents).toContain('AWS_REGION=us-east-1');
-    expect(contents).toContain('AWS_ACCESS_KEY_ID=AKIAX');
-    expect(contents).toContain('AWS_SECRET_ACCESS_KEY=s3-secret');
-    expect(contents).toContain('S3_ENDPOINT=http://localhost:9010');
-    expect(contents).toContain('JWT_SECRET=jwt-pg');
-    expect(contents).toContain('ADMIN_DEFAULT_PASSWORD=pg-admin-pass');
-    expect(contents).not.toContain('WEBDAV_URL');
-    expect(contents).not.toContain('EMAIL_');
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(Object.keys(envEntries).sort()).toEqual([
+      'JWT_SECRET',
+      'WEA_PG_DATABASE',
+      'WEA_PG_HOST',
+      'WEA_PG_MAX',
+      'WEA_PG_PASSWORD',
+      'WEA_PG_PORT',
+      'WEA_PG_SSL',
+      'WEA_PG_USER',
+      'WEA_STORAGE_BACKEND',
+      'encrypt_secret_key',
+    ]);
+    expect(envEntries.WEA_STORAGE_BACKEND).toBe('postgresql');
+    expect(envEntries.WEA_PG_HOST).toBe('db.local');
+    expect(envEntries.WEA_PG_PORT).toBe('5433');
+    expect(envEntries.WEA_PG_DATABASE).toBe('webdav');
+    expect(envEntries.WEA_PG_USER).toBe('pg-user');
+    expect(envEntries.WEA_PG_PASSWORD).toBe('pg-pass');
+    expect(envEntries.WEA_PG_SSL).toBe('true');
+    expect(envEntries.WEA_PG_MAX).toBe('20');
+    expect(envEntries.JWT_SECRET).toBe('jwt-pg');
+    expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
+    expect(envEntries).not.toHaveProperty('S3_BUCKET');
+    expect(envEntries).not.toHaveProperty('ADMIN_DEFAULT_PASSWORD');
+
+    const client = MockPgClient.mock.results[0].value;
+    expect(client.connect).toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS settings')
+    );
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('key TEXT PRIMARY KEY'));
+    expect(client.end).toHaveBeenCalled();
+
+    const upsertValue = (key) => {
+      const call = client.query.mock.calls.find(([, params]) => params && params[0] === key);
+      return call ? call[1][1] : undefined;
+    };
+    expect(JSON.parse(upsertValue('WEA_FILE_STORAGE'))).toBe('s3');
+    expect(JSON.parse(upsertValue('S3_BUCKET'))).toBe('wea-bucket');
+    expect(JSON.parse(upsertValue('AWS_REGION'))).toBe('us-east-1');
+    expect(JSON.parse(upsertValue('AWS_ACCESS_KEY_ID'))).toBe('AKIAX');
+    expect(JSON.parse(upsertValue('S3_ENDPOINT'))).toBe('http://localhost:9010');
+    expect(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD'))).not.toBe('pg-admin-pass');
+
+    const masterKey = envEntries.encrypt_secret_key;
+    expect(isEncryptedPayload(JSON.parse(upsertValue('AWS_SECRET_ACCESS_KEY')))).toBe(true);
+    expect(decryptSecret(JSON.parse(upsertValue('AWS_SECRET_ACCESS_KEY')), masterKey)).toBe(
+      's3-secret'
+    );
+    expect(isEncryptedPayload(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD')))).toBe(true);
+    expect(decryptSecret(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD')), masterKey)).toBe(
+      'pg-admin-pass'
+    );
+
+    expect(settingsSetSpy).not.toHaveBeenCalled();
 
     const admin = await User.findByUsername('admin');
+    expect(admin).toBeTruthy();
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(true);
+
+    expect(invalidateSpy).toHaveBeenCalled();
   });
 
   it('returns 403 setup.complete when setup is already complete', async () => {

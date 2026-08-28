@@ -7,13 +7,17 @@ const express = require('express');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncHandler, createError } = require('../../utils/errorHandler');
+const { encryptSecret, isEncryptedPayload, generateKey } = require('../../utils/configEncryption');
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
+const { isT0, isSecret, getDefault, TIER } = require('../../infrastructure/configRegistry');
+const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { testConnection: webdavTestConnection } = require('../../infrastructure/webdavTest');
 const S3BlobStore = require('../../infrastructure/adapters/blobstore/S3BlobStore');
 const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const User = require('../../models/User');
+const Settings = require('../../models/Settings');
 
 // Mount base for the resolved env file must match server/index.js:10-12, which
 // resolves against the server root (__dirname of index.js). The routes module
@@ -56,6 +60,13 @@ const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
 
 const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
 const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
+
+// keep in sync with 001_initial_normalized_schema.sql
+const SETTINGS_TABLE_DDL = `CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`;
 
 function isMissing(value) {
   return value == null || String(value).trim() === '';
@@ -338,6 +349,115 @@ function buildEnvEntries(body) {
   return entries;
 }
 
+/**
+ * Split the full entries map into the T0 subset that must be written to .env
+ * (PLAN §2 D2/D3/D4/D7 — startup-critical, .env-only) and everything else,
+ * which is upserted into the metadata DB `settings` table (D11; row key = the
+ * raw env var name). Classification comes from the config registry, never a
+ * local allowlist, so the wizard cannot drift from the tier model.
+ */
+function partitionEntries(entries) {
+  const envEntries = {};
+  const dbEntries = {};
+  for (const [key, value] of Object.entries(entries)) {
+    if (isT0(key)) envEntries[key] = value;
+    else dbEntries[key] = value;
+  }
+  return { envEntries, dbEntries };
+}
+
+function encryptSecretValue(value, masterKey) {
+  return JSON.stringify(encryptSecret(String(value), masterKey));
+}
+
+const EFFECTIVE_SECRET_MASK = '****';
+
+/**
+ * getEffectiveConfig() masks every secret as '****' — even one that resolves to
+ * nothing (no env value, no DB row, no built-in default; configResolver spec
+ * §2.6). setupStatus's presence checks run on the merged view, so an absent
+ * required secret would be treated as present and dropped from `missing`.
+ * Drop the mask for secrets that are genuinely unset — a T0 secret with no env
+ * value (env-only source), or a DB-fallback secret with no env/DB/default — so
+ * the effective view drives `missing` / `setup_complete` / `current` correctly
+ * (Q1b).
+ */
+function normalizeEffectiveForStatus(effective) {
+  const out = { ...effective };
+  for (const [key, meta] of Object.entries(effective)) {
+    if (!meta.secret || meta.value !== EFFECTIVE_SECRET_MASK) continue;
+    const t0Unset = meta.tier === TIER.T0 && !process.env[key];
+    const dbUnset = meta.source === 'default' && getDefault(key) === undefined;
+    if (t0Unset || dbUnset) out[key] = { ...meta, value: undefined };
+  }
+  return out;
+}
+
+/**
+ * Upsert non-T0 wizard values into the metadata DB.
+ *
+ * - sqlite: write through the app's own Settings model (plaintext config as-is;
+ *   the store JSON-stringifies on PG / stores raw TEXT on sqlite; a secret is
+ *   the JSON string of the encrypted payload).
+ * - postgresql: connect DIRECTLY to the target PG with the entered credentials
+ *   (the app's pool does not exist yet), ensure the `settings` table via the
+ *   same idempotent DDL as 001_initial_normalized_schema.sql, and upsert each
+ *   row. Plaintext rows store `JSON.stringify(String(value))` (e.g.
+ *   `"smtp.gmail.com"`); secret rows store the encrypted payload object as JSON
+ *   — both mirroring settingsStore.set so the resolver reads them identically.
+ */
+async function writeSettings(metadata, dbEntries, masterKey) {
+  if (metadata.backend === 'postgresql') {
+    let Client;
+    try {
+      ({ Client } = require('pg'));
+    } catch (error) {
+      throw probeError(
+        SETUP_TEST_FAILED_CODE,
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        'pg module unavailable'
+      );
+    }
+
+    const client = new Client({
+      host: metadata.host,
+      port: Number(metadata.port) || 5432,
+      database: metadata.database,
+      user: metadata.user,
+      password: metadata.password,
+      ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 5000,
+    });
+
+    try {
+      await client.connect();
+      await client.query(SETTINGS_TABLE_DDL);
+      for (const [key, value] of Object.entries(dbEntries)) {
+        const stored = isSecret(key)
+          ? encryptSecretValue(value, masterKey)
+          : JSON.stringify(String(value));
+        await client.query(
+          `INSERT INTO settings (key, value, updated_at)
+           VALUES ($1, $2::jsonb, NOW())
+           ON CONFLICT (key)
+           DO UPDATE
+             SET value = EXCLUDED.value,
+                 updated_at = NOW()`,
+          [key, stored]
+        );
+      }
+    } finally {
+      await client.end().catch(() => {});
+    }
+    return;
+  }
+
+  for (const [key, value] of Object.entries(dbEntries)) {
+    if (isSecret(key)) await Settings.set(key, encryptSecretValue(value, masterKey));
+    else await Settings.set(key, value);
+  }
+}
+
 async function updateAdminPassword(password) {
   const admin = await User.findByUsername('admin');
   if (!admin) {
@@ -494,20 +614,51 @@ async function runProbe(target, body) {
   );
 }
 
-function requireSetupIncomplete(req, res, next) {
-  const { setup_complete } = computeSetupStatus(process.env);
-  if (setup_complete) {
-    return next(createError(SERVER_ERROR_CODES.setup.complete, HTTP_STATUS.FORBIDDEN));
+async function requireSetupIncomplete(req, res, next) {
+  try {
+    const effective = await getSharedResolver().getEffectiveConfig();
+    const { setup_complete } = computeSetupStatus(process.env, {
+      effectiveConfig: normalizeEffectiveForStatus(effective),
+    });
+    if (setup_complete) {
+      return next(createError(SERVER_ERROR_CODES.setup.complete, HTTP_STATUS.FORBIDDEN));
+    }
+    return next();
+  } catch (error) {
+    return next(error);
   }
-  return next();
 }
 
 const router = express.Router();
 
 // GET /api/setup/status — public, always available.
-router.get('/status', (req, res) => {
-  res.json(computeSetupStatus(process.env));
-});
+router.get('/status', asyncHandler(async (req, res) => {
+  const effective = await getSharedResolver().getEffectiveConfig();
+  const status = computeSetupStatus(process.env, {
+    effectiveConfig: normalizeEffectiveForStatus(effective),
+  });
+
+  // key-lost warning (PLAN §7): an encrypted DB secret row cannot be
+  // decrypted/prefilled without the master key. Detection is shape-only — this
+  // path never decrypts, so prefill cannot leak plaintext.
+  const all = await Settings.getAll();
+  const hasEncryptedRows = Object.values(all).some((raw) => {
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = raw;
+      }
+    }
+    return isEncryptedPayload(parsed);
+  });
+
+  res.json({
+    ...status,
+    key_lost_warning: Boolean(hasEncryptedRows && !process.env.encrypt_secret_key),
+  });
+}));
 
 // POST /api/setup/test — public; 403 setup.complete when already complete.
 router.post(
@@ -547,14 +698,29 @@ router.post(
 
     const body = req.body;
     const entries = buildEnvEntries(body);
+    const { envEntries, dbEntries } = partitionEntries(entries);
+
+    // encrypt_secret_key lifecycle (PLAN §7): keep an existing key — never
+    // regenerate it and never write it to .env. Only auto-generate when none
+    // exists; the generated key is T0 / .env-only and used to encrypt this
+    // apply's DB secrets.
+    const masterKey = process.env.encrypt_secret_key || generateKey();
+    if (!process.env.encrypt_secret_key) envEntries.encrypt_secret_key = masterKey;
+
     if (body.metadata.backend === 'postgresql') {
-      entries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
+      dbEntries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
     } else {
       await updateAdminPassword(String(body.admin.password));
     }
 
+    await writeSettings(body.metadata, dbEntries, masterKey);
+
     const envPath = resolveEnvPath(SERVER_ROOT);
-    writeEnv(envPath, entries);
+    writeEnv(envPath, envEntries);
+
+    // Clear the shared T2 cache so the DB writes are visible to restart-free
+    // (T2) reads immediately after this apply.
+    getSharedResolver().invalidateCache();
 
     res.json({ restart_required: true });
   })

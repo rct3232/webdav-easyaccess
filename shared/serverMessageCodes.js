@@ -141,6 +141,10 @@ const SERVER_ERROR_CODES = {
   api: {
     webdavTestFailed: P('serverErrors.api', 'webdavTestFailed'),
   },
+  setup: {
+    incomplete: P('serverErrors.setup', 'incomplete'),
+    complete: P('serverErrors.setup', 'complete'),
+  },
   thumbnails: {
     invalidOrExpiredToken: P('serverErrors.thumbnails', 'invalidOrExpiredToken'),
     notFound: P('serverErrors.thumbnails', 'notFound'),

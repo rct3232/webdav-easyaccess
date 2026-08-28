@@ -145,9 +145,17 @@ E2E_BACKEND_MODE=webdav npm run e2e:server
 E2E_LATER_WAVES=1 npm run test:e2e
 
 # Run only the setup-wizard project (hermetic scratch instance on :5003;
-# independent of E2E_BACKEND_MODE)
+# independent of E2E_BACKEND_MODE except for Case 2)
 npx playwright test --project=setup-wizard-desktop
 npx playwright test --project=setup-wizard-mobile
+
+# Explicit backend mode for the setup projects. E2E_BACKEND_MODE only gates
+# Case 2 (E2E-SETUP-002): it needs MinIO (s3 mode) and self-skips in webdav
+# mode. Cases 1/3/4 run in both modes.
+E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-desktop
+E2E_BACKEND_MODE=webdav npx playwright test --project=setup-wizard-desktop
+E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-mobile
+E2E_BACKEND_MODE=webdav npx playwright test --project=setup-wizard-mobile
 ```
 
 Required assumptions:

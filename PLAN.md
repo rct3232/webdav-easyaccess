@@ -302,7 +302,7 @@ process lifecycle (restart is the thing under test).
   |------|----------|------|------|-------|
   | 1 | sqlite | webdav (bytemark `:8090`, MKCOL into `/setup-e2e/` subtree) | both modes | webdav container is always-up in e2e |
   | 2 | sqlite | s3 (MinIO `:9010`) | `s3` mode only (`test.skip` pattern per `s3-pg-integration.spec.ts:137-139`) | assert `S3_*` keys written |
-  | 3 | **postgresql** (create scratch DB `webdav_e2e_setup` on the e2e PG via a **new** scratch-DB helper — existing `helpers/pg.ts` is a read-only query helper against the shared `webdav_e2e` DB; webdav blob) | both modes | after restart assert `_schema_migrations` + users in scratch DB, and that scratch sqlite file has no users table seeded by wizard | |
+  | 3 | **postgresql** (create scratch DB `webdav_e2e_setup` on the e2e PG via a **new** scratch-DB helper — existing `helpers/pg.ts` is a read-only query helper against the shared `webdav_e2e` DB; webdav blob) | both modes | after restart assert `_schema_migrations` + users (admin via `ADMIN_DEFAULT_PASSWORD`) in scratch DB; scratch sqlite holds only the boot-time default admin — the wizard's PG apply never seeds the wizard admin into sqlite | |
   | 4 (security) | complete-state gate | both modes | after a completed case: `POST /api/setup/apply` → 403; `/setup` → redirect; file APIs work | |
 - `test.describe.configure({ mode: 'serial' })`; npm scripts already run `--workers=1`.
 - New shared-server on :5002 and CRA client on :3000 still boot for the run (config-level
@@ -341,4 +341,5 @@ instance on :5003, sqlite/PG-scratch isolation), `docs/TEST_GIT_GUIDE.md` (run c
 - 2026-08-28: T0 done — branch created from `dev` (0914896), this PLAN.md written. No implementation started.
 - 2026-08-28: PLAN.md reviewed against codebase — corrected §3.1, §3.3, §4, §5.1, §5.2, §5.3, §5.5, §7.2, §9, §10; opened the production-boot decision (§9).
 - 2026-08-28: D7 confirmed by user — production JWT throw relaxation detailed in §5.2.1 (implemented in T5); §9 risk row resolved, decisions table + §5.1/§5.2/T1 updated.
+- 2026-08-28: T9 done — e2e setup-wizard spec green in both modes both projects (s3 4/4, webdav 3+1 skip). Case 3 wording corrected (empirical finding: boot-time sqlite seeds a default admin first; the intent-preserving assertion is that the wizard's PG apply never seeds the wizard admin into sqlite). Also fixed a real prefill bug in the wizard (EMAIL_PORT '' would break apply when SMTP unset).
   (Entries to be appended per completed task: task id, evidence of verification, commit hash.)

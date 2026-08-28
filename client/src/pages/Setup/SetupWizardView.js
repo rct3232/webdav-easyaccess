@@ -78,6 +78,7 @@ const SetupWizardView = ({
             label={viewModel.host}
             value={form.pg.host}
             onChange={onFieldChange('pg', 'host')}
+            inputProps={{ 'data-testid': 'setup-pg-host' }}
           />
           <TextField
             fullWidth
@@ -86,6 +87,7 @@ const SetupWizardView = ({
             label={viewModel.port}
             value={form.pg.port}
             onChange={onFieldChange('pg', 'port')}
+            inputProps={{ 'data-testid': 'setup-pg-port' }}
           />
           <TextField
             fullWidth
@@ -94,6 +96,7 @@ const SetupWizardView = ({
             label={viewModel.database}
             value={form.pg.database}
             onChange={onFieldChange('pg', 'database')}
+            inputProps={{ 'data-testid': 'setup-pg-database' }}
           />
           <TextField
             fullWidth
@@ -102,6 +105,7 @@ const SetupWizardView = ({
             label={viewModel.user}
             value={form.pg.user}
             onChange={onFieldChange('pg', 'user')}
+            inputProps={{ 'data-testid': 'setup-pg-user' }}
           />
           <TextField
             fullWidth
@@ -111,6 +115,7 @@ const SetupWizardView = ({
             label={viewModel.password}
             value={form.pg.password}
             onChange={onFieldChange('pg', 'password')}
+            inputProps={{ 'data-testid': 'setup-pg-password' }}
           />
           <FormControlLabel
             control={<Checkbox checked={form.pg.ssl} onChange={onCheckboxChange('pg', 'ssl')} />}
@@ -150,6 +155,7 @@ const SetupWizardView = ({
             label={viewModel.bucket}
             value={form.s3.bucket}
             onChange={onFieldChange('s3', 'bucket')}
+            inputProps={{ 'data-testid': 'setup-s3-bucket' }}
           />
           <TextField
             fullWidth
@@ -158,6 +164,7 @@ const SetupWizardView = ({
             label={viewModel.region}
             value={form.s3.region}
             onChange={onFieldChange('s3', 'region')}
+            inputProps={{ 'data-testid': 'setup-s3-region' }}
           />
           <TextField
             fullWidth
@@ -166,6 +173,7 @@ const SetupWizardView = ({
             label={viewModel.accessKeyId}
             value={form.s3.accessKeyId}
             onChange={onFieldChange('s3', 'accessKeyId')}
+            inputProps={{ 'data-testid': 'setup-s3-accessKeyId' }}
           />
           <TextField
             fullWidth
@@ -175,6 +183,7 @@ const SetupWizardView = ({
             label={viewModel.secretAccessKey}
             value={form.s3.secretAccessKey}
             onChange={onFieldChange('s3', 'secretAccessKey')}
+            inputProps={{ 'data-testid': 'setup-s3-secretAccessKey' }}
           />
           <TextField
             fullWidth
@@ -182,6 +191,7 @@ const SetupWizardView = ({
             label={viewModel.endpoint}
             value={form.s3.endpoint}
             onChange={onFieldChange('s3', 'endpoint')}
+            inputProps={{ 'data-testid': 'setup-s3-endpoint' }}
           />
           <TestConnectionControls target="s3" testState={testStates.s3} viewModel={viewModel} onTestConnection={onTestConnection} />
         </Box>
@@ -194,6 +204,7 @@ const SetupWizardView = ({
             label={viewModel.url}
             value={form.webdav.url}
             onChange={onFieldChange('webdav', 'url')}
+            inputProps={{ 'data-testid': 'setup-webdav-url' }}
           />
           <TextField
             fullWidth
@@ -202,6 +213,7 @@ const SetupWizardView = ({
             label={viewModel.username}
             value={form.webdav.username}
             onChange={onFieldChange('webdav', 'username')}
+            inputProps={{ 'data-testid': 'setup-webdav-username' }}
           />
           <TextField
             fullWidth
@@ -211,6 +223,7 @@ const SetupWizardView = ({
             label={viewModel.password}
             value={form.webdav.password}
             onChange={onFieldChange('webdav', 'password')}
+            inputProps={{ 'data-testid': 'setup-webdav-password' }}
           />
           <TestConnectionControls
             target="webdav"
@@ -246,6 +259,7 @@ const SetupWizardView = ({
         label={viewModel.adminPassword}
         value={form.admin.password}
         onChange={onFieldChange('admin', 'password')}
+        inputProps={{ 'data-testid': 'setup-admin-password' }}
       />
       <TextField
         fullWidth
@@ -254,6 +268,7 @@ const SetupWizardView = ({
         label={viewModel.jwtSecret}
         value={form.jwt.secret}
         onChange={onFieldChange('jwt', 'secret')}
+        inputProps={{ 'data-testid': 'setup-jwt-secret' }}
       />
       <Button variant="outlined" onClick={onRegenerateSecret}>
         {viewModel.regenerate}
@@ -265,6 +280,7 @@ const SetupWizardView = ({
         value={form.jwt.expiresIn}
         onChange={onFieldChange('jwt', 'expiresIn')}
         helperText={viewModel.expiresInHelp}
+        inputProps={{ 'data-testid': 'setup-jwt-expiresIn' }}
       />
       {errors[2] && (
         <Alert severity="error" sx={{ mt: 2 }}>
@@ -285,6 +301,7 @@ const SetupWizardView = ({
         label={viewModel.serverPort}
         value={form.server.port}
         onChange={onFieldChange('server', 'port')}
+        inputProps={{ 'data-testid': 'setup-server-port' }}
       />
       <TextField
         fullWidth
@@ -292,6 +309,7 @@ const SetupWizardView = ({
         label={viewModel.corsOrigins}
         value={form.server.corsOrigins}
         onChange={onFieldChange('server', 'corsOrigins')}
+        inputProps={{ 'data-testid': 'setup-server-corsOrigins' }}
       />
       <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
         {viewModel.smtpTitle}
@@ -302,6 +320,7 @@ const SetupWizardView = ({
         label={viewModel.smtpHost}
         value={form.email.host}
         onChange={onFieldChange('email', 'host')}
+        inputProps={{ 'data-testid': 'setup-email-host' }}
       />
       <TextField
         fullWidth
@@ -309,6 +328,7 @@ const SetupWizardView = ({
         label={viewModel.smtpPort}
         value={form.email.port}
         onChange={onFieldChange('email', 'port')}
+        inputProps={{ 'data-testid': 'setup-email-port' }}
       />
       <TextField
         fullWidth
@@ -316,6 +336,7 @@ const SetupWizardView = ({
         label={viewModel.smtpUser}
         value={form.email.user}
         onChange={onFieldChange('email', 'user')}
+        inputProps={{ 'data-testid': 'setup-email-user' }}
       />
       <TextField
         fullWidth
@@ -324,6 +345,7 @@ const SetupWizardView = ({
         label={viewModel.smtpPassword}
         value={form.email.password}
         onChange={onFieldChange('email', 'password')}
+        inputProps={{ 'data-testid': 'setup-email-password' }}
       />
       <FormControlLabel
         control={<Checkbox checked={form.email.secure} onChange={onCheckboxChange('email', 'secure')} />}
@@ -335,6 +357,7 @@ const SetupWizardView = ({
         label={viewModel.smtpFromName}
         value={form.email.fromName}
         onChange={onFieldChange('email', 'fromName')}
+        inputProps={{ 'data-testid': 'setup-email-fromName' }}
       />
     </Box>
   );

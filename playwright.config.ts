@@ -43,6 +43,33 @@ const projects: PlaywrightProject[] = [
       hasTouch: true,
     },
   },
+  // Additive, hermetic setup-wizard projects (PLAN.md §7.2). They never reuse
+  // the shared `.env.e2e` boot state: each test spawns its own scratch server
+  // instance on :5003 (own env file, own sqlite path, own scratch PG DB) and
+  // supervises its own process lifecycle because restart is the behavior under
+  // test. The mode-prefixed projects above intentionally never match
+  // `setup-wizard.spec.ts` (their testMatch regexes do not include it), so the
+  // setup projects are the only ones that pick this spec up.
+  {
+    name: 'setup-wizard-desktop',
+    testMatch: /setup-wizard\.spec\.ts$/,
+    use: {
+      browserName: 'chromium',
+      viewport: { width: 1280, height: 720 },
+      baseURL: 'http://localhost:5003',
+    },
+  },
+  {
+    name: 'setup-wizard-mobile',
+    testMatch: /setup-wizard\.spec\.ts$/,
+    use: {
+      browserName: 'webkit',
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      baseURL: 'http://localhost:5003',
+    },
+  },
 ];
 
 export default defineConfig({

@@ -140,7 +140,10 @@ function prefillForm(prev, current) {
   next.email = {
     ...next.email,
     host: current.EMAIL_HOST != null ? current.EMAIL_HOST : next.email.host,
-    port: current.EMAIL_PORT != null ? current.EMAIL_PORT : next.email.port,
+    // Truthy guard: an unset EMAIL_PORT surfaces as '' in status.current, and
+    // applying an empty port is rejected as invalid. Keep the documented '587'
+    // default when SMTP is not configured.
+    port: current.EMAIL_PORT ? current.EMAIL_PORT : next.email.port,
     user: current.EMAIL_USER != null ? current.EMAIL_USER : next.email.user,
     password: normalizeSecret(current.EMAIL_PASSWORD),
     secure: parseBool(current.EMAIL_SECURE, next.email.secure),

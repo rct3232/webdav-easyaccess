@@ -14,27 +14,27 @@ DB connection before it exists.
 
 ## 2. Confirmed Decisions (from discussion)
 
-| # | Decision | Choice |
-|---|----------|--------|
-| D1 | Source precedence | `.env` (when set) → DB `settings` (when set) → built-in default |
-| D2 | `.env` contents | **T0 only** — startup-critical DB connection info (+ `NODE_ENV`, `DOTENV_CONFIG_PATH`, `encrypt_secret_key`) |
-| D3 | Wizard apply target | Defaults to **DB storage**; only T0 keys are written to `.env` |
-| D4 | `JWT_SECRET` | `.env`-only (never DB; rotation invalidates sessions + boot auth key) |
-| D5 | `JWT_EXPIRES_IN` | **Not** `.env`-only — env → DB fallback (read lazily at sign time → hot) |
-| D6 | Secret encryption in DB | AES-256-GCM; master key env `encrypt_secret_key` (T0, `.env`-only) |
-| D7 | PG password | `.env`-only (T0); **not encrypted / not in DB** |
-| D8 | DB-eligible secrets | `EMAIL_PASSWORD`, `WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY` (encrypted) |
-| D9 | env vs DB inconsistency | `.env` wins at boot; **admin-login alert + sync feature = future scope** |
-| D10 | DB down | No fallback — boot fails (service is unusable anyway) |
-| D11 | DB storage | Reuse `settings(key PK, value JSONB, updated_at)`; **no schema change**; row key = raw env var name |
+| #   | Decision                | Choice                                                                                                       |
+| --- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| D1  | Source precedence       | `.env` (when set) → DB `settings` (when set) → built-in default                                              |
+| D2  | `.env` contents         | **T0 only** — startup-critical DB connection info (+ `NODE_ENV`, `DOTENV_CONFIG_PATH`, `encrypt_secret_key`) |
+| D3  | Wizard apply target     | Defaults to **DB storage**; only T0 keys are written to `.env`                                               |
+| D4  | `JWT_SECRET`            | `.env`-only (never DB; rotation invalidates sessions + boot auth key)                                        |
+| D5  | `JWT_EXPIRES_IN`        | **Not** `.env`-only — env → DB fallback (read lazily at sign time → hot)                                     |
+| D6  | Secret encryption in DB | AES-256-GCM; master key env `encrypt_secret_key` (T0, `.env`-only)                                           |
+| D7  | PG password             | `.env`-only (T0); **not encrypted / not in DB**                                                              |
+| D8  | DB-eligible secrets     | `EMAIL_PASSWORD`, `WEBDAV_PASSWORD`, `AWS_SECRET_ACCESS_KEY` (encrypted)                                     |
+| D9  | env vs DB inconsistency | `.env` wins at boot; **admin-login alert + sync feature = future scope**                                     |
+| D10 | DB down                 | No fallback — boot fails (service is unusable anyway)                                                        |
+| D11 | DB storage              | Reuse `settings(key PK, value JSONB, updated_at)`; **no schema change**; row key = raw env var name          |
 
 ## 3. Tier Model
 
-| Tier | Semantics | Source | Change to take effect |
-|------|-----------|--------|----------------------|
-| **T0 — Startup** | Required to connect to the metadata DB | `.env` only | restart |
-| **T1 — Boot (frozen)** | Read once at boot into a snapshot; consumers behave as require-time consts | env → DB → default | restart |
-| **T2 — Runtime (hot)** | Read lazily per request/operation (small TTL cache, invalidated on write) | env → DB → default | immediate |
+| Tier                   | Semantics                                                                  | Source             | Change to take effect |
+| ---------------------- | -------------------------------------------------------------------------- | ------------------ | --------------------- |
+| **T0 — Startup**       | Required to connect to the metadata DB                                     | `.env` only        | restart               |
+| **T1 — Boot (frozen)** | Read once at boot into a snapshot; consumers behave as require-time consts | env → DB → default | restart               |
+| **T2 — Runtime (hot)** | Read lazily per request/operation (small TTL cache, invalidated on write)  | env → DB → default | immediate             |
 
 Precedence invariant (D1): a value present in `.env` always wins; the DB copy is read only
 when the env var is absent. For encrypted secrets, an env value means "do not even decrypt".
@@ -42,6 +42,7 @@ when the env var is absent. For encrypted secrets, an env value means "do not ev
 ## 4. Variable Classification
 
 ### T0 — `.env` only (D2, D4, D7)
+
 `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_HOST` / `WEA_PG_PORT` / `WEA_PG_DATABASE` /
 `WEA_PG_USER` / `WEA_PG_PASSWORD` / `WEA_PG_SSL` / `WEA_PG_MAX` / `WEA_PG_IDLE_TIMEOUT_MS` /
 `WEA_PG_CONNECTION_TIMEOUT_MS`, `PGSSLMODE`, `NODE_ENV`, `DOTENV_CONFIG_PATH`,
@@ -51,6 +52,7 @@ info exists; `JWT_SECRET` is the boot auth key (D4); `encrypt_secret_key` is nee
 DB secrets before any request.
 
 ### T1 — env → DB fallback, restart required (boot-frozen)
+
 `PORT`, `WEA_FILE_STORAGE`, `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY` (secret, D8), `S3_ENDPOINT`, `WEBDAV_URL`, `WEBDAV_USERNAME`,
 `WEBDAV_PASSWORD` (secret, D8), `WEBDAV_AUTH_TYPE`, rate-limit config
@@ -60,6 +62,7 @@ Rationale: consumed to construct boot-time singletons (blob store, listen port, 
 module consts). The **source** can be DB; the **effect** requires a restart.
 
 ### T2 — env → DB fallback, immediate (hot)
+
 `registration_enabled` (already DB), `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`,
 `EMAIL_PASSWORD` (secret, D8), `EMAIL_SECURE`, `EMAIL_FROM_NAME`, `CORS_ORIGINS`,
 `GC_ORPHAN_TTL_DAYS`, `WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5).
@@ -112,8 +115,22 @@ are written to `.env`.**
   metadata DB `settings` table; secrets encrypted with `encrypt_secret_key`.
 - Admin password effect: unchanged semantics (sqlite direct update / PG via
   `ADMIN_DEFAULT_PASSWORD` — T1).
-- **Open items** (see §10): PG case must ensure the target DB is reachable and the
-  `settings` table exists before the wizard writes config rows into it.
+- **PG case (resolved, Q1a)**: apply connects to the target PG with the entered credentials
+  and ensures the `settings` table exists by executing the same idempotent
+  `CREATE TABLE IF NOT EXISTS settings (...)` DDL that mirrors `001_initial_normalized_schema.sql`
+  (comment must state "keep in sync with 001"). The full app schema (`users`, `_schema_migrations`,
+  …) is still created by normal boot migrations on restart — no conflict (IF NOT EXISTS +
+  file-based tracking).
+- **Prefill from existing DB (resolved, Q1b)**: `setupStatus.current` becomes the **effective**
+  view = env-first over DB rows. Two scenarios:
+  1. Fresh setup (app metadata = sqlite, T0 unset) → the wizard reads existing config rows from
+     the **entered target PG via a direct connection** (after a successful connection test) to
+     prefill; masked secrets shown.
+  2. Existing PG deployment (.env has `WEA_PG_*`) → app's own `settingsStore` supplies prefill.
+  - **Encryption-key consistency (critical)**: existing DB secrets are encrypted with the
+    original `encrypt_secret_key` — if `.env` already has a key, apply/prefill must **keep it**
+    (never regenerate, D1); if no key exists but encrypted DB secrets are present, surface a
+    "key lost" warning.
 
 ## 8. Boot Order
 
@@ -128,16 +145,27 @@ are written to `.env`.**
 - `encrypt_secret_key` rotation tooling.
 - `WEA_SETUP_TOKEN`-style hardening.
 
-## 10. Open Questions (for plan expansion)
+## 10. Resolved Questions (user-confirmed)
 
-1. Wizard apply for PostgreSQL: how to write config rows into the PG DB during apply
-   (direct connection + ensure `settings` table / migrations), vs sqlite which is local?
-2. T2 cache: TTL value, and invalidation trigger (on DB write only, or also poll)?
-3. Admin config API/UI scope in this phase (read-only view vs full CRUD with masked secrets)?
-4. Does the wizard auto-generate `encrypt_secret_key` (recommended) or require the operator?
-5. Confirm row-key naming: raw env var names (recommended) vs `config.`-prefix.
-6. T1 snapshot ordering risk: `auth.js` requires the snapshot before routes mount — confirm the
-   boot sequence guarantees snapshot readiness for `JWT_EXPIRES_IN` (T2) reads.
+1. **Wizard apply for PostgreSQL** — apply connects to the target PG with the entered creds,
+   ensures `settings` exists (idempotent DDL mirroring 001, see §7), upserts config rows; sqlite
+   uses the local store. Full schema via normal boot migrations (Q1a confirmed — no conflict).
+2. **T2 cache** — in-memory per-key cache; **invalidate on write** (admin/wizard) + small TTL
+   (≈5s) as a backstop for direct-DB edits. Single-instance assumption.
+3. **Admin config API/UI** — **full implementation** (not split): `GET /api/admin/config`
+   (effective, masked secrets, source/tier/restart-required) + `PUT` (allowlisted → DB → T2
+   invalidate → restart-required list) + mypage-admin editing UI. Secret rule: always `****`,
+   only "set new value" allowed, blank = keep existing.
+4. **`encrypt_secret_key`** — wizard **auto-generates** when absent; **keeps existing** when
+   `.env` already has it (Q1b key consistency). Loss ⇒ DB secrets unrecoverable (documented).
+5. **Row-key naming** — **raw env var names** (D11), resolver is a 1:1 map; registry supplies the
+   UI's key list (no prefix needed).
+6. **`JWT_EXPIRES_IN`** — **T2 lazy**: read via `getConfig('JWT_EXPIRES_IN')` at token-sign time
+   (async), not a require-time const → no boot-snapshot ordering constraint. Applies to other T1
+   consumers as well: DB-sourced values are either lazy-read (→ T2) or boot-snapshot-sourced
+   with index.js ordering.
+
+## 11. Success Criteria (tentative)
 
 ## 11. Success Criteria (tentative)
 
@@ -168,3 +196,7 @@ are written to `.env`.**
 - 2026-08-28: Discussion summary captured (D1–D11, tier model, classification, DB/encryption
   design, wizard apply principle). Previous completed setup-wizard PLAN was deleted on `dev`
   (`595707e`). This plan is a fresh start and will be expanded.
+- 2026-08-28: §10 resolved (user-confirmed): Q1 PG apply (idempotent settings DDL, direct
+  connection; prefill scenarios + encrypt_secret_key keep-existing) — recorded in §7; Q2
+  invalidate-on-write + TTL; Q3 full admin config API + UI; Q4 auto-generate key; Q5 raw env
+  names; Q6 JWT_EXPIRES_IN as T2 lazy sign-time read.

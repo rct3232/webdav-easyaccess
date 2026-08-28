@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { MainLayout, PrivateRoute } from './components/layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Setup from './pages/Setup/Setup';
 import FileManager from './pages/FileManager';
 import MyPage from './pages/MyPage';
 import ShareLinkLoader from './pages/ShareLinkLoader';
@@ -66,6 +67,7 @@ function App() {
     [
       { path: '/login', element: <Login /> },
       { path: '/register', element: <Register /> },
+      { path: '/setup', element: <Setup /> },
       {
         element: <MainLayout />,
         children: [

@@ -592,7 +592,39 @@ export const handlers = [
   }),
 
   http.get(`${API_BASE}/settings/public`, () => {
-    return HttpResponse.json({ registration_enabled: true, email_enabled: false });
+    return HttpResponse.json({ registration_enabled: true, email_enabled: false, setup_complete: true });
+  }),
+
+  // --- Setup wizard (first-run boot config; docs/spec/server/routes/setup.md) ---
+  http.get(`${API_BASE}/setup/status`, () => {
+    return HttpResponse.json({
+      setup_complete: false,
+      missing: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
+      current: {
+        WEA_STORAGE_BACKEND: 'sqlite',
+        WEA_FILE_STORAGE: 's3',
+        PORT: '5001',
+        JWT_SECRET: '',
+        WEBDAV_URL: '',
+        EMAIL_HOST: '',
+      },
+    });
+  }),
+
+  http.post(`${API_BASE}/setup/test`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const validTargets = ['postgresql', 's3', 'webdav'];
+    if (!validTargets.includes(body.target)) {
+      return HttpResponse.json(
+        { ok: false, errorCode: 'serverErrors.permissionsMiddleware.pathRequired', message: 'Unsupported setup target' },
+        { status: 400 }
+      );
+    }
+    return HttpResponse.json({ ok: true });
+  }),
+
+  http.post(`${API_BASE}/setup/apply`, () => {
+    return HttpResponse.json({ restart_required: true });
   }),
 
   http.get(`${API_BASE}/webdav/info`, () => {

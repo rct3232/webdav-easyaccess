@@ -7,9 +7,9 @@ const fs = require('fs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
-const envPath = process.env.DOTENV_CONFIG_PATH
-  ? path.resolve(__dirname, process.env.DOTENV_CONFIG_PATH)
-  : path.join(__dirname, '../.env');
+const { resolveEnvPath } = require('./infrastructure/envPath');
+const { computeSetupStatus } = require('./infrastructure/setupStatus');
+const envPath = resolveEnvPath(__dirname);
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath, override: false });
 } else {
@@ -61,6 +61,9 @@ if (fs.existsSync(clientBuildPath)) {
 const requestLogger = require('./middleware/requestLogger');
 app.use('/api', requestLogger());
 
+const setupModeGuard = require('./middleware/setupModeGuard');
+const setupModeGuardInstance = setupModeGuard();
+
 // Thumbnails are non-JSON responses; mount before forcing JSON Content-Type.
 app.use('/api/thumbnails', require('./domains/thumbnails/routes'));
 app.use('/api/thumbnails', require('./domains/thumbnails/routes/thumbnailRoutes'));
@@ -70,23 +73,29 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+app.use('/api/setup', require('./domains/setup/routes'));
 app.use('/api/auth', require('./domains/auth/routes'));
 app.use('/api/users', require('./domains/admin/routes/users'));
-app.use('/api/admin', require('./domains/admin/routes/userManagement'));
-app.use('/api/admin', require('./domains/admin/routes/settings'));
-app.use('/api/admin', require('./domains/admin/routes/maintenance'));
-app.use('/api/admin', require('./domains/admin/routes/migration'));
-app.use('/api/settings', require('./domains/admin/routes/settings'));
-// Files domain routes (Phase 6 split)
-app.use('/api/files', require('./domains/files/routes/crud'));
-app.use('/api/files', require('./domains/files/routes/batch'));
-app.use('/api/files', require('./domains/files/routes/preview'));
-app.use('/api/folders', require('./domains/files/routes/folders'));
-app.use('/api/permissions', require('./domains/permissions/routes'));
-app.use('/api/permission-requests', require('./domains/permissions/routes/permissionRequests'));
-app.use('/api/share-links', require('./domains/sharing/routes/shareLinks'));
-app.use('/api/share', require('./domains/sharing/routes/sharePublic'));
-app.use('/api/recent-files', require('./domains/recentFiles/routes'));
+app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/userManagement'));
+app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/settings'));
+app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/maintenance'));
+app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/migration'));
+// Public settings (GET /api/settings/public) stays open in setup mode; the
+// admin-write settings routes under /api/settings are gated like /api/admin.
+app.use('/api/settings', (req, res, next) => {
+  if (req.path === '/public') return next();
+  return setupModeGuardInstance(req, res, next);
+}, require('./domains/admin/routes/settings'));
+// Files domain routes (Phase 6 split) — blocked while setup is incomplete
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/crud'));
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/batch'));
+app.use('/api/files', setupModeGuardInstance, require('./domains/files/routes/preview'));
+app.use('/api/folders', setupModeGuardInstance, require('./domains/files/routes/folders'));
+app.use('/api/permissions', setupModeGuardInstance, require('./domains/permissions/routes'));
+app.use('/api/permission-requests', setupModeGuardInstance, require('./domains/permissions/routes/permissionRequests'));
+app.use('/api/share-links', setupModeGuardInstance, require('./domains/sharing/routes/shareLinks'));
+app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/sharePublic'));
+app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 
@@ -162,13 +171,22 @@ initMetadataStore().then(async () => {
           .catch(err => console.error('Permission cleanup on startup failed:', err));
       });
       setImmediate(() => {
-        const { getComposition } = require('./service/composition');
-        const { runStartupFailSafeRecovery, startGcScheduler } = require('./infrastructure/maintenanceScheduler');
-        const composition = getComposition();
-        runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
-          .then(() => {})
-          .catch(err => console.error('Fail-safe recovery on startup failed:', err));
-        startGcScheduler({ gcService: composition.gcService });
+        try {
+          const { getComposition } = require('./service/composition');
+          const { runStartupFailSafeRecovery, startGcScheduler } = require('./infrastructure/maintenanceScheduler');
+          const composition = getComposition();
+          runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
+            .then(() => {})
+            .catch(err => console.error('Fail-safe recovery on startup failed:', err));
+          startGcScheduler({ gcService: composition.gcService });
+        } catch (err) {
+          const { setup_complete } = computeSetupStatus(process.env);
+          if (!setup_complete) {
+            console.warn('running in setup mode — file operations disabled');
+          } else {
+            console.error('Startup composition failed:', err);
+          }
+        }
       });
     });
   }

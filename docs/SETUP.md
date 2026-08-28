@@ -38,6 +38,13 @@ copy .env.example .env
 cp .env.example .env
 ```
 
+> **Note (first-run wizard):** When the app boots with **no** `.env` file, the web-based
+> first-run **setup wizard** ([`docs/features/setup-wizard.md`](features/setup-wizard.md))
+> lets you configure the keys below from the browser (metadata/blob backend, admin
+> account, JWT secret, optional SMTP/CORS/port) and writes the resolved values into `.env`
+> itself; a restart completes the setup. The reference table below remains canonical for
+> what the wizard writes and for manual/container configuration.
+
 ### Environment Variable Reference
 
 | Variable | Required | Description | Default |

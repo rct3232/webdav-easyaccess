@@ -188,7 +188,20 @@ Spec: `docs/spec/server/tools/blob-migration.md`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/settings/public` | None | Public settings (e.g. signup enabled). |
+| GET | `/api/settings/public` | None | Public settings (e.g. signup enabled, `setup_complete`). |
+
+---
+
+## Setup (first-run wizard)
+
+Public only while setup is incomplete. Once `setup_complete` is `true`, `test`/`apply`
+return `403 setup.complete`. Full contract: `docs/spec/server/routes/setup.md`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/setup/status` | None | Setup status: `{ setup_complete, missing: string[], current: {…masked} }`. |
+| POST | `/api/setup/test` | None | Test a connection target (`postgresql` / `s3` / `webdav`). 403 `setup.complete` when already complete. |
+| POST | `/api/setup/apply` | None | Write the configured keys to `.env`. Returns `200 { restart_required: true }`. 403 `setup.complete` when already complete. |
 
 ---
 

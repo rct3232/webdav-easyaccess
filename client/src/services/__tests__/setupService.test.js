@@ -11,7 +11,12 @@ describe('setupService', () => {
       expect(result).toEqual(
         expect.objectContaining({
           setup_complete: false,
-          missing: expect.arrayContaining(['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']),
+          missing: expect.arrayContaining([
+            'S3_BUCKET',
+            'AWS_REGION',
+            'AWS_ACCESS_KEY_ID',
+            'AWS_SECRET_ACCESS_KEY',
+          ]),
           current: expect.objectContaining({
             WEA_STORAGE_BACKEND: 'sqlite',
             WEA_FILE_STORAGE: 's3',
@@ -42,7 +47,11 @@ describe('setupService', () => {
       server.use(
         http.post('/api/setup/test', () =>
           HttpResponse.json(
-            { ok: false, errorCode: 'serverErrors.setup.complete', message: 'Setup already complete' },
+            {
+              ok: false,
+              errorCode: 'serverErrors.setup.complete',
+              message: 'Setup already complete',
+            },
             { status: 403 }
           )
         )
@@ -58,13 +67,45 @@ describe('setupService', () => {
         });
       }
     });
+
+    it('normalizes reason from the failure response', async () => {
+      server.use(
+        http.post('/api/setup/test', () =>
+          HttpResponse.json(
+            {
+              ok: false,
+              errorCode: 'serverErrors.setup.test.pg.unreachable',
+              message: 'Cannot reach the PostgreSQL server',
+              reason: 'ECONNREFUSED 127.0.0.1:5432',
+            },
+            { status: 400 }
+          )
+        )
+      );
+
+      try {
+        await testSetup('postgresql', { host: 'localhost' });
+        throw new Error('Expected reject');
+      } catch (err) {
+        expect(err).toMatchObject({
+          errorCode: 'serverErrors.setup.test.pg.unreachable',
+          message: 'Cannot reach the PostgreSQL server',
+          reason: 'ECONNREFUSED 127.0.0.1:5432',
+        });
+      }
+    });
   });
 
   describe('applySetup', () => {
     it('resolves { restart_required: true } from POST /api/setup/apply', async () => {
       const result = await applySetup({
         metadata: { backend: 'sqlite' },
-        file: { backend: 'webdav', url: 'https://example.com/webdav', username: 'admin', password: 'secret' },
+        file: {
+          backend: 'webdav',
+          url: 'https://example.com/webdav',
+          username: 'admin',
+          password: 'secret',
+        },
         admin: { password: 'admin123' },
         jwt: { secret: 'x'.repeat(40), expiresIn: '30m' },
         server: { port: '5001', corsOrigins: '' },

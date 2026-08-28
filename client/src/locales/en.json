@@ -726,7 +726,22 @@
     },
     "setup": {
       "incomplete": "The server is not fully configured. Finish the setup wizard first.",
-      "complete": "The server is already configured. Setup is no longer available."
+      "complete": "The server is already configured. Setup is no longer available.",
+      "testFailed": "Connection test failed.",
+      "invalidPayload": "Invalid setup payload. Check the entered values.",
+      "test": {
+        "failed": "Connection test failed. Check the entered values.",
+        "pg": {
+          "unreachable": "Cannot reach the PostgreSQL server. Check host, port, and network.",
+          "authFailed": "PostgreSQL authentication failed. Check user and password.",
+          "databaseMissing": "Database does not exist."
+        },
+        "s3": {
+          "accessDenied": "S3 access denied. Check access key, secret, and bucket permissions.",
+          "bucketMissing": "S3 bucket not found.",
+          "unreachable": "Cannot reach the S3 endpoint. Check endpoint and network."
+        }
+      }
     },
     "thumbnails": {
       "invalidOrExpiredToken": "Invalid or expired thumbnail token",

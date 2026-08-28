@@ -14,6 +14,7 @@ export const testSetup = async (target, payload) => {
     const message = data?.message || err.message || 'Setup connection test failed';
     const normalized = new Error(message);
     normalized.errorCode = data?.errorCode || 'errors.unknown';
+    normalized.reason = data?.reason;
     throw normalized;
   }
 };

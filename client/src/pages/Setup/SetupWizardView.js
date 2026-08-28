@@ -31,9 +31,16 @@ function TestConnectionControls({ target, testState, viewModel, onTestConnection
         </Typography>
       )}
       {testState?.status === 'error' && (
-        <Typography variant="body2" color="error.main">
-          {testState.message}
-        </Typography>
+        <Box>
+          <Typography variant="body2" color="error.main">
+            {testState.message}
+          </Typography>
+          {testState.reason && !testState.message.includes(testState.reason) && (
+            <Typography variant="caption" color="text.secondary">
+              {testState.reason}
+            </Typography>
+          )}
+        </Box>
       )}
     </Box>
   );
@@ -65,9 +72,17 @@ const SetupWizardView = ({
       <Typography variant="h6" gutterBottom>
         {viewModel.metadataBackend}
       </Typography>
-      <RadioGroup row value={form.metadataBackend} onChange={(event, value) => onMetadataBackendChange(value)}>
+      <RadioGroup
+        row
+        value={form.metadataBackend}
+        onChange={(event, value) => onMetadataBackendChange(value)}
+      >
         <FormControlLabel value="sqlite" control={<Radio />} label={viewModel.metadataSqlite} />
-        <FormControlLabel value="postgresql" control={<Radio />} label={viewModel.metadataPostgresql} />
+        <FormControlLabel
+          value="postgresql"
+          control={<Radio />}
+          label={viewModel.metadataPostgresql}
+        />
       </RadioGroup>
       {form.metadataBackend === 'postgresql' && (
         <Box sx={{ mt: 1 }}>
@@ -142,7 +157,11 @@ const SetupWizardView = ({
       <Typography variant="h6" gutterBottom>
         {viewModel.fileBackend}
       </Typography>
-      <RadioGroup row value={form.fileBackend} onChange={(event, value) => onFileBackendChange(value)}>
+      <RadioGroup
+        row
+        value={form.fileBackend}
+        onChange={(event, value) => onFileBackendChange(value)}
+      >
         <FormControlLabel value="s3" control={<Radio />} label={viewModel.fileS3} />
         <FormControlLabel value="webdav" control={<Radio />} label={viewModel.fileWebdav} />
       </RadioGroup>
@@ -193,7 +212,12 @@ const SetupWizardView = ({
             onChange={onFieldChange('s3', 'endpoint')}
             inputProps={{ 'data-testid': 'setup-s3-endpoint' }}
           />
-          <TestConnectionControls target="s3" testState={testStates.s3} viewModel={viewModel} onTestConnection={onTestConnection} />
+          <TestConnectionControls
+            target="s3"
+            testState={testStates.s3}
+            viewModel={viewModel}
+            onTestConnection={onTestConnection}
+          />
         </Box>
       ) : (
         <Box sx={{ mt: 1 }}>
@@ -348,7 +372,9 @@ const SetupWizardView = ({
         inputProps={{ 'data-testid': 'setup-email-password' }}
       />
       <FormControlLabel
-        control={<Checkbox checked={form.email.secure} onChange={onCheckboxChange('email', 'secure')} />}
+        control={
+          <Checkbox checked={form.email.secure} onChange={onCheckboxChange('email', 'secure')} />
+        }
         label={viewModel.smtpSecure}
       />
       <TextField

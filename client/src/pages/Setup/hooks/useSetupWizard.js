@@ -82,9 +82,9 @@ function createInitialForm() {
 
 function createInitialTestStates() {
   return {
-    postgresql: { status: 'idle', message: '' },
-    s3: { status: 'idle', message: '' },
-    webdav: { status: 'idle', message: '' },
+    postgresql: { status: 'idle', message: '', reason: '' },
+    s3: { status: 'idle', message: '', reason: '' },
+    webdav: { status: 'idle', message: '', reason: '' },
   };
 }
 
@@ -116,7 +116,8 @@ function prefillForm(prev, current) {
         : current.S3_REGION != null
           ? current.S3_REGION
           : next.s3.region,
-    accessKeyId: current.AWS_ACCESS_KEY_ID != null ? current.AWS_ACCESS_KEY_ID : next.s3.accessKeyId,
+    accessKeyId:
+      current.AWS_ACCESS_KEY_ID != null ? current.AWS_ACCESS_KEY_ID : next.s3.accessKeyId,
     secretAccessKey: normalizeSecret(current.AWS_SECRET_ACCESS_KEY),
     endpoint: current.S3_ENDPOINT != null ? current.S3_ENDPOINT : next.s3.endpoint,
   };
@@ -163,7 +164,7 @@ function validateRequiredFields(values, fields, t) {
 
 function resolveErrorMessage(err, t, fallbackKey) {
   if (err?.errorCode) {
-    const translated = t(err.errorCode);
+    const translated = t(err.errorCode, { reason: err?.reason });
     if (translated && translated !== err.errorCode) return translated;
   }
   return err?.message || t(fallbackKey);
@@ -247,28 +248,35 @@ export function useSetupWizard() {
     setActiveStep((prev) => Math.min(prev + 1, STEP_COUNT - 1));
   }, [activeStep, form, t]);
 
-  const buildTestPayload = useCallback((target) => {
-    if (target === 'postgresql') {
+  const buildTestPayload = useCallback(
+    (target) => {
+      if (target === 'postgresql') {
+        return {
+          host: form.pg.host,
+          port: form.pg.port,
+          database: form.pg.database,
+          user: form.pg.user,
+          password: form.pg.password,
+          ssl: form.pg.ssl,
+        };
+      }
+      if (target === 's3') {
+        return {
+          bucket: form.s3.bucket,
+          region: form.s3.region,
+          accessKeyId: form.s3.accessKeyId,
+          secretAccessKey: form.s3.secretAccessKey,
+          endpoint: form.s3.endpoint,
+        };
+      }
       return {
-        host: form.pg.host,
-        port: form.pg.port,
-        database: form.pg.database,
-        user: form.pg.user,
-        password: form.pg.password,
-        ssl: form.pg.ssl,
+        url: form.webdav.url,
+        username: form.webdav.username,
+        password: form.webdav.password,
       };
-    }
-    if (target === 's3') {
-      return {
-        bucket: form.s3.bucket,
-        region: form.s3.region,
-        accessKeyId: form.s3.accessKeyId,
-        secretAccessKey: form.s3.secretAccessKey,
-        endpoint: form.s3.endpoint,
-      };
-    }
-    return { url: form.webdav.url, username: form.webdav.username, password: form.webdav.password };
-  }, [form]);
+    },
+    [form]
+  );
 
   const handleTestConnection = useCallback(
     async (target) => {
@@ -276,17 +284,27 @@ export function useSetupWizard() {
       if (!fields) return;
       const requiredError = validateRequiredFields(form[TEST_TARGET_SCOPE[target]], fields, t);
       if (requiredError) {
-        setTestStates((prev) => ({ ...prev, [target]: { status: 'error', message: requiredError } }));
+        setTestStates((prev) => ({
+          ...prev,
+          [target]: { status: 'error', message: requiredError },
+        }));
         return;
       }
       setTestStates((prev) => ({ ...prev, [target]: { status: 'testing', message: '' } }));
       try {
         await testSetup(target, buildTestPayload(target));
-        setTestStates((prev) => ({ ...prev, [target]: { status: 'ok', message: t('setup.testOk') } }));
+        setTestStates((prev) => ({
+          ...prev,
+          [target]: { status: 'ok', message: t('setup.testOk') },
+        }));
       } catch (err) {
         setTestStates((prev) => ({
           ...prev,
-          [target]: { status: 'error', message: resolveErrorMessage(err, t, 'setup.testFail') },
+          [target]: {
+            status: 'error',
+            message: resolveErrorMessage(err, t, 'setup.testFail'),
+            reason: err?.reason,
+          },
         }));
       }
     },
@@ -294,7 +312,8 @@ export function useSetupWizard() {
   );
 
   const buildApplyPayload = useCallback(() => {
-    const jwtSecret = !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
+    const jwtSecret =
+      !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
     const metadata =
       form.metadataBackend === 'postgresql'
         ? {
@@ -452,7 +471,11 @@ function validateStep(step, form, t) {
     return null;
   }
   if (step === 1) {
-    return validateRequiredFields(form[form.fileBackend], STEP_REQUIRED_FIELDS[form.fileBackend], t);
+    return validateRequiredFields(
+      form[form.fileBackend],
+      STEP_REQUIRED_FIELDS[form.fileBackend],
+      t
+    );
   }
   if (step === 2) {
     const passwordError = validatePassword(form.admin.password, { minLength: 6 });

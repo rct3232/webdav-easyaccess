@@ -65,7 +65,7 @@ Masking rule: secrets (`JWT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `WEBDAV_PASSWORD`,
 
 #### POST /api/setup/test
 
-Public; **403 `setup.complete` when already complete**. Accepts one of three target shapes; performs the corresponding connection probe and returns a pass-through result. Error responses use `{ ok: false, errorCode, message }`.
+Public; **403 `setup.complete` when already complete**. Accepts one of three target shapes; performs the corresponding connection probe and returns a pass-through result. Failure responses use `{ ok: false, errorCode, message, reason? }` (see error taxonomy below).
 
 **Request (one of three shapes):**
 
@@ -77,7 +77,29 @@ Public; **403 `setup.complete` when already complete**. Accepts one of three tar
 
 **Success:** `200 { "ok": true }`
 
-**Errors:** `4xx { "ok": false, "errorCode": "…", "message": "…" }`
+**Errors:** `4xx { "ok": false, "errorCode": "…", "message": "…", "reason": "…" }`
+
+- `errorCode` — stable i18n key (dot-notation `serverErrors.*`); the client renders its translation as the primary error text.
+- `message` — short English fallback for non-i18n clients.
+- `reason` — optional, **short** technical detail (trimmed to ~200 chars max), e.g. `ECONNREFUSED 127.0.0.1:5432` or `AccessDenied`. Shown only as a secondary muted detail line; the primary text always comes from the `errorCode` translation.
+
+**Connection-test error taxonomy.** Probe failures are classified into stable codes; anything unclassified falls back to `serverErrors.setup.test.failed` with the raw driver message kept in `reason` only:
+
+| Target     | Condition                                                     | errorCode                                                              |
+| ---------- | ------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| PostgreSQL | ECONNREFUSED / ENOTFOUND / EAI_AGAIN / ETIMEDOUT / ECONNRESET | `serverErrors.setup.test.pg.unreachable`                               |
+| PostgreSQL | pg error codes `28P01` / `28000` (auth failed)                | `serverErrors.setup.test.pg.authFailed`                                |
+| PostgreSQL | pg error code `3D000` (database does not exist)               | `serverErrors.setup.test.pg.databaseMissing`                           |
+| PostgreSQL | anything else                                                 | `serverErrors.setup.test.failed`                                       |
+| S3         | HTTP 403 / `AccessDenied`                                     | `serverErrors.setup.test.s3.accessDenied`                              |
+| S3         | `NoSuchBucket` (bucket does not exist)                        | `serverErrors.setup.test.s3.bucketMissing`                             |
+| S3         | ECONNREFUSED / ENOTFOUND / ETIMEDOUT                          | `serverErrors.setup.test.s3.unreachable`                               |
+| S3         | anything else                                                 | `serverErrors.setup.test.failed`                                       |
+| WebDAV     | unchanged                                                     | existing `serverErrors.webdav.*` / `serverErrors.api.webdavTestFailed` |
+
+- S3 probe success: the probe HEADs a random `__wea_setup_probe_<uuid>` key, so an HTTP 404 that does **not** name `NoSuchBucket` (i.e. `NotFound` / `NoSuchKey` — the key is simply absent) is treated as **success** (`{ ok: true }`); only a `NoSuchBucket` 404 is classified as `bucketMissing`.
+- Missing-required-fields (`Missing required fields: …`) and unsupported-target (`Unsupported target: …`) errors remain `serverErrors.setup.testFailed`.
+- WebDAV's generic failure uses `serverErrors.api.webdavTestFailed`, whose template contains `{{reason}}`; the client interpolates it via `t(errorCode, { reason })`.
 
 Probe references:
 
@@ -128,6 +150,14 @@ New codes added to `shared/serverMessageCodes.js`:
 - `setup.incomplete` → `serverErrors.setup.incomplete` — returned as `503 { errorCode: 'setup.incomplete' }` by the setup-mode guard on file-domain and admin-write routes while setup is incomplete.
 - `setup.complete` → `serverErrors.setup.complete` — returned as `403 { errorCode: 'setup.complete' }` by `POST /api/setup/test` and `POST /api/setup/apply` when setup is already complete.
 
+Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format; documented in §2.4, locale entries added in `client/src/locales/en.json`/`ko.json` — **not** added to `shared/serverMessageCodes.js`):
+
+- `serverErrors.setup.testFailed` — missing-required-fields / unsupported-target / generic probe failure.
+- `serverErrors.setup.test.failed` — generic connection-test failure (raw driver code in `reason`).
+- `serverErrors.setup.test.pg.unreachable`, `serverErrors.setup.test.pg.authFailed`, `serverErrors.setup.test.pg.databaseMissing`.
+- `serverErrors.setup.test.s3.accessDenied`, `serverErrors.setup.test.s3.bucketMissing`, `serverErrors.setup.test.s3.unreachable`.
+- `serverErrors.setup.invalidPayload` — invalid payload (reused by `POST /api/setup/apply` validation).
+
 ### 2.7 Related Route Changes
 
 `GET /api/settings/public` (`server/domains/admin/routes/settings.js:13-21`) is extended with `setup_complete: boolean` (derived from the same validator). The login page already fetches this endpoint (`client/src/pages/Login/hooks/useLoginForm.js:26-43`) → zero extra round-trip for the redirect-on-incomplete flow.
@@ -136,7 +166,7 @@ New codes added to `shared/serverMessageCodes.js`:
 
 - [ ] GET /status returns derived `{ setup_complete, missing, current }` with secrets masked
 - [ ] Fresh (no env) → incomplete with the exact missing list; full s3+sqlite → complete; full pg+webdav → complete; prod + default JWT → incomplete
-- [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message }`
+- [ ] POST /test passes through postgresql/s3/webdav probe results; error shapes are `{ ok: false, errorCode, message, reason? }` with the classified taxonomy codes
 - [ ] POST /apply happy path (sqlite+webdav / pg+s3) writes the expected `.env` lines with mode 0600
 - [ ] POST /apply when already complete → 403 `setup.complete`
 - [ ] POST /test when already complete → 403 `setup.complete`

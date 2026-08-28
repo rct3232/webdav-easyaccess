@@ -38,19 +38,44 @@ const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-routes-'));
 const ADMIN_PASSWORD = 'admin-old-password';
 
 const WIZARD_ENV_KEYS = [
-  'WEA_STORAGE_BACKEND', 'WEA_FILE_STORAGE', 'PORT', 'JWT_SECRET', 'JWT_EXPIRES_IN',
-  'WEA_PG_HOST', 'WEA_PG_PORT', 'WEA_PG_DATABASE', 'WEA_PG_USER', 'WEA_PG_PASSWORD',
-  'WEA_PG_SSL', 'WEA_PG_MAX', 'S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY', 'S3_ENDPOINT', 'WEBDAV_URL', 'WEBDAV_USERNAME',
-  'WEBDAV_PASSWORD', 'WEBDAV_AUTH_TYPE', 'CORS_ORIGINS', 'ADMIN_DEFAULT_PASSWORD',
-  'EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USER', 'EMAIL_PASSWORD', 'EMAIL_SECURE',
-  'EMAIL_FROM_NAME', 'DOTENV_CONFIG_PATH', 'WEA_SQLITE_PATH',
+  'WEA_STORAGE_BACKEND',
+  'WEA_FILE_STORAGE',
+  'PORT',
+  'JWT_SECRET',
+  'JWT_EXPIRES_IN',
+  'WEA_PG_HOST',
+  'WEA_PG_PORT',
+  'WEA_PG_DATABASE',
+  'WEA_PG_USER',
+  'WEA_PG_PASSWORD',
+  'WEA_PG_SSL',
+  'WEA_PG_MAX',
+  'S3_BUCKET',
+  'AWS_REGION',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'S3_ENDPOINT',
+  'WEBDAV_URL',
+  'WEBDAV_USERNAME',
+  'WEBDAV_PASSWORD',
+  'WEBDAV_AUTH_TYPE',
+  'CORS_ORIGINS',
+  'ADMIN_DEFAULT_PASSWORD',
+  'EMAIL_HOST',
+  'EMAIL_PORT',
+  'EMAIL_USER',
+  'EMAIL_PASSWORD',
+  'EMAIL_SECURE',
+  'EMAIL_FROM_NAME',
+  'DOTENV_CONFIG_PATH',
+  'WEA_SQLITE_PATH',
 ];
 const SAVED_ENV = {};
 
 function setIncompleteBaseline() {
   for (const key of WIZARD_ENV_KEYS) {
-    if (key !== 'WEA_STORAGE_BACKEND' && key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE') delete process.env[key];
+    if (key !== 'WEA_STORAGE_BACKEND' && key !== 'WEA_SQLITE_PATH' && key !== 'WEA_FILE_STORAGE')
+      delete process.env[key];
   }
   process.env.WEA_FILE_STORAGE = 's3';
 }
@@ -81,9 +106,10 @@ function makePgClient() {
   };
 }
 
-function makeNotFoundError() {
-  const err = new Error('NotFound');
-  err.name = 'NotFound';
+function makeNoSuchKeyError() {
+  const err = new Error('The specified key does not exist.');
+  err.name = 'NoSuchKey';
+  err.code = 'NoSuchKey';
   return err;
 }
 
@@ -129,7 +155,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   mockWebdavTestConnection.mockResolvedValue({ success: true });
   MockPgClient.mockImplementation(() => makePgClient());
-  setupS3HeadBlob(makeNotFoundError());
+  setupS3HeadBlob(makeNoSuchKeyError());
 });
 
 describe('GET /api/setup/status', () => {
@@ -177,23 +203,29 @@ describe('POST /api/setup/apply', () => {
     fs.writeFileSync(envPath, 'CUSTOM_FLAG=keep-me\nPORT=9000\n');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: {
-        backend: 'webdav',
-        url: 'https://dav.example.com',
-        username: 'dav-user',
-        password: 'dav-pass',
-        authType: 'auto',
-      },
-      admin: { password: 'new-admin-pass' },
-      jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
-      server: { port: '5001', corsOrigins: 'http://localhost:3000' },
-      email: {
-        host: 'smtp.example.com', port: '587', user: 'mail-user',
-        password: 'mail-pass', secure: false, fromName: 'WebDAV',
-      },
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'dav-user',
+          password: 'dav-pass',
+          authType: 'auto',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
+        server: { port: '5001', corsOrigins: 'http://localhost:3000' },
+        email: {
+          host: 'smtp.example.com',
+          port: '587',
+          user: 'mail-user',
+          password: 'mail-pass',
+          secure: false,
+          fromName: 'WebDAV',
+        },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
@@ -233,20 +265,22 @@ describe('POST /api/setup/apply', () => {
     fs.writeFileSync(envPath, 'CUSTOM_FLAG=keep-me\n');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: {
-        backend: 'webdav',
-        url: 'https://dav.example.com',
-        username: 'dav-user',
-        password: 'dav-pass',
-        authType: 'auto',
-      },
-      admin: { password: 'new-admin-pass' },
-      jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
-      server: { port: '', corsOrigins: '' },
-      email: { host: '', port: '', user: '', password: '', secure: false, fromName: '' },
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'dav-user',
+          password: 'dav-pass',
+          authType: 'auto',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
+        server: { port: '', corsOrigins: '' },
+        email: { host: '', port: '', user: '', password: '', secure: false, fromName: '' },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
@@ -262,28 +296,30 @@ describe('POST /api/setup/apply', () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: {
-        backend: 'postgresql',
-        host: 'db.local',
-        port: '5433',
-        database: 'webdav',
-        user: 'pg-user',
-        password: 'pg-pass',
-        ssl: true,
-        max: '20',
-      },
-      file: {
-        backend: 's3',
-        bucket: 'wea-bucket',
-        region: 'us-east-1',
-        accessKeyId: 'AKIAX',
-        secretAccessKey: 's3-secret',
-        endpoint: 'http://localhost:9010',
-      },
-      admin: { password: 'pg-admin-pass' },
-      jwt: { secret: 'jwt-pg' },
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: {
+          backend: 'postgresql',
+          host: 'db.local',
+          port: '5433',
+          database: 'webdav',
+          user: 'pg-user',
+          password: 'pg-pass',
+          ssl: true,
+          max: '20',
+        },
+        file: {
+          backend: 's3',
+          bucket: 'wea-bucket',
+          region: 'us-east-1',
+          accessKeyId: 'AKIAX',
+          secretAccessKey: 's3-secret',
+          endpoint: 'http://localhost:9010',
+        },
+        admin: { password: 'pg-admin-pass' },
+        jwt: { secret: 'jwt-pg' },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ restart_required: true });
@@ -314,24 +350,28 @@ describe('POST /api/setup/apply', () => {
 
   it('returns 403 setup.complete when setup is already complete', async () => {
     setCompleteWebdavEnv();
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-      admin: { password: 'whatever' },
-      jwt: { secret: 's' },
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'whatever' },
+        jwt: { secret: 's' },
+      });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
   });
 
   it('returns 400 per-field when required blocks are missing (jwt.secret)', async () => {
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-      admin: { password: 'pass' },
-      jwt: {},
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+        jwt: {},
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
@@ -339,12 +379,14 @@ describe('POST /api/setup/apply', () => {
   });
 
   it('returns 400 per-field for missing s3 keys and an unknown key', async () => {
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite', foo: 'bar' },
-      file: { backend: 's3', bucket: 'wea-bucket' },
-      admin: { password: 'pass' },
-      jwt: { secret: 's' },
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite', foo: 'bar' },
+        file: { backend: 's3', bucket: 'wea-bucket' },
+        admin: { password: 'pass' },
+        jwt: { secret: 's' },
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
@@ -355,14 +397,16 @@ describe('POST /api/setup/apply', () => {
   });
 
   it('returns 400 per-field for an invalid server port and an unknown top-level key', async () => {
-    const res = await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
-      admin: { password: 'pass' },
-      jwt: { secret: 's' },
-      server: { port: '99999' },
-      unexpected: true,
-    });
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'p' },
+        admin: { password: 'pass' },
+        jwt: { secret: 's' },
+        server: { port: '99999' },
+        unexpected: true,
+      });
 
     expect(res.status).toBe(400);
     expect(res.body.fields['server.port']).toBe('invalid');
@@ -374,8 +418,12 @@ describe('POST /api/setup/test', () => {
   it('postgresql: 200 ok:true on a successful connection', async () => {
     const res = await request(app).post('/api/setup/test').send({
       target: 'postgresql',
-      host: 'localhost', port: '5432', database: 'webdav',
-      user: 'u', password: 'p', ssl: false,
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
+      ssl: false,
     });
 
     expect(res.status).toBe(200);
@@ -391,32 +439,147 @@ describe('POST /api/setup/test', () => {
     });
   });
 
-  it('postgresql: 4xx ok:false with errorCode when the connection fails', async () => {
+  it('postgresql: 4xx ok:false with errorCode pg.unreachable and reason when the connection is refused', async () => {
+    const err = new Error('connect ECONNREFUSED 127.0.0.1:5432');
+    err.code = 'ECONNREFUSED';
+    err.errno = -111;
+    err.address = '127.0.0.1';
+    err.port = 5432;
     MockPgClient.mockImplementation(() => {
       const client = makePgClient();
-      client.connect.mockRejectedValue(new Error('ECONNREFUSED 127.0.0.1'));
+      client.connect.mockRejectedValue(err);
       return client;
     });
 
     const res = await request(app).post('/api/setup/test').send({
       target: 'postgresql',
-      host: 'localhost', port: '5432', database: 'webdav',
-      user: 'u', password: 'p',
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
     });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       ok: false,
-      errorCode: 'serverErrors.setup.testFailed',
-      message: expect.any(String),
+      errorCode: 'serverErrors.setup.test.pg.unreachable',
+      message: 'Connection test failed',
+      reason: 'ECONNREFUSED 127.0.0.1:5432',
     });
   });
 
-  it('s3: 200 ok:true when the probe hits a missing random key (404/NoSuchKey)', async () => {
+  it('postgresql: 4xx errorCode pg.authFailed on pg code 28P01', async () => {
+    const err = new Error('password authentication failed for user "u"');
+    err.code = '28P01';
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.connect.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'postgresql',
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'wrong',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.pg.authFailed',
+      message: 'Connection test failed',
+      reason: '28P01',
+    });
+  });
+
+  it('postgresql: 4xx errorCode pg.databaseMissing on pg code 3D000', async () => {
+    const err = new Error('database "webdav" does not exist');
+    err.code = '3D000';
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.connect.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'postgresql',
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.pg.databaseMissing',
+      message: 'Connection test failed',
+      reason: '3D000',
+    });
+  });
+
+  it('postgresql: 4xx generic test.failed with reason for unclassified errors', async () => {
+    const err = new Error('unexpected driver error');
+    err.code = 'XX000';
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.connect.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'postgresql',
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.failed',
+      message: 'Connection test failed',
+      reason: 'XX000',
+    });
+  });
+
+  it('postgresql: reason is trimmed to 200 chars max', async () => {
+    const err = new Error('driver detail '.repeat(40));
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.connect.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'postgresql',
+      host: 'localhost',
+      port: '5432',
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe('serverErrors.setup.test.failed');
+    expect(res.body.reason).toBeDefined();
+    expect(res.body.reason.length).toBeLessThanOrEqual(200);
+  });
+
+  it('s3: 200 ok:true when the probe hits a missing random key (NoSuchKey)', async () => {
     const res = await request(app).post('/api/setup/test').send({
       target: 's3',
-      bucket: 'wea-bucket', region: 'us-east-1',
-      accessKeyId: 'AKIAX', secretAccessKey: 's3-secret',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
       endpoint: 'http://localhost:9010',
     });
 
@@ -431,27 +594,121 @@ describe('POST /api/setup/test', () => {
     });
   });
 
-  it('s3: 4xx ok:false with errorCode when the probe fails for a non-404 reason', async () => {
-    setupS3HeadBlob(new Error('AccessDenied'));
+  it('s3: 200 ok:true when the probe hits a missing key reported as NotFound (real AWS/MinIO 404)', async () => {
+    const err = new Error('Not Found');
+    err.name = 'NotFound';
+    err.$metadata = { httpStatusCode: 404 };
+    setupS3HeadBlob(err);
 
     const res = await request(app).post('/api/setup/test').send({
       target: 's3',
-      bucket: 'wea-bucket', region: 'us-east-1',
-      accessKeyId: 'AKIAX', secretAccessKey: 's3-secret',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('s3: 4xx errorCode s3.accessDenied and reason on HTTP 403/AccessDenied', async () => {
+    const err = new Error('Access Denied');
+    err.name = 'AccessDenied';
+    err.code = 'AccessDenied';
+    err.$metadata = { httpStatusCode: 403 };
+    setupS3HeadBlob(err);
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 's3',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
     });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       ok: false,
-      errorCode: 'serverErrors.setup.testFailed',
-      message: expect.any(String),
+      errorCode: 'serverErrors.setup.test.s3.accessDenied',
+      message: 'Connection test failed',
+      reason: 'AccessDenied',
+    });
+  });
+
+  it('s3: 4xx errorCode s3.bucketMissing on HTTP 404/NoSuchBucket', async () => {
+    const err = new Error('The specified bucket does not exist');
+    err.name = 'NoSuchBucket';
+    err.code = 'NoSuchBucket';
+    err.$metadata = { httpStatusCode: 404 };
+    setupS3HeadBlob(err);
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 's3',
+      bucket: 'missing-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.s3.bucketMissing',
+      message: 'Connection test failed',
+      reason: 'NoSuchBucket',
+    });
+  });
+
+  it('s3: 4xx errorCode s3.unreachable on ECONNREFUSED', async () => {
+    const err = new Error('connect ECONNREFUSED 127.0.0.1:9000');
+    err.code = 'ECONNREFUSED';
+    setupS3HeadBlob(err);
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 's3',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
+      endpoint: 'http://localhost:9000',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.s3.unreachable',
+      message: 'Connection test failed',
+      reason: 'ECONNREFUSED',
+    });
+  });
+
+  it('s3: 4xx generic test.failed with reason for unclassified errors', async () => {
+    setupS3HeadBlob(new Error('some unexpected driver error'));
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 's3',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.failed',
+      message: 'Connection test failed',
+      reason: 'some unexpected driver error',
     });
   });
 
   it('webdav: 200 ok:true, temporarily overrides env and restores it', async () => {
     const res = await request(app).post('/api/setup/test').send({
       target: 'webdav',
-      url: 'https://dav.example.com', username: 'dav-user', password: 'dav-pass',
+      url: 'https://dav.example.com',
+      username: 'dav-user',
+      password: 'dav-pass',
     });
 
     expect(res.status).toBe(200);
@@ -471,7 +728,9 @@ describe('POST /api/setup/test', () => {
 
     const res = await request(app).post('/api/setup/test').send({
       target: 'webdav',
-      url: 'https://dav.example.com', username: 'dav-user', password: 'dav-pass',
+      url: 'https://dav.example.com',
+      username: 'dav-user',
+      password: 'dav-pass',
     });
 
     expect(res.status).toBe(400);
@@ -482,15 +741,72 @@ describe('POST /api/setup/test', () => {
     });
   });
 
+  it('webdav: 4xx body includes a trimmed reason when the error carries one', async () => {
+    mockWebdavTestConnection.mockRejectedValue(
+      Object.assign(new Error(SERVER_ERROR_CODES.api.webdavTestFailed), {
+        status: 400,
+        errorCode: SERVER_ERROR_CODES.api.webdavTestFailed,
+        params: { reason: 'socket hang up' },
+      })
+    );
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'webdav',
+      url: 'https://dav.example.com',
+      username: 'dav-user',
+      password: 'dav-pass',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      errorCode: SERVER_ERROR_CODES.api.webdavTestFailed,
+      message: 'Connection test failed',
+      reason: 'socket hang up',
+    });
+  });
+
   it('returns 403 setup.complete when setup is already complete', async () => {
     setCompleteWebdavEnv();
     const res = await request(app).post('/api/setup/test').send({
       target: 'webdav',
-      url: 'https://dav.example.com', username: 'u', password: 'p',
+      url: 'https://dav.example.com',
+      username: 'u',
+      password: 'p',
     });
 
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
+  });
+
+  it('missing required fields keeps serverErrors.setup.testFailed with the short message and no reason', async () => {
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'postgresql',
+      host: 'localhost',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      errorCode: 'serverErrors.setup.testFailed',
+      message: 'Missing required fields: port, database, user, password',
+    });
+    expect(res.body.reason).toBeUndefined();
+  });
+
+  it('unsupported target keeps serverErrors.setup.testFailed with the short message and no reason', async () => {
+    const res = await request(app).post('/api/setup/test').send({
+      target: 'ftp',
+      url: 'ftp://example.com',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      errorCode: 'serverErrors.setup.testFailed',
+      message: 'Unsupported target: ftp',
+    });
+    expect(res.body.reason).toBeUndefined();
   });
 });
 
@@ -502,12 +818,19 @@ describe('request logger', () => {
     const logSpy = jest.spyOn(console, 'log');
     logSpy.mockClear();
 
-    await request(app).post('/api/setup/apply').send({
-      metadata: { backend: 'sqlite' },
-      file: { backend: 'webdav', url: 'https://dav.example.com', username: 'u', password: 'dav-leak' },
-      admin: { password: 'admin-leak' },
-      jwt: { secret: 'jwt-leak' },
-    });
+    await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 'webdav',
+          url: 'https://dav.example.com',
+          username: 'u',
+          password: 'dav-leak',
+        },
+        admin: { password: 'admin-leak' },
+        jwt: { secret: 'jwt-leak' },
+      });
 
     const logLines = logSpy.mock.calls
       .map((call) => call[0])
@@ -515,7 +838,15 @@ describe('request logger', () => {
     expect(logLines).toHaveLength(1);
 
     const entry = JSON.parse(logLines[0]);
-    expect(Object.keys(entry).sort()).toEqual(['duration_ms', 'ip', 'method', 'status', 'ts', 'url', 'user_agent']);
+    expect(Object.keys(entry).sort()).toEqual([
+      'duration_ms',
+      'ip',
+      'method',
+      'status',
+      'ts',
+      'url',
+      'user_agent',
+    ]);
     const serialized = JSON.stringify(entry);
     expect(serialized).not.toContain('admin-leak');
     expect(serialized).not.toContain('jwt-leak');

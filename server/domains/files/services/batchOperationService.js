@@ -2,6 +2,7 @@
 
 const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { createOperationProgressStore } = require('../stores/operationProgress');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 /**
  * Async worker that processes a bulk job from the operation progress store.
@@ -66,7 +67,8 @@ async function _processBulkJob(jobId) {
  * @param {string} jobId — the job identifier returned by createJob
  */
 function scheduleBulkWorker(jobId) {
-  if (process.env.WEA_SKIP_BULK_WORKER === '1') {
+  // WEA_SKIP_BULK_WORKER is T2 (test seam): read lazily at scheduling time.
+  if (getSharedResolver().getConfigSync('WEA_SKIP_BULK_WORKER') === '1') {
     return;
   }
   setImmediate(() => {

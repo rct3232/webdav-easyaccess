@@ -197,4 +197,36 @@ function setSharedResolver(resolver) {
   sharedResolver = resolver;
 }
 
-module.exports = { createConfigResolver, getSharedResolver, setSharedResolver };
+/**
+ * Copy the effective value of every T1 (boot-frozen) registry key into the
+ * given env object (default process.env) so require-time consumers see
+ * DB-sourced values. Called at boot only when setup is complete, after
+ * loadAll() primed the cache — DB secrets are decrypted here. T0 keys are
+ * never copied (env-only by contract) and T2 keys are excluded so they stay
+ * lazy (per-request resolver reads). Keys already present in the env win and
+ * are never overwritten (D1). Returns the list of keys written.
+ *
+ * @param {object} resolver resolver exposing getConfigSync(key)
+ * @param {Record<string,string|undefined>} [env]
+ * @returns {string[]}
+ */
+function populateT1Env(resolver, env = process.env) {
+  const populated = [];
+  for (const entry of CONFIG_ENTRIES) {
+    if (entry.tier !== TIER.T1) continue;
+    if (entry.key in env) continue;
+    const value = resolver.getConfigSync(entry.key);
+    if (value !== undefined) {
+      env[entry.key] = String(value);
+      populated.push(entry.key);
+    }
+  }
+  return populated;
+}
+
+module.exports = {
+  createConfigResolver,
+  getSharedResolver,
+  setSharedResolver,
+  populateT1Env,
+};

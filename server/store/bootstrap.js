@@ -28,16 +28,32 @@ async function ensureDefaultAdmin() {
   return admin;
 }
 
-async function initMetadataStore() {
+/**
+ * Connect the metadata DB and apply the schema/migrations only (no admin
+ * seeding). Used by the boot path so the config resolver can be primed and
+ * the process.env T1 population can happen BEFORE ensureDefaultAdmin reads
+ * ADMIN_DEFAULT_PASSWORD (which may now be a DB-sourced, decrypted value).
+ */
+async function initMetadataSchema() {
   if (isSqliteBackend()) {
     await initSqliteSchema();
   } else {
     await applyPendingMigrations('postgresql');
   }
+}
+
+/**
+ * Backward-compatible combined init: schema + default admin seeding. Kept for
+ * callers that do not need the config-resolver ordering (test harnesses,
+ * scripts) so their behavior is unchanged.
+ */
+async function initMetadataStore() {
+  await initMetadataSchema();
   await ensureDefaultAdmin();
 }
 
 module.exports = {
+  initMetadataSchema,
   initMetadataStore,
   ensureDefaultAdmin,
 };

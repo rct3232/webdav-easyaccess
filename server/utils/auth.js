@@ -2,10 +2,10 @@ const jwt = require('jsonwebtoken');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { computeSetupStatus } = require('../infrastructure/setupStatus');
+const { getSharedResolver } = require('../infrastructure/configResolver');
 
 const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30m';
 
 // Fail fast in production if JWT_SECRET is not configured and setup is complete.
 // In setup mode (first run) a prod install with a default secret boots with a
@@ -31,10 +31,13 @@ if (JWT_SECRET === DEFAULT_JWT_SECRET) {
 function generateToken(user) {
   const tokenVersion = Number.isInteger(user?.token_version) ? user.token_version : 0;
   const isAdmin = user?.is_admin ? 1 : 0;
+  // JWT_EXPIRES_IN is T2 (hot): read lazily at sign time from the shared
+  // resolver (env → DB → default) so changes apply immediately.
+  const expiresIn = getSharedResolver().getConfigSync('JWT_EXPIRES_IN') || '30m';
   return jwt.sign(
     { id: user.id, username: user.username, token_version: tokenVersion, is_admin: isAdmin },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn }
   );
 }
 

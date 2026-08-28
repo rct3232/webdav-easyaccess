@@ -1,6 +1,6 @@
 'use strict';
 
-const { createConfigResolver, getSharedResolver, setSharedResolver } = require('../configResolver');
+const { createConfigResolver, getSharedResolver, setSharedResolver, populateT1Env } = require('../configResolver');
 const { encryptSecret } = require('../../utils/configEncryption');
 
 const MASTER_KEY = 'test-master-key';
@@ -336,6 +336,62 @@ describe('createConfigResolver', () => {
       setSharedResolver(fake);
       expect(getSharedResolver()).toBe(fake);
       setSharedResolver(null);
+    });
+  });
+
+  describe('populateT1Env', () => {
+    it('writes DB-sourced T1 values into the env, skipping T0 and T2', async () => {
+      const store = createFakeStore({
+        WEBDAV_URL: 'https://dav.example.com',
+        WEBDAV_USERNAME: 'dav-user',
+        EMAIL_HOST: 'smtp.example.com',
+      });
+      const resolver = makeResolver(store, {});
+      await resolver.loadAll();
+
+      const env = {};
+      const populated = populateT1Env(resolver, env);
+
+      expect(env.WEBDAV_URL).toBe('https://dav.example.com');
+      expect(env.WEBDAV_USERNAME).toBe('dav-user');
+      expect(env.EMAIL_HOST).toBeUndefined(); // T2 — must stay lazy
+      expect(env.WEA_PG_HOST).toBeUndefined(); // T0 — env only
+      expect(populated).toContain('WEBDAV_URL');
+      expect(populated).not.toContain('EMAIL_HOST');
+      expect(populated).not.toContain('WEA_PG_HOST');
+    });
+
+    it('decrypts DB-sourced secrets before writing them', async () => {
+      const payload = encryptSecret('dav-secret', MASTER_KEY);
+      const store = createFakeStore({ WEBDAV_PASSWORD: payload });
+      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
+      await resolver.loadAll();
+
+      const env = {};
+      populateT1Env(resolver, env);
+      expect(env.WEBDAV_PASSWORD).toBe('dav-secret');
+    });
+
+    it('never overwrites a value already present in the env', async () => {
+      const store = createFakeStore({ WEBDAV_URL: 'https://db.example.com' });
+      const resolver = makeResolver(store, {});
+      await resolver.loadAll();
+
+      const env = { WEBDAV_URL: 'https://env.example.com' };
+      const populated = populateT1Env(resolver, env);
+      expect(env.WEBDAV_URL).toBe('https://env.example.com');
+      expect(populated).not.toContain('WEBDAV_URL');
+    });
+
+    it('applies built-in defaults for T1 keys with no env or DB value', async () => {
+      const resolver = makeResolver(createFakeStore({}), {});
+      await resolver.loadAll();
+
+      const env = {};
+      populateT1Env(resolver, env);
+      expect(env.WEA_FILE_STORAGE).toBe('s3');
+      expect(env.PORT).toBe('5001');
+      expect(env.S3_BUCKET).toBeUndefined(); // no default → stays unset
     });
   });
 });

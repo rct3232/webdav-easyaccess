@@ -9,6 +9,13 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 
 const { resolveEnvPath } = require('./infrastructure/envPath');
 const { computeSetupStatus } = require('./infrastructure/setupStatus');
+const {
+  createConfigResolver,
+  setSharedResolver,
+  getSharedResolver,
+  populateT1Env,
+} = require('./infrastructure/configResolver');
+const Settings = require('./models/Settings');
 const envPath = resolveEnvPath(__dirname);
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath, override: false });
@@ -18,19 +25,25 @@ if (fs.existsSync(envPath)) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 5001;
 
 // CORS hardening:
 // - In production, set CORS_ORIGINS (comma-separated) to restrict browser access.
 // - If unset, we keep backward-compatible "allow all" behavior (but warn in production).
-const corsOriginsEnv = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '';
-const corsOrigins = corsOriginsEnv
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// The origin list is T2 (hot): resolved lazily per request from the shared
+// config resolver (env → DB → default), so operator changes apply immediately.
+function parseOriginList(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
-if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
-  console.warn('Warning: CORS_ORIGINS is not set. Allowing all origins in production.');
+function resolveAllowedOrigins(resolver) {
+  return resolver.getConfig('CORS_ORIGINS').then((value) => {
+    const list = parseOriginList(value);
+    if (list.length > 0) return list;
+    return resolver.getConfig('CORS_ORIGIN').then(parseOriginList);
+  });
 }
 
 app.use(
@@ -38,8 +51,12 @@ app.use(
     origin(origin, callback) {
       // Allow non-browser clients (no Origin header) like curl/server-to-server.
       if (!origin) return callback(null, true);
-      if (corsOrigins.length === 0) return callback(null, true);
-      return callback(null, corsOrigins.includes(origin));
+      resolveAllowedOrigins(getSharedResolver())
+        .then((list) => {
+          if (list.length === 0) return callback(null, true);
+          return callback(null, list.includes(origin));
+        })
+        .catch(() => callback(null, false));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Share-Token'],
@@ -80,6 +97,7 @@ app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/us
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/settings'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/maintenance'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/migration'));
+app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/config'));
 // Public settings (GET /api/settings/public) stays open in setup mode; the
 // admin-write settings routes under /api/settings are gated like /api/admin.
 app.use('/api/settings', (req, res, next) => {
@@ -125,10 +143,44 @@ if (fs.existsSync(clientBuildPath)) {
   });
 }
 
-// Initialize database
-const { initMetadataStore } = require('./store/bootstrap');
-initMetadataStore().then(async () => {
+// Initialize database + config resolver.
+// Boot order (docs/spec/server/infrastructure/bootSequence.md):
+//   1. connect the metadata DB and apply schema/migrations (no admin yet)
+//   2. create one resolver, prime it with loadAll(), install it as the shared
+//      resolver so T2 consumers and the admin config route share one cache
+//   3. compute the effective config and derive setup_complete from it
+//   4. when complete: populate process.env with T1 values from the resolver
+//      (decrypted DB secrets) so existing require-time consts see them; then
+//      seed the default admin (ADMIN_DEFAULT_PASSWORD may be DB-sourced now)
+//   5. when incomplete: setup mode — no env population, wizard serves
+const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');
+
+async function runBoot() {
+  await initMetadataSchema();
   console.log('Metadata store initialized');
+
+  const resolver = createConfigResolver({ settingsStore: Settings });
+  await resolver.loadAll();
+  setSharedResolver(resolver);
+
+  const effective = await resolver.getEffectiveConfig();
+  const bootStatus = computeSetupStatus(process.env, { effectiveConfig: effective });
+
+  if (bootStatus.setup_complete) {
+    populateT1Env(resolver, process.env);
+  }
+
+  // Production allow-all warning, using the effective CORS value at boot.
+  if (process.env.NODE_ENV === 'production') {
+    const corsList = parseOriginList(
+      resolver.getConfigSync('CORS_ORIGINS') || resolver.getConfigSync('CORS_ORIGIN')
+    );
+    if (corsList.length === 0) {
+      console.warn('Warning: CORS_ORIGINS is not set. Allowing all origins in production.');
+    }
+  }
+
+  await ensureDefaultAdmin();
 
   // Initialize FFmpeg once on startup to avoid repeated lookups/errors per request.
   try {
@@ -162,8 +214,11 @@ initMetadataStore().then(async () => {
   }
   
   if (require.main === module) {
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+    // PORT is T1 (boot-frozen, env → DB → default): resolve at listen time so
+    // a DB-sourced value takes effect after the env population above.
+    const port = resolver.getConfigSync('PORT') || process.env.PORT || 5001;
+    app.listen(port, () => {
+      console.log(`Server is running on port ${port}`);
       setImmediate(() => {
         const { ensureHomeOwnerAdminForAllUsers } = require('./domains/admin/services/cleanupService');
         ensureHomeOwnerAdminForAllUsers()
@@ -190,7 +245,9 @@ initMetadataStore().then(async () => {
       });
     });
   }
-}).catch(err => {
+}
+
+runBoot().catch(err => {
   console.error('Initialization failed:', err);
   process.exit(1);
 });

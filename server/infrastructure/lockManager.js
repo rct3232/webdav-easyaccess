@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun } = require('../store/storage');
 const { sha256HexLower } = require('../utils/hash');
+const { getSharedResolver } = require('./configResolver');
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -141,7 +142,9 @@ async function acquireLock(lockName, options = {}) {
   const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : 30_000;
   const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 30_000;
   const retryDelayMs = Number.isFinite(options.retryDelayMs) ? options.retryDelayMs : 250;
-  const owner = options.owner || `${process.env.HOSTNAME || 'host'}:${process.pid}`;
+  // HOSTNAME is T2 (hot) and read per lock acquisition (debug owner label only).
+  const hostname = getSharedResolver().getConfigSync('HOSTNAME') || 'host';
+  const owner = options.owner || `${hostname}:${process.pid}`;
 
   const lockKey = sha256HexLower(lockName);
   const token = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');

@@ -9,6 +9,7 @@ const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 const VALID_MODES = ['dry-run', 'apply'];
 const DEST_REQUIRED_FIELDS = {
@@ -110,7 +111,8 @@ function runMigrationWorker(jobId, { destConfig, mode, force }) {
 }
 
 function dispatchWorker(jobId, params) {
-  if (process.env.WEA_SKIP_MIGRATION_WORKER === '1') return;
+  // WEA_SKIP_MIGRATION_WORKER is T2 (test seam): read lazily at dispatch time.
+  if (getSharedResolver().getConfigSync('WEA_SKIP_MIGRATION_WORKER') === '1') return;
   setImmediate(() => {
     runMigrationWorker(jobId, params);
   });

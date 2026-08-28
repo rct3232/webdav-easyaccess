@@ -142,6 +142,7 @@ describe('writeEnv', () => {
     expect(WIZARD_WRITABLE_KEYS).toContain('AWS_SECRET_ACCESS_KEY');
     expect(WIZARD_WRITABLE_KEYS).toContain('WEBDAV_PASSWORD');
     expect(WIZARD_WRITABLE_KEYS).toContain('EMAIL_FROM_NAME');
+    expect(WIZARD_WRITABLE_KEYS).toContain('encrypt_secret_key');
     expect(Object.isFrozen(WIZARD_WRITABLE_KEYS)).toBe(true);
   });
 });

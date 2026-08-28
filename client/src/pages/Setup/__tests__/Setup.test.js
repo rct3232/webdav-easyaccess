@@ -348,6 +348,60 @@ describe('Setup wizard', () => {
     expect(applyBody.file.secretAccessKey).toBe('****');
   });
 
+  it('sends a masked metadata password as the **** marker (keeps the existing .env value)', async () => {
+    server.use(
+      http.get('/api/setup/status', () =>
+        HttpResponse.json({
+          setup_complete: false,
+          missing: ['AWS_SECRET_ACCESS_KEY'],
+          current: {
+            WEA_STORAGE_BACKEND: 'postgresql',
+            WEA_PG_HOST: '10.0.0.103',
+            WEA_PG_PORT: '5432',
+            WEA_PG_DATABASE: 'webdav-easyaccess',
+            WEA_PG_USER: 'webdav_easyaccess',
+            WEA_PG_PASSWORD: '****',
+            WEA_FILE_STORAGE: 's3',
+            S3_BUCKET: 'prefilled-bucket',
+            AWS_REGION: 'us-east-1',
+            AWS_ACCESS_KEY_ID: 'prefilled-key',
+            S3_ENDPOINT: 'http://10.0.0.104:9000',
+          },
+        })
+      )
+    );
+
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
+    await clickNext(user); // metadata (postgresql, password masked)
+    await waitFor(() => {
+      expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
+    await clickNext(user);
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    await clickNext(user);
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.metadata.backend).toBe('postgresql');
+    expect(applyBody.metadata.password).toBe('****');
+  });
+
   it('prefills from the target PG (POST /setup/prefill) when advancing from the postgresql metadata step', async () => {
     server.use(
       http.post('/api/setup/prefill', () =>

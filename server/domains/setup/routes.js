@@ -373,6 +373,19 @@ function encryptSecretValue(value, masterKey) {
 const EFFECTIVE_SECRET_MASK = '****';
 
 /**
+ * The wizard's PG password may arrive masked ('****') when it was prefilled
+ * from the current .env (status masks T0 secrets). A direct PG connection
+ * (connection test / prefill / apply DB-write) then falls back to the app's
+ * process.env.WEA_PG_PASSWORD — the same target the .env is configured for.
+ * A typed (non-masked) password is always used verbatim.
+ */
+function resolvePgPassword(password) {
+  return password === EFFECTIVE_SECRET_MASK || isMissing(password)
+    ? process.env.WEA_PG_PASSWORD
+    : password;
+}
+
+/**
  * getEffectiveConfig() masks every secret as '****' — even one that resolves to
  * nothing (no env value, no DB row, no built-in default; configResolver spec
  * §2.6). setupStatus's presence checks run on the merged view, so an absent
@@ -424,7 +437,7 @@ async function writeSettings(metadata, dbEntries, masterKey) {
       port: Number(metadata.port) || 5432,
       database: metadata.database,
       user: metadata.user,
-      password: metadata.password,
+      password: resolvePgPassword(metadata.password),
       ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 5000,
     });
@@ -496,7 +509,7 @@ async function probePostgresql(payload) {
     port: Number(payload.port) || 5432,
     database: payload.database,
     user: payload.user,
-    password: payload.password,
+    password: resolvePgPassword(payload.password),
     ssl: payload.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 5000,
   });
@@ -706,7 +719,7 @@ async function readSettingsRows(metadata) {
     port: Number(metadata.port) || 5432,
     database: metadata.database,
     user: metadata.user,
-    password: metadata.password,
+    password: resolvePgPassword(metadata.password),
     ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
     connectionTimeoutMillis: 5000,
   });

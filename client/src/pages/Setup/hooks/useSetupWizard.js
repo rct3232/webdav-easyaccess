@@ -59,13 +59,6 @@ function parseBool(value, fallback) {
   return value === 'true' || value === '1';
 }
 
-function stripMasked(obj) {
-  return Object.entries(obj).reduce((acc, [key, value]) => {
-    if (value !== SECRET_MASK) acc[key] = value;
-    return acc;
-  }, {});
-}
-
 function createInitialForm() {
   return {
     metadataBackend: 'sqlite',
@@ -341,21 +334,18 @@ export function useSetupWizard() {
     const jwtSecret =
       !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
     // A masked (unchanged) secret is sent as the '****' marker so the server can
-    // keep its existing DB ciphertext (only-re-encrypt-on-new-value, PLAN §7).
-    // Only the T0 metadata password must be re-entered (it is .env-only and
-    // needed to connect), so its masked value is stripped below instead.
+    // keep its existing value (only-re-encrypt-on-new-value, PLAN §7): the T0
+    // WEA_PG_PASSWORD stays in .env, DB-stored secrets keep their ciphertext.
     const metadata =
       form.metadataBackend === 'postgresql'
         ? {
             backend: 'postgresql',
-            ...stripMasked({
-              host: form.pg.host,
-              port: form.pg.port,
-              database: form.pg.database,
-              user: form.pg.user,
-              password: form.pg.password,
-              ssl: form.pg.ssl,
-            }),
+            host: form.pg.host,
+            port: form.pg.port,
+            database: form.pg.database,
+            user: form.pg.user,
+            password: form.pg.password,
+            ssl: form.pg.ssl,
           }
         : { backend: 'sqlite' };
     const file =

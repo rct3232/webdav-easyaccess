@@ -267,3 +267,9 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   keep-existing/auto-generate; `GET /api/setup/status` prefills from the effective (env+DB) view
   with `key_lost_warning`; `requireSetupIncomplete` gates on the effective view. Docs: setup spec
   + SETUP.md updated. (T5)
+- 2026-08-28: **T4 UI (client, TASK B) implemented** — `SystemConfigEditor` Advanced settings
+  accordion in `SystemSettingsContent` (§9): `adminService.getConfig/updateConfig`, `CONFIG_DISPLAY_META`
+  grouping (metadata T0 read-only / fileStorage / serverSecurity / email / runtime), env-read-only +
+  T0-read-only rows, masked secrets with set-new-value toggle, dirty-tracked save (changed keys only),
+  applied/restartRequired feedback (Snackbar + banner). MSW GET/PUT `/api/admin/config` + reset.
+  Docs: `docs/spec/client/components/SystemConfigEditor.md` + SystemSettingsContent spec. (T4-UI)

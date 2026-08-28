@@ -391,7 +391,89 @@
     "newUserTitle": "Add new user",
     "newUserDesc": "Add a new user. They will be created as approved with a dedicated folder.",
     "passwordMinLength": "At least 6 characters",
-    "confirmPassword": "Confirm password"
+    "confirmPassword": "Confirm password",
+    "advancedSettings": "Advanced settings",
+    "config": {
+      "save": "Save changes",
+      "saving": "Saving...",
+      "saved": "Configuration saved.",
+      "saveFail": "Failed to save configuration.",
+      "loadFail": "Failed to load configuration.",
+      "retry": "Retry",
+      "restartRequired": "Restart required",
+      "restartRequiredDetail": "A server restart is required for these settings to take effect: {{keys}}.",
+      "setInEnv": "Set in .env (env takes precedence)",
+      "setNewValue": "Set new value",
+      "secretKeepExisting": "Leave blank to keep the current value.",
+      "help": {
+        "CORS_ORIGINS": "Comma-separated list of allowed origins"
+      },
+      "group": {
+        "metadata": "Metadata (startup, .env only)",
+        "fileStorage": "File storage",
+        "serverSecurity": "Server & security",
+        "email": "Email",
+        "runtime": "Runtime"
+      },
+      "key": {
+        "WEA_STORAGE_BACKEND": "Metadata storage backend",
+        "WEA_SQLITE_PATH": "SQLite path",
+        "WEA_PG_HOST": "PostgreSQL host",
+        "WEA_PG_PORT": "PostgreSQL port",
+        "WEA_PG_DATABASE": "PostgreSQL database",
+        "WEA_PG_USER": "PostgreSQL user",
+        "WEA_PG_SSL": "PostgreSQL SSL",
+        "WEA_PG_MAX": "PostgreSQL max connections",
+        "WEA_PG_IDLE_TIMEOUT_MS": "PostgreSQL idle timeout (ms)",
+        "WEA_PG_CONNECTION_TIMEOUT_MS": "PostgreSQL connection timeout (ms)",
+        "NODE_ENV": "Node environment",
+        "DOTENV_CONFIG_PATH": "Environment file path",
+        "WEA_FILE_STORAGE": "File storage type",
+        "S3_BUCKET": "S3 bucket",
+        "AWS_REGION": "AWS region",
+        "AWS_ACCESS_KEY_ID": "AWS access key ID",
+        "AWS_SECRET_ACCESS_KEY": "AWS secret access key",
+        "S3_ENDPOINT": "S3 endpoint",
+        "WEBDAV_URL": "WebDAV URL",
+        "WEBDAV_USERNAME": "WebDAV username",
+        "WEBDAV_PASSWORD": "WebDAV password",
+        "WEBDAV_AUTH_TYPE": "WebDAV auth type",
+        "WEBDAV_UPSTREAM_URL": "WebDAV upstream URL",
+        "MAX_THUMBNAIL_SIZE": "Max thumbnail size",
+        "THUMBNAIL_CONCURRENCY_LIMIT": "Thumbnail concurrency limit",
+        "THUMBNAIL_TOKEN_SECRET": "Thumbnail token secret",
+        "THUMBNAIL_TOKEN_EXPIRY": "Thumbnail token expiry",
+        "FFMPEG_PATH": "FFmpeg path",
+        "FFMPEG_INIT_TIMEOUT_MS": "FFmpeg init timeout (ms)",
+        "WEA_PREVIEW_TICKET_TTL_MS": "Preview ticket TTL (ms)",
+        "PORT": "Server port",
+        "CORS_ORIGINS": "CORS origins",
+        "CORS_ORIGIN": "CORS origin",
+        "LOGIN_RATE_LIMIT_MAX": "Login rate limit max attempts",
+        "LOGIN_RATE_LIMIT_WINDOW_MS": "Login rate limit window (ms)",
+        "JWT_EXPIRES_IN": "JWT expires in",
+        "ADMIN_DEFAULT_PASSWORD": "Admin default password",
+        "WEA_DISABLE_DEFAULT_ADMIN": "Disable default admin",
+        "HOSTNAME": "Hostname",
+        "EMAIL_HOST": "SMTP host",
+        "EMAIL_PORT": "SMTP port",
+        "EMAIL_USER": "SMTP user",
+        "EMAIL_PASSWORD": "SMTP password",
+        "EMAIL_SECURE": "Use SSL/TLS",
+        "EMAIL_FROM_NAME": "Sender name",
+        "GC_INTERVAL_MS": "GC interval (ms)",
+        "GC_ORPHAN_TTL_DAYS": "Orphan TTL (days)",
+        "REFRESH_TOKEN_EXPIRES_IN_DAYS": "Refresh token expiry (days)",
+        "USER_CACHE_TTL_MS": "User cache TTL (ms)",
+        "PERMISSION_CACHE_TTL_MS": "Permission cache TTL (ms)",
+        "PERMISSIONS_EXISTENCE_INDEX_TTL_MS": "Permissions index TTL (ms)",
+        "PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE": "Permissions reconcile batch size",
+        "PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY": "Permissions reconcile concurrency",
+        "WEA_SKIP_MIGRATION_WORKER": "Skip migration worker",
+        "WEA_SKIP_BULK_WORKER": "Skip bulk worker",
+        "WEA_SKIP_GC_SCHEDULER": "Skip GC scheduler"
+      }
+    }
   },
   "migration": {
     "title": "Storage migration",
@@ -647,7 +729,11 @@
       "migrationInvalidPayload": "Invalid migration request.",
       "migrationMissingRequired": "Missing required destination fields.",
       "migrationJobNotFound": "Migration job not found.",
-      "migrationAlreadyRunning": "A migration job is already running."
+      "migrationAlreadyRunning": "A migration job is already running.",
+      "configUnknownKey": "Unknown configuration key: {{key}}.",
+      "configT0Protected": "The key {{key}} is a startup (.env) setting and cannot be changed here.",
+      "configInvalidPayload": "Invalid configuration payload.",
+      "configEncryptKeyMissing": "The secret encryption key is missing on the server. Configuration was not saved."
     },
     "users": {
       "emailRequired": "Email is required."
@@ -812,7 +898,8 @@
       "userDeleted": "User has been deleted.",
       "permissionUpdated": "Permissions have been updated.",
       "orphanCleanupDone": "Orphaned data cleanup completed",
-      "migrationCancelled": "Migration cancelled."
+      "migrationCancelled": "Migration cancelled.",
+      "configSaved": "Configuration saved."
     },
     "share": {
       "addedToShared": "Added to your shared items"

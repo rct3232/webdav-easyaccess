@@ -486,6 +486,52 @@ describe('POST /api/setup/apply', () => {
     expect(written.S3_ENDPOINT).toBe('http://10.0.0.104:9000');
   });
 
+  it('postgresql: a masked metadata password keeps the existing .env value (not re-written)', async () => {
+    const envPath = makeEnvPath('pg-masked-password');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+    process.env.WEA_PG_PASSWORD = 'env-pg-pass';
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: {
+          backend: 'postgresql',
+          host: 'db.local',
+          port: '5433',
+          database: 'webdav',
+          user: 'pg-user',
+          password: '****',
+          ssl: false,
+        },
+        file: {
+          backend: 's3',
+          bucket: 'wea-bucket',
+          region: 'us-east-1',
+          accessKeyId: 'AKIAX',
+          secretAccessKey: 's3-secret',
+          endpoint: 'http://localhost:9010',
+        },
+        admin: { password: 'pg-admin-pass' },
+        jwt: { secret: 'jwt-pg' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    const [, envEntries] = mockWriteEnv.mock.calls[0];
+    expect(envEntries).not.toHaveProperty('WEA_PG_PASSWORD');
+    expect(envEntries.WEA_PG_HOST).toBe('db.local');
+    expect(envEntries.WEA_STORAGE_BACKEND).toBe('postgresql');
+
+    // The direct PG write falls back to the app's env password for the masked value.
+    expect(MockPgClient.mock.calls[0][0].password).toBe('env-pg-pass');
+
+    const client = MockPgClient.mock.results[0].value;
+    const allCalls = client.query.mock.calls.map((c) => JSON.stringify(c));
+    expect(allCalls.some((c) => c.includes('"WEA_PG_PASSWORD"'))).toBe(false);
+    expect(allCalls.some((c) => c.includes('"AWS_SECRET_ACCESS_KEY"'))).toBe(true);
+  });
+
   it('postgresql + s3: writes WEA_PG_* to .env and non-T0 keys (incl. ADMIN_DEFAULT_PASSWORD) to the target PG without touching sqlite admin', async () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;

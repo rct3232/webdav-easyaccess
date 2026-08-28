@@ -292,3 +292,11 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   re-entered), and the server drops masked secret entries before `writeSettings` (only-re-encrypt-on-
   new-value, PLAN §7). Also fixed: `envFileWriter` allowlist lacked `encrypt_secret_key`, failing a
   fresh-install apply. Branch `fix/wizard-apply-encrypt-key-allowlist` + `fix/masked-secret-apply`.
+- 2026-08-28: **Masked PG password fallback (user-reported 400/500 chain)** — once `.env` holds the
+  PG password, status masks it; the client previously stripped it (`metadata.password: required`,
+  HTTP 400) and the direct PG write connected with `'****'` (auth failure, HTTP 500). Fix: the client
+  sends `'****'` as the keep-existing marker for ALL masked secrets (incl. the T0 metadata password),
+  and the server's direct PG connections (test / prefill / apply write) fall back to
+  `process.env.WEA_PG_PASSWORD` for a masked value; masked `'****'` entries are dropped before the
+  `.env`/DB write so existing values/ciphertext are preserved. Branch
+  `fix/setup-masked-pg-password`.

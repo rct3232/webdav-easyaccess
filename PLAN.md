@@ -158,13 +158,38 @@ are written to `.env`.**
 4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver
    (env → DB → default, TTL + invalidate-on-write).
 
-## 9. Future Scope (not in this phase)
+## 9. Admin Config UI (Q3) — design
+
+Follow existing mypage-admin conventions (verified in code):
+
+| Item         | Location                                                                                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component    | `client/src/components/mypage/content/SystemConfigContent.js` (new) — clone `SystemSettingsContent.js` pattern (local state, `usePageHeader`, Snackbar feedback) |
+| Registry     | `client/src/utils/myPageRegistry.js`: add `admin-config` category (`adminOnly`, icon, label `admin.config`) + descriptor branch + admin guard                    |
+| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)` (mirror `getSettings`/`updateSettings`)                                            |
+| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config`, mounted under `/api/admin` (setupModeGuard + authenticateToken + isAdmin)          |
+| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                                                                        |
+| i18n         | en/ko `admin.config.*` (title, groups, generic strings)                                                                                                          |
+| Docs         | `docs/spec/server/routes/config.md` + client component spec + `docs/api.md` admin table                                                                          |
+
+**GET `/api/admin/config`** → `{ config: { "<envKey>": { value, source: 'env'|'db'|'default', tier, secret } } }` for every registry key; secrets always `"****"` (never decrypted to the client). Display metadata (`labelKey`, `group`, `inputType`, `options`) lives client-side in a `CONFIG_DISPLAY_META` map; the server registry is authoritative for tier/secret/source.
+
+**UI structure**:
+
+- Grouped sections (Metadata T0 — read-only, File storage, Server & security, Email, Runtime); type-aware inputs (TextField / Switch / Select / Number).
+- **source=env rows are read-only** with a "Set in `.env` (env takes precedence)" note (D9) — DB edits would be silently ignored while the env var is present.
+- **Secrets**: always masked; a "set new value" toggle reveals the field; blank on save = keep existing ciphertext (only-re-encrypt-on-new-value).
+- **Save**: dirty-tracked "Save changes" → `PUT { values: { KEY: value } }` (changed keys only) → server validates allowlist/types (T0 keys rejected), encrypts secrets, upserts `settingsStore`, invalidates T2 cache → responds `{ applied: [T2 keys], restartRequired: [T1 keys], messageCode }`.
+- **Feedback**: Snackbar + "restart required" Alert banner listing the T1 keys changed (applied immediately for T2).
+- `registration_enabled` stays in the existing `SystemSettingsContent` (no duplication).
+
+## 10. Future Scope (not in this phase)
 
 - Admin-login alert when env and DB values diverge, plus a sync/apply-from-env feature (D9).
 - `encrypt_secret_key` rotation tooling.
 - `WEA_SETUP_TOKEN`-style hardening.
 
-## 10. Resolved Questions (user-confirmed)
+## 11. Resolved Questions (user-confirmed)
 
 1. **Wizard apply for PostgreSQL** — apply connects to the target PG with the entered creds,
    ensures `settings` exists (idempotent DDL mirroring 001, see §7), upserts config rows; sqlite
@@ -184,9 +209,7 @@ are written to `.env`.**
    consumers as well: DB-sourced values are either lazy-read (→ T2) or boot-snapshot-sourced
    with index.js ordering.
 
-## 11. Success Criteria (tentative)
-
-## 11. Success Criteria (tentative)
+## 12. Success Criteria (tentative)
 
 1. With only T0 in `.env` and config rows in DB: app boots, behavior identical to the
    env-configured equivalent; `.env` values win when present.
@@ -197,7 +220,7 @@ are written to `.env`.**
    working unchanged (`.env` wins).
 5. No schema change; existing unit + e2e suites stay green.
 
-## 12. Draft Task Sketch (to be expanded)
+## 13. Draft Task Sketch (to be expanded)
 
 - T1 — Docs: this PLAN + `docs/features/config-source-resolution.md` (SoT) + spec updates.
 - T2 — `configRegistry` (tier/secret/default table) + `configResolver` (env→DB→default,
@@ -210,12 +233,12 @@ are written to `.env`.**
 - T7 — Tests (precedence, encryption round-trip, hot reload, boot snapshot) + regression.
 - T8 — Merge to `dev`.
 
-## 13. Progress Log
+## 14. Progress Log
 
 - 2026-08-28: Discussion summary captured (D1–D11, tier model, classification, DB/encryption
   design, wizard apply principle). Previous completed setup-wizard PLAN was deleted on `dev`
   (`595707e`). This plan is a fresh start and will be expanded.
-- 2026-08-28: §10 resolved (user-confirmed): Q1 PG apply (idempotent settings DDL, direct
+- 2026-08-28: §11 resolved (user-confirmed): Q1 PG apply (idempotent settings DDL, direct
   connection; prefill scenarios + encrypt_secret_key keep-existing) — recorded in §7; Q2
   invalidate-on-write + TTL; Q3 full admin config API + UI; Q4 auto-generate key; Q5 raw env
   names; Q6 JWT_EXPIRES_IN as T2 lazy sign-time read.
@@ -225,3 +248,7 @@ are written to `.env`.**
   §7/§8.
 - 2026-08-28: Encryption-key lifecycle rules made explicit in §7 (keep-existing / key-lost
   warning / only-re-encrypt-on-new-value) — independent of the read-path model.
+- 2026-08-28: Admin Config UI design added (§9): SystemConfigContent + admin-config registry
+  category + adminService.getConfig/updateConfig + server config.js route; GET returns masked
+  value/source/tier, source=env rows read-only, secrets masked with set-new-value, dirty-tracked
+  save with applied/restartRequired feedback; sections renumbered (was §9-13).

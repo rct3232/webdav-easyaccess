@@ -303,6 +303,61 @@ describe('Setup wizard', () => {
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
   });
 
+  it('prefills from the target PG (POST /setup/prefill) when advancing from the postgresql metadata step', async () => {
+    server.use(
+      http.post('/api/setup/prefill', () =>
+        HttpResponse.json({
+          current: { EMAIL_HOST: 'smtp.x.com', EMAIL_PASSWORD: '****' },
+          key_lost_warning: false,
+        })
+      )
+    );
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await user.click(screen.getByLabelText(/PostgreSQL/i));
+    await fillPgFields(user);
+
+    await clickNext(user);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
+    });
+
+    await fillS3Fields(user);
+    await clickNext(user);
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/SMTP host/i)).toHaveValue('smtp.x.com');
+    });
+    expect(screen.getByLabelText(/SMTP password/i)).toHaveValue('****');
+  });
+
+  it('advances even when the prefill request fails (best-effort)', async () => {
+    server.use(
+      http.post('/api/setup/prefill', () =>
+        HttpResponse.json(
+          { ok: false, errorCode: 'serverErrors.setup.test.pg.unreachable', message: 'Cannot reach the PostgreSQL server' },
+          { status: 400 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await user.click(screen.getByLabelText(/PostgreSQL/i));
+    await fillPgFields(user);
+
+    await clickNext(user);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
+  });
+
   it('renders the wizard i18n strings', async () => {
     render(renderSetup());
     await waitForReady();

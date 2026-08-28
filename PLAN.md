@@ -277,3 +277,11 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   `test:ci` 152 suites / 1336 tests). Bonus fix: sqlite transaction serialization (`storage.js`,
   nested BEGIN race surfaced by the integration suite). Merged to `dev` (`a506179`, `--no-ff`),
   feature branch deleted. No schema change; existing suites green. (T7-T8)
+- 2026-08-28: **Wizard prefill fix (Q1b enforcement)** — `GET /api/setup/status` prefill reads the
+  app's own (default sqlite) store, so it never saw the PG entered in step 1. Added
+  `POST /api/setup/prefill` (guarded by `requireSetupIncomplete`): direct `SELECT key, value FROM
+  settings` against the entered PG, `current` built with secrets masked (`****`), `key_lost_warning`
+  on encrypted rows without `encrypt_secret_key`, missing-table (`42P01`) → empty rows. Client
+  `handleNext` on the metadata step (postgresql) merges the prefill best-effort and still advances
+  on failure. Docs updated (setup + Setup specs, config-source-resolution §7). Branch
+  `fix/setup-prefill-from-target-db` (base `dev`).

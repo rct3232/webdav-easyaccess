@@ -29,6 +29,9 @@ export function useLoginForm({ redirectAfterLogin = true, onSuccess } = {}) {
       try {
         const data = await getPublicSettings();
         setRegistrationEnabled(!!data?.registration_enabled);
+        if (data?.setup_complete === false) {
+          navigate('/setup', { replace: true });
+        }
       } catch (err) {
         // Preserve existing observable behavior: registration link disappears on failure.
         // eslint-disable-next-line no-console
@@ -40,7 +43,7 @@ export function useLoginForm({ redirectAfterLogin = true, onSuccess } = {}) {
     };
 
     loadSettings();
-  }, []);
+  }, [navigate]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();

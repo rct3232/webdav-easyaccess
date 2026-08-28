@@ -41,6 +41,37 @@ export const mockAdminUsers = {
   ],
 };
 
+// Mock admin config state (effective config per registry; tests may override
+// via server.use). Mirrors server/domains/admin/routes/config.js semantics:
+// secrets masked '****', T0 keys .env-only and rejected by PUT, T2 = applied,
+// T1 = restartRequired.
+export function createDefaultMockAdminConfig() {
+  return {
+    WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'env', tier: 'T0', secret: false },
+    WEA_PG_HOST: { value: 'db.internal', source: 'env', tier: 'T0', secret: false },
+    WEA_PG_PORT: { value: '5432', source: 'default', tier: 'T0', secret: false },
+    WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+    S3_BUCKET: { value: 'my-bucket', source: 'env', tier: 'T1', secret: false },
+    AWS_REGION: { value: 'us-east-1', source: 'env', tier: 'T1', secret: false },
+    AWS_ACCESS_KEY_ID: { value: 'AKIAEXAMPLE', source: 'env', tier: 'T1', secret: false },
+    AWS_SECRET_ACCESS_KEY: { value: '****', source: 'env', tier: 'T1', secret: true },
+    WEBDAV_URL: { value: '', source: 'default', tier: 'T1', secret: false },
+    WEBDAV_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+    PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
+    CORS_ORIGINS: { value: '', source: 'default', tier: 'T2', secret: false },
+    JWT_EXPIRES_IN: { value: '30m', source: 'default', tier: 'T2', secret: false },
+    EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
+    EMAIL_PORT: { value: '587', source: 'db', tier: 'T2', secret: false },
+    EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T2', secret: true },
+    EMAIL_SECURE: { value: false, source: 'default', tier: 'T2', secret: false },
+    GC_ORPHAN_TTL_DAYS: { value: '1', source: 'default', tier: 'T2', secret: false },
+    USER_CACHE_TTL_MS: { value: '3000', source: 'default', tier: 'T1', secret: false },
+    WEA_SKIP_BULK_WORKER: { value: 'true', source: 'env', tier: 'T2', secret: false },
+  };
+}
+
+export const mockAdminConfig = createDefaultMockAdminConfig();
+
 // Mock migration job state (tests may override via server.use)
 export const mockMigrationJobs = new Map();
 
@@ -66,6 +97,10 @@ export function __resetHandlersState() {
     { id: 'p1', username: 'pending1', email: 'pending1@example.com', status: 'pending', created_at: new Date().toISOString(), is_admin: false });
   mockAdminUsers.approved.splice(0, mockAdminUsers.approved.length,
     { id: '1', username: 'user1', email: 'user1@example.com', status: 'approved', created_at: new Date().toISOString(), is_admin: false });
+  for (const key of Object.keys(mockAdminConfig)) {
+    delete mockAdminConfig[key];
+  }
+  Object.assign(mockAdminConfig, createDefaultMockAdminConfig());
   mockMigrationJobs.clear();
   mockMigrationInfo.source = 'webdav';
   mockMigrationInfo.direction = 'webdav-to-s3';
@@ -679,6 +714,49 @@ export const handlers = [
     const body = await request.json().catch(() => ({}));
     Object.assign(mockAdminSettings, body);
     return HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' });
+  }),
+
+  // --- Admin: effective config (docs/spec/server/routes/config.md) ---
+  http.get(`${API_BASE}/admin/config`, () => {
+    return HttpResponse.json({ config: mockAdminConfig });
+  }),
+
+  http.put(`${API_BASE}/admin/config`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const values = body.values;
+    if (values === null || typeof values !== 'object' || Array.isArray(values)) {
+      return errorResponse('serverErrors.admin.configInvalidPayload', 400);
+    }
+    const applied = [];
+    const restartRequired = [];
+    for (const [key, value] of Object.entries(values)) {
+      const entry = mockAdminConfig[key];
+      if (!entry) {
+        return errorResponse('serverErrors.admin.configUnknownKey', 400, { key });
+      }
+      if (entry.tier === 'T0') {
+        return errorResponse('serverErrors.admin.configT0Protected', 400, { key });
+      }
+      if (entry.secret) {
+        // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).
+        if (value === undefined || value === null || value === '' || value === '****') {
+          continue;
+        }
+        mockAdminConfig[key] = { ...entry, value: '****', source: 'db' };
+      } else {
+        mockAdminConfig[key] = { ...entry, value: String(value), source: 'db' };
+      }
+      if (entry.tier === 'T2') {
+        applied.push(key);
+      } else {
+        restartRequired.push(key);
+      }
+    }
+    return HttpResponse.json({
+      applied,
+      restartRequired,
+      messageCode: 'serverMessages.admin.configSaved',
+    });
   }),
 
   http.get(`${API_BASE}/admin/users/pending`, () => {

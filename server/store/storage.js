@@ -168,29 +168,42 @@ function sqliteRun(sql, params = []) {
   });
 }
 
+// node-sqlite3's db.serialize() only covers the synchronous portion of an async
+// callback, so two concurrent withSqliteTransaction() calls can interleave
+// BEGIN/COMMIT and fail with "cannot start a transaction within a transaction".
+// Serializing whole transactions on a single promise chain keeps them atomic
+// (single-connection assumption; see getSqliteConnection). getSqliteConnection()
+// is re-resolved per transaction so a queued transaction never uses a stale
+// (closed or re-pointed) handle across test suites.
+let sqliteTransactionQueue = Promise.resolve();
+
 async function withSqliteTransaction(callback) {
-  const db = getSqliteConnection();
-  return new Promise((resolve, reject) => {
-    db.serialize(async () => {
+  const run = async () => {
+    await sqliteRun('BEGIN');
+    try {
+      const client = {
+        query: (sql, params = []) => sqliteQuery(sql, params),
+        release: () => {},
+      };
+      const result = await callback(client);
+      await sqliteRun('COMMIT');
+      return result;
+    } catch (error) {
       try {
-        await sqliteRun('BEGIN');
-        const client = {
-          query: (sql, params = []) => sqliteQuery(sql, params),
-          release: () => {},
-        };
-        const result = await callback(client);
-        await sqliteRun('COMMIT');
-        resolve(result);
-      } catch (error) {
-        try {
-          await sqliteRun('ROLLBACK');
-        } catch {
-          // ignore rollback errors and surface the original failure
-        }
-        reject(mapDatabaseError(error));
+        await sqliteRun('ROLLBACK');
+      } catch {
+        // ignore rollback errors and surface the original failure
       }
-    });
-  });
+      throw mapDatabaseError(error);
+    }
+  };
+
+  const result = sqliteTransactionQueue.then(run, run);
+  sqliteTransactionQueue = result.then(
+    () => {},
+    () => {}
+  );
+  return result;
 }
 
 async function withTransaction(callback) {

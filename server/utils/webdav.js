@@ -8,6 +8,7 @@ const { createError } = require('./errorHandler');
 const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const { createCacheAdapter } = require('../infrastructure/adapters/cache');
+const { getSharedResolver } = require('../infrastructure/configResolver');
 const clientCache = createCacheAdapter();
 
 let createClientPromise = null;
@@ -423,7 +424,10 @@ async function deleteFile(path, options = {}) {
 
 async function moveFile(sourcePath, destinationPath, progressCallback, overwrite = false, options = {}) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
-  const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
+  // WEBDAV_UPSTREAM_URL is T2 (hot): resolved lazily per operation so DB
+  // changes apply immediately without a restart.
+  const upstreamUrl = await getSharedResolver().getConfig('WEBDAV_UPSTREAM_URL');
+  const destBase = upstreamUrl?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
   const normalizedSource = normalizePath(sourcePath);
   const normalizedDest = normalizePath(destinationPath);
@@ -475,7 +479,8 @@ async function moveFile(sourcePath, destinationPath, progressCallback, overwrite
 
 async function copyFile(sourcePath, destinationPath, progressCallback, overwrite = false, options = {}) {
   const sourceBase = process.env.WEBDAV_URL?.trim();
-  const destBase = process.env.WEBDAV_UPSTREAM_URL?.trim() || sourceBase;
+  const upstreamUrl = await getSharedResolver().getConfig('WEBDAV_UPSTREAM_URL');
+  const destBase = upstreamUrl?.trim() || sourceBase;
   const client = await getWebDAVClient(sourceBase);
   const normalizedSource = normalizePath(sourcePath);
   const normalizedDest = normalizePath(destinationPath);

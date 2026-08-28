@@ -163,6 +163,10 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 |--------|------|------|-------------|
 | GET | `/api/admin/settings` | Token + Admin | Get system settings. |
 | PUT | `/api/admin/settings` | Token + Admin | Update system settings. |
+| GET | `/api/admin/config` | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key. |
+| PUT | `/api/admin/config` | Token + Admin | Write allowlisted non-T0 config keys to DB (secrets encrypted, T2 cache invalidated). Body: `{ values: { KEY: value } }`. Returns `{ applied, restartRequired, messageCode }`. |
+
+Spec: `docs/spec/server/routes/config.md`.
 | GET | `/api/admin/users/pending` | Token + Admin | Pending signup approvals. |
 | GET | `/api/admin/users` | Token + Admin | List users. |
 | POST | `/api/admin/users` | Token + Admin | Add user. Body: e.g. username, email, password. |

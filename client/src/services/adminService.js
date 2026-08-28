@@ -19,6 +19,16 @@ export const updateSettings = async (settings) => {
   await put('/admin/settings', settings);
 };
 
+export const getConfig = async () => {
+  const response = await get('/admin/config');
+  return response.data?.config ?? {};
+};
+
+export const updateConfig = async (values) => {
+  const response = await put('/admin/config', { values });
+  return response.data;
+};
+
 export const approveUser = async (userId) => {
   await post(`/admin/users/${userId}/approve`);
 };

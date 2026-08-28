@@ -205,4 +205,22 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByLabelText(/secret key \*/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/region/i)).toHaveValue('us-east-1');
   });
+
+  it('renders the Advanced settings accordion and fetches config on expand', async () => {
+    const user = userEvent.setup();
+    renderSystemSettingsContent();
+
+    const accordionTitle = await screen.findByText(/advanced settings/i);
+    expect(accordionTitle).toBeInTheDocument();
+
+    // Collapsed → no config groups rendered yet (config fetched lazily on expand).
+    expect(screen.queryByText(/file storage/i)).not.toBeInTheDocument();
+
+    await user.click(accordionTitle);
+
+    expect(await screen.findByText(/server & security/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/file storage/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/email/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/set in .env/i).length).toBeGreaterThan(0);
+  });
 });

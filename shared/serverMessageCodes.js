@@ -61,6 +61,10 @@ const SERVER_ERROR_CODES = {
     migrationMissingRequired: P('serverErrors.admin', 'migrationMissingRequired'),
     migrationAlreadyRunning: P('serverErrors.admin', 'migrationAlreadyRunning'),
     migrationJobNotFound: P('serverErrors.admin', 'migrationJobNotFound'),
+    configUnknownKey: P('serverErrors.admin', 'configUnknownKey'),
+    configT0Protected: P('serverErrors.admin', 'configT0Protected'),
+    configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
+    configEncryptKeyMissing: P('serverErrors.admin', 'configEncryptKeyMissing'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -212,6 +216,7 @@ const SERVER_MESSAGE_CODES = {
     gcDone: P('serverMessages.admin', 'gcDone'),
     repairSyncDone: P('serverMessages.admin', 'repairSyncDone'),
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
+    configSaved: P('serverMessages.admin', 'configSaved'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

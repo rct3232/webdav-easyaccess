@@ -11,6 +11,8 @@ import {
   getUsers,
   getSettings,
   updateSettings,
+  getConfig,
+  updateConfig,
   approveUser,
   rejectUser,
   deleteUser,
@@ -83,6 +85,49 @@ describe('adminService', () => {
       await updateSettings({ registration_enabled: 'false' });
 
       expect(put).toHaveBeenCalledWith('/admin/settings', { registration_enabled: 'false' });
+    });
+  });
+
+  describe('getConfig', () => {
+    it('returns the config map from GET /admin/config', async () => {
+      const config = {
+        EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
+        PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
+      };
+      get.mockResolvedValueOnce({ data: { config } });
+
+      const result = await getConfig();
+
+      expect(get).toHaveBeenCalledWith('/admin/config');
+      expect(result).toEqual(config);
+      expect(result.EMAIL_HOST).toHaveProperty('source', 'db');
+    });
+
+    it('returns an empty map when the response has no config payload', async () => {
+      get.mockResolvedValueOnce({ data: {} });
+
+      const result = await getConfig();
+
+      expect(result).toEqual({});
+    });
+
+    it('rejects when request fails', async () => {
+      get.mockRejectedValueOnce(new Error('Request failed'));
+
+      await expect(getConfig()).rejects.toThrow();
+    });
+  });
+
+  describe('updateConfig', () => {
+    it('calls PUT /admin/config with { values } and returns the applied/restartRequired response', async () => {
+      const resultData = { applied: ['EMAIL_HOST'], restartRequired: ['PORT'], messageCode: 'serverMessages.admin.configSaved' };
+      put.mockResolvedValueOnce({ data: resultData });
+
+      const result = await updateConfig({ EMAIL_HOST: 'smtp.example.com' });
+
+      expect(put).toHaveBeenCalledWith('/admin/config', { values: { EMAIL_HOST: 'smtp.example.com' } });
+      expect(result).toEqual(resultData);
+      expect(result).toHaveProperty('restartRequired');
     });
   });
 

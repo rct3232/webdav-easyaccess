@@ -87,21 +87,44 @@ function buildCurrent(env) {
     if (SECRET_KEYS.has(key)) {
       if (value) current[key] = SECRET_MASK;
     } else {
-      current[key] = value || '';
+      current[key] = value == null ? '' : String(value);
     }
   }
   return current;
 }
 
-function computeSetupStatus(env = {}) {
-  const missingMetadata = metadataMissing(env);
-  const missingFile = fileMissing(env);
-  const missingJwt = jwtMissing(env);
+/**
+ * Merge an effective-config map (from configResolver.getEffectiveConfig(),
+ * `{ key: { value, source, tier, secret } }`) into the given env object so the
+ * pure-env required-key logic runs against the resolved view. Keys whose
+ * effective value is undefined (e.g. unset T0) keep the env value. Secrets
+ * arrive masked ('****'); truthy masking is sufficient for presence checks.
+ */
+function mergeEffective(env, effectiveConfig) {
+  const out = { ...env };
+  for (const [key, meta] of Object.entries(effectiveConfig)) {
+    if (meta && meta.value !== undefined) out[key] = meta.value;
+  }
+  return out;
+}
+
+/**
+ * Compute derived setup state.
+ * @param {object} [env] process.env-like view (pure env when no options given)
+ * @param {{ effectiveConfig?: Record<string,{value:*, source:string, tier:string, secret:boolean}> }} [options]
+ *   when `effectiveConfig` is provided the required-key checks run against the
+ *   resolved (env-first over DB) values instead of raw env.
+ */
+function computeSetupStatus(env = {}, options = {}) {
+  const view = options.effectiveConfig ? mergeEffective(env, options.effectiveConfig) : env;
+  const missingMetadata = metadataMissing(view);
+  const missingFile = fileMissing(view);
+  const missingJwt = jwtMissing(view);
   return {
     setup_complete:
       missingMetadata.length === 0 && missingFile.length === 0 && missingJwt.length === 0,
     missing: [...missingMetadata, ...missingFile, ...missingJwt],
-    current: buildCurrent(env),
+    current: buildCurrent(view),
   };
 }
 

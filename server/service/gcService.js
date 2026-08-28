@@ -1,5 +1,7 @@
 'use strict';
 
+const { getSharedResolver } = require('../infrastructure/configResolver');
+
 /**
  * Factory: create a garbage-collection service bound to one blob store + store pair.
  *
@@ -18,11 +20,14 @@
 function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gcConfig = {} }) {
   const isWebdavMode = fileStorageMode === 'webdav';
 
-  function resolveOrphanTtlDays() {
+  // GC_ORPHAN_TTL_DAYS is T2 (hot): resolved lazily per GC cycle so DB changes
+  // apply without a restart.
+  async function resolveOrphanTtlDays() {
     if (Number.isFinite(gcConfig.orphanTtlDays) && Number(gcConfig.orphanTtlDays) > 0) {
       return gcConfig.orphanTtlDays;
     }
-    const envDays = Number(process.env.GC_ORPHAN_TTL_DAYS);
+    const configured = await getSharedResolver().getConfig('GC_ORPHAN_TTL_DAYS');
+    const envDays = Number(configured);
     if (Number.isFinite(envDays) && envDays > 0) {
       return envDays;
     }
@@ -136,7 +141,7 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
   async function runGcCycle({ olderThanDays } = {}) {
     const days = Number.isFinite(olderThanDays) && olderThanDays > 0
       ? olderThanDays
-      : resolveOrphanTtlDays();
+      : await resolveOrphanTtlDays();
 
     const tier1 = await runTier1(days);
     const tier2 = await runTier2(days);

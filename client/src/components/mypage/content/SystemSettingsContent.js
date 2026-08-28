@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Typography,
@@ -17,12 +20,14 @@ import {
 } from '@mui/material';
 import { CleaningServices as CleaningServicesIcon } from '@mui/icons-material';
 import CategoryIcon from '@mui/icons-material/Category';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SyncAlt from '@mui/icons-material/SyncAlt';
 import * as adminService from '../../../services/adminService';
 import { getServerErrorDisplay } from '../../../utils/errorUtils';
 import { getShowHiddenFiles, setShowHiddenFiles as saveShowHiddenFiles } from '../../../utils/localStorage';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
+import SystemConfigEditor from './SystemConfigEditor';
 
 const SystemSettingsContent = ({ onMessage }) => {
   const { t } = useTranslation();
@@ -37,6 +42,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [permissionCleanupLoading, setPermissionCleanupLoading] = useState(false);
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -173,6 +179,19 @@ const SystemSettingsContent = ({ onMessage }) => {
           <SyncAlt />
         </IconButton>
       </Box>
+
+      <Accordion expanded={advancedOpen} onChange={(e, expanded) => setAdvancedOpen(expanded)} sx={{ mt: 4 }}>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          aria-controls="advanced-settings-content"
+          id="advanced-settings-header"
+        >
+          <Typography variant="h6">{t('admin.advancedSettings')}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <SystemConfigEditor active={advancedOpen} onSnackbar={(msg) => setMessage(msg)} />
+        </AccordionDetails>
+      </Accordion>
 
       <Dialog open={cleanupConfirmOpen} onClose={() => setCleanupConfirmOpen(false)} fullScreen>
         <DialogTitle>{t('admin.orphanCleanupConfirmTitle')}</DialogTitle>

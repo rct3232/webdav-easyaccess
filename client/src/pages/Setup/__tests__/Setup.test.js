@@ -303,6 +303,51 @@ describe('Setup wizard', () => {
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
   });
 
+  it('sends a masked (unchanged) secret as the **** marker so the server keeps its ciphertext', async () => {
+    server.use(
+      http.get('/api/setup/status', () =>
+        HttpResponse.json({
+          setup_complete: false,
+          missing: [],
+          current: {
+            WEA_STORAGE_BACKEND: 'sqlite',
+            WEA_FILE_STORAGE: 's3',
+            PORT: '5001',
+            S3_BUCKET: 'prefilled-bucket',
+            AWS_REGION: 'us-east-1',
+            AWS_ACCESS_KEY_ID: 'prefilled-key',
+            AWS_SECRET_ACCESS_KEY: '****',
+          },
+        })
+      )
+    );
+
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await clickNext(user); // metadata (sqlite)
+    expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
+    await clickNext(user); // file storage (prefilled, secret masked)
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    await clickNext(user); // optional
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.file.secretAccessKey).toBe('****');
+  });
+
   it('prefills from the target PG (POST /setup/prefill) when advancing from the postgresql metadata step', async () => {
     server.use(
       http.post('/api/setup/prefill', () =>

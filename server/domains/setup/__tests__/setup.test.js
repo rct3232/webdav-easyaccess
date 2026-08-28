@@ -454,6 +454,38 @@ describe('POST /api/setup/apply', () => {
     expect(written.EMAIL_SECURE).toBe('false');
   });
 
+  it('sqlite + s3: a masked (unchanged) secret keeps its existing ciphertext — not re-encrypted', async () => {
+    const envPath = makeEnvPath('sqlite-s3-masked');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: { backend: 'sqlite' },
+        file: {
+          backend: 's3',
+          bucket: 'webdav-temp',
+          region: 'us-east-1',
+          accessKeyId: 'admin',
+          secretAccessKey: '****',
+          endpoint: 'http://10.0.0.104:9000',
+        },
+        admin: { password: 'new-admin-pass' },
+        jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
+        server: { port: '5001', corsOrigins: '' },
+        email: { host: '', port: '', user: '', password: '', secure: false, fromName: '' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    const written = Object.fromEntries(settingsSetSpy.mock.calls);
+    expect(written).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    expect(written.S3_BUCKET).toBe('webdav-temp');
+    expect(written.AWS_ACCESS_KEY_ID).toBe('admin');
+    expect(written.S3_ENDPOINT).toBe('http://10.0.0.104:9000');
+  });
+
   it('postgresql + s3: writes WEA_PG_* to .env and non-T0 keys (incl. ADMIN_DEFAULT_PASSWORD) to the target PG without touching sqlite admin', async () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;

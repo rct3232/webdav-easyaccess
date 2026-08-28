@@ -285,3 +285,10 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   `handleNext` on the metadata step (postgresql) merges the prefill best-effort and still advances
   on failure. Docs updated (setup + Setup specs, config-source-resolution §7). Branch
   `fix/setup-prefill-from-target-db` (base `dev`).
+- 2026-08-28: **Apply masked-secret fix (user-reported 400)** — when the target DB already has an
+  encrypted secret, prefill masks it (`'****'`), the client previously stripped it via `stripMasked`,
+  and apply validation then failed `file.secretAccessKey: required` (HTTP 400). Fix: the client now
+  sends `'****'` as a keep-existing marker (file/email blocks; the T0 metadata password is still
+  re-entered), and the server drops masked secret entries before `writeSettings` (only-re-encrypt-on-
+  new-value, PLAN §7). Also fixed: `envFileWriter` allowlist lacked `encrypt_secret_key`, failing a
+  fresh-install apply. Branch `fix/wizard-apply-encrypt-key-allowlist` + `fix/masked-secret-apply`.

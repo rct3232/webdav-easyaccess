@@ -1,7 +1,7 @@
 # PLAN — First-Run Setup Wizard (setup UI + env-var configuration)
 
-Branch: `feature/first-run-setup-wizard` (base: `dev`)
-Status: PLANNED — implementation not started. Docs (T1) are the gate before any code.
+Branch: `feature/first-run-setup-wizard` (base: `dev`) — **merged to `dev`** (`a4b7c94`), branch deleted.
+Status: **COMPLETE** — all tasks T0–T10 done, all gates green.
 
 ## 1. Objective
 
@@ -342,4 +342,5 @@ instance on :5003, sqlite/PG-scratch isolation), `docs/TEST_GIT_GUIDE.md` (run c
 - 2026-08-28: PLAN.md reviewed against codebase — corrected §3.1, §3.3, §4, §5.1, §5.2, §5.3, §5.5, §7.2, §9, §10; opened the production-boot decision (§9).
 - 2026-08-28: D7 confirmed by user — production JWT throw relaxation detailed in §5.2.1 (implemented in T5); §9 risk row resolved, decisions table + §5.1/§5.2/T1 updated.
 - 2026-08-28: T9 done — e2e setup-wizard spec green in both modes both projects (s3 4/4, webdav 3+1 skip). Case 3 wording corrected (empirical finding: boot-time sqlite seeds a default admin first; the intent-preserving assertion is that the wizard's PG apply never seeds the wizard admin into sqlite). Also fixed a real prefill bug in the wizard (EMAIL_PORT '' would break apply when SMTP unset).
-  (Entries to be appended per completed task: task id, evidence of verification, commit hash.)
+- 2026-08-28: T10 done — all gates green: server test:ci 75 suites/1347 passed, client test:ci 151 suites/1323 passed, root `npm run lint` exit 0 (client lint script added), `test:e2e:s3` 123 passed (setup-wizard 8/8), `test:e2e:webdav` 103 passed (setup-wizard 6+2 skip). T10 fixes: jest-harness exemption for setupModeGuard (JEST_WORKER_ID no-op, documented in feature doc). Observables: no-env boot stays up (health 200, status setup_complete:false, file route 503 setup.incomplete, no crash), configured boot unchanged.
+- 2026-08-28: Merged to `dev` via `--no-ff` (`a4b7c94`), feature branch deleted, `main` untouched. Feature complete.

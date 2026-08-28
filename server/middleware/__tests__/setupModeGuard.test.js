@@ -18,6 +18,10 @@ describe('setupModeGuard', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Jest workers set JEST_WORKER_ID, which tells the guard this is the
+    // configured test harness (guard is a no-op there). Remove it so the
+    // blocking behavior below is exercised exactly like a real boot.
+    delete process.env.JEST_WORKER_ID;
     app = express();
     app.get('/probe', setupModeGuard(), (_req, res) => res.status(200).json({ ok: true }));
   });
@@ -33,6 +37,16 @@ describe('setupModeGuard', () => {
 
   it('calls next() so the route handler runs when setup is complete', async () => {
     computeSetupStatus.mockReturnValue({ setup_complete: true });
+
+    const res = await request(app).get('/probe');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('is a no-op under the jest test harness (JEST_WORKER_ID set), even when setup is incomplete', async () => {
+    computeSetupStatus.mockReturnValue({ setup_complete: false });
+    process.env.JEST_WORKER_ID = '1';
 
     const res = await request(app).get('/probe');
 

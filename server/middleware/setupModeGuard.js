@@ -21,6 +21,18 @@ const { computeSetupStatus } = require('../infrastructure/setupStatus');
  */
 function setupModeGuard() {
   return function setupModeGuardMiddleware(req, res, next) {
+    // The jest route-test harness boots a configured app (composition is
+    // explicitly overridden per suite, `WEA_FILE_STORAGE` etc. set at
+    // require-time) but sets none of the file/admin config keys, so the derived
+    // `setup_complete` would be false and the guard would block every guarded
+    // route with 503. The harness is not a first-run boot — it is a pre-built
+    // test environment — so the guard must not interfere. Jest sets
+    // JEST_WORKER_ID only inside test workers; real boots (dev, prod, and the
+    // e2e scratch server spawned by Playwright on :5003) never see it, so the
+    // setup-mode blocking stays fully active there.
+    if (process.env.JEST_WORKER_ID !== undefined) {
+      return next();
+    }
     const { setup_complete } = computeSetupStatus(process.env);
     if (!setup_complete) {
       return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({

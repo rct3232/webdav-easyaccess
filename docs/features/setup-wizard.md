@@ -233,6 +233,14 @@ the derived `setup_complete` state:
 - `setup_complete`: setup `test`/`apply` are gated with `403 { errorCode: 'setup.complete' }`
   (auto-403 gate); the rest of the API is normal.
 
+**Jest-harness exemption.** The jest route-test harness boots a configured app (composition
+overridden per suite via `composition.__setCompositionForTests`) without setting any file/admin
+config keys, so the derived `setup_complete` is false there and the guard would block every
+guarded route. Jest workers set `JEST_WORKER_ID`, which the guard treats as "test harness" and
+passes through (no-op). Real boots — dev, production, and the e2e scratch server spawned by
+Playwright on `:5003` — never carry `JEST_WORKER_ID`, so the setup-mode blocking remains fully
+active for genuine first-run boots.
+
 ---
 
 ## API surface summary

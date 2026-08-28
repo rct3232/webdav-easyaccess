@@ -340,9 +340,10 @@ export function useSetupWizard() {
   const buildApplyPayload = useCallback(() => {
     const jwtSecret =
       !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
-    // stripMasked removes any masked (unchanged) secret from the apply payload,
-    // so a masked prefill secret keeps its existing ciphertext in the target DB
-    // on apply (only-re-encrypt-on-new-value, PLAN §7 / D6).
+    // A masked (unchanged) secret is sent as the '****' marker so the server can
+    // keep its existing DB ciphertext (only-re-encrypt-on-new-value, PLAN §7).
+    // Only the T0 metadata password must be re-entered (it is .env-only and
+    // needed to connect), so its masked value is stripped below instead.
     const metadata =
       form.metadataBackend === 'postgresql'
         ? {
@@ -361,21 +362,17 @@ export function useSetupWizard() {
       form.fileBackend === 's3'
         ? {
             backend: 's3',
-            ...stripMasked({
-              bucket: form.s3.bucket,
-              region: form.s3.region,
-              accessKeyId: form.s3.accessKeyId,
-              secretAccessKey: form.s3.secretAccessKey,
-              endpoint: form.s3.endpoint,
-            }),
+            bucket: form.s3.bucket,
+            region: form.s3.region,
+            accessKeyId: form.s3.accessKeyId,
+            secretAccessKey: form.s3.secretAccessKey,
+            endpoint: form.s3.endpoint,
           }
         : {
             backend: 'webdav',
-            ...stripMasked({
-              url: form.webdav.url,
-              username: form.webdav.username,
-              password: form.webdav.password,
-            }),
+            url: form.webdav.url,
+            username: form.webdav.username,
+            password: form.webdav.password,
             authType: 'auto',
           };
     return {
@@ -385,14 +382,12 @@ export function useSetupWizard() {
       jwt: { secret: jwtSecret, expiresIn: form.jwt.expiresIn || DEFAULT_EXPIRES_IN },
       server: { port: form.server.port, corsOrigins: form.server.corsOrigins },
       email: {
-        ...stripMasked({
-          host: form.email.host,
-          port: form.email.port,
-          user: form.email.user,
-          password: form.email.password,
-          fromName: form.email.fromName,
-        }),
+        host: form.email.host,
+        port: form.email.port,
+        user: form.email.user,
+        password: form.email.password,
         secure: form.email.secure,
+        fromName: form.email.fromName,
       },
     };
   }, [form]);

@@ -826,6 +826,15 @@ router.post(
 
     const body = req.body;
     const entries = buildEnvEntries(body);
+
+    // Masked (unchanged) secrets keep their existing DB ciphertext — the
+    // only-re-encrypt-on-new-value rule (PLAN §7 / D6). The client sends the
+    // prefill mask '****' for a secret it did not edit; validation accepts it
+    // (non-empty) but writeSettings must NOT re-encrypt it, so drop it here.
+    for (const [key, value] of Object.entries(entries)) {
+      if (isSecret(key) && value === '****') delete entries[key];
+    }
+
     const { envEntries, dbEntries } = partitionEntries(entries);
 
     // encrypt_secret_key lifecycle (PLAN §7): keep an existing key — never

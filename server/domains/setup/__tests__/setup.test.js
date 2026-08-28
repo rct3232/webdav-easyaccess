@@ -114,11 +114,22 @@ function makeNoSuchKeyError() {
 }
 
 let mockS3HeadBlob;
+let mockS3ListObjects;
 
 function setupS3HeadBlob(rejection) {
   mockS3HeadBlob = jest.fn();
   if (rejection) mockS3HeadBlob.mockRejectedValue(rejection);
-  mockS3BlobStore.mockImplementation(() => ({ headBlob: mockS3HeadBlob }));
+  setupS3ListObjects();
+  mockS3BlobStore.mockImplementation(() => ({
+    headBlob: mockS3HeadBlob,
+    client: { send: mockS3ListObjects },
+  }));
+}
+
+function setupS3ListObjects(rejection) {
+  mockS3ListObjects = jest.fn();
+  if (rejection) mockS3ListObjects.mockRejectedValue(rejection);
+  else mockS3ListObjects.mockResolvedValue({ Contents: [] });
 }
 
 function makeEnvPath(label) {
@@ -636,12 +647,12 @@ describe('POST /api/setup/test', () => {
     });
   });
 
-  it('s3: 4xx errorCode s3.bucketMissing on HTTP 404/NoSuchBucket', async () => {
+  it('s3: 4xx errorCode s3.bucketMissing when ListObjectsV2 gets HTTP 404/NoSuchBucket', async () => {
     const err = new Error('The specified bucket does not exist');
     err.name = 'NoSuchBucket';
     err.code = 'NoSuchBucket';
     err.$metadata = { httpStatusCode: 404 };
-    setupS3HeadBlob(err);
+    setupS3ListObjects(err);
 
     const res = await request(app).post('/api/setup/test').send({
       target: 's3',
@@ -663,7 +674,7 @@ describe('POST /api/setup/test', () => {
   it('s3: 4xx errorCode s3.unreachable on ECONNREFUSED', async () => {
     const err = new Error('connect ECONNREFUSED 127.0.0.1:9000');
     err.code = 'ECONNREFUSED';
-    setupS3HeadBlob(err);
+    setupS3ListObjects(err);
 
     const res = await request(app).post('/api/setup/test').send({
       target: 's3',
@@ -683,8 +694,32 @@ describe('POST /api/setup/test', () => {
     });
   });
 
+  it('s3: 4xx errorCode s3.accessDenied when ListObjectsV2 gets HTTP 403/AccessDenied', async () => {
+    const err = new Error('Access Denied');
+    err.name = 'AccessDenied';
+    err.code = 'AccessDenied';
+    err.$metadata = { httpStatusCode: 403 };
+    setupS3ListObjects(err);
+
+    const res = await request(app).post('/api/setup/test').send({
+      target: 's3',
+      bucket: 'wea-bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAX',
+      secretAccessKey: 's3-secret',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.s3.accessDenied',
+      message: 'Connection test failed',
+      reason: 'AccessDenied',
+    });
+  });
+
   it('s3: 4xx generic test.failed with reason for unclassified errors', async () => {
-    setupS3HeadBlob(new Error('some unexpected driver error'));
+    setupS3ListObjects(new Error('some unexpected driver error'));
 
     const res = await request(app).post('/api/setup/test').send({
       target: 's3',

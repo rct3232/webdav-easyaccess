@@ -97,7 +97,7 @@ Public; **403 `setup.complete` when already complete**. Accepts one of three tar
 | S3         | anything else                                                 | `serverErrors.setup.test.failed`                                       |
 | WebDAV     | unchanged                                                     | existing `serverErrors.webdav.*` / `serverErrors.api.webdavTestFailed` |
 
-- S3 probe success: the probe HEADs a random `__wea_setup_probe_<uuid>` key, so an HTTP 404 that does **not** name `NoSuchBucket` (i.e. `NotFound` / `NoSuchKey` — the key is simply absent) is treated as **success** (`{ ok: true }`); only a `NoSuchBucket` 404 is classified as `bucketMissing`.
+- S3 probe is **two-step**: (1) `ListObjectsV2` (`MaxKeys: 1`) on the target bucket — 200 ⇒ bucket exists + credentials valid (this is what distinguishes a missing bucket, since `HeadObject`'s 404 `NotFound` is ambiguous on MinIO/S3); `NoSuchBucket`/`NotFound` 404 ⇒ `bucketMissing`; (2) `HeadObject` on a random `__wea_setup_probe_<uuid>` key — 404 `NotFound`/`NoSuchKey` (key simply absent) is treated as **success**; `403` ⇒ `accessDenied`. Success is only reported when both steps pass.
 - Missing-required-fields (`Missing required fields: …`) and unsupported-target (`Unsupported target: …`) errors remain `serverErrors.setup.testFailed`.
 - WebDAV's generic failure uses `serverErrors.api.webdavTestFailed`, whose template contains `{{reason}}`; the client interpolates it via `t(errorCode, { reason })`.
 

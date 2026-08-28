@@ -56,6 +56,7 @@ const SetupWizardView = ({
   errors,
   testStates,
   applyState,
+  prefilling,
   viewModel,
   onBack,
   onNext,
@@ -463,7 +464,7 @@ const SetupWizardView = ({
             {viewModel.back}
           </Button>
           {activeStep < stepCount - 1 ? (
-            <Button variant="contained" color="primary" onClick={onNext}>
+            <Button variant="contained" color="primary" onClick={onNext} disabled={prefilling}>
               {viewModel.next}
             </Button>
           ) : (

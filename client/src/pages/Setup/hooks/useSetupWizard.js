@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { validateRequired, validatePassword } from '@webdav-easyaccess/shared/validation';
 
 import { getValidationMessage } from '../../../utils/validationMessage';
-import { applySetup, getSetupStatus, testSetup } from '../../../services/setupService';
+import { applySetup, getSetupStatus, prefillSetup, testSetup } from '../../../services/setupService';
 
 const SECRET_MASK = '****';
 const STEP_COUNT = 5;
@@ -182,6 +182,7 @@ export function useSetupWizard() {
   const [errors, setErrors] = useState({});
   const [testStates, setTestStates] = useState(createInitialTestStates);
   const [applyState, setApplyState] = useState({ status: 'idle', message: '' });
+  const [prefilling, setPrefilling] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -238,13 +239,38 @@ export function useSetupWizard() {
     setActiveStep((prev) => Math.max(prev - 1, 0));
   }, []);
 
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     const validation = validateStep(activeStep, form, t);
     if (validation) {
       setErrors((prev) => ({ ...prev, [activeStep]: validation }));
       return;
     }
     setErrors((prev) => ({ ...prev, [activeStep]: null }));
+    if (activeStep === 0 && form.metadataBackend === 'postgresql') {
+      // Prefill from the target PG entered in step 1 (Q1b — setup-phase reads
+      // are always direct; a no-`.env` boot's own store is the default sqlite
+      // and never sees this PG). Best-effort: a failure must not block
+      // advancing — the connection-test button is the explicit validator.
+      setPrefilling(true);
+      try {
+        const res = await prefillSetup({
+          backend: 'postgresql',
+          host: form.pg.host,
+          port: form.pg.port,
+          database: form.pg.database,
+          user: form.pg.user,
+          password: form.pg.password,
+          ssl: form.pg.ssl,
+        });
+        if (res?.current) {
+          setForm((prev) => prefillForm(prev, res.current));
+        }
+      } catch {
+        // best-effort: keep whatever status.current already prefilled.
+      } finally {
+        setPrefilling(false);
+      }
+    }
     setActiveStep((prev) => Math.min(prev + 1, STEP_COUNT - 1));
   }, [activeStep, form, t]);
 
@@ -314,6 +340,9 @@ export function useSetupWizard() {
   const buildApplyPayload = useCallback(() => {
     const jwtSecret =
       !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
+    // stripMasked removes any masked (unchanged) secret from the apply payload,
+    // so a masked prefill secret keeps its existing ciphertext in the target DB
+    // on apply (only-re-encrypt-on-new-value, PLAN §7 / D6).
     const metadata =
       form.metadataBackend === 'postgresql'
         ? {
@@ -450,6 +479,7 @@ export function useSetupWizard() {
     errors,
     testStates,
     applyState,
+    prefilling,
     viewModel,
     onBack: handleBack,
     onNext: handleNext,

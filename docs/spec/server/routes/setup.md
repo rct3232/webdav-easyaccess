@@ -32,6 +32,7 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 | GET    | `/status` | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (prefill from DB) + `key_lost_warning`. |
 | POST   | `/test`   | None (403 `setup.complete` when already complete) | Connection test for `postgresql`, `s3`, or `webdav` targets.                                   |
 | POST   | `/apply`  | None (403 `setup.complete` when already complete) | Validate; write T0 keys to `.env`, non-T0 keys to the metadata DB; apply admin-password effect. Returns `restart_required: true`. |
+| POST   | `/prefill`| None (403 `setup.complete` when already complete) | Directly read the target metadata DB `settings` rows (Q1b) with the entered credentials and return masked prefill values + `key_lost_warning`. |
 
 ### 2.3 Middleware Used
 
@@ -166,6 +167,34 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 
 **Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). A failed apply may leave partial DB rows (single-operator; re-apply is idempotent upserts).
 
+#### POST /api/setup/prefill
+
+Public; **403 `setup.complete` when already complete** (same `requireSetupIncomplete` guard as `/test`). Connects **directly** to the metadata DB chosen in step 1 (Q1b — setup-phase reads are always direct) and reads its `settings` rows to prefill the form. It deliberately does **not** use the shared resolver or the app's own store: a no-`.env` boot runs on the default sqlite store, and the PG the operator enters in step 1 is only reachable via a direct connection with the entered credentials.
+
+**Request:**
+
+```jsonc
+{
+  "metadata": { "backend": "postgresql", "host": "…", "port": "5432", "database": "…", "user": "…", "password": "…", "ssl": false }
+}
+```
+
+- `metadata.backend === 'postgresql'` → direct PG read of `SELECT key, value FROM settings`.
+- `metadata.backend === 'sqlite'` or missing `metadata` → `200 { "current": {}, "key_lost_warning": false }` (sqlite is already prefilled from the app's own store via `GET /status` on mount).
+
+**Success:** `200 { "current": { "<KEY>": value }, "key_lost_warning": boolean }`
+
+`current` build rules (`buildPrefillCurrent`):
+
+- key with `isSecret(key)` (configRegistry) → `current[key] = "****"` whenever the row exists — never plaintext; a legacy plaintext secret row is masked the same way.
+- plaintext row → the value is JSON-parsed when it is a JSON string (node-pg returns JSONB already parsed, so a plaintext config row stored as the JSON string `"host"` arrives as `host`); scalars are coerced to `String`; `null`/undefined rows are skipped.
+
+`key_lost_warning` = any `settings` row holds an encrypted payload (`isEncryptedPayload` on the parsed row value) **and** `process.env.encrypt_secret_key` is absent. Purely informational — it never blocks the wizard; masked secrets still prefill as `"****"`.
+
+**Missing settings table:** on a fresh PG the `settings` table does not exist yet (`undefined_table` / pg code `42P01` or similar) → treated as empty rows (`current: {}`, `key_lost_warning: false`).
+
+**Errors:** `4xx { "ok": false, "errorCode": "…", "message": "…", "reason": "…" }` — PG unreachable / auth-failed / db-missing / generic map to the **same** classified codes as `POST /test` (connection-test taxonomy in §2.4): `serverErrors.setup.test.pg.unreachable`, `serverErrors.setup.test.pg.authFailed`, `serverErrors.setup.test.pg.databaseMissing`, `serverErrors.setup.test.failed`, and `serverErrors.setup.testFailed` for missing required fields. The client treats prefill as best-effort: a failure surfaces no blocking error and the wizard still advances (the connection-test button is the explicit validator).
+
 ### 2.5 Related Documents
 
 - [api.md](../../../api.md)
@@ -186,6 +215,8 @@ Connection-test taxonomy codes are module-local i18n keys (same `ns.key` format;
 - `serverErrors.setup.test.pg.unreachable`, `serverErrors.setup.test.pg.authFailed`, `serverErrors.setup.test.pg.databaseMissing`.
 - `serverErrors.setup.test.s3.accessDenied`, `serverErrors.setup.test.s3.bucketMissing`, `serverErrors.setup.test.s3.unreachable`.
 - `serverErrors.setup.invalidPayload` — invalid payload (reused by `POST /api/setup/apply` validation).
+
+`POST /api/setup/prefill` reuses the connection-test taxonomy codes above (unreachable / auth / db-missing / generic / missing-fields) so the client renders the same translations.
 
 ### 2.7 Related Route Changes
 

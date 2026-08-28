@@ -156,6 +156,13 @@ written to `.env`.**
   connection info). `settingsStore` (the app's own store) is used only after setup completes —
   runtime T2 reads and the admin config page. No "app's-current-metadata vs target"
   distinction in the setup phase.
+- **Prefill implementation (Q1b):** at wizard step 1 (metadata), clicking **Next** with
+  `postgresql` issues `POST /api/setup/prefill` carrying the entered credentials; the server
+  reads `SELECT key, value FROM settings` from the **target PG directly** and returns
+  `{ current, key_lost_warning }` (secrets masked, never plaintext) which the client merges
+  into the form via the same `prefillForm` used for `GET /status`. Best-effort — a prefill
+  failure does not block advancing. Full contract: `docs/spec/server/routes/setup.md`
+  (§"POST /api/setup/prefill").
 
 ---
 

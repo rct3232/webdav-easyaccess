@@ -1036,6 +1036,154 @@ describe('POST /api/setup/test', () => {
   });
 });
 
+describe('POST /api/setup/prefill', () => {
+  function setupPgRows(rows) {
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.query.mockResolvedValue({ rows });
+      return client;
+    });
+  }
+
+  const pgMetadata = {
+    backend: 'postgresql',
+    host: 'db.local',
+    port: '5432',
+    database: 'webdav',
+    user: 'u',
+    password: 'p',
+    ssl: false,
+  };
+
+  it('postgresql: prefills plaintext config, masks secrets, key_lost_warning true when an encrypted row exists and the key is absent', async () => {
+    delete process.env.encrypt_secret_key;
+    setupPgRows([
+      { key: 'EMAIL_HOST', value: 'smtp.example.com' },
+      {
+        key: 'EMAIL_PASSWORD',
+        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
+      },
+    ]);
+
+    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
+      key_lost_warning: true,
+    });
+    expect(MockPgClient).toHaveBeenCalledTimes(1);
+    expect(MockPgClient.mock.calls[0][0]).toMatchObject({
+      host: 'db.local',
+      port: 5432,
+      database: 'webdav',
+      user: 'u',
+      password: 'p',
+      ssl: false,
+    });
+  });
+
+  it('postgresql: key_lost_warning false when encrypt_secret_key is present', async () => {
+    process.env.encrypt_secret_key = 'current-key';
+    setupPgRows([
+      {
+        key: 'EMAIL_PASSWORD',
+        value: JSON.stringify({ enc: 'aes-256-gcm', iv: 'a', tag: 'b', data: 'c' }),
+      },
+    ]);
+
+    try {
+      const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        current: { EMAIL_PASSWORD: '****' },
+        key_lost_warning: false,
+      });
+    } finally {
+      delete process.env.encrypt_secret_key;
+    }
+  });
+
+  it('postgresql: a legacy plaintext secret row is still masked', async () => {
+    setupPgRows([{ key: 'EMAIL_PASSWORD', value: 'smtp-pw' }]);
+
+    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ current: { EMAIL_PASSWORD: '****' }, key_lost_warning: false });
+  });
+
+  it('postgresql: a missing settings table (42P01) yields empty rows', async () => {
+    const err = new Error('relation "settings" does not exist');
+    err.code = '42P01';
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.query.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+  });
+
+  it('sqlite metadata returns empty current and no warning (sqlite is prefilled via /status)', async () => {
+    const res = await request(app).post('/api/setup/prefill').send({
+      metadata: { backend: 'sqlite' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ current: {}, key_lost_warning: false });
+    expect(MockPgClient).not.toHaveBeenCalled();
+  });
+
+  it('postgresql: connect rejection is classified with the connection-test error codes', async () => {
+    const err = new Error('connect ECONNREFUSED 127.0.0.1:5432');
+    err.code = 'ECONNREFUSED';
+    err.errno = -111;
+    err.address = '127.0.0.1';
+    err.port = 5432;
+    MockPgClient.mockImplementation(() => {
+      const client = makePgClient();
+      client.connect.mockRejectedValue(err);
+      return client;
+    });
+
+    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.pg.unreachable',
+      message: 'Connection test failed',
+      reason: 'ECONNREFUSED 127.0.0.1:5432',
+    });
+  });
+
+  it('missing required fields keeps serverErrors.setup.testFailed with the short message', async () => {
+    const res = await request(app).post('/api/setup/prefill').send({
+      metadata: { backend: 'postgresql', host: 'localhost' },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      errorCode: 'serverErrors.setup.testFailed',
+      message: 'Missing required fields: port, database, user, password',
+    });
+  });
+
+  it('returns 403 setup.complete when setup is already complete', async () => {
+    setCompleteWebdavEnv();
+    const res = await request(app).post('/api/setup/prefill').send({ metadata: pgMetadata });
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.setup.complete);
+  });
+});
+
 describe('request logger', () => {
   it('logs the apply request without leaking the body', async () => {
     const envPath = makeEnvPath('logger');

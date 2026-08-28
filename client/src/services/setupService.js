@@ -23,3 +23,17 @@ export const applySetup = async (payload) => {
   const response = await post('/setup/apply', payload);
   return response.data;
 };
+
+export const prefillSetup = async (metadata) => {
+  try {
+    const response = await post('/setup/prefill', { metadata });
+    return response.data;
+  } catch (err) {
+    const data = err?.response?.data;
+    const message = data?.message || err.message || 'Setup prefill failed';
+    const normalized = new Error(message);
+    normalized.errorCode = data?.errorCode || 'errors.unknown';
+    normalized.reason = data?.reason;
+    throw normalized;
+  }
+};

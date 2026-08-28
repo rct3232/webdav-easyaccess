@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { server } from '../../setupTests';
 
-import { applySetup, getSetupStatus, testSetup } from '../setupService';
+import { applySetup, getSetupStatus, prefillSetup, testSetup } from '../setupService';
 
 describe('setupService', () => {
   describe('getSetupStatus', () => {
@@ -113,6 +113,71 @@ describe('setupService', () => {
       });
 
       expect(result).toEqual({ restart_required: true });
+    });
+  });
+
+  describe('prefillSetup', () => {
+    it('sends { metadata } and resolves { current, key_lost_warning } from POST /api/setup/prefill', async () => {
+      server.use(
+        http.post('/api/setup/prefill', async ({ request }) => {
+          const body = await request.json();
+          expect(body.metadata).toEqual({
+            backend: 'postgresql',
+            host: 'localhost',
+            port: '5432',
+            database: 'webdav',
+            user: 'admin',
+            password: 'secret',
+            ssl: false,
+          });
+          return HttpResponse.json({
+            current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
+            key_lost_warning: true,
+          });
+        })
+      );
+
+      const result = await prefillSetup({
+        backend: 'postgresql',
+        host: 'localhost',
+        port: '5432',
+        database: 'webdav',
+        user: 'admin',
+        password: 'secret',
+        ssl: false,
+      });
+
+      expect(result).toEqual({
+        current: { EMAIL_HOST: 'smtp.example.com', EMAIL_PASSWORD: '****' },
+        key_lost_warning: true,
+      });
+    });
+
+    it('normalizes errorCode + message + reason when the server rejects', async () => {
+      server.use(
+        http.post('/api/setup/prefill', () =>
+          HttpResponse.json(
+            {
+              ok: false,
+              errorCode: 'serverErrors.setup.test.pg.unreachable',
+              message: 'Cannot reach the PostgreSQL server',
+              reason: 'ECONNREFUSED 127.0.0.1:5432',
+            },
+            { status: 400 }
+          )
+        )
+      );
+
+      try {
+        await prefillSetup({ backend: 'postgresql', host: 'localhost' });
+        throw new Error('Expected reject');
+      } catch (err) {
+        expect(err).toMatchObject({
+          errorCode: 'serverErrors.setup.test.pg.unreachable',
+          message: 'Cannot reach the PostgreSQL server',
+          reason: 'ECONNREFUSED 127.0.0.1:5432',
+        });
+      }
     });
   });
 });

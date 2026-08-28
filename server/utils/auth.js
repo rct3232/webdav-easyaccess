@@ -1,14 +1,23 @@
 const jwt = require('jsonwebtoken');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { computeSetupStatus } = require('../infrastructure/setupStatus');
 
 const DEFAULT_JWT_SECRET = 'your-secret-key-change-in-production';
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30m';
 
-// Fail fast in production if JWT_SECRET is not configured.
+// Fail fast in production if JWT_SECRET is not configured and setup is complete.
+// In setup mode (first run) a prod install with a default secret boots with a
+// warning instead of crashing so the wizard is reachable (D7, §5.2.1).
 if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in production');
+  const { setup_complete } = computeSetupStatus(process.env);
+  if (setup_complete) {
+    throw new Error('JWT_SECRET must be set in production'); // defense-in-depth; unreachable per §5.1
+  }
+  console.warn(
+    '[setup-mode] NODE_ENV=production with default JWT_SECRET — booting in setup mode; the wizard must set JWT_SECRET before restart'
+  );
 }
 
 // Warn in development when using the default secret.

@@ -51,7 +51,7 @@ Wizard steps:
 5. **Apply** — `applySetup(payload)` with the collected `{ metadata, file, admin, jwt, server, email }` blocks.
 6. **"Restart required" screen** — shown on `200 { restart_required: true }`; instructs the operator to restart the server. No self re-exec.
 
-Errors surface via `t(errorCode, params)` (existing error-display utility pattern). Invalid field values are shown inline per step.
+Errors surface via `t(errorCode, params)` (existing error-display utility pattern). Connection-test failures render the translated primary message from the `errorCode` plus an optional muted `reason` detail line. Invalid field values are shown inline per step.
 
 ### 2.6 Integration Test Scenarios
 
@@ -99,8 +99,13 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
 
 ### 3.3 Error Handling
 
-- Errors are propagated to `useSetupWizard`; the wizard displays messages via
-  `t(errorCode, params)`.
+- `testSetup` normalizes failure responses from `POST /setup/test` into an `Error` carrying
+  `{ errorCode, message, reason }` (`errorCode` defaults to `errors.unknown` when absent).
+- `resolveErrorMessage` (`client/src/pages/Setup/hooks/useSetupWizard.js`) renders the primary
+  message via `t(errorCode, { reason })`, so `{{reason}}` templates interpolate; when the key is
+  absent it falls back to `err.message`, then to the wizard's `setup.testFail` key.
+- Test-state error UI shows the translated primary message; when `reason` is present it is
+  rendered as a secondary muted detail line (smaller / less prominent).
 - `403 { errorCode: 'setup.complete' }` from test/apply is surfaced (post-setup lockout
   normally intercepts this first via the mount-time status check).
 
@@ -119,6 +124,10 @@ Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which 
   field labels, buttons, connection-test states, "Restart required" screen).
 - `serverErrors` entries for the new codes: `serverErrors.setup.incomplete` and
   `serverErrors.setup.complete` (added to `shared/serverMessageCodes.js`).
+- Connection-test taxonomy keys under `serverErrors.setup` (en + ko), consumed by
+  `resolveErrorMessage` with `{ reason }` interpolation: `testFailed`, `invalidPayload`, and
+  the nested `test.pg.unreachable`, `test.pg.authFailed`, `test.pg.databaseMissing`,
+  `test.s3.accessDenied`, `test.s3.bucketMissing`, `test.s3.unreachable`, `test.failed`.
 
 ## 5. MSW
 

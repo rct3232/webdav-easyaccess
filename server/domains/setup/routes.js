@@ -25,9 +25,28 @@ const SERVER_ROOT = path.join(__dirname, '..', '..');
 // `ns.key` format so the client can translate them.
 const SETUP_INVALID_PAYLOAD_CODE = 'serverErrors.setup.invalidPayload';
 const SETUP_TEST_FAILED_CODE = 'serverErrors.setup.testFailed';
+const SETUP_TEST_GENERIC_FAILED_CODE = 'serverErrors.setup.test.failed';
+const SETUP_TEST_PG_UNREACHABLE_CODE = 'serverErrors.setup.test.pg.unreachable';
+const SETUP_TEST_PG_AUTH_FAILED_CODE = 'serverErrors.setup.test.pg.authFailed';
+const SETUP_TEST_PG_DATABASE_MISSING_CODE = 'serverErrors.setup.test.pg.databaseMissing';
+const SETUP_TEST_S3_ACCESS_DENIED_CODE = 'serverErrors.setup.test.s3.accessDenied';
+const SETUP_TEST_S3_BUCKET_MISSING_CODE = 'serverErrors.setup.test.s3.bucketMissing';
+const SETUP_TEST_S3_UNREACHABLE_CODE = 'serverErrors.setup.test.s3.unreachable';
+
+const PG_UNREACHABLE_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET'];
+const S3_UNREACHABLE_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'];
 
 const METADATA_KEYS = ['backend', 'host', 'port', 'database', 'user', 'password', 'ssl', 'max'];
-const S3_KEYS = ['backend', 'bucket', 'region', 'accessKeyId', 'secretAccessKey', 'endpoint', 'accessKey', 'secretKey'];
+const S3_KEYS = [
+  'backend',
+  'bucket',
+  'region',
+  'accessKeyId',
+  'secretAccessKey',
+  'endpoint',
+  'accessKey',
+  'secretKey',
+];
 const WEBDAV_KEYS = ['backend', 'url', 'username', 'password', 'authType'];
 const ADMIN_KEYS = ['password'];
 const JWT_KEYS = ['secret', 'expiresIn'];
@@ -74,17 +93,60 @@ function isValidPort(value) {
   return false;
 }
 
-function isNotFoundError(error) {
-  if (!error) return false;
-  if (error.status === 404 || error.statusCode === 404) return true;
-  if (error.$metadata && error.$metadata.httpStatusCode === 404) return true;
-  const haystack = `${error.name || ''} ${error.message || ''}`;
-  return /404|not found|notfound|nosuchkey/i.test(haystack);
+function toShortReason(value) {
+  if (value == null) return undefined;
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  return text.length > 200 ? text.slice(0, 200) : text;
 }
 
-function probeError(errorCode, status, message) {
+function deriveReason(error) {
+  if (!error) return undefined;
+  const code = typeof error.code === 'string' && error.code ? error.code : '';
+  if (code && error.address && error.port)
+    return toShortReason(`${code} ${error.address}:${error.port}`);
+  if (code) return toShortReason(code);
+  if (typeof error.name === 'string' && error.name && error.name !== 'Error')
+    return toShortReason(error.name);
+  return toShortReason(error.message);
+}
+
+function isProbeSuccessError(error) {
+  // Expected success path for the probe: the random probe key is absent, so the
+  // API returns 404 (AWS/MinIO `NotFound`, or `NoSuchKey`). A 404 that names a
+  // missing bucket (`NoSuchBucket`) is a real failure, not a successful probe.
+  if (!error) return false;
+  const status =
+    Number(error.$metadata && error.$metadata.httpStatusCode) || error.status || error.statusCode;
+  const name = `${error.name || ''} ${error.code || ''} ${error.message || ''}`;
+  if (/nosuchbucket/i.test(name)) return false;
+  if (status === 404) return true;
+  return /(^|\s)(nosuchkey|notfound)(\s|$)/i.test(name);
+}
+
+function classifyPgError(error) {
+  const code = String((error && (error.code || error.errno)) || '').toUpperCase();
+  if (PG_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_PG_UNREACHABLE_CODE;
+  if (code === '28P01' || code === '28000') return SETUP_TEST_PG_AUTH_FAILED_CODE;
+  if (code === '3D000') return SETUP_TEST_PG_DATABASE_MISSING_CODE;
+  return SETUP_TEST_GENERIC_FAILED_CODE;
+}
+
+function classifyS3Error(error) {
+  if (!error) return SETUP_TEST_GENERIC_FAILED_CODE;
+  const status = Number(error.$metadata && error.$metadata.httpStatusCode);
+  const name = String(error.name || error.code || '');
+  const code = String(error.code || error.errno || '');
+  if (status === 403 || /accessdenied/i.test(name)) return SETUP_TEST_S3_ACCESS_DENIED_CODE;
+  if (/nosuchbucket/i.test(name)) return SETUP_TEST_S3_BUCKET_MISSING_CODE;
+  if (S3_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_S3_UNREACHABLE_CODE;
+  return SETUP_TEST_GENERIC_FAILED_CODE;
+}
+
+function probeError(errorCode, status, message, reason) {
   const err = createError(errorCode, status);
   err.message = message;
+  if (reason) err.reason = reason;
   return err;
 }
 
@@ -138,8 +200,10 @@ function validateFile(block, fields) {
     }
     if (isMissing(block.bucket)) fields['file.bucket'] = 'required';
     if (isMissing(block.region)) fields['file.region'] = 'required';
-    if (isMissing(pickField(block, 'accessKeyId', ['accessKey']))) fields['file.accessKeyId'] = 'required';
-    if (isMissing(pickField(block, 'secretAccessKey', ['secretKey']))) fields['file.secretAccessKey'] = 'required';
+    if (isMissing(pickField(block, 'accessKeyId', ['accessKey'])))
+      fields['file.accessKeyId'] = 'required';
+    if (isMissing(pickField(block, 'secretAccessKey', ['secretKey'])))
+      fields['file.secretAccessKey'] = 'required';
   } else if (block.backend === 'webdav') {
     for (const key of Object.keys(block)) {
       if (key !== 'backend' && !WEBDAV_KEYS.includes(key)) fields[`file.${key}`] = 'unknown';
@@ -165,13 +229,15 @@ function validateJwt(block, fields) {
 function validateServer(block, fields) {
   if (block == null) return;
   if (!validateBlockObject(block, SERVER_KEYS, 'server', fields)) return;
-  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port)) fields['server.port'] = 'invalid';
+  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port))
+    fields['server.port'] = 'invalid';
 }
 
 function validateEmail(block, fields) {
   if (block == null) return;
   if (!validateBlockObject(block, EMAIL_KEYS, 'email', fields)) return;
-  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port)) fields['email.port'] = 'invalid';
+  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port))
+    fields['email.port'] = 'invalid';
   if (block.secure !== undefined && !isBooleanish(block.secure)) fields['email.secure'] = 'invalid';
 }
 
@@ -259,7 +325,9 @@ function buildEnvEntries(body) {
 async function updateAdminPassword(password) {
   const admin = await User.findByUsername('admin');
   if (!admin) {
-    console.warn('[setup] admin user not found; skipping direct password update (default credential applies on next boot)');
+    console.warn(
+      '[setup] admin user not found; skipping direct password update (default credential applies on next boot)'
+    );
     return;
   }
   await User.updatePassword(admin.id, password);
@@ -269,14 +337,22 @@ async function probePostgresql(payload) {
   const required = ['host', 'port', 'database', 'user', 'password'];
   const missing = required.filter((key) => isMissing(payload[key]));
   if (missing.length > 0) {
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      `Missing required fields: ${missing.join(', ')}`
+    );
   }
 
   let Client;
   try {
     ({ Client } = require('pg'));
   } catch (error) {
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.SERVICE_UNAVAILABLE, 'pg module unavailable');
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      'pg module unavailable'
+    );
   }
 
   const client = new Client({
@@ -293,7 +369,12 @@ async function probePostgresql(payload) {
     await client.connect();
     await client.query('SELECT 1');
   } catch (error) {
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, error.message);
+    throw probeError(
+      classifyPgError(error),
+      HTTP_STATUS.BAD_REQUEST,
+      'Connection test failed',
+      deriveReason(error)
+    );
   } finally {
     await client.end().catch(() => {});
   }
@@ -310,7 +391,11 @@ async function probeS3(payload) {
   if (isMissing(accessKeyId)) missing.push('accessKeyId');
   if (isMissing(secretAccessKey)) missing.push('secretAccessKey');
   if (missing.length > 0) {
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      `Missing required fields: ${missing.join(', ')}`
+    );
   }
 
   const config = {
@@ -324,8 +409,13 @@ async function probeS3(payload) {
   try {
     await store.headBlob(`__wea_setup_probe_${crypto.randomUUID()}`);
   } catch (error) {
-    if (isNotFoundError(error)) return { ok: true };
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, error.message);
+    if (isProbeSuccessError(error)) return { ok: true };
+    throw probeError(
+      classifyS3Error(error),
+      HTTP_STATUS.BAD_REQUEST,
+      'Connection test failed',
+      deriveReason(error)
+    );
   }
   return { ok: true };
 }
@@ -334,7 +424,11 @@ async function probeWebdav(payload) {
   const required = ['url', 'username', 'password'];
   const missing = required.filter((key) => isMissing(payload[key]));
   if (missing.length > 0) {
-    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.BAD_REQUEST,
+      `Missing required fields: ${missing.join(', ')}`
+    );
   }
 
   const previous = {
@@ -364,7 +458,11 @@ async function runProbe(target, body) {
   if (target === 'postgresql') return probePostgresql(body);
   if (target === 's3') return probeS3(body);
   if (target === 'webdav') return probeWebdav(body);
-  throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Unsupported target: ${String(target)}`);
+  throw probeError(
+    SETUP_TEST_FAILED_CODE,
+    HTTP_STATUS.BAD_REQUEST,
+    `Unsupported target: ${String(target)}`
+  );
 }
 
 function requireSetupIncomplete(req, res, next) {
@@ -383,43 +481,54 @@ router.get('/status', (req, res) => {
 });
 
 // POST /api/setup/test — public; 403 setup.complete when already complete.
-router.post('/test', requireSetupIncomplete, asyncHandler(async (req, res) => {
-  try {
-    const body = req.body || {};
-    const result = await runProbe(body.target, body);
-    res.json(result);
-  } catch (error) {
-    const status = error.status || error.statusCode || HTTP_STATUS.BAD_REQUEST;
-    const message = error.message && error.message !== error.errorCode
-      ? error.message
-      : 'Connection test failed';
-    res.status(status).json({
-      ok: false,
-      errorCode: error.errorCode || SETUP_TEST_FAILED_CODE,
-      message,
-    });
-  }
-}));
+router.post(
+  '/test',
+  requireSetupIncomplete,
+  asyncHandler(async (req, res) => {
+    try {
+      const body = req.body || {};
+      const result = await runProbe(body.target, body);
+      res.json(result);
+    } catch (error) {
+      const status = error.status || error.statusCode || HTTP_STATUS.BAD_REQUEST;
+      const message =
+        error.message && error.message !== error.errorCode
+          ? error.message
+          : 'Connection test failed';
+      const reason = toShortReason(error.reason || (error.params && error.params.reason));
+      res.status(status).json({
+        ok: false,
+        errorCode: error.errorCode || SETUP_TEST_FAILED_CODE,
+        message,
+        ...(reason ? { reason } : {}),
+      });
+    }
+  })
+);
 
 // POST /api/setup/apply — public; 403 when already complete.
-router.post('/apply', requireSetupIncomplete, asyncHandler(async (req, res) => {
-  const validation = validateApplyPayload(req.body);
-  if (validation) {
-    return res.status(HTTP_STATUS.BAD_REQUEST).json(validation);
-  }
+router.post(
+  '/apply',
+  requireSetupIncomplete,
+  asyncHandler(async (req, res) => {
+    const validation = validateApplyPayload(req.body);
+    if (validation) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json(validation);
+    }
 
-  const body = req.body;
-  const entries = buildEnvEntries(body);
-  if (body.metadata.backend === 'postgresql') {
-    entries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
-  } else {
-    await updateAdminPassword(String(body.admin.password));
-  }
+    const body = req.body;
+    const entries = buildEnvEntries(body);
+    if (body.metadata.backend === 'postgresql') {
+      entries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
+    } else {
+      await updateAdminPassword(String(body.admin.password));
+    }
 
-  const envPath = resolveEnvPath(SERVER_ROOT);
-  writeEnv(envPath, entries);
+    const envPath = resolveEnvPath(SERVER_ROOT);
+    writeEnv(envPath, entries);
 
-  res.json({ restart_required: true });
-}));
+    res.json({ restart_required: true });
+  })
+);
 
 module.exports = router;

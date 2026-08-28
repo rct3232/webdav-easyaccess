@@ -268,6 +268,25 @@ Full request/response contracts: `docs/spec/server/routes/setup.md`.
 
 ---
 
+## Connection-test error handling
+
+Connection-test failures surface a concise translated primary message plus an optional short
+technical detail — never a raw driver dump.
+
+- Failure response shape: `{ ok: false, errorCode, message, reason? }`. `errorCode` is a stable
+  i18n key (primary text), `message` is a short English fallback, and `reason` is an optional
+  technical detail trimmed to ~200 chars (e.g. `ECONNREFUSED 127.0.0.1:5432` or `AccessDenied`).
+- The client renders the primary message from the `errorCode` translation; `reason` (when
+  present) is shown only as a secondary muted detail line.
+- PostgreSQL/S3 probe failures are classified into stable codes (unreachable, auth, missing
+  database/bucket); anything unclassified falls back to a generic code with the raw driver code
+  kept in `reason` only. WebDAV keeps its existing codes; the generic `{{reason}}` template is
+  interpolated client-side.
+- Full taxonomy: `docs/spec/server/routes/setup.md` (§2.4); client behavior:
+  `docs/spec/client/pages/Setup.md` (§3.3).
+
+---
+
 ## Testing anchors
 
 Representative observable behaviors to cover (full inventory in the server/client route specs

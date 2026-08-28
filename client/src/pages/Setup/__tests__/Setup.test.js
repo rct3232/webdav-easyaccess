@@ -68,7 +68,10 @@ async function fillS3Fields(user) {
   await user.type(screen.getByLabelText(/bucket/i), 'test-bucket');
   await user.type(screen.getByLabelText(/region/i), 'us-east-1');
   await user.type(screen.getByLabelText(/access key id/i), 'AKIAIOSFODNN7EXAMPLE');
-  await user.type(screen.getByLabelText(/secret access key/i), 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY');
+  await user.type(
+    screen.getByLabelText(/secret access key/i),
+    'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+  );
 }
 
 async function fillPgFields(user) {
@@ -174,6 +177,64 @@ describe('Setup wizard', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/already configured/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders a translated taxonomy error with a muted reason detail when the connection test fails', async () => {
+    server.use(
+      http.post('/api/setup/test', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            errorCode: 'serverErrors.setup.test.pg.unreachable',
+            message: 'Cannot reach the PostgreSQL server',
+            reason: 'ECONNREFUSED 127.0.0.1:5432',
+          },
+          { status: 400 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await user.click(screen.getByLabelText(/PostgreSQL/i));
+    await fillPgFields(user);
+    await user.click(screen.getByRole('button', { name: /test connection/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/cannot reach the postgresql server/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText('ECONNREFUSED 127.0.0.1:5432')).toBeInTheDocument();
+  });
+
+  it('interpolates {{reason}} into the translated connection-test error message', async () => {
+    server.use(
+      http.post('/api/setup/test', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            errorCode: 'serverErrors.api.webdavTestFailed',
+            message: 'WebDAV test failed',
+            reason: 'ECONNREFUSED',
+          },
+          { status: 400 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await clickNext(user);
+    await user.click(screen.getByLabelText(/WebDAV/i));
+    await user.type(screen.getByLabelText(/url/i), 'https://example.com/webdav');
+    await user.type(screen.getByLabelText(/username/i), 'admin');
+    await user.type(screen.getByLabelText(/password/i), 'secret');
+    await user.click(screen.getByRole('button', { name: /test connection/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/WebDAV test failed: ECONNREFUSED/i)).toBeInTheDocument();
     });
   });
 

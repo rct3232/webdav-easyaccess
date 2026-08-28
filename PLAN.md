@@ -300,3 +300,9 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   `process.env.WEA_PG_PASSWORD` for a masked value; masked `'****'` entries are dropped before the
   `.env`/DB write so existing values/ciphertext are preserved. Branch
   `fix/setup-masked-pg-password`.
+- 2026-08-28: **Apply ordering fix (non-atomic apply)** — a 400'd apply still committed the DB
+  settings (DB write happened before the .env write), so a restart showed setup_complete=true
+  (login screen) despite the reported error. Fix: apply now writes `.env` (T0) FIRST, the sqlite
+  admin-password update happens only after the `.env` write, and the postgresql settings upserts
+  are wrapped in a transaction (BEGIN/COMMIT/ROLLBACK) — a failed apply can no longer leave a
+  committed "complete" state. Branch `fix/setup-apply-ordering`.

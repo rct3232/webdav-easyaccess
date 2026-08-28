@@ -273,3 +273,7 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   T0-read-only rows, masked secrets with set-new-value toggle, dirty-tracked save (changed keys only),
   applied/restartRequired feedback (Snackbar + banner). MSW GET/PUT `/api/admin/config` + reset.
   Docs: `docs/spec/client/components/SystemConfigEditor.md` + SystemSettingsContent spec. (T4-UI)
+- 2026-08-28: **COMPLETED** — full regression green (server `test:ci` 80 suites / 1490 tests; client
+  `test:ci` 152 suites / 1336 tests). Bonus fix: sqlite transaction serialization (`storage.js`,
+  nested BEGIN race surfaced by the integration suite). Merged to `dev` (`a506179`, `--no-ff`),
+  feature branch deleted. No schema change; existing suites green. (T7-T8)

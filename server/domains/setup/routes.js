@@ -1,0 +1,425 @@
+'use strict';
+
+const crypto = require('crypto');
+const path = require('path');
+const express = require('express');
+
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { asyncHandler, createError } = require('../../utils/errorHandler');
+const { computeSetupStatus } = require('../../infrastructure/setupStatus');
+const { resolveEnvPath } = require('../../infrastructure/envPath');
+const { writeEnv } = require('../../infrastructure/envFileWriter');
+const { testConnection: webdavTestConnection } = require('../../infrastructure/webdavTest');
+const S3BlobStore = require('../../infrastructure/adapters/blobstore/S3BlobStore');
+const User = require('../../models/User');
+
+// Mount base for the resolved env file must match server/index.js:10-12, which
+// resolves against the server root (__dirname of index.js). The routes module
+// lives at <server>/domains/setup, so the server root is two levels up.
+const SERVER_ROOT = path.join(__dirname, '..', '..');
+
+// Error codes for payload/validation and connection-test failures. The spec's
+// official additions (setup.incomplete / setup.complete) live in
+// shared/serverMessageCodes.js; these are module-local i18n keys in the same
+// `ns.key` format so the client can translate them.
+const SETUP_INVALID_PAYLOAD_CODE = 'serverErrors.setup.invalidPayload';
+const SETUP_TEST_FAILED_CODE = 'serverErrors.setup.testFailed';
+
+const METADATA_KEYS = ['backend', 'host', 'port', 'database', 'user', 'password', 'ssl', 'max'];
+const S3_KEYS = ['backend', 'bucket', 'region', 'accessKeyId', 'secretAccessKey', 'endpoint', 'accessKey', 'secretKey'];
+const WEBDAV_KEYS = ['backend', 'url', 'username', 'password', 'authType'];
+const ADMIN_KEYS = ['password'];
+const JWT_KEYS = ['secret', 'expiresIn'];
+const SERVER_KEYS = ['port', 'corsOrigins'];
+const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
+
+const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
+const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
+
+function isMissing(value) {
+  return value == null || String(value).trim() === '';
+}
+
+function pickField(payload, primary, aliases) {
+  if (!isMissing(payload[primary])) return payload[primary];
+  for (const alias of aliases) {
+    if (!isMissing(payload[alias])) return payload[alias];
+  }
+  return undefined;
+}
+
+function isBooleanish(value) {
+  if (typeof value === 'boolean') return true;
+  if (typeof value !== 'string') return false;
+  return ['true', 'false', '1', '0', 'yes', 'no', 'on', 'off'].includes(value.trim().toLowerCase());
+}
+
+function booleanToString(value) {
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return ['true', '1', 'yes', 'on'].includes(String(value).trim().toLowerCase()) ? 'true' : 'false';
+}
+
+function isPositiveInteger(value) {
+  if (typeof value === 'number') return Number.isInteger(value) && value >= 1;
+  if (typeof value === 'string') return /^\d+$/.test(value.trim()) && Number(value.trim()) >= 1;
+  return false;
+}
+
+function isValidPort(value) {
+  if (typeof value === 'number') return Number.isInteger(value) && value >= 1 && value <= 65535;
+  if (typeof value === 'string') {
+    return /^\d+$/.test(value.trim()) && Number(value.trim()) >= 1 && Number(value.trim()) <= 65535;
+  }
+  return false;
+}
+
+function isNotFoundError(error) {
+  if (!error) return false;
+  if (error.status === 404 || error.statusCode === 404) return true;
+  if (error.$metadata && error.$metadata.httpStatusCode === 404) return true;
+  const haystack = `${error.name || ''} ${error.message || ''}`;
+  return /404|not found|notfound|nosuchkey/i.test(haystack);
+}
+
+function probeError(errorCode, status, message) {
+  const err = createError(errorCode, status);
+  err.message = message;
+  return err;
+}
+
+/**
+ * Records unknown keys and validates that a block is a plain object.
+ * @returns {boolean} true when the block is a usable object (caller may continue)
+ */
+function validateBlockObject(block, allowedKeys, prefix, fields) {
+  if (block == null) {
+    fields[prefix] = 'required';
+    return false;
+  }
+  if (typeof block !== 'object' || Array.isArray(block)) {
+    fields[prefix] = 'invalid';
+    return false;
+  }
+  for (const key of Object.keys(block)) {
+    if (!allowedKeys.includes(key)) fields[`${prefix}.${key}`] = 'unknown';
+  }
+  return true;
+}
+
+function validateMetadata(block, fields) {
+  if (!validateBlockObject(block, METADATA_KEYS, 'metadata', fields)) return;
+  if (isMissing(block.backend)) {
+    fields['metadata.backend'] = 'required';
+    return;
+  }
+  if (block.backend !== 'sqlite' && block.backend !== 'postgresql') {
+    fields['metadata.backend'] = 'invalid';
+    return;
+  }
+  if (block.backend === 'postgresql') {
+    for (const key of ['host', 'port', 'database', 'user', 'password']) {
+      if (isMissing(block[key])) fields[`metadata.${key}`] = 'required';
+    }
+  }
+  if (block.ssl !== undefined && !isBooleanish(block.ssl)) fields['metadata.ssl'] = 'invalid';
+  if (block.max !== undefined && !isPositiveInteger(block.max)) fields['metadata.max'] = 'invalid';
+}
+
+function validateFile(block, fields) {
+  if (!validateBlockObject(block, FILE_KEYS_UNION, 'file', fields)) return;
+  if (isMissing(block.backend)) {
+    fields['file.backend'] = 'required';
+    return;
+  }
+  if (block.backend === 's3') {
+    for (const key of Object.keys(block)) {
+      if (key !== 'backend' && !S3_KEYS.includes(key)) fields[`file.${key}`] = 'unknown';
+    }
+    if (isMissing(block.bucket)) fields['file.bucket'] = 'required';
+    if (isMissing(block.region)) fields['file.region'] = 'required';
+    if (isMissing(pickField(block, 'accessKeyId', ['accessKey']))) fields['file.accessKeyId'] = 'required';
+    if (isMissing(pickField(block, 'secretAccessKey', ['secretKey']))) fields['file.secretAccessKey'] = 'required';
+  } else if (block.backend === 'webdav') {
+    for (const key of Object.keys(block)) {
+      if (key !== 'backend' && !WEBDAV_KEYS.includes(key)) fields[`file.${key}`] = 'unknown';
+    }
+    for (const key of ['url', 'username', 'password']) {
+      if (isMissing(block[key])) fields[`file.${key}`] = 'required';
+    }
+  } else {
+    fields['file.backend'] = 'invalid';
+  }
+}
+
+function validateAdmin(block, fields) {
+  if (!validateBlockObject(block, ADMIN_KEYS, 'admin', fields)) return;
+  if (isMissing(block.password)) fields['admin.password'] = 'required';
+}
+
+function validateJwt(block, fields) {
+  if (!validateBlockObject(block, JWT_KEYS, 'jwt', fields)) return;
+  if (isMissing(block.secret)) fields['jwt.secret'] = 'required';
+}
+
+function validateServer(block, fields) {
+  if (block == null) return;
+  if (!validateBlockObject(block, SERVER_KEYS, 'server', fields)) return;
+  if (block.port !== undefined && !isValidPort(block.port)) fields['server.port'] = 'invalid';
+}
+
+function validateEmail(block, fields) {
+  if (block == null) return;
+  if (!validateBlockObject(block, EMAIL_KEYS, 'email', fields)) return;
+  if (block.port !== undefined && !isValidPort(block.port)) fields['email.port'] = 'invalid';
+  if (block.secure !== undefined && !isBooleanish(block.secure)) fields['email.secure'] = 'invalid';
+}
+
+function validateApplyPayload(body) {
+  if (body == null || typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      errorCode: SETUP_INVALID_PAYLOAD_CODE,
+      message: 'Invalid setup payload',
+      fields: { body: 'invalid' },
+    };
+  }
+
+  const fields = {};
+  for (const key of Object.keys(body)) {
+    if (!TOP_LEVEL_KEYS.includes(key)) fields[key] = 'unknown';
+  }
+
+  validateMetadata(body.metadata, fields);
+  validateFile(body.file, fields);
+  validateAdmin(body.admin, fields);
+  validateJwt(body.jwt, fields);
+  validateServer(body.server, fields);
+  validateEmail(body.email, fields);
+
+  if (Object.keys(fields).length === 0) return null;
+  return {
+    errorCode: SETUP_INVALID_PAYLOAD_CODE,
+    message: 'Invalid setup payload',
+    fields,
+  };
+}
+
+function buildEnvEntries(body) {
+  const entries = {};
+  const { metadata, file, jwt } = body;
+
+  entries.WEA_STORAGE_BACKEND = String(metadata.backend);
+  if (metadata.backend === 'postgresql') {
+    entries.WEA_PG_HOST = String(metadata.host);
+    entries.WEA_PG_PORT = String(metadata.port);
+    entries.WEA_PG_DATABASE = String(metadata.database);
+    entries.WEA_PG_USER = String(metadata.user);
+    entries.WEA_PG_PASSWORD = String(metadata.password);
+    if (metadata.ssl !== undefined) entries.WEA_PG_SSL = booleanToString(metadata.ssl);
+    if (metadata.max !== undefined) entries.WEA_PG_MAX = String(metadata.max);
+  }
+
+  entries.WEA_FILE_STORAGE = String(file.backend);
+  if (file.backend === 's3') {
+    entries.S3_BUCKET = String(file.bucket);
+    entries.AWS_REGION = String(file.region);
+    entries.AWS_ACCESS_KEY_ID = String(pickField(file, 'accessKeyId', ['accessKey']));
+    entries.AWS_SECRET_ACCESS_KEY = String(pickField(file, 'secretAccessKey', ['secretKey']));
+    if (!isMissing(file.endpoint)) entries.S3_ENDPOINT = String(file.endpoint);
+  } else {
+    entries.WEBDAV_URL = String(file.url);
+    entries.WEBDAV_USERNAME = String(file.username);
+    entries.WEBDAV_PASSWORD = String(file.password);
+    if (!isMissing(file.authType)) entries.WEBDAV_AUTH_TYPE = String(file.authType);
+  }
+
+  entries.JWT_SECRET = String(jwt.secret);
+  if (!isMissing(jwt.expiresIn)) entries.JWT_EXPIRES_IN = String(jwt.expiresIn);
+
+  if (body.server != null) {
+    if (body.server.port !== undefined && String(body.server.port).trim() !== '') {
+      entries.PORT = String(body.server.port);
+    }
+    if (!isMissing(body.server.corsOrigins)) entries.CORS_ORIGINS = String(body.server.corsOrigins);
+  }
+
+  if (body.email != null) {
+    const { email } = body;
+    if (!isMissing(email.host)) entries.EMAIL_HOST = String(email.host);
+    if (!isMissing(email.port)) entries.EMAIL_PORT = String(email.port);
+    if (!isMissing(email.user)) entries.EMAIL_USER = String(email.user);
+    if (!isMissing(email.password)) entries.EMAIL_PASSWORD = String(email.password);
+    if (email.secure !== undefined) entries.EMAIL_SECURE = booleanToString(email.secure);
+    if (!isMissing(email.fromName)) entries.EMAIL_FROM_NAME = String(email.fromName);
+  }
+
+  return entries;
+}
+
+async function updateAdminPassword(password) {
+  const admin = await User.findByUsername('admin');
+  if (!admin) {
+    console.warn('[setup] admin user not found; skipping direct password update (default credential applies on next boot)');
+    return;
+  }
+  await User.updatePassword(admin.id, password);
+}
+
+async function probePostgresql(payload) {
+  const required = ['host', 'port', 'database', 'user', 'password'];
+  const missing = required.filter((key) => isMissing(payload[key]));
+  if (missing.length > 0) {
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+  }
+
+  let Client;
+  try {
+    ({ Client } = require('pg'));
+  } catch (error) {
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.SERVICE_UNAVAILABLE, 'pg module unavailable');
+  }
+
+  const client = new Client({
+    host: payload.host,
+    port: Number(payload.port) || 5432,
+    database: payload.database,
+    user: payload.user,
+    password: payload.password,
+    ssl: payload.ssl ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis: 5000,
+  });
+
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+  } catch (error) {
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, error.message);
+  } finally {
+    await client.end().catch(() => {});
+  }
+
+  return { ok: true };
+}
+
+async function probeS3(payload) {
+  const accessKeyId = pickField(payload, 'accessKeyId', ['accessKey']);
+  const secretAccessKey = pickField(payload, 'secretAccessKey', ['secretKey']);
+  const missing = [];
+  if (isMissing(payload.bucket)) missing.push('bucket');
+  if (isMissing(payload.region)) missing.push('region');
+  if (isMissing(accessKeyId)) missing.push('accessKeyId');
+  if (isMissing(secretAccessKey)) missing.push('secretAccessKey');
+  if (missing.length > 0) {
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+  }
+
+  const config = {
+    bucket: payload.bucket,
+    region: payload.region || 'us-east-1',
+    credentials: { accessKeyId, secretAccessKey },
+  };
+  if (!isMissing(payload.endpoint)) config.endpoint = payload.endpoint;
+
+  const store = new S3BlobStore(config);
+  try {
+    await store.headBlob(`__wea_setup_probe_${crypto.randomUUID()}`);
+  } catch (error) {
+    if (isNotFoundError(error)) return { ok: true };
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, error.message);
+  }
+  return { ok: true };
+}
+
+async function probeWebdav(payload) {
+  const required = ['url', 'username', 'password'];
+  const missing = required.filter((key) => isMissing(payload[key]));
+  if (missing.length > 0) {
+    throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Missing required fields: ${missing.join(', ')}`);
+  }
+
+  const previous = {
+    WEBDAV_URL: process.env.WEBDAV_URL,
+    WEBDAV_USERNAME: process.env.WEBDAV_USERNAME,
+    WEBDAV_PASSWORD: process.env.WEBDAV_PASSWORD,
+    WEBDAV_AUTH_TYPE: process.env.WEBDAV_AUTH_TYPE,
+  };
+  process.env.WEBDAV_URL = String(payload.url);
+  process.env.WEBDAV_USERNAME = String(payload.username);
+  process.env.WEBDAV_PASSWORD = String(payload.password);
+  if (!isMissing(payload.authType)) process.env.WEBDAV_AUTH_TYPE = String(payload.authType);
+
+  try {
+    await webdavTestConnection();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  return { ok: true };
+}
+
+async function runProbe(target, body) {
+  if (target === 'postgresql') return probePostgresql(body);
+  if (target === 's3') return probeS3(body);
+  if (target === 'webdav') return probeWebdav(body);
+  throw probeError(SETUP_TEST_FAILED_CODE, HTTP_STATUS.BAD_REQUEST, `Unsupported target: ${String(target)}`);
+}
+
+function requireSetupIncomplete(req, res, next) {
+  const { setup_complete } = computeSetupStatus(process.env);
+  if (setup_complete) {
+    return next(createError(SERVER_ERROR_CODES.setup.complete, HTTP_STATUS.FORBIDDEN));
+  }
+  return next();
+}
+
+const router = express.Router();
+
+// GET /api/setup/status — public, always available.
+router.get('/status', (req, res) => {
+  res.json(computeSetupStatus(process.env));
+});
+
+// POST /api/setup/test — public; 403 setup.complete when already complete.
+router.post('/test', requireSetupIncomplete, asyncHandler(async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await runProbe(body.target, body);
+    res.json(result);
+  } catch (error) {
+    const status = error.status || error.statusCode || HTTP_STATUS.BAD_REQUEST;
+    const message = error.message && error.message !== error.errorCode
+      ? error.message
+      : 'Connection test failed';
+    res.status(status).json({
+      ok: false,
+      errorCode: error.errorCode || SETUP_TEST_FAILED_CODE,
+      message,
+    });
+  }
+}));
+
+// POST /api/setup/apply — public; 403 when already complete.
+router.post('/apply', requireSetupIncomplete, asyncHandler(async (req, res) => {
+  const validation = validateApplyPayload(req.body);
+  if (validation) {
+    return res.status(HTTP_STATUS.BAD_REQUEST).json(validation);
+  }
+
+  const body = req.body;
+  const entries = buildEnvEntries(body);
+  if (body.metadata.backend === 'postgresql') {
+    entries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
+  } else {
+    await updateAdminPassword(String(body.admin.password));
+  }
+
+  const envPath = resolveEnvPath(SERVER_ROOT);
+  writeEnv(envPath, entries);
+
+  res.json({ restart_required: true });
+}));
+
+module.exports = router;

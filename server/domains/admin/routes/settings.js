@@ -9,6 +9,7 @@ const Settings = require('../../../models/Settings');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { isEmailEnabled } = require('../../../utils/email');
+const { computeSetupStatus } = require('../../../infrastructure/setupStatus');
 
 // Public settings endpoint (no authentication required)
 router.get('/public', asyncHandler(async (req, res) => {
@@ -17,6 +18,7 @@ router.get('/public', asyncHandler(async (req, res) => {
   res.json({
     registration_enabled: registrationEnabled,
     email_enabled: emailEnabled,
+    setup_complete: computeSetupStatus(process.env).setup_complete,
   });
 }));
 

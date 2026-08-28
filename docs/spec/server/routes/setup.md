@@ -155,18 +155,19 @@ Public; **403 when already complete** (gate uses the same effective view as `/st
 4. **`encrypt_secret_key` lifecycle (keep-existing, PLAN §7):**
    - If `process.env.encrypt_secret_key` is already set → **keep it**: it is not regenerated and not written to `.env`; it is used to encrypt the DB secrets of this apply.
    - Otherwise → **auto-generate** one (`generateKey()`), write it to the `.env` T0 subset, and use it to encrypt this apply's DB secrets.
-5. Admin password effect (D6):
+5. **Write the `.env` T0 subset FIRST** (atomic temp-file + rename). Ordering guarantee: if the `.env` write fails, the DB has not been touched, so boot still shows setup mode — a failed apply can never leave a committed-but-error "complete" state.
+6. Admin password effect (D6):
    - `metadata.backend=postgresql` → `ADMIN_DEFAULT_PASSWORD=<chosen>` is stored in the DB (encrypted as a secret, T1). A parallel boot task populates it into `process.env` before `ensureDefaultAdmin` creates `admin` on restart.
-   - `metadata.backend=sqlite` → admin already exists in the sqlite store from first boot; apply updates its password directly via the existing user store (single store call), so no restart dependency for the credential.
-6. Write non-T0 to the metadata DB:
+   - `metadata.backend=sqlite` → admin already exists in the sqlite store from first boot; apply updates its password directly via the existing user store (single store call, after the `.env` write), so no restart dependency for the credential.
+7. Write non-T0 to the metadata DB:
    - **sqlite**: `Settings.set(key, value)` — plaintext config value passed as-is (the store JSON-stringifies); a secret is stored as `JSON.stringify(encryptSecret(String(value), masterKey))`.
-   - **postgresql**: apply connects **directly** to the target PG with the entered credentials (a masked `'****'` password falls back to `process.env.WEA_PG_PASSWORD` — the `.env` is authoritative for a masked T0 value), ensures the `settings` table exists via the idempotent `CREATE TABLE IF NOT EXISTS settings (…)` DDL (mirrored verbatim from `001_initial_normalized_schema.sql`; a code comment marks it "keep in sync with 001"), then upserts each row:
+   - **postgresql**: apply connects **directly** to the target PG with the entered credentials (a masked `'****'` password falls back to `process.env.WEA_PG_PASSWORD` — the `.env` is authoritative for a masked T0 value), ensures the `settings` table exists via the idempotent `CREATE TABLE IF NOT EXISTS settings (…)` DDL (mirrored verbatim from `001_initial_normalized_schema.sql`; a code comment marks it "keep in sync with 001"), then **wraps the upserts in a transaction** (`BEGIN`/`COMMIT`/`ROLLBACK` on error) so a mid-loop failure leaves no partial rows:
      `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`.
      Plaintext rows store `JSON.stringify(String(value))` (e.g. `"smtp.gmail.com"`); secret rows store the encrypted payload object as JSON. The client is closed in a `finally`. The full app schema (`users`, `_schema_migrations`, …) is still created by normal boot migrations on restart (`IF NOT EXISTS` + file-based tracking → no conflict).
-7. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
-8. Respond **`200 { "restart_required": true }`**.
+8. Clear the shared T2 cache: `getSharedResolver().invalidateCache()` so the DB writes are visible immediately for restart-free (T2) reads.
+9. Respond **`200 { "restart_required": true }`**.
 
-**Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). A failed apply may leave partial DB rows (single-operator; re-apply is idempotent upserts).
+**Idempotency/safety:** apply refuses (`403`) once `setup_complete` is true; concurrent applies are last-writer-wins (documented, single-operator assumption). The `.env` write happens before the DB write and the PG upserts are transactional, so a failed apply leaves **no committed partial state** — the worst case is a written `.env` with an unchanged (or rolled-back) DB, which still boots into setup mode (never a false "complete").
 
 #### POST /api/setup/prefill
 

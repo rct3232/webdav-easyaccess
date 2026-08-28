@@ -444,20 +444,29 @@ async function writeSettings(metadata, dbEntries, masterKey) {
 
     try {
       await client.connect();
-      await client.query(SETTINGS_TABLE_DDL);
-      for (const [key, value] of Object.entries(dbEntries)) {
-        const stored = isSecret(key)
-          ? encryptSecretValue(value, masterKey)
-          : JSON.stringify(String(value));
-        await client.query(
-          `INSERT INTO settings (key, value, updated_at)
-           VALUES ($1, $2::jsonb, NOW())
-           ON CONFLICT (key)
-           DO UPDATE
-             SET value = EXCLUDED.value,
-                 updated_at = NOW()`,
-          [key, stored]
-        );
+      // All DB writes are transactional: a mid-loop failure rolls back, so a
+      // failed apply never leaves partially-written settings rows.
+      await client.query('BEGIN');
+      try {
+        await client.query(SETTINGS_TABLE_DDL);
+        for (const [key, value] of Object.entries(dbEntries)) {
+          const stored = isSecret(key)
+            ? encryptSecretValue(value, masterKey)
+            : JSON.stringify(String(value));
+          await client.query(
+            `INSERT INTO settings (key, value, updated_at)
+             VALUES ($1, $2::jsonb, NOW())
+             ON CONFLICT (key)
+             DO UPDATE
+               SET value = EXCLUDED.value,
+                   updated_at = NOW()`,
+            [key, stored]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
       }
     } finally {
       await client.end().catch(() => {});
@@ -859,14 +868,22 @@ router.post(
 
     if (body.metadata.backend === 'postgresql') {
       dbEntries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
-    } else {
+    }
+
+    // Write .env FIRST (atomic temp-file + rename). If it fails, the DB has not
+    // been touched, so boot still shows setup mode — a failed apply can never
+    // leave a committed-but-error "complete" state (the non-atomic bug that
+    // surfaced when a 400'd apply still left the DB configured).
+    const envPath = resolveEnvPath(SERVER_ROOT);
+    writeEnv(envPath, envEntries);
+
+    if (body.metadata.backend !== 'postgresql') {
+      // sqlite admin password update happens only after the .env write
+      // succeeded, so a failure cannot leave the credential changed mid-apply.
       await updateAdminPassword(String(body.admin.password));
     }
 
     await writeSettings(body.metadata, dbEntries, masterKey);
-
-    const envPath = resolveEnvPath(SERVER_ROOT);
-    writeEnv(envPath, envEntries);
 
     // Clear the shared T2 cache so the DB writes are visible to restart-free
     // (T2) reads immediately after this apply.

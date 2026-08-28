@@ -133,10 +133,17 @@ are written to `.env`.**
   1. **DB lacks required non-T0 config** → `setup_complete=false` → wizard shown; it reads and
      applies against the target DB directly.
   2. **DB already has all required config** → `setup_complete=true` → no wizard; boot normally.
-  - **Encryption-key consistency (critical)**: existing DB secrets are encrypted with the
-    original `encrypt_secret_key` — if `.env` already has a key, apply/prefill must **keep it**
-    (never regenerate, D1); if no key exists but encrypted DB secrets are present, surface a
-    "key lost" warning.
+  - **Encryption-key lifecycle rules (critical, D6/Q1b — independent of the read path)**: DB
+    secrets are encrypted with `encrypt_secret_key` (T0, in `.env`), so the key's location and
+    lifecycle govern decryptability regardless of which DB path reads the row:
+    1. **keep-existing**: if `.env` already has a key, apply/prefill must **keep it** (never
+       regenerate, D1). Only auto-generate when no key exists.
+    2. **key-lost warning**: if no key exists in `.env` but encrypted DB secret rows are
+       detected (via the wizard's direct read), surface an explicit "key lost" warning — such
+       rows cannot be decrypted/prefilled.
+    3. **only re-encrypt on new value**: a masked (unchanged) secret keeps its existing
+       ciphertext; a new value is the only trigger to encrypt with the current key. This
+       prevents unrecoverable data loss when the key is missing or on rotation.
 
 ## 8. Boot Order
 
@@ -216,3 +223,5 @@ are written to `.env`.**
   app-metadata-vs-target distinction; settingsStore is admin/runtime-only, post-setup); boot
   branches on DB contents — DB lacks config → wizard, DB has all → boot normally. Recorded in
   §7/§8.
+- 2026-08-28: Encryption-key lifecycle rules made explicit in §7 (keep-existing / key-lost
+  warning / only-re-encrypt-on-new-value) — independent of the read-path model.

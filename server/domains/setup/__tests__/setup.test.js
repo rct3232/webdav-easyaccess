@@ -228,6 +228,36 @@ describe('POST /api/setup/apply', () => {
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(false);
   });
 
+  it('sqlite + webdav: empty-string optional server/email ports are tolerated and PORT is not written', async () => {
+    const envPath = makeEnvPath('sqlite-webdav-empty-port');
+    fs.writeFileSync(envPath, 'CUSTOM_FLAG=keep-me\n');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    const res = await request(app).post('/api/setup/apply').send({
+      metadata: { backend: 'sqlite' },
+      file: {
+        backend: 'webdav',
+        url: 'https://dav.example.com',
+        username: 'dav-user',
+        password: 'dav-pass',
+        authType: 'auto',
+      },
+      admin: { password: 'new-admin-pass' },
+      jwt: { secret: 'super-secret-jwt', expiresIn: '30m' },
+      server: { port: '', corsOrigins: '' },
+      email: { host: '', port: '', user: '', password: '', secure: false, fromName: '' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
+
+    const contents = fs.readFileSync(envPath, 'utf8');
+    expect(contents).toContain('CUSTOM_FLAG=keep-me');
+    expect(contents).not.toContain('PORT=');
+    expect(contents).not.toContain('EMAIL_PORT=');
+    expect(contents).toContain('WEA_FILE_STORAGE=webdav');
+  });
+
   it('postgresql + s3: writes WEA_PG_* and S3_* keys plus ADMIN_DEFAULT_PASSWORD without touching sqlite admin', async () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;

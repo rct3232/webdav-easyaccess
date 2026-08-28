@@ -165,13 +165,13 @@ function validateJwt(block, fields) {
 function validateServer(block, fields) {
   if (block == null) return;
   if (!validateBlockObject(block, SERVER_KEYS, 'server', fields)) return;
-  if (block.port !== undefined && !isValidPort(block.port)) fields['server.port'] = 'invalid';
+  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port)) fields['server.port'] = 'invalid';
 }
 
 function validateEmail(block, fields) {
   if (block == null) return;
   if (!validateBlockObject(block, EMAIL_KEYS, 'email', fields)) return;
-  if (block.port !== undefined && !isValidPort(block.port)) fields['email.port'] = 'invalid';
+  if (block.port !== undefined && String(block.port).trim() !== '' && !isValidPort(block.port)) fields['email.port'] = 'invalid';
   if (block.secure !== undefined && !isBooleanish(block.secure)) fields['email.secure'] = 'invalid';
 }
 

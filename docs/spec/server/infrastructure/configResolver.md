@@ -22,9 +22,12 @@
 |--------|-----------|-------------|
 | `createConfigResolver` | `({ settingsStore, env = process.env, ttlMs = 5000 }) => resolver` | Factory. `settingsStore` must expose `get(key)` and `getAll()` (see §2.4). Throws `TypeError` when the store contract is not met. |
 | `getConfig` | `async (key) => value \| undefined` | Resolved value for one key. String for config keys; for `registration_enabled` the raw DB boolean (or string) is passed through; `undefined` when unresolvable. Never returns a default for `registration_enabled`. |
+| `getConfigSync` | `(key) => value \| undefined` | Synchronous read for require-time consumers: env → cached DB row (decrypted) → default. DB values are visible only after `loadAll()` or an async read seeded the cache. |
 | `getEffectiveConfig` | `async () => { key: { value, source, tier, secret } }` | Every registry entry. Secrets are **always** `'****'` (never decrypted). `source` ∈ `'env' \| 'db' \| 'default'`. |
 | `invalidateCache` | `(keys?) => void` | Drop the cached rows for the given key(s); all cached rows when called with no arguments. |
 | `loadAll` | `async () => void` | Prime the DB row cache from `settingsStore.getAll()` (bulk read) — called at boot before serving. |
+| `getSharedResolver` | `() => resolver` | The process-wide resolver instance. Lazily created with `settingsStore = Settings` model on first call (no DB connection at require time). Used by the boot path, the admin config route, and T2 consumers so writes invalidate one shared cache. |
+| `setSharedResolver` | `(resolver) => void` | Install a boot-primed instance (after `loadAll`); also the test hook. |
 
 ### 2.3 Resolution Rule
 
@@ -106,3 +109,5 @@ Secrets are never decrypted for this call — `value` is always `'****'`, while 
 - [ ] `getEffectiveConfig` masks secrets and reports source/tier.
 - [ ] `invalidateCache` + TTL reload re-read the store.
 - [ ] `registration_enabled` boolean passthrough.
+- [ ] `getConfigSync` serves env/cached-DB/default with no DB reads.
+- [ ] `setSharedResolver`/`getSharedResolver` return the installed instance.

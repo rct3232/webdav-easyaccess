@@ -148,6 +148,24 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     for (const key of list) cache.delete(key);
   }
 
+  /**
+   * Synchronous read for require-time consumers (boot-frozen or per-request
+   * sync paths): env → cached DB row → default. DB values are visible only
+   * after loadAll() primes the cache or an async read populated it.
+   */
+  function getConfigSync(key) {
+    const entry = getEntry(key);
+    if (!entry) return undefined;
+    const envValue = env[key];
+    if (isSet(envValue)) return envValue;
+    if (entry.tier === TIER.T0) return undefined;
+    const hit = cache.get(key);
+    const resolved =
+      hit && hit.value !== undefined ? resolveDbValue(hit.value, entry, env) : undefined;
+    if (resolved !== undefined) return resolved;
+    return entry.default;
+  }
+
   async function loadAll() {
     const all = await settingsStore.getAll();
     const now = Date.now();
@@ -156,7 +174,27 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     }
   }
 
-  return { getConfig, getEffectiveConfig, invalidateCache, loadAll };
+  return { getConfig, getConfigSync, getEffectiveConfig, invalidateCache, loadAll };
 }
 
-module.exports = { createConfigResolver };
+let sharedResolver = null;
+
+/**
+ * The single resolver instance used across the process (boot, admin config
+ * route, T2 consumers). Lazily created with the app's Settings model store so
+ * no DB connection happens at require time. setSharedResolver lets the boot
+ * sequence install its own primed instance (after loadAll).
+ */
+function getSharedResolver() {
+  if (!sharedResolver) {
+    const Settings = require('../models/Settings');
+    sharedResolver = createConfigResolver({ settingsStore: Settings });
+  }
+  return sharedResolver;
+}
+
+function setSharedResolver(resolver) {
+  sharedResolver = resolver;
+}
+
+module.exports = { createConfigResolver, getSharedResolver, setSharedResolver };

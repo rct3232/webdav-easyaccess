@@ -136,4 +136,84 @@ describe('computeSetupStatus', () => {
       expect(status.missing).toEqual(['WEA_PG_PORT', 'WEA_PG_DATABASE', 'WEA_PG_USER', 'WEA_PG_PASSWORD']);
     });
   });
+
+  describe('effectiveConfig view (env-first over DB)', () => {
+    it('completes a config that raw env alone cannot (DB provides S3 keys)', () => {
+      const env = {}; // no file/admin keys in env
+      const effectiveConfig = {
+        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
+        WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+        S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
+        AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
+        AWS_ACCESS_KEY_ID: { value: 'AKIAEXAMPLE', source: 'db', tier: 'T1', secret: false },
+        AWS_SECRET_ACCESS_KEY: { value: '****', source: 'db', tier: 'T1', secret: true },
+      };
+      const status = computeSetupStatus(env, { effectiveConfig });
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+
+    it('respects metadata backend from effective view (postgresql requires WEA_PG_*)', () => {
+      const env = {};
+      const effectiveConfig = {
+        WEA_STORAGE_BACKEND: { value: 'postgresql', source: 'env', tier: 'T0', secret: false },
+        WEA_PG_HOST: { value: 'db.example.com', source: 'env', tier: 'T0', secret: false },
+        WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+        S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
+        AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
+        AWS_ACCESS_KEY_ID: { value: 'AKIAEXAMPLE', source: 'db', tier: 'T1', secret: false },
+        AWS_SECRET_ACCESS_KEY: { value: '****', source: 'db', tier: 'T1', secret: true },
+      };
+      const status = computeSetupStatus(env, { effectiveConfig });
+      expect(status.setup_complete).toBe(false);
+      expect(status.missing).toEqual([
+        'WEA_PG_PORT',
+        'WEA_PG_DATABASE',
+        'WEA_PG_USER',
+        'WEA_PG_PASSWORD',
+      ]);
+    });
+
+    it('honors webdav backend and masked password presence from DB', () => {
+      const env = {};
+      const effectiveConfig = {
+        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
+        WEA_FILE_STORAGE: { value: 'webdav', source: 'db', tier: 'T1', secret: false },
+        WEBDAV_URL: { value: 'https://dav.example.com', source: 'db', tier: 'T1', secret: false },
+        WEBDAV_USERNAME: { value: 'dav-user', source: 'db', tier: 'T1', secret: false },
+        WEBDAV_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+      };
+      const status = computeSetupStatus(env, { effectiveConfig });
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+
+    it('still requires JWT_SECRET in production when effective value is masked', () => {
+      const env = { NODE_ENV: 'production' };
+      const effectiveConfig = {
+        NODE_ENV: { value: 'production', source: 'env', tier: 'T0', secret: false },
+        WEA_STORAGE_BACKEND: { value: 'sqlite', source: 'default', tier: 'T0', secret: false },
+        WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+        S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
+        AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
+        AWS_ACCESS_KEY_ID: { value: 'AKIAEXAMPLE', source: 'db', tier: 'T1', secret: false },
+        AWS_SECRET_ACCESS_KEY: { value: '****', source: 'db', tier: 'T1', secret: true },
+      };
+      const status = computeSetupStatus(env, { effectiveConfig });
+      expect(status.setup_complete).toBe(false);
+      expect(status.missing).toContain('JWT_SECRET');
+    });
+
+    it('keeps backward compatibility when no effectiveConfig is given', () => {
+      const env = {
+        S3_BUCKET: 'my-bucket',
+        AWS_REGION: 'us-east-1',
+        AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+        AWS_SECRET_ACCESS_KEY: 'secret-value',
+      };
+      const status = computeSetupStatus(env);
+      expect(status.setup_complete).toBe(true);
+      expect(status.missing).toEqual([]);
+    });
+  });
 });

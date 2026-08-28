@@ -1,6 +1,6 @@
 'use strict';
 
-const { createConfigResolver } = require('../configResolver');
+const { createConfigResolver, getSharedResolver, setSharedResolver } = require('../configResolver');
 const { encryptSecret } = require('../../utils/configEncryption');
 
 const MASTER_KEY = 'test-master-key';
@@ -298,6 +298,44 @@ describe('createConfigResolver', () => {
       store.set('EMAIL_HOST', 'changed');
       await expect(resolver.getConfig('EMAIL_HOST')).resolves.toBe('db-host');
       expect(store.calls.get).toHaveLength(0);
+    });
+  });
+
+  describe('getConfigSync', () => {
+    it('reads env, then cached DB row, then default — no DB reads', async () => {
+      const store = createFakeStore({ EMAIL_HOST: 'db-host' });
+      const resolver = makeResolver(store, { PORT: '9999' });
+      await resolver.loadAll();
+
+      expect(resolver.getConfigSync('PORT')).toBe('9999');
+      expect(resolver.getConfigSync('EMAIL_HOST')).toBe('db-host');
+      expect(resolver.getConfigSync('GC_ORPHAN_TTL_DAYS')).toBe(1);
+      expect(resolver.getConfigSync('EMAIL_PASSWORD')).toBeUndefined();
+      expect(store.calls.get).toHaveLength(0);
+    });
+
+    it('returns undefined for T0 keys when env is absent', () => {
+      const resolver = makeResolver(createFakeStore({}), {});
+      expect(resolver.getConfigSync('JWT_SECRET')).toBeUndefined();
+      expect(resolver.getConfigSync('WEA_PG_PORT')).toBeUndefined();
+    });
+
+    it('decrypts a cached encrypted DB secret synchronously', async () => {
+      const payload = encryptSecret('smtp-password', MASTER_KEY);
+      const store = createFakeStore({ EMAIL_PASSWORD: JSON.stringify(payload) });
+      const resolver = makeResolver(store, { encrypt_secret_key: MASTER_KEY });
+      await resolver.loadAll();
+
+      expect(resolver.getConfigSync('EMAIL_PASSWORD')).toBe('smtp-password');
+    });
+  });
+
+  describe('shared resolver accessor', () => {
+    it('returns the instance installed by setSharedResolver', () => {
+      const fake = { marker: true };
+      setSharedResolver(fake);
+      expect(getSharedResolver()).toBe(fake);
+      setSharedResolver(null);
     });
   });
 });

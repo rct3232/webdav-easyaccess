@@ -12,6 +12,7 @@ const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
 const { testConnection: webdavTestConnection } = require('../../infrastructure/webdavTest');
 const S3BlobStore = require('../../infrastructure/adapters/blobstore/S3BlobStore');
+const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const User = require('../../models/User');
 
 // Mount base for the resolved env file must match server/index.js:10-12, which
@@ -139,6 +140,21 @@ function classifyS3Error(error) {
   const code = String(error.code || error.errno || '');
   if (status === 403 || /accessdenied/i.test(name)) return SETUP_TEST_S3_ACCESS_DENIED_CODE;
   if (/nosuchbucket/i.test(name)) return SETUP_TEST_S3_BUCKET_MISSING_CODE;
+  if (S3_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_S3_UNREACHABLE_CODE;
+  return SETUP_TEST_GENERIC_FAILED_CODE;
+}
+
+function classifyS3BucketError(error) {
+  // On ListObjectsV2 a 404 unambiguously means the bucket does not exist
+  // (HeadObject's 404 is ambiguous on MinIO/S3), so both NotFound and
+  // NoSuchBucket map to bucketMissing here.
+  if (!error) return SETUP_TEST_GENERIC_FAILED_CODE;
+  const status = Number(error.$metadata && error.$metadata.httpStatusCode);
+  const name = String(error.name || error.code || '');
+  const code = String(error.code || error.errno || '');
+  if (status === 403 || /accessdenied/i.test(name)) return SETUP_TEST_S3_ACCESS_DENIED_CODE;
+  if (status === 404 || /(nosuchbucket|notfound)/i.test(name))
+    return SETUP_TEST_S3_BUCKET_MISSING_CODE;
   if (S3_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_S3_UNREACHABLE_CODE;
   return SETUP_TEST_GENERIC_FAILED_CODE;
 }
@@ -407,6 +423,19 @@ async function probeS3(payload) {
 
   const store = new S3BlobStore(config);
   try {
+    // Bucket existence + credentials: a ListObjectsV2 404 unambiguously means
+    // the bucket is missing (HeadObject's 404 is ambiguous on MinIO/S3).
+    await store.client.send(new ListObjectsV2Command({ Bucket: config.bucket, MaxKeys: 1 }));
+  } catch (error) {
+    throw probeError(
+      classifyS3BucketError(error),
+      HTTP_STATUS.BAD_REQUEST,
+      'Connection test failed',
+      deriveReason(error)
+    );
+  }
+  try {
+    // Object read path: the random probe key is absent, so a 404 is success.
     await store.headBlob(`__wea_setup_probe_${crypto.randomUUID()}`);
   } catch (error) {
     if (isProbeSuccessError(error)) return { ok: true };

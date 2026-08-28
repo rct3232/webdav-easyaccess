@@ -160,28 +160,34 @@ are written to `.env`.**
 
 ## 9. Admin Config UI (Q3) — design
 
-Follow existing mypage-admin conventions (verified in code):
+**Placement (user-confirmed): no sidebar category.** The config editor lives inside the existing
+System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) within
+`SystemSettingsContent.js`. (A full-screen modal is the fallback if the editor proves too long.)
 
-| Item         | Location                                                                                                                                                         |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Component    | `client/src/components/mypage/content/SystemConfigContent.js` (new) — clone `SystemSettingsContent.js` pattern (local state, `usePageHeader`, Snackbar feedback) |
-| Registry     | `client/src/utils/myPageRegistry.js`: add `admin-config` category (`adminOnly`, icon, label `admin.config`) + descriptor branch + admin guard                    |
-| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)` (mirror `getSettings`/`updateSettings`)                                            |
-| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config`, mounted under `/api/admin` (setupModeGuard + authenticateToken + isAdmin)          |
-| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                                                                        |
-| i18n         | en/ko `admin.config.*` (title, groups, generic strings)                                                                                                          |
-| Docs         | `docs/spec/server/routes/config.md` + client component spec + `docs/api.md` admin table                                                                          |
+| Item         | Location                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component    | `client/src/components/mypage/content/SystemConfigEditor.js` (new) — rendered inside an "Advanced settings" Accordion in `SystemSettingsContent.js`     |
+| Registry     | **none** — no new mypage category (no `myPageRegistry.js` change)                                                                                       |
+| Service      | `client/src/services/adminService.js`: `getConfig()` / `updateConfig(values)` (mirror `getSettings`/`updateSettings`)                                   |
+| Server route | `server/domains/admin/routes/config.js` (new): `GET /config` + `PUT /config`, mounted under `/api/admin` (setupModeGuard + authenticateToken + isAdmin) |
+| MSW          | `client/src/mocks/handlers.js`: `GET/PUT /api/admin/config` + reset state                                                                               |
+| i18n         | en/ko `admin.advancedSettings` (accordion title) + `admin.config.*` (groups, generic strings)                                                           |
+| Docs         | `docs/spec/server/routes/config.md` + client component spec + `docs/api.md` admin table                                                                 |
 
 **GET `/api/admin/config`** → `{ config: { "<envKey>": { value, source: 'env'|'db'|'default', tier, secret } } }` for every registry key; secrets always `"****"` (never decrypted to the client). Display metadata (`labelKey`, `group`, `inputType`, `options`) lives client-side in a `CONFIG_DISPLAY_META` map; the server registry is authoritative for tier/secret/source.
 
 **UI structure**:
 
+- The "Advanced settings" accordion sits below the main settings rows in `SystemSettingsContent`
+  (title i18n `admin.advancedSettings`); config is fetched lazily on first expand.
 - Grouped sections (Metadata T0 — read-only, File storage, Server & security, Email, Runtime); type-aware inputs (TextField / Switch / Select / Number).
 - **source=env rows are read-only** with a "Set in `.env` (env takes precedence)" note (D9) — DB edits would be silently ignored while the env var is present.
 - **Secrets**: always masked; a "set new value" toggle reveals the field; blank on save = keep existing ciphertext (only-re-encrypt-on-new-value).
 - **Save**: dirty-tracked "Save changes" → `PUT { values: { KEY: value } }` (changed keys only) → server validates allowlist/types (T0 keys rejected), encrypts secrets, upserts `settingsStore`, invalidates T2 cache → responds `{ applied: [T2 keys], restartRequired: [T1 keys], messageCode }`.
 - **Feedback**: Snackbar + "restart required" Alert banner listing the T1 keys changed (applied immediately for T2).
-- `registration_enabled` stays in the existing `SystemSettingsContent` (no duplication).
+- `registration_enabled` stays in the main settings rows (above the accordion); no duplication.
+- Editor feedback reuses the page-level Snackbar; the "restart required" Alert banner renders inside
+  the expanded accordion.
 
 ## 10. Future Scope (not in this phase)
 
@@ -252,3 +258,6 @@ Follow existing mypage-admin conventions (verified in code):
   category + adminService.getConfig/updateConfig + server config.js route; GET returns masked
   value/source/tier, source=env rows read-only, secrets masked with set-new-value, dirty-tracked
   save with applied/restartRequired feedback; sections renumbered (was §9-13).
+- 2026-08-28: §9 placement changed (user feedback): **no sidebar category** — the editor is an
+  "Advanced settings" accordion inside SystemSettingsContent (`SystemConfigEditor.js`), config
+  loaded lazily on expand; no myPageRegistry change; i18n `admin.advancedSettings`.

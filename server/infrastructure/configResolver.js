@@ -69,6 +69,20 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
 
   const cache = new Map();
 
+  // T1 keys whose values were copied into `env` at boot from the DB
+  // (populateT1Env). The env copy is a boot-time mirror for require-time consts,
+  // NOT an operator-set value: without this the resolver would report
+  // source='env' and the admin config UI would lock every DB-backed T1 key.
+  const dbSourcedKeys = new Set();
+
+  function isDbSourced(key) {
+    return dbSourcedKeys.has(key);
+  }
+
+  function markDbSourced(keys) {
+    for (const key of keys) dbSourcedKeys.add(key);
+  }
+
   function cacheHit(key, now) {
     const hit = cache.get(key);
     return hit && now - hit.loadedAt < ttlMs ? hit : null;
@@ -87,7 +101,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     const entry = getEntry(key);
     if (!entry) return undefined;
 
-    const envValue = env[key];
+    const envValue = isDbSourced(key) ? undefined : env[key];
     if (isSet(envValue)) return envValue;
     if (entry.tier === TIER.T0) return undefined;
 
@@ -107,7 +121,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     const out = {};
     for (const entry of CONFIG_ENTRIES) {
       const { key, tier, secret } = entry;
-      const envValue = env[key];
+      const envValue = isDbSourced(key) ? undefined : env[key];
       let value;
       let source;
 
@@ -156,7 +170,7 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
   function getConfigSync(key) {
     const entry = getEntry(key);
     if (!entry) return undefined;
-    const envValue = env[key];
+    const envValue = isDbSourced(key) ? undefined : env[key];
     if (isSet(envValue)) return envValue;
     if (entry.tier === TIER.T0) return undefined;
     const hit = cache.get(key);
@@ -174,7 +188,14 @@ function createConfigResolver({ settingsStore, env = process.env, ttlMs = 5000 }
     }
   }
 
-  return { getConfig, getConfigSync, getEffectiveConfig, invalidateCache, loadAll };
+  return {
+    getConfig,
+    getConfigSync,
+    getEffectiveConfig,
+    invalidateCache,
+    loadAll,
+    markDbSourced,
+  };
 }
 
 let sharedResolver = null;
@@ -220,6 +241,12 @@ function populateT1Env(resolver, env = process.env) {
       env[entry.key] = String(value);
       populated.push(entry.key);
     }
+  }
+  // These env values are boot mirrors of DB rows, not operator-set values —
+  // record them so the resolver reports source='db' and the admin UI keeps
+  // them editable.
+  if (typeof resolver.markDbSourced === 'function') {
+    resolver.markDbSourced(populated);
   }
   return populated;
 }

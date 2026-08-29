@@ -393,5 +393,49 @@ describe('createConfigResolver', () => {
       expect(env.PORT).toBe('5001');
       expect(env.S3_BUCKET).toBeUndefined(); // no default → stays unset
     });
+
+    it('reports db-sourced T1 keys as source db (env copy is a boot mirror), keeping the UI editable', async () => {
+      const store = createFakeStore({ WEBDAV_URL: 'https://dav.example.com', PORT: '6000' });
+      const resolver = makeResolver(store, {});
+      await resolver.loadAll();
+
+      const env = {};
+      populateT1Env(resolver, env); // copies DB values into env + marks dbSourced
+
+      const effective = await resolver.getEffectiveConfig();
+      expect(effective.WEBDAV_URL.source).toBe('db');
+      expect(effective.WEBDAV_URL.value).toBe('https://dav.example.com');
+      expect(effective.PORT.source).toBe('db');
+      expect(effective.PORT.value).toBe('6000');
+    });
+
+    it('reads the DB value (not the stale env mirror) for a db-sourced key', async () => {
+      const store = createFakeStore({ WEBDAV_URL: 'https://dav.example.com' });
+      const resolver = makeResolver(store, {});
+      await resolver.loadAll();
+
+      const env = {};
+      populateT1Env(resolver, env);
+      expect(env.WEBDAV_URL).toBe('https://dav.example.com');
+
+      // An admin write updates the DB; the resolver must prefer the DB row over
+      // the boot env mirror.
+      store.set('WEBDAV_URL', 'https://new.example.com');
+      resolver.invalidateCache(['WEBDAV_URL']);
+      await expect(resolver.getConfig('WEBDAV_URL')).resolves.toBe('https://new.example.com');
+    });
+
+    it('keeps a genuinely env-set T1 key as source env (operator value wins)', async () => {
+      const store = createFakeStore({ WEBDAV_URL: 'https://db.example.com' });
+      const resolver = makeResolver(store, { WEBDAV_URL: 'https://env.example.com' });
+      await resolver.loadAll();
+
+      const env = { WEBDAV_URL: 'https://env.example.com' };
+      populateT1Env(resolver, env); // env already set → not populated, not dbSourced
+
+      const effective = await resolver.getEffectiveConfig();
+      expect(effective.WEBDAV_URL.source).toBe('env');
+      expect(effective.WEBDAV_URL.value).toBe('https://env.example.com');
+    });
   });
 });

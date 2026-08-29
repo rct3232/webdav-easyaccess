@@ -320,3 +320,9 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   also updates the existing admin's password directly on the target PG (`UPDATE users SET password =
   bcrypt(...)` via a second direct connection); a missing users table (fresh PG) is tolerated.
   Branch `fix/wizard-admin-password-applies`.
+- 2026-08-29: **Admin config source fix (everything was read-only)** — populateT1Env copies
+  DB-sourced T1 values into process.env at boot, so the resolver reported source='env' for every
+  DB-backed T1 key and the admin "Advanced settings" UI locked them all (S3, GC interval, etc.).
+  Fix: the resolver now tracks keys whose env value is a boot mirror (markDbSourced); for those the
+  DB row is the source ('db'), keeping them editable, while genuinely operator-set env values stay
+  'env'. Branch `fix/admin-config-sources`.

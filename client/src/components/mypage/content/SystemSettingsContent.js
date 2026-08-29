@@ -180,15 +180,26 @@ const SystemSettingsContent = ({ onMessage }) => {
         </IconButton>
       </Box>
 
-      <Accordion expanded={advancedOpen} onChange={(e, expanded) => setAdvancedOpen(expanded)} sx={{ mt: 4 }}>
+      <Accordion
+        expanded={advancedOpen}
+        onChange={(e, expanded) => setAdvancedOpen(expanded)}
+        sx={{
+          mt: 4,
+          boxShadow: 'none',
+          bgcolor: 'transparent',
+          '&:before': { display: 'none' },
+          '&.Mui-expanded': { margin: 0, mt: 4 },
+        }}
+      >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           aria-controls="advanced-settings-content"
           id="advanced-settings-header"
+          sx={{ minHeight: 0, '&.Mui-expanded': { minHeight: 0 }, px: 0 }}
         >
           <Typography variant="h6">{t('admin.advancedSettings')}</Typography>
         </AccordionSummary>
-        <AccordionDetails>
+        <AccordionDetails sx={{ px: 0 }}>
           <SystemConfigEditor active={advancedOpen} onSnackbar={(msg) => setMessage(msg)} />
         </AccordionDetails>
       </Accordion>

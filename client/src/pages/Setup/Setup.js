@@ -11,7 +11,8 @@ const Setup = () => {
     <Container>
       <Box
         sx={{
-          minHeight: 'var(--app-height)',
+          height: 'var(--app-height)',
+          overflowY: 'auto',
           py: 4,
         }}
       >

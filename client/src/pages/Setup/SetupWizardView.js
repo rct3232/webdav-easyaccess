@@ -15,6 +15,7 @@ import {
   Stepper,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 
 function TestConnectionControls({ target, testState, viewModel, onTestConnection }) {
@@ -68,6 +69,17 @@ const SetupWizardView = ({
   onRegenerateSecret,
   onApply,
 }) => {
+  const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
+
+  // A step that offers a connection test cannot be left until the test passed:
+  // editing a field already resets the result (useSetupWizard), so a stale 'ok'
+  // can never unlock Next.
+  const testRequiredStep =
+    (activeStep === 0 && form.metadataBackend === 'postgresql') ||
+    (activeStep === 1 && (form.fileBackend === 's3' || form.fileBackend === 'webdav'));
+  const testTarget = activeStep === 0 ? 'postgresql' : activeStep === 1 ? form.fileBackend : null;
+  const testPassed = !testRequiredStep || testStates[testTarget]?.status === 'ok';
+
   const renderMetadataStep = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -445,13 +457,19 @@ const SetupWizardView = ({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           {viewModel.subtitle}
         </Typography>
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-          {viewModel.stepLabels.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
+        {isMobile ? (
+          <Typography variant="subtitle1" sx={{ mb: 3, fontWeight: 600 }}>
+            {viewModel.stepCounter} · {viewModel.stepLabels[activeStep]}
+          </Typography>
+        ) : (
+          <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+            {viewModel.stepLabels.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+        )}
         <Box>
           {activeStep === 0 && renderMetadataStep()}
           {activeStep === 1 && renderFileStorageStep()}
@@ -464,7 +482,12 @@ const SetupWizardView = ({
             {viewModel.back}
           </Button>
           {activeStep < stepCount - 1 ? (
-            <Button variant="contained" color="primary" onClick={onNext} disabled={prefilling}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={onNext}
+              disabled={prefilling || !testPassed}
+            >
               {viewModel.next}
             </Button>
           ) : (

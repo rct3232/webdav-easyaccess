@@ -191,6 +191,21 @@ export function useSetupWizard() {
   const [applyState, setApplyState] = useState({ status: 'idle', message: '' });
   const [prefilling, setPrefilling] = useState(false);
 
+  // Editing a field invalidates the connection-test result for that backend so
+  // the operator must re-test before advancing (a stale 'ok' would be wrong).
+  const resetTest = useCallback((target) => {
+    setTestStates((prev) => ({ ...prev, [target]: { status: 'idle', message: '', reason: '' } }));
+  }, []);
+
+  const resetTestsForScope = useCallback(
+    (scope) => {
+      if (scope === 'pg') resetTest('postgresql');
+      else if (scope === 's3') resetTest('s3');
+      else if (scope === 'webdav') resetTest('webdav');
+    },
+    [resetTest]
+  );
+
   const loadStatus = useCallback(async () => {
     try {
       const status = await getSetupStatus();
@@ -213,28 +228,33 @@ export function useSetupWizard() {
   const handleMetadataBackendChange = useCallback((value) => {
     setForm((prev) => ({ ...prev, metadataBackend: value }));
     setErrors((prev) => ({ ...prev, 0: null }));
-  }, []);
+    resetTest('postgresql');
+  }, [resetTest]);
 
   const handleFileBackendChange = useCallback((value) => {
     setForm((prev) => ({ ...prev, fileBackend: value }));
     setErrors((prev) => ({ ...prev, 1: null }));
-  }, []);
+    resetTest('s3');
+    resetTest('webdav');
+  }, [resetTest]);
 
   const handleFieldChange = useCallback(
     (scope, field) => (event) => {
       const value = event?.target?.value;
       setForm((prev) => ({ ...prev, [scope]: { ...prev[scope], [field]: value } }));
       setErrors((prev) => ({ ...prev, [activeStep]: null }));
+      resetTestsForScope(scope);
     },
-    [activeStep]
+    [activeStep, resetTestsForScope]
   );
 
   const handleCheckboxChange = useCallback(
     (scope, field) => (event) => {
       setForm((prev) => ({ ...prev, [scope]: { ...prev[scope], [field]: event.target.checked } }));
       setErrors((prev) => ({ ...prev, [activeStep]: null }));
+      resetTestsForScope(scope);
     },
-    [activeStep]
+    [activeStep, resetTestsForScope]
   );
 
   const handleRegenerateSecret = useCallback(() => {
@@ -419,6 +439,7 @@ export function useSetupWizard() {
         t('setup.steps.optional'),
         t('setup.steps.apply'),
       ],
+      stepCounter: t('setup.stepOf', { current: activeStep + 1, total: STEP_COUNT }),
       back: t('setup.back'),
       next: t('setup.next'),
       metadataBackend: t('setup.metadataBackend'),
@@ -465,7 +486,7 @@ export function useSetupWizard() {
       restartRequiredTitle: t('setup.restartRequiredTitle'),
       restartRequiredBody: t('setup.restartRequiredBody'),
     }),
-    [t]
+    [t, activeStep]
   );
 
   return {

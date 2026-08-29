@@ -64,6 +64,15 @@ const clickNext = async (user) => {
   await user.click(screen.getByRole('button', { name: /^next$/i }));
 };
 
+// Click "Test connection" and wait for the success feedback; required before
+// Next is enabled on steps that offer a connection test (UI UX change).
+async function passTest(user) {
+  await user.click(screen.getByRole('button', { name: /test connection/i }));
+  await waitFor(() => {
+    expect(screen.getByText('Connection successful.')).toBeInTheDocument();
+  });
+}
+
 async function fillS3Fields(user) {
   await user.type(screen.getByLabelText(/bucket/i), 'test-bucket');
   await user.type(screen.getByLabelText(/region/i), 'us-east-1');
@@ -106,6 +115,7 @@ describe('Setup wizard', () => {
     await clickNext(user);
     expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
     await fillS3Fields(user);
+    await passTest(user);
 
     await clickNext(user);
     expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
@@ -118,19 +128,24 @@ describe('Setup wizard', () => {
     expect(screen.getByRole('button', { name: /apply & finish/i })).toBeInTheDocument();
   });
 
-  it('blocks advancing when required fields are missing', async () => {
+  it('blocks advancing when required fields are missing (admin password)', async () => {
     const user = userEvent.setup();
     render(renderSetup());
     await waitForReady();
 
     await clickNext(user);
     expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
+    await fillS3Fields(user);
+    await passTest(user);
+    await clickNext(user);
+
+    expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
     await clickNext(user);
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
-    expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
   });
 
   it('shows connection-test success for postgresql', async () => {
@@ -245,6 +260,7 @@ describe('Setup wizard', () => {
 
     await clickNext(user);
     await fillS3Fields(user);
+    await passTest(user);
     await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
@@ -298,6 +314,7 @@ describe('Setup wizard', () => {
     await clickNext(user);
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
     expect(screen.getByLabelText(/bucket/i)).toHaveValue('prefilled-bucket');
+    await passTest(user);
 
     await clickNext(user);
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
@@ -336,7 +353,8 @@ describe('Setup wizard', () => {
 
     await clickNext(user); // metadata (sqlite)
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
-    await clickNext(user); // file storage (prefilled, secret masked)
+    await passTest(user); // file storage connection test required
+    await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
     await clickNext(user); // optional
@@ -384,11 +402,13 @@ describe('Setup wizard', () => {
     await waitForReady();
 
     expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
+    await passTest(user); // metadata postgresql connection test required
     await clickNext(user); // metadata (postgresql, password masked)
     await waitFor(() => {
       expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
     });
     await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
+    await passTest(user); // file storage connection test required
     await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
@@ -444,12 +464,14 @@ describe('Setup wizard', () => {
     await waitForReady();
 
     expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
+    await passTest(user); // metadata postgresql connection test required
     await clickNext(user); // metadata postgresql → prefill merges (no WEA_PG_PASSWORD)
     await waitFor(() => {
       expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
     });
     await user.type(screen.getByLabelText(/access key id/i), 'admin');
     await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
+    await passTest(user); // file storage connection test required
     await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
@@ -477,6 +499,7 @@ describe('Setup wizard', () => {
 
     await user.click(screen.getByLabelText(/PostgreSQL/i));
     await fillPgFields(user);
+    await passTest(user); // metadata postgresql connection test required
 
     await clickNext(user);
     await waitFor(() => {
@@ -484,6 +507,7 @@ describe('Setup wizard', () => {
     });
 
     await fillS3Fields(user);
+    await passTest(user); // file storage connection test required
     await clickNext(user);
     await user.type(screen.getByLabelText(/admin password/i), 'admin123');
     await clickNext(user);
@@ -509,12 +533,46 @@ describe('Setup wizard', () => {
 
     await user.click(screen.getByLabelText(/PostgreSQL/i));
     await fillPgFields(user);
+    await passTest(user); // metadata postgresql connection test required
 
     await clickNext(user);
     await waitFor(() => {
       expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
+  });
+
+  it('disables Next until the connection test passes (postgresql step)', async () => {
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await user.click(screen.getByLabelText(/PostgreSQL/i));
+    await fillPgFields(user);
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
+
+    await passTest(user);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^next$/i })).toBeEnabled();
+    });
+  });
+
+  it('resets the connection-test result when a value changes', async () => {
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    await clickNext(user); // sqlite -> file storage step
+    await fillS3Fields(user);
+    await passTest(user);
+
+    // Editing a field invalidates the passed test: success message disappears
+    // and Next is disabled again until re-testing.
+    await user.type(screen.getByLabelText(/bucket/i), 'X');
+    await waitFor(() => {
+      expect(screen.queryByText('Connection successful.')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
   });
 
   it('renders the wizard i18n strings', async () => {

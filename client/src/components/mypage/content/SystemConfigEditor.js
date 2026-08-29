@@ -247,6 +247,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
             {revealed && (
               <TextField
                 fullWidth
+                size="small"
                 type="password"
                 label={t('admin.config.setNewValue')}
                 value={values[key] ?? ''}
@@ -271,9 +272,9 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ flex: 1, mr: 2 }}>
-            <Typography variant="body1">{t(meta.labelKey)}</Typography>
+            <Typography variant="body2">{t(meta.labelKey)}</Typography>
             {helper && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="caption" color="text.secondary">
                 {helper}
               </Typography>
             )}
@@ -299,6 +300,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       <TextField
         select
         fullWidth
+        size="small"
         label={t(meta.labelKey)}
         value={values[key] ?? ''}
         onChange={(e) => handleChange(key, e.target.value)}
@@ -324,6 +326,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     return (
       <TextField
         fullWidth
+        size="small"
         type={meta.inputType === 'number' ? 'number' : 'text'}
         label={t(meta.labelKey)}
         value={values[key] ?? ''}
@@ -375,7 +378,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
         if (keys.length === 0) return null;
         return (
           <Box key={group} sx={{ mb: 3 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
               {t(GROUP_LABEL_KEYS[group])}
             </Typography>
             {keys.map((key) => (

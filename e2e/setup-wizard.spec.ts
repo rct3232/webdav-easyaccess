@@ -60,14 +60,6 @@ const SCRATCH_PG_DB = 'webdav_e2e_setup';
 
 const textFixture = readTestFileFixture(TEST_FILES.smallText);
 
-// Wizard apply always emits these three keys (PORT prefilled from the running
-// scratch PORT; EMAIL_PORT/EMAIL_SECURE come from the SMTP block defaults).
-const COMMON_WRITTEN_KEYS = {
-  PORT: String(scratchPort),
-  EMAIL_PORT: '587',
-  EMAIL_SECURE: 'false',
-};
-
 // Per-test scratch state, cleaned up in afterEach (PLAN.md §7.2 step 8).
 let spawnedChild: ReturnType<typeof spawnScratchServer> | null = null;
 let currentScratch: string | null = null;
@@ -183,13 +175,16 @@ async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
   await expect(page.getByText('Restart required')).toBeVisible();
 }
 
+/**
+ * T0 (startup-critical, `.env`-only) keys written by the wizard apply. All
+ * other wizard values go to the metadata DB `settings` table (see
+ * buildExpectedDbSettings). `encrypt_secret_key` is auto-generated and written
+ * here too; it is asserted separately (hex presence) because it is random.
+ */
 function buildExpectedEnv(config: CaseConfig): Record<string, string> {
   const expected: Record<string, string> = {
     WEA_STORAGE_BACKEND: config.metadata.backend,
-    WEA_FILE_STORAGE: config.file.backend,
     JWT_SECRET: config.jwtSecret,
-    JWT_EXPIRES_IN: '30m',
-    ...COMMON_WRITTEN_KEYS,
   };
 
   if (config.metadata.backend === 'postgresql') {
@@ -200,15 +195,30 @@ function buildExpectedEnv(config: CaseConfig): Record<string, string> {
       WEA_PG_USER: config.metadata.user,
       WEA_PG_PASSWORD: config.metadata.password,
       WEA_PG_SSL: 'false',
-      ADMIN_DEFAULT_PASSWORD: config.adminPassword,
     });
   }
+
+  return expected;
+}
+
+/**
+ * Non-T0 wizard values that must be upserted into the metadata DB `settings`
+ * table (row key = raw env var name). Secrets are stored encrypted (asserted
+ * separately as an aes-256-gcm payload, never plaintext).
+ */
+function buildExpectedDbSettings(config: CaseConfig): Record<string, string> {
+  const expected: Record<string, string> = {
+    WEA_FILE_STORAGE: config.file.backend,
+    PORT: String(scratchPort),
+    JWT_EXPIRES_IN: '30m',
+    EMAIL_PORT: '587',
+    EMAIL_SECURE: 'false',
+  };
 
   if (config.file.backend === 'webdav') {
     Object.assign(expected, {
       WEBDAV_URL: config.file.url,
       WEBDAV_USERNAME: config.file.username,
-      WEBDAV_PASSWORD: config.file.password,
       WEBDAV_AUTH_TYPE: 'auto',
     });
   } else {
@@ -216,7 +226,6 @@ function buildExpectedEnv(config: CaseConfig): Record<string, string> {
       S3_BUCKET: config.file.bucket,
       AWS_REGION: config.file.region,
       AWS_ACCESS_KEY_ID: config.file.accessKeyId,
-      AWS_SECRET_ACCESS_KEY: config.file.secretAccessKey,
       S3_ENDPOINT: config.file.endpoint,
     });
   }
@@ -224,9 +233,60 @@ function buildExpectedEnv(config: CaseConfig): Record<string, string> {
   return expected;
 }
 
+function secretKeysFor(config: CaseConfig): string[] {
+  return config.file.backend === 'webdav' ? ['WEBDAV_PASSWORD'] : ['AWS_SECRET_ACCESS_KEY'];
+}
+
 function assertScratchEnv(scratchDir: string, expected: Record<string, string>): void {
   const env = readEnvFile(scratchDir);
-  expect(env).toEqual(expected);
+  const { encrypt_secret_key, ...rest } = env;
+  expect(encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+  expect(rest).toEqual(expected);
+}
+
+/** Assert the non-T0 wizard values landed in the metadata DB settings table. */
+async function assertScratchDbSettings(scratch: string, config: CaseConfig): Promise<void> {
+  const expected = buildExpectedDbSettings(config);
+  const secretKeys = secretKeysFor(config);
+
+  if (config.metadata.backend === 'postgresql') {
+    const rows = await queryScratchPg<{ key: string; value: unknown }>(
+      SCRATCH_PG_DB,
+      'SELECT key, value FROM settings'
+    );
+    const settings = new Map(rows.map((r) => [r.key, r.value]));
+    for (const [key, value] of Object.entries(expected)) {
+      expect(settings.get(key), `settings.${key}`).toBe(value);
+    }
+    for (const key of secretKeys) {
+      expect(settings.get(key), `settings.${key} (encrypted)`).toMatchObject({ enc: 'aes-256-gcm' });
+    }
+    return;
+  }
+
+  const dbPath = path.join(scratch, 'webdav.db');
+  const rows = await queryScratchSqlite<{ key: string; value: string }>(
+    dbPath,
+    'SELECT key, value FROM settings'
+  );
+  // sqlite stores values RAW (no JSON stringify): plaintext stays a plain
+  // string (compare verbatim); a secret is the payload JSON string (parse once).
+  const tryParseJson = (raw: string): unknown => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  };
+  const byKey = new Map(rows.map((r) => [r.key, r.value]));
+  for (const [key, value] of Object.entries(expected)) {
+    expect(byKey.get(key), `settings.${key}`).toBe(value);
+  }
+  for (const key of secretKeys) {
+    const raw = byKey.get(key);
+    expect(raw, `settings.${key} (encrypted)`).toBeDefined();
+    expect(tryParseJson(raw), `settings.${key} (encrypted)`).toMatchObject({ enc: 'aes-256-gcm' });
+  }
 }
 
 async function loginToken(
@@ -324,6 +384,7 @@ async function runSetupScenario(
 
   await driveWizard(page, config);
   assertScratchEnv(scratch, buildExpectedEnv(config));
+  await assertScratchDbSettings(scratch, config);
 
   // Restart — the .env now exists; boot 2 must boot fully configured.
   await killScratch(boot1);

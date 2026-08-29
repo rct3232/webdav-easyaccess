@@ -402,6 +402,66 @@ describe('Setup wizard', () => {
     expect(applyBody.metadata.password).toBe('****');
   });
 
+  it('does not wipe the masked PG password when the target-DB prefill lacks it', async () => {
+    server.use(
+      http.get('/api/setup/status', () =>
+        HttpResponse.json({
+          setup_complete: false,
+          missing: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
+          current: {
+            WEA_STORAGE_BACKEND: 'postgresql',
+            WEA_PG_HOST: '10.0.0.103',
+            WEA_PG_PORT: '5432',
+            WEA_PG_DATABASE: 'webdav-easyaccess',
+            WEA_PG_USER: 'webdav_easyaccess',
+            WEA_PG_PASSWORD: '****',
+            WEA_FILE_STORAGE: 's3',
+            S3_BUCKET: 'webdav-temp',
+            AWS_REGION: 'us-east-1',
+            S3_ENDPOINT: 'http://10.0.0.104:9000',
+          },
+        })
+      ),
+      // The target-DB prefill never contains T0 keys (WEA_PG_PASSWORD).
+      http.post('/api/setup/prefill', () =>
+        HttpResponse.json({
+          current: { S3_BUCKET: 'webdav-temp', AWS_REGION: 'us-east-1' },
+          key_lost_warning: false,
+        })
+      )
+    );
+
+    let applyBody = null;
+    server.use(
+      http.post('/api/setup/apply', async ({ request }) => {
+        applyBody = await request.json();
+        return HttpResponse.json({ restart_required: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(renderSetup());
+    await waitForReady();
+
+    expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
+    await clickNext(user); // metadata postgresql → prefill merges (no WEA_PG_PASSWORD)
+    await waitFor(() => {
+      expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText(/access key id/i), 'admin');
+    await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
+    await clickNext(user);
+    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    await clickNext(user);
+    await clickNext(user);
+    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+
+    await waitFor(() => {
+      expect(applyBody).not.toBeNull();
+    });
+    expect(applyBody.metadata.password).toBe('****');
+  });
+
   it('prefills from the target PG (POST /setup/prefill) when advancing from the postgresql metadata step', async () => {
     server.use(
       http.post('/api/setup/prefill', () =>

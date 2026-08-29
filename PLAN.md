@@ -306,3 +306,11 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   admin-password update happens only after the `.env` write, and the postgresql settings upserts
   are wrapped in a transaction (BEGIN/COMMIT/ROLLBACK) — a failed apply can no longer leave a
   committed "complete" state. Branch `fix/setup-apply-ordering`.
+- 2026-08-29: **Prefill wipe bug (root cause of the persistent metadata.password 400)** — on the
+  postgresql metadata step, Next triggers POST /prefill; its `current` comes from the target DB and
+  never contains T0 keys (WEA_PG_PASSWORD), and prefillForm applied `normalizeSecret(undefined)`
+  → `''`, wiping the masked password the mount-time /status had set. Apply then sent
+  `metadata.password:''` → `metadata.password: required` (HTTP 400). Fix: prefillForm keeps the
+  existing value for a secret when the merge source lacks it (same fallback pattern as the
+  non-secret fields); also rebuild the stale production `client/build` (was Aug 28, before the
+  fixes). Branch `fix/setup-prefill-wipe`.

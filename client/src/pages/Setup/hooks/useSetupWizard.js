@@ -93,7 +93,12 @@ function prefillForm(prev, current) {
     port: current.WEA_PG_PORT != null ? current.WEA_PG_PORT : next.pg.port,
     database: current.WEA_PG_DATABASE != null ? current.WEA_PG_DATABASE : next.pg.database,
     user: current.WEA_PG_USER != null ? current.WEA_PG_USER : next.pg.user,
-    password: normalizeSecret(current.WEA_PG_PASSWORD),
+    // A missing secret in the merge source (e.g. the target-DB prefill, which
+    // never contains T0 keys) must NOT wipe an already-masked/typed value.
+    password:
+      current.WEA_PG_PASSWORD != null
+        ? normalizeSecret(current.WEA_PG_PASSWORD)
+        : next.pg.password,
     ssl: parseBool(current.WEA_PG_SSL, next.pg.ssl),
   };
 
@@ -111,19 +116,25 @@ function prefillForm(prev, current) {
           : next.s3.region,
     accessKeyId:
       current.AWS_ACCESS_KEY_ID != null ? current.AWS_ACCESS_KEY_ID : next.s3.accessKeyId,
-    secretAccessKey: normalizeSecret(current.AWS_SECRET_ACCESS_KEY),
+    secretAccessKey:
+      current.AWS_SECRET_ACCESS_KEY != null
+        ? normalizeSecret(current.AWS_SECRET_ACCESS_KEY)
+        : next.s3.secretAccessKey,
     endpoint: current.S3_ENDPOINT != null ? current.S3_ENDPOINT : next.s3.endpoint,
   };
   next.webdav = {
     ...next.webdav,
     url: current.WEBDAV_URL != null ? current.WEBDAV_URL : next.webdav.url,
     username: current.WEBDAV_USERNAME != null ? current.WEBDAV_USERNAME : next.webdav.username,
-    password: normalizeSecret(current.WEBDAV_PASSWORD),
+    password:
+      current.WEBDAV_PASSWORD != null
+        ? normalizeSecret(current.WEBDAV_PASSWORD)
+        : next.webdav.password,
   };
 
   next.jwt = {
     ...next.jwt,
-    secret: current.JWT_SECRET ? SECRET_MASK : generateJwtSecret(),
+    secret: current.JWT_SECRET ? SECRET_MASK : next.jwt.secret || generateJwtSecret(),
     expiresIn: current.JWT_EXPIRES_IN != null ? current.JWT_EXPIRES_IN : next.jwt.expiresIn,
   };
   next.server = {
@@ -139,7 +150,10 @@ function prefillForm(prev, current) {
     // default when SMTP is not configured.
     port: current.EMAIL_PORT ? current.EMAIL_PORT : next.email.port,
     user: current.EMAIL_USER != null ? current.EMAIL_USER : next.email.user,
-    password: normalizeSecret(current.EMAIL_PASSWORD),
+    password:
+      current.EMAIL_PASSWORD != null
+        ? normalizeSecret(current.EMAIL_PASSWORD)
+        : next.email.password,
     secure: parseBool(current.EMAIL_SECURE, next.email.secure),
     fromName: current.EMAIL_FROM_NAME != null ? current.EMAIL_FROM_NAME : next.email.fromName,
   };

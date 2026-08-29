@@ -28,6 +28,7 @@
 | `loadAll` | `async () => void` | Prime the DB row cache from `settingsStore.getAll()` (bulk read) — called at boot before serving. |
 | `getSharedResolver` | `() => resolver` | The process-wide resolver instance. Lazily created with `settingsStore = Settings` model on first call (no DB connection at require time). Used by the boot path, the admin config route, and T2 consumers so writes invalidate one shared cache. |
 | `setSharedResolver` | `(resolver) => void` | Install a boot-primed instance (after `loadAll`); also the test hook. |
+| `markDbSourced` | `(keys: string[]) => void` | Record keys whose `env` value is a **boot mirror** copied from the DB by `populateT1Env`. For these keys the resolver treats the DB row as the source (env-first is skipped) so the admin config UI reports `source:'db'` and stays editable. |
 
 ### 2.3 Resolution Rule
 
@@ -48,6 +49,7 @@ getConfig(key):
 ```
 
 - **Env precedence (D1):** an env value always wins and the DB is not touched. For secrets, an env value means "do not even decrypt".
+- **Boot-mirrored T1 keys (`markDbSourced`):** `populateT1Env` copies DB-sourced T1 values into `process.env` so require-time consts see them. Those keys are recorded as DB-sourced, so the resolver **skips the env-first step** for them — the DB row is the source (`'db'`), the env copy is just a boot mirror. Without this, every DB-backed T1 key would report `source:'env'` and the admin UI would lock it. A genuinely operator-set env value (present before boot population) is never mirrored and keeps `source:'env'`.
 - **Empty-string env values** are treated as unset (matches codebase `process.env.X || default` conventions).
 - **DB value shapes (D11):** plaintext config is stored as a JSON string (already JSON-parsed by the store on read → string); a secret is stored as the encrypted payload object. The resolver also tolerates a secret row whose value is a JSON **string** of the payload (the practical artifact of `settingsStore.set` with a serialized payload) by JSON-parsing it before the payload check.
 - **`registration_enabled`:** the raw stored value (JSON boolean or string) is passed through; a boolean is returned as-is (boolean passthrough); no coercion, no default.

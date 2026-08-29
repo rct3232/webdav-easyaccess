@@ -598,6 +598,18 @@ describe('POST /api/setup/apply', () => {
     expect(client.query).toHaveBeenCalledWith(expect.stringContaining('key TEXT PRIMARY KEY'));
     expect(client.end).toHaveBeenCalled();
 
+    // The wizard admin password is also applied to the EXISTING admin account
+    // on the target PG (not just ADMIN_DEFAULT_PASSWORD) via a second direct
+    // connection.
+    expect(MockPgClient).toHaveBeenCalledTimes(2);
+    const adminClient = MockPgClient.mock.results[1].value;
+    const updateCall = adminClient.query.mock.calls.find(([sql]) =>
+      String(sql).includes('UPDATE users SET password')
+    );
+    expect(updateCall).toBeDefined();
+    expect(String(updateCall[1][0])).toMatch(/^\$2[aby]\$/); // bcrypt hash
+    expect(updateCall[1][0]).not.toBe('pg-admin-pass');
+
     const upsertValue = (key) => {
       const call = client.query.mock.calls.find(([, params]) => params && params[0] === key);
       return call ? call[1][1] : undefined;
@@ -626,6 +638,49 @@ describe('POST /api/setup/apply', () => {
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(true);
 
     expect(invalidateSpy).toHaveBeenCalled();
+  });
+
+  it('postgresql: skips the direct admin-password update when the users table does not exist yet (fresh PG)', async () => {
+    const envPath = makeEnvPath('pg-fresh-admin-update');
+    process.env.DOTENV_CONFIG_PATH = envPath;
+
+    // First client (settings write) works; the second (admin UPDATE) hits a
+    // missing users table, which must be tolerated (ADMIN_DEFAULT_PASSWORD
+    // creates admin on boot).
+    const seq = [makePgClient()];
+    const second = makePgClient();
+    second.query.mockRejectedValueOnce(
+      Object.assign(new Error('relation "users" does not exist'), { code: '42P01' })
+    );
+    seq.push(second);
+    MockPgClient.mockImplementation(() => seq.shift());
+
+    const res = await request(app)
+      .post('/api/setup/apply')
+      .send({
+        metadata: {
+          backend: 'postgresql',
+          host: 'db.local',
+          port: '5433',
+          database: 'webdav',
+          user: 'pg-user',
+          password: 'pg-pass',
+          ssl: false,
+        },
+        file: {
+          backend: 's3',
+          bucket: 'wea-bucket',
+          region: 'us-east-1',
+          accessKeyId: 'AKIAX',
+          secretAccessKey: 's3-secret',
+          endpoint: 'http://localhost:9010',
+        },
+        admin: { password: 'pg-admin-pass' },
+        jwt: { secret: 'jwt-pg' },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ restart_required: true });
   });
 
   it('returns 403 setup.complete when setup is already complete', async () => {

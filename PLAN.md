@@ -314,3 +314,9 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   existing value for a secret when the merge source lacks it (same fallback pattern as the
   non-secret fields); also rebuild the stale production `client/build` (was Aug 28, before the
   fixes). Branch `fix/setup-prefill-wipe`.
+- 2026-08-29: **Wizard admin password applies to the existing admin account (PG)** — previously the
+  postgresql apply only wrote ADMIN_DEFAULT_PASSWORD (used solely when the admin user does not
+  exist), so entering a different admin password in the wizard had no effect on login. Now apply
+  also updates the existing admin's password directly on the target PG (`UPDATE users SET password =
+  bcrypt(...)` via a second direct connection); a missing users table (fresh PG) is tolerated.
+  Branch `fix/wizard-admin-password-applies`.

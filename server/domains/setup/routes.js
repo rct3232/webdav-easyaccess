@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
+const bcrypt = require('bcryptjs');
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -491,6 +492,62 @@ async function updateAdminPassword(password) {
   await User.updatePassword(admin.id, password);
 }
 
+/**
+ * For the postgresql metadata backend, update the EXISTING admin account's
+ * password directly on the target PG (the wizard's entered creds), so the
+ * admin password entered in step 2/3 takes effect immediately even when the
+ * `admin` user already exists (ADMIN_DEFAULT_PASSWORD only applies when the
+ * user does not exist yet — see bootstrap.ensureDefaultAdmin). The users table
+ * may not exist on a truly fresh PG (it is created by boot migrations on
+ * restart); in that case the update is skipped and ADMIN_DEFAULT_PASSWORD
+ * covers the admin creation.
+ */
+async function updateTargetAdminPassword(metadata, password) {
+  if (metadata.backend !== 'postgresql') return;
+
+  let Client;
+  try {
+    ({ Client } = require('pg'));
+  } catch (error) {
+    throw probeError(
+      SETUP_TEST_FAILED_CODE,
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      'pg module unavailable'
+    );
+  }
+
+  const client = new Client({
+    host: metadata.host,
+    port: Number(metadata.port) || 5432,
+    database: metadata.database,
+    user: metadata.user,
+    password: resolvePgPassword(metadata.password),
+    ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis: 5000,
+  });
+
+  try {
+    await client.connect();
+    const hashed = await bcrypt.hash(String(password), 10);
+    await client.query("UPDATE users SET password = $1, updated_at = NOW() WHERE username = 'admin'", [
+      hashed,
+    ]);
+  } catch (error) {
+    const code = String((error && error.code) || '').toUpperCase();
+    const message = String((error && error.message) || '');
+    // Fresh PG: no users table yet — ADMIN_DEFAULT_PASSWORD creates admin on boot.
+    if (code === '42P01' || /(does not exist|undefined_table)/i.test(message)) return;
+    throw probeError(
+      classifyPgError(error),
+      HTTP_STATUS.BAD_REQUEST,
+      'Failed to update admin password',
+      deriveReason(error)
+    );
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 async function probePostgresql(payload) {
   const required = ['host', 'port', 'database', 'user', 'password'];
   const missing = required.filter((key) => isMissing(payload[key]));
@@ -884,6 +941,11 @@ router.post(
     }
 
     await writeSettings(body.metadata, dbEntries, masterKey);
+
+    // For postgresql, also update the EXISTING admin account's password on the
+    // target PG so the wizard's admin password takes effect immediately (not
+    // just ADMIN_DEFAULT_PASSWORD, which only applies when admin does not exist).
+    await updateTargetAdminPassword(body.metadata, body.admin.password);
 
     // Clear the shared T2 cache so the DB writes are visible to restart-free
     // (T2) reads immediately after this apply.

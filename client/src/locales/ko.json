@@ -55,6 +55,7 @@
       "optional": "선택 설정",
       "apply": "적용"
     },
+    "stepOf": "{{total}}단계 중 {{current}}단계",
     "back": "뒤로",
     "next": "다음",
     "metadataBackend": "메타데이터 데이터베이스 종류",

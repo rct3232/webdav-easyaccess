@@ -55,6 +55,7 @@
       "optional": "Optional settings",
       "apply": "Apply"
     },
+    "stepOf": "Step {{current}} of {{total}}",
     "back": "Back",
     "next": "Next",
     "metadataBackend": "Metadata database type",

@@ -70,6 +70,30 @@ const projects: PlaywrightProject[] = [
       baseURL: 'http://localhost:5003',
     },
   },
+  // Additive, hermetic admin-config projects: same scratch-server pattern as
+  // setup-wizard — each test spawns its own fully-configured scratch server on
+  // :5003 (own .env, own sqlite) so the config editor's source/tier matrix,
+  // save feedback and secret lifecycle are deterministic.
+  {
+    name: 'admin-config-desktop',
+    testMatch: /admin-config\.spec\.ts$/,
+    use: {
+      browserName: 'chromium',
+      viewport: { width: 1280, height: 720 },
+      baseURL: 'http://localhost:5003',
+    },
+  },
+  {
+    name: 'admin-config-mobile',
+    testMatch: /admin-config\.spec\.ts$/,
+    use: {
+      browserName: 'webkit',
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      baseURL: 'http://localhost:5003',
+    },
+  },
 ];
 
 export default defineConfig({

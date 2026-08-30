@@ -238,10 +238,15 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
           value={SECRET_MASK}
           disabled
           helperText={envNote || t('admin.config.secretKeepExisting')}
+          inputProps={{ 'data-testid': `config-input-${key}` }}
         />
         {!readOnly && (
           <Box sx={{ mt: 1 }}>
-            <Button size="small" onClick={() => toggleReveal(key)}>
+            <Button
+              size="small"
+              onClick={() => toggleReveal(key)}
+              data-testid={`config-secret-toggle-${key}`}
+            >
               {revealed ? t('common.cancel') : t('admin.config.setNewValue')}
             </Button>
             {revealed && (
@@ -254,6 +259,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
                 onChange={(e) => handleChange(key, e.target.value)}
                 margin="normal"
                 autoFocus
+                inputProps={{ 'data-testid': `config-secret-new-${key}` }}
               />
             )}
           </Box>
@@ -284,6 +290,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
             onChange={(e) => handleChange(key, e.target.checked ? 'true' : 'false')}
             disabled={readOnly || saving}
             color="primary"
+            slotProps={{ input: { 'data-testid': `config-input-${key}` } }}
           />
         </Box>
       </Box>
@@ -307,6 +314,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
         disabled={readOnly || saving}
         helperText={helper || undefined}
         margin="normal"
+        inputProps={{ 'data-testid': `config-input-${key}` }}
       >
         {meta.options.map((option) => (
           <MenuItem key={option.value} value={option.value}>
@@ -334,6 +342,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
         disabled={readOnly || saving}
         helperText={helper || undefined}
         margin="normal"
+        inputProps={{ 'data-testid': `config-input-${key}` }}
       />
     );
   };
@@ -389,7 +398,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       })}
 
       {restartRequiredKeys.length > 0 && (
-        <Alert severity="warning" sx={{ mt: 2 }}>
+        <Alert severity="warning" sx={{ mt: 2 }} data-testid="config-restart-banner">
           <Typography variant="subtitle2">{t('admin.config.restartRequired')}</Typography>
           <Typography variant="body2">
             {t('admin.config.restartRequiredDetail', { keys: restartRequiredKeys.join(', ') })}
@@ -404,6 +413,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
           onClick={handleSave}
           disabled={!hasDirty || saving}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+          data-testid="config-save"
         >
           {saving ? t('admin.config.saving') : t('admin.config.save')}
         </Button>

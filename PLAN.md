@@ -326,3 +326,13 @@ System Settings page as an **"Advanced settings" accordion** (`MUI Accordion`) w
   Fix: the resolver now tracks keys whose env value is a boot mirror (markDbSourced); for those the
   DB row is the source ('db'), keeping them editable, while genuinely operator-set env values stay
   'env'. Branch `fix/admin-config-sources`.
+- 2026-08-30: **Admin config editor E2E (hermetic, 4 cases × desktop/mobile)** — new
+  `e2e/admin-config.spec.ts` spawning a fully-configured scratch server (:5003) for deterministic
+  source/tier states. Cases: (1) field-state matrix (env/T0 → disabled + helper, db/default →
+  enabled, registration_enabled absent, secret edit affordances); (2) save feedback (T2 applied
+  immediately via GET, T1 flagged in the restart banner, Snackbar handling); (3) secret lifecycle
+  (masked, unchanged/blank kept byte-for-byte via sqlite raw-value + decryptSecret, new value
+  stored encrypted); (4) T1 change survives a scratch restart (source db). Added data-testids to
+  SystemConfigEditor (config-input-*, config-secret-toggle-*, config-secret-new-*, config-save,
+  config-restart-banner); switch testid uses slotProps (MUI v7 drops inputProps). Branch
+  `test/admin-config-e2e`.

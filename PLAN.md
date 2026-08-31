@@ -211,6 +211,17 @@ Phase B:
 
 # Progress log
 
+- 2026-08-31: **Phase A (F3–F6) implemented and merged to `dev`** (branch
+  `feature/backend-health`, commit `ce65b59`, merge into `dev`). A1.1: the 12
+  mislabeled T1 keys reclassified to T2 with lazy `getSharedResolver().getConfig`
+  reads (auth rate-limit, thumbnails, permission/user cache TTLs, existence-index,
+  preview-ticket); A1.2: EMAIL_* reclassified to T1 (honest restart). A2: PUT
+  rejects env-sourced writes (400 `configEnvSourcedProtected`). A3: editor tier
+  badges + `applied` banner. A4: `key_lost_warning` on the admin config surface,
+  WebDAV probe message now says "effective configuration", invalid
+  `WEA_STORAGE_BACKEND` → terminal error + `exit(1)`. Server test:ci 80 suites /
+  1515 passed; client test:ci 152 suites / 1350 passed; lint 0 errors; admin-config
+  E2E 6 passed. Docs (features + specs) updated first per the docs-first workflow.
 - 2026-08-31: Policy finalized with the user — D1 UI save gating (complete block, pending-values
   test), D2 passive event-based detection (admin login/file load auto-cover), D3 surfaces
   (admin card+banner / terminal transitions / user friendly message for connection-class only),

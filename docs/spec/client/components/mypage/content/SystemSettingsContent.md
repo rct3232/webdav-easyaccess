@@ -4,7 +4,7 @@
 
 | Item | Description |
 |------|-------------|
-| Role | System settings for admins: registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, and the "Advanced settings" config accordion. Direct content. Admin only. |
+| Role | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, key-lost warning, and the "Advanced settings" config accordion. Direct content. Admin only. |
 | Used in | MyPageContentArea (when selectedCategory is 'admin-settings') |
 | Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor |
 
@@ -35,6 +35,7 @@
 - **Header:** Uses `usePageHeader()` to set title `admin.systemSettings` and no header actions (`setActions(null)`). Resets on unmount.
 - **Auto-save:** Registration toggle calls `adminService.updateSettings` on change; show hidden files persists to localStorage on change; cleanup actions run on confirm.
 - **Advanced settings accordion:** Below the migration row, an MUI Accordion titled `admin.advancedSettings` renders `<SystemConfigEditor active={expanded} onSnackbar={...} />`. The config is fetched lazily on first expand (see `SystemConfigEditor.md`).
+- **Backend-health status card (D3):** At the top of the page (above the key-lost warning) an Alert/card renders `GET /api/admin/health` (`adminService.getAdminHealth()`) — per-backend status (OK/FAIL/unknown) + classification + hint + last-checked. `data-testid="backend-health-card"`.
 - **Success feedback:** Registration toggle, show hidden files toggle, data cleanup, and permission cleanup each show a success toast (Snackbar) when the action completes without error. The config editor reuses the same page-level Snackbar via `onSnackbar`.
 
 ### 2.5 i18n Keys

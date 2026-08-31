@@ -195,9 +195,9 @@ describe('GET /api/setup/status', () => {
       missing: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
     });
     expect(res.body.current).toMatchObject({
-      WEA_STORAGE_BACKEND: 'sqlite',
       WEA_FILE_STORAGE: 's3',
     });
+    expect(res.body.current.WEA_STORAGE_BACKEND).toBeUndefined();
     expect(res.body.current.JWT_SECRET).toBeUndefined();
   });
 
@@ -319,14 +319,11 @@ describe('POST /api/setup/apply', () => {
 
     expect(mockWriteEnv).toHaveBeenCalledTimes(1);
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual([
-      'JWT_SECRET',
-      'WEA_STORAGE_BACKEND',
-      'encrypt_secret_key',
-    ]);
-    expect(envEntries.WEA_STORAGE_BACKEND).toBe('sqlite');
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
     expect(envEntries.JWT_SECRET).toBe('super-secret-jwt');
     expect(envEntries.encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
+    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
+    expect(envEntries).not.toHaveProperty('WEA_PG_HOST');
     expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
     expect(envEntries).not.toHaveProperty('WEBDAV_URL');
     expect(envEntries).not.toHaveProperty('EMAIL_HOST');
@@ -402,8 +399,9 @@ describe('POST /api/setup/apply', () => {
     expect(res.body).toEqual({ restart_required: true });
 
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'WEA_STORAGE_BACKEND']);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET']);
     expect(envEntries).not.toHaveProperty('encrypt_secret_key');
+    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
     expect(process.env.encrypt_secret_key).toBe('pre-existing-key');
 
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
@@ -435,11 +433,8 @@ describe('POST /api/setup/apply', () => {
     expect(res.body).toEqual({ restart_required: true });
 
     const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual([
-      'JWT_SECRET',
-      'WEA_STORAGE_BACKEND',
-      'encrypt_secret_key',
-    ]);
+    expect(Object.keys(envEntries).sort()).toEqual(['JWT_SECRET', 'encrypt_secret_key']);
+    expect(envEntries).not.toHaveProperty('WEA_STORAGE_BACKEND');
     expect(envEntries).not.toHaveProperty('PORT');
     expect(envEntries).not.toHaveProperty('EMAIL_PORT');
 
@@ -486,7 +481,7 @@ describe('POST /api/setup/apply', () => {
     expect(written.S3_ENDPOINT).toBe('http://10.0.0.104:9000');
   });
 
-  it('postgresql: a masked metadata password keeps the existing .env value (not re-written)', async () => {
+  it('postgresql metadata backend is rejected 400 with fields.metadata = notAllowed and a clear message', async () => {
     const envPath = makeEnvPath('pg-masked-password');
     process.env.DOTENV_CONFIG_PATH = envPath;
     process.env.WEA_PG_PASSWORD = 'env-pg-pass';
@@ -515,24 +510,18 @@ describe('POST /api/setup/apply', () => {
         jwt: { secret: 'jwt-pg' },
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ restart_required: true });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
+    expect(res.body.fields).toEqual({ metadata: 'notAllowed' });
+    expect(res.body.message).toContain('environment variables');
 
-    const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(envEntries).not.toHaveProperty('WEA_PG_PASSWORD');
-    expect(envEntries.WEA_PG_HOST).toBe('db.local');
-    expect(envEntries.WEA_STORAGE_BACKEND).toBe('postgresql');
-
-    // The direct PG write falls back to the app's env password for the masked value.
-    expect(MockPgClient.mock.calls[0][0].password).toBe('env-pg-pass');
-
-    const client = MockPgClient.mock.results[0].value;
-    const allCalls = client.query.mock.calls.map((c) => JSON.stringify(c));
-    expect(allCalls.some((c) => c.includes('"WEA_PG_PASSWORD"'))).toBe(false);
-    expect(allCalls.some((c) => c.includes('"AWS_SECRET_ACCESS_KEY"'))).toBe(true);
+    // Rejected before any write: .env untouched, DB untouched, no PG connection.
+    expect(mockWriteEnv).not.toHaveBeenCalled();
+    expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect(MockPgClient).not.toHaveBeenCalled();
   });
 
-  it('postgresql + s3: writes WEA_PG_* to .env and non-T0 keys (incl. ADMIN_DEFAULT_PASSWORD) to the target PG without touching sqlite admin', async () => {
+  it('postgresql metadata is rejected even with a complete payload and writes nothing to .env or the DB', async () => {
     const envPath = makeEnvPath('pg-s3');
     process.env.DOTENV_CONFIG_PATH = envPath;
 
@@ -561,126 +550,18 @@ describe('POST /api/setup/apply', () => {
         jwt: { secret: 'jwt-pg' },
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ restart_required: true });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe('serverErrors.setup.invalidPayload');
+    expect(res.body.fields).toEqual({ metadata: 'notAllowed' });
 
-    const [, envEntries] = mockWriteEnv.mock.calls[0];
-    expect(Object.keys(envEntries).sort()).toEqual([
-      'JWT_SECRET',
-      'WEA_PG_DATABASE',
-      'WEA_PG_HOST',
-      'WEA_PG_MAX',
-      'WEA_PG_PASSWORD',
-      'WEA_PG_PORT',
-      'WEA_PG_SSL',
-      'WEA_PG_USER',
-      'WEA_STORAGE_BACKEND',
-      'encrypt_secret_key',
-    ]);
-    expect(envEntries.WEA_STORAGE_BACKEND).toBe('postgresql');
-    expect(envEntries.WEA_PG_HOST).toBe('db.local');
-    expect(envEntries.WEA_PG_PORT).toBe('5433');
-    expect(envEntries.WEA_PG_DATABASE).toBe('webdav');
-    expect(envEntries.WEA_PG_USER).toBe('pg-user');
-    expect(envEntries.WEA_PG_PASSWORD).toBe('pg-pass');
-    expect(envEntries.WEA_PG_SSL).toBe('true');
-    expect(envEntries.WEA_PG_MAX).toBe('20');
-    expect(envEntries.JWT_SECRET).toBe('jwt-pg');
-    expect(envEntries).not.toHaveProperty('WEA_FILE_STORAGE');
-    expect(envEntries).not.toHaveProperty('S3_BUCKET');
-    expect(envEntries).not.toHaveProperty('ADMIN_DEFAULT_PASSWORD');
-
-    const client = MockPgClient.mock.results[0].value;
-    expect(client.connect).toHaveBeenCalled();
-    expect(client.query).toHaveBeenCalledWith(
-      expect.stringContaining('CREATE TABLE IF NOT EXISTS settings')
-    );
-    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('key TEXT PRIMARY KEY'));
-    expect(client.end).toHaveBeenCalled();
-
-    // The wizard admin password is also applied to the EXISTING admin account
-    // on the target PG (not just ADMIN_DEFAULT_PASSWORD) via a second direct
-    // connection.
-    expect(MockPgClient).toHaveBeenCalledTimes(2);
-    const adminClient = MockPgClient.mock.results[1].value;
-    const updateCall = adminClient.query.mock.calls.find(([sql]) =>
-      String(sql).includes('UPDATE users SET password')
-    );
-    expect(updateCall).toBeDefined();
-    expect(String(updateCall[1][0])).toMatch(/^\$2[aby]\$/); // bcrypt hash
-    expect(updateCall[1][0]).not.toBe('pg-admin-pass');
-
-    const upsertValue = (key) => {
-      const call = client.query.mock.calls.find(([, params]) => params && params[0] === key);
-      return call ? call[1][1] : undefined;
-    };
-    expect(JSON.parse(upsertValue('WEA_FILE_STORAGE'))).toBe('s3');
-    expect(JSON.parse(upsertValue('S3_BUCKET'))).toBe('wea-bucket');
-    expect(JSON.parse(upsertValue('AWS_REGION'))).toBe('us-east-1');
-    expect(JSON.parse(upsertValue('AWS_ACCESS_KEY_ID'))).toBe('AKIAX');
-    expect(JSON.parse(upsertValue('S3_ENDPOINT'))).toBe('http://localhost:9010');
-    expect(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD'))).not.toBe('pg-admin-pass');
-
-    const masterKey = envEntries.encrypt_secret_key;
-    expect(isEncryptedPayload(JSON.parse(upsertValue('AWS_SECRET_ACCESS_KEY')))).toBe(true);
-    expect(decryptSecret(JSON.parse(upsertValue('AWS_SECRET_ACCESS_KEY')), masterKey)).toBe(
-      's3-secret'
-    );
-    expect(isEncryptedPayload(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD')))).toBe(true);
-    expect(decryptSecret(JSON.parse(upsertValue('ADMIN_DEFAULT_PASSWORD')), masterKey)).toBe(
-      'pg-admin-pass'
-    );
-
+    expect(mockWriteEnv).not.toHaveBeenCalled();
     expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect(MockPgClient).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
 
     const admin = await User.findByUsername('admin');
     expect(admin).toBeTruthy();
     expect(await bcrypt.compare(ADMIN_PASSWORD, admin.password)).toBe(true);
-
-    expect(invalidateSpy).toHaveBeenCalled();
-  });
-
-  it('postgresql: skips the direct admin-password update when the users table does not exist yet (fresh PG)', async () => {
-    const envPath = makeEnvPath('pg-fresh-admin-update');
-    process.env.DOTENV_CONFIG_PATH = envPath;
-
-    // First client (settings write) works; the second (admin UPDATE) hits a
-    // missing users table, which must be tolerated (ADMIN_DEFAULT_PASSWORD
-    // creates admin on boot).
-    const seq = [makePgClient()];
-    const second = makePgClient();
-    second.query.mockRejectedValueOnce(
-      Object.assign(new Error('relation "users" does not exist'), { code: '42P01' })
-    );
-    seq.push(second);
-    MockPgClient.mockImplementation(() => seq.shift());
-
-    const res = await request(app)
-      .post('/api/setup/apply')
-      .send({
-        metadata: {
-          backend: 'postgresql',
-          host: 'db.local',
-          port: '5433',
-          database: 'webdav',
-          user: 'pg-user',
-          password: 'pg-pass',
-          ssl: false,
-        },
-        file: {
-          backend: 's3',
-          bucket: 'wea-bucket',
-          region: 'us-east-1',
-          accessKeyId: 'AKIAX',
-          secretAccessKey: 's3-secret',
-          endpoint: 'http://localhost:9010',
-        },
-        admin: { password: 'pg-admin-pass' },
-        jwt: { secret: 'jwt-pg' },
-      });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ restart_required: true });
   });
 
   it('returns 403 setup.complete when setup is already complete', async () => {

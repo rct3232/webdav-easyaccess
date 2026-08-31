@@ -9,6 +9,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 
 const { resolveEnvPath } = require('./infrastructure/envPath');
 const { computeSetupStatus } = require('./infrastructure/setupStatus');
+const { getBackendHealth } = require('./infrastructure/backendHealth');
 const {
   createConfigResolver,
   setSharedResolver,
@@ -156,6 +157,16 @@ if (fs.existsSync(clientBuildPath)) {
 const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');
 
 async function runBoot() {
+  const { getBackend } = require('./store/storage');
+  const { PG_REQUIRED_KEYS } = require('./infrastructure/setupStatus');
+  if (getBackend() === 'postgresql') {
+    const missing = PG_REQUIRED_KEYS.filter((key) => !process.env[key]);
+    if (missing.length > 0) {
+      console.error(`[config] WEA_STORAGE_BACKEND=postgresql requires ${missing.join(', ')} in env/.env. Aborting.`);
+      process.exit(1);
+    }
+  }
+
   await initMetadataSchema();
   console.log('Metadata store initialized');
 
@@ -212,6 +223,12 @@ async function runBoot() {
   } catch (error) {
     console.warn('⚠ WebDAV connection test failed:', error.message);
   }
+
+  getBackendHealth().reset();
+  getBackendHealth().setOnTransition((backend, { from, to, code, reason }) => {
+    if (to === 'fail') console.error(`[backend-health] ${backend}: ${from} → FAIL` + (code ? ` (${code})` : '') + (reason ? ` — ${reason}` : ''));
+    else console.log(`[backend-health] ${backend}: ${from} → OK`);
+  });
   
   if (require.main === module) {
     // PORT is T1 (boot-frozen, env → DB → default): resolve at listen time so

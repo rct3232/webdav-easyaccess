@@ -396,6 +396,15 @@
     "passwordMinLength": "최소 6자 이상",
     "confirmPassword": "비밀번호 확인",
     "advancedSettings": "고급 설정",
+    "health": {
+      "title": "백엔드 상태",
+      "ok": "정상",
+      "fail": "장애",
+      "unknown": "알 수 없음",
+      "lastChecked": "마지막 확인: {{time}}",
+      "banner": "일부 백엔드에 연결 문제가 발생했습니다.",
+      "hintPrefix": "상세:"
+    },
     "config": {
       "save": "변경사항 저장",
       "saving": "저장 중...",
@@ -412,6 +421,8 @@
       "setInEnv": ".env에서 설정됨 (env가 우선합니다)",
       "setNewValue": "새 값 설정",
       "secretKeepExisting": "비워두면 현재 값을 유지합니다.",
+      "connectionTest": "연결 테스트",
+      "connectionTestRequired": "연결 테스트가 통과되어야 저장할 수 있습니다.",
       "help": {
         "CORS_ORIGINS": "허용된 출처 목록 (쉼표로 구분)"
       },
@@ -681,6 +692,10 @@
     "folderAccessDenied": "폴더에 접근할 수 없습니다. 권한을 확인해주세요.",
     "fileCheckError": "파일 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
   },
+  "files": {
+    "storageUnavailable": "저장소를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    "maintenanceNotice": "서비스 데이터베이스를 사용할 수 없습니다. 관리자에게 문의해 주세요."
+  },
   "serverErrors": {
     "auth": {
       "registrationDisabled": "현재 회원가입이 비활성화되어 있습니다. 관리자에게 문의해주세요.",
@@ -810,7 +825,9 @@
     },
     "errorHandler": {
       "defaultMessage": "오류가 발생했습니다.",
-      "internalServerError": "서버 오류가 발생했습니다."
+      "internalServerError": "서버 오류가 발생했습니다.",
+      "databaseUnavailable": "데이터베이스를 일시적으로 사용할 수 없습니다.",
+      "databaseQueryFailed": "데이터베이스 오류가 발생했습니다."
     },
     "api": {
       "webdavTestFailed": "WebDAV 테스트 실패: {{reason}}"
@@ -870,7 +887,8 @@
       "destinationExists": "충돌: 대상이 이미 존재합니다."
     },
     "storage": {
-      "invalidPathMapping": "잘못된 경로 매핑입니다."
+      "invalidPathMapping": "잘못된 경로 매핑입니다.",
+      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. WEA_PG_* 설정을 확인하세요."
     },
     "utilsAuth": {
       "accessTokenRequired": "액세스 토큰이 필요합니다.",

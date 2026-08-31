@@ -13,9 +13,18 @@ jest.mock('../../../../models/Settings', () => ({
   set: jest.fn().mockResolvedValue(undefined),
   getAll: jest.fn().mockResolvedValue({}),
 }));
+jest.mock('../../../../infrastructure/backendProbe', () => ({
+  ...jest.requireActual('../../../../infrastructure/backendProbe'),
+  runProbe: jest.fn(),
+}));
+jest.mock('../../../../infrastructure/backendHealth', () => ({
+  getBackendHealth: jest.fn(),
+}));
 
 const User = require('../../../../models/User');
 const Settings = require('../../../../models/Settings');
+const { runProbe } = require('../../../../infrastructure/backendProbe');
+const { getBackendHealth } = require('../../../../infrastructure/backendHealth');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { generateToken } = require('../../../../utils/auth');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
@@ -36,8 +45,15 @@ const fakeResolver = {
   getEffectiveConfig: jest.fn(),
   invalidateCache: jest.fn(),
   // generateToken (utils/auth) reads JWT_EXPIRES_IN lazily through the shared
-  // resolver, so the test harness resolver must expose the sync read too.
-  getConfigSync: jest.fn().mockReturnValue('30m'),
+  // resolver, so the test harness resolver must expose the sync read too. The
+  // config/test route also resolves masked secrets through getConfigSync;
+  // returning undefined keeps masked effective values as '****'.
+  getConfigSync: jest.fn((key) => (key === 'JWT_EXPIRES_IN' ? '30m' : undefined)),
+};
+
+const mockHealth = {
+  report: jest.fn(),
+  getHealth: jest.fn(),
 };
 
 function buildToken() {
@@ -51,6 +67,7 @@ beforeEach(() => {
   delete process.env.encrypt_secret_key;
   fakeResolver.getEffectiveConfig.mockResolvedValue({});
   setSharedResolver(fakeResolver);
+  getBackendHealth.mockReturnValue(mockHealth);
   User.findById.mockResolvedValue({ id: 1, is_admin: 1 });
   app = buildApp();
 });
@@ -323,5 +340,96 @@ describe('PUT /api/admin/config', () => {
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.configEncryptKeyMissing);
     expect(Settings.set).not.toHaveBeenCalled();
     expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/admin/config/test', () => {
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .send({ target: 's3', S3_BUCKET: 'my-bucket' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBeDefined();
+    expect(runProbe).not.toHaveBeenCalled();
+  });
+
+  it('merges pending values over effective config, probes s3, and reports ok', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      S3_BUCKET: { value: 'my-bucket', source: 'db', tier: 'T1', secret: false },
+      AWS_REGION: { value: 'us-east-1', source: 'db', tier: 'T1', secret: false },
+      AWS_SECRET_ACCESS_KEY: { value: '****', source: 'db', tier: 'T1', secret: true },
+      S3_ENDPOINT: { value: undefined, source: 'default', tier: 'T1', secret: false },
+    });
+    runProbe.mockResolvedValue({ ok: true });
+
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ target: 's3', S3_BUCKET: 'pending-bucket' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(runProbe).toHaveBeenCalledWith('s3', {
+      bucket: 'pending-bucket',
+      region: 'us-east-1',
+      secretAccessKey: '****',
+    });
+    expect(mockHealth.report).toHaveBeenCalledWith('s3', { ok: true });
+  });
+
+  it('returns 400 ok:false with classified errorCode and reason when the probe throws', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({});
+    const err = new Error('Connection test failed');
+    err.status = 400;
+    err.errorCode = 'serverErrors.setup.test.s3.accessDenied';
+    err.reason = 'AccessDenied';
+    runProbe.mockRejectedValue(err);
+
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ target: 's3', S3_BUCKET: 'my-bucket' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      errorCode: 'serverErrors.setup.test.s3.accessDenied',
+      message: 'Connection test failed',
+      reason: 'AccessDenied',
+    });
+    expect(mockHealth.report).toHaveBeenCalledWith('s3', {
+      ok: false,
+      code: 'auth',
+      reason: 'AccessDenied',
+    });
+  });
+});
+
+describe('GET /api/admin/health', () => {
+  it('returns 401 when not authenticated', async () => {
+    const res = await request(app).get('/api/admin/health');
+
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBeDefined();
+  });
+
+  it('returns 200 with the backend health snapshot', async () => {
+    mockHealth.getHealth.mockReturnValue({
+      postgresql: { status: 'ok', code: undefined, reason: undefined, hint: undefined, lastCheckedAt: 1725000000000, firstFailedAt: undefined, consecutiveFailures: 0 },
+      s3: { status: 'unknown', code: undefined, reason: undefined, hint: undefined, lastCheckedAt: undefined, firstFailedAt: undefined, consecutiveFailures: 0 },
+      webdav: { status: 'fail', code: 'unreachable', reason: 'ECONNREFUSED', hint: 'Cannot reach the WebDAV server', lastCheckedAt: 1725000000000, firstFailedAt: 1724999900000, consecutiveFailures: 3 },
+    });
+
+    const res = await request(app)
+      .get('/api/admin/health')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.backends.postgresql.status).toBe('ok');
+    expect(res.body.backends.s3.status).toBe('unknown');
+    expect(res.body.backends.webdav.status).toBe('fail');
+    expect(res.body.backends.webdav.code).toBe('unreachable');
+    expect(res.body.backends.webdav.consecutiveFailures).toBe(3);
   });
 });

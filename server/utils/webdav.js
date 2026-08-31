@@ -300,7 +300,7 @@ async function listDirectory(path = '/') {
     const items = await client.getDirectoryContents(requestPath);
     // Normalize items returned by the WebDAV client
     // Use only basename to ensure direct children are displayed
-    return items.map(item => ({
+    const result = items.map(item => ({
       filename: item.filename,
       basename: item.basename,
       lastmod: item.lastmod,
@@ -312,7 +312,16 @@ async function listDirectory(path = '/') {
       // Even if filename exists, the path is constructed from basename, so no filtering needed
       return item.basename && item.basename.trim() !== '';
     });
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('webdav', { ok: true });
+    return result;
   } catch (error) {
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('webdav', {
+      ok: false,
+      code: 'unknown',
+      reason: error.message,
+    });
     const status = error.status || error.response?.status;
     if (status === HTTP_STATUS.UNAUTHORIZED || status === HTTP_STATUS.FORBIDDEN) {
       const err = new Error(`WebDAV authentication failed. Check credentials in .env file. Original: ${error.message}`);

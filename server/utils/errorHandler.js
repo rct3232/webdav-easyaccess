@@ -160,32 +160,44 @@ function mapDatabaseError(error, options = {}) {
     || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
 
   const code = error?.code;
+  let mapped;
   if (code === '23505') {
-    const mapped = createError(
+    mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseConflict,
       HTTP_STATUS.CONFLICT
     );
     if (error?.constraint) mapped.params = { constraint: error.constraint };
-    return mapped;
-  }
-
-  if (code === '23503' || code === '23514' || code === '22P02') {
-    const mapped = createError(
+  } else if (code === '23503' || code === '23514' || code === '22P02') {
+    mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseConstraintViolation,
       HTTP_STATUS.BAD_REQUEST
     );
     if (error?.constraint) mapped.params = { constraint: error.constraint };
-    return mapped;
-  }
-
-  if (code === '57P01' || code === '53300') {
-    return createError(
+  } else if (code === '57P01' || code === '53300') {
+    mapped = createError(
       SERVER_ERROR_CODES.errorHandler.databaseUnavailable,
       HTTP_STATUS.SERVICE_UNAVAILABLE
     );
+  } else {
+    mapped = createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 
-  return createError(fallbackErrorCode, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+  // Passive backend-health reporting (D2): only connection-class failures
+  // (unreachable DB) are recorded; conflict/constraint codes are not.
+  if (mapped.errorCode === SERVER_ERROR_CODES.errorHandler.databaseUnavailable) {
+    const { getBackend } = require('../store/storage');
+    if (getBackend() === 'postgresql') {
+      const { getBackendHealth } = require('../infrastructure/backendHealth');
+      const { toShortReason } = require('../infrastructure/backendProbe');
+      getBackendHealth().report('postgresql', {
+        ok: false,
+        code: 'unreachable',
+        reason: toShortReason(error?.message),
+      });
+    }
+  }
+
+  return mapped;
 }
 
 /**

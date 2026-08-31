@@ -2,6 +2,17 @@
 
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 
+jest.mock('../../../backendHealth', () => {
+  const report = jest.fn();
+  return { getBackendHealth: () => ({ report }) };
+});
+jest.mock('../../../backendProbe', () => ({
+  classifyToHealthCode: jest.fn(() => 'unknown'),
+}));
+
+const healthReport = () =>
+  require('../../../backendHealth').getBackendHealth().report;
+
 describe('WebdavBlobStore', () => {
   let adapterMock;
   let WebdavBlobStore;
@@ -155,6 +166,69 @@ describe('WebdavBlobStore', () => {
       const store = new WebdavBlobStore(adapterMock);
 
       await expect(store.headBlob('/remote/path/file.txt')).rejects.toThrow();
+    });
+  });
+
+  describe('backend health reporting', () => {
+    let report;
+    let classifyToHealthCode;
+
+    beforeEach(() => {
+      report = healthReport();
+      report.mockClear();
+      classifyToHealthCode = require('../../../backendProbe').classifyToHealthCode;
+      classifyToHealthCode.mockClear();
+      classifyToHealthCode.mockReturnValue('unknown');
+    });
+
+    it('reports webdav ok on uploadBlob success', async () => {
+      const store = new WebdavBlobStore(adapterMock);
+      await store.uploadBlob('/p.txt', Buffer.from('x'));
+      expect(report).toHaveBeenCalledWith('webdav', { ok: true });
+    });
+
+    it('reports webdav fail with classified code on uploadBlob error', async () => {
+      classifyToHealthCode.mockReturnValue('auth');
+      adapterMock.putFileContents.mockRejectedValue(
+        Object.assign(new Error('Forbidden'), {
+          status: 403,
+          errorCode: 'serverErrors.webdav.credentialsNotConfigured',
+        })
+      );
+
+      const store = new WebdavBlobStore(adapterMock);
+
+      await expect(store.uploadBlob('/p.txt', Buffer.from('x'))).rejects.toThrow();
+      expect(classifyToHealthCode).toHaveBeenCalledWith(
+        'webdav',
+        'serverErrors.webdav.credentialsNotConfigured'
+      );
+      expect(report).toHaveBeenCalledWith('webdav', {
+        ok: false,
+        code: 'auth',
+        reason: 'Forbidden',
+      });
+    });
+
+    it('reports webdav ok when downloadBlob returns null for 404', async () => {
+      adapterMock.getFileContents.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+
+      const store = new WebdavBlobStore(adapterMock);
+      const result = await store.downloadBlob('/missing.txt');
+
+      expect(result).toBeNull();
+      expect(report).toHaveBeenCalledWith('webdav', { ok: true });
+    });
+
+    it('reports webdav fail on createDirectory error', async () => {
+      adapterMock.createDirectory.mockRejectedValue(
+        Object.assign(new Error('cannot connect'), { errorCode: 'serverErrors.webdav.cannotConnect' })
+      );
+
+      const store = new WebdavBlobStore(adapterMock);
+
+      await expect(store.createDirectory('/dir')).rejects.toThrow();
+      expect(report).toHaveBeenCalledWith('webdav', expect.objectContaining({ ok: false }));
     });
   });
 });

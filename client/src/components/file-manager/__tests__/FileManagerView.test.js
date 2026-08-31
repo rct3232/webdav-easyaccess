@@ -443,6 +443,37 @@ describe('FileManagerView', () => {
     expect(props.overlayState.setLeaveShareConfirmTargetPath).toHaveBeenCalledWith(null);
   });
 
+  it('renders the admin-only backend-health banner when any backend is fail', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'admin1', is_admin: true },
+        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    expect(await screen.findByTestId('backend-health-banner')).toBeInTheDocument();
+    expect(screen.getByText(/backend is experiencing connection problems/i)).toBeInTheDocument();
+  });
+
+  it('does not render the backend-health banner for non-admin users', async () => {
+    const props = createProps({
+      shellContext: {
+        ...createProps().shellContext,
+        user: { id: 'user-1', username: 'user1', is_admin: false },
+        backendHealth: { postgresql: 'ok', s3: 'ok', webdav: 'fail' },
+      },
+    });
+    renderWithProviders(<FileManagerView {...props} />);
+
+    await waitFor(() => {
+      expect(folderTreeGateway.getUserSharedFolderPermissions).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByTestId('backend-health-banner')).not.toBeInTheDocument();
+  });
+
   it('routes non-share folder-tree clicks through handleLeaveSharePathClick in share mode', async () => {
     const props = createProps({
       shareContext: {

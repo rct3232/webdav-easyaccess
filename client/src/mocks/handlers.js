@@ -623,7 +623,34 @@ export const handlers = [
 
   // --- Health, settings, webdav ---
   http.get(`${API_BASE}/health`, () => {
-    return HttpResponse.json({ status: 'ok', messageCode: 'serverMessages.api.healthOk' });
+    return HttpResponse.json({
+      status: 'ok',
+      messageCode: 'serverMessages.api.healthOk',
+      backends: { postgresql: 'ok', s3: 'unknown', webdav: 'ok' },
+    });
+  }),
+
+  http.get(`${API_BASE}/admin/health`, () => {
+    return HttpResponse.json({
+      backends: {
+        postgresql: { status: 'ok' },
+        s3: { status: 'unknown' },
+        webdav: { status: 'ok' },
+      },
+    });
+  }),
+
+  http.post(`${API_BASE}/admin/config/test`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    if (body.target === 'webdav' && typeof body.WEBDAV_URL === 'string' && body.WEBDAV_URL.includes('bad')) {
+      return HttpResponse.json({
+        ok: false,
+        errorCode: 'serverErrors.setup.test.pg.unreachable',
+        message: 'Connection test failed',
+        reason: 'ECONNREFUSED',
+      });
+    }
+    return HttpResponse.json({ ok: true });
   }),
 
   http.get(`${API_BASE}/settings/public`, () => {

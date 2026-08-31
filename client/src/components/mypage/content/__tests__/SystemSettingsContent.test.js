@@ -237,6 +237,39 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/encryption key lost/i)).toBeInTheDocument();
   });
 
+  it('renders the backend-health card with per-backend statuses from /admin/health', async () => {
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/backend health/i)).toBeInTheDocument();
+    expect(within(card).getByText(/postgresql/i)).toBeInTheDocument();
+    expect(within(card).getByText(/s3/i)).toBeInTheDocument();
+    expect(within(card).getByText(/webdav/i)).toBeInTheDocument();
+    expect(within(card).getAllByText(/ok/i)).toHaveLength(2);
+    expect(within(card).getByText(/unknown/i)).toBeInTheDocument();
+  });
+
+  it('renders the FAIL label with hint and last-checked when a backend is down', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'fail', code: 'unreachable', hint: 'Cannot reach host', lastCheckedAt: '2026-01-01T00:00:00Z' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/FAIL/i)).toBeInTheDocument();
+    expect(within(card).getByText(/Cannot reach host/i)).toBeInTheDocument();
+    expect(within(card).getByText(/last checked/i)).toBeInTheDocument();
+  });
+
   it('does not show a key-lost warning banner when the master key is present', async () => {
     renderSystemSettingsContent();
 

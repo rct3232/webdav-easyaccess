@@ -11,6 +11,7 @@ import {
   getErrorMessage,
   getServerErrorDisplay,
   getServerMessageDisplay,
+  getConnectionClassFriendlyKey,
   showErrorFromError,
 } from '../errorUtils';
 import { HTTP_STATUS } from '@webdav-easyaccess/shared/constants';
@@ -116,6 +117,16 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(err)).toEqual({ key: 'serverErrors.files.accessDenied' });
   });
 
+  it('returns friendly key for connection-class errorCode', () => {
+    const err = { response: { data: { errorCode: 'serverErrors.webdav.connectionRefused' } } };
+    expect(getErrorMessage(err)).toEqual({ key: 'files.storageUnavailable' });
+  });
+
+  it('returns maintenance notice key for databaseUnavailable errorCode', () => {
+    const err = { response: { data: { errorCode: 'serverErrors.errorHandler.databaseUnavailable' } } };
+    expect(getErrorMessage(err)).toEqual({ key: 'files.maintenanceNotice' });
+  });
+
   it('returns type-based key for HTTP status when no errorCode', () => {
     const err = { response: { status: HTTP_STATUS.NOT_FOUND } };
     expect(getErrorMessage(err)).toEqual({ key: 'errors.fileNotFound' });
@@ -132,6 +143,27 @@ describe('getErrorMessage', () => {
   });
 });
 
+describe('getConnectionClassFriendlyKey', () => {
+  it('maps webdav connection-class codes to files.storageUnavailable', () => {
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.connectionRefused')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.serverNotResponding')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.cannotConnect')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.allConnectionAttemptsFailed')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.credentialsNotConfigured')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.storage.postgresqlNotConfigured')).toBe('files.storageUnavailable');
+  });
+
+  it('maps databaseUnavailable to files.maintenanceNotice', () => {
+    expect(getConnectionClassFriendlyKey('serverErrors.errorHandler.databaseUnavailable')).toBe('files.maintenanceNotice');
+  });
+
+  it('returns null for unrelated codes', () => {
+    expect(getConnectionClassFriendlyKey('serverErrors.files.accessDenied')).toBeNull();
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.sourceNotFound')).toBeNull();
+    expect(getConnectionClassFriendlyKey(undefined)).toBeNull();
+  });
+});
+
 describe('getServerErrorDisplay', () => {
   const t = (key, params = {}) => (params && Object.keys(params).length ? `${key}(${JSON.stringify(params)})` : key);
 
@@ -143,6 +175,23 @@ describe('getServerErrorDisplay', () => {
     expect(getServerErrorDisplay({ errorCode: 'serverErrors.auth.invalid' }, t)).toBe('serverErrors.auth.invalid');
     expect(getServerErrorDisplay({ errorCode: 'serverErrors.files.accessDenied', params: { path: '/x' } }, t))
       .toBe('serverErrors.files.accessDenied({"path":"/x"})');
+  });
+
+  it('returns friendly key for connection-class errorCode', () => {
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.connectionRefused' }, t))
+      .toBe('files.storageUnavailable');
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.cannotConnect' }, t))
+      .toBe('files.storageUnavailable');
+  });
+
+  it('returns maintenance notice key for databaseUnavailable errorCode', () => {
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.errorHandler.databaseUnavailable' }, t))
+      .toBe('files.maintenanceNotice');
+  });
+
+  it('keeps own translation for unrelated errorCode', () => {
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.sourceNotFound' }, t))
+      .toBe('serverErrors.webdav.sourceNotFound');
   });
 
   it('returns data.error when no errorCode', () => {

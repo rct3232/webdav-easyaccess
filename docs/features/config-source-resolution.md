@@ -223,10 +223,16 @@ map; the server registry is authoritative for tier/secret/source.
 
 - The "Advanced settings" accordion sits below the main settings rows; config is fetched
   lazily on first expand.
-- Grouped sections (Metadata T0 — read-only, File storage, Server & security, Email,
-  Runtime); type-aware inputs (TextField / Switch / Select / Number).
-- **source=env rows are read-only** with a "Set in `.env` (env takes precedence)" note (D9) —
-  DB edits would be silently ignored while the env var is present. The server **enforces** this
+- Grouped sections (File storage, Server & security, Email, Runtime). **The Metadata (T0)
+  group is removed from the editor entirely (D5)** — the DB connection is `.env`-owned and the
+  backend is verified via the health card, not an in-editor metadata section.
+- **Connection-key save gating (D1):** editing an S3/WebDAV connection key (see
+  `docs/features/backend-health.md`) blocks Save until `POST /api/admin/config/test` with the
+  pending values passes; changing a connection key invalidates the result; non-connection keys
+  save without a test.
+- Type-aware inputs (TextField / Switch / Select / Number); **source=env rows are read-only**
+  with a "Set in `.env` (env takes precedence)" note (D9) — DB edits would be silently ignored
+  while the env var is present. The server **enforces** this
   too: `PUT` rejects (400) a write to a key whose current source is `env`, so the UI rule
   cannot be bypassed via the API (F4).
 - **Secrets:** always masked; a "set new value" toggle reveals the field; blank on save =

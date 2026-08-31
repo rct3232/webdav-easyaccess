@@ -106,12 +106,13 @@ describe('computeSetupStatus', () => {
       };
       const { current } = computeSetupStatus(env);
       expect(current.JWT_SECRET).toBe('****');
-      expect(current.WEA_PG_PASSWORD).toBe('****');
       expect(current.AWS_SECRET_ACCESS_KEY).toBe('****');
       expect(current.WEBDAV_PASSWORD).toBe('****');
-      expect(current.WEA_STORAGE_BACKEND).toBe('postgresql');
+      // Metadata/T0 keys are no longer wizard-writable (D7) — never in `current`.
+      expect(current.WEA_STORAGE_BACKEND).toBeUndefined();
+      expect(current.WEA_PG_HOST).toBeUndefined();
+      expect(current.WEA_PG_PASSWORD).toBeUndefined();
       expect(current.PORT).toBe('5001');
-      expect(current.WEA_PG_HOST).toBe('db.example.com');
       expect(current.EMAIL_HOST).toBe('smtp.example.com');
       expect(current.EMAIL_PASSWORD).toBeUndefined();
       expect(current.ADMIN_DEFAULT_PASSWORD).toBeUndefined();

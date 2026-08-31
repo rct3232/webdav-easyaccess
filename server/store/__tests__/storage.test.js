@@ -4,6 +4,14 @@
  */
 const storage = require('@server/store/storage');
 
+jest.mock('../../infrastructure/backendHealth', () => {
+  const report = jest.fn();
+  return { getBackendHealth: () => ({ report }) };
+});
+
+const healthReport = () =>
+  require('../../infrastructure/backendHealth').getBackendHealth().report;
+
 describe('getBackend', () => {
   const originalEnv = process.env.WEA_STORAGE_BACKEND;
   const originalConsoleWarn = console.warn;
@@ -146,5 +154,95 @@ describe('postgres infrastructure helpers', () => {
 
     expect(query.mock.calls.map((args) => args[0])).toEqual(['BEGIN', 'ROLLBACK']);
     expect(client.release).toHaveBeenCalled();
+  });
+});
+
+describe('postgres backend health reporting', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = { ...originalEnv };
+    process.env.WEA_STORAGE_BACKEND = 'postgresql';
+    process.env.WEA_PG_HOST = 'localhost';
+    process.env.WEA_PG_PORT = '5432';
+    process.env.WEA_PG_DATABASE = 'testdb';
+    process.env.WEA_PG_USER = 'test';
+    process.env.WEA_PG_PASSWORD = 'secret';
+  });
+
+  afterEach(async () => {
+    jest.dontMock('pg');
+    const isolatedStorage = require('@server/store/storage');
+    await isolatedStorage.closePgPool();
+    process.env = { ...originalEnv };
+  });
+
+  it('pool error handler reports postgresql unreachable', async () => {
+    let poolErrorHandler;
+    const connect = jest.fn().mockResolvedValue({ query: jest.fn(), release: jest.fn() });
+    const Pool = jest.fn(() => ({
+      connect,
+      end: jest.fn(),
+      on: jest.fn((event, cb) => {
+        if (event === 'error') poolErrorHandler = cb;
+      }),
+    }));
+    jest.doMock('pg', () => ({ Pool }));
+
+    let isolatedStorage;
+    jest.isolateModules(() => {
+      isolatedStorage = require('@server/store/storage');
+    });
+
+    const pool = isolatedStorage.getPgPool();
+    expect(pool.on).toHaveBeenCalledWith('error', expect.any(Function));
+
+    poolErrorHandler(new Error('Connection terminated unexpectedly'));
+
+    expect(healthReport()).toHaveBeenCalledWith('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: 'Connection terminated unexpectedly',
+    });
+  });
+
+  it('withTransaction reports postgresql ok after connect succeeds', async () => {
+    const query = jest.fn(async (sql) => ({ rows: [{ sql }] }));
+    const client = { query, release: jest.fn() };
+    const connect = jest.fn().mockResolvedValue(client);
+    const Pool = jest.fn(() => ({ connect, end: jest.fn(), on: jest.fn() }));
+    jest.doMock('pg', () => ({ Pool }));
+
+    let isolatedStorage;
+    jest.isolateModules(() => {
+      isolatedStorage = require('@server/store/storage');
+    });
+
+    await isolatedStorage.withTransaction(async (dbClient) => {
+      const q = await dbClient.query('SELECT 1');
+      return q.rows[0].sql;
+    });
+
+    expect(healthReport()).toHaveBeenCalledWith('postgresql', { ok: true });
+  });
+
+  it('withTransaction reports postgresql unreachable when connect fails', async () => {
+    const connect = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
+    const Pool = jest.fn(() => ({ connect, end: jest.fn(), on: jest.fn() }));
+    jest.doMock('pg', () => ({ Pool }));
+
+    let isolatedStorage;
+    jest.isolateModules(() => {
+      isolatedStorage = require('@server/store/storage');
+    });
+
+    await expect(isolatedStorage.withTransaction(async () => {})).rejects.toThrow();
+
+    expect(healthReport()).toHaveBeenCalledWith('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: 'connect ECONNREFUSED',
+    });
   });
 });

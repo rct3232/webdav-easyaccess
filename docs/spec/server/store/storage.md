@@ -61,6 +61,8 @@ These two environment variables are **completely independent**:
 
 `WEA_STORAGE_BACKEND` no longer accepts `fs` or `webdav` metadata values (removed in Phase 7); any unrecognized **non-empty** value is a terminal boot error (no silent `sqlite` fallback, F6). An unset/empty value defaults to `sqlite`. File content storage via `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
+**D6 boot rule:** the DB connection is `.env`-owned. When `WEA_STORAGE_BACKEND=postgresql`, the boot pre-flight (`runBoot`, `server/index.js`) requires `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD`; any missing key → `console.error('[config] … requires <keys> …')` + `process.exit(1)`. `resolvePgConfig`'s `storage.postgresqlNotConfigured` throw remains as a runtime guard.
+
 ### 2.4 PostgreSQL Infrastructure Contract
 
 - Backend selector accepts `WEA_STORAGE_BACKEND=postgresql`.

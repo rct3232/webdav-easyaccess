@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import explorerGateway from '../../services/explorerGateway';
+import * as adminService from '../../services/adminService';
 import { useFileManager } from './hooks/useFileManager';
 import { useExplorerInteraction } from './hooks/useExplorerInteraction';
 import { useExplorerRefreshIndicator } from './hooks/useExplorerRefreshIndicator';
@@ -37,6 +38,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [contentAreaDraggedNodeId, setContentAreaDraggedNodeId] = useState(null);
   const [contentAreaDraggedParentNodeId, setContentAreaDraggedParentNodeId] = useState(null);
   const [contentAreaDragType, setContentAreaDragType] = useState(null);
+  const [backendHealthStatuses, setBackendHealthStatuses] = useState(null);
 
   const isShareLinkMode = Boolean(shareToken && linkInfo);
   const shareRootPath = useMemo(
@@ -578,6 +580,23 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
   }, [handleOperationComplete]);
 
+  useEffect(() => {
+    if (!user?.is_admin) {
+      setBackendHealthStatuses(null);
+      return;
+    }
+    let active = true;
+    adminService
+      .getPublicHealth()
+      .then((data) => {
+        if (active) setBackendHealthStatuses(data?.backends || null);
+      })
+      .catch(() => {
+        if (active) setBackendHealthStatuses(null);
+      });
+    return () => { active = false; };
+  }, [user]);
+
   const shareContextProps = useMemo(() => ({
     shareToken,
     isShareLinkMode,
@@ -592,7 +611,8 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     isMobile,
     fileContentRef,
     scrollContainerRef,
-  }), [user, navigate, isMobile]);
+    backendHealth: backendHealthStatuses,
+  }), [user, navigate, isMobile, backendHealthStatuses]);
 
   const overlayStateProps = useMemo(() => ({
     drawerOpen,

@@ -5,17 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { validateRequired, validatePassword } from '@webdav-easyaccess/shared/validation';
 
 import { getValidationMessage } from '../../../utils/validationMessage';
-import { applySetup, getSetupStatus, prefillSetup, testSetup } from '../../../services/setupService';
+import { applySetup, getSetupStatus, testSetup } from '../../../services/setupService';
 
 const SECRET_MASK = '****';
-const STEP_COUNT = 5;
+const STEP_COUNT = 4;
 const DEFAULT_EXPIRES_IN = '30m';
 
 const FIELD_LABEL_KEYS = {
-  host: 'setup.host',
-  port: 'setup.port',
-  database: 'setup.database',
-  user: 'setup.user',
   password: 'setup.password',
   bucket: 'setup.bucket',
   region: 'setup.region',
@@ -26,13 +22,11 @@ const FIELD_LABEL_KEYS = {
 };
 
 const STEP_REQUIRED_FIELDS = {
-  postgresql: ['host', 'port', 'database', 'user', 'password'],
   s3: ['bucket', 'region', 'accessKeyId', 'secretAccessKey'],
   webdav: ['url', 'username', 'password'],
 };
 
 const TEST_TARGET_SCOPE = {
-  postgresql: 'pg',
   s3: 's3',
   webdav: 'webdav',
 };
@@ -61,8 +55,6 @@ function parseBool(value, fallback) {
 
 function createInitialForm() {
   return {
-    metadataBackend: 'sqlite',
-    pg: { host: '', port: '5432', database: '', user: '', password: '', ssl: false },
     fileBackend: 's3',
     s3: { bucket: '', region: '', accessKeyId: '', secretAccessKey: '', endpoint: '' },
     webdav: { url: '', username: '', password: '' },
@@ -75,7 +67,6 @@ function createInitialForm() {
 
 function createInitialTestStates() {
   return {
-    postgresql: { status: 'idle', message: '', reason: '' },
     s3: { status: 'idle', message: '', reason: '' },
     webdav: { status: 'idle', message: '', reason: '' },
   };
@@ -83,24 +74,6 @@ function createInitialTestStates() {
 
 function prefillForm(prev, current) {
   const next = { ...prev };
-
-  if (current.WEA_STORAGE_BACKEND === 'sqlite' || current.WEA_STORAGE_BACKEND === 'postgresql') {
-    next.metadataBackend = current.WEA_STORAGE_BACKEND;
-  }
-  next.pg = {
-    ...next.pg,
-    host: current.WEA_PG_HOST != null ? current.WEA_PG_HOST : next.pg.host,
-    port: current.WEA_PG_PORT != null ? current.WEA_PG_PORT : next.pg.port,
-    database: current.WEA_PG_DATABASE != null ? current.WEA_PG_DATABASE : next.pg.database,
-    user: current.WEA_PG_USER != null ? current.WEA_PG_USER : next.pg.user,
-    // A missing secret in the merge source (e.g. the target-DB prefill, which
-    // never contains T0 keys) must NOT wipe an already-masked/typed value.
-    password:
-      current.WEA_PG_PASSWORD != null
-        ? normalizeSecret(current.WEA_PG_PASSWORD)
-        : next.pg.password,
-    ssl: parseBool(current.WEA_PG_SSL, next.pg.ssl),
-  };
 
   if (current.WEA_FILE_STORAGE === 's3' || current.WEA_FILE_STORAGE === 'webdav') {
     next.fileBackend = current.WEA_FILE_STORAGE;
@@ -189,7 +162,6 @@ export function useSetupWizard() {
   const [errors, setErrors] = useState({});
   const [testStates, setTestStates] = useState(createInitialTestStates);
   const [applyState, setApplyState] = useState({ status: 'idle', message: '' });
-  const [prefilling, setPrefilling] = useState(false);
 
   // Editing a field invalidates the connection-test result for that backend so
   // the operator must re-test before advancing (a stale 'ok' would be wrong).
@@ -199,8 +171,7 @@ export function useSetupWizard() {
 
   const resetTestsForScope = useCallback(
     (scope) => {
-      if (scope === 'pg') resetTest('postgresql');
-      else if (scope === 's3') resetTest('s3');
+      if (scope === 's3') resetTest('s3');
       else if (scope === 'webdav') resetTest('webdav');
     },
     [resetTest]
@@ -225,15 +196,9 @@ export function useSetupWizard() {
     loadStatus();
   }, [loadStatus]);
 
-  const handleMetadataBackendChange = useCallback((value) => {
-    setForm((prev) => ({ ...prev, metadataBackend: value }));
-    setErrors((prev) => ({ ...prev, 0: null }));
-    resetTest('postgresql');
-  }, [resetTest]);
-
   const handleFileBackendChange = useCallback((value) => {
     setForm((prev) => ({ ...prev, fileBackend: value }));
-    setErrors((prev) => ({ ...prev, 1: null }));
+    setErrors((prev) => ({ ...prev, 0: null }));
     resetTest('s3');
     resetTest('webdav');
   }, [resetTest]);
@@ -259,7 +224,7 @@ export function useSetupWizard() {
 
   const handleRegenerateSecret = useCallback(() => {
     setForm((prev) => ({ ...prev, jwt: { ...prev.jwt, secret: generateJwtSecret() } }));
-    setErrors((prev) => ({ ...prev, 2: null }));
+    setErrors((prev) => ({ ...prev, 1: null }));
   }, []);
 
   const handleBack = useCallback(() => {
@@ -273,46 +238,11 @@ export function useSetupWizard() {
       return;
     }
     setErrors((prev) => ({ ...prev, [activeStep]: null }));
-    if (activeStep === 0 && form.metadataBackend === 'postgresql') {
-      // Prefill from the target PG entered in step 1 (Q1b — setup-phase reads
-      // are always direct; a no-`.env` boot's own store is the default sqlite
-      // and never sees this PG). Best-effort: a failure must not block
-      // advancing — the connection-test button is the explicit validator.
-      setPrefilling(true);
-      try {
-        const res = await prefillSetup({
-          backend: 'postgresql',
-          host: form.pg.host,
-          port: form.pg.port,
-          database: form.pg.database,
-          user: form.pg.user,
-          password: form.pg.password,
-          ssl: form.pg.ssl,
-        });
-        if (res?.current) {
-          setForm((prev) => prefillForm(prev, res.current));
-        }
-      } catch {
-        // best-effort: keep whatever status.current already prefilled.
-      } finally {
-        setPrefilling(false);
-      }
-    }
     setActiveStep((prev) => Math.min(prev + 1, STEP_COUNT - 1));
   }, [activeStep, form, t]);
 
   const buildTestPayload = useCallback(
     (target) => {
-      if (target === 'postgresql') {
-        return {
-          host: form.pg.host,
-          port: form.pg.port,
-          database: form.pg.database,
-          user: form.pg.user,
-          password: form.pg.password,
-          ssl: form.pg.ssl,
-        };
-      }
       if (target === 's3') {
         return {
           bucket: form.s3.bucket,
@@ -368,20 +298,8 @@ export function useSetupWizard() {
     const jwtSecret =
       !form.jwt.secret || form.jwt.secret === SECRET_MASK ? generateJwtSecret() : form.jwt.secret;
     // A masked (unchanged) secret is sent as the '****' marker so the server can
-    // keep its existing value (only-re-encrypt-on-new-value, PLAN §7): the T0
-    // WEA_PG_PASSWORD stays in .env, DB-stored secrets keep their ciphertext.
-    const metadata =
-      form.metadataBackend === 'postgresql'
-        ? {
-            backend: 'postgresql',
-            host: form.pg.host,
-            port: form.pg.port,
-            database: form.pg.database,
-            user: form.pg.user,
-            password: form.pg.password,
-            ssl: form.pg.ssl,
-          }
-        : { backend: 'sqlite' };
+    // keep its existing value (only-re-encrypt-on-new-value). The metadata DB
+    // connection is .env-owned (D6/D7) and never appears in the apply payload.
     const file =
       form.fileBackend === 's3'
         ? {
@@ -400,7 +318,6 @@ export function useSetupWizard() {
             authType: 'auto',
           };
     return {
-      metadata,
       file,
       admin: { password: form.admin.password },
       jwt: { secret: jwtSecret, expiresIn: form.jwt.expiresIn || DEFAULT_EXPIRES_IN },
@@ -433,7 +350,6 @@ export function useSetupWizard() {
       subtitle: t('setup.subtitle'),
       loading: t('setup.loading'),
       stepLabels: [
-        t('setup.steps.metadata'),
         t('setup.steps.fileStorage'),
         t('setup.steps.adminJwt'),
         t('setup.steps.optional'),
@@ -442,18 +358,10 @@ export function useSetupWizard() {
       stepCounter: t('setup.stepOf', { current: activeStep + 1, total: STEP_COUNT }),
       back: t('setup.back'),
       next: t('setup.next'),
-      metadataBackend: t('setup.metadataBackend'),
-      metadataSqlite: t('setup.metadataSqlite'),
-      metadataPostgresql: t('setup.metadataPostgresql'),
       fileBackend: t('setup.fileBackend'),
       fileS3: t('setup.fileS3'),
       fileWebdav: t('setup.fileWebdav'),
-      host: t('setup.host'),
-      port: t('setup.port'),
-      database: t('setup.database'),
-      user: t('setup.user'),
       password: t('setup.password'),
-      ssl: t('setup.ssl'),
       bucket: t('setup.bucket'),
       region: t('setup.region'),
       accessKeyId: t('setup.accessKeyId'),
@@ -499,11 +407,9 @@ export function useSetupWizard() {
     errors,
     testStates,
     applyState,
-    prefilling,
     viewModel,
     onBack: handleBack,
     onNext: handleNext,
-    onMetadataBackendChange: handleMetadataBackendChange,
     onFileBackendChange: handleFileBackendChange,
     onFieldChange: handleFieldChange,
     onCheckboxChange: handleCheckboxChange,
@@ -515,19 +421,13 @@ export function useSetupWizard() {
 
 function validateStep(step, form, t) {
   if (step === 0) {
-    if (form.metadataBackend === 'postgresql') {
-      return validateRequiredFields(form.pg, STEP_REQUIRED_FIELDS.postgresql, t);
-    }
-    return null;
-  }
-  if (step === 1) {
     return validateRequiredFields(
       form[form.fileBackend],
       STEP_REQUIRED_FIELDS[form.fileBackend],
       t
     );
   }
-  if (step === 2) {
+  if (step === 1) {
     const passwordError = validatePassword(form.admin.password, { minLength: 6 });
     if (passwordError) return getValidationMessage(passwordError, t);
     const secretError = validateRequired(form.jwt.secret, t('setup.jwtSecret'));

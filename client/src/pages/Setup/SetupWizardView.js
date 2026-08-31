@@ -57,11 +57,9 @@ const SetupWizardView = ({
   errors,
   testStates,
   applyState,
-  prefilling,
   viewModel,
   onBack,
   onNext,
-  onMetadataBackendChange,
   onFileBackendChange,
   onFieldChange,
   onCheckboxChange,
@@ -75,95 +73,9 @@ const SetupWizardView = ({
   // editing a field already resets the result (useSetupWizard), so a stale 'ok'
   // can never unlock Next.
   const testRequiredStep =
-    (activeStep === 0 && form.metadataBackend === 'postgresql') ||
-    (activeStep === 1 && (form.fileBackend === 's3' || form.fileBackend === 'webdav'));
-  const testTarget = activeStep === 0 ? 'postgresql' : activeStep === 1 ? form.fileBackend : null;
+    activeStep === 0 && (form.fileBackend === 's3' || form.fileBackend === 'webdav');
+  const testTarget = activeStep === 0 ? form.fileBackend : null;
   const testPassed = !testRequiredStep || testStates[testTarget]?.status === 'ok';
-
-  const renderMetadataStep = () => (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        {viewModel.metadataBackend}
-      </Typography>
-      <RadioGroup
-        row
-        value={form.metadataBackend}
-        onChange={(event, value) => onMetadataBackendChange(value)}
-      >
-        <FormControlLabel value="sqlite" control={<Radio />} label={viewModel.metadataSqlite} />
-        <FormControlLabel
-          value="postgresql"
-          control={<Radio />}
-          label={viewModel.metadataPostgresql}
-        />
-      </RadioGroup>
-      {form.metadataBackend === 'postgresql' && (
-        <Box sx={{ mt: 1 }}>
-          <TextField
-            fullWidth
-            margin="normal"
-            required
-            label={viewModel.host}
-            value={form.pg.host}
-            onChange={onFieldChange('pg', 'host')}
-            inputProps={{ 'data-testid': 'setup-pg-host' }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            required
-            label={viewModel.port}
-            value={form.pg.port}
-            onChange={onFieldChange('pg', 'port')}
-            inputProps={{ 'data-testid': 'setup-pg-port' }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            required
-            label={viewModel.database}
-            value={form.pg.database}
-            onChange={onFieldChange('pg', 'database')}
-            inputProps={{ 'data-testid': 'setup-pg-database' }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            required
-            label={viewModel.user}
-            value={form.pg.user}
-            onChange={onFieldChange('pg', 'user')}
-            inputProps={{ 'data-testid': 'setup-pg-user' }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            required
-            type="password"
-            label={viewModel.password}
-            value={form.pg.password}
-            onChange={onFieldChange('pg', 'password')}
-            inputProps={{ 'data-testid': 'setup-pg-password' }}
-          />
-          <FormControlLabel
-            control={<Checkbox checked={form.pg.ssl} onChange={onCheckboxChange('pg', 'ssl')} />}
-            label={viewModel.ssl}
-          />
-          <TestConnectionControls
-            target="postgresql"
-            testState={testStates.postgresql}
-            viewModel={viewModel}
-            onTestConnection={onTestConnection}
-          />
-        </Box>
-      )}
-      {errors[0] && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {errors[0]}
-        </Alert>
-      )}
-    </Box>
-  );
 
   const renderFileStorageStep = () => (
     <Box>
@@ -270,9 +182,9 @@ const SetupWizardView = ({
           />
         </Box>
       )}
-      {errors[1] && (
+      {errors[0] && (
         <Alert severity="error" sx={{ mt: 2 }}>
-          {errors[1]}
+          {errors[0]}
         </Alert>
       )}
     </Box>
@@ -319,9 +231,9 @@ const SetupWizardView = ({
         helperText={viewModel.expiresInHelp}
         inputProps={{ 'data-testid': 'setup-jwt-expiresIn' }}
       />
-      {errors[2] && (
+      {errors[1] && (
         <Alert severity="error" sx={{ mt: 2 }}>
-          {errors[2]}
+          {errors[1]}
         </Alert>
       )}
     </Box>
@@ -330,7 +242,7 @@ const SetupWizardView = ({
   const renderOptionalStep = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        {viewModel.stepLabels[3]}
+        {viewModel.stepLabels[2]}
       </Typography>
       <TextField
         fullWidth
@@ -404,7 +316,7 @@ const SetupWizardView = ({
   const renderApplyStep = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        {viewModel.stepLabels[4]}
+        {viewModel.stepLabels[3]}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {viewModel.applyIntro}
@@ -471,11 +383,10 @@ const SetupWizardView = ({
           </Stepper>
         )}
         <Box>
-          {activeStep === 0 && renderMetadataStep()}
-          {activeStep === 1 && renderFileStorageStep()}
-          {activeStep === 2 && renderAdminJwtStep()}
-          {activeStep === 3 && renderOptionalStep()}
-          {activeStep === 4 && renderApplyStep()}
+          {activeStep === 0 && renderFileStorageStep()}
+          {activeStep === 1 && renderAdminJwtStep()}
+          {activeStep === 2 && renderOptionalStep()}
+          {activeStep === 3 && renderApplyStep()}
         </Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
           <Button onClick={onBack} disabled={activeStep === 0}>
@@ -486,7 +397,7 @@ const SetupWizardView = ({
               variant="contained"
               color="primary"
               onClick={onNext}
-              disabled={prefilling || !testPassed}
+              disabled={!testPassed}
             >
               {viewModel.next}
             </Button>

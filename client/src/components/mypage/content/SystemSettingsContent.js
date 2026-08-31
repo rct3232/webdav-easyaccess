@@ -44,6 +44,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [keyLostWarning, setKeyLostWarning] = useState(false);
+  const [backendHealth, setBackendHealth] = useState({});
 
   const loadSettings = useCallback(async () => {
     try {
@@ -63,10 +64,20 @@ const SystemSettingsContent = ({ onMessage }) => {
     }
   }, []);
 
+  const loadHealth = useCallback(async () => {
+    try {
+      const data = await adminService.getAdminHealth();
+      setBackendHealth(data?.backends || {});
+    } catch {
+      setBackendHealth({});
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadKeyLostWarning();
-  }, [loadSettings, loadKeyLostWarning]);
+    loadHealth();
+  }, [loadSettings, loadKeyLostWarning, loadHealth]);
 
   const handleToggleRegistration = async () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -133,6 +144,33 @@ const SystemSettingsContent = ({ onMessage }) => {
 
   return (
     <Box>
+      {Object.keys(backendHealth).length > 0 && (
+        <Alert severity="info" sx={{ mb: 3 }} data-testid="backend-health-card">
+          <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
+          <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+            {Object.entries(backendHealth).map(([name, health]) => {
+              const status = health?.status || 'unknown';
+              const statusLabel =
+                status === 'ok' ? t('admin.health.ok')
+                  : status === 'fail' ? t('admin.health.fail')
+                    : t('admin.health.unknown');
+              return (
+                <li key={name}>
+                  <Typography variant="body2">
+                    {name}: {statusLabel}
+                    {status === 'fail' && (health?.hint || health?.code) ? ` (${t('admin.health.hintPrefix')} ${health?.hint || health?.code})` : ''}
+                  </Typography>
+                  {health?.lastCheckedAt ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {t('admin.health.lastChecked', { time: new Date(health.lastCheckedAt).toLocaleString() })}
+                    </Typography>
+                  ) : null}
+                </li>
+              );
+            })}
+          </Box>
+        </Alert>
+      )}
       {keyLostWarning && (
         <Alert severity="warning" sx={{ mb: 3 }} data-testid="key-lost-warning">
           <Typography variant="subtitle2">{t('admin.keyLostWarning')}</Typography>

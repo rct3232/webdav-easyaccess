@@ -72,7 +72,15 @@ Call signatures listed in the props table are the contract; the view must call t
 - **Forbidden imports:** `client/src/services/*`, gateways (including `explorerGateway`), router hooks, browser APIs, storage utilities.
 - **Reference implementation:** extracted from `client/src/pages/FileManager/FileManager.js` during Phase 3.1.
 
-### 2.5 Verification Scenarios
+### 2.5 Admin backend-health banner (D3)
+
+- The controller (`FileManager.js`) fetches `GET /api/health` and passes `backendHealth`
+  (`{ postgresql, s3, webdav }` status strings) + `isAdmin` down via the shell context.
+- The view renders an admin-only `Alert` (between `FileManagerControls` and the listing,
+  `data-testid="backend-health-banner"`) when `isAdmin` and any backend is `fail`.
+- The view never performs the health fetch itself (presentational boundary).
+
+### 2.6 Verification Scenarios
 
 These scenarios should be covered by a dedicated component test in `client/src/components/file-manager/__tests__/FileManagerView.test.js`. That test may mock lower-level child components and dialogs to verify boundary wiring while layout/details inside those children remain covered by their own tests.
 
@@ -82,6 +90,7 @@ These scenarios should be covered by a dedicated component test in `client/src/c
 - [ ] Folder tree and overlay slots render in the same layout positions as today.
 - [ ] Progress drawer renders from `progress` props and calls provided retry/cancel callbacks without owning the operation logic.
 - [ ] In share-link mode, the folder tree routes non-share section clicks through `onLeaveShareClick` (`interaction.handleLeaveSharePathClick`) so the hosting shell can open the leave-share confirmation; the leave-share `ConfirmDialog` renders from `overlayState` (leave-share state) and confirms via `handleLeaveShareConfirm`.
+- [ ] Admin-only backend-health banner renders when any backend is `fail`; absent for non-admins.
 
 ### 2.6 Edge Cases
 

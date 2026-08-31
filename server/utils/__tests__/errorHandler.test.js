@@ -20,6 +20,20 @@ const {
   errorHandler,
 } = require('../errorHandler');
 
+jest.mock('../../store/storage', () => ({
+  getBackend: jest.fn(() => 'postgresql'),
+}));
+jest.mock('../../infrastructure/backendHealth', () => {
+  const report = jest.fn();
+  return { getBackendHealth: () => ({ report }) };
+});
+jest.mock('../../infrastructure/backendProbe', () => ({
+  toShortReason: jest.fn((value) => (value == null ? undefined : String(value))),
+}));
+
+const healthReport = () =>
+  require('../../infrastructure/backendHealth').getBackendHealth().report;
+
 describe('errorHandler', () => {
   describe('asyncHandler', () => {
     it('invokes handler and calls next on success', async () => {
@@ -201,6 +215,24 @@ describe('errorHandler', () => {
       const mapped = mapDatabaseError({ code: '57P01' });
       expect(mapped.status).toBe(HTTP_STATUS.SERVICE_UNAVAILABLE);
       expect(mapped.errorCode).toBe(SERVER_ERROR_CODES.errorHandler.databaseUnavailable);
+    });
+
+    it('reports postgresql unreachable to backend health when backend is postgresql', () => {
+      healthReport().mockClear();
+      mapDatabaseError({ code: '53300', message: 'sorry, too many clients already' });
+      expect(healthReport()).toHaveBeenCalledWith('postgresql', {
+        ok: false,
+        code: 'unreachable',
+        reason: 'sorry, too many clients already',
+      });
+    });
+
+    it('does not report backend health for non-connection error codes', () => {
+      healthReport().mockClear();
+      mapDatabaseError({ code: '23505', constraint: 'users_email_key' });
+      mapDatabaseError({ code: '23503', constraint: 'fk_user_id' });
+      mapDatabaseError({ code: 'XX000' });
+      expect(healthReport()).not.toHaveBeenCalled();
     });
 
     it('uses fallback error code for unknown DB errors', () => {

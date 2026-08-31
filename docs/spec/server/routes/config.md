@@ -26,8 +26,9 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 | Method | Path     | Auth              | Description                                                                                 |
 | ------ | -------- | ----------------- | ------------------------------------------------------------------------------------------- |
-| GET    | `/config` | Token + Admin     | Effective config: masked secrets, `value`/`source`/`tier`/`secret` for every registry key.  |
+| GET    | `/config` | Token + Admin     | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key + `key_lost_warning`. |
 | PUT    | `/config` | Token + Admin     | Allowlisted non-T0 keys → DB `settings`, secrets encrypted, T2 cache invalidated.            |
+| POST   | `/config/test` | Token + Admin | Connection test **with pending values** for a file-storage backend (s3/webdav); reuses the wizard probe/classification. Serves D1 save gating. |
 
 ### 2.3 Middleware Used
 
@@ -112,6 +113,42 @@ Tier classification after a successful write:
 - `restartRequired` — T1 keys written (require restart).
 
 **source=env semantics:** the server **refuses** (400 `configEnvSourcedProtected`) a write to a key whose current effective source is `'env'` — a DB copy would be silently shadowed while the env var keeps winning (D1/F4). This matches the UI, which renders `source=env` rows read-only. DB-backed T1 keys populated at boot remain writable (`source: 'db'`). `registration_enabled` is a valid non-T0 (T2) registry key and is writable by this generic route, but the admin UI keeps it in the main settings rows and never shows it in the accordion.
+
+#### POST /api/admin/config/test
+
+**Request:**
+
+```jsonc
+{
+  "target": "s3" | "webdav",
+  "S3_BUCKET": "my-bucket",          // pending values (subset — any connection key)
+  "AWS_REGION": "us-east-1",
+  "WEBDAV_URL": "https://dav.example.com"
+}
+```
+
+- `target` selects the probe; the remaining keys are the **pending values subset** (D1). The
+  server **merges them over the current effective config** (env → DB) before probing, so an
+  unchanged masked secret falls back to the stored value.
+- Reuses the wizard probe machinery (`server/infrastructure/backendProbe.js`): `runProbe(target, payload)`.
+
+**200:**
+
+```jsonc
+{ "ok": true }
+```
+
+**Failure (non-2xx, same shape as `POST /api/setup/test`):**
+
+```jsonc
+{ "ok": false, "errorCode": "serverErrors.setup.test.s3.accessDenied", "message": "Connection test failed", "reason": "AccessDenied" }
+```
+
+- `errorCode` — the classified probe i18n key (`serverErrors.setup.test.*`).
+- `message` — `"Connection test failed"` or a specific message.
+- `reason` — short diagnostic (≤200 chars), only when derivable.
+
+**Errors:** 401 unauthenticated; 403 non-admin; the route sits behind `setupModeGuard` (503 while setup incomplete). Missing required fields / unsupported target → 400 `serverErrors.setup.testFailed`.
 
 ### 2.5 Related Documents
 

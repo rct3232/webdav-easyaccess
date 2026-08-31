@@ -15,7 +15,18 @@ import { getServerErrorDisplay, getServerMessageDisplay } from '../../../utils/e
 
 const SECRET_MASK = '****';
 
-const GROUP_ORDER = ['metadata', 'fileStorage', 'serverSecurity', 'email', 'runtime'];
+const GROUP_ORDER = ['fileStorage', 'serverSecurity', 'email', 'runtime'];
+
+// Connection keys (D1): editing one blocks Save until a test with the pending
+// values passes. Partitioned per active file-storage backend for the payload.
+const CONNECTION_KEYS_BY_BACKEND = {
+  s3: ['S3_BUCKET', 'AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'S3_ENDPOINT'],
+  webdav: ['WEBDAV_URL', 'WEBDAV_USERNAME', 'WEBDAV_PASSWORD', 'WEBDAV_AUTH_TYPE'],
+};
+
+const CONNECTION_KEYS = new Set(
+  Object.values(CONNECTION_KEYS_BY_BACKEND).reduce((acc, keys) => acc.concat(keys), [])
+);
 
 const GROUP_LABEL_KEYS = {
   metadata: 'admin.config.group.metadata',
@@ -28,28 +39,6 @@ const GROUP_LABEL_KEYS = {
 // Display metadata only. The server registry (configRegistry.js) is
 // authoritative for tier/secret/source; keys without an entry are skipped.
 const CONFIG_DISPLAY_META = {
-  // ── Metadata (T0 — read-only) ───────────────────────────────────────────
-  WEA_STORAGE_BACKEND: {
-    labelKey: 'admin.config.key.WEA_STORAGE_BACKEND',
-    group: 'metadata',
-    inputType: 'select',
-    options: [
-      { value: 'sqlite', labelKey: 'setup.metadataSqlite' },
-      { value: 'postgresql', labelKey: 'setup.metadataPostgresql' },
-    ],
-  },
-  WEA_SQLITE_PATH: { labelKey: 'admin.config.key.WEA_SQLITE_PATH', group: 'metadata', inputType: 'text' },
-  WEA_PG_HOST: { labelKey: 'admin.config.key.WEA_PG_HOST', group: 'metadata', inputType: 'text' },
-  WEA_PG_PORT: { labelKey: 'admin.config.key.WEA_PG_PORT', group: 'metadata', inputType: 'number' },
-  WEA_PG_DATABASE: { labelKey: 'admin.config.key.WEA_PG_DATABASE', group: 'metadata', inputType: 'text' },
-  WEA_PG_USER: { labelKey: 'admin.config.key.WEA_PG_USER', group: 'metadata', inputType: 'text' },
-  WEA_PG_SSL: { labelKey: 'admin.config.key.WEA_PG_SSL', group: 'metadata', inputType: 'switch' },
-  WEA_PG_MAX: { labelKey: 'admin.config.key.WEA_PG_MAX', group: 'metadata', inputType: 'number' },
-  WEA_PG_IDLE_TIMEOUT_MS: { labelKey: 'admin.config.key.WEA_PG_IDLE_TIMEOUT_MS', group: 'metadata', inputType: 'number' },
-  WEA_PG_CONNECTION_TIMEOUT_MS: { labelKey: 'admin.config.key.WEA_PG_CONNECTION_TIMEOUT_MS', group: 'metadata', inputType: 'number' },
-  NODE_ENV: { labelKey: 'admin.config.key.NODE_ENV', group: 'metadata', inputType: 'text' },
-  DOTENV_CONFIG_PATH: { labelKey: 'admin.config.key.DOTENV_CONFIG_PATH', group: 'metadata', inputType: 'text' },
-
   // ── File storage ────────────────────────────────────────────────────────
   WEA_FILE_STORAGE: {
     labelKey: 'admin.config.key.WEA_FILE_STORAGE',
@@ -126,6 +115,16 @@ const toStr = (value) => {
   return String(value);
 };
 
+// Mirrors the setup-wizard resolver: prefer a translation of the server
+// errorCode; fall back to the raw message, then to the default key.
+const resolveTestErrorMessage = (err, t, fallbackKey) => {
+  if (err?.errorCode) {
+    const translated = t(err.errorCode, { reason: err?.reason });
+    if (translated && translated !== err.errorCode) return translated;
+  }
+  return err?.message || t(fallbackKey);
+};
+
 const SystemConfigEditor = ({ active, onSnackbar }) => {
   const { t } = useTranslation();
 
@@ -137,6 +136,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
   const [saving, setSaving] = useState(false);
   const [restartRequiredKeys, setRestartRequiredKeys] = useState([]);
   const [appliedKeys, setAppliedKeys] = useState([]);
+  const [connectionTest, setConnectionTest] = useState({ status: 'idle', message: '', reason: '' });
   const loadedRef = useRef(false);
 
   const loadConfig = useCallback(async () => {
@@ -170,6 +170,9 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
   };
 
   const handleChange = (key, value) => {
+    if (CONNECTION_KEYS.has(key)) {
+      setConnectionTest({ status: 'idle', message: '', reason: '' });
+    }
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -195,6 +198,46 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
 
   const hasDirty = dirtyKeys.size > 0;
 
+  const hasConnectionDirty = useMemo(() => {
+    for (const key of dirtyKeys) {
+      if (CONNECTION_KEYS.has(key)) return true;
+    }
+    return false;
+  }, [dirtyKeys]);
+
+  const handleTestConnection = async () => {
+    const target = values.WEA_FILE_STORAGE ?? (toStr(config.WEA_FILE_STORAGE?.value) || 's3');
+    const keys = CONNECTION_KEYS_BY_BACKEND[target] || [];
+    const payload = {};
+    keys.forEach((key) => {
+      payload[key] = values[key] ?? toStr(config[key]?.value);
+    });
+
+    setConnectionTest({ status: 'testing', message: '', reason: '' });
+    try {
+      const res = await adminService.testConfig(target, payload);
+      if (res && res.ok === false) {
+        setConnectionTest({
+          status: 'error',
+          message: resolveTestErrorMessage(
+            { errorCode: res.errorCode, message: res.message, reason: res.reason },
+            t,
+            'setup.testFail'
+          ),
+          reason: res.reason,
+        });
+        return;
+      }
+      setConnectionTest({ status: 'ok', message: t('setup.testOk'), reason: '' });
+    } catch (err) {
+      setConnectionTest({
+        status: 'error',
+        message: resolveTestErrorMessage(err, t, 'setup.testFail'),
+        reason: err?.reason,
+      });
+    }
+  };
+
   const handleSave = async () => {
     const changedValues = {};
     for (const key of dirtyKeys) {
@@ -215,6 +258,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       setRestartRequiredKeys(res?.restartRequired || []);
       setAppliedKeys(res?.applied || []);
       setRevealedSecrets({});
+      setConnectionTest({ status: 'idle', message: '', reason: '' });
       await loadConfig();
     } catch (error) {
       if (onSnackbar) {
@@ -415,6 +459,42 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
               {t(GROUP_LABEL_KEYS[group])}
             </Typography>
+            {group === 'fileStorage' && hasConnectionDirty && (
+              <Box sx={{ mb: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleTestConnection}
+                  disabled={connectionTest.status === 'testing' || saving}
+                  startIcon={connectionTest.status === 'testing' ? <CircularProgress size={14} color="inherit" /> : null}
+                  data-testid="config-test-connection"
+                >
+                  {t('admin.config.connectionTest')}
+                </Button>
+                {connectionTest.status === 'testing' && (
+                  <Typography variant="body2" sx={{ mt: 0.5 }} data-testid="config-connection-test-status">
+                    {t('setup.testing')}
+                  </Typography>
+                )}
+                {connectionTest.status === 'ok' && (
+                  <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }} data-testid="config-connection-test-status">
+                    {connectionTest.message}
+                  </Typography>
+                )}
+                {connectionTest.status === 'error' && (
+                  <Box data-testid="config-connection-test-status">
+                    <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
+                      {connectionTest.message}
+                    </Typography>
+                    {connectionTest.reason && (
+                      <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                        {connectionTest.reason}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            )}
             {keys.map((key) => (
               <React.Fragment key={key}>{renderField(key)}</React.Fragment>
             ))}
@@ -440,12 +520,22 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
         </Alert>
       )}
 
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        {hasConnectionDirty && connectionTest.status !== 'ok' && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ mr: 2 }}
+            data-testid="config-connection-test-required"
+          >
+            {t('admin.config.connectionTestRequired')}
+          </Typography>
+        )}
         <Button
           variant="contained"
           color="primary"
           onClick={handleSave}
-          disabled={!hasDirty || saving}
+          disabled={!hasDirty || saving || (hasConnectionDirty && connectionTest.status !== 'ok')}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
           data-testid="config-save"
         >

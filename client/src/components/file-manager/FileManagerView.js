@@ -66,6 +66,7 @@ const FileManagerView = ({
     isMobile,
     fileContentRef,
     scrollContainerRef,
+    backendHealth,
   } = shellContext;
   const {
     drawerOpen,
@@ -460,6 +461,12 @@ const FileManagerView = ({
             bulkActionsDisabled={bulkMoveCopyInProgress}
             downloadOnly={isShareLinkMode}
           />
+
+          {user?.is_admin && backendHealth && Object.values(backendHealth).some((status) => status === 'fail') && (
+            <Alert severity="warning" sx={{ mx: 2, mb: 1 }} data-testid="backend-health-banner">
+              {t('admin.health.banner')}
+            </Alert>
+          )}
 
           <Box
             sx={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}

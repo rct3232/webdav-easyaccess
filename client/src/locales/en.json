@@ -396,6 +396,15 @@
     "passwordMinLength": "At least 6 characters",
     "confirmPassword": "Confirm password",
     "advancedSettings": "Advanced settings",
+    "health": {
+      "title": "Backend health",
+      "ok": "OK",
+      "fail": "FAIL",
+      "unknown": "Unknown",
+      "lastChecked": "Last checked: {{time}}",
+      "banner": "A backend is experiencing connection problems.",
+      "hintPrefix": "Detail:"
+    },
     "config": {
       "save": "Save changes",
       "saving": "Saving...",
@@ -412,6 +421,8 @@
       "setInEnv": "Set in .env (env takes precedence)",
       "setNewValue": "Set new value",
       "secretKeepExisting": "Leave blank to keep the current value.",
+      "connectionTest": "Test connection",
+      "connectionTestRequired": "Save is blocked until the connection test passes.",
       "help": {
         "CORS_ORIGINS": "Comma-separated list of allowed origins"
       },
@@ -684,6 +695,10 @@
     "folderAccessDenied": "You do not have access to this folder. Please check your permission.",
     "fileCheckError": "An error occurred while checking the file. Please try again later."
   },
+  "files": {
+    "storageUnavailable": "Storage is temporarily unavailable. Please try again later.",
+    "maintenanceNotice": "The service database is unavailable. Please contact your administrator."
+  },
   "serverErrors": {
     "auth": {
       "registrationDisabled": "Registration is currently disabled. Please contact the administrator.",
@@ -813,7 +828,9 @@
     },
     "errorHandler": {
       "defaultMessage": "An error occurred",
-      "internalServerError": "Internal server error"
+      "internalServerError": "Internal server error",
+      "databaseUnavailable": "The database is temporarily unavailable.",
+      "databaseQueryFailed": "A database error occurred."
     },
     "api": {
       "webdavTestFailed": "WebDAV test failed: {{reason}}"
@@ -873,7 +890,8 @@
       "destinationExists": "Conflict: Destination already exists"
     },
     "storage": {
-      "invalidPathMapping": "Invalid path mapping"
+      "invalidPathMapping": "Invalid path mapping",
+      "postgresqlNotConfigured": "PostgreSQL is not configured. Check WEA_PG_* settings."
     },
     "utilsAuth": {
       "accessTokenRequired": "Access token required",

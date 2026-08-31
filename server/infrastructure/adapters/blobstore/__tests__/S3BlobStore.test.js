@@ -12,6 +12,13 @@ jest.mock('@aws-sdk/client-s3', () => {
     S3Client: jest.fn(),
   };
 });
+jest.mock('../../../backendHealth', () => {
+  const report = jest.fn();
+  return { getBackendHealth: () => ({ report }) };
+});
+
+const healthReport = () =>
+  require('../../../backendHealth').getBackendHealth().report;
 
 beforeEach(() => {
   jest.resetModules();
@@ -192,6 +199,75 @@ describe('S3BlobStore', () => {
     it('throws clear error when source key is missing (NoSuchKey)', async () => {
       const store = new S3BlobStore(config);
       await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(/source key not found/i);
+    });
+  });
+
+  describe('backend health reporting', () => {
+    let report;
+
+    beforeEach(() => {
+      report = healthReport();
+      report.mockClear();
+    });
+
+    it('reports s3 ok on uploadBlob success', async () => {
+      const store = new S3BlobStore(config);
+      await store.uploadBlob('k', Buffer.from('x'));
+      expect(report).toHaveBeenCalledWith('s3', { ok: true });
+    });
+
+    it('reports unreachable on ECONNREFUSED', async () => {
+      currentMockS3.putObject.mockRejectedValue(
+        Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9000'), { code: 'ECONNREFUSED' })
+      );
+      const store = new S3BlobStore(config);
+      await expect(store.uploadBlob('k', Buffer.from('x'))).rejects.toThrow();
+      expect(report).toHaveBeenCalledWith('s3', {
+        ok: false,
+        code: 'unreachable',
+        reason: 'connect ECONNREFUSED 127.0.0.1:9000',
+      });
+    });
+
+    it('reports auth on AccessDenied', async () => {
+      currentMockS3.putObject.mockRejectedValue(
+        Object.assign(new Error('AccessDenied'), { name: 'AccessDenied', status: 403 })
+      );
+      const store = new S3BlobStore(config);
+      await expect(store.uploadBlob('k', Buffer.from('x'))).rejects.toThrow();
+      expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false, code: 'auth' }));
+    });
+
+    it('reports missing_resource on NoSuchBucket', async () => {
+      currentMockS3.headObject.mockRejectedValue(
+        Object.assign(new Error('NoSuchBucket'), { name: 'NoSuchBucket' })
+      );
+      const store = new S3BlobStore(config);
+      await expect(store.headBlob('k')).rejects.toThrow();
+      expect(report).toHaveBeenCalledWith(
+        's3',
+        expect.objectContaining({ ok: false, code: 'missing_resource' })
+      );
+    });
+
+    it('reports unknown for unclassified errors', async () => {
+      currentMockS3.getObject.mockRejectedValue(new Error('boom'));
+      const store = new S3BlobStore(config);
+      await expect(store.downloadBlob('k')).rejects.toThrow();
+      expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false, code: 'unknown' }));
+    });
+
+    it('reports ok when deleteBlob swallows NoSuchKey', async () => {
+      currentMockS3.deleteObject.mockRejectedValue(new Error('NoSuchKey'));
+      const store = new S3BlobStore(config);
+      await store.deleteBlob('missing');
+      expect(report).toHaveBeenCalledWith('s3', { ok: true });
+    });
+
+    it('reports fail before copyBlob remaps source-missing error', async () => {
+      const store = new S3BlobStore(config);
+      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(/source key not found/i);
+      expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false }));
     });
   });
 });

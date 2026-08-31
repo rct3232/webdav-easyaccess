@@ -17,18 +17,10 @@ const SECRET_KEYS = new Set([
 ]);
 
 const WIZARD_WRITABLE_KEYS = [
-  'WEA_STORAGE_BACKEND',
   'WEA_FILE_STORAGE',
   'PORT',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
-  'WEA_PG_HOST',
-  'WEA_PG_PORT',
-  'WEA_PG_DATABASE',
-  'WEA_PG_USER',
-  'WEA_PG_PASSWORD',
-  'WEA_PG_SSL',
-  'WEA_PG_MAX',
   'S3_BUCKET',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -128,4 +120,4 @@ function computeSetupStatus(env = {}, options = {}) {
   };
 }
 
-module.exports = { computeSetupStatus };
+module.exports = { computeSetupStatus, PG_REQUIRED_KEYS };

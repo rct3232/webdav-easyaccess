@@ -1,22 +1,27 @@
 'use strict';
 
-const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
-const bcrypt = require('bcryptjs');
 
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncHandler, createError } = require('../../utils/errorHandler');
 const { encryptSecret, generateKey, hasEncryptedRows } = require('../../utils/configEncryption');
+const {
+  SETUP_INVALID_PAYLOAD_CODE,
+  SETUP_TEST_FAILED_CODE,
+  toShortReason,
+  deriveReason,
+  probeError,
+  classifyPgError,
+  runProbe,
+  resolvePgPassword,
+} = require('../../infrastructure/backendProbe');
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
 const { isT0, isSecret, getDefault, TIER } = require('../../infrastructure/configRegistry');
 const { getSharedResolver } = require('../../infrastructure/configResolver');
-const { testConnection: webdavTestConnection } = require('../../infrastructure/webdavTest');
-const S3BlobStore = require('../../infrastructure/adapters/blobstore/S3BlobStore');
-const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const User = require('../../models/User');
 const Settings = require('../../models/Settings');
 
@@ -24,23 +29,6 @@ const Settings = require('../../models/Settings');
 // resolves against the server root (__dirname of index.js). The routes module
 // lives at <server>/domains/setup, so the server root is two levels up.
 const SERVER_ROOT = path.join(__dirname, '..', '..');
-
-// Error codes for payload/validation and connection-test failures. The spec's
-// official additions (setup.incomplete / setup.complete) live in
-// shared/serverMessageCodes.js; these are module-local i18n keys in the same
-// `ns.key` format so the client can translate them.
-const SETUP_INVALID_PAYLOAD_CODE = 'serverErrors.setup.invalidPayload';
-const SETUP_TEST_FAILED_CODE = 'serverErrors.setup.testFailed';
-const SETUP_TEST_GENERIC_FAILED_CODE = 'serverErrors.setup.test.failed';
-const SETUP_TEST_PG_UNREACHABLE_CODE = 'serverErrors.setup.test.pg.unreachable';
-const SETUP_TEST_PG_AUTH_FAILED_CODE = 'serverErrors.setup.test.pg.authFailed';
-const SETUP_TEST_PG_DATABASE_MISSING_CODE = 'serverErrors.setup.test.pg.databaseMissing';
-const SETUP_TEST_S3_ACCESS_DENIED_CODE = 'serverErrors.setup.test.s3.accessDenied';
-const SETUP_TEST_S3_BUCKET_MISSING_CODE = 'serverErrors.setup.test.s3.bucketMissing';
-const SETUP_TEST_S3_UNREACHABLE_CODE = 'serverErrors.setup.test.s3.unreachable';
-
-const PG_UNREACHABLE_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET'];
-const S3_UNREACHABLE_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'];
 
 const METADATA_KEYS = ['backend', 'host', 'port', 'database', 'user', 'password', 'ssl', 'max'];
 const S3_KEYS = [
@@ -62,12 +50,16 @@ const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
 const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
 const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
 
-// keep in sync with 001_initial_normalized_schema.sql
-const SETTINGS_TABLE_DDL = `CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value JSONB NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`;
+const METADATA_T0_KEYS = [
+  'WEA_STORAGE_BACKEND',
+  'WEA_PG_HOST',
+  'WEA_PG_PORT',
+  'WEA_PG_DATABASE',
+  'WEA_PG_USER',
+  'WEA_PG_PASSWORD',
+  'WEA_PG_SSL',
+  'WEA_PG_MAX',
+];
 
 function isMissing(value) {
   return value == null || String(value).trim() === '';
@@ -106,78 +98,6 @@ function isValidPort(value) {
   return false;
 }
 
-function toShortReason(value) {
-  if (value == null) return undefined;
-  const text = String(value).replace(/\s+/g, ' ').trim();
-  if (!text) return undefined;
-  return text.length > 200 ? text.slice(0, 200) : text;
-}
-
-function deriveReason(error) {
-  if (!error) return undefined;
-  const code = typeof error.code === 'string' && error.code ? error.code : '';
-  if (code && error.address && error.port)
-    return toShortReason(`${code} ${error.address}:${error.port}`);
-  if (code) return toShortReason(code);
-  if (typeof error.name === 'string' && error.name && error.name !== 'Error')
-    return toShortReason(error.name);
-  return toShortReason(error.message);
-}
-
-function isProbeSuccessError(error) {
-  // Expected success path for the probe: the random probe key is absent, so the
-  // API returns 404 (AWS/MinIO `NotFound`, or `NoSuchKey`). A 404 that names a
-  // missing bucket (`NoSuchBucket`) is a real failure, not a successful probe.
-  if (!error) return false;
-  const status =
-    Number(error.$metadata && error.$metadata.httpStatusCode) || error.status || error.statusCode;
-  const name = `${error.name || ''} ${error.code || ''} ${error.message || ''}`;
-  if (/nosuchbucket/i.test(name)) return false;
-  if (status === 404) return true;
-  return /(^|\s)(nosuchkey|notfound)(\s|$)/i.test(name);
-}
-
-function classifyPgError(error) {
-  const code = String((error && (error.code || error.errno)) || '').toUpperCase();
-  if (PG_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_PG_UNREACHABLE_CODE;
-  if (code === '28P01' || code === '28000') return SETUP_TEST_PG_AUTH_FAILED_CODE;
-  if (code === '3D000') return SETUP_TEST_PG_DATABASE_MISSING_CODE;
-  return SETUP_TEST_GENERIC_FAILED_CODE;
-}
-
-function classifyS3Error(error) {
-  if (!error) return SETUP_TEST_GENERIC_FAILED_CODE;
-  const status = Number(error.$metadata && error.$metadata.httpStatusCode);
-  const name = String(error.name || error.code || '');
-  const code = String(error.code || error.errno || '');
-  if (status === 403 || /accessdenied/i.test(name)) return SETUP_TEST_S3_ACCESS_DENIED_CODE;
-  if (/nosuchbucket/i.test(name)) return SETUP_TEST_S3_BUCKET_MISSING_CODE;
-  if (S3_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_S3_UNREACHABLE_CODE;
-  return SETUP_TEST_GENERIC_FAILED_CODE;
-}
-
-function classifyS3BucketError(error) {
-  // On ListObjectsV2 a 404 unambiguously means the bucket does not exist
-  // (HeadObject's 404 is ambiguous on MinIO/S3), so both NotFound and
-  // NoSuchBucket map to bucketMissing here.
-  if (!error) return SETUP_TEST_GENERIC_FAILED_CODE;
-  const status = Number(error.$metadata && error.$metadata.httpStatusCode);
-  const name = String(error.name || error.code || '');
-  const code = String(error.code || error.errno || '');
-  if (status === 403 || /accessdenied/i.test(name)) return SETUP_TEST_S3_ACCESS_DENIED_CODE;
-  if (status === 404 || /(nosuchbucket|notfound)/i.test(name))
-    return SETUP_TEST_S3_BUCKET_MISSING_CODE;
-  if (S3_UNREACHABLE_CODES.includes(code)) return SETUP_TEST_S3_UNREACHABLE_CODE;
-  return SETUP_TEST_GENERIC_FAILED_CODE;
-}
-
-function probeError(errorCode, status, message, reason) {
-  const err = createError(errorCode, status);
-  err.message = message;
-  if (reason) err.reason = reason;
-  return err;
-}
-
 /**
  * Records unknown keys and validates that a block is a plain object.
  * @returns {boolean} true when the block is a usable object (caller may continue)
@@ -208,9 +128,8 @@ function validateMetadata(block, fields) {
     return;
   }
   if (block.backend === 'postgresql') {
-    for (const key of ['host', 'port', 'database', 'user', 'password']) {
-      if (isMissing(block[key])) fields[`metadata.${key}`] = 'required';
-    }
+    fields.metadata = 'notAllowed';
+    return;
   }
   if (block.ssl !== undefined && !isBooleanish(block.ssl)) fields['metadata.ssl'] = 'invalid';
   if (block.max !== undefined && !isPositiveInteger(block.max)) fields['metadata.max'] = 'invalid';
@@ -283,7 +202,11 @@ function validateApplyPayload(body) {
     if (!TOP_LEVEL_KEYS.includes(key)) fields[key] = 'unknown';
   }
 
-  validateMetadata(body.metadata, fields);
+  // D7: the DB connection is .env-owned — the metadata block is OPTIONAL. When
+  // present, only sqlite is allowed (postgresql is rejected as notAllowed).
+  if (body.metadata !== null && body.metadata !== undefined) {
+    validateMetadata(body.metadata, fields);
+  }
   validateFile(body.file, fields);
   validateAdmin(body.admin, fields);
   validateJwt(body.jwt, fields);
@@ -293,25 +216,17 @@ function validateApplyPayload(body) {
   if (Object.keys(fields).length === 0) return null;
   return {
     errorCode: SETUP_INVALID_PAYLOAD_CODE,
-    message: 'Invalid setup payload',
+    message:
+      fields.metadata === 'notAllowed'
+        ? 'PostgreSQL metadata backend is not configurable via the setup wizard; the database connection is managed by environment variables.'
+        : 'Invalid setup payload',
     fields,
   };
 }
 
 function buildEnvEntries(body) {
   const entries = {};
-  const { metadata, file, jwt } = body;
-
-  entries.WEA_STORAGE_BACKEND = String(metadata.backend);
-  if (metadata.backend === 'postgresql') {
-    entries.WEA_PG_HOST = String(metadata.host);
-    entries.WEA_PG_PORT = String(metadata.port);
-    entries.WEA_PG_DATABASE = String(metadata.database);
-    entries.WEA_PG_USER = String(metadata.user);
-    entries.WEA_PG_PASSWORD = String(metadata.password);
-    if (metadata.ssl !== undefined) entries.WEA_PG_SSL = booleanToString(metadata.ssl);
-    if (metadata.max !== undefined) entries.WEA_PG_MAX = String(metadata.max);
-  }
+  const { file, jwt } = body;
 
   entries.WEA_FILE_STORAGE = String(file.backend);
   if (file.backend === 's3') {
@@ -356,13 +271,21 @@ function buildEnvEntries(body) {
  * which is upserted into the metadata DB `settings` table (D11; row key = the
  * raw env var name). Classification comes from the config registry, never a
  * local allowlist, so the wizard cannot drift from the tier model.
+ *
+ * The metadata backend T0 keys (WEA_STORAGE_BACKEND, WEA_PG_*) are excluded
+ * from the .env partition: the DB connection is `.env`-owned (D6) and the
+ * wizard serves non-T0 only (D7), so they are never written by apply.
  */
 function partitionEntries(entries) {
   const envEntries = {};
   const dbEntries = {};
   for (const [key, value] of Object.entries(entries)) {
-    if (isT0(key)) envEntries[key] = value;
-    else dbEntries[key] = value;
+    if (isT0(key)) {
+      if (METADATA_T0_KEYS.includes(key)) continue;
+      envEntries[key] = value;
+    } else {
+      dbEntries[key] = value;
+    }
   }
   return { envEntries, dbEntries };
 }
@@ -372,19 +295,6 @@ function encryptSecretValue(value, masterKey) {
 }
 
 const EFFECTIVE_SECRET_MASK = '****';
-
-/**
- * The wizard's PG password may arrive masked ('****') when it was prefilled
- * from the current .env (status masks T0 secrets). A direct PG connection
- * (connection test / prefill / apply DB-write) then falls back to the app's
- * process.env.WEA_PG_PASSWORD — the same target the .env is configured for.
- * A typed (non-masked) password is always used verbatim.
- */
-function resolvePgPassword(password) {
-  return password === EFFECTIVE_SECRET_MASK || isMissing(password)
-    ? process.env.WEA_PG_PASSWORD
-    : password;
-}
 
 /**
  * getEffectiveConfig() masks every secret as '****' — even one that resolves to
@@ -408,73 +318,12 @@ function normalizeEffectiveForStatus(effective) {
 }
 
 /**
- * Upsert non-T0 wizard values into the metadata DB.
- *
- * - sqlite: write through the app's own Settings model (plaintext config as-is;
- *   the store JSON-stringifies on PG / stores raw TEXT on sqlite; a secret is
- *   the JSON string of the encrypted payload).
- * - postgresql: connect DIRECTLY to the target PG with the entered credentials
- *   (the app's pool does not exist yet), ensure the `settings` table via the
- *   same idempotent DDL as 001_initial_normalized_schema.sql, and upsert each
- *   row. Plaintext rows store `JSON.stringify(String(value))` (e.g.
- *   `"smtp.gmail.com"`); secret rows store the encrypted payload object as JSON
- *   — both mirroring settingsStore.set so the resolver reads them identically.
+ * Upsert non-T0 wizard values into the metadata DB through the app's own
+ * Settings model (plaintext config as-is; the store JSON-stringifies on PG /
+ * stores raw TEXT on sqlite; a secret is the JSON string of the encrypted
+ * payload).
  */
-async function writeSettings(metadata, dbEntries, masterKey) {
-  if (metadata.backend === 'postgresql') {
-    let Client;
-    try {
-      ({ Client } = require('pg'));
-    } catch (error) {
-      throw probeError(
-        SETUP_TEST_FAILED_CODE,
-        HTTP_STATUS.SERVICE_UNAVAILABLE,
-        'pg module unavailable'
-      );
-    }
-
-    const client = new Client({
-      host: metadata.host,
-      port: Number(metadata.port) || 5432,
-      database: metadata.database,
-      user: metadata.user,
-      password: resolvePgPassword(metadata.password),
-      ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 5000,
-    });
-
-    try {
-      await client.connect();
-      // All DB writes are transactional: a mid-loop failure rolls back, so a
-      // failed apply never leaves partially-written settings rows.
-      await client.query('BEGIN');
-      try {
-        await client.query(SETTINGS_TABLE_DDL);
-        for (const [key, value] of Object.entries(dbEntries)) {
-          const stored = isSecret(key)
-            ? encryptSecretValue(value, masterKey)
-            : JSON.stringify(String(value));
-          await client.query(
-            `INSERT INTO settings (key, value, updated_at)
-             VALUES ($1, $2::jsonb, NOW())
-             ON CONFLICT (key)
-             DO UPDATE
-               SET value = EXCLUDED.value,
-                   updated_at = NOW()`,
-            [key, stored]
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw error;
-      }
-    } finally {
-      await client.end().catch(() => {});
-    }
-    return;
-  }
-
+async function writeSettings(dbEntries, masterKey) {
   for (const [key, value] of Object.entries(dbEntries)) {
     if (isSecret(key)) await Settings.set(key, encryptSecretValue(value, masterKey));
     else await Settings.set(key, value);
@@ -490,207 +339,6 @@ async function updateAdminPassword(password) {
     return;
   }
   await User.updatePassword(admin.id, password);
-}
-
-/**
- * For the postgresql metadata backend, update the EXISTING admin account's
- * password directly on the target PG (the wizard's entered creds), so the
- * admin password entered in step 2/3 takes effect immediately even when the
- * `admin` user already exists (ADMIN_DEFAULT_PASSWORD only applies when the
- * user does not exist yet — see bootstrap.ensureDefaultAdmin). The users table
- * may not exist on a truly fresh PG (it is created by boot migrations on
- * restart); in that case the update is skipped and ADMIN_DEFAULT_PASSWORD
- * covers the admin creation.
- */
-async function updateTargetAdminPassword(metadata, password) {
-  if (metadata.backend !== 'postgresql') return;
-
-  let Client;
-  try {
-    ({ Client } = require('pg'));
-  } catch (error) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.SERVICE_UNAVAILABLE,
-      'pg module unavailable'
-    );
-  }
-
-  const client = new Client({
-    host: metadata.host,
-    port: Number(metadata.port) || 5432,
-    database: metadata.database,
-    user: metadata.user,
-    password: resolvePgPassword(metadata.password),
-    ssl: metadata.ssl ? { rejectUnauthorized: false } : false,
-    connectionTimeoutMillis: 5000,
-  });
-
-  try {
-    await client.connect();
-    const hashed = await bcrypt.hash(String(password), 10);
-    await client.query("UPDATE users SET password = $1, updated_at = NOW() WHERE username = 'admin'", [
-      hashed,
-    ]);
-  } catch (error) {
-    const code = String((error && error.code) || '').toUpperCase();
-    const message = String((error && error.message) || '');
-    // Fresh PG: no users table yet — ADMIN_DEFAULT_PASSWORD creates admin on boot.
-    if (code === '42P01' || /(does not exist|undefined_table)/i.test(message)) return;
-    throw probeError(
-      classifyPgError(error),
-      HTTP_STATUS.BAD_REQUEST,
-      'Failed to update admin password',
-      deriveReason(error)
-    );
-  } finally {
-    await client.end().catch(() => {});
-  }
-}
-
-async function probePostgresql(payload) {
-  const required = ['host', 'port', 'database', 'user', 'password'];
-  const missing = required.filter((key) => isMissing(payload[key]));
-  if (missing.length > 0) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.BAD_REQUEST,
-      `Missing required fields: ${missing.join(', ')}`
-    );
-  }
-
-  let Client;
-  try {
-    ({ Client } = require('pg'));
-  } catch (error) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.SERVICE_UNAVAILABLE,
-      'pg module unavailable'
-    );
-  }
-
-  const client = new Client({
-    host: payload.host,
-    port: Number(payload.port) || 5432,
-    database: payload.database,
-    user: payload.user,
-    password: resolvePgPassword(payload.password),
-    ssl: payload.ssl ? { rejectUnauthorized: false } : false,
-    connectionTimeoutMillis: 5000,
-  });
-
-  try {
-    await client.connect();
-    await client.query('SELECT 1');
-  } catch (error) {
-    throw probeError(
-      classifyPgError(error),
-      HTTP_STATUS.BAD_REQUEST,
-      'Connection test failed',
-      deriveReason(error)
-    );
-  } finally {
-    await client.end().catch(() => {});
-  }
-
-  return { ok: true };
-}
-
-async function probeS3(payload) {
-  const accessKeyId = pickField(payload, 'accessKeyId', ['accessKey']);
-  const secretAccessKey = pickField(payload, 'secretAccessKey', ['secretKey']);
-  const missing = [];
-  if (isMissing(payload.bucket)) missing.push('bucket');
-  if (isMissing(payload.region)) missing.push('region');
-  if (isMissing(accessKeyId)) missing.push('accessKeyId');
-  if (isMissing(secretAccessKey)) missing.push('secretAccessKey');
-  if (missing.length > 0) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.BAD_REQUEST,
-      `Missing required fields: ${missing.join(', ')}`
-    );
-  }
-
-  const config = {
-    bucket: payload.bucket,
-    region: payload.region || 'us-east-1',
-    credentials: { accessKeyId, secretAccessKey },
-  };
-  if (!isMissing(payload.endpoint)) config.endpoint = payload.endpoint;
-
-  const store = new S3BlobStore(config);
-  try {
-    // Bucket existence + credentials: a ListObjectsV2 404 unambiguously means
-    // the bucket is missing (HeadObject's 404 is ambiguous on MinIO/S3).
-    await store.client.send(new ListObjectsV2Command({ Bucket: config.bucket, MaxKeys: 1 }));
-  } catch (error) {
-    throw probeError(
-      classifyS3BucketError(error),
-      HTTP_STATUS.BAD_REQUEST,
-      'Connection test failed',
-      deriveReason(error)
-    );
-  }
-  try {
-    // Object read path: the random probe key is absent, so a 404 is success.
-    await store.headBlob(`__wea_setup_probe_${crypto.randomUUID()}`);
-  } catch (error) {
-    if (isProbeSuccessError(error)) return { ok: true };
-    throw probeError(
-      classifyS3Error(error),
-      HTTP_STATUS.BAD_REQUEST,
-      'Connection test failed',
-      deriveReason(error)
-    );
-  }
-  return { ok: true };
-}
-
-async function probeWebdav(payload) {
-  const required = ['url', 'username', 'password'];
-  const missing = required.filter((key) => isMissing(payload[key]));
-  if (missing.length > 0) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.BAD_REQUEST,
-      `Missing required fields: ${missing.join(', ')}`
-    );
-  }
-
-  const previous = {
-    WEBDAV_URL: process.env.WEBDAV_URL,
-    WEBDAV_USERNAME: process.env.WEBDAV_USERNAME,
-    WEBDAV_PASSWORD: process.env.WEBDAV_PASSWORD,
-    WEBDAV_AUTH_TYPE: process.env.WEBDAV_AUTH_TYPE,
-  };
-  process.env.WEBDAV_URL = String(payload.url);
-  process.env.WEBDAV_USERNAME = String(payload.username);
-  process.env.WEBDAV_PASSWORD = String(payload.password);
-  if (!isMissing(payload.authType)) process.env.WEBDAV_AUTH_TYPE = String(payload.authType);
-
-  try {
-    await webdavTestConnection();
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-
-  return { ok: true };
-}
-
-async function runProbe(target, body) {
-  if (target === 'postgresql') return probePostgresql(body);
-  if (target === 's3') return probeS3(body);
-  if (target === 'webdav') return probeWebdav(body);
-  throw probeError(
-    SETUP_TEST_FAILED_CODE,
-    HTTP_STATUS.BAD_REQUEST,
-    `Unsupported target: ${String(target)}`
-  );
 }
 
 /**
@@ -893,10 +541,6 @@ router.post(
     const masterKey = process.env.encrypt_secret_key || generateKey();
     if (!process.env.encrypt_secret_key) envEntries.encrypt_secret_key = masterKey;
 
-    if (body.metadata.backend === 'postgresql') {
-      dbEntries.ADMIN_DEFAULT_PASSWORD = String(body.admin.password);
-    }
-
     // Write .env FIRST (atomic temp-file + rename). If it fails, the DB has not
     // been touched, so boot still shows setup mode — a failed apply can never
     // leave a committed-but-error "complete" state (the non-atomic bug that
@@ -904,18 +548,11 @@ router.post(
     const envPath = resolveEnvPath(SERVER_ROOT);
     writeEnv(envPath, envEntries);
 
-    if (body.metadata.backend !== 'postgresql') {
-      // sqlite admin password update happens only after the .env write
-      // succeeded, so a failure cannot leave the credential changed mid-apply.
-      await updateAdminPassword(String(body.admin.password));
-    }
+    // sqlite admin password update happens only after the .env write succeeded,
+    // so a failure cannot leave the credential changed mid-apply.
+    await updateAdminPassword(String(body.admin.password));
 
-    await writeSettings(body.metadata, dbEntries, masterKey);
-
-    // For postgresql, also update the EXISTING admin account's password on the
-    // target PG so the wizard's admin password takes effect immediately (not
-    // just ADMIN_DEFAULT_PASSWORD, which only applies when admin does not exist).
-    await updateTargetAdminPassword(body.metadata, body.admin.password);
+    await writeSettings(dbEntries, masterKey);
 
     // Clear the shared T2 cache so the DB writes are visible to restart-free
     // (T2) reads immediately after this apply.

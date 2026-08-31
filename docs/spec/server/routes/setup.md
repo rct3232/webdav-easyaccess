@@ -5,7 +5,7 @@
 | Item       | Description                                                                                                                                                                                                                                                                        |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mount path | `/api/setup`                                                                                                                                                                                                                                                                       |
-| Role       | First-run setup wizard backend: reports derived setup-completeness state from the **effective** (env-first over DB) config, runs connection tests (postgresql/s3/webdav), and persists wizard-chosen boot configuration — **T0 keys to `.env`, everything else to the metadata DB `settings` table**. Public while setup is incomplete; auto-gated with 403 once complete. |
+| Role       | First-run setup wizard backend: reports derived setup-completeness state from the **effective** (env-first over DB) config, runs connection tests (s3/webdav), and persists wizard-chosen **non-T0** configuration into the connected metadata DB `settings` table. The metadata (DB) connection is `.env`-owned (D6/D7): the wizard never writes `WEA_STORAGE_BACKEND`/`WEA_PG_*` and rejects a `metadata` block whose backend is `postgresql`. Public while setup is incomplete; auto-gated with 403 once complete. |
 
 Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-source-resolution.md) (§7 wizard apply, §8 boot order) and [setup-wizard.md](../../../features/setup-wizard.md).
 
@@ -29,10 +29,10 @@ Feature Source-of-Truth: [config-source-resolution.md](../../../features/config-
 
 | Method | Path      | Auth                                              | Description                                                                                    |
 | ------ | --------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| GET    | `/status` | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (prefill from DB) + `key_lost_warning`. |
-| POST   | `/test`   | None (403 `setup.complete` when already complete) | Connection test for `postgresql`, `s3`, or `webdav` targets.                                   |
-| POST   | `/apply`  | None (403 `setup.complete` when already complete) | Validate; write T0 keys to `.env`, non-T0 keys to the metadata DB; apply admin-password effect. Returns `restart_required: true`. |
-| POST   | `/prefill`| None (403 `setup.complete` when already complete) | Directly read the target metadata DB `settings` rows (Q1b) with the entered credentials and return masked prefill values + `key_lost_warning`. |
+| GET    | `/status` | None                                              | Derived setup completeness from the effective config + missing keys + safe current values (non-T0 only) + `key_lost_warning`. |
+| POST   | `/test`   | None (403 `setup.complete` when already complete) | Connection test for `s3` or `webdav` targets (postgresql is `.env`-owned under D7; probed via the admin `/api/admin/config/test` instead). |
+| POST   | `/apply`  | None (403 `setup.complete` when already complete) | Validate (metadata block optional; `postgresql` rejected); write **non-T0** keys to the connected metadata DB; apply admin-password effect. Returns `restart_required: true`. |
+| POST   | `/prefill`| None (403 `setup.complete` when already complete) | **Deprecated under D7** — metadata-driven prefill. Retained for backward compat; the wizard client prefills from `GET /status` `current` only. |
 
 ### 2.3 Middleware Used
 
@@ -124,22 +124,22 @@ Probe references:
 
 #### POST /api/setup/apply
 
-Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then splits the collected values by tier: **T0 keys are written to `.env`**; **every non-T0 key is upserted into the metadata DB `settings` table** (row key = raw env var name, D11).
+Public; **403 when already complete** (gate uses the same effective view as `/status`). Validates every block (unknown keys rejected, `400` with per-field errors), then **upserts every non-T0 key into the connected metadata DB `settings` table** (row key = raw env var name, D11). The `metadata` block is **optional** (D7); when present, `metadata.backend === 'postgresql'` is rejected `400` `fields.metadata='notAllowed'` — the DB connection is `.env`-owned (D6). No T0 keys are ever written to `.env`.
 
 **Request:**
 
 ```jsonc
 {
-  "metadata": { "backend": "sqlite" }
-           |  { "backend": "postgresql", "host": "…", "port": "…", "database": "…", "user": "…", "password": "…", "ssl": false, "max": "10" },
   "file": { "backend": "s3", "bucket": "…", "region": "…", "accessKeyId": "…", "secretAccessKey": "…", "endpoint": "" }
-        |  { "backend": "webdav", "url": "…", "username": "…", "password": "…", "authType": "auto" },
+       |  { "backend": "webdav", "url": "…", "username": "…", "password": "…", "authType": "auto" },
   "admin": { "password": "…" },            // username fixed: admin (D6)
   "jwt": { "secret": "…", "expiresIn": "30m" },
   "server": { "port": "5001", "corsOrigins": "" },
   "email": { "host": "", "port": "587", "user": "", "password": "", "secure": false, "fromName": "" } // all optional
 }
 ```
+
+> **D7 note:** the `metadata` block is absent from the wizard client and is **optional** server-side. A `metadata` block with `backend: "postgresql"` is rejected (400) — the DB connection is `.env`-owned (D6). The detailed step-by-step PG direct-write description in the original apply section no longer applies (that code path was removed); non-T0 keys are written via the app's own `settingsStore`.
 
 `registration_enabled` is **not** part of the wizard payload and is never touched by apply.
 

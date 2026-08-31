@@ -30,6 +30,14 @@ import {
  * wizard in the browser, asserts the exact scratch `.env`, restarts the process
  * (restart is the behavior under test), then verifies the configured app.
  *
+ * D6/D7 (Phase B): the metadata DB connection is `.env`-owned, so each case
+ * writes a scratch `.env` BEFORE boot 1 that declares the backend explicitly
+ * (sqlite + WEA_SQLITE_PATH, or postgresql + full WEA_PG_*). The wizard serves
+ * non-T0 only (no metadata step) and apply never writes WEA_STORAGE_BACKEND /
+ * WEA_PG_* / WEA_SQLITE_PATH — the pre-written keys are asserted as present and
+ * unmodified. The same file survives the boot1 → restart → boot2 sequence via
+ * spawnScratchServer's DOTENV_CONFIG_PATH.
+ *
  * The shared :5002 server and :3000 client still boot for the run (config-level
  * webServer) but are unused by these projects.
  *
@@ -121,28 +129,18 @@ async function clickNext(page: Page): Promise<void> {
 }
 
 /**
- * Drive the wizard end-to-end in the browser (all five steps) and land on the
- * "Restart required" screen. Preconditions: boot 1 healthy on :5003 in setup
- * mode; webdav subtree (webdav cases) and scratch PG DB (pg cases) ready.
+ * Drive the wizard end-to-end in the browser (file → admin → optional → apply)
+ * and land on the "Restart required" screen. Preconditions: boot 1 healthy on
+ * :5003 in setup mode with the metadata DB already connected via the pre-boot
+ * scratch `.env` (D6/D7); webdav subtree (webdav cases) and scratch PG DB (pg
+ * cases) ready. There is no metadata/DB-backend step — the wizard starts at
+ * file storage.
  */
 async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
   await page.goto('/setup');
   await expect(page.getByRole('heading', { name: 'Server setup' })).toBeVisible();
 
-  // Step 0 — metadata backend
-  if (config.metadata.backend === 'postgresql') {
-    await page.getByRole('radio', { name: 'PostgreSQL' }).check();
-    await page.getByTestId('setup-pg-host').fill(config.metadata.host);
-    await page.getByTestId('setup-pg-port').fill(config.metadata.port);
-    await page.getByTestId('setup-pg-database').fill(config.metadata.database);
-    await page.getByTestId('setup-pg-user').fill(config.metadata.user);
-    await page.getByTestId('setup-pg-password').fill(config.metadata.password);
-    await page.getByRole('button', { name: 'Test connection' }).click();
-    await expect(page.getByText('Connection successful.')).toBeVisible();
-  }
-  await clickNext(page);
-
-  // Step 1 — file storage
+  // Step 0 — file storage
   if (config.file.backend === 'webdav') {
     await page.getByRole('radio', { name: 'WebDAV' }).check();
     await page.getByTestId('setup-webdav-url').fill(config.file.url);
@@ -162,43 +160,102 @@ async function driveWizard(page: Page, config: CaseConfig): Promise<void> {
   }
   await clickNext(page);
 
-  // Step 2 — admin password + JWT secret (fixed values for deterministic .env)
+  // Step 1 — admin password + JWT secret (fixed values for deterministic .env)
   await page.getByTestId('setup-admin-password').fill(config.adminPassword);
   await page.getByTestId('setup-jwt-secret').fill(config.jwtSecret);
   await clickNext(page);
 
-  // Step 3 — optional settings (leave wizard defaults; PORT prefilled)
+  // Step 2 — optional settings (leave wizard defaults; PORT prefilled)
   await clickNext(page);
 
-  // Step 4 — apply
+  // Step 3 — apply
   await page.getByRole('button', { name: 'Apply & finish' }).click();
   await expect(page.getByText('Restart required')).toBeVisible();
 }
 
 /**
- * T0 (startup-critical, `.env`-only) keys written by the wizard apply. All
- * other wizard values go to the metadata DB `settings` table (see
- * buildExpectedDbSettings). `encrypt_secret_key` is auto-generated and written
- * here too; it is asserted separately (hex presence) because it is random.
+ * The scratch `.env` written BEFORE boot 1 (D6/D7): the metadata DB connection
+ * is `.env`-owned and must be declared up front — the wizard serves non-T0 only
+ * and apply never writes WEA_STORAGE_BACKEND / WEA_PG_* / WEA_SQLITE_PATH.
+ * PORT/NODE_ENV mirror what spawnScratchServer sets; JWT_SECRET and
+ * encrypt_secret_key are pre-provisioned so apply keeps them (only-re-encrypt /
+ * keep-existing master key). `encrypt_secret_key` is a fixed 64-hex value for
+ * deterministic assertions.
  */
-function buildExpectedEnv(config: CaseConfig): Record<string, string> {
-  const expected: Record<string, string> = {
-    WEA_STORAGE_BACKEND: config.metadata.backend,
+function buildPreBootEnv(scratch: string, config: CaseConfig): Record<string, string> {
+  const env: Record<string, string> = {
     JWT_SECRET: config.jwtSecret,
+    PORT: String(scratchPort),
+    NODE_ENV: 'test',
+    encrypt_secret_key: 'a'.repeat(64),
   };
 
   if (config.metadata.backend === 'postgresql') {
-    Object.assign(expected, {
+    Object.assign(env, {
+      WEA_STORAGE_BACKEND: 'postgresql',
       WEA_PG_HOST: config.metadata.host,
       WEA_PG_PORT: config.metadata.port,
       WEA_PG_DATABASE: config.metadata.database,
       WEA_PG_USER: config.metadata.user,
       WEA_PG_PASSWORD: config.metadata.password,
-      WEA_PG_SSL: 'false',
+    });
+  } else {
+    Object.assign(env, {
+      WEA_STORAGE_BACKEND: 'sqlite',
+      WEA_SQLITE_PATH: path.join(scratch, 'webdav.db'),
     });
   }
 
-  return expected;
+  return env;
+}
+
+/** Write `KEY=value` lines into the scratch `.env` (0600). */
+function writeScratchEnv(scratch: string, entries: Record<string, string>): void {
+  const content =
+    Object.entries(entries)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n') + '\n';
+  fs.writeFileSync(path.join(scratch, '.env'), content, { mode: 0o600 });
+}
+
+/**
+ * Quick PostgreSQL reachability probe (own short-timeout pool). Used to skip
+ * the PG-dependent case when docker/PG is unavailable, so the suite stays green
+ * in PG-less environments.
+ */
+let pgReachable: boolean | null = null;
+async function isPgReachable(): Promise<boolean> {
+  if (pgReachable !== null) return pgReachable;
+  const { Pool } = require('pg') as {
+    Pool: new (c: {
+      host: string;
+      port: number;
+      database: string;
+      user: string;
+      password: string;
+      connectionTimeoutMillis: number;
+    }) => {
+      query: (text: string) => Promise<{ rows: unknown[] }>;
+      end: () => Promise<void>;
+    };
+  };
+  const pool = new Pool({
+    host: PG_HOST,
+    port: Number(PG_PORT),
+    database: 'postgres',
+    user: PG_USER,
+    password: PG_PASSWORD,
+    connectionTimeoutMillis: 2000,
+  });
+  try {
+    await pool.query('SELECT 1');
+    pgReachable = true;
+  } catch {
+    pgReachable = false;
+  } finally {
+    await pool.end().catch(() => {});
+  }
+  return pgReachable;
 }
 
 /**
@@ -237,11 +294,27 @@ function secretKeysFor(config: CaseConfig): string[] {
   return config.file.backend === 'webdav' ? ['WEBDAV_PASSWORD'] : ['AWS_SECRET_ACCESS_KEY'];
 }
 
-function assertScratchEnv(scratchDir: string, expected: Record<string, string>): void {
+/** sqlite stores secret rows raw (payload JSON string); PG jsonb returns the same JSON string. */
+function tryParseJson(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Assert the scratch `.env` after apply. apply's only `.env` writes under D7
+ * are JWT_SECRET (already pre-written with the same value) and
+ * encrypt_secret_key when absent — both are pre-provisioned here, so the parsed
+ * file must equal the pre-boot map exactly: the backend keys
+ * (WEA_STORAGE_BACKEND, WEA_SQLITE_PATH / WEA_PG_*) are still present and
+ * unmodified by apply.
+ */
+function assertScratchEnv(scratchDir: string, config: CaseConfig): void {
   const env = readEnvFile(scratchDir);
-  const { encrypt_secret_key, ...rest } = env;
-  expect(encrypt_secret_key).toMatch(/^[a-f0-9]{64}$/);
-  expect(rest).toEqual(expected);
+  expect(env).toEqual(buildPreBootEnv(scratchDir, config));
 }
 
 /** Assert the non-T0 wizard values landed in the metadata DB settings table. */
@@ -259,7 +332,11 @@ async function assertScratchDbSettings(scratch: string, config: CaseConfig): Pro
       expect(settings.get(key), `settings.${key}`).toBe(value);
     }
     for (const key of secretKeys) {
-      expect(settings.get(key), `settings.${key} (encrypted)`).toMatchObject({ enc: 'aes-256-gcm' });
+      const raw = settings.get(key);
+      expect(raw, `settings.${key} (encrypted)`).toBeDefined();
+      expect(tryParseJson(raw), `settings.${key} (encrypted)`).toMatchObject({
+        enc: 'aes-256-gcm',
+      });
     }
     return;
   }
@@ -271,13 +348,6 @@ async function assertScratchDbSettings(scratch: string, config: CaseConfig): Pro
   );
   // sqlite stores values RAW (no JSON stringify): plaintext stays a plain
   // string (compare verbatim); a secret is the payload JSON string (parse once).
-  const tryParseJson = (raw: string): unknown => {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return raw;
-    }
-  };
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
   for (const [key, value] of Object.entries(expected)) {
     expect(byKey.get(key), `settings.${key}`).toBe(value);
@@ -369,6 +439,12 @@ async function runSetupScenario(
 
   ensureClientBuild();
 
+  // Pre-boot `.env` declaring the metadata backend (D6/D7): the DB connection
+  // is `.env`-owned, so boot 1 already connects to it and the wizard serves
+  // non-T0 only. The file survives the boot1 → restart → boot2 sequence via
+  // spawnScratchServer's DOTENV_CONFIG_PATH.
+  writeScratchEnv(scratch, buildPreBootEnv(scratch, config));
+
   if (config.metadata.backend === 'postgresql') {
     await createScratchPgDb();
     usedScratchPgDb = true;
@@ -377,13 +453,14 @@ async function runSetupScenario(
     await ensureWebdavSubtree(config.caseId);
   }
 
-  // Boot 1 — no .env yet → the server must come up in setup mode.
+  // Boot 1 — DB already connected via the pre-written .env; the server must
+  // come up in setup mode because the non-T0 (file-storage) config is missing.
   const boot1 = spawnScratchServer(scratch);
   spawnedChild = boot1;
   await waitForScratchHealth(boot1);
 
   await driveWizard(page, config);
-  assertScratchEnv(scratch, buildExpectedEnv(config));
+  assertScratchEnv(scratch, config);
   await assertScratchDbSettings(scratch, config);
 
   // Restart — the .env now exists; boot 2 must boot fully configured.
@@ -468,6 +545,11 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
     page,
     request,
   }) => {
+    test.skip(
+      !(await isPgReachable()),
+      'E2E-SETUP-003 requires reachable scratch PostgreSQL (:5433)'
+    );
+
     const config: CaseConfig = {
       caseId: 'case-3-pg-webdav',
       adminPassword: 'SetupE2e!123',
@@ -518,18 +600,11 @@ test.describe('First-run setup wizard (E2E-SETUP-001..004)', () => {
         };
         expect(await bcrypt.compare(cfg.adminPassword, admins[0].password)).toBeTruthy();
 
-        // The scratch sqlite file exists (created during the default-sqlite boot
-        // 1) but the wizard's postgresql apply did NOT seed the wizard admin into
-        // it — it only holds the boot-time default admin, never the wizard's.
+        // Under D6/D7 the default-sqlite fallback boot no longer exists: the
+        // pre-boot .env declared postgresql, so the scratch sqlite file is never
+        // created.
         const dbPath = path.join(scratch, 'webdav.db');
-        expect(fs.existsSync(dbPath)).toBeTruthy();
-        const sqliteAdmins = await queryScratchSqlite<{ username: string; password: string }>(
-          dbPath,
-          'SELECT username, password FROM users'
-        );
-        expect(sqliteAdmins).toHaveLength(1);
-        expect(sqliteAdmins[0].username).toBe('admin');
-        expect(await bcrypt.compare(cfg.adminPassword, sqliteAdmins[0].password)).toBeFalsy();
+        expect(fs.existsSync(dbPath)).toBeFalsy();
 
         // Post-restart upload/download round-trip and /setup lockout.
         await assertFileRoundTrip(req, token, 'setup-003');

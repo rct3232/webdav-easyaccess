@@ -2,7 +2,9 @@
  * Setup wizard integration tests.
  * Uses MSW handlers (setup status/test/apply). Verifies step navigation,
  * connection-test states, apply flow, post-setup lockout redirect, masked
- * prefill, and i18n rendering.
+ * secret prefill from status.current, and i18n rendering. The wizard serves
+ * non-T0 only: the metadata (DB connection) step is removed (D7) and the
+ * apply body carries no `metadata` block.
  * @see docs/spec/client/pages/Setup.md 2.6
  */
 import React from 'react';
@@ -83,36 +85,26 @@ async function fillS3Fields(user) {
   );
 }
 
-async function fillPgFields(user) {
-  await user.type(screen.getByLabelText(/^host/i), 'localhost');
-  await user.type(screen.getByLabelText(/^port/i), '5432');
-  await user.type(screen.getByLabelText(/^database/i), 'webdav');
-  await user.type(screen.getByLabelText(/^user/i), 'admin');
-  await user.type(screen.getByLabelText(/^password/i), 'secret');
-}
-
 describe('Setup wizard', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
 
-  it('renders the first step after loading setup status', async () => {
+  it('renders the first step (file storage) after loading setup status', async () => {
     render(renderSetup());
     await waitForReady();
 
     expect(screen.getByText('Server setup')).toBeInTheDocument();
-    expect(screen.getByLabelText(/SQLite/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/PostgreSQL/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/S3 \(or S3-compatible\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/WebDAV/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/PostgreSQL/i)).not.toBeInTheDocument();
   });
 
-  it('navigates through all five steps in order', async () => {
+  it('navigates through all four steps in order', async () => {
     const user = userEvent.setup();
     render(renderSetup());
     await waitForReady();
 
-    expect(screen.getByLabelText(/SQLite/i)).toBeInTheDocument();
-
-    await clickNext(user);
     expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
     await fillS3Fields(user);
     await passTest(user);
@@ -133,8 +125,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user);
-    expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
     await fillS3Fields(user);
     await passTest(user);
     await clickNext(user);
@@ -148,26 +138,11 @@ describe('Setup wizard', () => {
     expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
   });
 
-  it('shows connection-test success for postgresql', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
-    await user.click(screen.getByRole('button', { name: /test connection/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Connection successful.')).toBeInTheDocument();
-    });
-  });
-
   it('shows connection-test success for s3', async () => {
     const user = userEvent.setup();
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user);
     await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /test connection/i }));
 
@@ -186,8 +161,7 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
+    await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /test connection/i }));
 
     await waitFor(() => {
@@ -201,9 +175,9 @@ describe('Setup wizard', () => {
         HttpResponse.json(
           {
             ok: false,
-            errorCode: 'serverErrors.setup.test.pg.unreachable',
-            message: 'Cannot reach the PostgreSQL server',
-            reason: 'ECONNREFUSED 127.0.0.1:5432',
+            errorCode: 'serverErrors.setup.test.s3.unreachable',
+            message: 'Cannot reach the S3 endpoint',
+            reason: 'ECONNREFUSED 127.0.0.1:9000',
           },
           { status: 400 }
         )
@@ -213,14 +187,13 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
+    await fillS3Fields(user);
     await user.click(screen.getByRole('button', { name: /test connection/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/cannot reach the postgresql server/i)).toBeInTheDocument();
+      expect(screen.getByText(/cannot reach the s3 endpoint/i)).toBeInTheDocument();
     });
-    expect(screen.getByText('ECONNREFUSED 127.0.0.1:5432')).toBeInTheDocument();
+    expect(screen.getByText('ECONNREFUSED 127.0.0.1:9000')).toBeInTheDocument();
   });
 
   it('interpolates {{reason}} into the translated connection-test error message', async () => {
@@ -241,7 +214,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user);
     await user.click(screen.getByLabelText(/WebDAV/i));
     await user.type(screen.getByLabelText(/url/i), 'https://example.com/webdav');
     await user.type(screen.getByLabelText(/username/i), 'admin');
@@ -258,7 +230,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user);
     await fillS3Fields(user);
     await passTest(user);
     await clickNext(user);
@@ -288,14 +259,13 @@ describe('Setup wizard', () => {
     expect(screen.queryByText('Metadata database')).not.toBeInTheDocument();
   });
 
-  it('renders masked prefilled secrets from status.current', async () => {
+  it('renders masked prefilled secrets from status.current (no T0 keys required)', async () => {
     server.use(
       http.get('/api/setup/status', () =>
         HttpResponse.json({
           setup_complete: false,
           missing: [],
           current: {
-            WEA_STORAGE_BACKEND: 'sqlite',
             WEA_FILE_STORAGE: 's3',
             PORT: '5001',
             JWT_SECRET: '****',
@@ -311,7 +281,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user);
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
     expect(screen.getByLabelText(/bucket/i)).toHaveValue('prefilled-bucket');
     await passTest(user);
@@ -320,14 +289,13 @@ describe('Setup wizard', () => {
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
   });
 
-  it('sends a masked (unchanged) secret as the **** marker so the server keeps its ciphertext', async () => {
+  it('sends a masked (unchanged) secret as the **** marker and no metadata block', async () => {
     server.use(
       http.get('/api/setup/status', () =>
         HttpResponse.json({
           setup_complete: false,
           missing: [],
           current: {
-            WEA_STORAGE_BACKEND: 'sqlite',
             WEA_FILE_STORAGE: 's3',
             PORT: '5001',
             S3_BUCKET: 'prefilled-bucket',
@@ -351,7 +319,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user); // metadata (sqlite)
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
     await passTest(user); // file storage connection test required
     await clickNext(user);
@@ -364,191 +331,15 @@ describe('Setup wizard', () => {
       expect(applyBody).not.toBeNull();
     });
     expect(applyBody.file.secretAccessKey).toBe('****');
+    expect(applyBody.metadata).toBeUndefined();
   });
 
-  it('sends a masked metadata password as the **** marker (keeps the existing .env value)', async () => {
-    server.use(
-      http.get('/api/setup/status', () =>
-        HttpResponse.json({
-          setup_complete: false,
-          missing: ['AWS_SECRET_ACCESS_KEY'],
-          current: {
-            WEA_STORAGE_BACKEND: 'postgresql',
-            WEA_PG_HOST: '10.0.0.103',
-            WEA_PG_PORT: '5432',
-            WEA_PG_DATABASE: 'webdav-easyaccess',
-            WEA_PG_USER: 'webdav_easyaccess',
-            WEA_PG_PASSWORD: '****',
-            WEA_FILE_STORAGE: 's3',
-            S3_BUCKET: 'prefilled-bucket',
-            AWS_REGION: 'us-east-1',
-            AWS_ACCESS_KEY_ID: 'prefilled-key',
-            S3_ENDPOINT: 'http://10.0.0.104:9000',
-          },
-        })
-      )
-    );
-
-    let applyBody = null;
-    server.use(
-      http.post('/api/setup/apply', async ({ request }) => {
-        applyBody = await request.json();
-        return HttpResponse.json({ restart_required: true });
-      })
-    );
-
+  it('disables Next until the connection test passes (s3 step)', async () => {
     const user = userEvent.setup();
     render(renderSetup());
     await waitForReady();
-
-    expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
-    await passTest(user); // metadata postgresql connection test required
-    await clickNext(user); // metadata (postgresql, password masked)
-    await waitFor(() => {
-      expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
-    });
-    await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
-    await passTest(user); // file storage connection test required
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user);
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
-
-    await waitFor(() => {
-      expect(applyBody).not.toBeNull();
-    });
-    expect(applyBody.metadata.backend).toBe('postgresql');
-    expect(applyBody.metadata.password).toBe('****');
-  });
-
-  it('does not wipe the masked PG password when the target-DB prefill lacks it', async () => {
-    server.use(
-      http.get('/api/setup/status', () =>
-        HttpResponse.json({
-          setup_complete: false,
-          missing: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
-          current: {
-            WEA_STORAGE_BACKEND: 'postgresql',
-            WEA_PG_HOST: '10.0.0.103',
-            WEA_PG_PORT: '5432',
-            WEA_PG_DATABASE: 'webdav-easyaccess',
-            WEA_PG_USER: 'webdav_easyaccess',
-            WEA_PG_PASSWORD: '****',
-            WEA_FILE_STORAGE: 's3',
-            S3_BUCKET: 'webdav-temp',
-            AWS_REGION: 'us-east-1',
-            S3_ENDPOINT: 'http://10.0.0.104:9000',
-          },
-        })
-      ),
-      // The target-DB prefill never contains T0 keys (WEA_PG_PASSWORD).
-      http.post('/api/setup/prefill', () =>
-        HttpResponse.json({
-          current: { S3_BUCKET: 'webdav-temp', AWS_REGION: 'us-east-1' },
-          key_lost_warning: false,
-        })
-      )
-    );
-
-    let applyBody = null;
-    server.use(
-      http.post('/api/setup/apply', async ({ request }) => {
-        applyBody = await request.json();
-        return HttpResponse.json({ restart_required: true });
-      })
-    );
-
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    expect(screen.getByLabelText(/^password/i)).toHaveValue('****');
-    await passTest(user); // metadata postgresql connection test required
-    await clickNext(user); // metadata postgresql → prefill merges (no WEA_PG_PASSWORD)
-    await waitFor(() => {
-      expect(screen.getByLabelText(/secret access key/i)).toBeInTheDocument();
-    });
-    await user.type(screen.getByLabelText(/access key id/i), 'admin');
-    await user.type(screen.getByLabelText(/secret access key/i), 's3-real-secret');
-    await passTest(user); // file storage connection test required
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user);
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
-
-    await waitFor(() => {
-      expect(applyBody).not.toBeNull();
-    });
-    expect(applyBody.metadata.password).toBe('****');
-  });
-
-  it('prefills from the target PG (POST /setup/prefill) when advancing from the postgresql metadata step', async () => {
-    server.use(
-      http.post('/api/setup/prefill', () =>
-        HttpResponse.json({
-          current: { EMAIL_HOST: 'smtp.x.com', EMAIL_PASSWORD: '****' },
-          key_lost_warning: false,
-        })
-      )
-    );
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
-    await passTest(user); // metadata postgresql connection test required
-
-    await clickNext(user);
-    await waitFor(() => {
-      expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
-    });
 
     await fillS3Fields(user);
-    await passTest(user); // file storage connection test required
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/SMTP host/i)).toHaveValue('smtp.x.com');
-    });
-    expect(screen.getByLabelText(/SMTP password/i)).toHaveValue('****');
-  });
-
-  it('advances even when the prefill request fails (best-effort)', async () => {
-    server.use(
-      http.post('/api/setup/prefill', () =>
-        HttpResponse.json(
-          { ok: false, errorCode: 'serverErrors.setup.test.pg.unreachable', message: 'Cannot reach the PostgreSQL server' },
-          { status: 400 }
-        )
-      )
-    );
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
-    await passTest(user); // metadata postgresql connection test required
-
-    await clickNext(user);
-    await waitFor(() => {
-      expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
-  });
-
-  it('disables Next until the connection test passes (postgresql step)', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await user.click(screen.getByLabelText(/PostgreSQL/i));
-    await fillPgFields(user);
     expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
 
     await passTest(user);
@@ -562,7 +353,6 @@ describe('Setup wizard', () => {
     render(renderSetup());
     await waitForReady();
 
-    await clickNext(user); // sqlite -> file storage step
     await fillS3Fields(user);
     await passTest(user);
 
@@ -580,13 +370,14 @@ describe('Setup wizard', () => {
     await waitForReady();
 
     expect(screen.getByText('Server setup')).toBeInTheDocument();
-    expect(screen.getByText('Metadata database')).toBeInTheDocument();
     expect(screen.getByText('File storage')).toBeInTheDocument();
     expect(screen.getByText('Admin & JWT')).toBeInTheDocument();
     expect(screen.getByText('Optional settings')).toBeInTheDocument();
     expect(screen.getByText('Apply')).toBeInTheDocument();
-    expect(screen.getByLabelText(/SQLite/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/PostgreSQL/i)).toBeInTheDocument();
+    expect(screen.queryByText('Metadata database')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/S3 \(or S3-compatible\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/WebDAV/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/PostgreSQL/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
   });

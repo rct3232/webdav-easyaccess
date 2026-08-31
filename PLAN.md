@@ -211,6 +211,21 @@ Phase B:
 
 # Progress log
 
+- 2026-08-31: **Phase B implemented and merged to `dev`** (branch `feature/backend-health`).
+  B1: `backendHealth` in-memory tracker (transition-only `[backend-health]` logs) + `backendProbe`
+  (classification/probes extracted from the wizard for reuse). Passive hooks: PG
+  `mapDatabaseError`/pool-`error`/`withTransaction`, S3/WebDAV blob stores + `webdavTest`
+  boot probe + `listDirectory`. Endpoints: `GET /api/health` (backends status strings),
+  `GET /api/admin/health`, `POST /api/admin/config/test` (pending-values, merged over effective
+  config). B2: D6 boot pre-flight (`postgresql` + missing `WEA_PG_*` → `[config]` error +
+  `exit(1)`); D7 wizard non-T0 only (metadata optional/`postgresql` rejected on apply, T0 keys
+  dropped from `current`, direct-PG apply writers removed, wizard client metadata step removed).
+  B4: editor T0-group removal + connection-key save gating. B5: admin health card + file-screen
+  admin banner + user-friendly connection-class messages (`files.storageUnavailable` /
+  `files.maintenanceNotice`). Server test:ci 81 suites / 1545; client test:ci 152 suites /
+  1365; lint 0 errors; E2E admin-config 12 passed (1 docker-gated skip) + setup-wizard 4 passed.
+  Docs updated first (backend-health feature/specs, health routes, config.md, setup.md,
+  bootSequence, SystemConfigEditor/SystemSettingsContent/FileManagerView specs, api.md, SETUP.md).
 - 2026-08-31: **Phase A (F3–F6) implemented and merged to `dev`** (branch
   `feature/backend-health`, commit `ce65b59`, merge into `dev`). A1.1: the 12
   mislabeled T1 keys reclassified to T2 with lazy `getSharedResolver().getConfig`

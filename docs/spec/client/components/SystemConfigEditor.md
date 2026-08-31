@@ -59,11 +59,15 @@ Grouping (group → keys):
 
 | Group | Keys |
 |-------|------|
-| `metadata` (T0, read-only) | WEA_STORAGE_BACKEND, WEA_SQLITE_PATH, WEA_PG_HOST, WEA_PG_PORT, WEA_PG_DATABASE, WEA_PG_USER, WEA_PG_SSL, WEA_PG_MAX, WEA_PG_IDLE_TIMEOUT_MS, WEA_PG_CONNECTION_TIMEOUT_MS, NODE_ENV, DOTENV_CONFIG_PATH |
 | `fileStorage` | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS |
 | `serverSecurity` | PORT, CORS_ORIGINS, CORS_ORIGIN, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME |
 | `email` | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME |
 | `runtime` | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER |
+
+**Metadata (T0) group removed (D5):** `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_*`,
+`NODE_ENV`, `DOTENV_CONFIG_PATH` are **never rendered** — the DB connection is `.env`-owned and
+verified via the health card. (The server GET still returns them; the editor simply has no
+display group for them.)
 
 **Intentionally omitted** (no display entry → not rendered):
 
@@ -83,6 +87,20 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 - A "Set new value" toggle (`admin.config.setNewValue`) reveals an empty password field.
 - Blank / null / `'****'` on save → the key is **skipped** (keeps existing ciphertext; "only re-encrypt on new value").
 - `source === 'env'` secrets are read-only (no toggle).
+
+### 2.9 Connection-Key Save Gating (D1)
+
+**Connection keys:** S3 → `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`; WebDAV → `WEBDAV_URL`, `WEBDAV_USERNAME`,
+`WEBDAV_PASSWORD`, `WEBDAV_AUTH_TYPE` (all in the `fileStorage` group).
+
+- When any connection key is dirty, a **"Test connection"** control appears on the group.
+  It posts the **pending values** (the active backend's connection keys from the form) to
+  `POST /api/admin/config/test`; `target` = the current `WEA_FILE_STORAGE` value.
+- **Save is disabled** until that group's test passes (`status === 'ok'`) — complete block.
+- **Editing a connection key invalidates the test result** (back to `idle`).
+- **Non-connection keys do not require a test**.
+- Test state machine mirrors the setup wizard: `{ status: 'idle'|'testing'|'ok'|'error', message, reason }`.
 
 ### 2.9 Save Flow
 

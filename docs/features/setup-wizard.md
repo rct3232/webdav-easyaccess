@@ -24,16 +24,18 @@ After restart the app is fully configured and the wizard is no longer reachable.
 
 Key properties:
 
-- **Persistence target:** `.env` merge-write (decision **D1**). No new dependencies; every
-  existing `process.env` read site is unchanged (`server/index.js:10-18`).
+- **Persistence target:** non-T0 settings are upserted into the connected metadata DB
+  `settings` table (`POST /api/setup/apply`); **T0 keys (the DB connection) are never written by
+  the wizard** — they are `.env`-owned (decisions **D5/D6/D7**, Phase B). A first-boot `.env`
+  must declare `WEA_STORAGE_BACKEND` (see `docs/SETUP.md`).
 - **Restart handling:** a "Restart required" screen only (decision **D2**). No self re-exec;
   the operator restarts the process.
-- **Scope:** the wizard also configures the metadata backend (sqlite default + PostgreSQL with
-  a connection test) (decision **D3**).
+- **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
+  admin password (decision **D7**, Phase B). The metadata-backend step (sqlite/PostgreSQL radio)
+  is removed; PostgreSQL connectivity is boot-verified (D6) and monitored by the backend-health
+  card.
 - **Admin account:** username is fixed to `admin` (matches `ensureDefaultAdmin`); the wizard
   sets the **password** and `JWT_SECRET` only (decision **D6**).
-- **Production JWT:** the `auth.js` require-time production throw is relaxed to a warning in
-  setup mode so a fresh prod install reaches the wizard (decision **D7**, detailed below).
 
 ### Flow
 

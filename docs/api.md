@@ -149,7 +149,7 @@ These routes are for accessing shared files via a public link (token in path). A
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/health` | None | Health check. Response: `{ status: "ok", messageCode }`. |
+| GET | `/api/health` | None | Health check. Response: `{ status: "ok", messageCode, backends: { postgresql, s3, webdav } }` (status strings only). |
 | GET | `/api/webdav/test` | None | Test WebDAV connection. |
 | GET | `/api/webdav/info` | None | WebDAV URL info (e.g. for UI). |
 
@@ -165,8 +165,10 @@ All admin routes require a valid JWT and admin role (`isAdmin`).
 | PUT | `/api/admin/settings` | Token + Admin | Update system settings. |
 | GET | `/api/admin/config` | Token + Admin | Effective config: masked secrets, `value`/`source`/`tier`/`secret` per registry key, plus `key_lost_warning`. |
 | PUT | `/api/admin/config` | Token + Admin | Write allowlisted non-T0 config keys to DB (secrets encrypted, T2 cache invalidated); rejects `source=env` keys (400). Body: `{ values: { KEY: value } }`. Returns `{ applied, restartRequired, messageCode }`. |
+| POST | `/api/admin/config/test` | Token + Admin | Connection test with pending values for a file-storage backend. Body: `{ target: "s3"\|"webdav", ...pendingKeys }`. Returns `{ ok: true }` or `{ ok: false, errorCode, message, reason? }`. |
+| GET | `/api/admin/health` | Token + Admin | Backend-health snapshot (per-backend status/code/hint/last-checked). |
 
-Spec: `docs/spec/server/routes/config.md`.
+Spec: `docs/spec/server/routes/config.md`, `docs/spec/server/routes/health.md`.
 | GET | `/api/admin/users/pending` | Token + Admin | Pending signup approvals. |
 | GET | `/api/admin/users` | Token + Admin | List users. |
 | POST | `/api/admin/users` | Token + Admin | Add user. Body: e.g. username, email, password. |

@@ -83,6 +83,12 @@ function getPgPool() {
     // unhandled and crashes the process.
     // eslint-disable-next-line no-console
     console.error('Unexpected error on idle PostgreSQL client:', err.message);
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: err.message,
+    });
   });
   return pgPool;
 }
@@ -216,8 +222,17 @@ async function withTransaction(callback) {
   try {
     client = await pool.connect();
   } catch (error) {
+    const { getBackendHealth } = require('../infrastructure/backendHealth');
+    getBackendHealth().report('postgresql', {
+      ok: false,
+      code: 'unreachable',
+      reason: error.message,
+    });
     throw mapDatabaseError(error);
   }
+
+  const { getBackendHealth } = require('../infrastructure/backendHealth');
+  getBackendHealth().report('postgresql', { ok: true });
 
   try {
     await client.query('BEGIN');

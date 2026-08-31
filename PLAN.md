@@ -112,7 +112,61 @@ T1 docs (SoT + this PLAN)
   user-friendly routing, vs an admin-only endpoint.
 - File-screen admin banner placement and whether it appears on all authed pages vs file screen only.
 
-## 8. Progress log
+## 8. Future scope (not in this phase) — user-requested + codebase findings
+
+### F1. Metadata DB migration (sqlite ↔ PG) + ".env setup needed" notification
+Currently **completely unsupported**: `server/scripts/migrateMetadataToPostgresql.js` was removed
+(docs/ARCHITECTURE.md:172), `server/scripts/migrate/` is empty, and docs/SETUP.md:117-119 only
+supports fresh-DB boot. An operator moving sqlite→PG (or reverse) must manually export/transform/load
+all tables (users, settings, file_nodes, object_map, filecache, permissions, shares, locks) with no
+tool/checklist/UI. Under D6/D7 (PG connection is `.env`-owned) the wizard is no longer a PG on-ramp,
+so this needs: a supported migration path **and** a UX that notifies the operator when ".env setup is
+needed" (e.g. after migration, point WEA_PG_* at the target and restart).
+
+### F2. Blob migration (s3 ↔ webdav) — integrate the DB connection-info change
+Today after a blob migration the operator is told to **manually edit `WEA_FILE_STORAGE` + the target
+storage block in `.env` and restart** (MigrationDialog popup, en.json:526) — the destination
+credentials entered in the dialog are discarded, the guidance contradicts the DB-backed (T1) config
+model (configRegistry.js:41-50), and there is **no post-restart verification** of the cutover. Future
+feature: on migration completion, update the DB settings (WEA_FILE_STORAGE + the target's connection
+keys from the migration input), then verify the new backend (reuse the health tracker) before/after
+the switch.
+
+### F3. Silent no-op fixes (config edits that never take effect)
+- **T1 require-time-const keys**: `LOGIN_RATE_LIMIT_*` (auth/service.js:12-13), `MAX_THUMBNAIL_SIZE` /
+  `FFMPEG_INIT_TIMEOUT_MS` (videoProcessor.js:11-12), `THUMBNAIL_TOKEN_*` (thumbnailService.js:7-8),
+  `PERMISSION_CACHE_TTL_MS` (permissionStore.js:17), `PERMISSIONS_EXISTENCE_*`
+  (permissionExistenceIndex.js:12-16), `USER_CACHE_TTL_MS` (aclService.js:17),
+  `WEA_PREVIEW_TICKET_TTL_MS` (operationProgress.js:7) are frozen at module require (index.js:85-116)
+  before `populateT1Env` — DB edits show "restart required" but **still have no effect after restart**.
+  Fix: move the reads behind the resolver/boot snapshot or reclassify.
+- **EMAIL_* "applied" but restart-only**: EMAIL_* are T2 → no restart banner, but the transporter is a
+  process singleton (email.js:13-17, 30-62) — editing shows "Configuration saved" with no effect until
+  restart. Fix: rebuild the transporter on change or reclassify to T1.
+
+### F4. Server-side env-shadowing guard + drift detection
+The UI blocks editing env-sourced keys, but `PUT /api/admin/config` does **not** refuse DB writes to a
+key whose current source is `env` (config.js:40-69; spec config.md:111) — an API/script write is
+silently stored forever. Future: server rejects/ warns on env-shadowed writes + env-vs-DB drift
+detection (D9 from config-source-resolution).
+
+### F5. Config editor pre-save feedback
+- Per-field tier / "restart required" badge before saving (currently only a post-save banner).
+- Surface the PUT `applied` (T2 live-apply) list client-side (currently ignored, SystemConfigEditor.js:211-216).
+
+### F6. Missing operator warnings
+- `key_lost_warning` is computed (setup/routes.js:866, 980) but never rendered in the admin UI —
+  warn the operator when `encrypt_secret_key` is lost.
+- Stale terminal guidance: WebDAV boot probe message references ".env file" (index.js:210) while
+  WEBDAV_* can be DB-sourced; `getBackend()` silently falls back to sqlite on an invalid
+  `WEA_STORAGE_BACKEND` (storage.js:10-16).
+
+### F7. Wizard apply feedback
+Apply returns only `{ restart_required: true }`; no breakdown of what was written to `.env` (T0) vs
+DB (non-T0), no key list, no indication of which values already took effect (T2). Optional step (step 3)
+has no "skip" affordance.
+
+## 9. Progress log
 
 - 2026-08-31: Policy finalized with the user — D1 UI save gating (complete block, pending-values
   test), D2 passive event-based detection (admin login/file load auto-cover), D3 surfaces
@@ -120,3 +174,9 @@ T1 docs (SoT + this PLAN)
   D4 in-memory state, D5 T0 removed from Advanced settings, D6 boot rule (sqlite default kept;
   postgresql incomplete → exit), D7 wizard non-T0 only, D8 user-message scope. k3s context:
   chart injects env → dynamic `.env`; DB connection `.env`-owned. This PLAN created.
+- 2026-08-31: Future scope added (§8) — F1 metadata DB migration (sqlite↔PG) + ".env setup needed"
+  notification (unsupported today); F2 blob-migration cutover integrates the DB connection-info
+  change + post-cutover verification; F3 silent-no-op fixes (require-time-const T1 keys, EMAIL
+  "applied"-but-restart-only); F4 server-side env-shadow guard + drift detection; F5 pre-save
+  tier/restart feedback + `applied` surface; F6 missing warnings (key_lost_warning, stale terminal
+  guidance, silent sqlite fallback); F7 wizard apply feedback. Source: codebase exploration.

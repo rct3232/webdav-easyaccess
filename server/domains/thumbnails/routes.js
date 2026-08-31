@@ -10,7 +10,7 @@ router.get('/:hash.:ext', asyncHandler(async (req, res) => {
   const { hash, ext } = req.params;
   const token = req.query.token;
 
-  if (!thumbnailService.verifyThumbnailToken(token, hash)) {
+  if (!(await thumbnailService.verifyThumbnailToken(token, hash))) {
     return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.thumbnails.invalidOrExpiredToken });
   }
 

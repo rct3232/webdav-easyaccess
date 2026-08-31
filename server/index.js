@@ -207,7 +207,7 @@ async function runBoot() {
     } else {
       console.warn('⚠ WebDAV connection test: FAILED');
       console.warn(`  ${testResult.message}`);
-      console.warn('  Please check your WebDAV credentials in .env file');
+      console.warn('  Please check your WebDAV credentials in the effective configuration (env or DB settings).');
     }
   } catch (error) {
     console.warn('⚠ WebDAV connection test failed:', error.message);

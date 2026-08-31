@@ -8,7 +8,7 @@ const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const { TIER, getEntry, isT0, isTier, isSecret } = require('../../../infrastructure/configRegistry');
-const { encryptSecret } = require('../../../utils/configEncryption');
+const { encryptSecret, hasEncryptedRows } = require('../../../utils/configEncryption');
 
 // Middleware to check if user is admin (same pattern as settings.js)
 const isAdmin = asyncHandler(async (req, res, next) => {
@@ -20,9 +20,18 @@ const isAdmin = asyncHandler(async (req, res, next) => {
 });
 
 // Get effective config (masked secrets, source/tier/secret per registry key)
+// plus a key-lost warning: encrypted DB secret rows exist but the master key
+// (encrypt_secret_key) is missing, so those secrets are undecryptable.
 router.get('/config', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const config = await getSharedResolver().getEffectiveConfig();
-  res.json({ config });
+  const resolver = getSharedResolver();
+  const [config, all] = await Promise.all([
+    resolver.getEffectiveConfig(),
+    Settings.getAll(),
+  ]);
+  res.json({
+    config,
+    key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
+  });
 }));
 
 // Update allowlisted config keys (write to DB, encrypt secrets, invalidate T2 cache)
@@ -32,6 +41,11 @@ router.put('/config', authenticateToken, isAdmin, asyncHandler(async (req, res) 
   if (values === null || typeof values !== 'object' || Array.isArray(values)) {
     throw createError(SERVER_ERROR_CODES.admin.configInvalidPayload, HTTP_STATUS.BAD_REQUEST);
   }
+
+  // Snapshot the current effective source per key so env-sourced writes can be
+  // rejected (F4). getEffectiveConfig() primes the shared cache as a side
+  // effect, which keeps the resolver consistent for the writes below.
+  const current = await getSharedResolver().getEffectiveConfig();
 
   const applied = [];
   const restartRequired = [];
@@ -43,6 +57,9 @@ router.put('/config', authenticateToken, isAdmin, asyncHandler(async (req, res) 
     }
     if (isT0(key)) {
       throw createError(SERVER_ERROR_CODES.admin.configT0Protected, HTTP_STATUS.BAD_REQUEST, { key });
+    }
+    if (current[key]?.source === 'env') {
+      throw createError(SERVER_ERROR_CODES.admin.configEnvSourcedProtected, HTTP_STATUS.BAD_REQUEST, { key });
     }
 
     if (isSecret(key)) {

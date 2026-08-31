@@ -43,28 +43,34 @@ describe('configRegistry', () => {
       ['AWS_SECRET_ACCESS_KEY', 'T1'],
       ['WEBDAV_PASSWORD', 'T1'],
       ['WEBDAV_AUTH_TYPE', 'T1'],
-      ['LOGIN_RATE_LIMIT_MAX', 'T1'],
-      ['LOGIN_RATE_LIMIT_WINDOW_MS', 'T1'],
-      ['MAX_THUMBNAIL_SIZE', 'T1'],
       ['THUMBNAIL_CONCURRENCY_LIMIT', 'T1'],
       ['FFMPEG_PATH', 'T1'],
       ['GC_INTERVAL_MS', 'T1'],
       ['ADMIN_DEFAULT_PASSWORD', 'T1'],
+      ['EMAIL_HOST', 'T1'],
+      ['EMAIL_PASSWORD', 'T1'],
     ])('%s is %s', (key, tier) => {
       expect(isTier(key, TIER[tier])).toBe(true);
     });
 
     it.each([
       ['registration_enabled', 'T2'],
-      ['EMAIL_HOST', 'T2'],
-      ['EMAIL_PORT', 'T2'],
-      ['EMAIL_PASSWORD', 'T2'],
-      ['EMAIL_SECURE', 'T2'],
-      ['EMAIL_FROM_NAME', 'T2'],
       ['CORS_ORIGINS', 'T2'],
       ['GC_ORPHAN_TTL_DAYS', 'T2'],
       ['WEBDAV_UPSTREAM_URL', 'T2'],
       ['JWT_EXPIRES_IN', 'T2'],
+      ['LOGIN_RATE_LIMIT_MAX', 'T2'],
+      ['LOGIN_RATE_LIMIT_WINDOW_MS', 'T2'],
+      ['MAX_THUMBNAIL_SIZE', 'T2'],
+      ['THUMBNAIL_TOKEN_SECRET', 'T2'],
+      ['THUMBNAIL_TOKEN_EXPIRY', 'T2'],
+      ['FFMPEG_INIT_TIMEOUT_MS', 'T2'],
+      ['WEA_PREVIEW_TICKET_TTL_MS', 'T2'],
+      ['PERMISSION_CACHE_TTL_MS', 'T2'],
+      ['USER_CACHE_TTL_MS', 'T2'],
+      ['PERMISSIONS_EXISTENCE_INDEX_TTL_MS', 'T2'],
+      ['PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE', 'T2'],
+      ['PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY', 'T2'],
     ])('%s is %s', (key, tier) => {
       expect(isTier(key, TIER[tier])).toBe(true);
     });
@@ -102,7 +108,7 @@ describe('configRegistry', () => {
     it('returns the entry for a known key', () => {
       expect(getEntry('EMAIL_HOST')).toEqual({
         key: 'EMAIL_HOST',
-        tier: TIER.T2,
+        tier: TIER.T1,
         secret: false,
       });
     });

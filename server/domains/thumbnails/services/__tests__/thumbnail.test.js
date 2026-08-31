@@ -27,6 +27,7 @@ jest.mock('@server/service/composition', () => ({
 const { isImageFile, isVideoFile } = require('@server/utils/webdav');
 const { getComposition } = require('@server/service/composition');
 const { createCacheAdapter } = require('@server/infrastructure/adapters/cache');
+const { setSharedResolver } = require('@server/infrastructure/configResolver');
 const {
   getThumbnailHash,
   signThumbnailToken,
@@ -44,6 +45,17 @@ describe('thumbnail utilities', () => {
     setCacheAdapter(createCacheAdapter());
     jest.restoreAllMocks();
     getComposition.mockReset();
+    setSharedResolver({
+      getConfig: jest.fn(async (key) => {
+        if (key === 'THUMBNAIL_TOKEN_SECRET') return 'test-thumbnail-secret';
+        if (key === 'THUMBNAIL_TOKEN_EXPIRY') return '15m';
+        return undefined;
+      }),
+    });
+  });
+
+  afterAll(() => {
+    setSharedResolver(null);
   });
 
   describe('getThumbnailHash', () => {
@@ -67,33 +79,33 @@ describe('thumbnail utilities', () => {
   });
 
   describe('signThumbnailToken / verifyThumbnailToken', () => {
-    it('signed token verifies against the nodeId-derived hash', () => {
+    it('signed token verifies against the nodeId-derived hash', async () => {
       const nodeId = 5;
       const hash = getThumbnailHash(nodeId);
-      const token = signThumbnailToken(nodeId);
+      const token = await signThumbnailToken(nodeId);
       expect(typeof token).toBe('string');
-      expect(verifyThumbnailToken(token, hash)).toBe(true);
+      expect(await verifyThumbnailToken(token, hash)).toBe(true);
     });
 
-    it('returns false for wrong hash', () => {
+    it('returns false for wrong hash', async () => {
       const nodeId = 5;
-      const token = signThumbnailToken(nodeId);
-      expect(verifyThumbnailToken(token, 'wrong-hash')).toBe(false);
+      const token = await signThumbnailToken(nodeId);
+      expect(await verifyThumbnailToken(token, 'wrong-hash')).toBe(false);
     });
 
-    it('returns false for null/undefined/non-string tokens', () => {
+    it('returns false for null/undefined/non-string tokens', async () => {
       const hash = getThumbnailHash(5);
-      expect(verifyThumbnailToken(null, hash)).toBe(false);
-      expect(verifyThumbnailToken(undefined, hash)).toBe(false);
-      expect(verifyThumbnailToken(123, hash)).toBe(false);
+      expect(await verifyThumbnailToken(null, hash)).toBe(false);
+      expect(await verifyThumbnailToken(undefined, hash)).toBe(false);
+      expect(await verifyThumbnailToken(123, hash)).toBe(false);
     });
 
-    it('returns false for tampered token', () => {
+    it('returns false for tampered token', async () => {
       const nodeId = 5;
       const hash = getThumbnailHash(nodeId);
-      const token = signThumbnailToken(nodeId);
+      const token = await signThumbnailToken(nodeId);
       const tampered = token.slice(0, -5) + 'XXXXX';
-      expect(verifyThumbnailToken(tampered, hash)).toBe(false);
+      expect(await verifyThumbnailToken(tampered, hash)).toBe(false);
     });
   });
 

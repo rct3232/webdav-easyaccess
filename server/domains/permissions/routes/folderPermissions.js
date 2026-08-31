@@ -124,7 +124,7 @@ router.get('/user/:userId', authenticateToken, requireUser, asyncHandler(async (
     } catch { /* ignore */ }
 
     // Node not found or error — check existence index
-    const state = getExistenceState(String(perm.nodeId));
+    const state = await getExistenceState(String(perm.nodeId));
     if (state === 'exists') {
       return perm;
     }
@@ -171,7 +171,7 @@ router.get('/shared', authenticateToken, requireUser, asyncHandler(async (req, r
       }
     } catch { /* ignore */ }
 
-    const state = getExistenceState(String(perm.nodeId));
+    const state = await getExistenceState(String(perm.nodeId));
     if (state === 'exists') {
       return perm;
     }

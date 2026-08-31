@@ -65,6 +65,7 @@ const SERVER_ERROR_CODES = {
     configT0Protected: P('serverErrors.admin', 'configT0Protected'),
     configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
     configEncryptKeyMissing: P('serverErrors.admin', 'configEncryptKeyMissing'),
+    configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),

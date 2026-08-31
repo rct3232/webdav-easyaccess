@@ -85,13 +85,13 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `WEBDAV_PASSWORD` | T1 | **yes** | — |
 | `WEBDAV_AUTH_TYPE` | T1 | no | `'auto'` |
 | `WEBDAV_UPSTREAM_URL` | T2 | no | — |
-| `MAX_THUMBNAIL_SIZE` | T1 | no | `300` |
+| `MAX_THUMBNAIL_SIZE` | T2 | no | `300` |
 | `THUMBNAIL_CONCURRENCY_LIMIT` | T1 | no | `10` |
-| `THUMBNAIL_TOKEN_SECRET` | T1 | no | `'thumbnail-secret'` |
-| `THUMBNAIL_TOKEN_EXPIRY` | T1 | no | `'15m'` |
+| `THUMBNAIL_TOKEN_SECRET` | T2 | no | `'thumbnail-secret'` |
+| `THUMBNAIL_TOKEN_EXPIRY` | T2 | no | `'15m'` |
 | `FFMPEG_PATH` | T1 | no | — |
-| `FFMPEG_INIT_TIMEOUT_MS` | T1 | no | `2000` |
-| `WEA_PREVIEW_TICKET_TTL_MS` | T1 | no | `120000` |
+| `FFMPEG_INIT_TIMEOUT_MS` | T2 | no | `2000` |
+| `WEA_PREVIEW_TICKET_TTL_MS` | T2 | no | `120000` |
 
 ### Server & security
 
@@ -100,8 +100,8 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `PORT` | T1 | no | `5001` |
 | `CORS_ORIGINS` | T2 | no | `''` |
 | `CORS_ORIGIN` | T2 | no | `''` |
-| `LOGIN_RATE_LIMIT_MAX` | T1 | no | `20` |
-| `LOGIN_RATE_LIMIT_WINDOW_MS` | T1 | no | `900000` |
+| `LOGIN_RATE_LIMIT_MAX` | T2 | no | `20` |
+| `LOGIN_RATE_LIMIT_WINDOW_MS` | T2 | no | `900000` |
 | `JWT_EXPIRES_IN` | T2 | no | `'30m'` |
 | `ADMIN_DEFAULT_PASSWORD` | T1 | **yes** | `'admin'` |
 | `WEA_DISABLE_DEFAULT_ADMIN` | T1 | no | — |
@@ -111,12 +111,12 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 
 | key | tier | secret | default |
 |-----|------|--------|---------|
-| `EMAIL_HOST` | T2 | no | — |
-| `EMAIL_PORT` | T2 | no | `587` |
-| `EMAIL_USER` | T2 | no | — |
-| `EMAIL_PASSWORD` | T2 | **yes** | — |
-| `EMAIL_SECURE` | T2 | no | `false` |
-| `EMAIL_FROM_NAME` | T2 | no | `'WebDAV EasyAccess'` |
+| `EMAIL_HOST` | T1 | no | — |
+| `EMAIL_PORT` | T1 | no | `587` |
+| `EMAIL_USER` | T1 | no | — |
+| `EMAIL_PASSWORD` | T1 | **yes** | — |
+| `EMAIL_SECURE` | T1 | no | `false` |
+| `EMAIL_FROM_NAME` | T1 | no | `'WebDAV EasyAccess'` |
 
 ### Runtime
 
@@ -126,11 +126,11 @@ Precedence invariant (D1): env wins whenever set; DB is read only when the env v
 | `GC_INTERVAL_MS` | T1 | no | `0` (disabled) |
 | `GC_ORPHAN_TTL_DAYS` | T2 | no | `1` |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS` | T1 | no | `7` |
-| `USER_CACHE_TTL_MS` | T1 | no | `3000` |
-| `PERMISSION_CACHE_TTL_MS` | T1 | no | `5000` |
-| `PERMISSIONS_EXISTENCE_INDEX_TTL_MS` | T1 | no | `30000` |
-| `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE` | T1 | no | `100` |
-| `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` | T1 | no | `4` |
+| `USER_CACHE_TTL_MS` | T2 | no | `3000` |
+| `PERMISSION_CACHE_TTL_MS` | T2 | no | `5000` |
+| `PERMISSIONS_EXISTENCE_INDEX_TTL_MS` | T2 | no | `30000` |
+| `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE` | T2 | no | `100` |
+| `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY` | T2 | no | `4` |
 | `WEA_SKIP_MIGRATION_WORKER` | T2 | no | — |
 | `WEA_SKIP_BULK_WORKER` | T2 | no | — |
 | `WEA_SKIP_GC_SCHEDULER` | T1 | no | — |

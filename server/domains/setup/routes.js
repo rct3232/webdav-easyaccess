@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncHandler, createError } = require('../../utils/errorHandler');
-const { encryptSecret, isEncryptedPayload, generateKey } = require('../../utils/configEncryption');
+const { encryptSecret, generateKey, hasEncryptedRows } = require('../../utils/configEncryption');
 const { computeSetupStatus } = require('../../infrastructure/setupStatus');
 const { resolveEnvPath } = require('../../infrastructure/envPath');
 const { writeEnv } = require('../../infrastructure/envFileWriter');
@@ -730,25 +730,6 @@ function buildPrefillCurrent(rows) {
 }
 
 /**
- * True when any `settings` row holds an encrypted payload — the shape-only
- * detection the wizard uses for the key-lost warning (this path never decrypts,
- * so prefill cannot leak plaintext).
- */
-function hasEncryptedSettingsRows(rows) {
-  return rows.some((row) => {
-    let value = row && row.value;
-    if (typeof value === 'string') {
-      try {
-        value = JSON.parse(value);
-      } catch {
-        return false;
-      }
-    }
-    return isEncryptedPayload(value);
-  });
-}
-
-/**
  * Read the `settings` table directly from the target PostgreSQL using the
  * credentials the operator entered in wizard step 1. Mirrors the
  * probePostgresql connection/Client pattern and reuses the same
@@ -849,21 +830,10 @@ router.get('/status', asyncHandler(async (req, res) => {
   // decrypted/prefilled without the master key. Detection is shape-only — this
   // path never decrypts, so prefill cannot leak plaintext.
   const all = await Settings.getAll();
-  const hasEncryptedRows = Object.values(all).some((raw) => {
-    let parsed = raw;
-    if (typeof raw === 'string') {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = raw;
-      }
-    }
-    return isEncryptedPayload(parsed);
-  });
 
   res.json({
     ...status,
-    key_lost_warning: Boolean(hasEncryptedRows && !process.env.encrypt_secret_key),
+    key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
   });
 }));
 
@@ -977,7 +947,7 @@ router.post(
       const rows = await readSettingsRows(metadata);
       res.json({
         current: buildPrefillCurrent(rows),
-        key_lost_warning: Boolean(hasEncryptedSettingsRows(rows) && !process.env.encrypt_secret_key),
+        key_lost_warning: Boolean(hasEncryptedRows(rows) && !process.env.encrypt_secret_key),
       });
     } catch (error) {
       // Same error shape + classified codes as POST /test so the client renders

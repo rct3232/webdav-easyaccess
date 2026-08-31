@@ -3,9 +3,8 @@ const jwt = require('jsonwebtoken');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { generateImageThumbnail } = require('./imageProcessor');
 const { generateVideoThumbnail, initFfmpegOnce } = require('./videoProcessor');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
-const THUMBNAIL_TOKEN_SECRET = process.env.THUMBNAIL_TOKEN_SECRET || process.env.JWT_SECRET || 'thumbnail-secret';
-const THUMBNAIL_TOKEN_EXPIRY = process.env.THUMBNAIL_TOKEN_EXPIRY || '15m';
 const MAX_CACHE_SIZE = 1000;
 
 let _cacheAdapter = null;
@@ -30,19 +29,37 @@ function getThumbnailHash(nodeId) {
   return crypto.createHash('md5').update(String(nodeId)).digest('hex');
 }
 
-function signThumbnailToken(nodeId) {
+// THUMBNAIL_TOKEN_SECRET / THUMBNAIL_TOKEN_EXPIRY are T2 (lazy): read the
+// effective values (env → DB → default) per sign/verify so DB-sourced edits
+// apply without a restart. Keep the original JWT_SECRET fallback chain.
+async function resolveThumbnailTokenConfig() {
+  const resolver = getSharedResolver();
+  const [tokenSecret, jwtSecret, expiry] = await Promise.all([
+    resolver.getConfig('THUMBNAIL_TOKEN_SECRET'),
+    resolver.getConfig('JWT_SECRET'),
+    resolver.getConfig('THUMBNAIL_TOKEN_EXPIRY'),
+  ]);
+  return {
+    secret: tokenSecret || jwtSecret || 'thumbnail-secret',
+    expiry: expiry || '15m',
+  };
+}
+
+async function signThumbnailToken(nodeId) {
+  const { secret, expiry } = await resolveThumbnailTokenConfig();
   const hash = getThumbnailHash(nodeId);
   return jwt.sign(
     { h: hash },
-    THUMBNAIL_TOKEN_SECRET,
-    { expiresIn: THUMBNAIL_TOKEN_EXPIRY }
+    secret,
+    { expiresIn: expiry }
   );
 }
 
-function verifyThumbnailToken(token, hash) {
+async function verifyThumbnailToken(token, hash) {
   if (!token || typeof token !== 'string') return false;
   try {
-    const decoded = jwt.verify(token, THUMBNAIL_TOKEN_SECRET);
+    const { secret } = await resolveThumbnailTokenConfig();
+    const decoded = jwt.verify(token, secret);
     return decoded && decoded.h === hash;
   } catch {
     return false;
@@ -118,11 +135,11 @@ async function getThumbnail(nodeId) {
   return null;
 }
 
-function getThumbnailUrl(nodeId) {
+async function getThumbnailUrl(nodeId) {
   const cached = getCachedThumbnail(nodeId);
   if (cached) {
     const hash = getThumbnailHash(nodeId);
-    const token = signThumbnailToken(nodeId);
+    const token = await signThumbnailToken(nodeId);
     return `/api/thumbnails/${hash}.${cached.extension}?token=${encodeURIComponent(token)}`;
   }
   return null;

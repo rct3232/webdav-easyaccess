@@ -43,6 +43,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [permissionCleanupConfirmOpen, setPermissionCleanupConfirmOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [keyLostWarning, setKeyLostWarning] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -53,9 +54,19 @@ const SystemSettingsContent = ({ onMessage }) => {
     }
   }, [t]);
 
+  const loadKeyLostWarning = useCallback(async () => {
+    try {
+      const data = await adminService.getConfigStatus();
+      setKeyLostWarning(Boolean(data?.key_lost_warning));
+    } catch {
+      setKeyLostWarning(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
-  }, [loadSettings]);
+    loadKeyLostWarning();
+  }, [loadSettings, loadKeyLostWarning]);
 
   const handleToggleRegistration = async () => {
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
@@ -122,6 +133,12 @@ const SystemSettingsContent = ({ onMessage }) => {
 
   return (
     <Box>
+      {keyLostWarning && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="key-lost-warning">
+          <Typography variant="subtitle2">{t('admin.keyLostWarning')}</Typography>
+          <Typography variant="body2">{t('admin.keyLostWarningDetail')}</Typography>
+        </Alert>
+      )}
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('admin.registrationEnabled')}</Typography>

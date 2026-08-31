@@ -19,7 +19,7 @@ const Settings = require('../../../../models/Settings');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { generateToken } = require('../../../../utils/auth');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
-const { decryptSecret } = require('../../../../utils/configEncryption');
+const { decryptSecret, encryptSecret } = require('../../../../utils/configEncryption');
 const { errorHandler } = require('../../../../utils/errorHandler');
 const setupModeGuard = require('../../../../middleware/setupModeGuard');
 const configRoutes = require('../../routes/config');
@@ -49,6 +49,7 @@ let app;
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.encrypt_secret_key;
+  fakeResolver.getEffectiveConfig.mockResolvedValue({});
   setSharedResolver(fakeResolver);
   User.findById.mockResolvedValue({ id: 1, is_admin: 1 });
   app = buildApp();
@@ -68,8 +69,9 @@ describe('GET /api/admin/config', () => {
 
   it('returns effective config with masked secrets and source/tier', async () => {
     fakeResolver.getEffectiveConfig.mockResolvedValue({
-      EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
-      EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T2', secret: true },
+      EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T1', secret: false },
+      EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+      CORS_ORIGINS: { value: '', source: 'default', tier: 'T2', secret: false },
       PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
     });
 
@@ -79,11 +81,43 @@ describe('GET /api/admin/config', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.config).toEqual({
-      EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T2', secret: false },
-      EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T2', secret: true },
+      EMAIL_HOST: { value: 'smtp.gmail.com', source: 'db', tier: 'T1', secret: false },
+      EMAIL_PASSWORD: { value: '****', source: 'db', tier: 'T1', secret: true },
+      CORS_ORIGINS: { value: '', source: 'default', tier: 'T2', secret: false },
       PORT: { value: '5001', source: 'default', tier: 'T1', secret: false },
     });
+    expect(res.body.key_lost_warning).toBe(false);
     expect(fakeResolver.getEffectiveConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('flags key_lost_warning when encrypted rows exist without the master key', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({});
+    Settings.getAll.mockResolvedValue({
+      EMAIL_PASSWORD: JSON.stringify(encryptSecret('hunter2', 'some-master-key')),
+    });
+    delete process.env.encrypt_secret_key;
+
+    const res = await request(app)
+      .get('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.key_lost_warning).toBe(true);
+  });
+
+  it('does not flag key_lost_warning when the master key is present', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({});
+    Settings.getAll.mockResolvedValue({
+      EMAIL_PASSWORD: JSON.stringify(encryptSecret('hunter2', 'some-master-key')),
+    });
+    process.env.encrypt_secret_key = 'some-master-key';
+
+    const res = await request(app)
+      .get('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.key_lost_warning).toBe(false);
   });
 });
 
@@ -137,14 +171,14 @@ describe('PUT /api/admin/config', () => {
     const res = await request(app)
       .put('/api/admin/config')
       .set('Authorization', `Bearer ${buildToken()}`)
-      .send({ values: { EMAIL_HOST: 'smtp.gmail.com' } });
+      .send({ values: { CORS_ORIGINS: 'https://app.example.com' } });
 
     expect(res.status).toBe(200);
     expect(Settings.set).toHaveBeenCalledTimes(1);
-    expect(Settings.set).toHaveBeenCalledWith('EMAIL_HOST', 'smtp.gmail.com');
-    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['EMAIL_HOST']);
+    expect(Settings.set).toHaveBeenCalledWith('CORS_ORIGINS', 'https://app.example.com');
+    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['CORS_ORIGINS']);
     expect(res.body).toEqual({
-      applied: ['EMAIL_HOST'],
+      applied: ['CORS_ORIGINS'],
       restartRequired: [],
       messageCode: SERVER_MESSAGE_CODES.admin.configSaved,
     });
@@ -170,12 +204,44 @@ describe('PUT /api/admin/config', () => {
     const res = await request(app)
       .put('/api/admin/config')
       .set('Authorization', `Bearer ${buildToken()}`)
-      .send({ values: { EMAIL_HOST: 'smtp.gmail.com', PORT: '6000' } });
+      .send({ values: { CORS_ORIGINS: 'https://app.example.com', PORT: '6000' } });
 
     expect(res.status).toBe(200);
     expect(Settings.set).toHaveBeenCalledTimes(2);
-    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['EMAIL_HOST', 'PORT']);
-    expect(res.body.applied).toEqual(['EMAIL_HOST']);
+    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['CORS_ORIGINS', 'PORT']);
+    expect(res.body.applied).toEqual(['CORS_ORIGINS']);
+    expect(res.body.restartRequired).toEqual(['PORT']);
+  });
+
+  it('rejects a write to an env-sourced key with 400 configEnvSourcedProtected', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'env', tier: 'T1', secret: false },
+    });
+
+    const res = await request(app)
+      .put('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ values: { PORT: '6000' } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.configEnvSourcedProtected);
+    expect(res.body.params).toEqual({ key: 'PORT' });
+    expect(Settings.set).not.toHaveBeenCalled();
+    expect(fakeResolver.invalidateCache).not.toHaveBeenCalled();
+  });
+
+  it('writes a DB-sourced T1 key (source db stays writable)', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({
+      PORT: { value: '5001', source: 'db', tier: 'T1', secret: false },
+    });
+
+    const res = await request(app)
+      .put('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ values: { PORT: '6000' } });
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).toHaveBeenCalledWith('PORT', '6000');
     expect(res.body.restartRequired).toEqual(['PORT']);
   });
 
@@ -225,7 +291,24 @@ describe('PUT /api/admin/config', () => {
     expect(payload.data).toEqual(expect.any(String));
     expect(decryptSecret(payload, 'test-master-key')).toBe('hunter2');
     expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['EMAIL_PASSWORD']);
-    expect(res.body.applied).toEqual(['EMAIL_PASSWORD']);
+    expect(res.body.restartRequired).toEqual(['EMAIL_PASSWORD']);
+  });
+
+  it('reports applied for a written T2 secret key', async () => {
+    process.env.encrypt_secret_key = 'test-master-key';
+
+    const res = await request(app)
+      .put('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ values: { THUMBNAIL_TOKEN_SECRET: 'tok-secret' } });
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).toHaveBeenCalledTimes(1);
+    const [calledKey, storedValue] = Settings.set.mock.calls[0];
+    expect(calledKey).toBe('THUMBNAIL_TOKEN_SECRET');
+    expect(decryptSecret(JSON.parse(storedValue), 'test-master-key')).toBe('tok-secret');
+    expect(fakeResolver.invalidateCache).toHaveBeenCalledWith(['THUMBNAIL_TOKEN_SECRET']);
+    expect(res.body.applied).toEqual(['THUMBNAIL_TOKEN_SECRET']);
   });
 
   it('returns 500 configEncryptKeyMissing when a new secret value has no master key', async () => {

@@ -214,25 +214,85 @@ test.describe('Admin config editor (Advanced settings)', () => {
     const save = page.getByTestId('config-save');
     await expect(save).toBeDisabled(); // nothing dirty yet
 
+    // Per-field tier badges (F5): shown while editing, before any save.
+    await expect(page.getByTestId('config-tier-CORS_ORIGINS')).toContainText('Applies immediately');
+    await expect(page.getByTestId('config-tier-S3_BUCKET')).toContainText('Restart required');
+
     // T2 (hot) + T1 (restart) edits.
-    await page.getByTestId('config-input-EMAIL_HOST').fill('smtp.test.local');
+    await page.getByTestId('config-input-CORS_ORIGINS').fill('https://app.test.local');
     await page.getByTestId('config-input-S3_BUCKET').fill('new-bucket');
     await expect(save).toBeEnabled();
 
     await saveConfig(page);
+    await expect(page.getByTestId('config-applied-banner')).toBeVisible();
+    await expect(page.getByTestId('config-applied-banner')).toContainText('CORS_ORIGINS');
     await expect(page.getByTestId('config-restart-banner')).toBeVisible();
     await expect(page.getByTestId('config-restart-banner')).toContainText('S3_BUCKET');
-    await expect(page.getByTestId('config-restart-banner')).not.toContainText('EMAIL_HOST');
+    await expect(page.getByTestId('config-restart-banner')).not.toContainText('CORS_ORIGINS');
 
     // Applied immediately for T2 (async resolver reads the DB fresh).
     await expect
-      .poll(() => getConfig(request).then((c) => c.EMAIL_HOST.value))
-      .toBe('smtp.test.local');
+      .poll(() => getConfig(request).then((c) => c.CORS_ORIGINS.value))
+      .toBe('https://app.test.local');
     const config = await getConfig(request);
-    expect(config.EMAIL_HOST.source).toBe('db');
-    expect(config.EMAIL_USER.value).toBeUndefined();
+    expect(config.CORS_ORIGINS.source).toBe('db');
     expect(config.S3_BUCKET.value).toBe('new-bucket');
     expect(config.S3_BUCKET.source).toBe('db');
+  });
+
+  test('server rejects a PUT to an env-sourced key with 400 configEnvSourcedProtected', async ({
+    request,
+  }) => {
+    // WEBDAV_URL is .env-owned (WEBDAV_* in the scratch .env) → source 'env'.
+    const token = await loginToken(request);
+    const res = await request.put(`${SCRATCH_BASE}/api/admin/config`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { values: { WEBDAV_URL: 'https://other.example.com' } },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.errorCode).toBe('serverErrors.admin.configEnvSourcedProtected');
+    expect(body.params).toEqual({ key: 'WEBDAV_URL' });
+
+    // A DB-sourced key stays writable.
+    await putConfig(request, { S3_BUCKET: 'db-bucket' });
+    const config = await getConfig(request);
+    expect(config.S3_BUCKET.value).toBe('db-bucket');
+    expect(config.S3_BUCKET.source).toBe('db');
+  });
+
+  test('key_lost_warning surfaces in the admin UI when the master key is missing', async ({
+    page,
+    request,
+  }) => {
+    // Create an encrypted settings row while the master key is present.
+    await putConfig(request, { EMAIL_PASSWORD: 'initial-secret' });
+
+    // Remove the master key from .env and restart the scratch server.
+    await killScratch(spawned!);
+    const envPath = path.join(scratch, '.env');
+    const envLines = fs
+      .readFileSync(envPath, 'utf8')
+      .split('\n')
+      .filter((line) => !line.startsWith('encrypt_secret_key='));
+    fs.writeFileSync(envPath, envLines.join('\n'));
+    spawned = spawnScratchServer(scratch);
+    await waitForScratchHealth(spawned);
+
+    await loginAsAdmin(page);
+    await page.goto('/mypage');
+    const systemSettings = page.getByRole('button', { name: /system settings/i });
+    if (!(await systemSettings.isVisible().catch(() => false))) {
+      const menuButton = page.locator('button[aria-label="My page"]');
+      if ((await menuButton.count()) > 0) {
+        await menuButton.click();
+        await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
+      }
+    }
+    await systemSettings.click();
+
+    await expect(page.getByTestId('key-lost-warning')).toBeVisible();
+    await expect(page.getByTestId('key-lost-warning')).toContainText('Encryption key lost');
   });
 
   test('secret lifecycle: masked, unchanged kept, blank new value kept, new value stored encrypted', async ({

@@ -223,4 +223,27 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/email/i)).toBeInTheDocument();
     expect(screen.getAllByText(/set in .env/i).length).toBeGreaterThan(0);
   });
+
+  it('shows a key-lost warning banner when the config status reports it', async () => {
+    server.use(
+      http.get('/api/admin/config', () =>
+        HttpResponse.json({ config: {}, key_lost_warning: true })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    expect(await screen.findByTestId('key-lost-warning')).toBeInTheDocument();
+    expect(screen.getByText(/encryption key lost/i)).toBeInTheDocument();
+  });
+
+  it('does not show a key-lost warning banner when the master key is present', async () => {
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('key-lost-warning')).not.toBeInTheDocument();
+  });
 });

@@ -72,17 +72,24 @@ before any request.
 **T1 — env → DB fallback, restart required (boot-frozen):** `PORT`, `WEA_FILE_STORAGE`,
 `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (secret, D8),
 `S3_ENDPOINT`, `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` (secret, D8),
-`WEBDAV_AUTH_TYPE`, rate-limit config (`LOGIN_*_MAX` / `*_WINDOW_MS`), `MAX_THUMBNAIL_SIZE`,
-`THUMBNAIL_CONCURRENCY_LIMIT`, `FFMPEG_PATH`, `GC_INTERVAL_MS`, `ADMIN_DEFAULT_PASSWORD`.
+`WEBDAV_AUTH_TYPE`, `THUMBNAIL_CONCURRENCY_LIMIT`, `FFMPEG_PATH`, `GC_INTERVAL_MS`,
+`ADMIN_DEFAULT_PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` (secret,
+D8), `EMAIL_SECURE`, `EMAIL_FROM_NAME`.
 Rationale: consumed to construct boot-time singletons (blob store, listen port, scheduler,
-module consts). The **source** can be DB; the **effect** requires a restart.
+module consts, the nodemailer transporter). The **source** can be DB; the **effect** requires a
+restart. EMAIL_* were formerly T2, but the transporter is built once per process — edits only
+take effect after a restart, so they are honestly classified T1 (F3).
 
 **T2 — env → DB fallback, immediate (hot):** `registration_enabled` (already DB),
-`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` (secret, D8), `EMAIL_SECURE`,
-`EMAIL_FROM_NAME`, `CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `WEBDAV_UPSTREAM_URL`,
-`JWT_EXPIRES_IN` (D5).
-Rationale: read per-request/per-operation today (or trivially made so); changing them has no
-boot-time singleton impact.
+`CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
+`LOGIN_RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_WINDOW_MS`, `MAX_THUMBNAIL_SIZE`,
+`THUMBNAIL_TOKEN_SECRET` (secret, D8), `THUMBNAIL_TOKEN_EXPIRY`, `FFMPEG_INIT_TIMEOUT_MS`,
+`WEA_PREVIEW_TICKET_TTL_MS`, `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`,
+`PERMISSIONS_EXISTENCE_INDEX_TTL_MS`, `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`,
+`PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY`.
+Rationale: read per-request/per-operation via the lazy resolver (F3 fix — these keys were
+mislabeled T1 but never boot-frozen in practice); changing them has no boot-time singleton
+impact.
 
 ---
 
@@ -219,7 +226,9 @@ map; the server registry is authoritative for tier/secret/source.
 - Grouped sections (Metadata T0 — read-only, File storage, Server & security, Email,
   Runtime); type-aware inputs (TextField / Switch / Select / Number).
 - **source=env rows are read-only** with a "Set in `.env` (env takes precedence)" note (D9) —
-  DB edits would be silently ignored while the env var is present.
+  DB edits would be silently ignored while the env var is present. The server **enforces** this
+  too: `PUT` rejects (400) a write to a key whose current source is `env`, so the UI rule
+  cannot be bypassed via the API (F4).
 - **Secrets:** always masked; a "set new value" toggle reveals the field; blank on save =
   keep existing ciphertext (only-re-encrypt-on-new-value).
 - **Save:** dirty-tracked "Save changes" → `PUT { values: { KEY: value } }` (changed keys
@@ -227,7 +236,10 @@ map; the server registry is authoritative for tier/secret/source.
   `settingsStore`, invalidates T2 cache → responds
   `{ applied: [T2 keys], restartRequired: [T1 keys], messageCode }`.
 - **Feedback:** Snackbar + "restart required" Alert banner listing the T1 keys changed
-  (applied immediately for T2). Editor feedback reuses the page-level Snackbar.
+  (applied immediately for T2). Each editable field shows a **tier badge** ("restart required"
+  for T1 / "applies immediately" for T2) while editing, and after a save the T2 `applied` list
+  is surfaced in its own banner — the operator sees exactly what took effect now vs what awaits
+  a restart (F5). Editor feedback reuses the page-level Snackbar.
 - `registration_enabled` stays in the main settings rows (above the accordion); no
   duplication.
 
@@ -252,10 +264,11 @@ The setup-mode guard (503 `setup.incomplete`) continues to block admin-write rou
   write path for a secret (set-new-value toggle).
 - T0 keys (`WEA_PG_*`, `JWT_SECRET`, `encrypt_secret_key`, …) are rejected by `PUT` — they
   can only live in `.env` (D2/D4/D7).
-- `source=env` rows are read-only in the UI; a DB edit would be silently shadowed by the env
-  value (D1/D9).
+- `source=env` rows are read-only in the UI, and `PUT` rejects (400) an env-sourced write
+  server-side — a DB copy would be silently shadowed by the env value (D1/F4).
 - `encrypt_secret_key` follows the keep-existing rule; losing it makes DB secrets
-  unrecoverable (documented warning).
+  unrecoverable. The admin config surface surfaces a `key_lost_warning` banner whenever
+  encrypted `settings` rows exist without `encrypt_secret_key` (F6).
 
 ---
 

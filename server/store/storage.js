@@ -11,8 +11,12 @@ function getBackend() {
   const forced = (process.env.WEA_STORAGE_BACKEND || '').toLowerCase();
   if (forced === 'postgresql' || forced === 'postgres' || forced === 'pg') return 'postgresql';
   if (forced === 'sqlite') return 'sqlite';
-  console.warn(`DEPRECATION: WEA_STORAGE_BACKEND=${forced || '(default)'} is deprecated. Falling back to sqlite.`);
-  return 'sqlite';
+  if (!forced) return 'sqlite';
+  // Unrecognized non-empty value: fail loudly instead of silently booting
+  // sqlite — a typo would otherwise shadow the operator's intended backend.
+  throw new Error(
+    `Invalid WEA_STORAGE_BACKEND='${process.env.WEA_STORAGE_BACKEND}'. Valid values: 'sqlite', 'postgresql'.`
+  );
 }
 
 function isSqliteBackend() {

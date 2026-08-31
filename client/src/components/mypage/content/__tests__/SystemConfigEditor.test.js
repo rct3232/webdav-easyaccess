@@ -122,8 +122,33 @@ describe('SystemConfigEditor', () => {
     await userEvent.type(port, '6000');
     await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
-    expect(await screen.findByText(/restart required/i)).toBeInTheDocument();
+    expect(await screen.findByTestId('config-restart-banner')).toBeInTheDocument();
     expect(screen.getByText(/PORT/)).toBeInTheDocument();
+  });
+
+  it('shows an applied-immediately banner listing T2 keys after save', async () => {
+    mockPutConfig(() =>
+      HttpResponse.json({ applied: ['EMAIL_HOST'], restartRequired: [], messageCode: 'serverMessages.admin.configSaved' })
+    );
+    renderEditor();
+
+    const host = await screen.findByLabelText(/smtp host/i);
+    await userEvent.clear(host);
+    await userEvent.type(host, 'smtp.example.com');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    expect(await screen.findByTestId('config-applied-banner')).toBeInTheDocument();
+    expect(screen.getByText(/EMAIL_HOST/)).toBeInTheDocument();
+    expect(screen.queryByTestId('config-restart-banner')).not.toBeInTheDocument();
+  });
+
+  it('renders a per-field tier badge on editable fields', async () => {
+    renderEditor();
+
+    expect(await screen.findByTestId('config-tier-PORT')).toHaveTextContent('Restart required');
+    expect(screen.getByTestId('config-tier-EMAIL_HOST')).toHaveTextContent('Applies immediately');
+    // Read-only T0/env rows get no tier badge.
+    expect(screen.queryByTestId('config-tier-WEA_PG_HOST')).not.toBeInTheDocument();
   });
 
   it('skips blank secret new values on save but sends typed ones', async () => {

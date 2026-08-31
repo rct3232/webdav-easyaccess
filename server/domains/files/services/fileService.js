@@ -91,7 +91,7 @@ function createFileService(options = {}) {
 
       let thumbnailUrl = null;
       if (isImageFile(child.name) || isVideoFile(child.name)) {
-        thumbnailUrl = getThumbnailUrl(child.id);
+        thumbnailUrl = await getThumbnailUrl(child.id);
       }
 
       results.push({

@@ -24,6 +24,11 @@ export const getConfig = async () => {
   return response.data?.config ?? {};
 };
 
+export const getConfigStatus = async () => {
+  const response = await get('/admin/config');
+  return response.data;
+};
+
 export const updateConfig = async (values) => {
   const response = await put('/admin/config', { values });
   return response.data;

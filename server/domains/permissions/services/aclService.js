@@ -8,13 +8,10 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const permissionStore = require('../../../store/permissionStore');
 const User = require('../../../models/User');
 const { meetsRank } = require('../policy/permissionRank');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 // --- User cache (extracted from middleware/permissions.js) ---
 const userCache = new Map();
-const USER_CACHE_TTL_MS =
-  process.env.NODE_ENV === 'test'
-    ? 0
-    : parseInt(process.env.USER_CACHE_TTL_MS || '3000', 10) || 3000;
 
 async function getCachedUser(userId) {
   const key = String(userId);
@@ -23,8 +20,14 @@ async function getCachedUser(userId) {
     return cached.user;
   }
   const user = await User.findById(userId);
-  if (user && USER_CACHE_TTL_MS > 0) {
-    userCache.set(key, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+  // USER_CACHE_TTL_MS is T2 (lazy): read the effective value per call. The
+  // test-mode 0 short-circuit is preserved so unit tests never cache.
+  const cacheTtlMs =
+    process.env.NODE_ENV === 'test'
+      ? 0
+      : parseInt(await getSharedResolver().getConfig('USER_CACHE_TTL_MS'), 10) || 3000;
+  if (user && cacheTtlMs > 0) {
+    userCache.set(key, { user, expiresAt: Date.now() + cacheTtlMs });
   }
   return user;
 }

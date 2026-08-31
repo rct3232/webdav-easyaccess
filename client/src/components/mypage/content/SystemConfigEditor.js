@@ -136,6 +136,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [restartRequiredKeys, setRestartRequiredKeys] = useState([]);
+  const [appliedKeys, setAppliedKeys] = useState([]);
   const loadedRef = useRef(false);
 
   const loadConfig = useCallback(async () => {
@@ -212,6 +213,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
       const successText = getServerMessageDisplay(res, t) || t('admin.config.saved');
       if (onSnackbar) onSnackbar({ type: 'success', text: successText });
       setRestartRequiredKeys(res?.restartRequired || []);
+      setAppliedKeys(res?.applied || []);
       setRevealedSecrets({});
       await loadConfig();
     } catch (error) {
@@ -221,6 +223,21 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const renderTierBadge = (key, entry) => {
+    if (entry.source === 'env' || entry.tier === 'T0') return null;
+    const label = entry.tier === 'T1' ? t('admin.config.tierRestart') : t('admin.config.tierImmediate');
+    return (
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: 'block', mt: 0.5 }}
+        data-testid={`config-tier-${key}`}
+      >
+        {label}
+      </Typography>
+    );
   };
 
   const renderSecretField = (key) => {
@@ -264,6 +281,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
             )}
           </Box>
         )}
+        {renderTierBadge(key, entry)}
       </Box>
     );
   };
@@ -293,6 +311,7 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
             slotProps={{ input: { 'data-testid': `config-input-${key}` } }}
           />
         </Box>
+        {renderTierBadge(key, entry)}
       </Box>
     );
   };
@@ -304,24 +323,27 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const helper = entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
 
     return (
-      <TextField
-        select
-        fullWidth
-        size="small"
-        label={t(meta.labelKey)}
-        value={values[key] ?? ''}
-        onChange={(e) => handleChange(key, e.target.value)}
-        disabled={readOnly || saving}
-        helperText={helper || undefined}
-        margin="normal"
-        inputProps={{ 'data-testid': `config-input-${key}` }}
-      >
-        {meta.options.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
-            {t(option.labelKey)}
-          </MenuItem>
-        ))}
-      </TextField>
+      <Box>
+        <TextField
+          select
+          fullWidth
+          size="small"
+          label={t(meta.labelKey)}
+          value={values[key] ?? ''}
+          onChange={(e) => handleChange(key, e.target.value)}
+          disabled={readOnly || saving}
+          helperText={helper || undefined}
+          margin="normal"
+          inputProps={{ 'data-testid': `config-input-${key}` }}
+        >
+          {meta.options.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </MenuItem>
+          ))}
+        </TextField>
+        {renderTierBadge(key, entry)}
+      </Box>
     );
   };
 
@@ -332,18 +354,21 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
     const helper = entry.source === 'env' ? t('admin.config.setInEnv') : meta.helpKey ? t(meta.helpKey) : '';
 
     return (
-      <TextField
-        fullWidth
-        size="small"
-        type={meta.inputType === 'number' ? 'number' : 'text'}
-        label={t(meta.labelKey)}
-        value={values[key] ?? ''}
-        onChange={(e) => handleChange(key, e.target.value)}
-        disabled={readOnly || saving}
-        helperText={helper || undefined}
-        margin="normal"
-        inputProps={{ 'data-testid': `config-input-${key}` }}
-      />
+      <Box>
+        <TextField
+          fullWidth
+          size="small"
+          type={meta.inputType === 'number' ? 'number' : 'text'}
+          label={t(meta.labelKey)}
+          value={values[key] ?? ''}
+          onChange={(e) => handleChange(key, e.target.value)}
+          disabled={readOnly || saving}
+          helperText={helper || undefined}
+          margin="normal"
+          inputProps={{ 'data-testid': `config-input-${key}` }}
+        />
+        {renderTierBadge(key, entry)}
+      </Box>
     );
   };
 
@@ -396,6 +421,15 @@ const SystemConfigEditor = ({ active, onSnackbar }) => {
           </Box>
         );
       })}
+
+      {appliedKeys.length > 0 && (
+        <Alert severity="success" sx={{ mt: 2 }} data-testid="config-applied-banner">
+          <Typography variant="subtitle2">{t('admin.config.appliedNow')}</Typography>
+          <Typography variant="body2">
+            {t('admin.config.appliedNowDetail', { keys: appliedKeys.join(', ') })}
+          </Typography>
+        </Alert>
+      )}
 
       {restartRequiredKeys.length > 0 && (
         <Alert severity="warning" sx={{ mt: 2 }} data-testid="config-restart-banner">

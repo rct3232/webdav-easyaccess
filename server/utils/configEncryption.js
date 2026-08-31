@@ -53,10 +53,33 @@ function isEncryptedPayload(value) {
   );
 }
 
+/**
+ * True when any settings row holds an encrypted payload — the shape-only
+ * detection used for the key-lost warning (never decrypts, so it cannot leak
+ * plaintext). Accepts the `settingsStore.getAll()` object map, an array of
+ * `{ value }` rows (wizard direct-read shape), or raw values.
+ */
+function hasEncryptedRows(rows) {
+  const values = Array.isArray(rows)
+    ? rows.map((row) => (row && typeof row === 'object' && 'value' in row ? row.value : row))
+    : Object.values(rows || {});
+  return values.some((raw) => {
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        return false;
+      }
+    }
+    return isEncryptedPayload(raw);
+  });
+}
+
 module.exports = {
   deriveKey,
   encryptSecret,
   decryptSecret,
   generateKey,
   isEncryptedPayload,
+  hasEncryptedRows,
 };

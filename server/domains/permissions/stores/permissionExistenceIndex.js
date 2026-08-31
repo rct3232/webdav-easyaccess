@@ -1,19 +1,13 @@
 const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
 const { asyncLimit } = require('../../../utils/asyncUtils');
 const { pathExists } = require('../../../utils/webdav');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 const existenceIndex = new Map(); // normalizedPath -> { state: 'exists'|'missing', checkedAt: number }
 const queuedReconciliationPaths = new Set();
 
 let reconciliationLoopPromise = null;
 let existenceIndexVersion = 0;
-
-const existenceTtlMs =
-  parseInt(process.env.PERMISSIONS_EXISTENCE_INDEX_TTL_MS || '30000', 10) || 30000;
-const reconciliationConcurrency =
-  parseInt(process.env.PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY || '4', 10) || 4;
-const reconciliationBatchSize =
-  parseInt(process.env.PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE || '100', 10) || 100;
 
 function normalizedExistencePath(path) {
   return normalizePath(path || '/');
@@ -33,11 +27,15 @@ function setExistenceState(path, state, checkedAt = Date.now()) {
   existenceIndexVersion++;
 }
 
-function getExistenceState(path, now = Date.now()) {
+// PERMISSIONS_EXISTENCE_INDEX_TTL_MS is T2 (lazy): read the effective value per
+// call so DB-sourced edits apply without a restart.
+async function getExistenceState(path, now = Date.now()) {
   const normalizedPath = normalizedExistencePath(path);
   const entry = existenceIndex.get(normalizedPath);
   if (!entry || typeof entry.checkedAt !== 'number') return 'unknown';
-  if (now - entry.checkedAt > existenceTtlMs) return 'unknown';
+  const ttlMs =
+    parseInt(await getSharedResolver().getConfig('PERMISSIONS_EXISTENCE_INDEX_TTL_MS'), 10) || 30000;
+  if (now - entry.checkedAt > ttlMs) return 'unknown';
   return entry.state;
 }
 
@@ -88,13 +86,20 @@ function queueReconciliation(path) {
 
 async function runReconciliationLoop() {
   try {
+    const resolver = getSharedResolver();
     while (queuedReconciliationPaths.size > 0) {
-      const batch = Array.from(queuedReconciliationPaths).slice(0, reconciliationBatchSize);
+      // PERMISSIONS_EXISTENCE_RECONCILE_* are T2 (lazy): re-read the effective
+      // values each iteration so DB-sourced edits apply without a restart.
+      const [batchSize, concurrency] = await Promise.all([
+        parseInt(await resolver.getConfig('PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE'), 10),
+        parseInt(await resolver.getConfig('PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY'), 10),
+      ]);
+      const batch = Array.from(queuedReconciliationPaths).slice(0, batchSize || 100);
       for (const path of batch) {
         queuedReconciliationPaths.delete(path);
       }
 
-      await asyncLimit(reconciliationConcurrency, batch, async (path) => {
+      await asyncLimit(concurrency || 4, batch, async (path) => {
         try {
           const exists = await pathExists(path);
           setExistenceState(path, exists ? 'exists' : 'missing');

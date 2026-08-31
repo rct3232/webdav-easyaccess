@@ -19,26 +19,16 @@ describe('getBackend', () => {
     console.warn = originalConsoleWarn;
   });
 
-  it('returns sqlite for fs backend with deprecation warning', () => {
+  it('throws for fs backend (removed in Phase 7)', () => {
     process.env.WEA_STORAGE_BACKEND = 'fs';
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('sqlite');
-    expect(warnSpy).toHaveBeenCalledWith(
-      'DEPRECATION: WEA_STORAGE_BACKEND=fs is deprecated. Falling back to sqlite.'
-    );
-    warnSpy.mockRestore();
+    expect(() => storage.getBackend()).toThrow(/Invalid WEA_STORAGE_BACKEND='fs'/);
   });
 
-  it('returns sqlite for webdav backend with deprecation warning', () => {
+  it('throws for webdav backend (removed in Phase 7)', () => {
     process.env.WEA_STORAGE_BACKEND = 'webdav';
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
-    expect(storage.getBackend()).toBe('sqlite');
-    expect(warnSpy).toHaveBeenCalledWith(
-      "DEPRECATION: WEA_STORAGE_BACKEND=webdav is deprecated. Falling back to sqlite."
-    );
-    warnSpy.mockRestore();
+    expect(() => storage.getBackend()).toThrow(/Invalid WEA_STORAGE_BACKEND='webdav'/);
   });
 
   it('passes through postgresql unchanged', () => {
@@ -55,13 +45,8 @@ describe('getBackend', () => {
 
   it('defaults to sqlite for empty/undefined value', () => {
     delete process.env.WEA_STORAGE_BACKEND;
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const storage = require('@server/store/storage');
     expect(storage.getBackend()).toBe('sqlite');
-    expect(warnSpy).toHaveBeenCalledWith(
-      "DEPRECATION: WEA_STORAGE_BACKEND=(default) is deprecated. Falling back to sqlite."
-    );
-    warnSpy.mockRestore();
   });
 
   it('passes through pg alias', () => {

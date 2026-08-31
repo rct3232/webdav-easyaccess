@@ -12,6 +12,7 @@ import {
   getSettings,
   updateSettings,
   getConfig,
+  getConfigStatus,
   updateConfig,
   approveUser,
   rejectUser,
@@ -115,6 +116,22 @@ describe('adminService', () => {
       get.mockRejectedValueOnce(new Error('Request failed'));
 
       await expect(getConfig()).rejects.toThrow();
+    });
+  });
+
+  describe('getConfigStatus', () => {
+    it('returns the full response payload including key_lost_warning', async () => {
+      get.mockResolvedValueOnce({
+        data: { config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } }, key_lost_warning: true },
+      });
+
+      const result = await getConfigStatus();
+
+      expect(get).toHaveBeenCalledWith('/admin/config');
+      expect(result).toEqual({
+        config: { PORT: { value: '5001', source: 'default', tier: 'T1', secret: false } },
+        key_lost_warning: true,
+      });
     });
   });
 

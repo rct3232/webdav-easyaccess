@@ -718,7 +718,7 @@ export const handlers = [
 
   // --- Admin: effective config (docs/spec/server/routes/config.md) ---
   http.get(`${API_BASE}/admin/config`, () => {
-    return HttpResponse.json({ config: mockAdminConfig });
+    return HttpResponse.json({ config: mockAdminConfig, key_lost_warning: false });
   }),
 
   http.put(`${API_BASE}/admin/config`, async ({ request }) => {
@@ -736,6 +736,9 @@ export const handlers = [
       }
       if (entry.tier === 'T0') {
         return errorResponse('serverErrors.admin.configT0Protected', 400, { key });
+      }
+      if (entry.source === 'env') {
+        return errorResponse('serverErrors.admin.configEnvSourcedProtected', 400, { key });
       }
       if (entry.secret) {
         // Masked/blank secret keeps its existing ciphertext (only-re-encrypt-on-new-value).

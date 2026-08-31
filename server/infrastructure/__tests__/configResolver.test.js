@@ -173,7 +173,7 @@ describe('createConfigResolver', () => {
       expect(config.EMAIL_HOST).toEqual({
         value: 'env-host',
         source: 'env',
-        tier: 'T2',
+        tier: 'T1',
         secret: false,
       });
       expect(config.CORS_ORIGINS).toEqual({
@@ -200,7 +200,7 @@ describe('createConfigResolver', () => {
       expect(config.EMAIL_PASSWORD).toEqual({
         value: '****',
         source: 'env',
-        tier: 'T2',
+        tier: 'T1',
         secret: true,
       });
       expect(config.WEBDAV_PASSWORD).toEqual({
@@ -345,6 +345,7 @@ describe('createConfigResolver', () => {
         WEBDAV_URL: 'https://dav.example.com',
         WEBDAV_USERNAME: 'dav-user',
         EMAIL_HOST: 'smtp.example.com',
+        CORS_ORIGINS: 'https://app.example.com',
       });
       const resolver = makeResolver(store, {});
       await resolver.loadAll();
@@ -354,10 +355,12 @@ describe('createConfigResolver', () => {
 
       expect(env.WEBDAV_URL).toBe('https://dav.example.com');
       expect(env.WEBDAV_USERNAME).toBe('dav-user');
-      expect(env.EMAIL_HOST).toBeUndefined(); // T2 — must stay lazy
+      expect(env.EMAIL_HOST).toBe('smtp.example.com'); // T1 — populated at boot
+      expect(env.CORS_ORIGINS).toBeUndefined(); // T2 — must stay lazy
       expect(env.WEA_PG_HOST).toBeUndefined(); // T0 — env only
       expect(populated).toContain('WEBDAV_URL');
-      expect(populated).not.toContain('EMAIL_HOST');
+      expect(populated).toContain('EMAIL_HOST');
+      expect(populated).not.toContain('CORS_ORIGINS');
       expect(populated).not.toContain('WEA_PG_HOST');
     });
 

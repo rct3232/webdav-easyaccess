@@ -43,11 +43,13 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 ```jsonc
 {
   "config": {
-    "EMAIL_HOST":   { "value": "smtp.gmail.com", "source": "db",   "tier": "T2", "secret": false },
-    "EMAIL_PASSWORD": { "value": "****",          "source": "db",   "tier": "T2", "secret": true },
+    "EMAIL_HOST":   { "value": "smtp.gmail.com", "source": "db",   "tier": "T1", "secret": false },
+    "EMAIL_PASSWORD": { "value": "****",          "source": "db",   "tier": "T1", "secret": true },
     "PORT":         { "value": "5001",           "source": "default", "tier": "T1", "secret": false },
+    "CORS_ORIGINS": { "value": "",               "source": "default", "tier": "T2", "secret": false },
     "WEA_PG_HOST":  { "value": "db.internal",    "source": "env",  "tier": "T0", "secret": false }
-  }
+  },
+  "key_lost_warning": false
 }
 ```
 
@@ -56,6 +58,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 - `source` — `'env'` | `'db'` | `'default'` (the layer that supplied `value`).
 - `tier` — `'T0'` | `'T1'` | `'T2'` (registry classification, PLAN §3).
 - `secret` — boolean; true ⇒ encrypted at rest, masked on read.
+- `key_lost_warning` — boolean; **true** when any `settings` row holds an encrypted payload (shape-only detection via `isEncryptedPayload`) **and** `process.env.encrypt_secret_key` is absent — the encrypted DB secrets are undecryptable. Mirrors the wizard's `key_lost_warning` semantics (`docs/spec/server/routes/setup.md`) so the admin UI can warn the operator.
 
 **Errors:** none (auth/admin guard only).
 
@@ -76,8 +79,9 @@ Only changed keys are sent by the client; `values` must be a non-null object (no
 | `values` is null / non-object / array | `400 { errorCode: 'serverErrors.admin.configInvalidPayload' }`        |
 | Unknown key (not in registry)      | `400 { errorCode: 'serverErrors.admin.configUnknownKey', params: { key } }` |
 | T0 key (`isT0(key)`)               | `400 { errorCode: 'serverErrors.admin.configT0Protected', params: { key } }` — `.env`-only per D2/D4/D7. **400, not 403** (client error, not auth). |
+| Current `source === 'env'` (from `getEffectiveConfig()`) | `400 { errorCode: 'serverErrors.admin.configEnvSourcedProtected', params: { key } }` — a DB copy would be silently shadowed by the env value (F4). Mirrors the UI's read-only rule for `source=env` rows. |
 
-Validation is sequential and all-or-nothing: the first failing key aborts the request before any write.
+Validation is sequential and all-or-nothing: the first failing key aborts the request before any write. The `getEffectiveConfig()` snapshot is taken once before the loop; a key is rejected only when its **current** effective source is `'env'`. DB-backed T1 keys mirrored into `process.env` at boot (`populateT1Env` → `markDbSourced`) report `source: 'db'`, so they remain writable.
 
 **Write (per valid key):**
 
@@ -98,17 +102,16 @@ Tier classification after a successful write:
 
 ```jsonc
 {
-  "applied": ["EMAIL_HOST"],
-  "restartRequired": ["PORT"],
+  "applied": ["CORS_ORIGINS"],
+  "restartRequired": ["EMAIL_HOST"],
   "messageCode": "serverMessages.admin.configSaved"
 }
 ```
 
 - `applied` — T2 keys written (effective immediately).
 - `restartRequired` — T1 keys written (require restart).
-- `messageCode` — `serverMessages.admin.configSaved` for client i18n toast.
 
-**source=env semantics:** the server does **not** refuse writes to a key whose current source is `'env'` — it writes the DB copy as requested. While the env var is present it keeps winning (D1), so the DB edit is silently shadowed; the UI renders `source=env` rows read-only to prevent this (D9). `registration_enabled` is a valid non-T0 (T2) registry key and is writable by this generic route, but the admin UI keeps it in the main settings rows and never shows it in the accordion.
+**source=env semantics:** the server **refuses** (400 `configEnvSourcedProtected`) a write to a key whose current effective source is `'env'` — a DB copy would be silently shadowed while the env var keeps winning (D1/F4). This matches the UI, which renders `source=env` rows read-only. DB-backed T1 keys populated at boot remain writable (`source: 'db'`). `registration_enabled` is a valid non-T0 (T2) registry key and is writable by this generic route, but the admin UI keeps it in the main settings rows and never shows it in the accordion.
 
 ### 2.5 Related Documents
 
@@ -125,6 +128,7 @@ New codes added to `shared/serverMessageCodes.js`:
 - `admin.configT0Protected` → `serverErrors.admin.configT0Protected` — `400`, PUT value references a T0 (`.env`-only) key.
 - `admin.configInvalidPayload` → `serverErrors.admin.configInvalidPayload` — `400`, `values` is not a non-null object.
 - `admin.configEncryptKeyMissing` → `serverErrors.admin.configEncryptKeyMissing` — `500`, `encrypt_secret_key` absent while writing a new secret value.
+- `admin.configEnvSourcedProtected` → `serverErrors.admin.configEnvSourcedProtected` — `400`, PUT value's current effective source is `'env'` (F4).
 
 New message code added to `shared/serverMessageCodes.js`:
 
@@ -133,8 +137,10 @@ New message code added to `shared/serverMessageCodes.js`:
 ### 2.7 Integration Test Scenarios
 
 - [ ] GET returns effective config with masked secrets and `value`/`source`/`tier`/`secret` per key
+- [ ] GET returns `key_lost_warning` (`true` when encrypted rows exist without `encrypt_secret_key`, else `false`)
 - [ ] GET/PUT unauthenticated → 401
 - [ ] PUT unknown key → 400 `configUnknownKey`; PUT T0 key → 400 `configT0Protected` (not 403)
+- [ ] PUT `source=env` key → 400 `configEnvSourcedProtected`; DB-sourced key remains writable
 - [ ] PUT plaintext T2 key → `Settings.set(key, String(value))`, cache invalidated, `applied` lists the key
 - [ ] PUT plaintext T1 key → written, cache invalidated, `restartRequired` lists the key
 - [ ] PUT secret `'****'` / blank / null / undefined → skipped (`Settings.set` not called, cache not invalidated)

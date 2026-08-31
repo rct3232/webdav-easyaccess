@@ -4,6 +4,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
 const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction, sqliteRun } = require('../../../store/storage');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const userStore = require('../../../store/userStore');
 
 function isPostgresqlBackend() {
@@ -11,10 +12,6 @@ function isPostgresqlBackend() {
 }
 
 const cache = new Map();
-const CACHE_TTL_MS =
-  process.env.NODE_ENV === 'test'
-    ? 0
-    : parseInt(process.env.PERMISSION_CACHE_TTL_MS || '5000', 10) || 5000;
 
 /* ------------------------------------------------------------------ */
 /*  Share Permissions                                                 */
@@ -339,7 +336,14 @@ async function getUserPermissions(userId) {
   const uid = Number(userId);
   const uidStr = String(uid);
 
-  if (CACHE_TTL_MS > 0) {
+  // PERMISSION_CACHE_TTL_MS is T2 (lazy): read the effective value per call.
+  // The test-mode 0 short-circuit is preserved so unit tests never cache.
+  const cacheTtlMs =
+    process.env.NODE_ENV === 'test'
+      ? 0
+      : parseInt(await getSharedResolver().getConfig('PERMISSION_CACHE_TTL_MS'), 10) || 5000;
+
+  if (cacheTtlMs > 0) {
     const cached = cache.get(uidStr);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
@@ -401,8 +405,8 @@ async function getUserPermissions(userId) {
     ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission, type: 'file' })),
   ];
 
-  if (CACHE_TTL_MS > 0) {
-    cache.set(uidStr, { expiresAt: Date.now() + CACHE_TTL_MS, data: result });
+  if (cacheTtlMs > 0) {
+    cache.set(uidStr, { expiresAt: Date.now() + cacheTtlMs, data: result });
   } else {
     cache.delete(uidStr);
   }

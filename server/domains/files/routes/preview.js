@@ -45,7 +45,7 @@ router.post('/preview-ticket', authenticateTokenOrShare, requireAuth, asyncHandl
     return res.status(HTTP_STATUS.BAD_REQUEST).json({ errorCode: SERVER_ERROR_CODES.files.previewNotVideo });
   }
 
-  const ticket = opStore.issuePreviewTicket(principalId, fileNodeId);
+  const ticket = await opStore.issuePreviewTicket(principalId, fileNodeId);
   res.json({ ticket });
 }));
 

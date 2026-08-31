@@ -2,9 +2,9 @@
 
 const crypto = require('crypto');
 const { createCacheAdapter } = require('../../../infrastructure/adapters/cache');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 
 const DOWNLOAD_PROGRESS_TTL_MS = 5 * 60 * 1000;
-const PREVIEW_TICKET_TTL_MS = parseInt(process.env.WEA_PREVIEW_TICKET_TTL_MS, 10) || 120000;
 const BULK_JOB_TTL_MS = 60 * 60 * 1000;
 
 function OperationProgressStore(downloadCache, previewTicketCache, bulkJobCache) {
@@ -28,12 +28,18 @@ OperationProgressStore.prototype.cleanupDownloadProgress = function (id, ttlMs) 
   if (typeof timer.unref === 'function') timer.unref();
 };
 
-OperationProgressStore.prototype.issuePreviewTicket = function (principalId, fileNodeId, ttlMs) {
+// WEA_PREVIEW_TICKET_TTL_MS is T2 (lazy): when no per-call ttlMs is given, read
+// the effective value so DB-sourced edits apply without a restart.
+OperationProgressStore.prototype.issuePreviewTicket = async function (principalId, fileNodeId, ttlMs) {
+  const resolvedTtl =
+    ttlMs ||
+    parseInt(await getSharedResolver().getConfig('WEA_PREVIEW_TICKET_TTL_MS'), 10) ||
+    120000;
   const ticket = crypto.randomBytes(32).toString('hex');
   this.previewTicketCache.set(
     `pt:${ticket}`,
     { principalId, fileNodeId },
-    ttlMs || PREVIEW_TICKET_TTL_MS
+    resolvedTtl
   );
   return ticket;
 };

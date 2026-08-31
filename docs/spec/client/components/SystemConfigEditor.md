@@ -89,24 +89,28 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 1. Edits accumulate in a local `values` map; a derived dirty set tracks keys whose value differs from the original (secrets: dirty only when the new-value field is non-blank).
 2. "Save changes" (`admin.config.save`) enabled only when dirty.
 3. `updateConfig(changedValues)` sends **only changed keys** (`{ values: { KEY: value } }`), blank secrets excluded.
-4. On success: Snackbar via `onSnackbar` (`admin.config.saved` / `serverMessages.admin.configSaved`), set the "Restart required" Alert banner from `restartRequired` (T1 keys), clear dirty + revealed secrets, re-fetch the config.
+4. On success: Snackbar via `onSnackbar` (`admin.config.saved` / `serverMessages.admin.configSaved`), set the "Restart required" Alert banner from `restartRequired` (T1 keys), set the "Applied" Alert banner from `applied` (T2 keys), clear dirty + revealed secrets, re-fetch the config.
 5. On failure: error Snackbar via `getServerErrorDisplay`.
 
 ### 2.10 Feedback
 
 - **Snackbar** (page-level, via `onSnackbar`): save success/error.
-- **Alert banner** (inside the editor): `admin.config.restartRequired` + `admin.config.restartRequiredDetail` listing the T1 keys in `restartRequired`. T2 keys in `applied` take effect immediately.
+- **Alert banner — restart required** (inside the editor): `admin.config.restartRequired` + `admin.config.restartRequiredDetail` listing the T1 keys in `restartRequired` (`data-testid="config-restart-banner"`).
+- **Alert banner — applied** (inside the editor): `admin.config.appliedNow` + `admin.config.appliedNowDetail` listing the T2 keys in `applied` — surfaced so the operator sees exactly what took effect immediately (`data-testid="config-applied-banner"`).
+- **Per-field tier badge** (while editing): each non-read-only field renders a badge from `entry.tier` — T1 → `admin.config.tierRestart` ("Restart required"), T2 → `admin.config.tierImmediate` ("Applies immediately"). Feedback is visible *before* save, not only after.
 
 ### 2.11 i18n Keys
 
 - `admin.advancedSettings` (accordion title in SystemSettingsContent)
 - `admin.config.save`, `admin.config.saving`, `admin.config.saved`, `admin.config.saveFail`, `admin.config.loadFail`, `admin.config.retry`
 - `admin.config.restartRequired`, `admin.config.restartRequiredDetail`
+- `admin.config.appliedNow`, `admin.config.appliedNowDetail`
+- `admin.config.tierRestart`, `admin.config.tierImmediate`
 - `admin.config.setInEnv`, `admin.config.setNewValue`, `admin.config.secretKeepExisting`
 - `admin.config.group.metadata`, `admin.config.group.fileStorage`, `admin.config.group.serverSecurity`, `admin.config.group.email`, `admin.config.group.runtime`
 - `admin.config.key.<KEY>` for every displayed key
 - `admin.config.help.CORS_ORIGINS` (optional help; `setup.expiresInHelp` reused for expiry keys)
-- New server codes: `serverErrors.admin.configUnknownKey`, `serverErrors.admin.configT0Protected`, `serverErrors.admin.configInvalidPayload`, `serverErrors.admin.configEncryptKeyMissing`, `serverMessages.admin.configSaved`
+- New server codes: `serverErrors.admin.configUnknownKey`, `serverErrors.admin.configT0Protected`, `serverErrors.admin.configInvalidPayload`, `serverErrors.admin.configEncryptKeyMissing`, `serverErrors.admin.configEnvSourcedProtected`, `serverMessages.admin.configSaved`
 
 ### 2.12 Verification Scenarios
 
@@ -117,6 +121,8 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 - [ ] Save sends only changed keys (MSW captures `{ values: { KEY } }`)
 - [ ] Blank new-value secret is skipped on save; a typed value is sent
 - [ ] `restartRequired` keys render the Alert banner; success goes to `onSnackbar`
+- [ ] `applied` keys render the "applied immediately" Alert banner
+- [ ] Non-read-only fields show the per-field tier badge (T1 "restart required" / T2 "applies immediately")
 - [ ] Fetch happens lazily on first `active` (accordion expand)
 
 ### 2.13 Edge Cases

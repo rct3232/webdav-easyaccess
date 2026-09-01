@@ -1,6 +1,6 @@
 # PLAN — Unified Migration Mode (metadata DB migration + blob migration cutover)
 
-Status: DESIGNED — full implementation plan agreed (2026-09-01). Not started.
+Status: IMPLEMENTED — unified migration mode shipped to dev (commits e640eab, eca821f, 9cbd8f3). Remaining work tracked in the progress log below.
 Branch (planned): `feature/migration-mode` (base: `dev`).
 
 ## 1. Objective

@@ -13,7 +13,7 @@ import { getServerErrorDisplay } from '../../../utils/errorUtils';
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
-const AccountContent = ({ user, onMessage }) => {
+const AccountContent = ({ user }) => {
   const { t } = useTranslation();
   const { logout } = useAuth();
   const navigate = useNavigate();

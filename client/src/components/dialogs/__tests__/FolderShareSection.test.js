@@ -16,7 +16,7 @@ const defaultProps = {
   isShareMode: false,
   isReviewMode: false,
   rootPath: '/',
-  renderFolderTreeWrapper: jest.fn((path, level) => <span data-testid="tree-node">{path}</span>),
+  renderFolderTreeWrapper: jest.fn((path) => <span data-testid="tree-node">{path}</span>),
 };
 
 describe('FolderShareSection', () => {

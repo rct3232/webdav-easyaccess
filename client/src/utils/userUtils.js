@@ -2,8 +2,6 @@
  * User utility functions
  */
 
-import { normalizePath } from './pathUtils';
-
 /**
  * Get user's base folder path
  * @param {object} user - User object

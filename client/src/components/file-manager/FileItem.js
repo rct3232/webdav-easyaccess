@@ -39,7 +39,7 @@ const FileItem = ({
     onMouseUp,
     onMouseLeave,
     wasLongPress,
-  } = useLongPress((e) => {
+  } = useLongPress(() => {
     if (onLongPressCallback) {
       onLongPressCallback(file);
     }

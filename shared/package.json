@@ -2,5 +2,8 @@
   "name": "@webdav-easyaccess/shared",
   "version": "1.0.0",
   "private": true,
-  "main": "index.js"
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint ."
+  }
 }

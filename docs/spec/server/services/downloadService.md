@@ -46,7 +46,7 @@ Assembles a ZIP archive from multiple file node IDs with per-file async permissi
 | userId | string | yes | ID of the requesting user for permission checks |
 | user | object | yes | User context passed through for downstream resolution |
 
-**Returns:** `{ zipStream, totalFiles, downloadId }` — `zipStream` is a readable stream from archiver; `totalFiles` is the count of files that passed permission checks; `downloadId` is a UUID keying progress entries in the operationProgress store.
+**Returns:** `{ zipStream, totalFiles, downloadId, errors }` — `zipStream` is a readable stream from archiver; `totalFiles` is the count of files actually appended to the ZIP (files that passed permission checks and were not skipped as directories or errors); `downloadId` is a UUID keying progress entries in the operationProgress store; `errors` is an array of skip/error entries used by the route for `X-WEA-Skipped` response metadata.
 
 **Flow:**
 
@@ -54,12 +54,12 @@ Assembles a ZIP archive from multiple file node IDs with per-file async permissi
 2. **Partition results:** Files passing permission checks enter the inclusion list; files failing produce entries in `errors[]` with `{ nodeId, reason: 'permission_denied' }`.
 3. **All-fail guard:** If ALL nodeIds fail permission checks, return 403 immediately — no ZIP assembly proceeds.
 4. **ZIP initialization:** Create archiver instance (`archiver('zip', { zlib: { level: 6 } })`) and generate `downloadId` (UUID v4). Write initial progress entry via operationProgress store with `{ completed: 0, total: inclusionList.length, percentage: 0 }`.
-5. **Streaming assembly:** Iterate inclusion list sequentially — for each nodeId: resolve active object_map row via `fileNodeService`, retrieve display name from `file_nodes.name` column, stream blob content through `blobStorageService.downloadBlob(nodeId)`, append to archiver with the display name as entry path. On success, increment progress counter and write updated progress entry.
-6. **Finalize:** Finalize archiver, update progress to `{ completed: totalFiles, total: totalFiles, percentage: 100 }`. Return `{ zipStream, totalFiles, downloadId }` with `errors[]` attached for downstream middleware to include in response metadata.
+5. **Streaming assembly:** Iterate inclusion list sequentially — for each nodeId: resolve active object_map row via `fileNodeService`, retrieve display name from `file_nodes.name` column, then inspect the resolved node `type`. If `type === 'directory'`, skip the node: decrement the running `totalFiles` used by the progress store, push an error entry `{ nodeId, reason: 'directory_skipped', detail: 'Directory nodes cannot be downloaded' }`, and do NOT call `blobStorageService.downloadBlob(nodeId)` nor count the node toward `successCount`. Otherwise stream blob content through `blobStorageService.downloadBlob(nodeId)`, append to archiver with the display name as entry path. On success, increment progress counter and write updated progress entry.
+6. **Finalize:** Finalize archiver, update progress to reflect the final completed count (`successCount`) against the (possibly decremented) `totalFiles`, guarding against `total: 0` (all-directory selection) to avoid division by zero. Return `{ zipStream, totalFiles, downloadId }` with `errors[]` attached for downstream middleware to include in response metadata.
 
 **Error entries format:** Each skipped file appends to `errors[]`:
 ```js
-{ nodeId: <number>, reason: '<permission_denied | not_found | blob_error>', detail?: string }
+{ nodeId: <number>, reason: '<permission_denied | not_found | blob_error | directory_skipped>', detail?: string }
 ```
 
 #### `getDownloadProgress(downloadId)`
@@ -118,6 +118,7 @@ The progress is pollable via a separate GET endpoint consuming `getDownloadProgr
 | Condition | Behavior |
 |-----------|----------|
 | nodeId not found in file_nodes table | Skipped with error entry `{ nodeId, reason: 'not_found' }` — does not abort assembly of remaining files |
+| nodeId is a directory node (`type === 'directory'`) | Skipped with error entry `{ nodeId, reason: 'directory_skipped', detail: 'Directory nodes cannot be downloaded' }` — `blobStorageService.downloadBlob(nodeId)` is NOT called, the node does not count toward `successCount`, and the progress-store `totalFiles` is decremented so progress converges; assembly continues with remaining files. An all-directory selection still produces a valid (empty) ZIP with `totalFiles: 0` instead of throwing |
 | blob download fails for a nodeId (blobStorageService returns null or throws) | Recorded as `{ nodeId, reason: 'blob_error', detail: <error message> }` — assembly continues with remaining files |
 | Permission denied for all nodeIds | Returns 403 response immediately; no ZIP archive initialized |
 | Permission denied for subset of nodeIds | Denied files excluded with error entries; ZIP assembled from permitted files only |
@@ -137,3 +138,5 @@ The progress is pollable via a separate GET endpoint consuming `getDownloadProgr
 - [ ] getDownloadProgress returns null for expired downloadId after TTL
 - [ ] nodeId not found in file_nodes results in error entry with reason 'not_found' — assembly continues
 - [ ] blobStorageService.downloadBlob returning null produces error entry with reason 'blob_error'
+- [ ] a directory nodeId is skipped with error entry reason 'directory_skipped', `blobStorageService.downloadBlob` is NOT called for it, and it does not count toward `totalFiles`
+- [ ] an all-directory selection still returns a valid (empty) ZIP with `totalFiles: 0` (no throw, no hang)

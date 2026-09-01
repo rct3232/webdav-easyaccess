@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
-const { asyncHandler, validationError, forbiddenError } = require('../../../utils/errorHandler');
+const { asyncHandler } = require('../../../utils/errorHandler');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const shareLinkService = require('../services/shareLinkService');
 

@@ -48,7 +48,7 @@ async function parseResponse(response, config) {
       const reader = response.body.getReader();
       const chunks = [];
       let loaded = 0;
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value);

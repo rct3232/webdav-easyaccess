@@ -3,7 +3,7 @@
  * @see docs/spec/client/hooks/useFileOperations.md
  * @see docs/TESTING_STRATEGY.md
  */
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useFileOperations } from '../useFileOperations';
 
 import * as fileService from '../../../../services/fileService';
@@ -28,8 +28,6 @@ const mockOnProgress = jest.fn();
 const mockOnClose = jest.fn();
 const mockOnActionComplete = jest.fn();
 const mockSetProcessingMap = jest.fn();
-const mockOnProcessingStart = jest.fn();
-const mockOnProcessingEnd = jest.fn();
 
 describe('useFileOperations', () => {
   beforeEach(() => {

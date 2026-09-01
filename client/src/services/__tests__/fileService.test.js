@@ -5,7 +5,7 @@
  * @see docs/spec/client/services/fileService.md
  * @see docs/TESTING_STRATEGY.md
  */
-import { get, post, put } from '../apiClient';
+import { get, post } from '../apiClient';
 
 import {
   listFiles,

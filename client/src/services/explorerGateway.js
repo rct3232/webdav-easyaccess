@@ -80,7 +80,7 @@ export const loadRecentFiles = async (options) => {
   return getRecentFiles(options);
 };
 
-export const loadSharedEntries = async ({ user, options = {} } = {}) => {
+export const loadSharedEntries = async ({ user, options: _options = {} } = {}) => {
   if (!user?.id) {
     return [];
   }

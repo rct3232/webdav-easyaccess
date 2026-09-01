@@ -146,7 +146,7 @@ async function registerUser({ username, email, password }) {
   } catch (error) {
     if (error.errorCode) throw error;
     if (createdUser && createdUser.id) {
-      try { await User.delete(createdUser.id); } catch {}
+      try { await User.delete(createdUser.id); } catch { /* best-effort rollback */ }
     }
     throw error;
   }

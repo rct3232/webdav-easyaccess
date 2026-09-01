@@ -154,7 +154,6 @@ describe('permissionRequestStore (nodeId)', () => {
         [uid('other'), `${uid('other')}@test.com`, 'hash_other', 'pw']
       );
       const otherId = otherUserRes.lastID;
-      const otherUsername = uid('other');
 
       // Update username to match what we inserted
       await dbRun(

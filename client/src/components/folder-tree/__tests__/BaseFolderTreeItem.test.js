@@ -58,10 +58,9 @@ describe('BaseFolderTreeItem', () => {
 
   it('calls onToggleExpand with the nodeId when expand icon clicked', () => {
     renderWithProviders(
-      <BaseFolderTreeItem
-        {...defaultProps}
-        children={[{ nodeId: 11, name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false }]}
-      />
+      <BaseFolderTreeItem {...defaultProps}>
+        {[{ nodeId: 11, name: 'docs', hasReadPermission: true, hasWritePermission: true, isHidden: false }]}
+      </BaseFolderTreeItem>
     );
 
     const button = screen.getByRole('button', { name: /testuser/i });
@@ -82,8 +81,9 @@ describe('BaseFolderTreeItem', () => {
       <BaseFolderTreeItem
         {...defaultProps}
         expandedNodeIds={new Set([10])}
-        children={[]}
-      />
+      >
+        {[]}
+      </BaseFolderTreeItem>
     );
     await waitFor(() => {
       expect(folderTreeGateway.listFolderChildren).toHaveBeenCalledWith(

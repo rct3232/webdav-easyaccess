@@ -60,7 +60,7 @@ export function getMyPageCategoryIcon(categoryId) {
 export function getMyPageSidebarCategories(isAdmin) {
   return MY_PAGE_CATEGORY_META.filter((cat) => {
     if (cat.visibility === 'adminOnly') return Boolean(isAdmin);
-    if (cat.visibility === 'nonAdminOnly') return !Boolean(isAdmin);
+    if (cat.visibility === 'nonAdminOnly') return !isAdmin;
     return true;
   });
 }

@@ -71,7 +71,7 @@ describe('UserManagementContent', () => {
   it('approve for pending users calls API and shows success', async () => {
     let approveCalled = false;
     server.use(
-      http.post('/api/admin/users/:id/approve', ({ params }) => {
+      http.post('/api/admin/users/:id/approve', () => {
         approveCalled = true;
         return HttpResponse.json({ messageCode: 'serverMessages.admin.userApproved' });
       })
@@ -101,7 +101,7 @@ describe('UserManagementContent', () => {
   it('reject for pending users calls API and shows success', async () => {
     let rejectCalled = false;
     server.use(
-      http.post('/api/admin/users/:id/reject', ({ params }) => {
+      http.post('/api/admin/users/:id/reject', () => {
         rejectCalled = true;
         return HttpResponse.json({ messageCode: 'serverMessages.admin.userRejected' });
       })
@@ -131,7 +131,7 @@ describe('UserManagementContent', () => {
   it('delete for non-admin approved users: confirm dialog and API call', async () => {
     let deleteCalled = false;
     server.use(
-      http.delete('/api/admin/users/:id', ({ params }) => {
+      http.delete('/api/admin/users/:id', () => {
         deleteCalled = true;
         return HttpResponse.json({ messageCode: 'serverMessages.admin.userDeleted' });
       })

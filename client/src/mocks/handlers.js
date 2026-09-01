@@ -372,7 +372,7 @@ export const handlers = [
     HttpResponse.json({ messageCode: 'serverMessages.recentFiles.clearedSuccess' })
   ),
 
-  http.delete(`${API_BASE}/recent-files/:fileNodeId`, ({ params }) =>
+  http.delete(`${API_BASE}/recent-files/:fileNodeId`, () =>
     HttpResponse.json([])
   ),
 
@@ -450,7 +450,7 @@ export const handlers = [
   // --- Files: batch-move (POST, body: { moves, onConflict }) ---
   http.post(`${API_BASE}/files/batch-move`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { moves, onConflict } = body;
+    const { moves } = body;
     if (!moves || !Array.isArray(moves) || moves.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
@@ -471,7 +471,7 @@ export const handlers = [
   // --- Files: batch-copy (POST, body: { copies, onConflict }) ---
   http.post(`${API_BASE}/files/batch-copy`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
-    const { copies, onConflict } = body;
+    const { copies } = body;
     if (!copies || !Array.isArray(copies) || copies.length === 0) {
       return errorResponse('serverErrors.files.sourceDestRequired', 400);
     }
@@ -548,7 +548,7 @@ export const handlers = [
     });
   }),
 
-  http.get(`${API_BASE}/files/download-progress/:id`, ({ params }) => {
+  http.get(`${API_BASE}/files/download-progress/:id`, () => {
     return HttpResponse.json({
       status: 'completed',
       progress: 1,

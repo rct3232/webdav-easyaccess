@@ -5,7 +5,6 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
 const { asyncLimit } = require('./asyncUtils');
 const { createError } = require('./errorHandler');
-const { SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 const { createCacheAdapter } = require('../infrastructure/adapters/cache');
 const { getSharedResolver } = require('../infrastructure/configResolver');
@@ -385,15 +384,10 @@ async function putFileContents(path, buffer) {
  */
 async function putFileContentsAdvanced(path, buffer, options = {}) {
   const client = await getWebDAVClient();
-  try {
-    const normalizedPath = normalizePath(path);
-    const requestPath = getRequestPath(normalizedPath);
-    await client.putFileContents(requestPath, buffer, options);
-    return { success: true };
-  } catch (error) {
-    // Preserve status codes for callers that need to branch on 412/409/etc
-    throw error;
-  }
+  const normalizedPath = normalizePath(path);
+  const requestPath = getRequestPath(normalizedPath);
+  await client.putFileContents(requestPath, buffer, options);
+  return { success: true };
 }
 
 /**
@@ -619,24 +613,20 @@ async function createDirectory(path) {
 
 async function pathExists(path) {
   const client = await getWebDAVClient();
+  const normalizedPath = normalizePath(path);
   try {
-    const normalizedPath = normalizePath(path);
+    const exists = await client.exists(getRequestPath(normalizedPath));
+    return exists;
+  } catch (existsError) {
     try {
-      const exists = await client.exists(getRequestPath(normalizedPath));
-      return exists;
-    } catch (existsError) {
-      try {
-        const parentDir = getParentPath(normalizedPath);
-        const filename = getBasename(normalizedPath);
-        const items = await client.getDirectoryContents(getRequestPath(parentDir));
-        const resolved = items.some(item => item.basename === filename);
-        return resolved;
-      } catch (listError) {
-        return false;
-      }
+      const parentDir = getParentPath(normalizedPath);
+      const filename = getBasename(normalizedPath);
+      const items = await client.getDirectoryContents(getRequestPath(parentDir));
+      const resolved = items.some(item => item.basename === filename);
+      return resolved;
+    } catch (listError) {
+      return false;
     }
-  } catch (error) {
-    throw error;
   }
 }
 

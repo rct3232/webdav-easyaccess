@@ -40,7 +40,7 @@ function createDownloadService({ fileNodeService, blobStorageService, aclService
 		}
 
 		const downloadId = crypto.randomUUID();
-		const totalFiles = allowedNodeIds.length;
+		let totalFiles = allowedNodeIds.length;
 
 		progressStore.set(downloadId, { completed: 0, total: totalFiles, percentage: 0 });
 
@@ -60,6 +60,15 @@ function createDownloadService({ fileNodeService, blobStorageService, aclService
 					}
 					if (node.name) {
 						displayName = node.name;
+					}
+					if (node.type === 'directory') {
+						totalFiles -= 1;
+						errors.push({
+							nodeId,
+							reason: 'directory_skipped',
+							detail: 'Directory nodes cannot be downloaded',
+						});
+						continue;
 					}
 				} catch (_) {
 					errors.push({ nodeId, reason: 'not_found' });

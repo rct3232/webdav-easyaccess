@@ -3,8 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { authenticateToken } = require('../../../utils/auth');
-const { asyncHandler, notFoundError, forbiddenError, validationError, conflictError } = require('../../../utils/errorHandler');
-const { revokeAllUserTokens } = require('../../../domains/auth/service');
+const { asyncHandler, notFoundError, forbiddenError, validationError } = require('../../../utils/errorHandler');
 const User = require('../../../models/User');
 const {
   listUsers,

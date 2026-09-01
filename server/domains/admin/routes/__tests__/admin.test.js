@@ -12,7 +12,6 @@ const {
   USER_STATUS,
   PERMISSIONS,
 } = require('../../../../test-utils');
-const Settings = require('../../../../models/Settings');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const permissionStore = require('../../../../domains/permissions/stores/permissionStore');
 

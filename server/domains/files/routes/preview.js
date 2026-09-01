@@ -6,7 +6,7 @@ const path = require('path');
 
 const { authenticateTokenOrShare } = require('../../../utils/auth');
 const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 const { requireAuth } = require('../../../middleware/requireUser');
 const { asyncHandler, validationError, notFoundError } = require('../../../utils/errorHandler');
@@ -85,7 +85,7 @@ router.get('/preview-stream', asyncHandler(async (req, res) => {
   const node = await fileNodeService.getNode(fileNodeId);
   const filename = node ? node.name : 'preview';
   const encodedFilename = encodeURIComponent(filename);
-  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
+  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_'); // eslint-disable-line no-control-regex
 
   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
   res.setHeader('Content-Disposition', `inline; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);

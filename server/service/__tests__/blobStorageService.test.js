@@ -604,7 +604,7 @@ describe('createBlobStorageService', () => {
       const nodeB = await fileNodesStore.createNode(null, 'cow-exclusive-b', 'file');
       const sharedKey = crypto.randomUUID();
 
-      blobStore.copyBlob = jest.fn((src, dst) => {
+      blobStore.copyBlob = jest.fn(() => {
         return Promise.resolve();
       });
 

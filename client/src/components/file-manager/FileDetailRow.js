@@ -11,7 +11,6 @@ import { useLongPressSelect } from './hooks/useLongPressSelect';
 
 const FileDetailRow = ({
   file,
-  index,
   onFileClick,
   onMoreClick,
   showMoreButton,
@@ -46,14 +45,13 @@ const FileDetailRow = ({
     onMouseUp,
     onMouseLeave,
     wasLongPress,
-  } = useLongPress((e) => {
+  } = useLongPress(() => {
     if (onLongPressCallback) {
       onLongPressCallback(file);
     }
   });
 
-  const allowContextMenu = isPermissionDisabled && !isProcessing;
-  const canOpenMenu = !isDisabled || allowContextMenu;
+  const allowContextMenu = isPermissionDisabled && !isProcessing;  const canOpenMenu = !isDisabled || allowContextMenu;
 
   return (
     <TableRow

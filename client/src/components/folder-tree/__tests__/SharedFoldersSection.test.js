@@ -9,12 +9,16 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import SharedFoldersSection from '../SharedFoldersSection';
 
-jest.mock('../BaseFolderTreeItem', () => ({ node, onNodeClick, onToggleExpand }) => (
-  <div data-testid="base-folder-tree-item">
-    <button onClick={() => onNodeClick(node.nodeId)}>{node.name}</button>
-    <button onClick={() => onToggleExpand(node.nodeId)}>Expand</button>
-  </div>
-));
+jest.mock('../BaseFolderTreeItem', () =>
+  function MockBaseFolderTreeItem({ node, onNodeClick, onToggleExpand }) {
+    return (
+      <div data-testid="base-folder-tree-item">
+        <button onClick={() => onNodeClick(node.nodeId)}>{node.name}</button>
+        <button onClick={() => onToggleExpand(node.nodeId)}>Expand</button>
+      </div>
+    );
+  }
+);
 
 const sharedFolders = [
   { nodeId: 10, permission: 'read' },

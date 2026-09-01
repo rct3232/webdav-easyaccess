@@ -24,7 +24,7 @@ const getSkeletonOpacity = (index, count) => {
  * Matches the layout of FileList items: icon (40x40) + text area + metadata
  * Uses responsive grid layout: single column on mobile, grid on desktop
  */
-export const FileListSkeleton = ({ count, selectionMode = false }) => {
+export const FileListSkeleton = ({ count }) => {
   const { isMobile } = useResponsive();
   const skeletonCount = count || (isMobile ? 4 : 6);
 
@@ -93,7 +93,7 @@ export const FileListSkeleton = ({ count, selectionMode = false }) => {
  * Matches the layout of FileGrid cards: square image area + text
  * Uses same CSS Grid layout as FileGrid: breakpoint-based repeat(N, 1fr), xl uses auto-fill for resolution-dependent columns
  */
-export const FileGridSkeleton = ({ count, selectionMode = false }) => {
+export const FileGridSkeleton = ({ count }) => {
   const { isMobile } = useResponsive();
   const skeletonCount = count || (isMobile ? 4 : 8);
 
@@ -163,7 +163,7 @@ export const FileGridSkeleton = ({ count, selectionMode = false }) => {
  * Detail view skeleton loader
  * Matches the layout of FileDetail table rows: icon + name + type + size + date
  */
-export const FileDetailSkeleton = ({ count, selectionMode = false }) => {
+export const FileDetailSkeleton = ({ count }) => {
   const skeletonCount = count || 6;
 
   return (

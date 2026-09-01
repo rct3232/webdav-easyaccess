@@ -30,22 +30,6 @@
     "eject": "react-scripts eject",
     "test:mutation": "stryker run"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ],
-    "env": {
-      "es2021": true
-    },
-    "rules": {
-      "no-restricted-globals": [
-        "error",
-        "event",
-        "fdescribe",
-        "fit"
-      ]
-    }
-  },
   "browserslist": {
     "production": [
       ">0.2%",

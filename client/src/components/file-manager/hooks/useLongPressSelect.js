@@ -37,7 +37,7 @@ export function useLongPressSelect({ isMobile, selectionMode, onLongPressSelect 
         const id = setTimeout(() => {
           if (!movedRef.current.has(filePath)) {
             onLongPressSelect(file);
-            try { navigator.vibrate?.(50); } catch {}
+            try { navigator.vibrate?.(50); } catch { /* haptics are optional */ }
           }
         }, LONG_PRESS_MS);
         timersRef.current.set(filePath, id);

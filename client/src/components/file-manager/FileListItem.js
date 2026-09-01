@@ -84,16 +84,10 @@ const processingOverlayStyles = {
  */
 const FileListItem = React.memo(({
   file,
-  isSelected,
-  isDisabled,
   isProcessing,
   processingType,
-  isDropTarget,
-  isDragging,
-  selectionMode,
   showMoreButton,
   onMoreClick,
-  isMobile,
 }) => {
   const { t } = useTranslation();
   const thumbnail = getThumbnail(file);

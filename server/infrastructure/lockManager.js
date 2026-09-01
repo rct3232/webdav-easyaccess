@@ -52,7 +52,7 @@ function createSqliteLockRelease(lockKey, token) {
 
 async function acquirePostgresqlLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs) {
   const deadline = Date.now() + waitMs;
-  while (true) {
+  for (;;) {
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + ttlMs);
 
@@ -85,7 +85,7 @@ async function acquirePostgresqlLock(lockName, lockKey, token, owner, ttlMs, wai
 
 async function acquireSqliteLock(lockName, lockKey, token, owner, ttlMs, waitMs, retryDelayMs) {
   const deadline = Date.now() + waitMs;
-  while (true) {
+  for (;;) {
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + ttlMs);
 

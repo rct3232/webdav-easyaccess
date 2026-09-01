@@ -43,7 +43,6 @@ export function useShareDialog({
   handleAddUserPermission,
   handleRemoveUserPermission,
   handleToggleUserPermission,
-  hasPermissionChanged,
 }) {
   const { t } = useTranslation();
   const isAdminMode = mode === 'admin';
@@ -154,7 +153,7 @@ export function useShareDialog({
           await loadRecursive(child.nodeId);
           await new Promise(resolve => setTimeout(resolve, 50));
         }
-      } catch (err) {}
+      } catch { /* best-effort preload; ignore load failures */ }
     };
     await loadRecursive(parentNodeId);
     return expandedNodeIdsSet;
@@ -384,7 +383,7 @@ export function useShareDialog({
       if (isShareMode || isReviewMode) loadUsers();
       initializeDialog();
     }
-  }, [open, rootPath, isAdminMode, isShareMode, isReviewMode, userId, username, permissionRequest, folderNodeIdProp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, rootPath, isAdminMode, isShareMode, isReviewMode, userId, username, permissionRequest, folderNodeIdProp]); // eslint-disable-line
 
   const toggleExpand = useCallback(async (nodeId) => {
     const wasExpanded = expandedNodeIds.has(nodeId);
@@ -425,7 +424,7 @@ export function useShareDialog({
     return u ? u.username : '';
   }, [isAdminMode, username, userInfoMap, users]);
 
-  const handleAddUser = useCallback((nodeId, targetUserId = null) => {
+  const handleAddUser = useCallback((nodeId, _targetUserId = null) => {
     if (isAdminMode) {
       if (!userId) return;
       const defaultPermission =

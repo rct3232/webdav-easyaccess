@@ -79,20 +79,6 @@ async function uploadFile(user, parentNodeId, filename, content) {
     .attach('file', Buffer.from(content), filename);
 }
 
-async function pollJob(user, jobId, maxPolls = 50) {
-  // No real-time waits (docs/TESTING_STRATEGY.md "Avoid real-time waits"):
-  // poll on setImmediate turns with a bounded iteration count. With
-  // WEA_SKIP_BULK_WORKER=1 the worker never runs, so jobs resolve immediately.
-  for (let i = 0; i < maxPolls; i++) {
-    const res = await request(app)
-      .get(`/api/files/bulk-operation/${jobId}`)
-      .set('Authorization', `Bearer ${user.token}`);
-    if (res.body && res.body.status !== 'running') return res;
-    await new Promise((r) => setImmediate(r));
-  }
-  throw new Error(`Job ${jobId} did not complete within ${maxPolls} polls`);
-}
-
 /**
  * Create a non-admin user with a home-root node and the home-root ADMIN grant
  * (mirrors the production user creation/ensure-home-owner-admin flow).

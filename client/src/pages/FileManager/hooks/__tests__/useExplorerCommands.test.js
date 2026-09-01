@@ -3,7 +3,7 @@
  * @see docs/spec/client/hooks/useExplorerCommands.md
  * @see docs/TESTING_STRATEGY.md
  */
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 
 import explorerGateway from '../../../../services/explorerGateway';
 import { useBulkOperations } from '../useBulkOperations';

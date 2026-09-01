@@ -24,7 +24,6 @@ const ConflictResolveDialog = ({
   onClose,
   onResolve,
   conflicts = [],
-  operationType,
 }) => {
   const { t } = useTranslation();
   const handleOverwrite = () => {

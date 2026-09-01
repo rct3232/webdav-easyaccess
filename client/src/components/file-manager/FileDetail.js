@@ -8,22 +8,15 @@ import {
   TableRow,
   Typography,
   Box,
-  CircularProgress,
   useTheme,
-  Tooltip,
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
-import { MoreVert as MoreVertIcon } from '@mui/icons-material';
-import { formatFileSize, formatDate } from '../../utils/format';
 import { useFileViewCommon } from './hooks/useFileViewCommon';
 import { useResponsive } from '../../hooks/useResponsive';
-import { renderProcessingIcon, getEntryKey } from '../../utils/fileViewUtils';
-import { getFileIcon } from '../../utils/fileIconUtils';
+import { getEntryKey } from '../../utils/fileViewUtils';
 import { FileDetailSkeleton } from './FileSkeletons';
-import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import FileDetailRow from './FileDetailRow';
 
-const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, hasWritePermission, currentPath, onPathClick, loading = false }) => {
+const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, loading = false }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);

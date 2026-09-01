@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { asyncHandler } = require('../../../utils/errorHandler');
 const { authenticateToken } = require('../../../utils/auth');

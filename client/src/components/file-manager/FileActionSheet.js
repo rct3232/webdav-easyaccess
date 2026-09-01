@@ -40,7 +40,6 @@ const FileActionSheet = ({
   onPreview,
   onProperties,
   hasWritePermission = true,
-  user,
 }) => {
   const { t } = useTranslation();
   if (!file) return null;

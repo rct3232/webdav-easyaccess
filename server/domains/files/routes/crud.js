@@ -2,13 +2,12 @@
 
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const path = require('path');
 const multer = require('multer');
 
 const { authenticateToken, authenticateTokenOrShare } = require('../../../utils/auth');
 const requireUser = require('../../../middleware/requireUser');
 const { requireAuth } = requireUser;
-const { asyncHandler, validationError, forbiddenError, notFoundError, conflictError } = require('../../../utils/errorHandler');
+const { asyncHandler, validationError, notFoundError } = require('../../../utils/errorHandler');
 const { parseNodeId } = require('../../../middleware/validateNodeIdParam');
 
 const { getConflictsByNodeIds } = require('../services/conflictResolver');
@@ -102,7 +101,6 @@ router.post('/metadata', authenticateTokenOrShare, requireAuth, asyncHandler(asy
 
 router.get('/list', authenticateTokenOrShare, requireAuth, asyncHandler(async (req, res) => {
   const principalId = req.principalId;
-  const isShare = isSharePrincipal(principalId);
 
   let parentNodeId;
   if (req.query.nodeId != null && req.query.nodeId !== '') {
@@ -166,7 +164,7 @@ router.get('/download', authenticateTokenOrShare, requireAuth, asyncHandler(asyn
   const node = await fileNodeService.getNode(fileNodeId);
   const filename = node ? node.name : 'download';
   const encodedFilename = encodeURIComponent(filename);
-  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_');
+  const asciiFilename = filename.replace(/[^\x00-\x7F]/g, '_'); // eslint-disable-line no-control-regex
   const disposition = inline ? 'inline' : 'attachment';
   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
   res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
@@ -187,11 +185,11 @@ router.post('/upload', authenticateToken, requireAuth, upload.single('file'), as
 
   let originalFilename = req.file.originalname;
   try {
-    if (/[\x00-\x7F]/.test(originalFilename)) {
+    if (/[\x00-\x7F]/.test(originalFilename)) { // eslint-disable-line no-control-regex
       const latin1Buffer = Buffer.from(originalFilename, 'latin1');
       originalFilename = latin1Buffer.toString('utf8');
     }
-  } catch (e) {}
+  } catch { /* latin1→utf8 detection is best-effort */ }
 
   const parentNodeIdValue = req.body.parentNodeId;
   const uploadUser = req.user.full;

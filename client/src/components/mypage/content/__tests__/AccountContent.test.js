@@ -75,7 +75,7 @@ describe('AccountContent', () => {
   it('AccountEditDialog: save email calls update API and shows success', async () => {
     let putPayload;
     server.use(
-      http.put('/api/users/:id/email', async ({ params, request }) => {
+      http.put('/api/users/:id/email', async ({ request }) => {
         putPayload = await request.json();
         return HttpResponse.json({ messageCode: 'serverMessages.users.emailUpdated' });
       })

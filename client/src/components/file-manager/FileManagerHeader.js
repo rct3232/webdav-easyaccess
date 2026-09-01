@@ -10,7 +10,6 @@ import { Person as PersonIcon } from '@mui/icons-material';
 
 const FileManagerHeader = ({
   isMobile,
-  user,
   navigate,
 }) => {
   const { t } = useTranslation();

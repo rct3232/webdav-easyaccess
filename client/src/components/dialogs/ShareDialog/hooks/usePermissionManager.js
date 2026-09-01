@@ -4,16 +4,7 @@ import { PERMISSIONS } from '@webdav-easyaccess/shared/constants';
 /**
  * Hook for managing node-based folder permissions in ShareDialog.
  */
-export const usePermissionManager = ({
-  mode,
-  userId,
-  username,
-  permissionRequest,
-  onMessage,
-  onSave,
-  onApprove,
-  onClose,
-}) => {
+export const usePermissionManager = (_config) => {
   const [folderPermissions, setFolderPermissions] = useState(new Map());
   const [initialFolderPermissions, setInitialFolderPermissions] = useState(new Map());
   const [userInfoMap, setUserInfoMap] = useState(new Map());

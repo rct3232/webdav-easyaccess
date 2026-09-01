@@ -2,7 +2,6 @@
  * storage tests.
  * Verifies getBackend() deprecation logic and postgres infrastructure helpers.
  */
-const storage = require('@server/store/storage');
 
 jest.mock('../../infrastructure/backendHealth', () => {
   const report = jest.fn();

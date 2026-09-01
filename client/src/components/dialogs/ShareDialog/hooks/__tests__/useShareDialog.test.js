@@ -3,7 +3,6 @@
  * @see docs/spec/client/hooks/useShareDialog.md
  * @see docs/TESTING_STRATEGY.md
  */
-import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShareDialog } from '../useShareDialog';
 import { usePermissionManager } from '../usePermissionManager';
@@ -50,7 +49,6 @@ jest.mock('../../../../../services/shareReviewUseCase', () => ({
 }));
 
 const mockOnMessage = jest.fn();
-const mockOnSave = jest.fn();
 const mockOnApprove = jest.fn();
 const mockOnClose = jest.fn();
 
@@ -229,7 +227,7 @@ describe('useShareDialog', () => {
   });
 
   it('loads folder tree when open', async () => {
-    const { result } = await renderOpenUseShareDialog({
+    await renderOpenUseShareDialog({
         open: true,
         mode: 'share',
         folderPath: '/docs',

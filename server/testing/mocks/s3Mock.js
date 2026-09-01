@@ -43,7 +43,7 @@ function createS3Mock(overrides = {}) {
 
       copyObject: jest.fn((cmd) => {
         const params = cmd.input || cmd;
-        const { Bucket, CopySource, Key } = params;
+        const { CopySource, Key } = params;
         const sourceKey = typeof CopySource === 'string' ? CopySource.split('/').slice(1).join('/') : CopySource;
         const src = store.get(sourceKey);
         if (!src) {
@@ -74,7 +74,7 @@ function createS3Mock(overrides = {}) {
 
       listObjectsV2: jest.fn((cmd) => {
         const params = cmd.input || cmd;
-        const { Bucket, ContinuationToken, MaxKeys } = params;
+        const { ContinuationToken, MaxKeys } = params;
         const allEntries = Array.from(store.entries()).map(([Key, obj]) => ({
           Key,
           Size: obj.ContentLength,

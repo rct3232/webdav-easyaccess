@@ -85,7 +85,6 @@ describe('createFileNodesStore', () => {
     // renameNode
     it('renames a node and refreshes updated_at', async () => {
       const created = await store.createNode(null, 'fn-rename-me', 'file');
-      const beforeUpdate = new Date();
       await store.renameNode(created.id, 'fn-renamed');
 
       const node = await store.getNode(created.id);

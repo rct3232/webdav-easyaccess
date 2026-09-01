@@ -812,7 +812,7 @@ describe('FileManager', () => {
       http.get('/api/permissions/check', () => HttpResponse.json({ hasRead: true, hasWrite: true })),
       http.get('/api/permissions/user/:userId', () => HttpResponse.json([])),
       http.post('/api/files/check-conflicts', async ({ request }) => {
-        const body = await request.json().catch(() => ({}));
+        await request.json().catch(() => ({}));
         return HttpResponse.json({ conflicts: [] });
       }),
       http.post('/api/files/upload', async ({ request }) => {

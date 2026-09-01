@@ -63,7 +63,7 @@ describe('MyPageContentPanel', () => {
   });
 
   it('content area is scrollable (overflow)', () => {
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <MyPageContentPanel>
         <span>Content</span>
       </MyPageContentPanel>

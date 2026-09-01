@@ -12,11 +12,8 @@ import { useFileOperations } from './useFileOperations';
 export function useExplorerCommands({
   t,
   user,
-  isMobile,
   isShareLinkMode,
   shareToken,
-  currentPath,
-  currentPathRef,
   currentNodeId,
   currentNodeIdRef,
   refreshNow,

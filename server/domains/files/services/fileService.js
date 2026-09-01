@@ -4,7 +4,7 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { getThumbnailUrl } = require('../../thumbnails/services/thumbnailService');
 const { isImageFile, isVideoFile } = require('../../../utils/webdav');
-const { conflictError, notFoundError, forbiddenError, validationError } = require('../../../utils/errorHandler');
+const { conflictError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
 const ownerNodeResolver = require('../../permissions/policy/ownerNodeResolver');
 const permissionStore = require('../../../store/permissionStore');
 

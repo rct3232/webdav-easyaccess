@@ -32,7 +32,7 @@ import MigrationDialog from './MigrationDialog';
 import MetadataMigrationDialog from './MetadataMigrationDialog';
 import SystemConfigEditor from './SystemConfigEditor';
 
-const SystemSettingsContent = ({ onMessage }) => {
+const SystemSettingsContent = () => {
   const { t } = useTranslation();
   const { setTitle, setActions } = usePageHeader();
 

@@ -34,7 +34,7 @@ import { ShareDialog } from '../../dialogs';
 import { formatDate } from '../../../utils/format';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
 
-const UserManagementContent = ({ user, onMessage }) => {
+const UserManagementContent = () => {
   const { t } = useTranslation();
   const { setTitle, setActions } = usePageHeader();
 

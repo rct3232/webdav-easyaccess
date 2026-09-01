@@ -14,7 +14,7 @@ async function _processBulkJob(jobId) {
   if (!job) return;
 
   const { getComposition } = require('../../../service/composition');
-  const { fileService, batchOperationService: batchOp } = getComposition();
+  const { batchOperationService: batchOp } = getComposition();
 
   try {
     opStore.updateJob(jobId, { status: 'running', progress: 0 });

@@ -6,7 +6,6 @@ const request = require('supertest');
 const {
   createTestDatabase,
   createAuthenticatedTestUser,
-  createTestUser,
 } = require('../../../../test-utils');
 
 let app;

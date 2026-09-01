@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getErrorMessage } from '../../../utils/errorUtils';
 
 /**
  * Custom hook for managing file operation progress
@@ -234,7 +235,6 @@ export const useFileOperationProgress = () => {
    */
   const updateProgressWithError = useCallback((progressId, progressData, error = null, defaultKey = 'errors.operationFailed') => {
     if (error) {
-      const { getErrorMessage } = require('../../../utils/errorUtils');
       const { key, raw } = getErrorMessage(error, defaultKey);
       const errorMsg = raw != null ? raw : t(key);
       updateProgress({

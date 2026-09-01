@@ -6,7 +6,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FolderTree from '../FolderTree';
 import { getRecentFiles } from '../../../services/recentFilesRepository';

@@ -248,8 +248,6 @@ async function createNestedStructure({ parentId = null, segments }) {
  * @returns {Promise<{ nodeId: number, s3Key: string, path: string }>}
  */
 async function createTestFileWithBlob({ userId, name, parentId, content, mimeType = 'text/plain', s3Mock }) {
-  const store = createFileNodesStore();
-
   // If no parentId provided, use the user's root node.
   if (parentId == null) {
     const rootResult = await createUserRootNode({ userId });

@@ -18,7 +18,6 @@ const FolderTree = ({
   onFileClick,
   user,
   treeUpdateTrigger,
-  hasWritePermission,
   onExplorerDrop,
   onInternalFileDrop,
   onInternalDragStart,

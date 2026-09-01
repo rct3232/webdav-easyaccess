@@ -33,7 +33,7 @@ export function useFolderPicker({
   const [loading, setLoading] = useState(false);
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const [sharedFolderRoots, setSharedFolderRoots] = useState([]);
-  const [sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
+  const [_sharedPermissionNodeIds, setSharedPermissionNodeIds] = useState(new Set());
 
   const prevOpenRef = useRef(false);
 

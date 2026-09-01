@@ -140,11 +140,12 @@ The WebDAV EasyAccess codebase has strong architectural documentation, comprehen
 - **Issue**: Known Node.js >= 18 compatibility issues; community has moved to Vite-based alternatives.
 - **Fix Direction**: Plan migration to Vite as a separate project/epic.
 
-### 14. Root-Level Lint/Format Configuration Missing ✅ COMPLETE
-- **Commit: `ace302b`**
+### 14. Root-Level Lint/Format Configuration Missing ✅ COMPLETE (root config added `chore/residual-gap-closure`)
+- **Commit: `ace302b`** — root `.prettierrc` and server-only `server/eslint.config.js` added here.
 - Only client has ESLint config (embedded in `package.json`). Server and shared have no linting.
 - No Prettier configuration anywhere.
 - **Fix**: Add root-level `eslint.config.js` + `.prettierrc` applying to all workspaces.
+- True root-level `eslint.config.js` (flat config covering server+client+shared) plus `eslint-config-prettier` were added on `chore/residual-gap-closure` (2026-09-01), at which point the client's legacy `eslintConfig` and `server/eslint.config.js` were removed.
 
 ### 15. Silent Error Swallowing in Permission Operations ✅ COMPLETE
 - **Commit: `ded0ce8`**

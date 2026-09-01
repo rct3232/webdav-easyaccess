@@ -1,5 +1,4 @@
 'use strict';
-const bcrypt = require('bcryptjs');
 const {
   PERMISSIONS,
   HTTP_STATUS,
@@ -47,7 +46,7 @@ async function ensureUserHomeNode(userId, username) {
   return node ? Number(node.id) : null;
 }
 
-async function createAdminUser({ username, email, password, isAdmin }) {
+async function createAdminUser({ username, email, password }) {
   let createdUser = null;
 
   if (!username || !email || !password) {

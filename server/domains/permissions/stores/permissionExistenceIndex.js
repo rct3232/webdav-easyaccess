@@ -35,7 +35,10 @@ async function getExistenceState(path, now = Date.now()) {
   if (!entry || typeof entry.checkedAt !== 'number') return 'unknown';
   const ttlMs =
     parseInt(await getSharedResolver().getConfig('PERMISSIONS_EXISTENCE_INDEX_TTL_MS'), 10) || 30000;
-  if (now - entry.checkedAt > ttlMs) return 'unknown';
+  if (now - entry.checkedAt > ttlMs) {
+    existenceIndex.delete(normalizedPath);
+    return 'unknown';
+  }
   return entry.state;
 }
 

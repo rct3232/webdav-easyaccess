@@ -29,7 +29,7 @@ export function useContentAreaDragDrop(options) {
     isMobile,
     selectionMode,
     hasWritePermission,
-    isShareLinkMode,
+    isShareLinkMode: _isShareLinkMode,
     currentNodeId,
     contentAreaDraggedNodeId,
     contentAreaDraggedParentNodeId,

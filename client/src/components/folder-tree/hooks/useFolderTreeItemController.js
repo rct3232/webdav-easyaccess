@@ -35,7 +35,7 @@ const useFolderTreeItemController = ({
   isHidden: isHiddenProp = false,
 
   // shared/tree filtering options
-  user, // included for compatibility; controller does not directly use in this step
+  user: _user, // included for compatibility; controller does not directly use in this step
   useHiddenFilesFilter = true,
   listFilesOptions,
   filterChildNames,

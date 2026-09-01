@@ -10,7 +10,7 @@
 
 function createFileNodeServiceMock(overrides = {}) {
   const defaults = {
-    getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, name: `file_${nodeId}.txt` })),
+    getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, name: `file_${nodeId}.txt`, type: 'file' })),
     createFile: jest.fn().mockResolvedValue({ id: 10 }),
     createDirectory: jest.fn().mockResolvedValue({ id: 20 }),
     renameNode: jest.fn().mockResolvedValue(true),

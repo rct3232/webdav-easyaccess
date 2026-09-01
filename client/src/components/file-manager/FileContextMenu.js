@@ -20,7 +20,6 @@ const FileContextMenu = ({
   contextMenu,
   onClose,
   file,
-  user,
   hasWritePermission,
   onDownload,
   onRename,

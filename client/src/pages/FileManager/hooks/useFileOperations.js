@@ -28,7 +28,6 @@ export const useFileOperations = ({
   onProcessingEnd,
   onActionComplete,
   onClose,
-  onConflictResolveStart,
 }) => {
   const { t } = useTranslation();
 
@@ -164,7 +163,7 @@ export const useFileOperations = ({
         });
       }
 
-      const result = await renameFile(nodeId, newName);
+      await renameFile(nodeId, newName);
 
       // 이름변경 성공 시 최근항목 새로고침 (nodeId는 rename 이후에도 안정적)
       try {

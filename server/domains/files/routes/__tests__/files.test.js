@@ -615,6 +615,19 @@ describe('POST /api/files/download-multiple', () => {
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBeDefined();
   });
+
+  it('returns 200 empty zip and skips directory nodeIds without hanging', async () => {
+    const res = await request(app)
+      .post('/api/files/download-multiple')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ nodeIds: [homeNodeId] });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/zip/);
+    expect(Number(res.headers['x-wea-skipped-count'])).toBeGreaterThanOrEqual(1);
+    const skipped = JSON.parse(decodeURIComponent(res.headers['x-wea-skipped']));
+    expect(skipped.paths).toContain(String(homeNodeId));
+  });
 });
 
 describe('POST /api/files/bulk-operation/:jobId/cancel', () => {

@@ -51,7 +51,7 @@ describe('useBulkOperations', () => {
     fileService.batchCopyFiles.mockResolvedValue({ jobId: 'job-copy' });
     fileService.downloadMultipleFiles.mockResolvedValue({});
     fileService.checkConflicts.mockResolvedValue([]);
-    fileService.getBulkOperationStatus.mockImplementation((jobId) =>
+    fileService.getBulkOperationStatus.mockImplementation(() =>
       Promise.resolve({
         status: 'completed',
         progress: 2,

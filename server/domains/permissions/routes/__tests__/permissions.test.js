@@ -421,7 +421,6 @@ describe('GET /api/permissions/check (nodeId)', () => {
 describe('Closure table inheritance', () => {
   // V5: Grant on parent → child/grandchild accessible via closure table
   it('grants folder permission inherited by child and grandchild nodes', async () => {
-    const owner = await createAuthenticatedTestUser({ username: `inherit-owner-${Date.now()}` });
     const targetUser = await createAuthenticatedTestUser({ username: `inherit-target-${Date.now()}` });
 
     const parentDir = await createTestDirectory(null, `inherit-parent-${Date.now()}`);

@@ -70,7 +70,7 @@ describe('FileList', () => {
 
   it('renders loadMoreRef when hasMore', () => {
     const loadMoreRef = { current: null };
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <FileList {...defaultProps} hasMore loadMoreRef={loadMoreRef} />
     );
     expect(loadMoreRef.current).toBeTruthy();

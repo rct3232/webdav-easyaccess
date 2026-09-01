@@ -36,10 +36,7 @@ function asyncHandler(fn) {
 function formatErrorResponse(error, options = {}) {
   const {
     defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError,
-    defaultStatus = HTTP_STATUS.INTERNAL_SERVER_ERROR,
   } = options;
-
-  const status = error.status || error.statusCode || defaultStatus;
 
   // Don't expose internal error details in production
   const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -95,7 +92,7 @@ function logError(error, context = {}) {
  * app.use('/api', routes);
  * app.use(errorHandler); // Must be last
  */
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   // Log error with request context
   logError(err, {
     method: req.method,

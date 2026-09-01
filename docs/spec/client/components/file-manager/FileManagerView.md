@@ -74,10 +74,12 @@ Call signatures listed in the props table are the contract; the view must call t
 
 ### 2.5 Admin backend-health banner (D3)
 
-- The controller (`FileManager.js`) fetches `GET /api/health` and passes `backendHealth`
-  (`{ postgresql, s3, webdav }` status strings) + `isAdmin` down via the shell context.
+- The controller (`FileManager.js`) fetches `GET /api/health` (backend status strings) and
+  `GET /api/admin/config` (to derive the **active** backends: `WEA_STORAGE_BACKEND` for metadata
+  + `WEA_FILE_STORAGE` for file storage), passing both down via the shell context.
 - The view renders an admin-only `Alert` (between `FileManagerControls` and the listing,
-  `data-testid="backend-health-banner"`) when `isAdmin` and any backend is `fail`.
+  `data-testid="backend-health-banner"`) when `isAdmin`, any **active** backend is `fail`, and
+  `activeBackends` is populated. Failures from inactive backends never trigger it.
 - The view never performs the health fetch itself (presentational boundary).
 
 ### 2.6 Verification Scenarios

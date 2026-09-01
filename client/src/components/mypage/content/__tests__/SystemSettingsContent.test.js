@@ -250,6 +250,15 @@ describe('SystemSettingsContent', () => {
 
   it('renders only the failing backends on the backend-health card', async () => {
     server.use(
+      http.get('/api/admin/config', () =>
+        HttpResponse.json({
+          config: {
+            WEA_STORAGE_BACKEND: { value: 'postgresql', source: 'env', tier: 'T0', secret: false },
+            WEA_FILE_STORAGE: { value: 's3', source: 'default', tier: 'T1', secret: false },
+          },
+          key_lost_warning: false,
+        })
+      ),
       http.get('/api/admin/health', () =>
         HttpResponse.json({
           backends: {
@@ -272,6 +281,30 @@ describe('SystemSettingsContent', () => {
     // Healthy/unknown backends are not listed.
     expect(within(card).queryByText(/s3/i)).not.toBeInTheDocument();
     expect(within(card).queryByText(/webdav/i)).not.toBeInTheDocument();
+  });
+
+  it('ignores failures from backends not in use', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            // WebDAV is failing but NOT the active file backend (s3 is) → no alert.
+            webdav: { status: 'fail', code: 'unreachable', hint: 'Cannot reach host' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+
+    // Default MSW config: WEA_STORAGE_BACKEND=sqlite, WEA_FILE_STORAGE=s3 → active = { s3 }.
+    expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 
   it('does not show a key-lost warning banner when the master key is present', async () => {

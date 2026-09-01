@@ -177,6 +177,42 @@ describe('createFileNodesStore', () => {
       expect(node.syncStatus).toBe('active');
     });
 
+    // getNodesBySyncStatusNot
+    it('returns only nodes whose sync_status differs from the given status', async () => {
+      const active = await store.createNode(null, 'fn-not-active', 'file');
+      await store.updateSyncStatus(active.id, 'active');
+      const pending = await store.createNode(null, 'fn-not-pending', 'file');
+      const orphan = await store.createNode(null, 'fn-not-orphan', 'file');
+      await store.updateSyncStatus(orphan.id, 'orphaned_node');
+
+      const excludingOrphaned = await store.getNodesBySyncStatusNot('orphaned_node');
+      const excludingOrphanedIds = excludingOrphaned.map((n) => n.id);
+      expect(excludingOrphanedIds).toContain(active.id);
+      expect(excludingOrphanedIds).toContain(pending.id);
+      expect(excludingOrphanedIds).not.toContain(orphan.id);
+
+      const excludingActive = await store.getNodesBySyncStatusNot('active');
+      const excludingActiveIds = excludingActive.map((n) => n.id);
+      expect(excludingActiveIds).toContain(pending.id);
+      expect(excludingActiveIds).toContain(orphan.id);
+      expect(excludingActiveIds).not.toContain(active.id);
+    });
+
+    it('getNodesBySyncStatusNot maps rows identically to getNodesBySyncStatus', async () => {
+      const node = await store.createNode(null, 'fn-not-mapping', 'file');
+      await store.updateSyncStatus(node.id, 'active');
+
+      const [fromNot] = await store.getNodesBySyncStatusNot('pending_upload');
+      const [fromEq] = await store.getNodesBySyncStatus('active');
+
+      expect(fromNot.id).toBe(node.id);
+      expect(fromNot.type).toBe('file');
+      expect(fromNot.name).toBe('fn-not-mapping');
+      expect(fromNot.syncStatus).toBe('active');
+      expect(fromNot.parentId).toBeNull();
+      expect(fromNot).toEqual(fromEq);
+    });
+
     // resolvePathSegment
     it('resolves a path segment by parent and name', async () => {
       const created = await store.createNode(null, 'fn-path-resolve-test', 'directory');

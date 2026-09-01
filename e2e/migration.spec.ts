@@ -6,6 +6,7 @@ import { expect, test, type APIRequestContext, type Page, type TestInfo } from '
 
 import { TEST_FILES } from './fixtures/test-data';
 import { readTestFileFixture } from './helpers/files';
+import { blobExists, emptyS3Bucket, listS3Keys } from './helpers/minio';
 import {
   createScratchPgDb,
   dropScratchPgDb,
@@ -390,30 +391,62 @@ async function uploadAdminFile(
 }
 
 /**
- * Put uploaded file nodes into the migration-snapshot precondition defined by
- * docs/spec/server/tools/blob-migration.md §6 (file_nodes sync_status='active'
- * + an active object_map row). Two webdav-mode realities require this seed:
- *  1. WebDAV-mode uploads never create object_map rows (blobStorageService
- *     `prepareUpload`/`uploadToWebdav` do not touch object_map in webdav mode).
- *  2. WebDAV-mode uploads leave file_nodes at sync_status='pending_upload' (the
- *     only code path that sets 'active' is the S3-mode uploadService TX2), so a
- *     webdav-source migration cannot snapshot data produced by the app itself.
- * Mirrors the migrationService unit-test fixture (insertObjectMapAndCache).
+ * Assert the REAL webdav-mode upload precondition produced by the app API
+ * (no DB seeding): files uploaded through `fileService.uploadFile`'s webdav
+ * branch stay `sync_status='pending_upload'` (createNode hardcodes it; only
+ * the S3-mode uploadService TX2 sets 'active') and create NO `object_map`
+ * row (`uploadToWebdav` only upserts filecache). This is exactly the defect
+ * path the server-side source-mode-aware snapshot fix (MIG-001/002/E3) is
+ * meant to migrate.
  */
-async function seedObjectMapRows(scratch: string, nodeIds: number[]): Promise<void> {
-  const dbPath = path.join(scratch, 'webdav.db');
+async function assertRealWebdavPrecondition(dbPath: string, nodeIds: number[]): Promise<void> {
   const idList = nodeIds.join(', ');
-  await execScratchSqlite(
+  const nodes = await queryScratchSqlite<{ id: number; sync_status: string }>(
     dbPath,
-    `UPDATE file_nodes SET sync_status = 'active' WHERE id IN (${idList})`
+    `SELECT id, sync_status FROM file_nodes WHERE id IN (${idList}) ORDER BY id`
   );
-  for (const id of nodeIds) {
-    await execScratchSqlite(
-      dbPath,
-      `INSERT OR REPLACE INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-       VALUES (${id}, NULL, 'webdav', 1, 'active')`
-    );
-  }
+  expect(nodes).toHaveLength(nodeIds.length);
+  for (const row of nodes) expect(row.sync_status).toBe('pending_upload');
+
+  const maps = await queryScratchSqlite<{ cnt: number }>(
+    dbPath,
+    `SELECT COUNT(*) AS cnt FROM object_map WHERE file_node_id IN (${idList})`
+  );
+  expect(Number(maps[0].cnt)).toBe(0);
+}
+
+/**
+ * Assert the post-migration state for a list of uploaded webdav-source nodes
+ * (the fix's new behavior): an active `s3` object_map row per file, every
+ * node `sync_status='active'`, the S3 objects present (count + existence).
+ * The exact `listS3Keys()` count is only meaningful when the destination
+ * bucket was emptied before the run (each blob case calls `emptyS3Bucket`).
+ */
+async function assertPostMigrationBlobState(
+  dbPath: string,
+  nodeIds: number[]
+): Promise<Array<{ file_node_id: number; s3_key: string }>> {
+  const idList = nodeIds.join(', ');
+  const activeRows = await queryScratchSqlite<{ file_node_id: number; s3_key: string | null }>(
+    dbPath,
+    `SELECT file_node_id, s3_key FROM object_map
+     WHERE status = 'active' AND storage_backend = 's3' AND file_node_id IN (${idList})
+     ORDER BY file_node_id`
+  );
+  expect(activeRows).toHaveLength(nodeIds.length);
+  for (const row of activeRows) expect(row.s3_key).toBeTruthy();
+
+  const nodes = await queryScratchSqlite<{ id: number; sync_status: string }>(
+    dbPath,
+    `SELECT id, sync_status FROM file_nodes WHERE id IN (${idList}) ORDER BY id`
+  );
+  for (const row of nodes) expect(row.sync_status).toBe('active');
+
+  const s3Keys = await listS3Keys();
+  expect(s3Keys).toHaveLength(nodeIds.length);
+  for (const row of activeRows) expect(await blobExists(row.s3_key as string)).toBe(true);
+
+  return activeRows as Array<{ file_node_id: number; s3_key: string }>;
 }
 
 async function pollJobStatus(
@@ -489,7 +522,7 @@ function tarpitEndpoint(server: net.Server): string {
   return `http://127.0.0.1:${address.port}`;
 }
 
-test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
+test.describe('Unified migration mode (E2E-MIG-001..008)', () => {
   test('E2E-MIG-001 (Flow A): blob dry-run then apply happy path — dialog → /migration → terminal modal → settings', async ({
     page,
     request,
@@ -497,7 +530,9 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     const caseId = 'flow-a-happy-path';
     await bootScratch(testInfo, { caseId, withWebdav: true });
 
-    // Seed the source snapshot: admin folder + files, then object_map rows.
+    // Seed the source snapshot with REAL app uploads (webdav mode): the
+    // multipart upload flows through fileService.uploadFile's webdav branch →
+    // uploadToWebdav, leaving nodes pending_upload with no object_map row.
     const token = await loginToken(request);
     const folderName = `migration-a-${Date.now()}`;
     const folderId = await createAdminFolder(request, token, folderName);
@@ -505,7 +540,12 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     for (let i = 0; i < 8; i += 1) {
       fileNodeIds.push(await uploadAdminFile(request, token, folderId, `file-${i}.txt`));
     }
-    await seedObjectMapRows(currentScratch!, fileNodeIds);
+
+    // Prove the precondition is the real defect path (no seeded seam).
+    const dbPath = path.join(currentScratch!, 'webdav.db');
+    await assertRealWebdavPrecondition(dbPath, fileNodeIds);
+    // Deterministic S3 count baseline for the no-extra-objects assertions.
+    await emptyS3Bucket();
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -528,6 +568,14 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     expect(dryRunBody).toContain(
       'Blob migration completed. Restart the server to finish the storage cutover.'
     );
+    // The dry-run only enumerated the real snapshot — it copied nothing: no
+    // object_map rows and no S3 objects.
+    const mapsAfterDryRun = await queryScratchSqlite<{ cnt: number }>(
+      dbPath,
+      'SELECT COUNT(*) AS cnt FROM object_map'
+    );
+    expect(Number(mapsAfterDryRun[0].cnt)).toBe(0);
+    expect(await listS3Keys()).toHaveLength(0);
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
     await page.waitForURL(/\/mypage/);
     await assertOnSystemSettings(page);
@@ -551,6 +599,12 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     expect(applyBody).toContain('was saved to the server settings');
     expect(applyBody).toContain('S3_BUCKET');
     expect(applyBody).not.toContain('Update them in .env manually');
+
+    // Post-migration state (the fix's new behavior): every uploaded webdav file
+    // now has an s3/active object_map row, sync_status='active', and its blob
+    // exists in the destination bucket.
+    await assertPostMigrationBlobState(dbPath, fileNodeIds);
+
     test.info().annotations.push({
       type: 'e2e-mig-001-running',
       description: `dry-run sawRunning=${dryRunObserved.sawRunning}, apply sawRunning=${applyObserved.sawRunning}`,
@@ -575,8 +629,11 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     for (let i = 0; i < 30; i += 1) {
       fileNodeIds.push(await uploadAdminFile(request, token, folderId, `b-${i}.txt`));
     }
-    await seedObjectMapRows(currentScratch!, fileNodeIds);
+    // Real webdav-mode precondition (pending_upload + no object_map), then a
+    // deterministic S3 baseline so the final count proves "no duplicates".
     const dbPath = path.join(currentScratch!, 'webdav.db');
+    await assertRealWebdavPrecondition(dbPath, fileNodeIds);
+    await emptyS3Bucket();
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -723,6 +780,105 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
       "SELECT COUNT(*) AS cnt FROM object_map WHERE status = 'active' AND s3_key IS NOT NULL"
     );
     expect(Number(migratedCount[0].cnt)).toBe(fileNodeIds.length);
+
+    // No duplicate blobs: the destination holds exactly one object per file —
+    // the resume/skip (s3_key marker) prevented any re-copy on the rerun. And
+    // every node reached the fix's post-migration lifecycle state.
+    expect(await listS3Keys()).toHaveLength(fileNodeIds.length);
+    const postResumeNodes = await queryScratchSqlite<{ id: number; sync_status: string }>(
+      dbPath,
+      `SELECT id, sync_status FROM file_nodes WHERE id IN (${fileNodeIds.join(', ')})
+       ORDER BY id`
+    );
+    for (const row of postResumeNodes) expect(row.sync_status).toBe('active');
+  });
+
+  test('E2E-MIG-008 (E3): native webdav file (no object_map) is snapshotted + migrated; rerun is skipped (no duplicate)', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const caseId = 'e3-native-webdav-no-object-map';
+    await bootScratch(testInfo, { caseId, withWebdav: true });
+
+    const token = await loginToken(request);
+    const folderName = `migration-e3-${Date.now()}`;
+    const folderId = await createAdminFolder(request, token, folderName);
+    const fileNodeIds: number[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      fileNodeIds.push(await uploadAdminFile(request, token, folderId, `e3-${i}.txt`));
+    }
+    const dbPath = path.join(currentScratch!, 'webdav.db');
+
+    // Explicit focus: the node has NO object_map row at all and stays
+    // pending_upload — the exact precondition for which the old snapshot
+    // silently enumerated 0 nodes. The fix must still include it.
+    await assertRealWebdavPrecondition(dbPath, fileNodeIds);
+    const globalMaps = await queryScratchSqlite<{ cnt: number }>(
+      dbPath,
+      'SELECT COUNT(*) AS cnt FROM object_map'
+    );
+    expect(Number(globalMaps[0].cnt)).toBe(0);
+    await emptyS3Bucket();
+
+    await loginAsAdminUi(page);
+    await openSystemSettings(page);
+
+    // First apply: the native webdav nodes ARE migrated.
+    await openBlobMigrationDialog(page);
+    await fillS3Dest(page, {
+      bucket: S3_BUCKET,
+      accessKey: S3_ACCESS_KEY,
+      secretKey: S3_SECRET_KEY,
+      endpoint: S3_ENDPOINT,
+      region: S3_REGION,
+    });
+    await startBlobMigrationFromDialog(page, 'apply');
+    await expect(page).toHaveURL(/\/migration/);
+    const e3Run1Body = await waitForTerminalModal(page);
+    expect(e3Run1Body).toContain('Migration completed');
+    const keysAfterRun1 = await assertPostMigrationBlobState(dbPath, fileNodeIds);
+
+    await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
+    await page.waitForURL(/\/mypage/);
+    await assertOnSystemSettings(page);
+
+    // Rerun apply: every node is skipped via its preserved s3_key resume
+    // marker — nothing is re-copied (no duplicate objects, no re-rolled keys).
+    await openBlobMigrationDialog(page);
+    await fillS3Dest(page, {
+      bucket: S3_BUCKET,
+      accessKey: S3_ACCESS_KEY,
+      secretKey: S3_SECRET_KEY,
+      endpoint: S3_ENDPOINT,
+      region: S3_REGION,
+    });
+    await startBlobMigrationFromDialog(page, 'apply');
+    await expect(page).toHaveURL(/\/migration/);
+    const e3Run2Body = await waitForTerminalModal(page);
+    expect(e3Run2Body).toContain('Migration completed');
+
+    const mapsAfterRun2 = await queryScratchSqlite<{ file_node_id: number; s3_key: string }>(
+      dbPath,
+      "SELECT file_node_id, s3_key FROM object_map WHERE status = 'active' ORDER BY file_node_id"
+    );
+    expect(mapsAfterRun2).toHaveLength(fileNodeIds.length);
+    expect(mapsAfterRun2.map((r) => r.s3_key).sort()).toEqual(
+      keysAfterRun1.map((r) => r.s3_key).sort()
+    );
+    const s3KeysAfterRun2 = await listS3Keys();
+    expect(s3KeysAfterRun2).toHaveLength(fileNodeIds.length);
+
+    const nodesAfterRun2 = await queryScratchSqlite<{ id: number; sync_status: string }>(
+      dbPath,
+      `SELECT id, sync_status FROM file_nodes WHERE id IN (${fileNodeIds.join(', ')})
+       ORDER BY id`
+    );
+    for (const row of nodesAfterRun2) expect(row.sync_status).toBe('active');
+
+    test.info().annotations.push({
+      type: 'e2e-mig-008-no-duplicate',
+      description: `keysRun1=${keysAfterRun1.map((r) => r.s3_key).join(',')} keysRun2=${mapsAfterRun2.map((r) => r.s3_key).join(',')} s3ObjectsRun2=${s3KeysAfterRun2.length}`,
+    });
   });
 
   test('E2E-MIG-003 (Flow C): gate hold — app-guard force-redirect, /login allow-list, 409 on second start', async ({
@@ -988,11 +1144,11 @@ test.describe('Unified migration mode (E2E-MIG-001..007)', () => {
     const token = await loginToken(request);
     const folderName = `migration-a5-${Date.now()}`;
     const folderId = await createAdminFolder(request, token, folderName);
-    const fileNodeIds: number[] = [];
+    // Real webdav-mode uploads (pending_upload, no object_map) now satisfy the
+    // source-aware snapshot — no DB seeding needed.
     for (let i = 0; i < 4; i += 1) {
-      fileNodeIds.push(await uploadAdminFile(request, token, folderId, `a5-${i}.txt`));
+      await uploadAdminFile(request, token, folderId, `a5-${i}.txt`);
     }
-    await seedObjectMapRows(currentScratch!, fileNodeIds);
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);

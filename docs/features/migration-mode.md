@@ -122,8 +122,10 @@ The page is progress-only and is registered at the top level of `App.js` (same l
 - State alerts: `failed` → error + reason; `cancelled` → warning + partial summary.
 - Empty state when no active job: "No active migration" + back.
 
-**Blob progress (D8):** node-count based. `total` = active `file_nodes` in the snapshot;
-`progress` incremented per processed node; `% = progress / total`. The current file label
+**Blob progress (D8):** node-count based. `total` = the enumerated snapshot size — for an **S3
+source**, active `file_nodes`; for a **webdav source**, all non-orphaned file nodes (native webdav
+files are included even without an `object_map` row — see `docs/spec/server/tools/blob-migration.md`
+§6). `progress` incremented per processed node; `% = progress / total`. The current file label
 (`current`) is shown so stalls on large files are understandable. Byte-weighted progress is
 optional/out of scope.
 
@@ -190,8 +192,7 @@ The existing blob migration core (`migrationService`, admin API `POST
    the gate, and **auto-redirects to `/migration`** (D2). A `dry-run` also enters migration mode —
    it performs real enumeration work, so its progress is shown on `/migration` just like an
    `apply` run (nothing is written).
-3. **Progress:** node-count based on `/migration` (D8): `total` = active file nodes in the
-   snapshot, `% = progress/total`, current file label, counters.
+3. **Progress:** node-count based on `/migration` (D8): `total` = the enumerated snapshot size (S3 source: active file nodes; webdav source: all non-orphaned file nodes), `% = progress/total`, current file label, counters.
 4. **Cancel + resume (D4):** cancel sets the flag immediately; the current node finishes then the
    copy stops. Partial progress is kept (source preserved) and rerun resumes via the existing
    `shouldSkip` resume markers. The `runCopy` loop gains a cancel check.

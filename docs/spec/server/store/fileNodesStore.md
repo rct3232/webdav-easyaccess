@@ -76,6 +76,7 @@ This spec does not duplicate full DDL text.
 | `getAllActiveS3Keys()` | SELECT s3_key WHERE status='active' AND s3_key IS NOT NULL | string[] |
 | `deleteObjectMapRows(ids)` | DELETE WHERE id IN (...); SQLite per-row via `sqliteRun` | `{ changes }` |
 | `getNodesBySyncStatus(status)` | SELECT * FROM file_nodes WHERE sync_status=? | mapped rows[] |
+| `getNodesBySyncStatusNot(status)` | SELECT * FROM file_nodes WHERE sync_status != ? | mapped rows[] |
 
 #### filecache Methods
 

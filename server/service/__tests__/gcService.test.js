@@ -140,6 +140,27 @@ describe('createGcService', () => {
       expect(results.tier1.deletedBlobs).toBe(1);
       expect(results.tier1.errors.some((e) => e.includes('boom'))).toBe(true);
     });
+
+    it('WebDAV mode: orphaned object_map rows are deleted but blobStore.deleteBlob is NOT called', async () => {
+      const orphanedNode = await fileNodesStore.createNode(null, `t1-wd-${Date.now()}`, 'file');
+      const orphanedKey = `preserved-uuid-marker-${Date.now()}`;
+      await insertObjectMapRow({ fileNodeId: orphanedNode.id, s3Key: orphanedKey, status: 'orphaned', daysAgo: 10 });
+
+      const wdBlobStore = createFakeBlobStore();
+      const webdavGc = createGcService({
+        blobStore: wdBlobStore,
+        fileNodesStore,
+        fileStorageMode: 'webdav',
+      });
+
+      const results = await webdavGc.runGcCycle({ olderThanDays: 1 });
+
+      expect(results.tier1.orphanedRows).toBeGreaterThanOrEqual(1);
+      expect(results.tier1.deletedBlobs).toBe(0);
+      expect(results.tier1.deletedRows).toBe(results.tier1.orphanedRows);
+      expect(wdBlobStore.deleteBlob).not.toHaveBeenCalled();
+      expect(await getObjectMapRowByKey(orphanedKey)).toBeNull();
+    });
   });
 
   /* ------------------------------------------------------------------ */

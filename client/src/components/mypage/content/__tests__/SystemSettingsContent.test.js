@@ -176,6 +176,77 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/move blobs between webdav and s3/i)).toBeInTheDocument();
   });
 
+  it('renders the Metadata migration row alongside the Storage migration row', async () => {
+    renderSystemSettingsContent();
+
+    expect(await screen.findByText(/metadata migration/i)).toBeInTheDocument();
+    expect(screen.getByText(/copy metadata between sqlite and postgresql/i)).toBeInTheDocument();
+    expect(screen.getByText(/storage migration/i)).toBeInTheDocument();
+  });
+
+  it('clicking the metadata migration action button opens MetadataMigrationDialog', async () => {
+    const user = userEvent.setup();
+    renderSystemSettingsContent();
+
+    const metadataMigrationButton = await screen.findByRole('button', { name: /run metadata migration/i });
+    await user.click(metadataMigrationButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /metadata migration/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /scan target/i })).toBeInTheDocument();
+  });
+
+  it('shows the ".env setup needed" banner when the non-active backend holds metadata', async () => {
+    server.use(
+      http.get('/api/admin/migration/presence', () =>
+        HttpResponse.json({ otherBackend: 'postgresql', otherHasData: true, settingsRows: 5 })
+      )
+    );
+
+    const user = userEvent.setup();
+    renderSystemSettingsContent();
+
+    const banner = await screen.findByTestId('env-setup-needed-banner');
+    expect(within(banner).getByText(/.env setup needed/i)).toBeInTheDocument();
+    expect(within(banner).getByText(/metadata was detected in postgresql/i)).toBeInTheDocument();
+
+    await user.click(within(banner).getByRole('button', { name: /open metadata migration/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /metadata migration/i })).toBeInTheDocument();
+    });
+  });
+
+  it('hides the ".env setup needed" banner when the non-active backend holds no metadata', async () => {
+    server.use(
+      http.get('/api/admin/migration/presence', () =>
+        HttpResponse.json({ otherBackend: 'sqlite', otherHasData: false, settingsRows: null })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('env-setup-needed-banner')).not.toBeInTheDocument();
+  });
+
+  it('hides the ".env setup needed" banner when the presence endpoint fails', async () => {
+    server.use(
+      http.get('/api/admin/migration/presence', () =>
+        HttpResponse.json({ errorCode: 'serverErrors.msw.unhandled' }, { status: 500 })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('env-setup-needed-banner')).not.toBeInTheDocument();
+  });
+
   it('clicking the migration action button opens MigrationDialog', async () => {
     const user = userEvent.setup();
     renderSystemSettingsContent();

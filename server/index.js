@@ -10,6 +10,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { resolveEnvPath } = require('./infrastructure/envPath');
 const { computeSetupStatus } = require('./infrastructure/setupStatus');
 const { getBackendHealth } = require('./infrastructure/backendHealth');
+const { getMigrationGate, MIGRATION_IN_PROGRESS_CODE } = require('./infrastructure/migrationGate');
 const {
   createConfigResolver,
   setSharedResolver,
@@ -47,6 +48,25 @@ function resolveAllowedOrigins(resolver) {
   });
 }
 
+/**
+ * Build the S3 probe payload from the effective configuration (env → DB →
+ * default). Secrets are resolved unmasked through getConfigSync so a
+ * DB-sourced AWS_SECRET_ACCESS_KEY works. Returns null when the required S3
+ * config is missing so the boot probe can skip with a warning instead of
+ * failing boot.
+ */
+function buildS3ProbePayload(resolver) {
+  const bucket = resolver.getConfigSync('S3_BUCKET');
+  const region = resolver.getConfigSync('AWS_REGION');
+  const accessKeyId = resolver.getConfigSync('AWS_ACCESS_KEY_ID');
+  const secretAccessKey = resolver.getConfigSync('AWS_SECRET_ACCESS_KEY');
+  if (!bucket || !region || !accessKeyId || !secretAccessKey) return null;
+  const payload = { bucket, region, accessKeyId, secretAccessKey };
+  const endpoint = resolver.getConfigSync('S3_ENDPOINT');
+  if (endpoint) payload.endpoint = endpoint;
+  return payload;
+}
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -79,6 +99,41 @@ if (fs.existsSync(clientBuildPath)) {
 const requestLogger = require('./middleware/requestLogger');
 app.use('/api', requestLogger());
 
+// Migration gate (PLAN D3, docs/spec/server/infrastructure/migrationGate.md):
+// while a migration is active every HTTP route except the allow-list below
+// returns `503 migrationInProgress`, locking the app into the /migration page.
+// App-level so it covers the WebDAV file/DAV domain (/api/files, /api/folders,
+// /api/thumbnails, ...) and external WebDAV clients are blocked during a
+// migration. CORS preflight (OPTIONS) is terminated by the cors middleware
+// which runs before this gate, and non-/api requests (static assets + SPA
+// fallback) pass so the /migration page can still load.
+const MIGRATION_ALLOWED_ROUTES = [
+  { method: 'GET', path: '/api/health' }, // liveness probes stay open
+  { method: 'POST', path: '/api/auth/login' }, // operator can re-login to reach /migration
+  { method: 'GET', path: '/api/migration/status' }, // status polled by the app-guard
+];
+
+function isMigrationAllowListed(req) {
+  if (req.path.startsWith('/api/admin/migration')) return true;
+  return MIGRATION_ALLOWED_ROUTES.some((rule) => req.method === rule.method && req.path === rule.path);
+}
+
+function migrationGatingMiddleware(req, res, next) {
+  if (req.method === 'OPTIONS') return next();
+  if (!req.path.startsWith('/api/')) return next();
+  if (!getMigrationGate().isActive()) return next();
+  if (isMigrationAllowListed(req)) return next();
+  const { type, jobId } = getMigrationGate().getStatus();
+  return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+    errorCode: MIGRATION_IN_PROGRESS_CODE,
+    messageCode: MIGRATION_IN_PROGRESS_CODE,
+    message: 'Migration in progress',
+    params: { type, jobId },
+  });
+}
+app.use(migrationGatingMiddleware);
+
+
 const setupModeGuard = require('./middleware/setupModeGuard');
 const setupModeGuardInstance = setupModeGuard();
 
@@ -93,6 +148,10 @@ app.use('/api', (req, res, next) => {
 
 app.use('/api/setup', require('./domains/setup/routes'));
 app.use('/api/auth', require('./domains/auth/routes'));
+// Migration status router: GET /api/migration/status (public, allow-listed by
+// the migration gate) + GET /api/admin/migration/presence (admin-gated by the
+// router itself).
+app.use('/api', require('./domains/admin/routes/migrationStatus'));
 app.use('/api/users', require('./domains/admin/routes/users'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/userManagement'));
 app.use('/api/admin', setupModeGuardInstance, require('./domains/admin/routes/settings'));
@@ -226,6 +285,40 @@ async function runBoot() {
       console.warn('⚠ WebDAV connection test failed:', error.message);
     }
   }
+
+  // Test S3 connection on startup (PLAN D12) — symmetric to the WebDAV probe
+  // above, and only when S3 is the active file backend. Probing an unused
+  // backend would record a false health alert (D3). Warn-only: a failure must
+  // never exit or crash boot; the health tracker reflects it on the health card.
+  if (process.env.WEA_FILE_STORAGE === 's3') {
+    const { probeS3, classifyToHealthCode, toShortReason } = require('./infrastructure/backendProbe');
+    try {
+      const payload = buildS3ProbePayload(resolver);
+      if (!payload) {
+        console.warn('⚠ S3 connection test: SKIPPED (missing required S3 configuration)');
+        console.warn('  Set S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY in the effective configuration (env or DB settings).');
+      } else {
+        await probeS3(payload);
+        getBackendHealth().report('s3', { ok: true });
+        console.log('✓ S3 connection test: SUCCESS');
+      }
+    } catch (error) {
+      getBackendHealth().report('s3', {
+        ok: false,
+        code: classifyToHealthCode('s3', error.errorCode),
+        ...(error.reason ? { reason: toShortReason(error.reason) } : {}),
+        hint: 's3.bootProbe',
+      });
+      console.warn('⚠ S3 connection test: FAILED');
+      console.warn(`  ${error.message || error.errorCode}`);
+      console.warn('  Please check your S3 credentials in the effective configuration (env or DB settings).');
+    }
+  }
+
+  // Reset the in-memory migration gate for a fresh process — a restart during
+  // a migration leaves the gate inactive (blob jobs are process-local and
+  // lost; metadata jobs are transactional/rolled back).
+  getMigrationGate().reset();
 
   getBackendHealth().reset();
   getBackendHealth().setOnTransition((backend, { from, to, code, reason }) => {

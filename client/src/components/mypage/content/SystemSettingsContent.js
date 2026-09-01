@@ -45,6 +45,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [keyLostWarning, setKeyLostWarning] = useState(false);
   const [backendHealth, setBackendHealth] = useState({});
+  const [activeBackends, setActiveBackends] = useState(() => new Set());
 
   const loadSettings = useCallback(async () => {
     try {
@@ -59,8 +60,17 @@ const SystemSettingsContent = ({ onMessage }) => {
     try {
       const data = await adminService.getConfigStatus();
       setKeyLostWarning(Boolean(data?.key_lost_warning));
+      // Derive the backends actually in use so unused backends never alert (D3):
+      // metadata backend = WEA_STORAGE_BACKEND, file backend = WEA_FILE_STORAGE.
+      const cfg = data?.config || {};
+      const active = new Set();
+      if (cfg.WEA_STORAGE_BACKEND?.value === 'postgresql') active.add('postgresql');
+      if (cfg.WEA_FILE_STORAGE?.value === 's3') active.add('s3');
+      if (cfg.WEA_FILE_STORAGE?.value === 'webdav') active.add('webdav');
+      setActiveBackends(active);
     } catch {
       setKeyLostWarning(false);
+      setActiveBackends(new Set());
     }
   }, []);
 
@@ -143,7 +153,7 @@ const SystemSettingsContent = ({ onMessage }) => {
   }, [t, setTitle, setActions]);
 
   const failedBackends = Object.entries(backendHealth).filter(
-    ([, health]) => health?.status === 'fail'
+    ([name, health]) => health?.status === 'fail' && activeBackends.has(name)
   );
 
   return (

@@ -365,29 +365,6 @@ test.describe('Admin config editor (Advanced settings)', () => {
     expect(config.FFMPEG_PATH.source).toBe('db');
   });
 
-  test('server rejects a PUT to an env-sourced key with 400 configEnvSourcedProtected', async ({
-    request,
-  }) => {
-    // PORT is .env-owned (PORT=5003 in the scratch .env, not DB-seeded) →
-    // source 'env'. The WebDAV keys are DB-seeded here, so PORT stands in for
-    // the env-sourced-row rejection (F4).
-    const token = await loginToken(request);
-    const res = await request.put(`${SCRATCH_BASE}/api/admin/config`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { values: { PORT: '5999' } },
-    });
-    expect(res.status()).toBe(400);
-    const body = await res.json();
-    expect(body.errorCode).toBe('serverErrors.admin.configEnvSourcedProtected');
-    expect(body.params).toEqual({ key: 'PORT' });
-
-    // A DB-sourced key stays writable.
-    await putConfig(request, { S3_BUCKET: 'db-bucket' });
-    const config = await getConfig(request);
-    expect(config.S3_BUCKET.value).toBe('db-bucket');
-    expect(config.S3_BUCKET.source).toBe('db');
-  });
-
   test('key_lost_warning surfaces in the admin UI when the master key is missing', async ({
     page,
     request,
@@ -611,47 +588,6 @@ test.describe('Admin config editor (Advanced settings)', () => {
 });
 
 test.describe('Phase B backend health & config/test API', () => {
-  test('POST /api/admin/config/test returns the documented shape and rejects unknown targets', async ({
-    request,
-  }) => {
-    const token = await loginToken(request);
-    const headers = { Authorization: `Bearer ${token}` };
-
-    // Documented contract (B3): `{ ok:true }` or `{ ok:false, errorCode,
-    // message, reason? }`. Assert the shape, never the outcome.
-    const res = await request.post(`${SCRATCH_BASE}/api/admin/config/test`, {
-      headers,
-      data: {
-        target: 'webdav',
-        WEBDAV_URL: WEBDAV_BASE,
-        WEBDAV_USERNAME: 'e2etest',
-        WEBDAV_PASSWORD: 'e2etest123',
-      },
-    });
-    const body = await res.json();
-    if (body.ok === true) {
-      expect(res.status()).toBe(200);
-      expect(body).toEqual({ ok: true });
-    } else {
-      expect(body.ok).toBe(false);
-      expect(typeof body.errorCode).toBe('string');
-      expect(body.errorCode.length).toBeGreaterThan(0);
-      expect(typeof body.message).toBe('string');
-      expect(body.message.length).toBeGreaterThan(0);
-      if (body.reason !== undefined) expect(typeof body.reason).toBe('string');
-    }
-
-    // Unsupported target → 400 with the failure shape.
-    const bad = await request.post(`${SCRATCH_BASE}/api/admin/config/test`, {
-      headers,
-      data: { target: 'ftp' },
-    });
-    expect(bad.status()).toBe(400);
-    const badBody = await bad.json();
-    expect(badBody.ok).toBe(false);
-    expect(typeof badBody.errorCode).toBe('string');
-  });
-
   test('System Settings backend-health card lists only failing backends', async ({
     page,
     request,

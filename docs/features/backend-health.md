@@ -26,9 +26,12 @@ backends (only a per-user 500 toast). This feature adds:
    (self-recovery). No active polling. Admin login + file-manager load naturally exercise all
    three backends.
 2. **Surfaces (D3)** — Admin: System Settings top status card + file-screen admin-only banner.
-   The card appears **only when a backend is failing** and lists **only the failing backends**
-   (name + `admin.health.fail` + classification hint/code + last-checked); healthy/unknown
-   backends are never listed. Terminal: transition-only logs
+   The card appears **only when an in-use backend is failing** and lists **only the failing
+   in-use backends** (name + `admin.health.fail` + classification hint/code + last-checked);
+   healthy/unknown backends are never listed, and **backends that are not currently active are
+   never listed** (active = metadata backend `WEA_STORAGE_BACKEND` + file backend
+   `WEA_FILE_STORAGE`). The boot WebDAV probe runs only when WebDAV is the active file backend,
+   so an unused backend cannot produce a false alert. Terminal: transition-only logs
    (`[backend-health] … OK→FAIL / FAIL→OK`). Normal user: friendly message only for
    connection-class failures (`files.storageUnavailable`); existing 404/403/etc. keep current
    messages; DB-down → maintenance notice.

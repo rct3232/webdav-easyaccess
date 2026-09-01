@@ -209,19 +209,22 @@ async function runBoot() {
     console.warn('⚠ FFmpeg initialization failed. Video thumbnails are disabled.');
   }
   
-  // Test WebDAV connection on startup
-  try {
-    const { testConnection } = require('./utils/webdav');
-    const testResult = await testConnection();
-    if (testResult.success) {
-      console.log('✓ WebDAV connection test: SUCCESS');
-    } else {
-      console.warn('⚠ WebDAV connection test: FAILED');
-      console.warn(`  ${testResult.message}`);
-      console.warn('  Please check your WebDAV credentials in the effective configuration (env or DB settings).');
+  // Test WebDAV connection on startup — only when WebDAV is the active file
+  // backend. Probing an unused backend would record a false health alert (D3).
+  if (process.env.WEA_FILE_STORAGE === 'webdav') {
+    try {
+      const { testConnection } = require('./utils/webdav');
+      const testResult = await testConnection();
+      if (testResult.success) {
+        console.log('✓ WebDAV connection test: SUCCESS');
+      } else {
+        console.warn('⚠ WebDAV connection test: FAILED');
+        console.warn(`  ${testResult.message}`);
+        console.warn('  Please check your WebDAV credentials in the effective configuration (env or DB settings).');
+      }
+    } catch (error) {
+      console.warn('⚠ WebDAV connection test failed:', error.message);
     }
-  } catch (error) {
-    console.warn('⚠ WebDAV connection test failed:', error.message);
   }
 
   getBackendHealth().reset();

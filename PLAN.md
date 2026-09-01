@@ -1,255 +1,130 @@
-# PLAN — Config Correctness Fixes & Backend Health (k3s-safe)
+# PLAN — Unified Migration Mode (metadata DB migration + blob migration cutover)
 
-Status: PLANNED — priorities finalized, to be expanded during implementation.
-Branch: `feature/backend-health` (base: `dev`) — to be created.
+Status: DESIGNED — full implementation plan agreed (2026-09-01). Not started.
+Branch (planned): `feature/migration-mode` (base: `dev`).
 
 ## 1. Objective
 
-Two-phase scope:
+Build a single, safe migration experience for both metadata (sqlite ↔ postgresql) and blobs
+(s3 ↔ webdav), replacing the current manual/partial flows:
 
-- **Phase A (priority — live bugs): config-correctness fixes (F3–F6).** Configuration edits that
-  silently don't take effect, missing server-side guards, and absent operator warnings — fixed
-  first.
-- **Phase B: backend health alerts & config guard.** Operator visibility into DB/S3/WebDAV health,
-  connection-key save gating, and a k3s-safe boot rule.
+- **F1 (metadata DB migration)** — today completely unsupported: no sqlite↔PG tool/checklist/UI
+  (old `migrateMetadataToPostgresql.js` removed, `server/scripts/migrate/` empty, docs only support
+  fresh-DB boot). PG connection is `.env`-owned (T0), so a supported migration path + a
+  ".env setup needed" notification are required.
+- **F2 (blob migration cutover)** — today the operator is told to manually edit
+  `WEA_FILE_STORAGE` + the target block in `.env` and restart (en.json:543); the dialog's
+  destination credentials are used transiently for the copy and discarded; no post-restart
+  verification of the cutover.
+- **New: migration mode** — while a migration runs, the whole app is locked: a dedicated
+  `/migration` page shows progress and forces the operator to stay until the migration reaches a
+  terminal state (completed / failed / cancelled). Migrations must be cancellable mid-way.
 
-Future scope (not in this phase) stays at the end: metadata DB migration and blob-migration
-cutover integration (F1/F2).
+## 2. Background / current state (verified 2026-09-01)
 
----
+- **F1**: both schemas are structurally identical — the sqlite DDL is generated at runtime from
+  `server/store/postgresql/ddl/001_initial_normalized_schema.sql` via `sqliteSchemaInit.js`
+  type-conversion (JSONB→TEXT, TIMESTAMPTZ→TEXT, BOOLEAN→INTEGER, BIGSERIAL→INTEGER PK
+  AUTOINCREMENT). Only `settings.value` differs semantically (sqlite raw TEXT vs PG JSONB-string)
+  and `_schema_migrations` exists only in PG. The metadata adapters are legacy (broken
+  `share_links.file_path` code, users-only) — use direct SQL. Encryption (AES-256-GCM,
+  `sha256(encrypt_secret_key)`) survives the copy iff the key is identical and `settings.value`
+  is wrapped as a JSON string for PG. `encrypt_secret_key` is T0/.env-only.
+- **F2**: all storage keys are T1/DB-backed (`configRegistry.js:41-50`). A DB write does not
+  affect the running process — `process.env` is only populated at boot
+  (`populateT1Env`, `configResolver.js:234-252`); composition/blobstore snapshot
+  `process.env.WEA_FILE_STORAGE` once (`composition.js:24`, `blobstore/index.js:32`). Restart is
+  strictly required for a storage-backend switch. Migration verification building blocks already
+  exist: `runProbe`/`probeS3`/`probeWebdav` (`backendProbe.js`), `POST /api/admin/config/test`
+  pending-values merge (`config.js:177-209`), and the health tracker (`backendHealth.js`).
+- **Blob migration today** (admin API + MigrationDialog): copy-only, source preserved, snapshot
+  enumeration, `object_map`/`filecache` updated per node; progress is node-count based
+  (`progress`/`total`/`current` job fields); cancel exists but the `runCopy` loop does not
+  necessarily abort between nodes.
+- **Boot**: PG pre-flight exits on missing `WEA_PG_*` (D6); WebDAV boot probe is warn-only
+  (`index.js:214-228`); S3 has no boot probe; health tracker resets to `unknown` at boot.
 
-# Phase A — Config-correctness fixes (priority)
-
-## A1. F3 — Silent no-op config edits (bug)
-
-Config saved in the admin editor (or via API) that **never takes effect**, either immediately or
-after restart.
-
-### A1.1 Require-time-const T1 keys
-`server/index.js:85-116` requires route modules before `runBoot()` runs `populateT1Env`
-(`index.js:158-171`). Modules that capture a T1 key into a module-level `const` freeze the
-`.env`/default value and can never see the DB copy — yet the editor lists them as editable T1
-("restart required") keys. After restart the value still has no effect.
-
-Affected keys (all T1 in `configRegistry.js`):
-`LOGIN_RATE_LIMIT_MAX`/`LOGIN_RATE_LIMIT_WINDOW_MS` (auth/service.js:12-13),
-`MAX_THUMBNAIL_SIZE`/`FFMPEG_INIT_TIMEOUT_MS` (videoProcessor.js:11-12),
-`THUMBNAIL_TOKEN_SECRET`/`THUMBNAIL_TOKEN_EXPIRY` (thumbnailService.js:7-8),
-`PERMISSION_CACHE_TTL_MS` (permissionStore.js:17),
-`PERMISSIONS_EXISTENCE_*` (permissionExistenceIndex.js:12-16),
-`USER_CACHE_TTL_MS` (aclService.js:17), `WEA_PREVIEW_TICKET_TTL_MS` (operationProgress.js:7).
-
-Fix direction (per key, with evidence):
-- Move the read to the boot snapshot / lazy resolver (like `PORT` at index.js:219), OR
-- Reclassify to a tier whose semantics match the actual read path, OR
-- Make the value lazily read (T2) where the consumer is per-operation.
-
-### A1.2 EMAIL_* "applied" but restart-only
-`EMAIL_*` are T2 (configRegistry.js:72-76) → the PUT returns them under `applied` and the editor
-shows no restart banner. But the nodemailer transporter is a process singleton built once
-(email.js:13-17, 30-62) — edits show "Configuration saved" with no effect until restart.
-
-Fix direction: **reclassify EMAIL_* to T1** (restart-required, honest banner) OR rebuild the
-transporter on config change.
-
-## A2. F4 — Server-side env-shadow guard (bug)
-
-The UI blocks editing `source=env` rows, but `PUT /api/admin/config` (config.js:40-69) does **not**
-refuse a DB write to an env-sourced key — an API/script write is silently stored and forever
-shadowed by `.env`. Add server-side enforcement:
-
-- Reject (400) a write whose key's current source is `env` (config.js), matching the UI's
-  read-only rule; keep the UI behavior identical.
-- (Optional in this phase) env-vs-DB drift detection for the health surface.
-
-## A3. F5 — Config editor pre-save feedback (UX gap)
-
-- Per-field **tier / "restart required" badge** while editing (tier is already in the GET payload
-  but not rendered; the restart banner only appears after save, SystemConfigEditor.js:400-407).
-- Surface the PUT **`applied` (T2, took-effect-now) list** client-side (currently ignored,
-  SystemConfigEditor.js:211-216) so the operator sees what applied live vs what awaits restart.
-
-## A4. F6 — Missing operator warnings (bug)
-
-- **A4.1 `key_lost_warning` never rendered**: computed (setup/routes.js:866, 980) but not shown in
-  the admin UI — warn the operator when `encrypt_secret_key` is lost (DB secrets undecryptable).
-- **A4.2 Stale terminal guidance**: WebDAV boot probe message references ".env file"
-  (index.js:210) while WEBDAV_* can be DB-sourced — update to "effective configuration".
-- **A4.3 `getBackend()` silent sqlite fallback** (storage.js:10-16): an invalid/typo'd
-  `WEA_STORAGE_BACKEND` boots sqlite with only a deprecation warning — make it a terminal error
-  (aligns with D6 in Phase B).
-
----
-
-# Phase B — Backend Health Alerts & Config Guard
-
-## B1. Context / current state (verified)
-
-- After `setup_complete=true` there is **no operator-visible surface** for missing/broken critical
-  backends (console + per-user 500 toast only). Connectivity/auth verification exists **only** in
-  the first-run wizard (`POST /api/setup/test`, gated 403 after complete).
-- PG: boot failure is fatal (`process.exit(1)`) but unclassified; runtime PG errors are mostly
-  unmapped → 500 `databaseQueryFailed`. No liveness check.
-- S3: no boot/runtime probe; raw AWS errors → 500 `internalServerError`. WebDAV: boot probe
-  (warn-only), runtime `webdav.*` codes. `/api/health` is static.
-- Production is k3s: chart injects env → `.env` dynamically generated, multi-container, no local
-  storage → sqlite is not viable; the DB connection must come from `.env`/env and fail fast when
-  absent/incomplete.
-
-## B2. Confirmed decisions
+## 3. Confirmed decisions
 
 | # | Area | Decision |
 |---|------|----------|
-| D1 | UI save gating | Editing a **connection key** (below) in Advanced settings blocks Save until a connection test **with the pending values** passes (complete block). Changing a connection key invalidates the result. Non-connection keys don't require a test. |
-| D2 | Detection | **Passive, event-based**: any PG/S3/WebDAV access attempt that fails records to an in-memory tracker (classified); any success marks the backend OK (self-recovery). No active polling. Admin login + file-manager load naturally exercise all three backends. |
-| D3 | Surfaces | **Admin**: System Settings top status card + file-screen admin-only banner (OK/FAIL + classification + last-checked + hint). **Terminal**: transition-only logs (`[backend-health] … OK→FAIL / FAIL→OK`). **Normal user**: friendly message **only for connection-class failures** (unreachable / auth / resource-missing); existing 404/403/etc. keep current messages; no user banner; DB-down → maintenance notice. |
-| D4 | State | Server **in-memory only** (resets on restart). |
-| D5 | T0 in editor | **Remove the T0/metadata group entirely** from Advanced settings; the editor shows editable T1/T2 keys only. PG connection stays `.env`-owned (connection verification is provided by the health card, not an in-editor PG section). |
-| D6 | Boot rule | `WEA_STORAGE_BACKEND` unset → **sqlite** (kept). Explicit `sqlite` → allowed. `postgresql` → `WEA_PG_HOST/PORT/DATABASE/USER/PASSWORD` required; incomplete → **terminal error + `process.exit(1)`** (remove the setup-mode fallback for the DB connection). |
-| D7 | Wizard scope | Wizard serves **non-T0 only**: reachable when the DB is connected but non-T0 config is incomplete. `no .env → sqlite wizard` first-boot path is removed (DB connection is `.env`/env-owned). Wizard E2E scratch `.env` updated to declare the backend explicitly. |
-| D8 | User message scope | Connection-class failures only → friendly text; no backend internals exposed. |
+| D1 | Config location | Migration **configuration stays in dialogs** (System Settings). Blob `MigrationDialog` is kept; a new metadata-migration dialog is added. The `/migration` page is for **execution/progress only**, not configuration. |
+| D2 | Start flow | Clicking apply/start in a dialog begins the migration, sets the migration gate, and **auto-redirects to `/migration`**. While running, the operator is forced to stay on `/migration`. |
+| D3 | Gating | **Server-side enforced**: a migration gate middleware returns `503 migrationInProgress` for all routes (including the WebDAV protocol) except the allow-list: `/api/health`, `/api/admin/login`, `/api/admin/migration/*`, `/api/migration/status`. Client app-guard polls `GET /api/migration/status` and redirects any route to `/migration` while active (double safety). |
+| D4 | Cancellation | Migrations must be cancellable mid-way. **DB migration** = whole op (schema + wipe + copy) in one target transaction → cancel = ROLLBACK, both sides unharmed. **Blob migration** = cancel flag set immediately, current node finishes then stops; partial progress is kept (source preserved) and resumed on rerun (`shouldSkip`). `runCopy` loop needs a cancel check. |
+| D5 | DB target handling | Before starting, **scan the target**: `schemaExists` + per-table row counts. If data exists → wipe alert in the config dialog listing affected tables/rows → explicit admin confirm (`wipeTarget=true`) before proceed. Wipe runs in the same transaction as the copy → cancel rolls back the wipe too. |
+| D6 | Target schema | If the target has no schema, **auto-apply DDL** to the explicit target backend/connection. Requires refactoring the schema manager (`schemaManager`/`initSqliteSchema`) to apply DDL to an explicit target rather than only the active backend. |
+| D7 | `/migration` content | Progress only: overall determinate %, current-operation label, counters (blob). **No per-step/table list** (dropped by request). |
+| D8 | Blob progress | **Node-count based**: `total` = active file_nodes in the snapshot, `progress` incremented per processed node, `% = progress/total`. Show current file label (`current`) so stalls on large files are understandable. Byte-weighted progress is optional/out of scope. |
+| D9 | Terminal UX | **No header back button.** When polling detects a terminal state, an **auto modal popup** appears: completed → summary + next-step guidance; failed → error + reason; cancelled → warning + partial summary. Each has a **"Go to settings"** button that immediately navigates back. |
+| D10 | F2 persist | After a blob `apply` completes: **DB-sourced** storage keys → persist to the DB via `Settings.set` (secrets AES-encrypted with `encrypt_secret_key`, then `invalidateCache`), returning `configPersist { persisted, skippedEnvSourced }` on the job. **Env-sourced** keys → fall back to the existing manual `.env` guidance (no env↔DB sync tool). |
+| D11 | Final DB cutover | T0 keys (`WEA_STORAGE_BACKEND`, `WEA_PG_*`) are env-owned by design → the final step remains **manual env edit + restart**. The UI guides it (".env setup needed") and the server shows a persistent banner while data lives in the non-active backend. |
+| D12 | Boot verification | Add an **S3 boot probe** symmetric to the WebDAV one (warn-only) so a post-restart cutover to either storage backend is verified and reflected in the health tracker/card. |
+| D13 | ".env setup needed" | New `metadataPresence` detection: when the non-active backend holds metadata (settings/users), expose it via an admin endpoint and render a banner in System Settings with a link to the migration flow. |
+| D14 | F1 tool form | **Admin API + dialogs** (no standalone CLI). `migrateBlobs.js` CLI stays but is not the primary path. |
 
-**Connection keys** (D1): S3 → `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`. WebDAV → `WEBDAV_URL`, `WEBDAV_USERNAME`,
-`WEBDAV_PASSWORD`, `WEBDAV_AUTH_TYPE`.
-
-## B3. Architecture / key components
+## 4. Architecture / key components
 
 ### Server
-- `server/infrastructure/backendHealth.js` (new): in-memory tracker
-  - per-backend (`postgresql` | `s3` | `webdav`) state: `{ status: 'ok'|'fail', code?, reason?, hint?, lastCheckedAt, firstFailedAt, consecutiveFailures }`
-  - `report(backend, { ok, code, reason })` — updates state; fires a **transition callback** (for terminal logging) only on OK→FAIL / FAIL→OK
-  - `getHealth()` — snapshot for endpoints/UI; `reset()` (boot) + test hook
-- **Classification reuse**: `classifyPgError` / `classifyS3Error` (server/domains/setup/routes.js) and `webdav.*` codes → normalize to a stable `code` (`unreachable` | `auth` | `missing_resource` | …) + a human `hint`.
-- **Failure integration points** (report on failure / success): PG `mapDatabaseError` / pool `error` handler (storage.js); S3 blob store operation errors (S3BlobStore) + successes; WebDAV `utils/webdav.js` mapping + `webdavTest.testConnection` (boot probe).
-- **Endpoints**: `GET /api/admin/health` (admin) → tracker snapshot; `GET /api/health` (public) → extend with `{ backends: { … } }` (no secrets); `POST /api/admin/config/test` (new, admin) — connection test **with pending values**, reuses the wizard probe/classification, serves D1.
-- **Boot rule change** (D6): `runBoot` resolves the metadata backend first; `postgresql` with missing `WEA_PG_*` → `console.error('[config] …')` + `process.exit(1)`. Wizard flow kept for the DB-connected-incomplete case (D7).
+- `server/infrastructure/migrationGate.js` (new): in-memory `{ active, type: 'metadata'|'blobs', jobId, startedAt }`; `set/clear/reset/getStatus`. Set on migration start, cleared on terminal, reset at boot.
+- Gating middleware (`server/index.js`): allow-list exception, `503 migrationInProgress` everywhere else including WebDAV protocol routes.
+- `server/domains/admin/services/metadataMigrationService.js` (new): direct target connection (`pg.Client` / `sqlite3.Database`, `probePostgresql` pattern); target scan (`schemaExists`, per-table row counts); schema apply to explicit target (D6 refactor); wipe + copy (FK order: users → file_nodes → object_map/filecache/node_ancestors → permissions_* → share_links/recent_files/permission_requests → locks → settings) with settings JSON-string serialization, explicit ids + `setval`/`sqlite_sequence` resync; single target transaction; cancel = rollback.
+- Migration router extensions (`server/domains/admin/routes/migration.js`): new `GET /api/migration/status` (public), `POST /api/admin/migration/metadata` `{ targetBackend, pg | sqlitePath, wipeTarget }`, `GET /api/admin/migration/target-scan`; extended job payload (`type`, `stage: 'scan'|'schema'|'wipe'|'copy'|'done'`, `progress: { percent, currentLabel, counters? }`).
+- Blob worker: cancel check inside the `runCopy` loop (finish current node, stop, keep resume).
+- F2 persist: `persistStorageConfigToDb(destConfig)` (D10) wired into `runMigrationWorker.then()` when `mode==='apply'`; result stored on the job as `configPersist`.
+- `server/infrastructure/metadataPresence.js` (new, D13) + admin endpoint; S3 boot probe (D12).
+- `server/infrastructure/configResolver.js` / `settingsStore.js` / `backendProbe.js` reused as-is.
 
 ### Client
-- `SystemConfigEditor.js`: remove the `metadata` (T0) group (D5); per-group **connection-test gating** (D1) — connection key dirty → "Test connection" control posting the pending values to `/api/admin/config/test`; Save disabled until that group's test passes; editing a connection key invalidates it.
-- Admin health card (SystemSettingsContent top) + file-screen admin-only banner (D3): read `GET /api/admin/health` (admin) / `GET /api/health` (banner), render per-backend status + hint + last-checked.
-- User friendly message (D8): file-domain error handling maps connection-class failures to one friendly i18n message (e.g. `files.storageUnavailable`); no AWS/webdav internals leaked to users.
+- Route `/migration` at App.js top level (same level as `/login`, `/setup`); `MigrationPage`.
+- App guard: poll `GET /api/migration/status`; while active, force-redirect every route to `/migration`.
+- `MigrationPage` layout:
+  - Header: title + migration type badge + elapsed time (no back button).
+  - Direction/status card: `sqlite → postgresql`, status badge (Running/Completed/Failed/Cancelled), started/elapsed.
+  - Progress card: overall determinate `%` bar, current-operation label, counters (blob: copied/failed/skipped).
+  - State alerts: failed → error + reason; cancelled → warning + partial summary.
+  - Terminal modal popup (D9): summary + guidance + **"Go to settings"** (navigates back immediately).
+  - Empty state when no active job: "No active migration" + back.
+- Config dialogs (System Settings): blob `MigrationDialog` kept (apply now routes to `/migration`); new metadata-migration dialog (target connection fields → target-scan → wipe alert → confirm → start).
+- System Settings: metadata-migration entry + ".env setup needed" banner (D13) + blob entry unchanged.
+- i18n: en/ko keys for page, states, popups, guidance.
 
----
+## 5. Progress model
 
-# Future scope (not in this phase)
+- Job payload (extended): `{ id, type, direction, status, stage, progress: { percent, currentLabel, counters? }, results?, startedAt, completedAt?, error?, configPersist? }`.
+- Blob `%`: `progress / total` (snapshot node count), updated per node; `current` = current file label.
+- Metadata `%`: per-source-table `COUNT(*)` pre-aggregation, `Σ done / Σ total`; `currentLabel` = current table + rows (e.g. "Copying users … 3,420/5,100").
+- Polling: reuse the 400ms job-poll pattern; stop on terminal; client computes elapsed timer locally.
+- Edge cases: refresh during migration restores the current job via polling; app guard blocks other pages; DB wipe alert lives in the config dialog (pre-start), `/migration` only shows the "Wiping target DB …" stage.
 
-## F1. Metadata DB migration (sqlite ↔ PG) + ".env setup needed" notification
-Currently **completely unsupported**: `server/scripts/migrateMetadataToPostgresql.js` was removed
-(docs/ARCHITECTURE.md:172), `server/scripts/migrate/` is empty, and docs/SETUP.md:117-119 only
-supports fresh-DB boot. An operator moving sqlite→PG (or reverse) must manually export/transform/load
-all tables (users, settings, file_nodes, object_map, filecache, permissions, shares, locks) with no
-tool/checklist/UI. Under D6/D7 (PG connection is `.env`-owned) the wizard is no longer a PG on-ramp,
-so this needs: a supported migration path **and** a UX that notifies the operator when ".env setup is
-needed" (e.g. after migration, point WEA_PG_* at the target and restart).
-
-## F2. Blob migration (s3 ↔ webdav) — integrate the DB connection-info change
-Today after a blob migration the operator is told to **manually edit `WEA_FILE_STORAGE` + the target
-storage block in `.env` and restart** (MigrationDialog popup, en.json:526) — the destination
-credentials entered in the dialog are discarded, the guidance contradicts the DB-backed (T1) config
-model (configRegistry.js:41-50), and there is **no post-restart verification** of the cutover. Future
-feature: on migration completion, update the DB settings (WEA_FILE_STORAGE + the target's connection
-keys from the migration input), then verify the new backend (reuse the health tracker) before/after
-the switch.
-
----
-
-# Task dependency graph
+## 6. Implementation tasks (dependency graph)
 
 ```
-Phase A (priority)
-  A1 F3 silent no-ops ──┐
-  A2 F4 env-shadow guard ──┼─ T1..T6 (server+client, mostly independent)
-  A3 F5 editor pre-save feedback ──┘
-  A4 F6 warnings (key_lost / stale messages / sqlite fallback)
-
-Phase B
-  B1 backendHealth tracker + classification + endpoints   (server)
-  B2 boot rule change + wizard scope                      (server)
-  B3 admin config/test endpoint + PUT guard               (server)
-  B4 editor: T0 removal + connection gating               (client)
-  B5 health card/banner + user friendly message           (client)
-
-  └─ T7 tests + E2E updates (A+B) → T8 regression + merge to dev
+M1  docs-first (features/specs/SETUP/ARCHITECTURE updates)          ─┐
+M2  migrationGate + gating middleware + GET /api/migration/status  ─┼─ parallelizable after M1
+M3  metadataMigrationService (scan/schema/wipe/copy/rollback)       ─┤
+M4  migration router extensions + extended job payload              ─┤
+M5  blob worker cancel check + resume                               ─┤
+M6  F2 persistStorageConfigToDb + worker wiring + job.configPersist ─┤
+M7  S3 boot probe + metadataPresence + ".env setup needed" endpoint ─┘
+M8  /migration route + app guard (poll + force redirect)
+M9  MigrationPage (layout, progress, alerts, terminal modal popup)
+M10 metadata-migration config dialog (target-scan + wipe alert) + blob dialog reroute
+M11 SystemSettings entries + ".env setup needed" banner + i18n
+M12 tests (unit, test:ci:pg sqlite↔PG roundtrip, E2E) + regression + merge to dev
 ```
 
-- Phase A tasks are parallelizable (independent files); Phase B depends on A where they touch the
-  same files (config editor, storage).
-- E2E updates include: setup-wizard scratch `.env` declares the backend (D7); admin-config spec
-  extended for T0 removal, connection-gating, health card, and the A1/A2/A3/A4 behaviors.
+- Single branch `feature/migration-mode` (base `dev`): M2–M7 share the gate, so one cohesive branch.
+- E2E: setup-wizard untouched; migration spec updated (docker-gated where S3/PG needed).
 
-# Success criteria
+## 7. Success criteria
 
-Phase A:
-1. Every A1.1 key's saved value actually takes effect (lazy read / snapshot / reclassified) — no
-   silent no-op; EMAIL_* shows an honest tier (A1.2).
-2. `PUT /api/admin/config` refuses env-sourced writes server-side (A2).
-3. Editor shows per-field tier/restart feedback and the `applied` list (A3).
-4. `key_lost_warning` visible to the admin; stale ".env file" guidance fixed; invalid
-   `WEA_STORAGE_BACKEND` fails loudly instead of sqlite fallback (A4).
+- Gate active → every route except the allow-list returns `503 migrationInProgress` (WebDAV included); all screens forced to `/migration`; external clients blocked.
+- DB migration: target scan → wipe alert → explicit confirm → transactional copy. Cancel → full rollback on both sides. Completion → env-cutover guidance → restart → data live; ".env setup needed" banner persists while data sits in the non-active backend.
+- Blob migration: apply starts in the dialog and auto-redirects to `/migration`; cancellable mid-copy (resume on rerun); DB-sourced storage config auto-persisted (+restart guidance), env-sourced falls back to manual `.env` guidance; restart → S3/WebDAV boot probe verifies the new backend on the health card.
+- Terminal always surfaces an auto modal with summary + "Go to settings".
+- No schema change beyond existing DDL; `client`/`server` `test:ci` + E2E stay green.
 
-Phase B:
-5. k3s boot with `postgresql` + incomplete `WEA_PG_*` → clear terminal error + `exit(1)`; no
-   sqlite wizard fallback for the DB connection.
-6. Admin editing an S3/WebDAV connection key cannot Save until a test with the pending values
-   passes; non-connection keys save without a test.
-7. A backend access failure from any user attempt records to the in-memory tracker; admin sees
-   the status card/banner; terminal logs only transitions; the user sees the friendly message
-   for connection-class failures (and current messages otherwise).
-8. T0 keys are absent from the Advanced settings editor.
-9. No schema change; server + client `test:ci` and the E2E suites stay green (with intended test
-   updates).
+## 8. Progress log
 
-# To confirm during implementation
-
-- Exact `/api/admin/config/test` request/response shape (pending-values subset + classification).
-- Whether `GET /api/health` (public) should expose backend OK/FAIL (no codes/hints) for the
-  user-friendly routing, vs an admin-only endpoint.
-- File-screen admin banner placement and whether it appears on all authed pages vs file screen only.
-- A1.1 per-key fix strategy (lazy-read vs snapshot vs reclassification) — decide per key with
-  evidence during implementation.
-
-# Progress log
-
-- 2026-08-31: **Phase B implemented and merged to `dev`** (branch `feature/backend-health`).
-  B1: `backendHealth` in-memory tracker (transition-only `[backend-health]` logs) + `backendProbe`
-  (classification/probes extracted from the wizard for reuse). Passive hooks: PG
-  `mapDatabaseError`/pool-`error`/`withTransaction`, S3/WebDAV blob stores + `webdavTest`
-  boot probe + `listDirectory`. Endpoints: `GET /api/health` (backends status strings),
-  `GET /api/admin/health`, `POST /api/admin/config/test` (pending-values, merged over effective
-  config). B2: D6 boot pre-flight (`postgresql` + missing `WEA_PG_*` → `[config]` error +
-  `exit(1)`); D7 wizard non-T0 only (metadata optional/`postgresql` rejected on apply, T0 keys
-  dropped from `current`, direct-PG apply writers removed, wizard client metadata step removed).
-  B4: editor T0-group removal + connection-key save gating. B5: admin health card + file-screen
-  admin banner + user-friendly connection-class messages (`files.storageUnavailable` /
-  `files.maintenanceNotice`). Server test:ci 81 suites / 1545; client test:ci 152 suites /
-  1365; lint 0 errors; E2E admin-config 12 passed (1 docker-gated skip) + setup-wizard 4 passed.
-  Docs updated first (backend-health feature/specs, health routes, config.md, setup.md,
-  bootSequence, SystemConfigEditor/SystemSettingsContent/FileManagerView specs, api.md, SETUP.md).
-- 2026-08-31: **Phase A (F3–F6) implemented and merged to `dev`** (branch
-  `feature/backend-health`, commit `ce65b59`, merge into `dev`). A1.1: the 12
-  mislabeled T1 keys reclassified to T2 with lazy `getSharedResolver().getConfig`
-  reads (auth rate-limit, thumbnails, permission/user cache TTLs, existence-index,
-  preview-ticket); A1.2: EMAIL_* reclassified to T1 (honest restart). A2: PUT
-  rejects env-sourced writes (400 `configEnvSourcedProtected`). A3: editor tier
-  badges + `applied` banner. A4: `key_lost_warning` on the admin config surface,
-  WebDAV probe message now says "effective configuration", invalid
-  `WEA_STORAGE_BACKEND` → terminal error + `exit(1)`. Server test:ci 80 suites /
-  1515 passed; client test:ci 152 suites / 1350 passed; lint 0 errors; admin-config
-  E2E 6 passed. Docs (features + specs) updated first per the docs-first workflow.
-- 2026-08-31: Policy finalized with the user — D1 UI save gating (complete block, pending-values
-  test), D2 passive event-based detection (admin login/file load auto-cover), D3 surfaces
-  (admin card+banner / terminal transitions / user friendly message for connection-class only),
-  D4 in-memory state, D5 T0 removed from Advanced settings, D6 boot rule (sqlite default kept;
-  postgresql incomplete → exit), D7 wizard non-T0 only, D8 user-message scope. k3s context:
-  chart injects env → dynamic `.env`; DB connection `.env`-owned. This PLAN created.
-- 2026-08-31: Future scope added — F1 metadata DB migration (sqlite↔PG) + ".env setup needed"
-  notification (unsupported today); F2 blob-migration cutover integrates the DB connection-info
-  change + post-cutover verification; F3 silent-no-op fixes (require-time-const T1 keys, EMAIL
-  "applied"-but-restart-only); F4 server-side env-shadow guard + drift detection; F5 pre-save
-  tier/restart feedback + `applied` surface; F6 missing warnings (key_lost_warning, stale terminal
-  guidance, silent sqlite fallback). Source: codebase exploration.
-- 2026-08-31: Re-prioritized per user feedback — F3–F6 promoted to **Phase A (priority, live bugs)**
-  at the top; the health-alert scope became Phase B; F7 (wizard apply feedback / optional-step skip
-  affordance) **removed** (wizard input always requires restart, "immediate" notices are useless; the
-  optional step already communicates optionality by name); F1/F2 remain future scope.
+- 2026-09-01: Full redesign designed and agreed. Scope: unified migration mode (metadata DB + blob cutover). Decisions D1–D14 recorded above. `/migration` page = execution/progress only (config stays in dialogs); node-count blob progress; terminal auto-popup with "Go to settings"; server-side gating; cancellable migrations (DB=transaction rollback, blob=loop check+resume); DB target scan→wipe-alert→confirm; F2 auto-persist (DB-sourced) with manual fallback; ".env setup needed" banner; S3 boot probe. This PLAN replaced the previous (completed Phase A/B) PLAN.

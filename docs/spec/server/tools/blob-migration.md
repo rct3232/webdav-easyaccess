@@ -20,6 +20,7 @@ Move physical blobs between the WebDAV and S3 backends while keeping the DB meta
 - **Automatic direction:** `webdav-to-s3` or `s3-to-webdav`, derived from the current app config (`WEA_FILE_STORAGE`). There is no direction selection anywhere — not in the CLI, the admin API, or the UI; the server is the single source of truth.
 - **Automatic resume:** resume is always on — re-running a copy skips already-migrated destination blobs; a full re-run copies nothing.
 - **Inline `object_map` flip (s3→webdav):** after each webdav upload succeeds, the node's `storage_backend` is flipped to `'webdav'` immediately, while `s3_key` is preserved. No separate finalize step exists.
+- **Source-native webdav snapshot + post-copy activation:** a `webdav-to-s3` run snapshots native webdav files even without an `object_map` row (see §6) and, after each successful copy, sets the node `sync_status='active'` so the post-cutover S3 state matches the S3 lifecycle model.
 - **Mandatory dry-run before any write:** an `--apply` run first performs a dry pass; any failure blocks all writes.
 - **Per-node failure isolation:** a failing node is recorded and processing continues.
 - **Source-blob preservation:** source blobs are never deleted in the MVP.
@@ -207,7 +208,9 @@ The same destination config can be supplied via environment:
 
 The tool does **not** take the app into a write-blocking maintenance mode. Instead:
 
-1. Enumerate the active file-node set **once** at start: `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file with an object_map row).
+1. Enumerate the file-node set **once** at start, source-mode aware:
+   - **S3 source (unchanged):** `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file with an object_map row).
+   - **WebDAV source:** every file node with `sync_status != 'orphaned_node'` (via `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')`); per node the active `object_map` row is used when present (its preserved `s3_key` is the webdav→s3 resume marker from a prior run), otherwise the activeObject is synthesized as `{ s3_key: null, storage_backend: 'webdav' }`. Native webdav files — the app's own uploads, which stay `sync_status='pending_upload'` with no `object_map` (webdav is path-addressed; the blob IS the node's display path) — are therefore included without a mapping row.
 2. Read only from the **source** store.
 3. Write only to the **destination** store plus the required DB updates.
 
@@ -226,15 +229,17 @@ reaches a terminal state.
 
 | Action | WebDAV→S3 copy | S3→WebDAV copy |
 |---|---|---|
+| snapshot preconditions | non-orphaned file nodes (`sync_status != 'orphaned_node'`); activeObject synthesized `{s3_key:null, storage_backend:'webdav'}` when no `object_map` row | active file nodes with an active `object_map` row (unchanged) |
 | read source | path → download | active `s3_key` → download |
 | write dest | S3 UUID key (flat) | webdav path `/username/...` + mkdir |
 | `object_map` | upsert `(s3, key, active)` | flip `storage_backend='webdav'` inline after upload succeeds; **keep `s3_key`** |
+| `file_nodes.sync_status` | set `'active'` after copy (webdav-native nodes were `'pending_upload'`) | unchanged (`'active'` already) |
 | `filecache` | size/mime/hash | hash (+size check for resume) |
 | resume marker | active non-null `s3_key` | dest `headBlob` size == `filecache.size` |
 | S3 dest | flat UUID keys, NO directory structure | — |
 | WebDAV dest | — | directory structure preserved (ancestor MKCOL) |
 
-- **`webdav-to-s3`:** `object_map` is updated per node during copy (`upsertObjectMap` → `storage_backend='s3'`, `s3_key=UUID`, `active`). Safe because the webdav-mode app ignores `object_map`.
+- **`webdav-to-s3`:** `object_map` is updated per node during copy (`upsertObjectMap` → `storage_backend='s3'`, `s3_key=UUID`, `active`), and the node is set `sync_status='active'` after a successful copy. Safe because the webdav-mode app ignores `object_map`.
 - **`s3-to-webdav`:** each node's `object_map.storage_backend` is flipped to `'webdav'` **inline** right after its webdav upload succeeds, while `s3_key` is **preserved**. The running S3-mode app reads only `s3_key` (`downloadBlob` in S3 mode never consults `storage_backend`), so the flip has zero functional impact on running reads; `storage_backend` is informational. Preserving `s3_key` also keeps rollback possible — the pre-migration key stays recorded on the row.
 
 ### 7.1 `object_map` transitions
@@ -291,6 +296,10 @@ Resume is **automatic and always on** — there is no `--resume` flag or UI chec
 - [ ] Missing required dest field produces a clear error listing the field(s)
 - [ ] A destination `type` that does not match the derived destination backend is rejected before any work (exit `1`)
 - [ ] Direction is derived from `WEA_FILE_STORAGE` at bootstrap; no `--direction` flag or other user selection exists
+- [ ] webdav-source snapshot: a native webdav file (no `object_map`, `sync_status='pending_upload'`) is included and copied; after copy its `sync_status` is `'active'` and it has an `(s3, UUID, active)` `object_map` row
+- [ ] webdav-source snapshot: a preserved active `s3_key` (prior migration) resumes as a skip marker; a rerun copies only the remaining native files
+- [ ] webdav-source snapshot: `orphaned_node` file nodes are excluded
+- [ ] s3-source snapshot is unchanged: only `active` file nodes with an active `object_map` row are enumerated
 - [ ] Dest config from `--dest-*` flags and from `DEST_*` env produce the same destination store; flags win on conflict
 - [ ] s3-to-webdav apply flips `storage_backend='webdav'` inline per node while preserving `s3_key`; a re-run skips flipped nodes
 - [ ] Unknown flag combination exits `2` with a usage message

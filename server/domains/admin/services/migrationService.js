@@ -101,13 +101,19 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
   }
 
   async function enumerateSnapshot() {
-    const nodes = await fileNodesStore.getNodesBySyncStatus('active');
+    const isWebdavSource = fileStorageMode === 'webdav';
+    const nodes = isWebdavSource
+      ? await fileNodesStore.getNodesBySyncStatusNot('orphaned_node')
+      : await fileNodesStore.getNodesBySyncStatus('active');
     const snapshot = [];
     for (const node of nodes) {
       if (node.type !== 'file') continue;
       const activeObject = await fileNodesStore.getActiveObject(node.id);
-      if (!activeObject) continue;
-      snapshot.push({ node, activeObject });
+      if (!isWebdavSource && !activeObject) continue;
+      snapshot.push({
+        node,
+        activeObject: activeObject || { s3_key: null, storage_backend: 'webdav' },
+      });
     }
     snapshot.sort((a, b) => a.node.id - b.node.id);
     return snapshot;
@@ -161,6 +167,7 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       await fileNodesStore.upsertObjectMap(node.id, key, 'active');
       const cache = await fileNodesStore.getCache(node.id);
       await fileNodesStore.upsertCache(node.id, buf.length, (cache && cache.mime_type) || null, sha256HexLower(buf));
+      await fileNodeService.updateSyncStatus(node.id, 'active');
       return { action: 'copied', path: nodePath };
     }
 

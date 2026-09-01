@@ -59,6 +59,7 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
 
     for (const row of rows) {
       if (!row.s3_key) continue;
+      if (isWebdavMode) continue;
       try {
         await blobStore.deleteBlob(row.s3_key);
         result.deletedBlobs += 1;

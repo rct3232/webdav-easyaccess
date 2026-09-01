@@ -4,6 +4,7 @@ import {
   type ListObjectsV2CommandInput,
   HeadObjectCommand,
   PutObjectCommand,
+  DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
 /**
@@ -71,4 +72,27 @@ export async function blobExists(key: string): Promise<boolean> {
 /** Directly PUT a blob that has no corresponding `object_map` row (E2E-S3PG-008). */
 export async function putBlob(key: string, body: Buffer): Promise<void> {
   await getS3Client().send(new PutObjectCommand({ Bucket: E2E_S3_BUCKET, Key: key, Body: body }));
+}
+
+/**
+ * Delete every object currently in the seeded bucket. Used by the migration
+ * E2E to give its "no duplicate blobs" assertions a deterministic baseline:
+ * the shared bucket otherwise accumulates objects across tests in the same
+ * Playwright invocation, so an exact `listS3Keys()` count match must start
+ * from an empty bucket per case.
+ */
+export async function emptyS3Bucket(): Promise<void> {
+  const client = getS3Client();
+  for (;;) {
+    const listed = await client.send(new ListObjectsV2Command({ Bucket: E2E_S3_BUCKET }));
+    const contents = listed.Contents || [];
+    if (contents.length === 0) return;
+    await client.send(
+      new DeleteObjectsCommand({
+        Bucket: E2E_S3_BUCKET,
+        Delete: { Objects: contents.map(({ Key }) => ({ Key: Key as string })) },
+      })
+    );
+    if (!listed.IsTruncated) return;
+  }
 }

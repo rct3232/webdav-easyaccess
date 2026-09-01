@@ -757,3 +757,48 @@ classified Case A (Source Error) and fixed with user approval on branch
 - **Flow C gate hold:** `WEA_SKIP_MIGRATION_WORKER=1` does not set the migration gate (`dispatchWorker` early-returns, intentionally — covered by server tests), so it cannot produce the active gate the flow needs. Flow C instead holds the gate with a real migration whose destination probe hangs on a local tarpit (`net.Server` that accepts and never replies), and A8 uses a client-side (history API) navigation to `/mypage` (a full reload of a PrivateRoute would 503 `getMe` → auth logout → PrivateRoute → `/login`, racing the guard).
 - **WebDAV credentials for non-upload flows:** Flow C boots `WEA_FILE_STORAGE=webdav`; without the seeded `WEBDAV_*` DB settings `setup_complete` is false and `/login` redirects to `/setup`. Fixed by seeding webdav settings in all flows (`withWebdav`).
 - **B5 timing:** the metadata copy is fast (~780 ms for 20k settings rows); the cancel kept landing in the final `sourceHasEncryptedRows`/COMMIT window or was wiped by the A1 defect. Flooded to 50k rows and canceled on a mid-copy progress signal. After the A1 fix the cancel works: E2E-MIG-007 now polls for a mid-copy `progress.percent >= 10`, cancels, and asserts the job ends `cancelled` with the target rolled back.
+
+---
+
+## 2026-09-01 — WebDAV-source blob migration snapshots 0 nodes (A2 fix design)
+
+Resolves the A2 defect above (webdav-mode uploads never reach `sync_status='active'`), whose fix was previously deferred. Branch `fix/webdav-migration-source`.
+
+- **Area:** `server/domains/admin/services/migrationService.js` (`enumerateSnapshot`, webdav→s3 `processNode`), `server/store/fileNodesStore.js` (new `getNodesBySyncStatusNot`), `server/service/gcService.js` (`runTier1`), docs under `/docs` (M1 docs-first).
+- **Classification:** Case A (Source Error — product defect). Verdict from the A2 follow-up: **pre-existing webdav-mode design** (webdav is path-addressed; `object_map`/`sync_status='active'` are S3-mode lifecycle concepts) **combined with a genuine gap in the migration feature's snapshot contract**. The webdav lifecycle itself is not changed — the migration (and GC) sides are made source-aware instead (per the A2 recommendation, the smaller blast radius).
+- **Symptom:** a real `webdav → s3` migration reports `total: 0` / `copied: 0` and silently "completes" — no node is copied, no error is surfaced.
+- **Evidence:**
+  - `fileService.uploadFile` webdav branch (`fileService.js:148-164`) → `blobStorageService.uploadToWebdav(nodeId, buffer)` (`fileService.js:158`) only upserts filecache; it never sets `sync_status='active'` nor creates an `object_map` row (`blobStorageService.js` §4 Dual-Backend Dispatch Table: `uploadToWebdav` = "resolve path → uploadBlob → upsertCache").
+  - `fileNodesStore.createNode` hardcodes `sync_status='pending_upload'` (`fileNodesStore.js:77,96`).
+  - `enumerateSnapshot` (`migrationService.js:103-114`) requires `sync_status='active'` (`getNodesBySyncStatus('active')`) **AND** an active `object_map` row (`getActiveObject`) — neither is producible by the app's own webdav writes.
+  - Live-DB evidence (PG): webdav-native files have no `object_map` row; the only webdav `object_map` rows present were created by an out-of-band/legacy script (`s3_key NULL`, version 1).
+- **Root cause:** the snapshot imposed the S3 model (`active` + `object_map`) on a path-addressed source. For webdav-native files the blob **is** the node's display path; an `object_map` row is redundant, so the app never creates one — the S3-shaped precondition can never be satisfied.
+- **Action taken (fix design recorded in M1 docs-first; implementation follows on this branch):**
+  1. `migrationService.enumerateSnapshot` becomes source-mode aware. In webdav mode: enumerate file nodes via a new `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')` and, per node, use `getActiveObject(node.id)` when present (its preserved `s3_key` is the resume marker from a prior migration) else synthesize `{ s3_key: null, storage_backend: 'webdav' }`. S3 mode unchanged (`active` + `object_map`).
+  2. New `fileNodesStore.getNodesBySyncStatusNot(status)` (PG + sqlite) — mirror of `getNodesBySyncStatus`.
+  3. webdav→s3 `processNode` success additionally calls `updateSyncStatus(node.id, 'active')`, so post-cutover (S3-mode) state matches the S3 lifecycle model.
+  4. `gcService.runTier1`: in webdav mode skip the `blobStore.deleteBlob(row.s3_key)` call (a preserved s3_key on a migrated row is a UUID rollback marker, **not** a webdav path; `WebdavBlobStore.deleteBlob` is path-addressed → wasteful 404) while still deleting the `object_map` rows. Tier 2 is already fully skipped in webdav (`gcService.js:93`). No other GC/fail-safe behavior changes — `orphaned_node` nodes are never auto-deleted (`runStartupRecovery` is scan + manual review only).
+- **Test impact (corrected with the implementation):**
+  - **Unit (`migrationService.test.js`):** `seedWebdavFile` no longer needs the S3-model preconditions — webdav-native fixtures can leave nodes `pending_upload` with no `object_map`; new coverage asserts native files are enumerated, copied, and end `sync_status='active'`, that `orphaned_node` files are excluded, that a preserved active `s3_key` acts as the resume marker (rerun skips), and that the synthesized activeObject is `{ s3_key: null, storage_backend: 'webdav' }`.
+  - **Unit (`gcService.test.js`):** Tier-1 webdav-mode case asserting `blobStore.deleteBlob` is NOT called while orphaned `object_map` rows are still removed.
+  - **E2E (`e2e/migration.spec.ts`):** the `seedObjectMapRows` snapshot precondition (added for A2 as a test seam) can be removed for webdav→s3 — real app-uploaded nodes now satisfy the snapshot; assert `copied > 0` and post-copy `sync_status='active'`.
+
+---
+
+## 2026-09-01 — E2E corrected to drive the REAL webdav upload path (test seam removed)
+
+- **Area:** `e2e/migration.spec.ts`, `e2e/helpers/minio.ts` (new `emptyS3Bucket`)
+- **Classification:** Case B (Test Error — the E2E seeded the snapshot precondition instead of exercising the real upload path, masking the A2 defect)
+- **Summary:** MIG-001/002 previously created the snapshot precondition directly (`seedObjectMapRows`: force `sync_status='active'` + insert an active webdav `object_map` row) after real API uploads. That precondition was un-producible by the app's own webdav writes (uploads stay `pending_upload`, no `object_map`), so the E2E could not distinguish the fixed source-aware snapshot from the old behavior. The server-side fix (enumerateSnapshot source-mode aware, `getNodesBySyncStatusNot`, post-copy `updateSyncStatus('active')`, GC Tier-1 webdav guard) is now driven end-to-end from real `POST /api/files/upload` webdav-branch uploads.
+- **Observed failure:** none in the fixed build — this entry records the pre-fix blind spot: the old suite passed because `seedObjectMapRows` manufactured the S3-model precondition the old snapshot required; against real webdav data the old snapshot silently enumerated `total: 0`.
+- **Action taken (test-only; no feature source touched):**
+  - Removed `seedObjectMapRows` (and its calls in MIG-001/002/006). Real multipart uploads through the app API now seed the source.
+  - Added `assertRealWebdavPrecondition(dbPath, nodeIds)`: asserts each uploaded node is `sync_status='pending_upload'` with zero `object_map` rows — proves the E2E exercises the defect path (no seeded seam).
+  - Added `assertPostMigrationBlobState(dbPath, nodeIds)`: asserts one `(s3, s3_key, active)` `object_map` row per file, all nodes `sync_status='active'`, `listS3Keys().length === fileCount`, and each key exists via `blobExists`.
+  - Added `e2e/helpers/minio.ts` `emptyS3Bucket()` (List+Delete, paginated) so the exact S3 count assertions have a deterministic per-case baseline (the shared bucket otherwise accumulates across tests in one Playwright invocation). Each blob case empties the bucket before its run.
+  - MIG-001: dry-run additionally asserts it writes nothing (global `object_map` count `0` + `listS3Keys()` empty); apply then asserts `assertPostMigrationBlobState`.
+  - MIG-002 (cancel+resume): same real-upload precondition; post-resume asserts `listS3Keys().length === 30` (no duplicate blobs) and every node `sync_status='active'` in addition to the existing no-duplicate-row / key-preservation assertions.
+  - New **E2E-MIG-008 (E3)**: focused regression — native webdav file (no `object_map`, `pending_upload`) IS migrated (s3 object + active object_map + `sync_status='active'`) and a rerun is skipped via the preserved `s3_key` resume marker (no duplicate: same key set, `listS3Keys()` count unchanged).
+  - MIG-006 kept intact (env-sourced modal assertions) — only the seeding call removed; real uploads now satisfy the snapshot.
+- **Verification:** `e2e/migration.spec.ts` (8 tests × desktop+mobile) → 16/16 pass; regression `e2e/admin-config.spec.ts` + `e2e/setup-wizard.spec.ts` (desktop+mobile) → 32/32 pass. No Case A findings.
+- **Uncertainty:** MIG-002/E3 rely on `emptyS3Bucket()` for exact `listS3Keys()` counts; safe because the migration spec runs alone with `--workers=1` (no other spec writes to `e2e-test-bucket` concurrently). The resume "skipped" job counter for the fast 2-file E3 rerun is not asserted via the job payload (the gate can clear before the jobId is readable); the no-duplicate proof is instead asserted deterministically via the DB (unchanged key set) + S3 (unchanged object count).

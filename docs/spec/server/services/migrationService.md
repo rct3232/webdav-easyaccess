@@ -22,7 +22,7 @@ The service operates on injected dependencies only. It never constructs real ada
 | Param | Type | Description |
 |-------|------|-------------|
 | `srcBlobStore` | object | Source BlobStore adapter (WebdavBlobStore or S3BlobStore), already built from the app config |
-| `fileNodesStore` | object | fileNodesStore with `getNodesBySyncStatus`, `getActiveObjectMap` / object_map upsert queries, filecache upsert |
+| `fileNodesStore` | object | fileNodesStore with `getNodesBySyncStatus`, `getNodesBySyncStatusNot`, `getActiveObject` / object_map upsert queries, filecache upsert |
 | `fileNodeService` | object | fileNodeService (tree ops: `getNodePath`, node lookup) |
 | `buildDestBlobStore` | function | `(destConfig) => { blobStore, summary }` from `server/infrastructure/adapters/blobstore/config.js` (or injected fake) |
 | `lockManager` | object | Metadata locking for the required DB updates |
@@ -56,12 +56,34 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 
 1. **Derive direction** from the injected `fileStorageMode` (source = that mode, destination = the other backend); validate `destConfig.type` equals the expected destination (webdav source → `'s3'`, s3 source → `'webdav'`). A mismatch throws before anything runs.
 2. Build the destination store from `destConfig` (dry-run validates it; a missing required field fails before anything runs).
-3. **Snapshot** = enumerate `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row). Directories are only relevant for webdav-destination mkdir.
+3. **Snapshot** = source-mode-aware enumeration (see §2.3.1). Directories are only relevant for webdav-destination mkdir.
 4. Process each node (order by id).
 5. Per-node failures are caught, recorded in `results.errors`, and processing continues — a single failing node never aborts the run. Only config/snapshot/destination-validation failures abort.
 6. **Automatic resume:** already-migrated destination blobs are skipped per the direction marker in §2.4. No flag or checkbox is involved; `force` re-copies even when a marker is present.
 7. `dry-run`: perform snapshot + destination connectivity + count skippable nodes, but write nothing; return `{ ...results, dryRun: true }`.
 8. `mode='apply'` runs an internal dry-run pass first; failure blocks writes.
+
+### 2.3.1 Source-mode-aware snapshot (webdav→s3)
+
+The snapshot contract is source-mode aware — it only imposes the S3 lifecycle model
+(`sync_status='active'` + an active `object_map` row) on an S3 source:
+
+| Source mode | Enumeration | Per-node activeObject |
+|---|---|---|
+| `s3` (unchanged) | `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row) | `fileNodesStore.getActiveObject(node.id)` (always present) |
+| `webdav` | all file nodes with `sync_status != 'orphaned_node'` (via `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')`, filtered to type=file) | `getActiveObject(node.id)` when present — its preserved `s3_key` is the resume marker from a prior migration — otherwise a synthesized `{ s3_key: null, storage_backend: 'webdav' }` |
+
+**Why webdav-native files need no `object_map` row:** webdav is path-addressed — the blob **is** the
+node's display path (`fileNodeService.getNodePath(node.id)`), so a mapping row would be redundant and
+the app never creates one (the webdav upload branch only upserts filecache; `createNode` hardcodes
+`sync_status='pending_upload'`). Requiring the S3 model on a webdav source would make every
+app-produced webdav file invisible to the snapshot (a real `webdav → s3` migration silently copies 0
+nodes). With the synthesized activeObject, the webdav→s3 `shouldSkip`/`processNode` paths behave
+identically: they read `activeObject.s3_key` only as the resume marker and always download the source
+from `nodePath`.
+
+`orphaned_node` file nodes are excluded because they represent known-unrecoverable writes (the blob
+PUT failed after the DB commit); they are a fail-safe/manual-review concern, never migration input.
 
 ### 2.4 Per-direction copy behavior
 
@@ -74,6 +96,9 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 5. `destBlobStore.uploadBlob(key, buf)` — flat UUID key, no directory structure.
 6. `upsertObjectMap(nodeId, key, 'active')` (`storage_backend='s3'`, `s3_key=UUID`).
 7. Upsert filecache `{ size, mime, content_hash: sha256(buf) }`.
+8. **`updateSyncStatus(nodeId, 'active')`** — a webdav-native node was left `pending_upload` at create
+   time; after a successful copy it is set `active` so post-cutover (S3-mode) state matches the S3
+   lifecycle model (resume marker + GC + future migrations all operate on `active` rows).
 
 **`s3-to-webdav`** (per node):
 
@@ -113,7 +138,11 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 - [ ] Round-trip WebDAV→S3→WebDAV: all content hashes equal, tree preserved
 - [ ] S3 destination is flat (UUID keys only, no directories); WebDAV destination preserves structure and mkdirs ancestors
 - [ ] dry-run writes nothing (destination store count `0`, DB unchanged, no `object_map` flips)
-- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active)`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
+- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active)` and sets `sync_status='active'`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
+- [ ] webdav-source snapshot: a native webdav file (no `object_map` row, `sync_status='pending_upload'`) is enumerated and copied; the synthesized activeObject is `{ s3_key: null, storage_backend: 'webdav' }`
+- [ ] webdav-source snapshot: a node with a preserved active `s3_key` (prior migration) is skipped on rerun (resume marker), while native files are still copied
+- [ ] webdav-source snapshot: file nodes with `sync_status='orphaned_node'` are excluded
+- [ ] s3-source snapshot unchanged: only `active` file nodes with an active `object_map` row are enumerated
 - [ ] automatic resume: fail on node N → rerun → completed skipped, remainder copied, no duplicates
 - [ ] idempotent: full rerun → `0` copied
 - [ ] error isolation: a failing node doesn't stop the run; errors reported

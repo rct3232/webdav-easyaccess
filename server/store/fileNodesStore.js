@@ -936,6 +936,36 @@ function createFileNodesStore() {
     }
   }
 
+  /**
+   * Return all file_nodes rows whose sync_status differs from the given status.
+   * @param {string} status - 'active' | 'pending_upload' | 'orphaned_node'
+   * @returns {Promise<Array<Object>>} mapped node rows
+   */
+  async function getNodesBySyncStatusNot(status) {
+    if (isPg) {
+      try {
+        const pool = storage.getPgPool();
+        const res = await pool.query(
+          'SELECT * FROM file_nodes WHERE sync_status != $1',
+          [String(status)]
+        );
+        return res.rows.map(mapNodeRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    }
+
+    try {
+      const res = await storage.sqliteQuery(
+        'SELECT * FROM file_nodes WHERE sync_status != ?',
+        [String(status)]
+      );
+      return res.rows.map(mapNodeRow);
+    } catch (error) {
+      throw mapDatabaseError(error);
+    }
+  }
+
 
   /* ------------------------------------------------------------------ */
   /*  filecache operations                                               */
@@ -1072,6 +1102,7 @@ function createFileNodesStore() {
     getAllActiveS3Keys,
     deleteObjectMapRows,
     getNodesBySyncStatus,
+    getNodesBySyncStatusNot,
   };
 }
 

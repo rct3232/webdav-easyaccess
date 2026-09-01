@@ -17,10 +17,15 @@ Both services are pure background/ops concerns — they expose no user-facing fi
 
 Two-tier orphan cleanup. Both tiers execute inside a single GC cycle; Tier 1 runs first (fast, DB-targeted), Tier 2 follows (slower, S3 `ListObjectsV2`-based).
 
-- **Tier 1 (DB-driven):** `object_map` rows with `status='orphaned'` that are older than the orphan TTL → the corresponding S3 blob is deleted and the row is removed. These are known orphans created by version supersession (`overwriteBlob` / `prepareUpload`) and by `deleteBlob` marking.
+- **Tier 1 (DB-driven):** `object_map` rows with `status='orphaned'` that are older than the orphan TTL → the corresponding blob is deleted and the row is removed. These are known orphans created by version supersession (`overwriteBlob` / `prepareUpload`) and by `deleteBlob` marking. **WebDAV-mode guard:** the blob-delete step is skipped (see §3.1) — a preserved `s3_key` on a migrated row is a rollback marker, not a webdav path — while the rows are still removed.
 - **Tier 2 (S3 scan):** `blobStore.listOrphanedKeys(olderThan)` (adapter contract: `olderThan` is a **`Date`** cutoff — see `docs/spec/server/store/blobstore.md`) diffed against the set of `s3_key` values still referenced by `object_map` rows with `status='active'`. Keys present only in S3 (TX2 failures, manual row deletion, copy-on-write leftovers) are deleted. gcService converts the day-based TTL into a Date cutoff (`now - days * 86400000`) before calling the adapter.
 
-GC only applies to S3 file storage. In WebDAV blob mode no `object_map` rows are created (blob storage service skips them) and the WebDAV adapter's `listOrphanedKeys()` returns `[]`, so both tiers are no-ops.
+Tier 2 only applies to S3 file storage: in WebDAV mode the app's own writes create no `object_map`
+rows (the blob storage service skips them) and the WebDAV adapter's `listOrphanedKeys()` returns
+`[]`, so Tier 2 is a no-op. Tier 1 still runs in WebDAV mode — orphaned `object_map` rows (e.g.
+legacy/out-of-band rows, or superseded rows after a migration) are removed from the DB, but the
+`deleteBlob` call is skipped because the row's `s3_key` is a preserved UUID rollback marker and the
+WebDAV adapter is path-addressed (`deleteBlob` would treat the UUID as a path and 404).
 
 ### GC cycle lifecycle (per file mutation)
 
@@ -40,7 +45,7 @@ Factory function following the DI pattern used by the other Phase 2 services.
 |-------|------|---------|-------------|
 | `blobStore` | object | — | S3BlobStore or WebdavBlobStore adapter |
 | `fileNodesStore` | object | — | fileNodesStore with object_map queries |
-| `fileStorageMode` | string | `'s3'` | `'s3'` or `'webdav'`; Tier 2 disabled in WebDAV mode |
+| `fileStorageMode` | string | `'s3'` | `'s3'` or `'webdav'`; Tier 2 disabled in WebDAV mode; Tier 1 skips blob deletes in WebDAV mode (rows still cleaned) |
 | `gcConfig` | object | `{ orphanTtlDays: 1 }` | TTL overrides; `orphanTtlDays` defaults from `GC_ORPHAN_TTL_DAYS` env when not provided |
 
 #### `runGcCycle({ olderThanDays })`
@@ -57,7 +62,7 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 {
   tier1: {
     orphanedRows: number,   // object_map rows found
-    deletedBlobs: number,   // S3 blobs successfully deleted
+    deletedBlobs: number,   // blobs successfully deleted (0 in WebDAV mode — delete is skipped)
     deletedRows: number,    // object_map rows removed from DB
     errors: string[],
   },
@@ -73,8 +78,8 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 
 **Tier 1 algorithm:**
 1. `fileNodesStore.getOrphanedObjects(olderThanDays)` → rows with `status='orphaned'` and `created_at` older than the threshold.
-2. For each row with a non-null `s3_key`: `blobStore.deleteBlob(s3_key)`; count successes, collect errors.
-3. `fileNodesStore.deleteObjectMapRows(ids)` for every orphaned row id.
+2. For each row with a non-null `s3_key`: `blobStore.deleteBlob(s3_key)`; count successes, collect errors. **WebDAV-mode guard:** skip the `deleteBlob` call entirely in WebDAV mode — a preserved `s3_key` on a migrated row is a UUID rollback marker, not a webdav path, and `WebdavBlobStore.deleteBlob` is path-addressed (it would treat the UUID as a path and issue a wasteful 404).
+3. `fileNodesStore.deleteObjectMapRows(ids)` for every orphaned row id (runs in WebDAV mode too).
 4. `deletedRows` reflects rows removed from `object_map`.
 
 **Tier 2 algorithm (S3 mode only; `skipped=true` otherwise):**
@@ -83,7 +88,7 @@ Runs Tier 1 then Tier 2 and returns a summary. `olderThanDays` defaults to the c
 3. `fileNodesStore.getAllActiveS3Keys()` → active-key set.
 4. Diff → keys present only in S3 → `blobStore.deleteBlob(key)`.
 
-Tier 1 always runs (in WebDAV mode it simply finds no rows). Both tiers are best-effort: per-key errors are collected in `errors` and do not abort the cycle.
+Tier 1 always runs; in WebDAV mode it finds no rows during normal operation, but when orphaned rows do exist (legacy/out-of-band rows, or superseded rows after a migration) it removes them from the DB without calling `blobStore.deleteBlob`. Both tiers are best-effort: per-key errors are collected in `errors` and do not abort the cycle.
 
 ### 3.2 `createFailSafeService({ fileNodeService, fileNodesStore })`
 
@@ -154,7 +159,7 @@ Both require `authenticateToken` + `isAdmin`.
 
 `cleanupOrphanedData()` gains two additive result keys (existing keys unchanged):
 
-- `gc: { tier1, tier2 }` — result of one GC cycle (S3 mode; WebDAV mode yields empty/no-op tiers).
+- `gc: { tier1, tier2 }` — result of one GC cycle (S3 mode; WebDAV mode yields a skipped Tier 2 and a Tier 1 that removes orphaned rows without blob deletes).
 - `orphanedNodes: [...]` — fail-safe report from `failSafeService.scanOrphanedNodes()`.
 
 ### 5.3 Startup Hook + Cron
@@ -179,7 +184,7 @@ Both require `authenticateToken` + `isAdmin`.
 - [ ] Tier 1: orphaned rows + corresponding S3 mock entries are cleaned; active blobs untouched
 - [ ] Tier 2: keys present in S3 with no `object_map` reference are detected and deleted; active keys preserved
 - [ ] Freshly-created orphaned rows (younger than TTL) are left untouched
-- [ ] WebDAV mode: GC cycle is a no-op (Tier 2 skipped, zero rows)
+- [ ] WebDAV mode: Tier 2 skipped; orphaned `object_map` rows are still deleted from the DB but `blobStore.deleteBlob` is NOT called (the preserved `s3_key` is a rollback marker, not a webdav path)
 - [ ] `scanOrphanedNodes()` returns orphaned nodes with paths
 - [ ] `repairNode('retry-delete')` removes the node + subtree; `repairNode('force-active')` flips sync_status
 - [ ] Admin endpoints require auth + admin; non-admin receives 403

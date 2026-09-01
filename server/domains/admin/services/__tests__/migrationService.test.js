@@ -81,6 +81,16 @@ async function seedWebdavFile({ parentId, name, content, srcStore }) {
   return { nodeId: fileResult.nodeId, path: fileResult.path };
 }
 
+// A webdav-native file as produced by the app: sync_status stays
+// 'pending_upload' and no object_map row is created (the blob lives at the
+// node's display path).
+async function seedWebdavNativeFile({ parentId, name, content, srcStore }) {
+  const fileResult = await createTestFileNode({ name, type: 'file', parentId });
+  const buf = Buffer.from(content);
+  await srcStore.uploadBlob(fileResult.path, buf);
+  return { nodeId: fileResult.nodeId, path: fileResult.path };
+}
+
 async function seedS3File({ parentId, name, content, srcStore }) {
   const fileResult = await createTestFileNode({ name, type: 'file', parentId });
   await activateNode(fileResult.nodeId);
@@ -161,6 +171,106 @@ describe('createMigrationService', () => {
 
     const cache = await dbQuery('SELECT content_hash FROM filecache WHERE file_node_id = ?', [f1.nodeId]);
     expect(cache.rows[0].content_hash).toBe(sha256HexLower('alpha'));
+  });
+
+  it('webdav source: pending_upload node with no object_map is enumerated, copied to s3, and set active', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const native = await seedWebdavNativeFile({ parentId: rootNodeId, name: 'native.txt', content: 'native-content', srcStore: src });
+
+    const pendingRow = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [native.nodeId]);
+    expect(pendingRow.rows[0].sync_status).toBe('pending_upload');
+    const noObjectMap = await dbQuery('SELECT id FROM object_map WHERE file_node_id = ?', [native.nodeId]);
+    expect(noObjectMap.rows).toHaveLength(0);
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+
+    expect(result).toEqual({ copied: 1, skipped: 0, failed: 0, errors: [], dryRun: false });
+    expect(dst.count()).toBe(1);
+    const key = dst.listKeys()[0];
+    expect(key).toMatch(UUID_RE);
+    expect(dst.getBuffer(key).toString()).toBe('native-content');
+
+    const row = await getActiveObjectRow(native.nodeId);
+    expect(row).not.toBeNull();
+    expect(row.storage_backend).toBe('s3');
+    expect(row.s3_key).toBe(key);
+    expect(row.status).toBe('active');
+
+    const activeRow = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [native.nodeId]);
+    expect(activeRow.rows[0].sync_status).toBe('active');
+  });
+
+  it('webdav source: orphaned_node file nodes are excluded from the snapshot', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    await seedWebdavNativeFile({ parentId: rootNodeId, name: 'ok.txt', content: 'ok', srcStore: src });
+    const orphan = await createTestFileNode({ name: 'stuck.txt', type: 'file', parentId: rootNodeId });
+    await dbRun('UPDATE file_nodes SET sync_status = ? WHERE id = ?', ['orphaned_node', orphan.nodeId]);
+    await src.uploadBlob(orphan.path, Buffer.from('orphan-blob'));
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+
+    expect(result.copied).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(dst.count()).toBe(1);
+    expect(dst.listKeys()).toHaveLength(1);
+    const row = await getActiveObjectRow(orphan.nodeId);
+    expect(row).toBeNull();
+    expect((await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [orphan.nodeId])).rows[0].sync_status).toBe('orphaned_node');
+  });
+
+  it('webdav source resume: node with preserved active s3_key is skipped on rerun, re-copied when force', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const f1 = await seedWebdavFile({ parentId: rootNodeId, name: 'a.txt', content: 'alpha', srcStore: src });
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const first = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+    expect(first.copied).toBe(1);
+
+    await src.uploadBlob(f1.path, Buffer.from('alpha-changed'));
+
+    const second = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+    expect(second.copied).toBe(0);
+    expect(second.skipped).toBe(1);
+    expect(dst.count()).toBe(1);
+
+    const third = await service.run({ destConfig: { type: 's3' }, mode: 'apply', force: true });
+    expect(third.copied).toBe(1);
+    expect(third.skipped).toBe(0);
+    expect(dst.count()).toBe(2);
+    expect(dst.getBuffer(dst.listKeys()[1]).toString()).toBe('alpha-changed');
+  });
+
+  it('s3 source snapshot unchanged: pending_upload node with no object_map is not enumerated', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    const pending = await createTestFileNode({ name: 'native.txt', type: 'file', parentId: rootNodeId });
+    await src.uploadBlob(pending.path, Buffer.from('should-not-copy'));
+    await seedS3File({ parentId: rootNodeId, name: 'a.txt', content: 'alpha', srcStore: src });
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 'webdav fake' });
+    const service = makeService(src, 's3');
+
+    const result = await service.run({ destConfig: { type: 'webdav' }, mode: 'apply' });
+
+    expect(result.copied).toBe(1);
+    expect(dst.writtenPaths()).not.toContain(pending.path);
+    const pendingRow = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [pending.nodeId]);
+    expect(pendingRow.rows[0].sync_status).toBe('pending_upload');
   });
 
   it('webdav→s3: zero-byte source files are copied, not failed', async () => {

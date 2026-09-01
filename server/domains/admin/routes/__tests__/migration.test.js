@@ -814,6 +814,52 @@ describe('cancel for metadata jobs', () => {
     expect(res.body.status).toBe('cancelled');
     expect(getMigrationGate().isActive()).toBe(false);
   });
+
+  it('a progress tick landing after cancel does NOT clobber the cancelled status; the job ends cancelled and the gate clears', async () => {
+    // Regression for the Case A bug surfaced by E2E-MIG-007: the worker's
+    // onProgress callback wrote { status: 'running' } on every tick, so a tick
+    // arriving after POST /cancel reset the store status back to 'running',
+    // isCancelled() never became true, and the copy COMMITted ('completed').
+    let release;
+    const workerPaused = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockMetadataService.runMigration.mockImplementationOnce(async ({ onProgress, isCancelled }) => {
+      onProgress('copy', 'users', 1, 100);
+      // Simulate the copy loop running between batches; the test cancels here.
+      await workerPaused;
+      // The next progress tick lands AFTER the cancel request was served. It
+      // must not reset the job status, otherwise isCancelled() reads 'running'.
+      onProgress('copy', 'users', 2, 100);
+      return isCancelled()
+        ? { status: 'cancelled' }
+        : { status: 'completed', tablesCopied: [{ name: 'users', rows: 2 }], totalRows: 2 };
+    });
+    const token = await createAdminToken();
+
+    const postRes = await request(app)
+      .post('/api/admin/migration/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(makeMetadataPayload());
+    expect(postRes.status).toBe(202);
+    const { jobId } = postRes.body;
+
+    // The worker is inside the copy phase.
+    await waitForJobStatus(token, jobId, 'running');
+
+    const cancelRes = await request(app)
+      .post(`/api/admin/migration/jobs/${jobId}/cancel`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(cancelRes.status).toBe(200);
+
+    // Resume the copy loop so its post-cancel progress tick runs.
+    release();
+
+    const res = await waitForJobStatus(token, jobId, 'cancelled');
+    expect(res.body.status).toBe('cancelled');
+    expect(res.body.stage).toBe('done');
+    expect(getMigrationGate().isActive()).toBe(false);
+  });
 });
 
 describe('gating middleware (503 migrationInProgress)', () => {

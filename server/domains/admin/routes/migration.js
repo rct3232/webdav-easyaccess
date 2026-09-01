@@ -11,6 +11,7 @@ const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const { getMigrationGate } = require('../../../infrastructure/migrationGate');
+const { clearPresenceCache } = require('../../../infrastructure/metadataPresence');
 const { getBackend } = require('../../../store/storage');
 
 const VALID_MODES = ['dry-run', 'apply'];
@@ -230,6 +231,10 @@ function runMigrationWorker(jobId, { destConfig, mode, force }) {
       });
     })
     .finally(() => {
+      // A terminal migration changes which backend holds metadata, so the
+      // ".env setup needed" presence cache (60s TTL) must not serve a stale
+      // pre-migration snapshot to System Settings.
+      clearPresenceCache();
       getMigrationGate().clear();
     });
 }
@@ -254,14 +259,22 @@ function runMetadataMigrationWorker(jobId, { direction, target, wipeTarget }) {
       wipeTarget,
       onProgress: (stage, table, done, total) => {
         const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-        migrationJobStore.update(jobId, {
-          status: 'running',
+        const current = migrationJobStore.get(jobId);
+        const patch = {
           stage,
           progress: {
             percent,
             currentLabel: table ? `Copying ${table} … ${done}/${total}` : stage,
           },
-        });
+        };
+        // Never clobber a terminal/cancelled status with a progress tick: a
+        // cancel that lands between ticks must stay observable to isCancelled()
+        // so the copy aborts and the target transaction ROLLBACKs. Only advance
+        // a non-terminal (pending/running) job to 'running'.
+        if (!current || current.status === 'pending' || current.status === 'running') {
+          patch.status = 'running';
+        }
+        migrationJobStore.update(jobId, patch);
       },
       isCancelled: () => {
         const current = migrationJobStore.get(jobId);
@@ -295,6 +308,9 @@ function runMetadataMigrationWorker(jobId, { direction, target, wipeTarget }) {
       });
     })
     .finally(() => {
+      // See runMigrationWorker: a terminal migration changes the metadata
+      // presence, so drop the TTL cache to keep the banner accurate.
+      clearPresenceCache();
       getMigrationGate().clear();
     });
 }

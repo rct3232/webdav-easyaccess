@@ -58,10 +58,16 @@ test('E2E-EXP-004: Create folder from FAB', async ({ page, request }, testInfo) 
   await expect(page.locator(`[data-file-node-id="${ownNodeId}"]`)).toHaveCount(0);
 
   // The sidebar must not render a "Shared" section for the own folder either.
+  // Absence is asserted deterministically: a one-shot isVisible() right after goto
+  // raced the tree mount — and on mobile the tree is collapsed behind the breadcrumb
+  // toggle, so the check silently skipped. Open the tree on mobile, wait for it to
+  // render, then assert the Shared section stays absent.
   const folderTree = page.getByTestId('folder-tree');
-  if (await folderTree.isVisible()) {
-    await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
+  if (testInfo.project.name.endsWith('-mobile')) {
+    await page.locator('button[title="Open folder tree"]').click();
   }
+  await expect(folderTree).toBeVisible({ timeout: 20_000 });
+  await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
 });
 
 test('E2E-EXP-005: Upload file from dialog', async ({ page }, testInfo) => {

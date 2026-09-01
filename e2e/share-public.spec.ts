@@ -123,9 +123,7 @@ test.describe('public share link', () => {
 
     if (testInfo.project.name.endsWith('-mobile')) {
       const toggle = page.locator('button[title="Open folder tree"]');
-      if (await toggle.count()) {
-        await toggle.click();
-      }
+      await toggle.click();
     }
 
     // In share mode for an authenticated non-admin user, the sidebar home item is their username.

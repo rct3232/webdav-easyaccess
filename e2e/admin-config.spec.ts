@@ -263,15 +263,18 @@ async function saveConfig(page: Page): Promise<void> {
 
 async function openSystemSettings(page: Page): Promise<void> {
   await page.goto('/mypage');
-  // Mobile renders the mypage categories in a drawer; open it only when the
-  // target is not already visible (the toggle button would close an open drawer).
+  // MyPage returns null until the async getMe() resolves; on mobile the category
+  // sidebar lives in a non-keepMounted SwipeableDrawer. A one-shot isVisible()/
+  // count() right after goto races React mount — both resolve to 0/0 before the
+  // app loads, the drawer is never opened, and the later click() times out against
+  // the unmounted drawer content. Wait for the MyPage shell first, then branch on
+  // the mobile-only menu button.
   const systemSettings = page.getByRole('button', { name: /system settings/i });
-  if (!(await systemSettings.isVisible().catch(() => false))) {
-    const menuButton = page.locator('button[aria-label="My page"]');
-    if ((await menuButton.count()) > 0) {
-      await menuButton.click();
-      await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
-    }
+  const menuButton = page.locator('button[aria-label="My page"]');
+  await expect(menuButton.or(systemSettings).first()).toBeVisible({ timeout: 20000 });
+  if ((await menuButton.count()) > 0) {
+    await menuButton.click();
+    await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
   }
   await systemSettings.click();
   await expect(page.getByRole('heading', { level: 6, name: /system settings/i })).toBeVisible();
@@ -384,16 +387,7 @@ test.describe('Admin config editor (Advanced settings)', () => {
     await waitForScratchHealth(spawned);
 
     await loginAsAdmin(page);
-    await page.goto('/mypage');
-    const systemSettings = page.getByRole('button', { name: /system settings/i });
-    if (!(await systemSettings.isVisible().catch(() => false))) {
-      const menuButton = page.locator('button[aria-label="My page"]');
-      if ((await menuButton.count()) > 0) {
-        await menuButton.click();
-        await expect(page.locator('.MuiDrawer-paper')).toBeVisible();
-      }
-    }
-    await systemSettings.click();
+    await openSystemSettings(page);
 
     await expect(page.getByTestId('key-lost-warning')).toBeVisible();
     await expect(page.getByTestId('key-lost-warning')).toContainText('Encryption key lost');

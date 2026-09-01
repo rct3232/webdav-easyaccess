@@ -403,10 +403,12 @@ test.describe('MyPage admin flows - desktop', () => {
     await expect(page.locator('[data-file-node-id]')).toHaveCount(0);
     await expect(page.locator(`[data-file-node-id="${ownFolderNodeId}"]`)).toHaveCount(0);
 
+    // Absence regression (class H): the tree must render no "Shared" section for a
+    // user with no grants. A one-shot isVisible() right after goto raced the tree
+    // mount and silently skipped the assertion — wait for the tree to render first.
     const folderTree = page.getByTestId('folder-tree');
-    if (await folderTree.isVisible()) {
-      await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
-    }
+    await expect(folderTree).toBeVisible({ timeout: 20_000 });
+    await expect(folderTree.getByRole('button', { name: /Shared/i })).toHaveCount(0);
   });
 });
 

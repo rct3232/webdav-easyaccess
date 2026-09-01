@@ -330,13 +330,11 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
-    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    // On mobile, the folder tree is hidden by default and needs to be toggled open.
+    // The click auto-waits for the toggle to be visible — no count() snapshot gate
+    // that can silently read 0 before the breadcrumb mounts.
     if (testInfo.project.name.endsWith('-mobile')) {
-      const toggleBtn = page.locator('button[title="Open folder tree"]');
-      const toggleCount = await toggleBtn.count();
-      if (toggleCount > 0) {
-        await toggleBtn.click();
-      }
+      await page.locator('button[title="Open folder tree"]').click();
     }
 
     // Wait for folder tree to be ready with shared folders
@@ -369,13 +367,11 @@ test.describe.serial('internal sharing request -> __shared__', () => {
     await page.goto('/files');
     await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
-    // On mobile, the folder tree is hidden by default and needs to be toggled open
+    // On mobile, the folder tree is hidden by default and needs to be toggled open.
+    // The click auto-waits for the toggle to be visible — no count() snapshot gate
+    // that can silently read 0 before the breadcrumb mounts.
     if (testInfo.project.name.endsWith('-mobile')) {
-      const toggleBtn = page.locator('button[title="Open folder tree"]');
-      const toggleCount = await toggleBtn.count();
-      if (toggleCount > 0) {
-        await toggleBtn.click();
-      }
+      await page.locator('button[title="Open folder tree"]').click();
     }
 
     // Wait for folder tree to be ready with shared folders

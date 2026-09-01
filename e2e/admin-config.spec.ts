@@ -652,13 +652,48 @@ test.describe('Phase B backend health & config/test API', () => {
     expect(typeof badBody.errorCode).toBe('string');
   });
 
-  test('System Settings renders the backend health card', async ({ page }) => {
+  test('System Settings backend-health card lists only failing backends', async ({
+    page,
+    request,
+  }) => {
+    const token = await loginToken(request);
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Deterministically seed a failing webdav backend via the connection probe
+    // against an unreachable URL (docker-independent): the tracker records it.
+    const probe = await request.post(`${SCRATCH_BASE}/api/admin/config/test`, {
+      headers,
+      data: {
+        target: 'webdav',
+        WEBDAV_URL: 'http://127.0.0.1:59999',
+        WEBDAV_USERNAME: 'e2etest',
+        WEBDAV_PASSWORD: 'e2etest123',
+      },
+    });
+    await probe.json();
+
+    const healthRes = await request.get(`${SCRATCH_BASE}/api/admin/health`, { headers });
+    expect(healthRes.ok()).toBeTruthy();
+    const health = (await healthRes.json()).backends;
+    expect(health.webdav.status).toBe('fail');
+
     await loginAsAdmin(page);
     await openSystemSettings(page);
 
     const card = page.getByTestId('backend-health-card');
     await expect(card).toBeVisible();
-    await expect(card).toContainText(/postgresql|s3|webdav/);
+    await expect(card).toContainText(/webdav/);
+    await expect(card).toContainText(/FAIL/);
+    // Healthy/unknown backends are not listed.
+    await expect(card).not.toContainText(/postgresql/);
+    await expect(card).not.toContainText(/s3/);
+  });
+
+  test('no backend-health card when nothing is failing', async ({ page }) => {
+    await loginAsAdmin(page);
+    await openSystemSettings(page);
+
+    await expect(page.getByTestId('backend-health-card')).toHaveCount(0);
   });
 
   test('file screen shows the admin backend-health banner when a backend is failing', async ({

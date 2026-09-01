@@ -237,19 +237,18 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/encryption key lost/i)).toBeInTheDocument();
   });
 
-  it('renders the backend-health card with per-backend statuses from /admin/health', async () => {
+  it('hides the backend-health card when no backend is failing', async () => {
     renderSystemSettingsContent();
 
-    const card = await screen.findByTestId('backend-health-card');
-    expect(within(card).getByText(/backend health/i)).toBeInTheDocument();
-    expect(within(card).getByText(/postgresql/i)).toBeInTheDocument();
-    expect(within(card).getByText(/s3/i)).toBeInTheDocument();
-    expect(within(card).getByText(/webdav/i)).toBeInTheDocument();
-    expect(within(card).getAllByText(/ok/i)).toHaveLength(2);
-    expect(within(card).getByText(/unknown/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+
+    // Default MSW: postgresql ok, s3 unknown, webdav ok — nothing wrong → no card.
+    expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 
-  it('renders the FAIL label with hint and last-checked when a backend is down', async () => {
+  it('renders only the failing backends on the backend-health card', async () => {
     server.use(
       http.get('/api/admin/health', () =>
         HttpResponse.json({
@@ -265,9 +264,14 @@ describe('SystemSettingsContent', () => {
     renderSystemSettingsContent();
 
     const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/backend health/i)).toBeInTheDocument();
+    expect(within(card).getByText(/postgresql/i)).toBeInTheDocument();
     expect(within(card).getByText(/FAIL/i)).toBeInTheDocument();
     expect(within(card).getByText(/Cannot reach host/i)).toBeInTheDocument();
     expect(within(card).getByText(/last checked/i)).toBeInTheDocument();
+    // Healthy/unknown backends are not listed.
+    expect(within(card).queryByText(/s3/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/webdav/i)).not.toBeInTheDocument();
   });
 
   it('does not show a key-lost warning banner when the master key is present', async () => {

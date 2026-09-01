@@ -25,8 +25,10 @@ backends (only a per-user 500 toast). This feature adds:
    records to an in-memory tracker (classified); any success marks the backend OK
    (self-recovery). No active polling. Admin login + file-manager load naturally exercise all
    three backends.
-2. **Surfaces (D3)** — Admin: System Settings top status card + file-screen admin-only banner
-   (OK/FAIL + classification + last-checked + hint). Terminal: transition-only logs
+2. **Surfaces (D3)** — Admin: System Settings top status card + file-screen admin-only banner.
+   The card appears **only when a backend is failing** and lists **only the failing backends**
+   (name + `admin.health.fail` + classification hint/code + last-checked); healthy/unknown
+   backends are never listed. Terminal: transition-only logs
    (`[backend-health] … OK→FAIL / FAIL→OK`). Normal user: friendly message only for
    connection-class failures (`files.storageUnavailable`); existing 404/403/etc. keep current
    messages; DB-down → maintenance notice.

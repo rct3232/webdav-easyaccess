@@ -142,32 +142,31 @@ const SystemSettingsContent = ({ onMessage }) => {
     setActions(null);
   }, [t, setTitle, setActions]);
 
+  const failedBackends = Object.entries(backendHealth).filter(
+    ([, health]) => health?.status === 'fail'
+  );
+
   return (
     <Box>
-      {Object.keys(backendHealth).length > 0 && (
-        <Alert severity="info" sx={{ mb: 3 }} data-testid="backend-health-card">
+      {failedBackends.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 3 }} data-testid="backend-health-card">
           <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
           <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
-            {Object.entries(backendHealth).map(([name, health]) => {
-              const status = health?.status || 'unknown';
-              const statusLabel =
-                status === 'ok' ? t('admin.health.ok')
-                  : status === 'fail' ? t('admin.health.fail')
-                    : t('admin.health.unknown');
-              return (
-                <li key={name}>
-                  <Typography variant="body2">
-                    {name}: {statusLabel}
-                    {status === 'fail' && (health?.hint || health?.code) ? ` (${t('admin.health.hintPrefix')} ${health?.hint || health?.code})` : ''}
+            {failedBackends.map(([name, health]) => (
+              <li key={name}>
+                <Typography variant="body2">
+                  {name}: {t('admin.health.fail')}
+                  {health?.hint || health?.code
+                    ? ` (${t('admin.health.hintPrefix')} ${health?.hint || health?.code})`
+                    : ''}
+                </Typography>
+                {health?.lastCheckedAt ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {t('admin.health.lastChecked', { time: new Date(health.lastCheckedAt).toLocaleString() })}
                   </Typography>
-                  {health?.lastCheckedAt ? (
-                    <Typography variant="caption" color="text.secondary">
-                      {t('admin.health.lastChecked', { time: new Date(health.lastCheckedAt).toLocaleString() })}
-                    </Typography>
-                  ) : null}
-                </li>
-              );
-            })}
+                ) : null}
+              </li>
+            ))}
           </Box>
         </Alert>
       )}

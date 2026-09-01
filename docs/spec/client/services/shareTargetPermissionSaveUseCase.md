@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Use-case for admin save flows inside `ShareTargetDialog`. Persists edited direct-access state for either folders or files while preserving the current dialog's user-visible success/error behavior. Operates on nodeId (BIGINT) — no path strings. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Inputs
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| targetNodeId | number (BIGINT) | Y | Target node ID referencing `file_nodes.id` |
-| isDirectory | boolean | Y | Whether the target is a folder |
-| initialAccessList | array | Y | Original access entries |
-| accessList | array | Y | Edited access entries |
+| Name              | Type            | Required | Description                                |
+| ----------------- | --------------- | -------- | ------------------------------------------ |
+| targetNodeId      | number (BIGINT) | Y        | Target node ID referencing `file_nodes.id` |
+| isDirectory       | boolean         | Y        | Whether the target is a folder             |
+| initialAccessList | array           | Y        | Original access entries                    |
+| accessList        | array           | Y        | Edited access entries                      |
 
 ### 2.3 Output
 

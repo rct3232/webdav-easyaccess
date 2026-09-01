@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | File and folder CRUD, bulk operations (move, copy, delete, download), upload, conflict check, metadata, thumbnails. Supports share token for public share links. |
 
 ---
@@ -17,28 +17,28 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| listFiles | (nodeId, options?) | Promise\<Array\> | GET /api/files/list. `nodeId` may be `null`/omitted to list the root level; sends only `nodeId` (and `shareToken`). |
-| getFilesMetadata | (nodeIds, options?) | Promise\<Array\> | POST /api/files/metadata |
-| getFileBlob | (nodeId, options?) | Promise\<Blob\> | GET /api/files/download. `options.signal` (AbortSignal) forwarded to request for cancellation. |
-| getVideoPreviewStreamUrl | (nodeId, options?) | Promise\<string\> | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL) |
-| downloadFile | (nodeId, options?) | Promise\<void\> | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior) |
-| uploadFileWithPath | (file, parentNodeId, relativePath, onConflict, signal?) | Promise\<Object\> | POST /api/files/upload |
-| uploadMultipleFiles | (files, parentNodeId, onProgress, onConflict, options?) | Promise\<{ results, errors }\> | POST /api/files/upload (per file) |
-| renameFile | (nodeId, newName) | Promise\<Object\> | PUT /api/files/rename |
-| createFolder | (parentNodeId, name) | Promise\<Object\> | POST /api/folders/create. NodeId-only: sends `{ parentNodeId, name }`. |
-| checkConflicts | (operations with sourceNodeId/destinationParentNodeId, options?) | Promise\<Array\> | POST /api/files/check-conflicts |
-| downloadMultipleFiles | (nodeIds, onProgress, options?) | Promise\<Object\> | POST /api/files/download-multiple |
-| getDownloadProgress | (downloadId, options?) | Promise\<Object\> | GET /api/files/download-progress/:id |
-| batchDeleteFiles | (nodeIds) | Promise\<{ jobId }\> | POST /api/files/batch-delete |
-| batchMoveFiles | (moves with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-move |
-| batchCopyFiles | (copies with sourceNodeId/destinationParentNodeId, onConflict?) | Promise\<{ jobId }\> | POST /api/files/batch-copy |
-| getBulkOperationStatus | (jobId) | Promise\<Object\> | GET /api/files/bulk-operation/:jobId |
-| cancelBulkOperation | (jobId) | Promise\<Object\> | POST /api/files/bulk-operation/:jobId/cancel |
-| requestThumbnailsBatch | (nodeIds, options?) | Promise\<{ thumbnails: [{ nodeId, thumbnailUrl }] }\> | POST /api/thumbnails/batch `{ nodeIds }` |
-| getWebDAVInfo | () | Promise\<Object\> | GET /api/webdav/info |
-| getFolderStats | (nodeId) | Promise\<object\> | GET /api/folders/stats (params: nodeId) |
+| Function                 | Input                                                            | Return                                                | API called                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| listFiles                | (nodeId, options?)                                               | Promise\<Array\>                                      | GET /api/files/list. `nodeId` may be `null`/omitted to list the root level; sends only `nodeId` (and `shareToken`). |
+| getFilesMetadata         | (nodeIds, options?)                                              | Promise\<Array\>                                      | POST /api/files/metadata                                                                                            |
+| getFileBlob              | (nodeId, options?)                                               | Promise\<Blob\>                                       | GET /api/files/download. `options.signal` (AbortSignal) forwarded to request for cancellation.                      |
+| getVideoPreviewStreamUrl | (nodeId, options?)                                               | Promise\<string\>                                     | POST /api/files/preview-ticket + GET /api/files/preview-stream (as URL)                                             |
+| downloadFile             | (nodeId, options?)                                               | Promise\<void\>                                       | GET /api/files/download; behavior depends on options and platform (see § 2.3 Download behavior)                     |
+| uploadFileWithPath       | (file, parentNodeId, relativePath, onConflict, signal?)          | Promise\<Object\>                                     | POST /api/files/upload                                                                                              |
+| uploadMultipleFiles      | (files, parentNodeId, onProgress, onConflict, options?)          | Promise\<{ results, errors }\>                        | POST /api/files/upload (per file)                                                                                   |
+| renameFile               | (nodeId, newName)                                                | Promise\<Object\>                                     | PUT /api/files/rename                                                                                               |
+| createFolder             | (parentNodeId, name)                                             | Promise\<Object\>                                     | POST /api/folders/create. NodeId-only: sends `{ parentNodeId, name }`.                                              |
+| checkConflicts           | (operations with sourceNodeId/destinationParentNodeId, options?) | Promise\<Array\>                                      | POST /api/files/check-conflicts                                                                                     |
+| downloadMultipleFiles    | (nodeIds, onProgress, options?)                                  | Promise\<Object\>                                     | POST /api/files/download-multiple                                                                                   |
+| getDownloadProgress      | (downloadId, options?)                                           | Promise\<Object\>                                     | GET /api/files/download-progress/:id                                                                                |
+| batchDeleteFiles         | (nodeIds)                                                        | Promise\<{ jobId }\>                                  | POST /api/files/batch-delete                                                                                        |
+| batchMoveFiles           | (moves with sourceNodeId/destinationParentNodeId, onConflict?)   | Promise\<{ jobId }\>                                  | POST /api/files/batch-move                                                                                          |
+| batchCopyFiles           | (copies with sourceNodeId/destinationParentNodeId, onConflict?)  | Promise\<{ jobId }\>                                  | POST /api/files/batch-copy                                                                                          |
+| getBulkOperationStatus   | (jobId)                                                          | Promise\<Object\>                                     | GET /api/files/bulk-operation/:jobId                                                                                |
+| cancelBulkOperation      | (jobId)                                                          | Promise\<Object\>                                     | POST /api/files/bulk-operation/:jobId/cancel                                                                        |
+| requestThumbnailsBatch   | (nodeIds, options?)                                              | Promise\<{ thumbnails: [{ nodeId, thumbnailUrl }] }\> | POST /api/thumbnails/batch `{ nodeIds }`                                                                            |
+| getWebDAVInfo            | ()                                                               | Promise\<Object\>                                     | GET /api/webdav/info                                                                                                |
+| getFolderStats           | (nodeId)                                                         | Promise\<object\>                                     | GET /api/folders/stats (params: nodeId)                                                                             |
 
 > **Note (pending implementation):** The 5 legacy permission helpers (`checkPermission`, `checkFilePermission`, `grantFilePermission`, `revokeFilePermission`, `updateFilePermission`) are **removed** from this service contract. They are legacy permission helpers that belong to `permissionService`; `fileService` exposes only nodeId-based file/folder operations. The current source still exports nodeId-based wrappers over `permissionService`; those exports will be dropped in the end-state cleanup.
 
@@ -58,11 +58,11 @@ Helpers (internal or in a shared util): **isIOS** (platform). No `isImageFile` o
 
 ### 2.4 downloadFile options (optional)
 
-| Option | Type | Description |
-|--------|------|-------------|
-| fileName | string | Display name for the file (e.g. for share sheet). If omitted, derived from `filePath`. |
-| mimeType | string | MIME type for the file (e.g. for creating a `File` for `navigator.share`). If omitted, inferred from extension or response. |
-| isMobile | boolean | Hint that the client is on a mobile device; can be used together with platform detection for iOS + single-file share path. |
+| Option   | Type    | Description                                                                                                                 |
+| -------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| fileName | string  | Display name for the file (e.g. for share sheet). If omitted, derived from `filePath`.                                      |
+| mimeType | string  | MIME type for the file (e.g. for creating a `File` for `navigator.share`). If omitted, inferred from extension or response. |
+| isMobile | boolean | Hint that the client is on a mobile device; can be used together with platform detection for iOS + single-file share path.  |
 
 ### 2.5 Error Handling
 

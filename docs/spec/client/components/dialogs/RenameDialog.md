@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Simple rename dialog with text input. Controlled component; parent manages value and confirm logic. |
-| Used in | File/folder rename in context menu |
-| Related components | MUI Dialog, TextField (no BaseDialog) |
+| Item               | Description                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Role               | Simple rename dialog with text input. Controlled component; parent manages value and confirm logic. |
+| Used in            | File/folder rename in context menu                                                                  |
+| Related components | MUI Dialog, TextField (no BaseDialog)                                                               |
 
 ---
 
@@ -19,26 +19,26 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Whether dialog is open |
-| onClose | function | Y | - | Close handler |
-| value | string | Y | - | Current name value (controlled) |
-| onChange | function | Y | - | Value change handler |
-| error | string | N | - | Validation error message |
-| onClearError | function | N | - | Called when user edits (to clear error) |
-| loading | boolean | N | false | Disables buttons during submit |
-| onConfirm | function | Y | - | Confirm handler (rename submit) |
-| fullScreen | boolean | N | false | Full-screen on mobile |
+| Name         | Type     | Required | Default | Description                             |
+| ------------ | -------- | -------- | ------- | --------------------------------------- |
+| open         | boolean  | Y        | -       | Whether dialog is open                  |
+| onClose      | function | Y        | -       | Close handler                           |
+| value        | string   | Y        | -       | Current name value (controlled)         |
+| onChange     | function | Y        | -       | Value change handler                    |
+| error        | string   | N        | -       | Validation error message                |
+| onClearError | function | N        | -       | Called when user edits (to clear error) |
+| loading      | boolean  | N        | false   | Disables buttons during submit          |
+| onConfirm    | function | Y        | -       | Confirm handler (rename submit)         |
+| fullScreen   | boolean  | N        | false   | Full-screen on mobile                   |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Cancel or dialog close | - |
-| onChange | TextField change | (value: string) |
-| onClearError | TextField change when error exists | - |
-| onConfirm | Change button click | - |
+| Callback     | When invoked                       | Arguments       |
+| ------------ | ---------------------------------- | --------------- |
+| onClose      | Cancel or dialog close             | -               |
+| onChange     | TextField change                   | (value: string) |
+| onClearError | TextField change when error exists | -               |
+| onConfirm    | Change button click                | -               |
 
 ### 2.4 Dependencies
 

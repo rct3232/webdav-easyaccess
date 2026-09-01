@@ -55,10 +55,9 @@ async function createShareLink({ token, fileNodeId, createdBy, expiresInDays }) 
   if (isPostgresqlBackend()) {
     try {
       return await storage.withTransaction(async (client) => {
-        const existing = await client.query(
-          `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
-          [tokenStr]
-        );
+        const existing = await client.query(`SELECT * FROM share_links WHERE token = $1 LIMIT 1`, [
+          tokenStr,
+        ]);
         if (existing.rows.length > 0) {
           return mapShareLinkRow(existing.rows[0]);
         }
@@ -77,10 +76,9 @@ async function createShareLink({ token, fileNodeId, createdBy, expiresInDays }) 
   if (isSqliteBackend()) {
     try {
       return await storage.withSqliteTransaction(async (client) => {
-        const existing = await client.query(
-          `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-          [tokenStr]
-        );
+        const existing = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+          tokenStr,
+        ]);
         if (existing.rows.length > 0) {
           return mapShareLinkRow(existing.rows[0]);
         }
@@ -89,10 +87,9 @@ async function createShareLink({ token, fileNodeId, createdBy, expiresInDays }) 
            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 0)`,
           [tokenStr, fileNodeIdNum, createdByNum, expiresAt]
         );
-        const inserted = await client.query(
-          `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-          [tokenStr]
-        );
+        const inserted = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+          tokenStr,
+        ]);
         return mapShareLinkRow(inserted.rows[0]);
       });
     } catch (error) {
@@ -113,10 +110,9 @@ async function getShareLink(token) {
   if (isPostgresqlBackend()) {
     try {
       const pool = storage.getPgPool();
-      const res = await pool.query(
-        `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
-        [tokenStr]
-      );
+      const res = await pool.query(`SELECT * FROM share_links WHERE token = $1 LIMIT 1`, [
+        tokenStr,
+      ]);
       return mapShareLinkRow(res.rows[0]);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -125,10 +121,9 @@ async function getShareLink(token) {
 
   if (isSqliteBackend()) {
     try {
-      const res = await storage.sqliteQuery(
-        `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-        [tokenStr]
-      );
+      const res = await storage.sqliteQuery(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+        tokenStr,
+      ]);
       return mapShareLinkRow(res.rows[0]);
     } catch (error) {
       throw mapDatabaseError(error);
@@ -200,10 +195,9 @@ async function updateShareLink(token, updates) {
   if (isPostgresqlBackend()) {
     try {
       return await storage.withTransaction(async (client) => {
-        const existing = await client.query(
-          `SELECT * FROM share_links WHERE token = $1 LIMIT 1`,
-          [tokenStr]
-        );
+        const existing = await client.query(`SELECT * FROM share_links WHERE token = $1 LIMIT 1`, [
+          tokenStr,
+        ]);
         if (existing.rows.length === 0) {
           throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
         }
@@ -225,10 +219,9 @@ async function updateShareLink(token, updates) {
   if (isSqliteBackend()) {
     try {
       return await storage.withSqliteTransaction(async (client) => {
-        const existing = await client.query(
-          `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-          [tokenStr]
-        );
+        const existing = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+          tokenStr,
+        ]);
         if (existing.rows.length === 0) {
           throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
         }
@@ -236,14 +229,13 @@ async function updateShareLink(token, updates) {
           return mapShareLinkRow(existing.rows[0]);
         }
         const sqliteSet = setClause.map((c) => c.replace(/\$\d+/g, '?'));
-        await client.query(
-          `UPDATE share_links SET ${sqliteSet.join(', ')} WHERE token = ?`,
-          [...params, tokenStr]
-        );
-        const updated = await client.query(
-          `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-          [tokenStr]
-        );
+        await client.query(`UPDATE share_links SET ${sqliteSet.join(', ')} WHERE token = ?`, [
+          ...params,
+          tokenStr,
+        ]);
+        const updated = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+          tokenStr,
+        ]);
         return mapShareLinkRow(updated.rows[0]);
       });
     } catch (error) {
@@ -319,10 +311,9 @@ async function incrementDownloadCount(token) {
             WHERE token = ?`,
           [tokenStr]
         );
-        const updated = await client.query(
-          `SELECT * FROM share_links WHERE token = ? LIMIT 1`,
-          [tokenStr]
-        );
+        const updated = await client.query(`SELECT * FROM share_links WHERE token = ? LIMIT 1`, [
+          tokenStr,
+        ]);
         if (updated.rows.length === 0) {
           throw createError(SERVER_ERROR_CODES.share.shareLinkNotFound, 404);
         }

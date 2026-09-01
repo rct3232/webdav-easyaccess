@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pure helper that normalizes auth user objects for consistent client-side role checks (e.g. converts `is_admin` to a boolean). |
-| Used by | `useAuthSession` (for user values derived from `getMe` and `login`). |
-| Does not own | Storage, IO, or side effects. |
+| Item         | Description                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Role         | Pure helper that normalizes auth user objects for consistent client-side role checks (e.g. converts `is_admin` to a boolean). |
+| Used by      | `useAuthSession` (for user values derived from `getMe` and `login`).                                                          |
+| Does not own | Storage, IO, or side effects.                                                                                                 |
 
 ---
 
@@ -19,11 +19,12 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| `normalizeAuthUser` | `(user: object | null | undefined) => object | null` |
+| Function            | (input) => return |
+| ------------------- | ----------------- | ---- | -------------------- | ----- |
+| `normalizeAuthUser` | `(user: object    | null | undefined) => object | null` |
 
 Normalization rules:
+
 - Returns `null` when input is null/undefined.
 - If input is an object:
   - keeps all fields,

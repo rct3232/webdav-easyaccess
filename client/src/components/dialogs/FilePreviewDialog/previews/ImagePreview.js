@@ -127,18 +127,38 @@ const ImagePreview = ({
       </Box>
       {showChevrons && (
         <IconButton
-          onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            goPrev();
+          }}
           disabled={currentMediaIndex <= 0}
-          sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 5, ...chevronSx }}
+          sx={{
+            position: 'absolute',
+            left: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 5,
+            ...chevronSx,
+          }}
         >
           <ChevronLeftIcon />
         </IconButton>
       )}
       {showChevrons && (
         <IconButton
-          onClick={(e) => { e.stopPropagation(); goNext(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            goNext();
+          }}
           disabled={currentMediaIndex >= mediaFilesLength - 1}
-          sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 5, ...chevronSx }}
+          sx={{
+            position: 'absolute',
+            right: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 5,
+            ...chevronSx,
+          }}
         >
           <ChevronRightIcon />
         </IconButton>

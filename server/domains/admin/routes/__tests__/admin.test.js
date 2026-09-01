@@ -72,9 +72,7 @@ describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
     });
 
     for (const [method, url] of ADMIN_ROUTES) {
-      const res = await request(app)[method](url)
-        .set('Authorization', `Bearer ${token}`)
-        .send({});
+      const res = await request(app)[method](url).set('Authorization', `Bearer ${token}`).send({});
 
       expect(res.status).toBe(403);
       expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
@@ -181,11 +179,7 @@ describe('POST /api/admin/users/:id/approve', () => {
     const { createFileNodesStore } = require('../../../../store/fileNodesStore');
     const homeNode = await createFileNodesStore().getUserRootNode(pendingUser.id);
     expect(homeNode).not.toBeNull();
-    const hasAdmin = await permissionStore.checkPermission(
-      pendingUser.id,
-      homeNode.id,
-      'admin'
-    );
+    const hasAdmin = await permissionStore.checkPermission(pendingUser.id, homeNode.id, 'admin');
     expect(hasAdmin).toBe(true);
   });
 });
@@ -271,8 +265,8 @@ describe('POST /api/admin/permissions/ensure-home-owner-admin', () => {
     expect(res.body.removedSelfGrants).toBeGreaterThanOrEqual(1);
 
     const perms = await permissionStore.getUserPermissions(user.user.id);
-    const ids = perms.map(p => p.file_node_id);
-    expect(ids).toContain(home.nodeId);       // home-root admin preserved
+    const ids = perms.map((p) => p.file_node_id);
+    expect(ids).toContain(home.nodeId); // home-root admin preserved
     expect(ids).not.toContain(ownDir.nodeId); // descendant self-grant removed
   });
 

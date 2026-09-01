@@ -67,7 +67,11 @@ async function recordLoginFailure(key) {
     cache.set(`ratelimit:${key}`, { count: 1, resetAt: now + windowMs }, windowMs);
     return;
   }
-  cache.set(`ratelimit:${key}`, { count: entry.count + 1, resetAt: entry.resetAt }, entry.resetAt - now);
+  cache.set(
+    `ratelimit:${key}`,
+    { count: entry.count + 1, resetAt: entry.resetAt },
+    entry.resetAt - now
+  );
 }
 
 function clearLoginFailures(key) {
@@ -146,7 +150,11 @@ async function registerUser({ username, email, password }) {
   } catch (error) {
     if (error.errorCode) throw error;
     if (createdUser && createdUser.id) {
-      try { await User.delete(createdUser.id); } catch { /* best-effort rollback */ }
+      try {
+        await User.delete(createdUser.id);
+      } catch {
+        /* best-effort rollback */
+      }
     }
     throw error;
   }

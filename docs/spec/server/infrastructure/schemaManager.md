@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pending migration detection + idempotent application across backends. Tracks applied DDL files in `_schema_migrations` table using SHA-256 checksums. |
 
 ---
@@ -17,13 +17,14 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method                 | Signature                    | Description                                      |
+| ---------------------- | ---------------------------- | ------------------------------------------------ |
 | applyPendingMigrations | (backend) => Promise\<void\> | Detect and apply unapplied DDL files; idempotent |
 
 ### 2.3 `_schema_migrations` Table
 
 Auto-created if missing:
+
 ```sql
 CREATE TABLE _schema_migrations (
   filename TEXT PRIMARY KEY,

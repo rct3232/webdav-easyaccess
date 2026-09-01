@@ -47,7 +47,9 @@ async function createTestDatabase() {
     // worker process before pointing WEA_SQLITE_PATH at the new DB.
     try {
       await storage.closeSqliteDb();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     process.env.WEA_SQLITE_PATH = dbPath;
     await initMetadataStore();
@@ -58,10 +60,14 @@ async function createTestDatabase() {
         process.env.WEA_SQLITE_PATH = prevSqlitePath;
         try {
           storage.closeSqliteDb();
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         try {
           await fs.promises.unlink(dbPath);
-        } catch { /* ignore cleanup errors */ }
+        } catch {
+          /* ignore cleanup errors */
+        }
       },
     };
   }
@@ -80,7 +86,9 @@ async function createTestDatabase() {
       // pool is recreated lazily by the next suite that needs it.
       try {
         await storage.closePgPool();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     },
   };
 }
@@ -209,7 +217,11 @@ async function createUserRootNode({ userId }) {
   if (!user || !user.username) {
     throw new Error(`User ${userId} not found; cannot create root node`);
   }
-  const result = await createTestFileNode({ name: user.username, type: 'directory', parentId: null });
+  const result = await createTestFileNode({
+    name: user.username,
+    type: 'directory',
+    parentId: null,
+  });
   return { nodeId: result.nodeId };
 }
 
@@ -227,7 +239,11 @@ async function createNestedStructure({ parentId = null, segments }) {
   let currentParentId = parentId;
 
   for (const segment of segments) {
-    const result = await createTestFileNode({ name: segment, type: 'directory', parentId: currentParentId });
+    const result = await createTestFileNode({
+      name: segment,
+      type: 'directory',
+      parentId: currentParentId,
+    });
     nodeIds.push(result.nodeId);
     paths.push(result.path);
     currentParentId = result.nodeId;
@@ -247,7 +263,14 @@ async function createNestedStructure({ parentId = null, segments }) {
  * @param {Object} opts.s3Mock - S3 mock instance with putObject({ input: { Bucket, Key, Body, ContentType } })
  * @returns {Promise<{ nodeId: number, s3Key: string, path: string }>}
  */
-async function createTestFileWithBlob({ userId, name, parentId, content, mimeType = 'text/plain', s3Mock }) {
+async function createTestFileWithBlob({
+  userId,
+  name,
+  parentId,
+  content,
+  mimeType = 'text/plain',
+  s3Mock,
+}) {
   // If no parentId provided, use the user's root node.
   if (parentId == null) {
     const rootResult = await createUserRootNode({ userId });

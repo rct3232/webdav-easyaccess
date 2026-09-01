@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                    |
+| ---- | ------------------------------------------------------------------------------ |
 | Role | Path resolution: getProjectRoot, getDataDir, getThumbnailDir, getDatabasePath. |
 
 ---
@@ -17,12 +17,12 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| getProjectRoot | () => string | Resolve __dirname/../.. |
-| getDataDir | () => string | data/ under project root |
-| getThumbnailDir | () => string | data/thumbnails |
-| getDatabasePath | () => string | data/database.sqlite |
+| Function        | Signature    | Description               |
+| --------------- | ------------ | ------------------------- |
+| getProjectRoot  | () => string | Resolve \_\_dirname/../.. |
+| getDataDir      | () => string | data/ under project root  |
+| getThumbnailDir | () => string | data/thumbnails           |
+| getDatabasePath | () => string | data/database.sqlite      |
 
 ### 2.3 Input / Output
 
@@ -34,7 +34,7 @@
 
 ### 2.5 Mock Targets
 
-- __dirname (or path.resolve)
+- \_\_dirname (or path.resolve)
 
 ### 2.6 Verification Scenarios
 

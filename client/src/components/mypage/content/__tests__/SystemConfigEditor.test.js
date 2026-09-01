@@ -36,9 +36,7 @@ const webdavConfig = (overrides = {}) =>
   });
 
 const mockGetConfig = (config) => {
-  server.use(
-    http.get('/api/admin/config', () => HttpResponse.json({ config }))
-  );
+  server.use(http.get('/api/admin/config', () => HttpResponse.json({ config })));
 };
 
 const mockPutConfig = (responder) => {
@@ -103,7 +101,11 @@ describe('SystemConfigEditor', () => {
     let putBody;
     mockPutConfig((body) => {
       putBody = body;
-      return HttpResponse.json({ applied: ['EMAIL_HOST'], restartRequired: [], messageCode: 'serverMessages.admin.configSaved' });
+      return HttpResponse.json({
+        applied: ['EMAIL_HOST'],
+        restartRequired: [],
+        messageCode: 'serverMessages.admin.configSaved',
+      });
     });
     const onSnackbar = renderEditor();
 
@@ -125,7 +127,11 @@ describe('SystemConfigEditor', () => {
 
   it('shows a restart-required banner listing T1 keys after save', async () => {
     mockPutConfig(() =>
-      HttpResponse.json({ applied: ['EMAIL_HOST'], restartRequired: ['PORT'], messageCode: 'serverMessages.admin.configSaved' })
+      HttpResponse.json({
+        applied: ['EMAIL_HOST'],
+        restartRequired: ['PORT'],
+        messageCode: 'serverMessages.admin.configSaved',
+      })
     );
     renderEditor();
 
@@ -140,7 +146,11 @@ describe('SystemConfigEditor', () => {
 
   it('shows an applied-immediately banner listing T2 keys after save', async () => {
     mockPutConfig(() =>
-      HttpResponse.json({ applied: ['EMAIL_HOST'], restartRequired: [], messageCode: 'serverMessages.admin.configSaved' })
+      HttpResponse.json({
+        applied: ['EMAIL_HOST'],
+        restartRequired: [],
+        messageCode: 'serverMessages.admin.configSaved',
+      })
     );
     renderEditor();
 
@@ -210,7 +220,9 @@ describe('SystemConfigEditor', () => {
 
     expect(saveButton).toBeDisabled();
     expect(screen.getByTestId('config-test-connection')).toBeInTheDocument();
-    expect(screen.getByText(/save is blocked until the connection test passes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/save is blocked until the connection test passes/i)
+    ).toBeInTheDocument();
   });
 
   it('enables Save after a passing connection test', async () => {
@@ -264,7 +276,11 @@ describe('SystemConfigEditor', () => {
       putBody = body;
       return HttpResponse.json(defaultPutResponse());
     });
-    renderEditor({ config: makeConfig({ MAX_THUMBNAIL_SIZE: { value: '100', source: 'db', tier: 'T1', secret: false } }) });
+    renderEditor({
+      config: makeConfig({
+        MAX_THUMBNAIL_SIZE: { value: '100', source: 'db', tier: 'T1', secret: false },
+      }),
+    });
 
     const saveButton = await screen.findByRole('button', { name: /save changes/i });
     expect(saveButton).toBeDisabled();
@@ -275,7 +291,9 @@ describe('SystemConfigEditor', () => {
 
     expect(saveButton).toBeEnabled();
     expect(screen.queryByTestId('config-test-connection')).not.toBeInTheDocument();
-    expect(screen.queryByText(/save is blocked until the connection test passes/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/save is blocked until the connection test passes/i)
+    ).not.toBeInTheDocument();
 
     await userEvent.click(saveButton);
     await waitFor(() => {

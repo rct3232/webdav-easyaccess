@@ -61,7 +61,9 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? permissionStore.checkSharePermission(token, fileNodeId, requiredPermission) : false;
+    return token
+      ? permissionStore.checkSharePermission(token, fileNodeId, requiredPermission)
+      : false;
   }
 
   // Regular user: fetch and check admin status
@@ -91,11 +93,17 @@ async function checkFilePermission(principalId, fileNodeId, requiredPermission =
  * Resolves share principals via token, admin users bypass all checks,
  * and regular users are checked against the closure table for directory permissions.
  */
-async function checkFolderPermission(principalId, dirNodeId, requiredPermission = PERMISSIONS.READ) {
+async function checkFolderPermission(
+  principalId,
+  dirNodeId,
+  requiredPermission = PERMISSIONS.READ
+) {
   // Share principal: resolve via token → permissions_shares → closure table descendant check
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
-    return token ? permissionStore.checkSharePermission(token, dirNodeId, requiredPermission) : false;
+    return token
+      ? permissionStore.checkSharePermission(token, dirNodeId, requiredPermission)
+      : false;
   }
 
   // Regular user: fetch and check admin status
@@ -118,7 +126,12 @@ async function checkFolderPermission(principalId, dirNodeId, requiredPermission 
  * Unified permission check entry point.
  * Determines file vs folder by the isDirectory flag and delegates accordingly.
  */
-async function checkPermission(nodeId, principalId, action = PERMISSIONS.READ, isDirectory = false) {
+async function checkPermission(
+  nodeId,
+  principalId,
+  action = PERMISSIONS.READ,
+  isDirectory = false
+) {
   if (isSharePrincipal(principalId)) {
     const token = extractShareToken(principalId);
     return token ? permissionStore.checkSharePermission(token, nodeId, action) : false;

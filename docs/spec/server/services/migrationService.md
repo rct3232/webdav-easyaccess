@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Core blob-migration engine shared by the CLI (`server/scripts/migrateBlobs.js`) and the admin API (`server/domains/admin/routes/migration.js`). Performs snapshot traversal + per-node copy + direction-specific DB rules (incl. the inline `object_map` flip for s3→webdav) + automatic resume + dry-run/failure isolation. |
-| Depends on | `fileNodesStore`, `fileNodeService`, blob store adapters, dest-config normalization (`server/infrastructure/adapters/blobstore/config.js`), `lockManager` |
-| Files | `server/domains/admin/services/migrationService.js` |
-| Test files | `server/domains/admin/services/__tests__/migrationService.test.js` |
+| Item       | Description                                                                                                                                                                                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Core blob-migration engine shared by the CLI (`server/scripts/migrateBlobs.js`) and the admin API (`server/domains/admin/routes/migration.js`). Performs snapshot traversal + per-node copy + direction-specific DB rules (incl. the inline `object_map` flip for s3→webdav) + automatic resume + dry-run/failure isolation. |
+| Depends on | `fileNodesStore`, `fileNodeService`, blob store adapters, dest-config normalization (`server/infrastructure/adapters/blobstore/config.js`), `lockManager`                                                                                                                                                                    |
+| Files      | `server/domains/admin/services/migrationService.js`                                                                                                                                                                                                                                                                          |
+| Test files | `server/domains/admin/services/__tests__/migrationService.test.js`                                                                                                                                                                                                                                                           |
 
 The service operates on injected dependencies only. It never constructs real adapters — tests inject `createFakeBlobStore()` and a fake `buildDestBlobStore` (see `docs/TESTING_STRATEGY.md`).
 
@@ -19,23 +19,23 @@ The service operates on injected dependencies only. It never constructs real ada
 
 `createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager, fileStorageMode })`
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `srcBlobStore` | object | Source BlobStore adapter (WebdavBlobStore or S3BlobStore), already built from the app config |
-| `fileNodesStore` | object | fileNodesStore with `getNodesBySyncStatus`, `getNodesBySyncStatusNot`, `getActiveObject` / object_map upsert queries, filecache upsert |
-| `fileNodeService` | object | fileNodeService (tree ops: `getNodePath`, node lookup) |
-| `buildDestBlobStore` | function | `(destConfig) => { blobStore, summary }` from `server/infrastructure/adapters/blobstore/config.js` (or injected fake) |
-| `lockManager` | object | Metadata locking for the required DB updates |
-| `fileStorageMode` | string | `'webdav'` or `'s3'` — the current app config mode (`WEA_FILE_STORAGE`). Drives direction derivation: source = this mode, destination = the other backend |
+| Param                | Type     | Description                                                                                                                                               |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `srcBlobStore`       | object   | Source BlobStore adapter (WebdavBlobStore or S3BlobStore), already built from the app config                                                              |
+| `fileNodesStore`     | object   | fileNodesStore with `getNodesBySyncStatus`, `getNodesBySyncStatusNot`, `getActiveObject` / object_map upsert queries, filecache upsert                    |
+| `fileNodeService`    | object   | fileNodeService (tree ops: `getNodePath`, node lookup)                                                                                                    |
+| `buildDestBlobStore` | function | `(destConfig) => { blobStore, summary }` from `server/infrastructure/adapters/blobstore/config.js` (or injected fake)                                     |
+| `lockManager`        | object   | Metadata locking for the required DB updates                                                                                                              |
+| `fileStorageMode`    | string   | `'webdav'` or `'s3'` — the current app config mode (`WEA_FILE_STORAGE`). Drives direction derivation: source = this mode, destination = the other backend |
 
 ### 2.2 `run({ destConfig, mode, force, onProgress })`
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `destConfig` | object | — | User-supplied destination config (see `docs/spec/server/tools/blob-migration.md` §4.2); its `type` must equal the derived destination backend |
-| `mode` | string | `'dry-run'` | `'dry-run'` or `'apply'` |
-| `force` | boolean | `false` | Re-copy even when an automatic resume marker is present |
-| `onProgress` | function | — | Called after each node; see §2.5 |
+| Param        | Type     | Default     | Description                                                                                                                                   |
+| ------------ | -------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `destConfig` | object   | —           | User-supplied destination config (see `docs/spec/server/tools/blob-migration.md` §4.2); its `type` must equal the derived destination backend |
+| `mode`       | string   | `'dry-run'` | `'dry-run'` or `'apply'`                                                                                                                      |
+| `force`      | boolean  | `false`     | Re-copy even when an automatic resume marker is present                                                                                       |
+| `onProgress` | function | —           | Called after each node; see §2.5                                                                                                              |
 
 There is no `direction` parameter: the direction is derived internally from the injected `fileStorageMode` (source = that mode, destination = the other backend). Before any work the service validates that `destConfig.type` equals the expected destination type (webdav source → `'s3'`, s3 source → `'webdav'`) and throws a clear error on mismatch.
 
@@ -68,10 +68,10 @@ There is no `phase` or `resume` parameter: resume is internal and always on (des
 The snapshot contract is source-mode aware — it only imposes the S3 lifecycle model
 (`sync_status='active'` + an active `object_map` row) on an S3 source:
 
-| Source mode | Enumeration | Per-node activeObject |
-|---|---|---|
-| `s3` (unchanged) | `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row) | `fileNodesStore.getActiveObject(node.id)` (always present) |
-| `webdav` | all file nodes with `sync_status != 'orphaned_node'` (via `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')`, filtered to type=file) | `getActiveObject(node.id)` when present — its preserved `s3_key` is the resume marker from a prior migration — otherwise a synthesized `{ s3_key: null, storage_backend: 'webdav' }` |
+| Source mode      | Enumeration                                                                                                                                                                           | Per-node activeObject                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `s3` (unchanged) | `file_nodes WHERE type='file' AND sync_status='active'` with an active `object_map` row (via `fileNodesStore.getNodesBySyncStatus('active')`, filtered to type=file + object_map row) | `fileNodesStore.getActiveObject(node.id)` (always present)                                                                                                                           |
+| `webdav`         | all file nodes with `sync_status != 'orphaned_node'` (via `fileNodesStore.getNodesBySyncStatusNot('orphaned_node')`, filtered to type=file)                                           | `getActiveObject(node.id)` when present — its preserved `s3_key` is the resume marker from a prior migration — otherwise a synthesized `{ s3_key: null, storage_backend: 'webdav' }` |
 
 **Why webdav-native files need no `object_map` row:** webdav is path-addressed — the blob **is** the
 node's display path (`fileNodeService.getNodePath(node.id)`), so a mapping row would be redundant and
@@ -116,14 +116,14 @@ PUT failed after the DB commit); they are a fail-safe/manual-review concern, nev
 
 `onProgress({ total, done, current, copied, skipped, failed })` — called after each node.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `total` | number | Total active nodes in the snapshot |
-| `done` | number | Nodes processed so far |
-| `current` | object | The node currently being processed |
-| `copied` | number | Blobs copied so far |
+| Field     | Type   | Description                                     |
+| --------- | ------ | ----------------------------------------------- |
+| `total`   | number | Total active nodes in the snapshot              |
+| `done`    | number | Nodes processed so far                          |
+| `current` | object | The node currently being processed              |
+| `copied`  | number | Blobs copied so far                             |
 | `skipped` | number | Nodes skipped (automatic resume markers) so far |
-| `failed` | number | Nodes failed so far |
+| `failed`  | number | Nodes failed so far                             |
 
 ### 2.6 Error isolation
 

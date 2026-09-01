@@ -66,12 +66,21 @@ export async function gotoAsAnonymousShare(page: Page, shareToken: string) {
   await gotoAsAnonymous(page, `/share/${shareToken}`);
 }
 
-export async function gotoAsLoggedInShare(page: Page, shareToken: string, userKey: StandardTestUserKey, suffix?: string) {
+export async function gotoAsLoggedInShare(
+  page: Page,
+  shareToken: string,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   await loginAsUser(page, userKey, suffix);
   await page.goto(`/share/${shareToken}`);
 }
 
-async function ensureUserCanLogin(request: APIRequestContext, userKey: StandardTestUserKey, suffix?: string) {
+async function ensureUserCanLogin(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   const user = getUserData(userKey, suffix);
   const maxAttempts = 5;
 
@@ -119,7 +128,11 @@ export async function setRegistrationEnabled(request: APIRequestContext, enabled
   expect(response.ok()).toBeTruthy();
 }
 
-export async function deleteUser(request: APIRequestContext, userKey: StandardTestUserKey, suffix?: string) {
+export async function deleteUser(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   const token = await getAdminToken(request);
   const user = getUserData(userKey, suffix);
 
@@ -137,11 +150,15 @@ export async function deleteUser(request: APIRequestContext, userKey: StandardTe
   }
 }
 
-export async function ensurePendingUser(request: APIRequestContext, userKey: StandardTestUserKey, suffix?: string) {
+export async function ensurePendingUser(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   await deleteUser(request, userKey, suffix);
   await setRegistrationEnabled(request, true);
   const user = getUserData(userKey, suffix);
-  
+
   const registerResponse = await request.post('/api/auth/register', {
     data: {
       username: user.username,
@@ -149,27 +166,34 @@ export async function ensurePendingUser(request: APIRequestContext, userKey: Sta
       password: user.password,
     },
   });
-  
+
   if (registerResponse.status() === 201) {
     return;
   }
-  
+
   if (registerResponse.status() === 400 || registerResponse.status() === 409) {
     const body = await registerResponse.json();
-    if (body.errorCode === 'serverErrors.auth.usernameTaken' || body.errorCode === 'serverErrors.auth.emailTaken') {
+    if (
+      body.errorCode === 'serverErrors.auth.usernameTaken' ||
+      body.errorCode === 'serverErrors.auth.emailTaken'
+    ) {
       return;
     }
   }
-  
+
   expect(registerResponse.ok()).toBeTruthy();
 }
 
-export async function ensureRejectedUser(request: APIRequestContext, userKey: StandardTestUserKey, suffix?: string) {
+export async function ensureRejectedUser(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   await ensurePendingUser(request, userKey, suffix);
-  
+
   const token = await getAdminToken(request);
   const user = getUserData(userKey, suffix);
-  
+
   const usersResponse = await request.get('/api/admin/users', {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -177,7 +201,7 @@ export async function ensureRejectedUser(request: APIRequestContext, userKey: St
   const users = await usersResponse.json();
   const targetUser = users.find((u: any) => u.username === user.username);
   expect(targetUser).toBeDefined();
-  
+
   const rejectResponse = await request.post(`/api/admin/users/${targetUser.id}/reject`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -188,48 +212,51 @@ export async function ensureRejectedUser(request: APIRequestContext, userKey: St
   expect(rejectResponse.ok()).toBeTruthy();
 }
 
-export async function ensureApprovedUser(request: APIRequestContext, userKey: StandardTestUserKey, suffix?: string) {
+export async function ensureApprovedUser(
+  request: APIRequestContext,
+  userKey: StandardTestUserKey,
+  suffix?: string
+) {
   const token = await getAdminToken(request);
   const authHeaders = {
     Authorization: `Bearer ${token}`,
   };
-  
+
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const createUserResponse = await request.post('/api/admin/users', {
       headers: authHeaders,
       data: getUserData(userKey, suffix),
     });
-    
+
     if (createUserResponse.status() === 201) {
       await ensureUserCanLogin(request, userKey, suffix);
       return;
     }
-    
+
     if (createUserResponse.status() === 400) {
       const errorBody = await createUserResponse.json();
       const acceptableDuplicateCodes = new Set([
         'serverErrors.admin.usernameTaken',
         'serverErrors.admin.emailTaken',
       ]);
-      
+
       expect(acceptableDuplicateCodes.has(errorBody?.errorCode)).toBeTruthy();
       await ensureUserCanLogin(request, userKey, suffix);
       return;
     }
-    
+
     if (createUserResponse.status() === 429 || createUserResponse.status() >= 500) {
       const delayMs = 600 * attempt;
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       continue;
     }
-    
+
     if (createUserResponse.status() === 409) {
       await ensureUserCanLogin(request, userKey, suffix);
       return;
     }
-    
+
     expect(createUserResponse.ok()).toBeTruthy();
   }
 }
-

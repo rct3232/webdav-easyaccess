@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Table view of files: icon, name, type/mime, size, date. Supports selection, drag-and-drop, long-press on mobile. |
-| Used in | FileManager |
-| Related components | useFileViewCommon, FileDetailSkeleton, formatFileSize, formatDate, getFileIcon |
+| Item               | Description                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Role               | Table view of files: icon, name, type/mime, size, date. Supports selection, drag-and-drop, long-press on mobile. |
+| Used in            | FileManager                                                                                                      |
+| Related components | useFileViewCommon, FileDetailSkeleton, formatFileSize, formatDate, getFileIcon                                   |
 
 ---
 
@@ -19,30 +19,30 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| files | array | Y | - | File objects |
-| onFileClick | function | Y | - | Row click handler; receives (file, event) for modifier detection |
-| onMoreClick | function | Y | - | More button click handler (file); opens FileActionSheet |
-| onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
-| onContextMenu | function | Y | - | Context menu handler |
-| onFileDrop | function | N | - | Drop handler |
-| selectionMode | boolean | Y | - | Selection mode active (row shows light primary background when selected) |
-| selectedFiles | Set | Y | - | Selected paths |
-| processingMap | object | N | - | Processing state |
-| hasWritePermission | boolean | N | - | Write permission |
-| currentPath | string | Y | - | Current path |
-| onPathClick | function | N | - | Path click |
-| loading | boolean | N | false | Loading state |
+| Name               | Type     | Required | Default | Description                                                              |
+| ------------------ | -------- | -------- | ------- | ------------------------------------------------------------------------ |
+| files              | array    | Y        | -       | File objects                                                             |
+| onFileClick        | function | Y        | -       | Row click handler; receives (file, event) for modifier detection         |
+| onMoreClick        | function | Y        | -       | More button click handler (file); opens FileActionSheet                  |
+| onLongPressSelect  | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file    |
+| onContextMenu      | function | Y        | -       | Context menu handler                                                     |
+| onFileDrop         | function | N        | -       | Drop handler                                                             |
+| selectionMode      | boolean  | Y        | -       | Selection mode active (row shows light primary background when selected) |
+| selectedFiles      | Set      | Y        | -       | Selected paths                                                           |
+| processingMap      | object   | N        | -       | Processing state                                                         |
+| hasWritePermission | boolean  | N        | -       | Write permission                                                         |
+| currentPath        | string   | Y        | -       | Current path                                                             |
+| onPathClick        | function | N        | -       | Path click                                                               |
+| loading            | boolean  | N        | false   | Loading state                                                            |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onFileClick | Row click | (file, event) |
-| onMoreClick | More button click (IconButton in row) | (file) |
-| onLongPressSelect | Mobile long-press on row | (file) |
-| onContextMenu | Right-click | (e, file) |
+| Callback          | When invoked                          | Arguments     |
+| ----------------- | ------------------------------------- | ------------- |
+| onFileClick       | Row click                             | (file, event) |
+| onMoreClick       | More button click (IconButton in row) | (file)        |
+| onLongPressSelect | Mobile long-press on row              | (file)        |
+| onContextMenu     | Right-click                           | (e, file)     |
 
 ### 2.4 Dependencies
 

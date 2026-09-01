@@ -73,9 +73,12 @@ function resolveSqliteExecutor(options = {}) {
 }
 
 async function createMigrationTable(backend, options = {}) {
-  const ddl = backend === 'postgresql'
-    ? 'CREATE TABLE IF NOT EXISTS _schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW(), checksum TEXT NOT NULL)'
-    : convertPostgresToSqlite('CREATE TABLE IF NOT EXISTS _schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW(), checksum TEXT NOT NULL)');
+  const ddl =
+    backend === 'postgresql'
+      ? 'CREATE TABLE IF NOT EXISTS _schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW(), checksum TEXT NOT NULL)'
+      : convertPostgresToSqlite(
+          'CREATE TABLE IF NOT EXISTS _schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW(), checksum TEXT NOT NULL)'
+        );
 
   if (backend === 'postgresql') {
     await resolvePgExecutor(options).query(ddl);
@@ -159,9 +162,7 @@ async function applyIfPending(backend, filename, options = {}) {
 async function applyPendingMigrations(backend, options = {}) {
   await createMigrationTable(backend, options);
 
-  const files = (await fs.readdir(DDL_DIR))
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
+  const files = (await fs.readdir(DDL_DIR)).filter((f) => f.endsWith('.sql')).sort();
 
   for (const filename of files) {
     await applyIfPending(backend, filename, options);

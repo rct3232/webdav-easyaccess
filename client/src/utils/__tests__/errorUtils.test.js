@@ -34,19 +34,27 @@ describe('ERROR_TYPES and ERROR_MESSAGE_KEYS', () => {
 
 describe('determineErrorType', () => {
   it('returns FILE_NOT_FOUND for 404', () => {
-    expect(determineErrorType({ response: { status: HTTP_STATUS.NOT_FOUND } })).toBe(ERROR_TYPES.FILE_NOT_FOUND);
+    expect(determineErrorType({ response: { status: HTTP_STATUS.NOT_FOUND } })).toBe(
+      ERROR_TYPES.FILE_NOT_FOUND
+    );
   });
 
   it('returns FILE_NOT_FOUND for 500', () => {
-    expect(determineErrorType({ response: { status: HTTP_STATUS.INTERNAL_SERVER_ERROR } })).toBe(ERROR_TYPES.FILE_NOT_FOUND);
+    expect(determineErrorType({ response: { status: HTTP_STATUS.INTERNAL_SERVER_ERROR } })).toBe(
+      ERROR_TYPES.FILE_NOT_FOUND
+    );
   });
 
   it('returns PERMISSION_DENIED for 403', () => {
-    expect(determineErrorType({ response: { status: HTTP_STATUS.FORBIDDEN } })).toBe(ERROR_TYPES.PERMISSION_DENIED);
+    expect(determineErrorType({ response: { status: HTTP_STATUS.FORBIDDEN } })).toBe(
+      ERROR_TYPES.PERMISSION_DENIED
+    );
   });
 
   it('returns PERMISSION_DENIED for 401', () => {
-    expect(determineErrorType({ response: { status: HTTP_STATUS.UNAUTHORIZED } })).toBe(ERROR_TYPES.PERMISSION_DENIED);
+    expect(determineErrorType({ response: { status: HTTP_STATUS.UNAUTHORIZED } })).toBe(
+      ERROR_TYPES.PERMISSION_DENIED
+    );
   });
 
   it('returns NETWORK_ERROR for ECONNABORTED', () => {
@@ -66,11 +74,15 @@ describe('determineErrorType', () => {
   });
 
   it('returns DUPLICATE_FILE for 409', () => {
-    expect(determineErrorType({ response: { status: HTTP_STATUS.CONFLICT } })).toBe(ERROR_TYPES.DUPLICATE_FILE);
+    expect(determineErrorType({ response: { status: HTTP_STATUS.CONFLICT } })).toBe(
+      ERROR_TYPES.DUPLICATE_FILE
+    );
   });
 
   it('returns PERMISSION_DENIED when message includes permission', () => {
-    expect(determineErrorType({ message: 'Permission denied' })).toBe(ERROR_TYPES.PERMISSION_DENIED);
+    expect(determineErrorType({ message: 'Permission denied' })).toBe(
+      ERROR_TYPES.PERMISSION_DENIED
+    );
   });
 
   it('returns FILE_NOT_FOUND when message includes not found', () => {
@@ -123,7 +135,9 @@ describe('getErrorMessage', () => {
   });
 
   it('returns maintenance notice key for databaseUnavailable errorCode', () => {
-    const err = { response: { data: { errorCode: 'serverErrors.errorHandler.databaseUnavailable' } } };
+    const err = {
+      response: { data: { errorCode: 'serverErrors.errorHandler.databaseUnavailable' } },
+    };
     expect(getErrorMessage(err)).toEqual({ key: 'files.maintenanceNotice' });
   });
 
@@ -145,16 +159,30 @@ describe('getErrorMessage', () => {
 
 describe('getConnectionClassFriendlyKey', () => {
   it('maps webdav connection-class codes to files.storageUnavailable', () => {
-    expect(getConnectionClassFriendlyKey('serverErrors.webdav.connectionRefused')).toBe('files.storageUnavailable');
-    expect(getConnectionClassFriendlyKey('serverErrors.webdav.serverNotResponding')).toBe('files.storageUnavailable');
-    expect(getConnectionClassFriendlyKey('serverErrors.webdav.cannotConnect')).toBe('files.storageUnavailable');
-    expect(getConnectionClassFriendlyKey('serverErrors.webdav.allConnectionAttemptsFailed')).toBe('files.storageUnavailable');
-    expect(getConnectionClassFriendlyKey('serverErrors.webdav.credentialsNotConfigured')).toBe('files.storageUnavailable');
-    expect(getConnectionClassFriendlyKey('serverErrors.storage.postgresqlNotConfigured')).toBe('files.storageUnavailable');
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.connectionRefused')).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.serverNotResponding')).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.cannotConnect')).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.allConnectionAttemptsFailed')).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getConnectionClassFriendlyKey('serverErrors.webdav.credentialsNotConfigured')).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getConnectionClassFriendlyKey('serverErrors.storage.postgresqlNotConfigured')).toBe(
+      'files.storageUnavailable'
+    );
   });
 
   it('maps databaseUnavailable to files.maintenanceNotice', () => {
-    expect(getConnectionClassFriendlyKey('serverErrors.errorHandler.databaseUnavailable')).toBe('files.maintenanceNotice');
+    expect(getConnectionClassFriendlyKey('serverErrors.errorHandler.databaseUnavailable')).toBe(
+      'files.maintenanceNotice'
+    );
   });
 
   it('returns null for unrelated codes', () => {
@@ -165,33 +193,44 @@ describe('getConnectionClassFriendlyKey', () => {
 });
 
 describe('getServerErrorDisplay', () => {
-  const t = (key, params = {}) => (params && Object.keys(params).length ? `${key}(${JSON.stringify(params)})` : key);
+  const t = (key, params = {}) =>
+    params && Object.keys(params).length ? `${key}(${JSON.stringify(params)})` : key;
 
   it('returns t(errors.unknown) when data is null', () => {
     expect(getServerErrorDisplay(null, t)).toBe('errors.unknown');
   });
 
   it('returns t(errorCode, params) when errorCode present', () => {
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.auth.invalid' }, t)).toBe('serverErrors.auth.invalid');
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.files.accessDenied', params: { path: '/x' } }, t))
-      .toBe('serverErrors.files.accessDenied({"path":"/x"})');
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.auth.invalid' }, t)).toBe(
+      'serverErrors.auth.invalid'
+    );
+    expect(
+      getServerErrorDisplay(
+        { errorCode: 'serverErrors.files.accessDenied', params: { path: '/x' } },
+        t
+      )
+    ).toBe('serverErrors.files.accessDenied({"path":"/x"})');
   });
 
   it('returns friendly key for connection-class errorCode', () => {
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.connectionRefused' }, t))
-      .toBe('files.storageUnavailable');
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.cannotConnect' }, t))
-      .toBe('files.storageUnavailable');
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.connectionRefused' }, t)).toBe(
+      'files.storageUnavailable'
+    );
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.cannotConnect' }, t)).toBe(
+      'files.storageUnavailable'
+    );
   });
 
   it('returns maintenance notice key for databaseUnavailable errorCode', () => {
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.errorHandler.databaseUnavailable' }, t))
-      .toBe('files.maintenanceNotice');
+    expect(
+      getServerErrorDisplay({ errorCode: 'serverErrors.errorHandler.databaseUnavailable' }, t)
+    ).toBe('files.maintenanceNotice');
   });
 
   it('keeps own translation for unrelated errorCode', () => {
-    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.sourceNotFound' }, t))
-      .toBe('serverErrors.webdav.sourceNotFound');
+    expect(getServerErrorDisplay({ errorCode: 'serverErrors.webdav.sourceNotFound' }, t)).toBe(
+      'serverErrors.webdav.sourceNotFound'
+    );
   });
 
   it('returns data.error when no errorCode', () => {
@@ -205,15 +244,17 @@ describe('getServerErrorDisplay', () => {
 });
 
 describe('getServerMessageDisplay', () => {
-  const t = (key, params = {}) => (params && Object.keys(params).length ? `${key}(${JSON.stringify(params)})` : key);
+  const t = (key, params = {}) =>
+    params && Object.keys(params).length ? `${key}(${JSON.stringify(params)})` : key;
 
   it('returns empty string when data is null', () => {
     expect(getServerMessageDisplay(null, t)).toBe('');
   });
 
   it('returns t(messageCode, params) when messageCode present', () => {
-    expect(getServerMessageDisplay({ messageCode: 'serverMessages.auth.loginSuccess' }, t))
-      .toBe('serverMessages.auth.loginSuccess');
+    expect(getServerMessageDisplay({ messageCode: 'serverMessages.auth.loginSuccess' }, t)).toBe(
+      'serverMessages.auth.loginSuccess'
+    );
   });
 
   it('returns data.message when no messageCode', () => {

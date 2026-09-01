@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Single row item in list view: thumbnail/icon, filename, metadata (size/date), More button. Selection indicated by container light primary background. Shows processing overlay. React.memo optimized. |
-| Used in | FileList |
-| Related components | formatFileSize, formatDate, getFileIcon, getThumbnail, renderProcessingIcon |
+| Item               | Description                                                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Single row item in list view: thumbnail/icon, filename, metadata (size/date), More button. Selection indicated by container light primary background. Shows processing overlay. React.memo optimized. |
+| Used in            | FileList                                                                                                                                                                                              |
+| Related components | formatFileSize, formatDate, getFileIcon, getThumbnail, renderProcessingIcon                                                                                                                           |
 
 ---
 
@@ -19,24 +19,24 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| file | object | Y | - | File object (path, basename, size, lastmod, type, thumbnailUrl, isHidden) |
-| isSelected | boolean | Y | - | Selected state (container shows light primary background) |
-| isDisabled | boolean | Y | - | Disabled appearance |
-| isProcessing | boolean | Y | - | Show processing overlay |
-| processingType | string | N | - | Type for renderProcessingIcon |
-| isDropTarget | boolean | Y | - | Drop target highlight |
-| isDragging | boolean | Y | - | Dragging state (handled by parent) |
-| selectionMode | boolean | Y | - | Selection mode active (affects container styling when isSelected) |
-| showMoreButton | boolean | Y | - | Show More (⋮) button; false when in selection mode |
-| onMoreClick | function | Y | - | More button click handler; opens FileActionSheet; call stopPropagation so row tap does not toggle selection |
-| isMobile | boolean | Y | - | Mobile styles |
+| Name           | Type     | Required | Default | Description                                                                                                 |
+| -------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| file           | object   | Y        | -       | File object (path, basename, size, lastmod, type, thumbnailUrl, isHidden)                                   |
+| isSelected     | boolean  | Y        | -       | Selected state (container shows light primary background)                                                   |
+| isDisabled     | boolean  | Y        | -       | Disabled appearance                                                                                         |
+| isProcessing   | boolean  | Y        | -       | Show processing overlay                                                                                     |
+| processingType | string   | N        | -       | Type for renderProcessingIcon                                                                               |
+| isDropTarget   | boolean  | Y        | -       | Drop target highlight                                                                                       |
+| isDragging     | boolean  | Y        | -       | Dragging state (handled by parent)                                                                          |
+| selectionMode  | boolean  | Y        | -       | Selection mode active (affects container styling when isSelected)                                           |
+| showMoreButton | boolean  | Y        | -       | Show More (⋮) button; false when in selection mode                                                          |
+| onMoreClick    | function | Y        | -       | More button click handler; opens FileActionSheet; call stopPropagation so row tap does not toggle selection |
+| isMobile       | boolean  | Y        | -       | Mobile styles                                                                                               |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback    | When invoked      | Arguments                                          |
+| ----------- | ----------------- | -------------------------------------------------- |
 | onMoreClick | More button click | (file) — must stopPropagation to prevent row click |
 
 ### 2.4 Dependencies

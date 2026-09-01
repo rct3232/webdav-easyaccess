@@ -65,11 +65,12 @@ const ShareLinkSection = ({
     if (!shareLinkExpanded || !shareToken) return undefined;
     let cancelled = false;
     setLoadingRoot(true);
-    folderTreeGateway.listFolderChildren({
-      nodeId: rootNodeId ?? undefined,
-      listFilesOptions: { shareToken },
-      useHiddenFilesFilter: true,
-    })
+    folderTreeGateway
+      .listFolderChildren({
+        nodeId: rootNodeId ?? undefined,
+        listFilesOptions: { shareToken },
+        useHiddenFilesFilter: true,
+      })
       .then((data) => {
         if (cancelled) return;
         setRootChildren(data || []);
@@ -173,25 +174,27 @@ const ShareLinkSection = ({
       </ListItem>
       <Collapse in={shareLinkExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
-          {loadingRoot ? null : rootChildren.map((child) => (
-            <BaseFolderTreeItem
-              key={child.nodeId != null ? child.nodeId : child.path}
-              node={child}
-              path={child.path}
-              name={child.name}
-              level={1}
-              currentNodeId={currentNodeId}
-              onNodeClick={onNodeClick}
-              expandedNodeIds={expandedNodeIds}
-              onToggleExpand={handleToggleExpand}
-              hasReadPermission={child.hasReadPermission !== false}
-              hasWritePermission={false}
-              onExplorerDrop={undefined}
-              isMobile={isMobile}
-              listFilesOptions={{ shareToken }}
-              useHiddenFilesFilter={true}
-            />
-          ))}
+          {loadingRoot
+            ? null
+            : rootChildren.map((child) => (
+                <BaseFolderTreeItem
+                  key={child.nodeId != null ? child.nodeId : child.path}
+                  node={child}
+                  path={child.path}
+                  name={child.name}
+                  level={1}
+                  currentNodeId={currentNodeId}
+                  onNodeClick={onNodeClick}
+                  expandedNodeIds={expandedNodeIds}
+                  onToggleExpand={handleToggleExpand}
+                  hasReadPermission={child.hasReadPermission !== false}
+                  hasWritePermission={false}
+                  onExplorerDrop={undefined}
+                  isMobile={isMobile}
+                  listFilesOptions={{ shareToken }}
+                  useHiddenFilesFilter={true}
+                />
+              ))}
         </List>
       </Collapse>
     </>

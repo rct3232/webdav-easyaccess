@@ -140,9 +140,10 @@ function createGcService({ blobStore, fileNodesStore, fileStorageMode = 's3', gc
    * @returns {Promise<{ tier1: Object, tier2: Object }>}
    */
   async function runGcCycle({ olderThanDays } = {}) {
-    const days = Number.isFinite(olderThanDays) && olderThanDays > 0
-      ? olderThanDays
-      : await resolveOrphanTtlDays();
+    const days =
+      Number.isFinite(olderThanDays) && olderThanDays > 0
+        ? olderThanDays
+        : await resolveOrphanTtlDays();
 
     const tier1 = await runTier1(days);
     const tier2 = await runTier2(days);

@@ -142,15 +142,7 @@ describe('shared constants', () => {
   });
 
   describe('IMAGE_EXTENSIONS', () => {
-    it.each([
-      'jpg',
-      'jpeg',
-      'png',
-      'gif',
-      'bmp',
-      'webp',
-      'svg',
-    ])('includes %s', (ext) => {
+    it.each(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'])('includes %s', (ext) => {
       expect(IMAGE_EXTENSIONS).toContain(ext);
     });
 
@@ -160,14 +152,7 @@ describe('shared constants', () => {
   });
 
   describe('VIDEO_EXTENSIONS', () => {
-    it.each([
-      'mp4',
-      'webm',
-      'ogg',
-      'mov',
-      'avi',
-      'mkv',
-    ])('includes %s', (ext) => {
+    it.each(['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'])('includes %s', (ext) => {
       expect(VIDEO_EXTENSIONS).toContain(ext);
     });
 
@@ -177,14 +162,7 @@ describe('shared constants', () => {
   });
 
   describe('AUDIO_EXTENSIONS', () => {
-    it.each([
-      'mp3',
-      'wav',
-      'ogg',
-      'aac',
-      'm4a',
-      'flac',
-    ])('includes %s', (ext) => {
+    it.each(['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac'])('includes %s', (ext) => {
       expect(AUDIO_EXTENSIONS).toContain(ext);
     });
 

@@ -133,11 +133,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleThumbnailsLoaded,
   } = useExplorerSession({
     currentNodeId,
-    view: currentPath === '/__recent__' ? 'recent' : currentPath === '/__shared__' ? 'shared' : 'folder',
+    view:
+      currentPath === '/__recent__'
+        ? 'recent'
+        : currentPath === '/__shared__'
+          ? 'shared'
+          : 'folder',
     files: filesFromHook,
     isMobile,
   });
-
 
   const {
     selectionMode,
@@ -157,11 +161,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     if (!selectionMode || selectedFiles.size === 0) return false;
     const selectedKeys = Array.from(selectedFiles);
     const selectedFileObjects = selectedKeys
-      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
+      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
       .filter(Boolean);
     return (
       selectedFileObjects.length === selectedKeys.length &&
-      selectedFileObjects.every(f => f.hasWritePermission === true)
+      selectedFileObjects.every((f) => f.hasWritePermission === true)
     );
   }, [selectionMode, selectedFiles, sortedFiles]);
 
@@ -170,9 +174,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     if (!selectionMode || selectedFiles.size === 0) return false;
     const selectedKeys = Array.from(selectedFiles);
     const selectedFileObjects = selectedKeys
-      .map(key => sortedFiles.find(f => getEntryKey(f) === key))
+      .map((key) => sortedFiles.find((f) => getEntryKey(f) === key))
       .filter(Boolean);
-    return selectedFileObjects.some(f => f.hasWritePermission === false);
+    return selectedFileObjects.some((f) => f.hasWritePermission === false);
   }, [selectionMode, selectedFiles, sortedFiles]);
 
   // 디렉토리 이동 시 선택 모드 해제
@@ -181,33 +185,59 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSelectedFiles(new Set());
   }, [sessionKey, setSelectionMode, setSelectedFiles]);
   const {
-    uploadDialogOpen, openUploadDialog, closeUploadDialog,
-    createFolderDialogOpen, openCreateFolderDialog, closeCreateFolderDialog,
-    previewDialogOpen, setPreviewDialogOpen, openPreviewDialog, closePreviewDialog,
-    renameDialogOpen, openRenameDialog, closeRenameDialog,
-    shareDialogOpen, closeShareDialog,
-    shareDialogV2Open, shareDialogV2File, openShareDialogV2, closeShareDialogV2,
-    propertiesDialogOpen, openPropertiesDialog, closePropertiesDialog,
-    bulkDeleteDialogOpen, openBulkDeleteDialog, closeBulkDeleteDialog,
-    actionSheetOpen, setActionSheetOpen, closeActionSheet,
-    actionSheetFile, setActionSheetFile,
-    selectedFile, setSelectedFile,
-    contextMenu, setContextMenu,
-    renameNewName, setRenameNewName,
-    renameError, setRenameError,
+    uploadDialogOpen,
+    openUploadDialog,
+    closeUploadDialog,
+    createFolderDialogOpen,
+    openCreateFolderDialog,
+    closeCreateFolderDialog,
+    previewDialogOpen,
+    setPreviewDialogOpen,
+    openPreviewDialog,
+    closePreviewDialog,
+    renameDialogOpen,
+    openRenameDialog,
+    closeRenameDialog,
+    shareDialogOpen,
+    closeShareDialog,
+    shareDialogV2Open,
+    shareDialogV2File,
+    openShareDialogV2,
+    closeShareDialogV2,
+    propertiesDialogOpen,
+    openPropertiesDialog,
+    closePropertiesDialog,
+    bulkDeleteDialogOpen,
+    openBulkDeleteDialog,
+    closeBulkDeleteDialog,
+    actionSheetOpen,
+    setActionSheetOpen,
+    closeActionSheet,
+    actionSheetFile,
+    setActionSheetFile,
+    selectedFile,
+    setSelectedFile,
+    contextMenu,
+    setContextMenu,
+    renameNewName,
+    setRenameNewName,
+    renameError,
+    setRenameError,
     mobileRenameFile,
     mobileShareFile,
     mobilePropertiesFile,
     bulkDeleteFilePaths,
-    mobilePickerFile, setMobilePickerFile,
-    mobilePickerAction, setMobilePickerAction,
+    mobilePickerFile,
+    setMobilePickerFile,
+    mobilePickerAction,
+    setMobilePickerAction,
   } = useFileManagerDialogs();
 
   // Resolve file from current state to support live updates (e.g. thumbnails loading in background)
   const propertiesFile = useMemo(() => {
     const source = mobilePropertiesFile || actionSheetFile;
     if (!source) return null;
-    return files.find(f => getEntryKey(f) === getEntryKey(source)) || source;
+    return files.find((f) => getEntryKey(f) === getEntryKey(source)) || source;
   }, [files, mobilePropertiesFile, actionSheetFile]);
 
   // 미리보기 갤러리용 미디어 파일 목록 (같은 노드/경로의 이미지/비디오)
@@ -217,12 +247,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       return sortedFiles.filter(
         (f) =>
           f.type === 'file' &&
-          (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video')
+          (getFileType(f.basename || f.name) === 'image' ||
+            getFileType(f.basename || f.name) === 'video')
       );
     }
     const isMedia = (f) =>
       f.type === 'file' &&
-      (getFileType(f.basename || f.name) === 'image' || getFileType(f.basename || f.name) === 'video');
+      (getFileType(f.basename || f.name) === 'image' ||
+        getFileType(f.basename || f.name) === 'video');
     const parentNodeId = selectedFile.parentNodeId ?? null;
     if (parentNodeId != null) {
       return sortedFiles.filter((f) => (f.parentNodeId ?? null) === parentNodeId && isMedia(f));
@@ -386,90 +418,105 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     t,
   });
 
-  const {
-    navigateToNode: navigateToExplorerNode,
-    handleFolderOpen: openExplorerFolder,
-  } = useExplorerNavigation({
-    currentNodeId,
-    getPreviousNodeId: () => currentNodeIdRef.current,
-    setCurrentNodeId,
-    canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
-  });
+  const { navigateToNode: navigateToExplorerNode, handleFolderOpen: openExplorerFolder } =
+    useExplorerNavigation({
+      currentNodeId,
+      getPreviousNodeId: () => currentNodeIdRef.current,
+      setCurrentNodeId,
+      canNavigateToNode: user?.is_admin ? async () => true : explorerGateway.canNavigateToNode,
+    });
 
-  const handleProductPathClick = useCallback(async (path, file) => {
-    if (!path) return false;
+  const handleProductPathClick = useCallback(
+    async (path, file) => {
+      if (!path) return false;
 
-    if (isShareLinkMode) {
-      const normalizedPath = normalizePath(path);
-      // nodeId-first share navigation (C2.5): navigate by the clicked folder nodeId
-      // when available; the path only drives the breadcrumb display.
-      if (file?.nodeId != null) {
-        setCurrentNodeId(file.nodeId);
+      if (isShareLinkMode) {
+        const normalizedPath = normalizePath(path);
+        // nodeId-first share navigation (C2.5): navigate by the clicked folder nodeId
+        // when available; the path only drives the breadcrumb display.
+        if (file?.nodeId != null) {
+          setCurrentNodeId(file.nodeId);
+        }
+        setCurrentPath(normalizedPath);
+        if (isMobile) setDrawerOpen(false);
+        return true;
       }
-      setCurrentPath(normalizedPath);
-      if (isMobile) setDrawerOpen(false);
-      return true;
-    }
 
-    if (path === '/__shared__' || path === '/__recent__') {
-      setCurrentPath(path);
-      return true;
-    }
+      if (path === '/__shared__' || path === '/__recent__') {
+        setCurrentPath(path);
+        return true;
+      }
 
-    return false;
-  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId]);
+      return false;
+    },
+    [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId]
+  );
 
   // Path-based navigation entry (recent files / legacy fallbacks): resolve the path to a
   // nodeId via the legacy resolver and navigate by nodeId. Throws so recent-file error
   // handling can react to NOT_FOUND.
-  const navigateToExplorerPath = useCallback(async (path) => {
-    if (!path) return undefined;
-    const normalizedPath = normalizePath(path);
-    if (normalizedPath === '/__recent__' || normalizedPath === '/__shared__') {
-      return handleProductPathClick(normalizedPath);
-    }
-    const data = await resolvePath(normalizedPath);
-    if (data?.nodeId != null) {
-      return navigateToExplorerNode(data.nodeId);
-    }
-    setCurrentNodeId(null);
-    return undefined;
-  }, [handleProductPathClick, navigateToExplorerNode, setCurrentNodeId]);
+  const navigateToExplorerPath = useCallback(
+    async (path) => {
+      if (!path) return undefined;
+      const normalizedPath = normalizePath(path);
+      if (normalizedPath === '/__recent__' || normalizedPath === '/__shared__') {
+        return handleProductPathClick(normalizedPath);
+      }
+      const data = await resolvePath(normalizedPath);
+      if (data?.nodeId != null) {
+        return navigateToExplorerNode(data.nodeId);
+      }
+      setCurrentNodeId(null);
+      return undefined;
+    },
+    [handleProductPathClick, navigateToExplorerNode, setCurrentNodeId]
+  );
 
   // NodeId-first navigation entry used by the folder tree and breadcrumb.
   // Accepts a nodeId (number), a virtual-root route ('/__shared__' | '/__recent__'),
   // or null (home). Share mode navigates exclusively by nodeId; legacy path
   // targets are only handled outside share mode via resolve-path.
-  const handleFolderTreeNodeClick = useCallback(async (target) => {
-    if (isShareLinkMode) {
-      if (typeof target === 'number') {
-        setCurrentNodeId(target);
-        if (isMobile) setDrawerOpen(false);
-        return;
-      }
-      if (typeof target === 'string' && target) {
-        const normalizedPath = normalizePath(target);
-        if (normalizedPath === '/__shared__' || normalizedPath === '/__recent__') {
-          setCurrentPath(normalizedPath);
+  const handleFolderTreeNodeClick = useCallback(
+    async (target) => {
+      if (isShareLinkMode) {
+        if (typeof target === 'number') {
+          setCurrentNodeId(target);
           if (isMobile) setDrawerOpen(false);
+          return;
         }
-      }
-      return;
-    }
-    if (typeof target === 'string') {
-      if (target === '/__shared__' || target === '/__recent__') {
-        setCurrentPath(target);
+        if (typeof target === 'string' && target) {
+          const normalizedPath = normalizePath(target);
+          if (normalizedPath === '/__shared__' || normalizedPath === '/__recent__') {
+            setCurrentPath(normalizedPath);
+            if (isMobile) setDrawerOpen(false);
+          }
+        }
         return;
       }
-      navigateToExplorerPath(target);
-      return;
-    }
-    if (target == null) {
-      setCurrentNodeId(null);
-      return;
-    }
-    navigateToExplorerNode(target);
-  }, [isShareLinkMode, isMobile, setCurrentPath, setDrawerOpen, setCurrentNodeId, navigateToExplorerPath, navigateToExplorerNode]);
+      if (typeof target === 'string') {
+        if (target === '/__shared__' || target === '/__recent__') {
+          setCurrentPath(target);
+          return;
+        }
+        navigateToExplorerPath(target);
+        return;
+      }
+      if (target == null) {
+        setCurrentNodeId(null);
+        return;
+      }
+      navigateToExplorerNode(target);
+    },
+    [
+      isShareLinkMode,
+      isMobile,
+      setCurrentPath,
+      setDrawerOpen,
+      setCurrentNodeId,
+      navigateToExplorerPath,
+      navigateToExplorerNode,
+    ]
+  );
 
   const {
     handlePathClick,
@@ -504,28 +551,31 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleProductPathClick,
   });
 
-  const handleCreateFolderComplete = useCallback((folderPath, folderName, createdNodeId) => {
-    const parentNodeId = currentNodeIdRef.current;
-    if (createdNodeId != null && parentNodeId != null) {
-      setTreeUpdateTrigger({
-        type: 'created',
-        parentNodeId,
-        nodeId: createdNodeId,
-        name: folderName,
-        timestamp: Date.now(),
-      });
-    }
+  const handleCreateFolderComplete = useCallback(
+    (folderPath, folderName, createdNodeId) => {
+      const parentNodeId = currentNodeIdRef.current;
+      if (createdNodeId != null && parentNodeId != null) {
+        setTreeUpdateTrigger({
+          type: 'created',
+          parentNodeId,
+          nodeId: createdNodeId,
+          name: folderName,
+          timestamp: Date.now(),
+        });
+      }
 
-    handleOperationComplete({ opType: 'createFolder', startedPath: folderPath });
-    closeCreateFolderDialog();
+      handleOperationComplete({ opType: 'createFolder', startedPath: folderPath });
+      closeCreateFolderDialog();
 
-    setTimeout(() => {
-      setTreeUpdateTrigger({
-        type: 'refresh',
-        timestamp: Date.now(),
-      });
-    }, 500);
-  }, [setTreeUpdateTrigger, handleOperationComplete, closeCreateFolderDialog]);
+      setTimeout(() => {
+        setTreeUpdateTrigger({
+          type: 'refresh',
+          timestamp: Date.now(),
+        });
+      }, 500);
+    },
+    [setTreeUpdateTrigger, handleOperationComplete, closeCreateFolderDialog]
+  );
 
   const handleViewContextMenu = useCallback(
     (e, file) => {
@@ -538,11 +588,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [isMobile, setContextMenu, setSelectedFile]
   );
 
-  const handleDragStartFromView = useCallback((nodeId) => {
-    setContentAreaDraggedNodeId(nodeId ?? null);
-    const file = files.find((f) => f.nodeId === nodeId);
-    setContentAreaDraggedParentNodeId(file?.parentNodeId ?? null);
-  }, [files]);
+  const handleDragStartFromView = useCallback(
+    (nodeId) => {
+      setContentAreaDraggedNodeId(nodeId ?? null);
+      const file = files.find((f) => f.nodeId === nodeId);
+      setContentAreaDraggedParentNodeId(file?.parentNodeId ?? null);
+    },
+    [files]
+  );
 
   const handleDragEndFromView = useCallback(() => {
     setContentAreaDraggedNodeId(null);
@@ -570,12 +623,15 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   });
 
   // Desktop: click on empty space exits selection mode
-  const handleScrollAreaClick = useCallback((e) => {
-    if (isMobile || !selectionMode) return;
-    if (e.target.closest('[data-file-path]')) return;
-    handleDeselectAll();
-    setSelectionMode(false);
-  }, [isMobile, selectionMode, handleDeselectAll, setSelectionMode]);
+  const handleScrollAreaClick = useCallback(
+    (e) => {
+      if (isMobile || !selectionMode) return;
+      if (e.target.closest('[data-file-path]')) return;
+      handleDeselectAll();
+      setSelectionMode(false);
+    },
+    [isMobile, selectionMode, handleDeselectAll, setSelectionMode]
+  );
 
   const onShareTargetSave = useCallback(() => {
     handleOperationComplete({ opType: 'refresh', startedPath: currentPathRef.current });
@@ -612,433 +668,452 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       .catch(() => {
         if (active) setActiveBackends(null);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [user]);
 
-  const shareContextProps = useMemo(() => ({
-    shareToken,
-    isShareLinkMode,
-    shareRootPath,
-    shareRootName,
-    shareRootNodeId: linkInfo?.nodeId,
-  }), [shareToken, isShareLinkMode, shareRootPath, shareRootName, linkInfo]);
+  const shareContextProps = useMemo(
+    () => ({
+      shareToken,
+      isShareLinkMode,
+      shareRootPath,
+      shareRootName,
+      shareRootNodeId: linkInfo?.nodeId,
+    }),
+    [shareToken, isShareLinkMode, shareRootPath, shareRootName, linkInfo]
+  );
 
-  const shellContextProps = useMemo(() => ({
-    user,
-    navigate,
-    isMobile,
-    fileContentRef,
-    scrollContainerRef,
-    backendHealth: backendHealthStatuses,
-    activeBackends,
-  }), [user, navigate, isMobile, backendHealthStatuses, activeBackends]);
+  const shellContextProps = useMemo(
+    () => ({
+      user,
+      navigate,
+      isMobile,
+      fileContentRef,
+      scrollContainerRef,
+      backendHealth: backendHealthStatuses,
+      activeBackends,
+    }),
+    [user, navigate, isMobile, backendHealthStatuses, activeBackends]
+  );
 
-  const overlayStateProps = useMemo(() => ({
-    drawerOpen,
-    setDrawerOpen,
-    progressDrawerOpen: isProgressDrawerOpen,
-    setProgressDrawerOpen,
-    loginModalOpen,
-    setLoginModalOpen,
-    addToSharedModalOpen,
-    setAddToSharedModalOpen,
-    addToSharedStatus,
-    addToSharedConfirmLoading,
-    openAddToSharedModal,
-    handleAddToSharedConfirm,
-    leaveShareConfirmOpen,
-    setLeaveShareConfirmOpen,
-    leaveShareConfirmTargetNodeId,
-    setLeaveShareConfirmTargetNodeId,
-    leaveShareConfirmTargetPath,
-    setLeaveShareConfirmTargetPath,
-    handleLeaveShareConfirm,
-  }), [
-    drawerOpen,
-    setDrawerOpen,
-    isProgressDrawerOpen,
-    setProgressDrawerOpen,
-    loginModalOpen,
-    setLoginModalOpen,
-    addToSharedModalOpen,
-    setAddToSharedModalOpen,
-    addToSharedStatus,
-    addToSharedConfirmLoading,
-    openAddToSharedModal,
-    handleAddToSharedConfirm,
-    leaveShareConfirmOpen,
-    setLeaveShareConfirmOpen,
-    leaveShareConfirmTargetNodeId,
-    setLeaveShareConfirmTargetNodeId,
-    leaveShareConfirmTargetPath,
-    setLeaveShareConfirmTargetPath,
-    handleLeaveShareConfirm,
-  ]);
+  const overlayStateProps = useMemo(
+    () => ({
+      drawerOpen,
+      setDrawerOpen,
+      progressDrawerOpen: isProgressDrawerOpen,
+      setProgressDrawerOpen,
+      loginModalOpen,
+      setLoginModalOpen,
+      addToSharedModalOpen,
+      setAddToSharedModalOpen,
+      addToSharedStatus,
+      addToSharedConfirmLoading,
+      openAddToSharedModal,
+      handleAddToSharedConfirm,
+      leaveShareConfirmOpen,
+      setLeaveShareConfirmOpen,
+      leaveShareConfirmTargetNodeId,
+      setLeaveShareConfirmTargetNodeId,
+      leaveShareConfirmTargetPath,
+      setLeaveShareConfirmTargetPath,
+      handleLeaveShareConfirm,
+    }),
+    [
+      drawerOpen,
+      setDrawerOpen,
+      isProgressDrawerOpen,
+      setProgressDrawerOpen,
+      loginModalOpen,
+      setLoginModalOpen,
+      addToSharedModalOpen,
+      setAddToSharedModalOpen,
+      addToSharedStatus,
+      addToSharedConfirmLoading,
+      openAddToSharedModal,
+      handleAddToSharedConfirm,
+      leaveShareConfirmOpen,
+      setLeaveShareConfirmOpen,
+      leaveShareConfirmTargetNodeId,
+      setLeaveShareConfirmTargetNodeId,
+      leaveShareConfirmTargetPath,
+      setLeaveShareConfirmTargetPath,
+      handleLeaveShareConfirm,
+    ]
+  );
 
-  const controlsStateProps = useMemo(() => ({
-    currentPath,
-    currentNodeId,
-    viewMode,
-    setViewMode,
-    sortMode,
-    setSortMode,
-    searchQuery,
-    setSearchQuery,
-  }), [
-    currentPath,
-    currentNodeId,
-    viewMode,
-    setViewMode,
-    sortMode,
-    setSortMode,
-    searchQuery,
-    setSearchQuery,
-  ]);
+  const controlsStateProps = useMemo(
+    () => ({
+      currentPath,
+      currentNodeId,
+      viewMode,
+      setViewMode,
+      sortMode,
+      setSortMode,
+      searchQuery,
+      setSearchQuery,
+    }),
+    [
+      currentPath,
+      currentNodeId,
+      viewMode,
+      setViewMode,
+      sortMode,
+      setSortMode,
+      searchQuery,
+      setSearchQuery,
+    ]
+  );
 
-  const listingStateProps = useMemo(() => ({
-    displayedFiles,
-    loading,
-    processingMap,
-    handleThumbnailsLoaded,
-    loadMoreRef,
-    hasMore,
-  }), [
-    displayedFiles,
-    loading,
-    processingMap,
-    handleThumbnailsLoaded,
-    loadMoreRef,
-    hasMore,
-  ]);
+  const listingStateProps = useMemo(
+    () => ({
+      displayedFiles,
+      loading,
+      processingMap,
+      handleThumbnailsLoaded,
+      loadMoreRef,
+      hasMore,
+    }),
+    [displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore]
+  );
 
-  const explorerSessionProps = useMemo(() => ({
-    controlsState: controlsStateProps,
-    listingState: listingStateProps,
-  }), [
-    controlsStateProps,
-    listingStateProps,
-  ]);
+  const explorerSessionProps = useMemo(
+    () => ({
+      controlsState: controlsStateProps,
+      listingState: listingStateProps,
+    }),
+    [controlsStateProps, listingStateProps]
+  );
 
-  const selectionModelProps = useMemo(() => ({
-    selectionMode,
-    selectedFiles,
-    handleFileCheck,
-  }), [
-    selectionMode,
-    selectedFiles,
-    handleFileCheck,
-  ]);
+  const selectionModelProps = useMemo(
+    () => ({
+      selectionMode,
+      selectedFiles,
+      handleFileCheck,
+    }),
+    [selectionMode, selectedFiles, handleFileCheck]
+  );
 
-  const bulkStateProps = useMemo(() => ({
-    handleSelectAll,
-    handleDeselectAll,
-    allSelectedHaveWrite,
-    hasReadOnlyInSelection,
-  }), [
-    handleSelectAll,
-    handleDeselectAll,
-    allSelectedHaveWrite,
-    hasReadOnlyInSelection,
-  ]);
+  const bulkStateProps = useMemo(
+    () => ({
+      handleSelectAll,
+      handleDeselectAll,
+      allSelectedHaveWrite,
+      hasReadOnlyInSelection,
+    }),
+    [handleSelectAll, handleDeselectAll, allSelectedHaveWrite, hasReadOnlyInSelection]
+  );
 
-  const selectionProps = useMemo(() => ({
-    selectionModel: selectionModelProps,
-    bulkState: bulkStateProps,
-  }), [
-    selectionModelProps,
-    bulkStateProps,
-  ]);
+  const selectionProps = useMemo(
+    () => ({
+      selectionModel: selectionModelProps,
+      bulkState: bulkStateProps,
+    }),
+    [selectionModelProps, bulkStateProps]
+  );
 
-  const capabilityStateProps = useMemo(() => ({
-    hasWritePermission,
-  }), [
-    hasWritePermission,
-  ]);
+  const capabilityStateProps = useMemo(
+    () => ({
+      hasWritePermission,
+    }),
+    [hasWritePermission]
+  );
 
-  const treeStateProps = useMemo(() => ({
-    treeUpdateTrigger,
-  }), [
-    treeUpdateTrigger,
-  ]);
+  const treeStateProps = useMemo(
+    () => ({
+      treeUpdateTrigger,
+    }),
+    [treeUpdateTrigger]
+  );
 
-  const transferStateProps = useMemo(() => ({
-    contentAreaDraggedNodeId,
-    bulkMoveCopyInProgress,
-  }), [
-    contentAreaDraggedNodeId,
-    bulkMoveCopyInProgress,
-  ]);
+  const transferStateProps = useMemo(
+    () => ({
+      contentAreaDraggedNodeId,
+      bulkMoveCopyInProgress,
+    }),
+    [contentAreaDraggedNodeId, bulkMoveCopyInProgress]
+  );
 
-  const explorerActionStateProps = useMemo(() => ({
-    capabilityState: capabilityStateProps,
-    treeState: treeStateProps,
-    transferState: transferStateProps,
-  }), [
-    capabilityStateProps,
-    treeStateProps,
-    transferStateProps,
-  ]);
+  const explorerActionStateProps = useMemo(
+    () => ({
+      capabilityState: capabilityStateProps,
+      treeState: treeStateProps,
+      transferState: transferStateProps,
+    }),
+    [capabilityStateProps, treeStateProps, transferStateProps]
+  );
 
-  const actionContextProps = useMemo(() => ({
-    actionSheetOpen,
-    closeActionSheet,
-    actionSheetFile,
-    contextMenu,
-    setContextMenu,
-  }), [
-    actionSheetOpen,
-    closeActionSheet,
-    actionSheetFile,
-    contextMenu,
-    setContextMenu,
-  ]);
+  const actionContextProps = useMemo(
+    () => ({
+      actionSheetOpen,
+      closeActionSheet,
+      actionSheetFile,
+      contextMenu,
+      setContextMenu,
+    }),
+    [actionSheetOpen, closeActionSheet, actionSheetFile, contextMenu, setContextMenu]
+  );
 
-  const pickerStateProps = useMemo(() => ({
-    mobilePickerFile,
-    setMobilePickerFile,
-    mobilePickerAction,
-    setMobilePickerAction,
-    folderPickerOpen,
-    folderPickerAction,
-    setFolderPickerOpen,
-    setFolderPickerAction,
-  }), [
-    mobilePickerFile,
-    setMobilePickerFile,
-    mobilePickerAction,
-    setMobilePickerAction,
-    folderPickerOpen,
-    folderPickerAction,
-    setFolderPickerOpen,
-    setFolderPickerAction,
-  ]);
+  const pickerStateProps = useMemo(
+    () => ({
+      mobilePickerFile,
+      setMobilePickerFile,
+      mobilePickerAction,
+      setMobilePickerAction,
+      folderPickerOpen,
+      folderPickerAction,
+      setFolderPickerOpen,
+      setFolderPickerAction,
+    }),
+    [
+      mobilePickerFile,
+      setMobilePickerFile,
+      mobilePickerAction,
+      setMobilePickerAction,
+      folderPickerOpen,
+      folderPickerAction,
+      setFolderPickerOpen,
+      setFolderPickerAction,
+    ]
+  );
 
-  const modalDialogsProps = useMemo(() => ({
-    uploadDialogOpen,
-    closeUploadDialog,
-    createFolderDialogOpen,
-    closeCreateFolderDialog,
-    previewDialogOpen,
-    closePreviewDialog,
-    openRenameDialog,
-    closeRenameDialog,
-    renameDialogOpen,
-    renameNewName,
-    setRenameNewName,
-    renameError,
-    setRenameError,
-    renameLoading,
-    shareDialogV2Open,
-    closeShareDialogV2,
-    shareDialogOpen,
-    closeShareDialog,
-    openShareDialogV2,
-    propertiesDialogOpen,
-    closePropertiesDialog,
-    openPropertiesDialog,
-    bulkDeleteDialogOpen,
-    closeBulkDeleteDialog,
-  }), [
-    uploadDialogOpen,
-    closeUploadDialog,
-    createFolderDialogOpen,
-    closeCreateFolderDialog,
-    previewDialogOpen,
-    closePreviewDialog,
-    openRenameDialog,
-    closeRenameDialog,
-    renameDialogOpen,
-    renameNewName,
-    setRenameNewName,
-    renameError,
-    setRenameError,
-    renameLoading,
-    shareDialogV2Open,
-    closeShareDialogV2,
-    shareDialogOpen,
-    closeShareDialog,
-    openShareDialogV2,
-    propertiesDialogOpen,
-    closePropertiesDialog,
-    openPropertiesDialog,
-    bulkDeleteDialogOpen,
-    closeBulkDeleteDialog,
-  ]);
+  const modalDialogsProps = useMemo(
+    () => ({
+      uploadDialogOpen,
+      closeUploadDialog,
+      createFolderDialogOpen,
+      closeCreateFolderDialog,
+      previewDialogOpen,
+      closePreviewDialog,
+      openRenameDialog,
+      closeRenameDialog,
+      renameDialogOpen,
+      renameNewName,
+      setRenameNewName,
+      renameError,
+      setRenameError,
+      renameLoading,
+      shareDialogV2Open,
+      closeShareDialogV2,
+      shareDialogOpen,
+      closeShareDialog,
+      openShareDialogV2,
+      propertiesDialogOpen,
+      closePropertiesDialog,
+      openPropertiesDialog,
+      bulkDeleteDialogOpen,
+      closeBulkDeleteDialog,
+    }),
+    [
+      uploadDialogOpen,
+      closeUploadDialog,
+      createFolderDialogOpen,
+      closeCreateFolderDialog,
+      previewDialogOpen,
+      closePreviewDialog,
+      openRenameDialog,
+      closeRenameDialog,
+      renameDialogOpen,
+      renameNewName,
+      setRenameNewName,
+      renameError,
+      setRenameError,
+      renameLoading,
+      shareDialogV2Open,
+      closeShareDialogV2,
+      shareDialogOpen,
+      closeShareDialog,
+      openShareDialogV2,
+      propertiesDialogOpen,
+      closePropertiesDialog,
+      openPropertiesDialog,
+      bulkDeleteDialogOpen,
+      closeBulkDeleteDialog,
+    ]
+  );
 
-  const fileTargetsProps = useMemo(() => ({
-    shareDialogV2File,
-    mobileShareFile,
-    propertiesFile,
-    bulkDeleteFilePaths,
-    bulkConflictData,
-    setBulkConflictData,
-    uploadConflictData,
-    setUploadConflictData,
-    mediaFiles,
-    selectedFile,
-    setSelectedFile,
-  }), [
-    shareDialogV2File,
-    mobileShareFile,
-    propertiesFile,
-    bulkDeleteFilePaths,
-    bulkConflictData,
-    setBulkConflictData,
-    uploadConflictData,
-    setUploadConflictData,
-    mediaFiles,
-    selectedFile,
-    setSelectedFile,
-  ]);
+  const fileTargetsProps = useMemo(
+    () => ({
+      shareDialogV2File,
+      mobileShareFile,
+      propertiesFile,
+      bulkDeleteFilePaths,
+      bulkConflictData,
+      setBulkConflictData,
+      uploadConflictData,
+      setUploadConflictData,
+      mediaFiles,
+      selectedFile,
+      setSelectedFile,
+    }),
+    [
+      shareDialogV2File,
+      mobileShareFile,
+      propertiesFile,
+      bulkDeleteFilePaths,
+      bulkConflictData,
+      setBulkConflictData,
+      uploadConflictData,
+      setUploadConflictData,
+      mediaFiles,
+      selectedFile,
+      setSelectedFile,
+    ]
+  );
 
-  const dialogStateProps = useMemo(() => ({
-    actionContext: actionContextProps,
-    pickerState: pickerStateProps,
-    modalDialogs: modalDialogsProps,
-    fileTargets: fileTargetsProps,
-  }), [
-    actionContextProps,
-    pickerStateProps,
-    modalDialogsProps,
-    fileTargetsProps,
-  ]);
+  const dialogStateProps = useMemo(
+    () => ({
+      actionContext: actionContextProps,
+      pickerState: pickerStateProps,
+      modalDialogs: modalDialogsProps,
+      fileTargets: fileTargetsProps,
+    }),
+    [actionContextProps, pickerStateProps, modalDialogsProps, fileTargetsProps]
+  );
 
-  const messagingProps = useMemo(() => ({
-    dropMessage,
-    setDropMessage,
-    message,
-    clearMessage,
-    showError,
-    showWarning,
-  }), [dropMessage, message, clearMessage, showError, showWarning]);
+  const messagingProps = useMemo(
+    () => ({
+      dropMessage,
+      setDropMessage,
+      message,
+      clearMessage,
+      showError,
+      showWarning,
+    }),
+    [dropMessage, message, clearMessage, showError, showWarning]
+  );
 
-  const interactionHandlersProps = useMemo(() => ({
-    handleFileClick,
-    handleMoreClick,
-    handleLongPressSelect,
-    handleViewContextMenu,
-    handleFileDrop,
-    handleDropPermissionDenied,
-    handleDragStartFromView,
-    handleDragEndFromView,
-    handleExplorerDrop,
-    handleInternalFileDrop,
-    handleLeaveSharePathClick,
-    handlePathClick,
-    handleFolderTreeNodeClick,
-    ancestors,
-    handleScrollAreaClick,
-    handleFileDownloadOp,
-    contentAreaDnD,
-    isFileAreaDraggingOver,
-    contentAreaDragType,
-    handleActionSheetDownload,
-    handleActionSheetPreview,
-  }), [
-    handleFileClick,
-    handleMoreClick,
-    handleLongPressSelect,
-    handleViewContextMenu,
-    handleFileDrop,
-    handleDropPermissionDenied,
-    handleDragStartFromView,
-    handleDragEndFromView,
-    handleExplorerDrop,
-    handleInternalFileDrop,
-    handleLeaveSharePathClick,
-    handlePathClick,
-    handleFolderTreeNodeClick,
-    ancestors,
-    handleScrollAreaClick,
-    handleFileDownloadOp,
-    contentAreaDnD,
-    isFileAreaDraggingOver,
-    contentAreaDragType,
-    handleActionSheetDownload,
-    handleActionSheetPreview,
-  ]);
+  const interactionHandlersProps = useMemo(
+    () => ({
+      handleFileClick,
+      handleMoreClick,
+      handleLongPressSelect,
+      handleViewContextMenu,
+      handleFileDrop,
+      handleDropPermissionDenied,
+      handleDragStartFromView,
+      handleDragEndFromView,
+      handleExplorerDrop,
+      handleInternalFileDrop,
+      handleLeaveSharePathClick,
+      handlePathClick,
+      handleFolderTreeNodeClick,
+      ancestors,
+      handleScrollAreaClick,
+      handleFileDownloadOp,
+      contentAreaDnD,
+      isFileAreaDraggingOver,
+      contentAreaDragType,
+      handleActionSheetDownload,
+      handleActionSheetPreview,
+    }),
+    [
+      handleFileClick,
+      handleMoreClick,
+      handleLongPressSelect,
+      handleViewContextMenu,
+      handleFileDrop,
+      handleDropPermissionDenied,
+      handleDragStartFromView,
+      handleDragEndFromView,
+      handleExplorerDrop,
+      handleInternalFileDrop,
+      handleLeaveSharePathClick,
+      handlePathClick,
+      handleFolderTreeNodeClick,
+      ancestors,
+      handleScrollAreaClick,
+      handleFileDownloadOp,
+      contentAreaDnD,
+      isFileAreaDraggingOver,
+      contentAreaDragType,
+      handleActionSheetDownload,
+      handleActionSheetPreview,
+    ]
+  );
 
-  const commandHandlersProps = useMemo(() => ({
-    handleOperationComplete,
-    handleRename,
-    handleBulkDeleteConfirm,
-    resolveBulkConflict,
-    resolveUploadConflict,
-    handleUploadStart,
-    handleCreateFolderComplete,
-    handleFolderPickerSelect,
-    handleBulkMove,
-    handleBulkCopy,
-    handleBulkDownload,
-    openBulkDeleteDialog,
-    openUploadDialog,
-    openCreateFolderDialog,
-    onShareTargetSave,
-  }), [
-    handleOperationComplete,
-    handleRename,
-    handleBulkDeleteConfirm,
-    resolveBulkConflict,
-    resolveUploadConflict,
-    handleUploadStart,
-    handleCreateFolderComplete,
-    handleFolderPickerSelect,
-    handleBulkMove,
-    handleBulkCopy,
-    handleBulkDownload,
-    openBulkDeleteDialog,
-    openUploadDialog,
-    openCreateFolderDialog,
-    onShareTargetSave,
-  ]);
+  const commandHandlersProps = useMemo(
+    () => ({
+      handleOperationComplete,
+      handleRename,
+      handleBulkDeleteConfirm,
+      resolveBulkConflict,
+      resolveUploadConflict,
+      handleUploadStart,
+      handleCreateFolderComplete,
+      handleFolderPickerSelect,
+      handleBulkMove,
+      handleBulkCopy,
+      handleBulkDownload,
+      openBulkDeleteDialog,
+      openUploadDialog,
+      openCreateFolderDialog,
+      onShareTargetSave,
+    }),
+    [
+      handleOperationComplete,
+      handleRename,
+      handleBulkDeleteConfirm,
+      resolveBulkConflict,
+      resolveUploadConflict,
+      handleUploadStart,
+      handleCreateFolderComplete,
+      handleFolderPickerSelect,
+      handleBulkMove,
+      handleBulkCopy,
+      handleBulkDownload,
+      openBulkDeleteDialog,
+      openUploadDialog,
+      openCreateFolderDialog,
+      onShareTargetSave,
+    ]
+  );
 
-  const progressHandlersProps = useMemo(() => ({
-    progressItems,
-    updateProgress,
-    handleRetryUpload: retryProgress,
-    handleCancelUploadFileWrapper: cancelUploadFile,
-    handleCancelAllWrapper: cancelAllProgress,
-  }), [
-    progressItems,
-    updateProgress,
-    retryProgress,
-    cancelUploadFile,
-    cancelAllProgress,
-  ]);
+  const progressHandlersProps = useMemo(
+    () => ({
+      progressItems,
+      updateProgress,
+      handleRetryUpload: retryProgress,
+      handleCancelUploadFileWrapper: cancelUploadFile,
+      handleCancelAllWrapper: cancelAllProgress,
+    }),
+    [progressItems, updateProgress, retryProgress, cancelUploadFile, cancelAllProgress]
+  );
 
-  const refreshIndicatorProps = useMemo(() => ({
-    indicatorStyles,
-    iconStyles,
-    isDeterminateProgress,
-    progress,
-    progressColor,
-    textColor,
-    shouldShowIndicator,
-    showRefreshSuccess,
-    textContent,
-  }), [
-    indicatorStyles,
-    iconStyles,
-    isDeterminateProgress,
-    progress,
-    progressColor,
-    textColor,
-    shouldShowIndicator,
-    showRefreshSuccess,
-    textContent,
-  ]);
+  const refreshIndicatorProps = useMemo(
+    () => ({
+      indicatorStyles,
+      iconStyles,
+      isDeterminateProgress,
+      progress,
+      progressColor,
+      textColor,
+      shouldShowIndicator,
+      showRefreshSuccess,
+      textContent,
+    }),
+    [
+      indicatorStyles,
+      iconStyles,
+      isDeterminateProgress,
+      progress,
+      progressColor,
+      textColor,
+      shouldShowIndicator,
+      showRefreshSuccess,
+      textContent,
+    ]
+  );
 
-  const explorerHandlersProps = useMemo(() => ({
-    interaction: interactionHandlersProps,
-    commands: commandHandlersProps,
-    progress: progressHandlersProps,
-    refreshIndicator: refreshIndicatorProps,
-  }), [
-    interactionHandlersProps,
-    commandHandlersProps,
-    progressHandlersProps,
-    refreshIndicatorProps,
-  ]);
+  const explorerHandlersProps = useMemo(
+    () => ({
+      interaction: interactionHandlersProps,
+      commands: commandHandlersProps,
+      progress: progressHandlersProps,
+      refreshIndicator: refreshIndicatorProps,
+    }),
+    [interactionHandlersProps, commandHandlersProps, progressHandlersProps, refreshIndicatorProps]
+  );
 
   return (
     <FileManagerView

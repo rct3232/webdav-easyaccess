@@ -11,10 +11,7 @@ import {
   Tooltip,
   Popover,
 } from '@mui/material';
-import {
-  Close as CloseIcon,
-  Download as DownloadIcon,
-} from '@mui/icons-material';
+import { Close as CloseIcon, Download as DownloadIcon } from '@mui/icons-material';
 import { downloadFile } from '../../../services/fileService';
 import { pdfjs } from 'react-pdf';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -63,14 +60,13 @@ const FilePreviewDialog = ({
 
   const fileType = file ? getFileType(file.name || file.basename) : null;
   const isGalleryMode =
-    file &&
-    (fileType === 'image' || fileType === 'video') &&
-    mediaFiles?.length > 1;
+    file && (fileType === 'image' || fileType === 'video') && mediaFiles?.length > 1;
 
   // Ensure worker is configured when component mounts
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const workerPath = window.location.origin + (process.env.PUBLIC_URL || '') + '/pdf.worker.min.js';
+      const workerPath =
+        window.location.origin + (process.env.PUBLIC_URL || '') + '/pdf.worker.min.js';
       if (pdfjs.GlobalWorkerOptions.workerSrc !== workerPath) {
         pdfjs.GlobalWorkerOptions.workerSrc = workerPath;
         console.log('PDF.js worker configured:', workerPath);
@@ -173,14 +169,8 @@ const FilePreviewDialog = ({
   });
 
   // Step 6: PDF layout
-  const {
-    pdfContainerRef,
-    pageArray,
-    calculatedWidth,
-    pageInfo,
-    setNumPages,
-    setPageInfo,
-  } = usePdfLayout({ open, previewUrl, isMobile });
+  const { pdfContainerRef, pageArray, calculatedWidth, pageInfo, setNumPages, setPageInfo } =
+    usePdfLayout({ open, previewUrl, isMobile });
 
   // Step 7: Header truncation
   const {
@@ -338,7 +328,8 @@ const FilePreviewDialog = ({
       slotProps={{
         backdrop: {
           sx: {
-            backgroundColor: isMobile && !headerVisible ? 'rgba(0, 0, 0, 0.95)' : 'rgba(0, 0, 0, 0.6)',
+            backgroundColor:
+              isMobile && !headerVisible ? 'rgba(0, 0, 0, 0.95)' : 'rgba(0, 0, 0, 0.6)',
             transition: 'background-color 0.2s ease',
           },
         },
@@ -436,10 +427,22 @@ const FilePreviewDialog = ({
                   onReset={resetZoom}
                   t={t}
                   isMobile={isMobile}
-                  onOpenFloating={isMobile ? () => { resetHideTimer(); setFloatingZoomOpen((prev) => !prev); } : undefined}
+                  onOpenFloating={
+                    isMobile
+                      ? () => {
+                          resetHideTimer();
+                          setFloatingZoomOpen((prev) => !prev);
+                        }
+                      : undefined
+                  }
                 />
               )}
-              <IconButton onClick={handleDownload} size="small" title={t('actions.download')} sx={{ color: 'inherit' }}>
+              <IconButton
+                onClick={handleDownload}
+                size="small"
+                title={t('actions.download')}
+                sx={{ color: 'inherit' }}
+              >
                 <DownloadIcon />
               </IconButton>
               {!hideCloseButton && (
@@ -505,18 +508,28 @@ const FilePreviewDialog = ({
             }
           }}
         >
-          <Box sx={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <Box
+            sx={{
+              position: 'relative',
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
             {renderContent()}
           </Box>
-          {isGalleryMode && currentPreviewFileType !== 'video' && (isMobile ? headerVisible : controlsVisible) && (
-            <PreviewThumbnailBar
-              files={mediaFiles}
-              currentIndex={currentMediaIndex}
-              onSelect={setCurrentMediaIndex}
-              onThumbnailsLoaded={onThumbnailsLoaded}
-              shareToken={shareToken}
-            />
-          )}
+          {isGalleryMode &&
+            currentPreviewFileType !== 'video' &&
+            (isMobile ? headerVisible : controlsVisible) && (
+              <PreviewThumbnailBar
+                files={mediaFiles}
+                currentIndex={currentMediaIndex}
+                onSelect={setCurrentMediaIndex}
+                onThumbnailsLoaded={onThumbnailsLoaded}
+                shareToken={shareToken}
+              />
+            )}
         </DialogContent>
       </Box>
     </Dialog>

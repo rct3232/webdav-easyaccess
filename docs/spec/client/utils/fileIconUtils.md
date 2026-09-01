@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Role | Resolve file/folder icon components (MUI icons) based on file type and mime. Returns JSX for use in FileList, FileGrid, etc. |
 
 ---
@@ -17,11 +17,11 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| getFileIcon | (file) => JSX.Element (Folder/Image/Video/File icon) |
-| getFileIconForGrid | (file) => JSX.Element (larger, sx props) |
-| getThumbnail | (file) => string \| null (file.thumbnailUrl) |
+| Function           | (input) => return                                    |
+| ------------------ | ---------------------------------------------------- |
+| getFileIcon        | (file) => JSX.Element (Folder/Image/Video/File icon) |
+| getFileIconForGrid | (file) => JSX.Element (larger, sx props)             |
+| getThumbnail       | (file) => string \| null (file.thumbnailUrl)         |
 
 ### 2.3 Dependencies
 

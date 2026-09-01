@@ -33,7 +33,10 @@ function decryptSecret(payload, passphrase) {
   const key = deriveKey(passphrase);
   const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(payload.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));
-  const plain = Buffer.concat([decipher.update(Buffer.from(payload.data, 'base64')), decipher.final()]);
+  const plain = Buffer.concat([
+    decipher.update(Buffer.from(payload.data, 'base64')),
+    decipher.final(),
+  ]);
   return plain.toString('utf8');
 }
 

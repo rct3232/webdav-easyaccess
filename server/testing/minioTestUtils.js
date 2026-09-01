@@ -72,10 +72,12 @@ async function emptyBucket({ endpoint, bucket, credentials, region } = {}) {
 
     const keys = (response.Contents || []).map((item) => item.Key);
     if (keys.length > 0) {
-      await client.send(new DeleteObjectsCommand({
-        Bucket: config.bucket,
-        Delete: { Objects: keys.map((key) => ({ Key: key })) },
-      }));
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: config.bucket,
+          Delete: { Objects: keys.map((key) => ({ Key: key })) },
+        })
+      );
       deleted += keys.length;
     }
 

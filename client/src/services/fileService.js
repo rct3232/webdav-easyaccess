@@ -13,7 +13,10 @@ const API_BASE = '/files';
 /** @returns {boolean} True when running on iOS (iPhone/iPad). */
 function isIOS() {
   if (typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 }
 
 function shareTokenHeaders(shareToken) {
@@ -64,9 +67,13 @@ export const getFilesMetadata = async (nodeIds = [], options = {}) => {
     return [];
   }
   const { shareToken } = options;
-  const response = await post(`${API_BASE}/metadata`, { nodeIds, ...(shareToken && { shareToken }) }, {
-    headers: shareTokenHeaders(shareToken),
-  });
+  const response = await post(
+    `${API_BASE}/metadata`,
+    { nodeIds, ...(shareToken && { shareToken }) },
+    {
+      headers: shareTokenHeaders(shareToken),
+    }
+  );
   return Array.isArray(response.data) ? response.data : [];
 };
 
@@ -100,9 +107,13 @@ export const getFileBlob = async (nodeId, options = {}) => {
  */
 export const getVideoPreviewStreamUrl = async (nodeId, options = {}) => {
   const { shareToken } = options;
-  const response = await post(`${API_BASE}/preview-ticket`, { nodeId, ...(shareToken && { shareToken }) }, {
-    headers: shareTokenHeaders(shareToken),
-  });
+  const response = await post(
+    `${API_BASE}/preview-ticket`,
+    { nodeId, ...(shareToken && { shareToken }) },
+    {
+      headers: shareTokenHeaders(shareToken),
+    }
+  );
   const ticket = response?.data?.ticket;
   if (!ticket) {
     throw new Error('No preview ticket in response');
@@ -162,7 +173,10 @@ export const downloadFile = async (nodeId, options = {}) => {
         // Fallback to default download
       }
     }
-    const typedBlob = blob.type && blob.type !== 'application/octet-stream' ? blob : new Blob([blob], { type: mimeType });
+    const typedBlob =
+      blob.type && blob.type !== 'application/octet-stream'
+        ? blob
+        : new Blob([blob], { type: mimeType });
     const iosUrl = window.URL.createObjectURL(typedBlob);
     const iosLink = document.createElement('a');
     iosLink.href = iosUrl;
@@ -183,7 +197,13 @@ export const downloadFile = async (nodeId, options = {}) => {
   triggerDefaultDownload(response.data);
 };
 
-export const uploadFile = async (file, parentNodeId, relativePath = '', onConflict = 'error', signal = null) => {
+export const uploadFile = async (
+  file,
+  parentNodeId,
+  relativePath = '',
+  onConflict = 'error',
+  signal = null
+) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('parentNodeId', String(parentNodeId));
@@ -207,7 +227,13 @@ export const uploadFile = async (file, parentNodeId, relativePath = '', onConfli
   return response.data;
 };
 
-export const uploadMultipleFiles = async (files, parentNodeId, onProgress, onConflict = 'error', options = {}) => {
+export const uploadMultipleFiles = async (
+  files,
+  parentNodeId,
+  onProgress,
+  onConflict = 'error',
+  options = {}
+) => {
   const results = [];
   const errors = [];
   const { getSignalForFile } = options;
@@ -376,7 +402,12 @@ export const downloadMultipleFiles = async (nodeIds, onProgress, options = {}) =
       const currentFromServer = server?.current;
       const zipNameFromServer = server?.zipName || '';
       const status = server?.status === 'preparing' ? 'preparing' : 'downloading';
-      const currentLabel = status === 'preparing' ? i18n.t('fileManager.downloadPreparing') : (currentFromServer ? `${currentFromServer} · ${Math.round(combined)}%` : i18n.t('fileManager.downloadingPercent', { percent: Math.round(combined) }));
+      const currentLabel =
+        status === 'preparing'
+          ? i18n.t('fileManager.downloadPreparing')
+          : currentFromServer
+            ? `${currentFromServer} · ${Math.round(combined)}%`
+            : i18n.t('fileManager.downloadingPercent', { percent: Math.round(combined) });
       onProgress({
         id: downloadId,
         type: 'download',
@@ -530,12 +561,16 @@ export { listFilePermissions } from './permissionService';
 
 export const requestThumbnailsBatch = async (nodeIds, options = {}) => {
   const { shareToken } = options;
-  const response = await post('/thumbnails/batch', {
-    nodeIds,
-    ...(shareToken && { shareToken }),
-  }, {
-    headers: shareTokenHeaders(shareToken),
-  });
+  const response = await post(
+    '/thumbnails/batch',
+    {
+      nodeIds,
+      ...(shareToken && { shareToken }),
+    },
+    {
+      headers: shareTokenHeaders(shareToken),
+    }
+  );
   return response.data;
 };
 

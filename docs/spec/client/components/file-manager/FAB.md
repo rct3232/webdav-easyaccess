@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Floating Action Button: SpeedDial for create folder and upload. shareLinkMode: single Fab for login or add-to-shared. Shown on all viewports (mobile and desktop). Hidden when no write permission. |
-| Used in | FileManager |
-| Related components | MUI Fab, SpeedDial, SpeedDialAction |
+| Item               | Description                                                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Floating Action Button: SpeedDial for create folder and upload. shareLinkMode: single Fab for login or add-to-shared. Shown on all viewports (mobile and desktop). Hidden when no write permission. |
+| Used in            | FileManager                                                                                                                                                                                         |
+| Related components | MUI Fab, SpeedDial, SpeedDialAction                                                                                                                                                                 |
 
 ---
 
@@ -19,22 +19,22 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| onUpload | function | N | - | Upload handler |
-| onCreateFolder | function | N | - | Create folder handler |
-| hasWritePermission | boolean | N | true | Write permission |
-| disabled | boolean | N | false | Disable Fab |
-| shareLinkMode | object | N | - | { user, onLoginClick, onAddToSharedClick } |
+| Name               | Type     | Required | Default | Description                                |
+| ------------------ | -------- | -------- | ------- | ------------------------------------------ |
+| onUpload           | function | N        | -       | Upload handler                             |
+| onCreateFolder     | function | N        | -       | Create folder handler                      |
+| hasWritePermission | boolean  | N        | true    | Write permission                           |
+| disabled           | boolean  | N        | false   | Disable Fab                                |
+| shareLinkMode      | object   | N        | -       | { user, onLoginClick, onAddToSharedClick } |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onUpload | Upload action | - |
-| onCreateFolder | Create folder action | - |
-| shareLinkMode.onLoginClick | Login (when not logged in) | - |
-| shareLinkMode.onAddToSharedClick | Add to shared (when logged in) | - |
+| Callback                         | When invoked                   | Arguments |
+| -------------------------------- | ------------------------------ | --------- |
+| onUpload                         | Upload action                  | -         |
+| onCreateFolder                   | Create folder action           | -         |
+| shareLinkMode.onLoginClick       | Login (when not logged in)     | -         |
+| shareLinkMode.onAddToSharedClick | Add to shared (when logged in) | -         |
 
 ### 2.4 Dependencies
 

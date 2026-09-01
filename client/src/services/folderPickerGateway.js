@@ -50,4 +50,3 @@ const folderPickerGateway = {
 };
 
 export default folderPickerGateway;
-

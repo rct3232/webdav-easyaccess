@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pure view for the reusable login form UI. Renders prepared state and callbacks only. |
-| Used in | `client/src/pages/Login.js` via `LoginForm` and `client/src/components/dialogs/LoginDialog.js` |
-| Related components | `LoginForm`, `LoginDialog` |
+| Item               | Description                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| Role               | Pure view for the reusable login form UI. Renders prepared state and callbacks only.           |
+| Used in            | `client/src/pages/Login.js` via `LoginForm` and `client/src/components/dialogs/LoginDialog.js` |
+| Related components | `LoginForm`, `LoginDialog`                                                                     |
 
 ---
 
@@ -19,30 +19,30 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `username` | `string` | Y | - | Current username input value. |
-| `password` | `string` | Y | - | Current password input value. |
-| `error` | `string` | N | `''` | Error alert content. |
-| `warning` | `string` | N | `''` | Warning alert content. |
-| `loading` | `boolean` | Y | - | Submit in-flight state. |
-| `settingsLoading` | `boolean` | Y | - | Public settings loading state. |
-| `registrationEnabled` | `boolean` | Y | - | Whether to show the register affordance. |
-| `registerPath` | `string` | Y | - | Route target for the register affordance. |
-| `onNavigateToRegister` | `function` | Y | - | Click handler that performs SPA navigation to the register route. |
-| `onUsernameChange` | `function` | Y | - | Username input change handler. |
-| `onPasswordChange` | `function` | Y | - | Password input change handler. |
-| `onSubmit` | `function` | Y | - | Form submit handler. |
-| `viewModel` | `object` | Y | - | Prepared labels and copy for the view. |
+| Name                   | Type       | Required | Default | Description                                                       |
+| ---------------------- | ---------- | -------- | ------- | ----------------------------------------------------------------- |
+| `username`             | `string`   | Y        | -       | Current username input value.                                     |
+| `password`             | `string`   | Y        | -       | Current password input value.                                     |
+| `error`                | `string`   | N        | `''`    | Error alert content.                                              |
+| `warning`              | `string`   | N        | `''`    | Warning alert content.                                            |
+| `loading`              | `boolean`  | Y        | -       | Submit in-flight state.                                           |
+| `settingsLoading`      | `boolean`  | Y        | -       | Public settings loading state.                                    |
+| `registrationEnabled`  | `boolean`  | Y        | -       | Whether to show the register affordance.                          |
+| `registerPath`         | `string`   | Y        | -       | Route target for the register affordance.                         |
+| `onNavigateToRegister` | `function` | Y        | -       | Click handler that performs SPA navigation to the register route. |
+| `onUsernameChange`     | `function` | Y        | -       | Username input change handler.                                    |
+| `onPasswordChange`     | `function` | Y        | -       | Password input change handler.                                    |
+| `onSubmit`             | `function` | Y        | -       | Form submit handler.                                              |
+| `viewModel`            | `object`   | Y        | -       | Prepared labels and copy for the view.                            |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| `onUsernameChange` | Username field changes | `(event)` |
-| `onPasswordChange` | Password field changes | `(event)` |
+| Callback               | When invoked                | Arguments |
+| ---------------------- | --------------------------- | --------- |
+| `onUsernameChange`     | Username field changes      | `(event)` |
+| `onPasswordChange`     | Password field changes      | `(event)` |
 | `onNavigateToRegister` | Register affordance clicked | `(event)` |
-| `onSubmit` | Form submit | `(event)` |
+| `onSubmit`             | Form submit                 | `(event)` |
 
 ### 2.4 Dependencies
 

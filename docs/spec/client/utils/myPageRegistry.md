@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                  |
+| ---- | ---------------------------------------------------------------------------- |
 | Role | Pure MyPage category registry + normalization helpers (ids/icons/visibility) |
 
 ---
@@ -17,13 +17,13 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| `resolveMyPageCategory(categoryId, isAdmin)` | `(string \| undefined, boolean) => string` |
-| `getMyPageSidebarCategories(isAdmin)` | `(boolean) => Array<{ id: string, icon: React.ComponentType, labelKey: string }>` |
-| `isMyPageMultiCategory(categoryId)` | `(string \| undefined) => boolean` |
-| `getMyPageCategoryIcon(categoryId)` | `(string \| undefined) => React.ComponentType \| undefined` |
-| `getMyPageContentDescriptor(input)` | `(object) => { categoryIcon, onBack, ContentComponent, contentProps }` |
+| Function                                     | (input) => return                                                                 |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| `resolveMyPageCategory(categoryId, isAdmin)` | `(string \| undefined, boolean) => string`                                        |
+| `getMyPageSidebarCategories(isAdmin)`        | `(boolean) => Array<{ id: string, icon: React.ComponentType, labelKey: string }>` |
+| `isMyPageMultiCategory(categoryId)`          | `(string \| undefined) => boolean`                                                |
+| `getMyPageCategoryIcon(categoryId)`          | `(string \| undefined) => React.ComponentType \| undefined`                       |
+| `getMyPageContentDescriptor(input)`          | `(object) => { categoryIcon, onBack, ContentComponent, contentProps }`            |
 
 ### 2.3 Dependencies
 
@@ -51,4 +51,3 @@ Unit tests should verify:
   - returns the expected content component and props for each supported category
   - includes `onBack` only for multi-item detail state
   - returns a safe empty descriptor for unknown categories
-

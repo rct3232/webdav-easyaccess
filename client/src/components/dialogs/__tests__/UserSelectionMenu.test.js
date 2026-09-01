@@ -23,9 +23,7 @@ const defaultProps = {
   folderMenuAnchor: null,
   onClose: jest.fn(),
   folderMenuPath: '/docs',
-  folderPermissions: new Map([
-    ['/docs', new Map([['u1', 'read']])],
-  ]),
+  folderPermissions: new Map([['/docs', new Map([['u1', 'read']])]]),
   isAdminMode: false,
   user: { id: 'me' },
   userInfoMap: new Map([['u1', { username: 'user1', is_admin: false }]]),

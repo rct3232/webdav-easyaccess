@@ -112,7 +112,13 @@ function defaultSqlitePath() {
 // (mirrors storage.resolvePgConfig, which is not exported).
 function resolvePgConfig(pg) {
   if (!pg) {
-    const required = ['WEA_PG_HOST', 'WEA_PG_PORT', 'WEA_PG_DATABASE', 'WEA_PG_USER', 'WEA_PG_PASSWORD'];
+    const required = [
+      'WEA_PG_HOST',
+      'WEA_PG_PORT',
+      'WEA_PG_DATABASE',
+      'WEA_PG_USER',
+      'WEA_PG_PASSWORD',
+    ];
     const missing = required.filter((key) => !process.env[key]);
     if (missing.length > 0) {
       throw new Error(`PostgreSQL is not configured; missing env: ${missing.join(', ')}`);
@@ -172,7 +178,9 @@ function convertPlaceholders(sql) {
 function pgExec(client) {
   return {
     query: (sql, params = []) =>
-      client.query(sql, params).then((result) => ({ rows: result.rows || [], rowCount: result.rowCount })),
+      client
+        .query(sql, params)
+        .then((result) => ({ rows: result.rows || [], rowCount: result.rowCount })),
     run: (sql, params = []) =>
       client.query(sql, params).then((result) => ({ changes: result.rowCount, lastID: undefined })),
   };
@@ -210,7 +218,9 @@ async function openSqliteDatabase(dbPath, { readonly = false } = {}) {
   const sqlite3 = require('sqlite3');
   return new Promise((resolve, reject) => {
     const db = readonly
-      ? new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => (err ? reject(err) : resolve(db)))
+      ? new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) =>
+          err ? reject(err) : resolve(db)
+        )
       : new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
   });
 }
@@ -344,7 +354,14 @@ async function copyTable(ctx, table, doneSoFar) {
   let copied = 0;
   while (offset < total) {
     if (ctx.isCancelled()) throw new MigrationCancelledError();
-    const rows = await selectBatch(ctx.sourceBackend, ctx.sourceExec, table, columns, orderBy, offset);
+    const rows = await selectBatch(
+      ctx.sourceBackend,
+      ctx.sourceExec,
+      table,
+      columns,
+      orderBy,
+      offset
+    );
     const transformed = rows.map((row) =>
       transformRow(row, { table, direction: ctx.direction, targetBackend: ctx.targetBackend })
     );
@@ -376,22 +393,19 @@ async function resyncSequences(targetBackend, targetExec) {
     if (maxId <= 0) continue;
 
     if (targetBackend === 'postgresql') {
-      await targetExec.query(
-        `SELECT setval(pg_get_serial_sequence($1, 'id'), $2)`,
-        [table, maxId]
-      );
+      await targetExec.query(`SELECT setval(pg_get_serial_sequence($1, 'id'), $2)`, [table, maxId]);
     } else {
       // AUTOINCREMENT already bumps sqlite_sequence on explicit-id inserts, so
       // this is a defensive resync for stale/missing rows after a DELETE wipe.
-      const res = await targetExec.run(
-        'UPDATE sqlite_sequence SET seq = ? WHERE name = ?',
-        [maxId, table]
-      );
+      const res = await targetExec.run('UPDATE sqlite_sequence SET seq = ? WHERE name = ?', [
+        maxId,
+        table,
+      ]);
       if (res.changes === 0) {
-        await targetExec.run(
-          'INSERT INTO sqlite_sequence(name, seq) VALUES (?, ?)',
-          [table, maxId]
-        );
+        await targetExec.run('INSERT INTO sqlite_sequence(name, seq) VALUES (?, ?)', [
+          table,
+          maxId,
+        ]);
       }
     }
   }

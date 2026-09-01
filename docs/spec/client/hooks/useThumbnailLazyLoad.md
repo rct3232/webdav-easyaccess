@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | IntersectionObserver-based thumbnail lazy loading. Filters image/video files, requests batch via requestThumbnailsBatch, calls onThumbnailsLoaded. Debounced. |
-| Used by components/pages | FileList, FileGrid |
+| Item                     | Description                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | IntersectionObserver-based thumbnail lazy loading. Filters image/video files, requests batch via requestThumbnailsBatch, calls onThumbnailsLoaded. Debounced. |
+| Used by components/pages | FileList, FileGrid                                                                                                                                            |
 
 ---
 
@@ -18,17 +18,17 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| files | array | Y | File list |
-| onThumbnailsLoaded | function | N | Callback (thumbnailMap) |
-| options | object | N | { shareToken } |
+| Name               | Type     | Required | Description             |
+| ------------------ | -------- | -------- | ----------------------- |
+| files              | array    | Y        | File list               |
+| onThumbnailsLoaded | function | N        | Callback (thumbnailMap) |
+| options            | object   | N        | { shareToken }          |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| containerRef | ref | Container ref (optional) |
+| Key          | Type | Meaning                  |
+| ------------ | ---- | ------------------------ |
+| containerRef | ref  | Container ref (optional) |
 
 ### 2.4 Dependencies
 

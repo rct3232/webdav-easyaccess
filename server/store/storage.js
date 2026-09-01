@@ -43,11 +43,9 @@ function resolvePgConfig() {
   ];
   const missing = requiredKeys.filter((key) => !process.env[key]);
   if (missing.length > 0) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { missing: missing.join(',') }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      missing: missing.join(','),
+    });
   }
 
   return {
@@ -69,11 +67,9 @@ function getPgPool() {
   try {
     ({ Pool } = require('pg'));
   } catch (error) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { reason: 'pg_module_missing' }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      reason: 'pg_module_missing',
+    });
   }
 
   pgPool = new Pool(resolvePgConfig());
@@ -112,7 +108,11 @@ function getSqliteConnection() {
   }
 
   if (sqliteDb) {
-    try { sqliteDb.close(); } catch { /* ignore */ }
+    try {
+      sqliteDb.close();
+    } catch {
+      /* ignore */
+    }
     sqliteDb = null;
   }
 
@@ -120,11 +120,9 @@ function getSqliteConnection() {
   try {
     sqlite3 = require('sqlite3').verbose();
   } catch (error) {
-    throw createError(
-      SERVER_ERROR_CODES.storage.postgresqlNotConfigured,
-      500,
-      { reason: 'sqlite3_module_missing' }
-    );
+    throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
+      reason: 'sqlite3_module_missing',
+    });
   }
 
   const dir = path.dirname(dbPath);

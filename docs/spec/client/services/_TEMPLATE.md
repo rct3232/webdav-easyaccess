@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                        |
+| ---- | -------------------------------------------------- |
 | Role | (e.g. fileService = file CRUD and bulk operations) |
 
 ---
@@ -17,9 +17,9 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called (see api.md) |
-|----------|-------|--------|-------------------------|
-| (fn) | (params) | (return type) | METHOD /api/path |
+| Function | Input    | Return        | API called (see api.md) |
+| -------- | -------- | ------------- | ----------------------- |
+| (fn)     | (params) | (return type) | METHOD /api/path        |
 
 ### 2.3 Error Handling
 

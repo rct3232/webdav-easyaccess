@@ -61,9 +61,28 @@ describe('validateFileName', () => {
 
   describe('property-based (fast-check)', () => {
     const reserved = [
-      'con', 'prn', 'aux', 'nul',
-      'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
-      'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+      'con',
+      'prn',
+      'aux',
+      'nul',
+      'com1',
+      'com2',
+      'com3',
+      'com4',
+      'com5',
+      'com6',
+      'com7',
+      'com8',
+      'com9',
+      'lpt1',
+      'lpt2',
+      'lpt3',
+      'lpt4',
+      'lpt5',
+      'lpt6',
+      'lpt7',
+      'lpt8',
+      'lpt9',
     ];
     const invalidCharsRe = /[<>:"/\\|?*\x00-\x1f]/; // eslint-disable-line no-control-regex
 
@@ -85,9 +104,9 @@ describe('validateFileName', () => {
     });
 
     it('valid names (1-255 chars, allowed chars only, no reserved, no trailing space/dot) return null', () => {
-      const allowedChars = fc.char().filter(
-        (c) => !invalidCharsRe.test(c) && c !== ' ' && c !== '.' && c.charCodeAt(0) >= 32
-      );
+      const allowedChars = fc
+        .char()
+        .filter((c) => !invalidCharsRe.test(c) && c !== ' ' && c !== '.' && c.charCodeAt(0) >= 32);
       const validName = fc
         .stringOf(allowedChars, { minLength: 1, maxLength: 253 })
         .filter((s) => !reserved.includes(s.toLowerCase()));
@@ -150,7 +169,10 @@ describe('validatePassword', () => {
   });
 
   it('returns passwordMinLength when too short', () => {
-    expect(validatePassword('12345')).toEqual({ key: 'validation.passwordMinLength', minLength: 6 });
+    expect(validatePassword('12345')).toEqual({
+      key: 'validation.passwordMinLength',
+      minLength: 6,
+    });
   });
 
   it('respects custom minLength option', () => {
@@ -228,7 +250,10 @@ describe('validateRequired', () => {
   });
 
   it('returns required error for empty values', () => {
-    expect(validateRequired('', 'field')).toEqual({ key: 'validation.required', fieldName: 'field' });
+    expect(validateRequired('', 'field')).toEqual({
+      key: 'validation.required',
+      fieldName: 'field',
+    });
     expect(validateRequired(null, 'field')).toEqual({
       key: 'validation.required',
       fieldName: 'field',

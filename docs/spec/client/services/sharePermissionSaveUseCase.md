@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                 |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Use-case for `ShareDialog` share mode. Applies the edited folder-permission state by computing revoke/grant operations and executing them through `sharePermissionGateway`. |
 
 ---
@@ -17,10 +17,10 @@
 
 ### 2.2 Inputs
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| initialFolderPermissions | `Map<string, Map<string, string>>` | Y | Permission assignments at dialog open |
-| folderPermissions | `Map<string, Map<string, string>>` | Y | Edited permission assignments |
+| Name                     | Type                               | Required | Description                           |
+| ------------------------ | ---------------------------------- | -------- | ------------------------------------- |
+| initialFolderPermissions | `Map<string, Map<string, string>>` | Y        | Permission assignments at dialog open |
+| folderPermissions        | `Map<string, Map<string, string>>` | Y        | Edited permission assignments         |
 
 ### 2.3 Output
 

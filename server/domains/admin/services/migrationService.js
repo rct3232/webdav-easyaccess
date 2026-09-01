@@ -2,7 +2,10 @@
 
 const crypto = require('crypto');
 const { sha256HexLower } = require('../../../utils/hash');
-const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
+const {
+  deriveDirection,
+  destinationTypeForDirection,
+} = require('../../../infrastructure/adapters/blobstore/config');
 const { isSecret } = require('../../../infrastructure/configRegistry');
 const { encryptSecret } = require('../../../utils/configEncryption');
 const Settings = require('../../../models/Settings');
@@ -95,8 +98,22 @@ function isNotFoundError(error) {
   return /404|not found|notfound|nosuchkey/i.test(haystack);
 }
 
-function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService, buildDestBlobStore, lockManager, fileStorageMode }) {
-  if (!srcBlobStore || !fileNodesStore || !fileNodeService || !buildDestBlobStore || !lockManager || !fileStorageMode) {
+function createMigrationService({
+  srcBlobStore,
+  fileNodesStore,
+  fileNodeService,
+  buildDestBlobStore,
+  lockManager,
+  fileStorageMode,
+}) {
+  if (
+    !srcBlobStore ||
+    !fileNodesStore ||
+    !fileNodeService ||
+    !buildDestBlobStore ||
+    !lockManager ||
+    !fileStorageMode
+  ) {
     throw new Error('createMigrationService: missing required dependency');
   }
 
@@ -166,7 +183,12 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       await dst.uploadBlob(key, buf);
       await fileNodesStore.upsertObjectMap(node.id, key, 'active');
       const cache = await fileNodesStore.getCache(node.id);
-      await fileNodesStore.upsertCache(node.id, buf.length, (cache && cache.mime_type) || null, sha256HexLower(buf));
+      await fileNodesStore.upsertCache(
+        node.id,
+        buf.length,
+        (cache && cache.mime_type) || null,
+        sha256HexLower(buf)
+      );
       await fileNodeService.updateSyncStatus(node.id, 'active');
       return { action: 'copied', path: nodePath };
     }
@@ -176,7 +198,12 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
     await ensureAncestorDirectories(dst, nodePath);
     await dst.uploadBlob(nodePath, buf);
     const cache = await fileNodesStore.getCache(node.id);
-    await fileNodesStore.upsertCache(node.id, buf.length, (cache && cache.mime_type) || null, sha256HexLower(buf));
+    await fileNodesStore.upsertCache(
+      node.id,
+      buf.length,
+      (cache && cache.mime_type) || null,
+      sha256HexLower(buf)
+    );
     await fileNodesStore.setObjectMapBackendWebdav(node.id);
     return { action: 'copied', path: nodePath };
   }
@@ -195,7 +222,15 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       try {
         path = await fileNodeService.getNodePath(node.id);
         current.path = path;
-        const processed = await processNode({ direction, node, activeObject, nodePath: path, dst, resume, force });
+        const processed = await processNode({
+          direction,
+          node,
+          activeObject,
+          nodePath: path,
+          dst,
+          resume,
+          force,
+        });
         outcome = processed.action;
       } catch (error) {
         current.path = path;
@@ -207,7 +242,14 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       else results.failed += 1;
 
       done += 1;
-      onProgress({ total, done, current, copied: results.copied, skipped: results.skipped, failed: results.failed });
+      onProgress({
+        total,
+        done,
+        current,
+        copied: results.copied,
+        skipped: results.skipped,
+        failed: results.failed,
+      });
       if (isCancelled && isCancelled()) break;
     }
 
@@ -228,7 +270,17 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       try {
         path = await fileNodeService.getNodePath(node.id);
         current.path = path;
-        if (await shouldSkip({ direction, node, activeObject, nodePath: path, dst, resume, force: false })) {
+        if (
+          await shouldSkip({
+            direction,
+            node,
+            activeObject,
+            nodePath: path,
+            dst,
+            resume,
+            force: false,
+          })
+        ) {
           outcome = 'skipped';
         }
       } catch (error) {
@@ -241,7 +293,14 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       else if (outcome === 'failed') results.failed += 1;
 
       done += 1;
-      onProgress({ total, done, current, copied: 0, skipped: results.skipped, failed: results.failed });
+      onProgress({
+        total,
+        done,
+        current,
+        copied: 0,
+        skipped: results.skipped,
+        failed: results.failed,
+      });
       if (isCancelled && isCancelled()) break;
     }
 
@@ -254,11 +313,19 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
     }
   }
 
-  async function run({ destConfig, mode = 'dry-run', force = false, onProgress = () => {}, isCancelled = () => false }) {
+  async function run({
+    destConfig,
+    mode = 'dry-run',
+    force = false,
+    onProgress = () => {},
+    isCancelled = () => false,
+  }) {
     const direction = deriveDirection(fileStorageMode);
     const expectedDestType = destinationTypeForDirection(direction);
     if (!destConfig || destConfig.type !== expectedDestType) {
-      throw new Error(`Destination type mismatch: expected ${expectedDestType} for direction ${direction}`);
+      throw new Error(
+        `Destination type mismatch: expected ${expectedDestType} for direction ${direction}`
+      );
     }
     assertValidOptions({ mode });
 
@@ -283,7 +350,15 @@ function createMigrationService({ srcBlobStore, fileNodesStore, fileNodeService,
       if (mode === 'dry-run') {
         return await runDry({ direction, dst, snapshot, resume: true, onProgress, isCancelled });
       }
-      return await runCopy({ direction, dst, snapshot, resume: true, force, onProgress, isCancelled });
+      return await runCopy({
+        direction,
+        dst,
+        snapshot,
+        resume: true,
+        force,
+        onProgress,
+        isCancelled,
+      });
     } finally {
       await lock.release();
     }

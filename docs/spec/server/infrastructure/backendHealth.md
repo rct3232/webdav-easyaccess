@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav`. Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
-| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D2–D4) |
+| Item            | Description                                                                                                                                                                                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role            | In-memory per-backend health tracker for `postgresql`, `s3`, `webdav`. Passive, event-based (D2): callers report success/failure; the tracker records state, fires a transition callback only on `OK→FAIL` / `FAIL→OK`, and serves a snapshot for the admin card/banner and public status. State resets on restart (D4). |
+| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D2–D4)                                                                                                                                                                                                                                                         |
 
 ---
 
@@ -32,25 +32,25 @@
 
 ### 2.3 Public API
 
-| Export | Signature | Description |
-|--------|-----------|-------------|
-| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }` | Factory (tests get an isolated instance; production uses the shared singleton). |
-| `getHealth` | `() => { postgresql, s3, webdav }` | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only). |
-| `report` | `(backend, { ok, code?, reason?, hint? }) => void` | Update state; fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. |
-| `reset` | `() => void` | Reset all backends to `unknown` (boot + test hook). |
-| `setOnTransition` | `(cb) => void` | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging). |
+| Export                | Signature                                             | Description                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createBackendHealth` | `() => { report, getHealth, reset, setOnTransition }` | Factory (tests get an isolated instance; production uses the shared singleton).                                                                                                   |
+| `getHealth`           | `() => { postgresql, s3, webdav }`                    | Snapshot for `GET /api/admin/health` (full) and `GET /api/health` (status strings only).                                                                                          |
+| `report`              | `(backend, { ok, code?, reason?, hint? }) => void`    | Update state; fire the transition callback only when the status flips `ok`↔`fail`. `ok:true` clears `code/reason/hint`, resets `consecutiveFailures` to 0, keeps `lastCheckedAt`. |
+| `reset`               | `() => void`                                          | Reset all backends to `unknown` (boot + test hook).                                                                                                                               |
+| `setOnTransition`     | `(cb) => void`                                        | Register a callback for `OK→FAIL` / `FAIL→OK` transitions (terminal logging).                                                                                                     |
 
 ### 2.4 Classification
 
 Stable `code` values and the probe/i18n codes that map to them (shared with
 `server/infrastructure/backendProbe.js` `classifyToHealthCode`):
 
-| `code` | Sources |
-|--------|---------|
-| `unreachable` | PG `ECONNREFUSED/ENOTFOUND/EAI_AGAIN/ETIMEDOUT/ECONNRESET`; S3 unreachable; webdav `connectionRefused`/`serverNotResponding`/`cannotConnect`/`allConnectionAttemptsFailed`; PG `57P01/53300` |
-| `auth` | PG `28P01/28000`; S3 `403/AccessDenied`; webdav `credentialsNotConfigured`/403 |
-| `missing_resource` | PG `3D000`; S3 `NoSuchBucket`/404; webdav `pathNotFound`/`sourceNotFound`/`fileOrFolderNotFound` |
-| `unknown` | anything else |
+| `code`             | Sources                                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unreachable`      | PG `ECONNREFUSED/ENOTFOUND/EAI_AGAIN/ETIMEDOUT/ECONNRESET`; S3 unreachable; webdav `connectionRefused`/`serverNotResponding`/`cannotConnect`/`allConnectionAttemptsFailed`; PG `57P01/53300` |
+| `auth`             | PG `28P01/28000`; S3 `403/AccessDenied`; webdav `credentialsNotConfigured`/403                                                                                                               |
+| `missing_resource` | PG `3D000`; S3 `NoSuchBucket`/404; webdav `pathNotFound`/`sourceNotFound`/`fileOrFolderNotFound`                                                                                             |
+| `unknown`          | anything else                                                                                                                                                                                |
 
 ### 2.5 Terminal logging (D3)
 

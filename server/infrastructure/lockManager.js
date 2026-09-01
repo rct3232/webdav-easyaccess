@@ -1,11 +1,17 @@
 const crypto = require('crypto');
 
-const { getBackend, getPgPool, isSqliteBackend, withSqliteTransaction, sqliteRun } = require('../store/storage');
+const {
+  getBackend,
+  getPgPool,
+  isSqliteBackend,
+  withSqliteTransaction,
+  sqliteRun,
+} = require('../store/storage');
 const { sha256HexLower } = require('../utils/hash');
 const { getSharedResolver } = require('./configResolver');
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function makeTimeoutError(lockName, waitMs) {
@@ -23,10 +29,10 @@ function createPostgresqlLockRelease(lockKey, token) {
 
     try {
       const pool = getPgPool();
-      await pool.query(
-        'DELETE FROM locks WHERE lock_name_hash = $1 AND token = $2',
-        [lockKey, token]
-      );
+      await pool.query('DELETE FROM locks WHERE lock_name_hash = $1 AND token = $2', [
+        lockKey,
+        token,
+      ]);
     } catch {
       // Best effort: ignore.
     }
@@ -40,10 +46,7 @@ function createSqliteLockRelease(lockKey, token) {
     released = true;
 
     try {
-      await sqliteRun(
-        'DELETE FROM locks WHERE lock_name_hash = ? AND token = ?',
-        [lockKey, token]
-      );
+      await sqliteRun('DELETE FROM locks WHERE lock_name_hash = ? AND token = ?', [lockKey, token]);
     } catch {
       // Best effort: ignore.
     }
@@ -57,10 +60,9 @@ async function acquirePostgresqlLock(lockName, lockKey, token, owner, ttlMs, wai
     const expiresAt = new Date(createdAt.getTime() + ttlMs);
 
     const pool = getPgPool();
-    await pool.query(
-      'DELETE FROM locks WHERE lock_name_hash = $1 AND expires_at < NOW()',
-      [lockKey]
-    );
+    await pool.query('DELETE FROM locks WHERE lock_name_hash = $1 AND expires_at < NOW()', [
+      lockKey,
+    ]);
     const insertResult = await pool.query(
       `INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at)
         VALUES ($1, $2, $3, $4, $5)

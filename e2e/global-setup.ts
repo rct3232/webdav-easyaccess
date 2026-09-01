@@ -49,7 +49,9 @@ function cleanDir(relativePath: string) {
       throw err;
     }
 
-    console.warn(`Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`);
+    console.warn(
+      `Warning: Cannot remove ${relativePath} directly due to permissions. Retrying via Docker helper.`
+    );
     execFileSync(
       'docker',
       [
@@ -120,7 +122,11 @@ function waitForWebdav(timeoutMs: number) {
           response.resume();
           const statusCode = response.statusCode || 500;
           settleAttempt(() => {
-            if ((statusCode >= 200 && statusCode < 300) || statusCode === 207 || statusCode === 403) {
+            if (
+              (statusCode >= 200 && statusCode < 300) ||
+              statusCode === 207 ||
+              statusCode === 403
+            ) {
               finishSuccess();
               return;
             }

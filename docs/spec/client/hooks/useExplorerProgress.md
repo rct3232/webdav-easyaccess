@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Explorer progress controller: owns progress drawer/list state and exposes retry/cancel entry points and completion notifications, matching current FileManager UX. |
-| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`) |
-| Does not own | Navigation transitions (`useExplorerNavigation`), command orchestration (`useExplorerCommands`), search/sort/view derivation (`useExplorerSession`), product overlays (share-link policy, `__recent__`, `__shared__`). |
+| Item                     | Description                                                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Explorer progress controller: owns progress drawer/list state and exposes retry/cancel entry points and completion notifications, matching current FileManager UX.                                                     |
+| Used by components/pages | `FileManager` page shell (`docs/spec/client/pages/FileManager.md`)                                                                                                                                                     |
+| Does not own             | Navigation transitions (`useExplorerNavigation`), command orchestration (`useExplorerCommands`), search/sort/view derivation (`useExplorerSession`), product overlays (share-link policy, `__recent__`, `__shared__`). |
 
 ---
 
@@ -21,27 +21,27 @@
 
 `useExplorerProgress(params)`
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| progressSource | object | Y | Abstraction representing current progress items/events (may initially wrap existing progress state/hooks). |
-| onRetry | (progressId: string) => void \| Promise<void> | Y | Retry handler provided by the shell/commands layer. |
-| onCancel | (progressId: string) => void \| Promise<void> | Y | Cancel handler provided by the shell/commands layer. |
-| notify | (message: object) => void | N | Shell-provided user messaging mechanism (snackbar/toast) matching current behavior. |
+| Name           | Type                                          | Required | Description                                                                                                |
+| -------------- | --------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| progressSource | object                                        | Y        | Abstraction representing current progress items/events (may initially wrap existing progress state/hooks). |
+| onRetry        | (progressId: string) => void \| Promise<void> | Y        | Retry handler provided by the shell/commands layer.                                                        |
+| onCancel       | (progressId: string) => void \| Promise<void> | Y        | Cancel handler provided by the shell/commands layer.                                                       |
+| notify         | (message: object) => void                     | N        | Shell-provided user messaging mechanism (snackbar/toast) matching current behavior.                        |
 
 Notes:
 
-- This controller owns *presentation-level progress coordination* (drawer state, list ordering, mapping retry/cancel affordances), but does not own executing the underlying operations.
+- This controller owns _presentation-level progress coordination_ (drawer state, list ordering, mapping retry/cancel affordances), but does not own executing the underlying operations.
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| progressItems | Array<object> | View-ready progress items to render. |
-| isProgressDrawerOpen | boolean | Whether the progress drawer is open. |
-| openProgressDrawer | () => void | Open drawer. |
-| closeProgressDrawer | () => void | Close drawer. |
-| retryProgress | (progressId: string) => Promise<void> \| void | Calls `onRetry` and preserves existing UX. |
-| cancelProgress | (progressId: string) => Promise<void> \| void | Calls `onCancel` and preserves existing UX. |
+| Key                  | Type                                          | Meaning                                     |
+| -------------------- | --------------------------------------------- | ------------------------------------------- |
+| progressItems        | Array<object>                                 | View-ready progress items to render.        |
+| isProgressDrawerOpen | boolean                                       | Whether the progress drawer is open.        |
+| openProgressDrawer   | () => void                                    | Open drawer.                                |
+| closeProgressDrawer  | () => void                                    | Close drawer.                               |
+| retryProgress        | (progressId: string) => Promise<void> \| void | Calls `onRetry` and preserves existing UX.  |
+| cancelProgress       | (progressId: string) => Promise<void> \| void | Calls `onCancel` and preserves existing UX. |
 
 ### 2.4 Responsibilities (must be non-overlapping)
 
@@ -78,4 +78,3 @@ Notes:
 
 - No progress items → drawer may remain closed and list shows empty state (as today).
 - Duplicate progress IDs are handled deterministically (stable rendering; no crash).
-

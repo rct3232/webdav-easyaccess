@@ -64,7 +64,11 @@ const dotenv = require('dotenv');
 const { getBackend, closePgPool, closeSqliteDb } = require('../store/storage');
 const { initMetadataStore } = require('../store/bootstrap');
 const { getComposition } = require('../service/composition');
-const { buildDestBlobStore, deriveDirection, destinationTypeForDirection } = require('../infrastructure/adapters/blobstore/config');
+const {
+  buildDestBlobStore,
+  deriveDirection,
+  destinationTypeForDirection,
+} = require('../infrastructure/adapters/blobstore/config');
 
 const PROGRESS_INTERVAL = 100;
 
@@ -248,7 +252,9 @@ async function runMigrationCli(argv, deps) {
       onProgress: makeOnProgress(output),
     });
 
-    output.log(`summary: copied=${result.copied} skipped=${result.skipped} failed=${result.failed}`);
+    output.log(
+      `summary: copied=${result.copied} skipped=${result.skipped} failed=${result.failed}`
+    );
     for (const entry of result.errors || []) {
       output.error(`error: nodeId=${entry.nodeId} path=${entry.path} error=${entry.error}`);
     }

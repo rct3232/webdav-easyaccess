@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                 |
+| ---- | ------------------------------------------- |
 | Role | (e.g. errorHandler = error JSON formatting) |
 
 ---
@@ -17,11 +17,11 @@
 
 ### 2.2 Functions / Exports
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| formatErrorResponse | (err) => object | ... |
-| createError | (...) => Error | ... |
-| etc. | | |
+| Function            | Signature       | Description |
+| ------------------- | --------------- | ----------- |
+| formatErrorResponse | (err) => object | ...         |
+| createError         | (...) => Error  | ...         |
+| etc.                |                 |             |
 
 ### 2.3 Input / Output
 

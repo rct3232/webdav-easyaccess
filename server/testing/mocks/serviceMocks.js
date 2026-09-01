@@ -10,7 +10,11 @@
 
 function createFileNodeServiceMock(overrides = {}) {
   const defaults = {
-    getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, name: `file_${nodeId}.txt`, type: 'file' })),
+    getNode: jest.fn().mockImplementation(async (nodeId) => ({
+      id: nodeId,
+      name: `file_${nodeId}.txt`,
+      type: 'file',
+    })),
     createFile: jest.fn().mockResolvedValue({ id: 10 }),
     createDirectory: jest.fn().mockResolvedValue({ id: 20 }),
     renameNode: jest.fn().mockResolvedValue(true),
@@ -97,7 +101,10 @@ function createInMemoryBlobStore(overrides = {}) {
       if (!buf) {
         return Promise.resolve(null);
       }
-      return Promise.resolve({ contentLength: buf.length, contentType: 'application/octet-stream' });
+      return Promise.resolve({
+        contentLength: buf.length,
+        contentType: 'application/octet-stream',
+      });
     }),
     listOrphanedKeys: jest.fn((olderThan) => {
       if (!(olderThan instanceof Date)) {

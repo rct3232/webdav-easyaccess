@@ -175,17 +175,29 @@ describe('aclService (nodeId)', () => {
     const fileNodeId = 100;
     mockPermissionCheckSharePermission.mockResolvedValue(true);
 
-    const result = await aclService.checkFilePermission('share:abc123', fileNodeId, PERMISSIONS.READ);
+    const result = await aclService.checkFilePermission(
+      'share:abc123',
+      fileNodeId,
+      PERMISSIONS.READ
+    );
     expect(result).toBe(true);
     expect(mockUserFindById).not.toHaveBeenCalled();
-    expect(mockPermissionCheckSharePermission).toHaveBeenCalledWith('abc123', 100, PERMISSIONS.READ);
+    expect(mockPermissionCheckSharePermission).toHaveBeenCalledWith(
+      'abc123',
+      100,
+      PERMISSIONS.READ
+    );
   });
 
   it('V7b: checkFolderPermission resolves share principal via token', async () => {
     const dirNodeId = 50;
     mockPermissionCheckSharePermission.mockResolvedValue(true);
 
-    const result = await aclService.checkFolderPermission('share:abc123', dirNodeId, PERMISSIONS.READ);
+    const result = await aclService.checkFolderPermission(
+      'share:abc123',
+      dirNodeId,
+      PERMISSIONS.READ
+    );
     expect(result).toBe(true);
     expect(mockUserFindById).not.toHaveBeenCalled();
     expect(mockPermissionCheckSharePermission).toHaveBeenCalledWith('abc123', 50, PERMISSIONS.READ);
@@ -195,7 +207,11 @@ describe('aclService (nodeId)', () => {
     const fileNodeId = 100;
     mockPermissionCheckSharePermission.mockResolvedValue(false);
 
-    const result = await aclService.checkFilePermission('share:noperm', fileNodeId, PERMISSIONS.READ);
+    const result = await aclService.checkFilePermission(
+      'share:noperm',
+      fileNodeId,
+      PERMISSIONS.READ
+    );
     expect(result).toBe(false);
   });
 

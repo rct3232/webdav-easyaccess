@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Centralized progress state for move, copy, delete, download, upload. updateProgress to add/update/remove items. Supports fileItems (upload), retryData. |
-| Used by components/pages | FileManager, useBulkOperations, useFileOperations |
+| Item                     | Description                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Centralized progress state for move, copy, delete, download, upload. updateProgress to add/update/remove items. Supports fileItems (upload), retryData. |
+| Used by components/pages | FileManager, useBulkOperations, useFileOperations                                                                                                       |
 
 ---
 
@@ -19,16 +19,16 @@
 ### 2.2 Input Parameters
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
-| None | - | - | - |
+| ---- | ---- | -------- | ----------- |
+| None | -    | -        | -           |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| progressItems | array | Current progress items |
-| updateProgress | (item) => void | Add/update/remove item |
-| clearAllProgress | () => void | Clear all |
+| Key              | Type           | Meaning                |
+| ---------------- | -------------- | ---------------------- |
+| progressItems    | array          | Current progress items |
+| updateProgress   | (item) => void | Add/update/remove item |
+| clearAllProgress | () => void     | Clear all              |
 
 ### 2.4 Dependencies
 

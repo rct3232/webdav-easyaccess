@@ -177,7 +177,10 @@ const MigrationPage = () => {
       return Math.min(100, Math.max(0, jobProgress.percent));
     }
     if (jobProgress && jobProgress.total) {
-      return Math.min(100, Math.max(0, Math.round((jobProgress.progress / jobProgress.total) * 100)));
+      return Math.min(
+        100,
+        Math.max(0, Math.round((jobProgress.progress / jobProgress.total) * 100))
+      );
     }
     if (typeof job?.progress === 'number' && job?.total) {
       return Math.min(100, Math.max(0, Math.round((job.progress / job.total) * 100)));
@@ -203,7 +206,9 @@ const MigrationPage = () => {
       {type && (
         <Chip
           size="small"
-          label={type === 'metadata' ? t('migrationPage.typeMetadata') : t('migrationPage.typeBlobs')}
+          label={
+            type === 'metadata' ? t('migrationPage.typeMetadata') : t('migrationPage.typeBlobs')
+          }
           color={type === 'metadata' ? 'secondary' : 'primary'}
         />
       )}
@@ -226,7 +231,9 @@ const MigrationPage = () => {
         {statusText && (
           <Chip
             size="small"
-            label={t(`migrationPage.status${statusText.charAt(0).toUpperCase()}${statusText.slice(1)}`)}
+            label={t(
+              `migrationPage.status${statusText.charAt(0).toUpperCase()}${statusText.slice(1)}`
+            )}
             color={STATUS_COLOR[statusText] || 'default'}
           />
         )}

@@ -15,7 +15,7 @@ import { useState, useCallback } from 'react';
  */
 export const useFormState = (initialValues = {}, validators = {}, options = {}) => {
   const { onSubmit } = options;
-  
+
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -26,30 +26,33 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
    * @param {string} name - Field name
    * @param {*} value - Field value
    */
-  const setValue = useCallback((name, value) => {
-    setValues(prev => ({ ...prev, [name]: value }));
-    
-    // Clear error when field is updated
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
-    }
-  }, [errors]);
+  const setValue = useCallback(
+    (name, value) => {
+      setValues((prev) => ({ ...prev, [name]: value }));
+
+      // Clear error when field is updated
+      if (errors[name]) {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[name];
+          return newErrors;
+        });
+      }
+    },
+    [errors]
+  );
 
   /**
    * Update multiple field values
    * @param {Object} newValues - Object with field names and values
    */
   const setValuesMultiple = useCallback((newValues) => {
-    setValues(prev => ({ ...prev, ...newValues }));
-    
+    setValues((prev) => ({ ...prev, ...newValues }));
+
     // Clear errors for updated fields
-    setErrors(prev => {
+    setErrors((prev) => {
       const newErrors = { ...prev };
-      Object.keys(newValues).forEach(key => {
+      Object.keys(newValues).forEach((key) => {
         delete newErrors[key];
       });
       return newErrors;
@@ -62,17 +65,20 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
    * @param {*} value - Field value
    * @returns {string|null} Error message or null
    */
-  const validateField = useCallback((name, value) => {
-    const validator = validators[name];
-    if (!validator) return null;
-    
-    try {
-      const error = validator(value, values);
-      return error || null;
-    } catch (err) {
-      return err.message || 'validation.genericError';
-    }
-  }, [validators, values]);
+  const validateField = useCallback(
+    (name, value) => {
+      const validator = validators[name];
+      if (!validator) return null;
+
+      try {
+        const error = validator(value, values);
+        return error || null;
+      } catch (err) {
+        return err.message || 'validation.genericError';
+      }
+    },
+    [validators, values]
+  );
 
   /**
    * Validate all fields
@@ -82,7 +88,7 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
     const newErrors = {};
     let isValid = true;
 
-    Object.keys(validators).forEach(name => {
+    Object.keys(validators).forEach((name) => {
       const error = validateField(name, values[name]);
       if (error) {
         newErrors[name] = error;
@@ -91,11 +97,13 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
     });
 
     setErrors(newErrors);
-    setTouched(Object.keys(validators).reduce((acc, key) => {
-      acc[key] = true;
-      return acc;
-    }, {}));
-    
+    setTouched(
+      Object.keys(validators).reduce((acc, key) => {
+        acc[key] = true;
+        return acc;
+      }, {})
+    );
+
     return isValid;
   }, [validators, values, validateField]);
 
@@ -104,47 +112,56 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
    * @param {string} name - Field name
    * @param {*} value - Field value
    */
-  const handleChange = useCallback((name, value) => {
-    setValue(name, value);
-  }, [setValue]);
+  const handleChange = useCallback(
+    (name, value) => {
+      setValue(name, value);
+    },
+    [setValue]
+  );
 
   /**
    * Handle field blur
    * @param {string} name - Field name
    */
-  const handleBlur = useCallback((name) => {
-    setTouched(prev => ({ ...prev, [name]: true }));
-    const error = validateField(name, values[name]);
-    if (error) {
-      setErrors(prev => ({ ...prev, [name]: error }));
-    }
-  }, [values, validateField]);
+  const handleBlur = useCallback(
+    (name) => {
+      setTouched((prev) => ({ ...prev, [name]: true }));
+      const error = validateField(name, values[name]);
+      if (error) {
+        setErrors((prev) => ({ ...prev, [name]: error }));
+      }
+    },
+    [values, validateField]
+  );
 
   /**
    * Handle form submit
    * @param {Event} e - Form event
    */
-  const handleSubmit = useCallback(async (e) => {
-    if (e) {
-      e.preventDefault();
-    }
-
-    if (!validate()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      if (onSubmit) {
-        await onSubmit(values);
+  const handleSubmit = useCallback(
+    async (e) => {
+      if (e) {
+        e.preventDefault();
       }
-    } catch (error) {
-      // Handle submit error
-      console.error('Form submit error:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [validate, values, onSubmit]);
+
+      if (!validate()) {
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        if (onSubmit) {
+          await onSubmit(values);
+        }
+      } catch (error) {
+        // Handle submit error
+        console.error('Form submit error:', error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [validate, values, onSubmit]
+  );
 
   /**
    * Reset form to initial values
@@ -161,18 +178,24 @@ export const useFormState = (initialValues = {}, validators = {}, options = {}) 
    * @param {string} name - Field name
    * @returns {string|undefined} Error message
    */
-  const getFieldError = useCallback((name) => {
-    return touched[name] ? errors[name] : undefined;
-  }, [touched, errors]);
+  const getFieldError = useCallback(
+    (name) => {
+      return touched[name] ? errors[name] : undefined;
+    },
+    [touched, errors]
+  );
 
   /**
    * Check if field has error
    * @param {string} name - Field name
    * @returns {boolean} True if field has error
    */
-  const hasFieldError = useCallback((name) => {
-    return Boolean(touched[name] && errors[name]);
-  }, [touched, errors]);
+  const hasFieldError = useCallback(
+    (name) => {
+      return Boolean(touched[name] && errors[name]);
+    },
+    [touched, errors]
+  );
 
   return {
     values,

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Public share access service. Resolves share tokens to nodes, serves public metadata, checks/adds user permissions on shared content, and streams preview/download blobs. All operations are nodeId-based. |
 
 ---

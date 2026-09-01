@@ -5,7 +5,12 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { Folder as FolderIcon, InsertDriveFile as FileIcon, Image as ImageIcon, VideoFile as VideoIcon } from '@mui/icons-material';
+import {
+  Folder as FolderIcon,
+  InsertDriveFile as FileIcon,
+  Image as ImageIcon,
+  VideoFile as VideoIcon,
+} from '@mui/icons-material';
 import { getFileIcon, getFileIconForGrid, getThumbnail } from '../fileIconUtils';
 
 describe('fileIconUtils', () => {

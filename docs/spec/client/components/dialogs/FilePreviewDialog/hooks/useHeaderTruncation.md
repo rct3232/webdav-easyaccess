@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Measures header title row and actions widths via ResizeObserver, computes pixel-based middle-truncated filename, and detects text overflow in the text preview container |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Measures header title row and actions widths via ResizeObserver, computes pixel-based middle-truncated filename, and detects text overflow in the text preview container |
+| Used by components/pages | FilePreviewDialog                                                                                                                                                        |
 
 ---
 
@@ -17,24 +17,24 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state; observer starts on open |
-| hideCloseButton | boolean | Y | Affects actions width; used as effect dependency |
-| textContent | string\|null | Y | Text preview content; triggers overflow detection |
-| displayFile | object | N | Currently displayed file |
-| file | object | Y | Original file prop |
+| Name            | Type         | Required | Description                                       |
+| --------------- | ------------ | -------- | ------------------------------------------------- |
+| open            | boolean      | Y        | Dialog open state; observer starts on open        |
+| hideCloseButton | boolean      | Y        | Affects actions width; used as effect dependency  |
+| textContent     | string\|null | Y        | Text preview content; triggers overflow detection |
+| displayFile     | object       | N        | Currently displayed file                          |
+| file            | object       | Y        | Original file prop                                |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| titleRowRef | React.Ref | Ref for the title row container |
-| actionsRef | React.Ref | Ref for the actions (zoom when applicable, download, close) container |
-| textContainerRef | React.Ref | Ref for the text preview outer container |
-| textPreRef | React.Ref | Ref for the `<pre>` element inside text preview |
-| truncatedHeaderName | string | Pixel-truncated filename (middle truncation) |
-| isHeaderTruncated | boolean | True when truncatedHeaderName !== originalHeaderName |
+| Key                 | Type      | Meaning                                                               |
+| ------------------- | --------- | --------------------------------------------------------------------- |
+| titleRowRef         | React.Ref | Ref for the title row container                                       |
+| actionsRef          | React.Ref | Ref for the actions (zoom when applicable, download, close) container |
+| textContainerRef    | React.Ref | Ref for the text preview outer container                              |
+| textPreRef          | React.Ref | Ref for the `<pre>` element inside text preview                       |
+| truncatedHeaderName | string    | Pixel-truncated filename (middle truncation)                          |
+| isHeaderTruncated   | boolean   | True when truncatedHeaderName !== originalHeaderName                  |
 
 ### 2.4 Dependencies
 

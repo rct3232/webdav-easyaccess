@@ -71,13 +71,17 @@ describe('FileListItem', () => {
   });
 
   it('hides More button when !showMoreButton', () => {
-    renderWithProviders(<FileListItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />);
+    renderWithProviders(
+      <FileListItem {...defaultProps} showMoreButton={false} onMoreClick={jest.fn()} />
+    );
     expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument();
   });
 
   it('calls onMoreClick with file when More button clicked', () => {
     const onMoreClick = jest.fn();
-    renderWithProviders(<FileListItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />);
+    renderWithProviders(
+      <FileListItem {...defaultProps} showMoreButton onMoreClick={onMoreClick} />
+    );
     fireEvent.click(screen.getByRole('button', { name: /more actions/i }));
     expect(onMoreClick).toHaveBeenCalledWith(mockFile, expect.any(Object));
   });

@@ -88,7 +88,11 @@ async function createUserWithHomeNode(prefix) {
   const username = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const auth = await createAuthenticatedTestUser({ isAdmin: false, username });
   const home = await createUserRootNode({ userId: auth.user.id });
-  await grantTestPermissionByNodeId({ userId: auth.user.id, fileNodeId: home.nodeId, permission: 'admin' });
+  await grantTestPermissionByNodeId({
+    userId: auth.user.id,
+    fileNodeId: home.nodeId,
+    permission: 'admin',
+  });
   return { ...auth, homeNodeId: home.nodeId };
 }
 
@@ -153,19 +157,15 @@ describe('S5.0-SCENARIO-1: S3 mode upload/list/download', () => {
   });
 
   it('DB: object_map has correct S3 key for the file', async () => {
-    const result = await dbQuery(
-      'SELECT s3_key FROM object_map WHERE file_node_id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+      fileNodeId,
+    ]);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].s3_key).toMatch(/^[a-f0-9-]+$/);
   });
 
   it('DB: file_nodes record exists with correct name and type', async () => {
-    const result = await dbQuery(
-      "SELECT name, type FROM file_nodes WHERE id = ?",
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT name, type FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].name).toBe('hello.txt');
     expect(result.rows[0].type).toBe('file');
@@ -215,18 +215,14 @@ describe('S5.0-SCENARIO-2: S3 mode rename', () => {
   });
 
   it('DB: file_nodes reflects new name after rename', async () => {
-    const result = await dbQuery(
-      'SELECT name FROM file_nodes WHERE id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows[0].name).toBe('renamed.txt');
   });
 
   it('DB: object_map s3_key is unchanged (rename does not move blob)', async () => {
-    const result = await dbQuery(
-      'SELECT s3_key FROM object_map WHERE file_node_id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT s3_key FROM object_map WHERE file_node_id = ?', [
+      fileNodeId,
+    ]);
     expect(result.rows[0].s3_key).toMatch(/^[a-f0-9-]+$/);
   });
 
@@ -283,18 +279,14 @@ describe('S5.0-SCENARIO-3: WebDAV mode upload/list/download', () => {
   });
 
   it('DB: filecache has entry for the file (WebDAV mode)', async () => {
-    const result = await dbQuery(
-      'SELECT size, mime_type FROM filecache WHERE file_node_id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT size, mime_type FROM filecache WHERE file_node_id = ?', [
+      fileNodeId,
+    ]);
     expect(result.rows).toHaveLength(1);
   });
 
   it('DB: file_nodes record exists with correct name and type', async () => {
-    const result = await dbQuery(
-      "SELECT name, type FROM file_nodes WHERE id = ?",
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT name, type FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].name).toBe('webdav-file.txt');
     expect(result.rows[0].type).toBe('file');
@@ -342,7 +334,11 @@ describe('S5.0-SCENARIO-4: S3 mode copy-on-write', () => {
     const res = await request(app)
       .post('/api/files/copy')
       .set('Authorization', `Bearer ${user.token}`)
-      .send({ nodeId: sourceNodeId, destinationParentNodeId: homeNodeId, newName: 'copied-cow.txt' });
+      .send({
+        nodeId: sourceNodeId,
+        destinationParentNodeId: homeNodeId,
+        newName: 'copied-cow.txt',
+      });
 
     expect(res.status).toBe(200);
     const targetNodeId = res.body.copiedNodeId;
@@ -413,17 +409,14 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
     expect(res.status).toBe(200);
 
     // Verify parent dir is gone
-    const dirDb = await dbQuery(
-      'SELECT id FROM file_nodes WHERE id = ?',
-      [dirNodeId]
-    );
+    const dirDb = await dbQuery('SELECT id FROM file_nodes WHERE id = ?', [dirNodeId]);
     expect(dirDb.rows).toHaveLength(0);
 
     // Verify children are also deleted
-    const filesDb = await dbQuery(
-      'SELECT id FROM file_nodes WHERE id IN (?, ?)',
-      [file1Id, file2Id]
-    );
+    const filesDb = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+      file1Id,
+      file2Id,
+    ]);
     expect(filesDb.rows).toHaveLength(0);
   });
 
@@ -446,10 +439,10 @@ describe('S5.0-SCENARIO-5: S3 mode delete cascade', () => {
   it('S3: blobs are marked orphaned (not hard-deleted) in S3 mode', async () => {
     // In S3 mode, deleteNode does not call blobStore.deleteBlob;
     // blob cleanup is handled by a separate GC process.
-    const result = await dbQuery(
-      'SELECT status FROM object_map WHERE file_node_id IN (?, ?)',
-      [file1Id, file2Id]
-    );
+    const result = await dbQuery('SELECT status FROM object_map WHERE file_node_id IN (?, ?)', [
+      file1Id,
+      file2Id,
+    ]);
     expect(result.rows).toHaveLength(0);
   });
 });
@@ -468,8 +461,14 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
     wireS3Mock(currentMockS3);
     await useS3Mode();
 
-    adminUser = await createAuthenticatedTestUser({ isAdmin: true, username: `permadmin-${suffix}` });
-    normalUser = await createAuthenticatedTestUser({ isAdmin: false, username: `permview-${suffix}` });
+    adminUser = await createAuthenticatedTestUser({
+      isAdmin: true,
+      username: `permadmin-${suffix}`,
+    });
+    normalUser = await createAuthenticatedTestUser({
+      isAdmin: false,
+      username: `permview-${suffix}`,
+    });
   });
 
   it('admin creates a shared directory and uploads a file inside', async () => {
@@ -513,10 +512,10 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
   });
 
   it('revoking dir permission reflects in DB', async () => {
-    await dbRun(
-      'DELETE FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
-      [normalUser.user.id, sharedDirId]
-    );
+    await dbRun('DELETE FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?', [
+      normalUser.user.id,
+      sharedDirId,
+    ]);
 
     const permResult = await dbQuery(
       'SELECT COUNT(*) AS cnt FROM permissions_user_files WHERE user_id = ? AND file_node_id = ?',
@@ -532,7 +531,10 @@ describe('S5.0-SCENARIO-6: Permission inheritance', () => {
           dependency in test context. Operations are executed individually here.
     ======================================================================== */
 describe('S5.0-SCENARIO-7: Batch operations', () => {
-  let user, homeNodeId, nodeIds = [], targetDirId;
+  let user,
+    homeNodeId,
+    nodeIds = [],
+    targetDirId;
 
   beforeEach(jest.clearAllMocks);
 
@@ -572,10 +574,7 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     expect(res.status).toBe(200);
 
     // Verify moved file's parent_id changed in DB
-    const dbResult = await dbQuery(
-      'SELECT parent_id FROM file_nodes WHERE id = ?',
-      [nodeIds[0]]
-    );
+    const dbResult = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [nodeIds[0]]);
     expect(dbResult.rows[0].parent_id).toBe(targetDirId);
   });
 
@@ -589,10 +588,10 @@ describe('S5.0-SCENARIO-7: Batch operations', () => {
     }
 
     // Verify deleted files are gone from DB
-    const dbResult = await dbQuery(
-      'SELECT id FROM file_nodes WHERE id IN (?, ?)',
-      [nodeIds[1], nodeIds[2]]
-    );
+    const dbResult = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+      nodeIds[1],
+      nodeIds[2],
+    ]);
     expect(dbResult.rows).toHaveLength(0);
   });
 
@@ -640,10 +639,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: initial node is not orphaned', async () => {
-    const result = await dbQuery(
-      "SELECT sync_status FROM file_nodes WHERE id = ?",
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
@@ -662,26 +658,19 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
   });
 
   it('DB: node is marked as orphaned_node after failed re-upload', async () => {
-    const result = await dbQuery(
-      "SELECT sync_status FROM file_nodes WHERE id = ?",
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows[0].sync_status).toBe('orphaned_node');
   });
 
   it('DB: node name was updated despite orphan status', async () => {
-    const result = await dbQuery(
-      'SELECT name FROM file_nodes WHERE id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [fileNodeId]);
     expect(result.rows[0].name).toBe('failtest-renamed.txt');
   });
 
   it('DB: closure table entries still exist for orphaned node', async () => {
-    const result = await dbQuery(
-      'SELECT * FROM node_ancestors WHERE descendant_id = ?',
-      [fileNodeId]
-    );
+    const result = await dbQuery('SELECT * FROM node_ancestors WHERE descendant_id = ?', [
+      fileNodeId,
+    ]);
     expect(result.rows.length).toBeGreaterThan(0);
   });
 
@@ -695,10 +684,7 @@ describe('S5.0-SCENARIO-8: WebDAV fail-safe recovery', () => {
 
     // The new file should not be orphaned
     const recoveredId = res.body.nodeId;
-    const result = await dbQuery(
-      "SELECT sync_status FROM file_nodes WHERE id = ?",
-      [recoveredId]
-    );
+    const result = await dbQuery('SELECT sync_status FROM file_nodes WHERE id = ?', [recoveredId]);
     expect(result.rows[0].sync_status).not.toBe('orphaned_node');
   });
 
@@ -890,10 +876,9 @@ describe('C2: move owned folder into another user home → subtree + surface tra
   });
 
   it('DB: closure table transfers the subtree to the recipient home', async () => {
-    const chain = await dbQuery(
-      'SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?',
-      [sharedFolder]
-    );
+    const chain = await dbQuery('SELECT ancestor_id FROM node_ancestors WHERE descendant_id = ?', [
+      sharedFolder,
+    ]);
     const ids = chain.rows.map((r) => Number(r.ancestor_id));
     expect(ids).toContain(recipient.homeNodeId);
     expect(ids).toContain(sharedFolder);
@@ -1453,7 +1438,10 @@ describe('C4: delete folder → permission rows + recent entries cascade', () =>
   });
 
   it('DB: folder and child nodes are gone', async () => {
-    const rows = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [folder, childFileId]);
+    const rows = await dbQuery('SELECT id FROM file_nodes WHERE id IN (?, ?)', [
+      folder,
+      childFileId,
+    ]);
     expect(rows.rows).toHaveLength(0);
   });
 

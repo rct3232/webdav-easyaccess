@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Manages file preview loading: fetches blob/stream URL, handles text decoding, tracks loading/error state, revokes blob URLs on cleanup |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Manages file preview loading: fetches blob/stream URL, handles text decoding, tracks loading/error state, revokes blob URLs on cleanup |
+| Used by components/pages | FilePreviewDialog                                                                                                                      |
 
 ---
 
@@ -17,23 +17,23 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| displayFile | object | N | Currently displayed file (gallery-resolved); falls back to `file` |
-| file | object | Y | Original file prop passed to dialog |
-| shareToken | string | N | Share token for authenticated requests |
-| t | function | Y | i18n translation function |
+| Name        | Type     | Required | Description                                                       |
+| ----------- | -------- | -------- | ----------------------------------------------------------------- |
+| displayFile | object   | N        | Currently displayed file (gallery-resolved); falls back to `file` |
+| file        | object   | Y        | Original file prop passed to dialog                               |
+| shareToken  | string   | N        | Share token for authenticated requests                            |
+| t           | function | Y        | i18n translation function                                         |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| loading | boolean | True while preview is being fetched |
-| error | string\|null | Error message, or null on success |
-| previewUrl | string\|null | Blob URL or stream URL for the preview |
-| previewBlob | Blob\|null | Raw Blob (PDF only, for react-pdf `file` prop) |
-| textContent | string\|null | Decoded text (text files only) |
-| loadPreview | function | `(signal: AbortSignal) => Promise<void>` — triggers a fetch; called by parent effect |
+| Key         | Type         | Meaning                                                                              |
+| ----------- | ------------ | ------------------------------------------------------------------------------------ |
+| loading     | boolean      | True while preview is being fetched                                                  |
+| error       | string\|null | Error message, or null on success                                                    |
+| previewUrl  | string\|null | Blob URL or stream URL for the preview                                               |
+| previewBlob | Blob\|null   | Raw Blob (PDF only, for react-pdf `file` prop)                                       |
+| textContent | string\|null | Decoded text (text files only)                                                       |
+| loadPreview | function     | `(signal: AbortSignal) => Promise<void>` — triggers a fetch; called by parent effect |
 
 ### 2.4 Dependencies
 

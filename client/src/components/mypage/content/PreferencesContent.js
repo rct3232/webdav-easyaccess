@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  IconButton,
-  Menu,
-  MenuItem,
-  Typography,
-} from '@mui/material';
+import { Box, IconButton, Menu, MenuItem, Typography } from '@mui/material';
 import { getFlagEmoji } from '../../../utils/flagEmoji';
 import i18n from '../../../i18n';
 import { usePageHeader } from '../../../contexts/PageHeaderContext';
@@ -36,15 +30,18 @@ const PreferencesContent = () => {
   const currentLang = LANGUAGES.find(
     (l) => i18n.language === l.code || i18n.language?.startsWith(l.code)
   );
-  const isSelected = (code) =>
-    i18n.language === code || i18n.language?.startsWith(code);
+  const isSelected = (code) => i18n.language === code || i18n.language?.startsWith(code);
 
   return (
     <Box>
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography variant="body1">{t('mypage.language')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('mypage.languageDesc')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('mypage.languageDesc')}
+          </Typography>
         </Box>
         <IconButton
           onClick={handleOpenMenu}
@@ -55,11 +52,7 @@ const PreferencesContent = () => {
           color="primary"
           sx={{ ml: 2 }}
         >
-          <Box
-            component="span"
-            sx={{ fontSize: '1.25rem', lineHeight: 1 }}
-            aria-hidden
-          >
+          <Box component="span" sx={{ fontSize: '1.25rem', lineHeight: 1 }} aria-hidden>
             {currentLang ? getFlagEmoji(currentLang.code) : ''}
           </Box>
         </IconButton>
@@ -73,11 +66,7 @@ const PreferencesContent = () => {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
         {LANGUAGES.map(({ code, label }) => (
-          <MenuItem
-            key={code}
-            onClick={() => handleSelect(code)}
-            selected={isSelected(code)}
-          >
+          <MenuItem key={code} onClick={() => handleSelect(code)} selected={isSelected(code)}>
             <span style={{ marginRight: 8 }}>{getFlagEmoji(code)}</span>
             {label}
           </MenuItem>

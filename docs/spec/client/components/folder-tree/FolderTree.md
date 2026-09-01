@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. |
-| Used in | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable. |
-| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection` |
-| Ownership note | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core. |
+| Item               | Description                                                                                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Folder-tree UI for explorer surfaces: renders “home” plus optional product sections such as “shared”, “recent”, and share-link entries. Delegates tree-item rendering to `BaseFolderTreeItem` and section components. |
+| Used in            | FileManager page shell (see `docs/spec/client/pages/FileManager.md`) and other explorer-like surfaces where applicable.                                                                                               |
+| Related components | `BaseFolderTreeItem`, `SharedFoldersSection`, `RecentFilesSection`, `ShareLinkSection`                                                                                                                                |
+| Ownership note     | This spec documents the **view/component contract**. Product overlays (virtual collections like `__recent__`, `__shared__`, share-link UI) remain **outside** reusable explorer core.                                 |
 
 ---
 
@@ -20,29 +20,29 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| currentNodeId | number | Y | - | Current folder node id |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
-| onLeaveShareClick | function | N | - | Share-mode folder click for non-share sections: `(nodeId: number \| path: string) => void`. When a `shareLinkSection` is present, the home / shared / recent sections call this instead of `onNodeClick`, so the hosting surface can open the leave-share confirmation. Falls back to `onNodeClick` when omitted. |
-| onFileClick | function | N | - | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5) |
-| user | object | Y | - | User |
-| treeUpdateTrigger | any | N | - | Trigger reload |
-| hasWritePermission | boolean | N | - | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly |
-| onExplorerDrop | function | N | - | Drop handler (OS files) |
-| onInternalFileDrop | function | N | - | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager |
-| isMobile | boolean | N | false | Mobile |
-| shareLinkSection | ReactNode | N | - | Share link section |
+| Name               | Type      | Required | Default | Description                                                                                                                                                                                                                                                                                                       |
+| ------------------ | --------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| currentNodeId      | number    | Y        | -       | Current folder node id                                                                                                                                                                                                                                                                                            |
+| onNodeClick        | function  | Y        | -       | Folder click: `(nodeId) => void`                                                                                                                                                                                                                                                                                  |
+| onLeaveShareClick  | function  | N        | -       | Share-mode folder click for non-share sections: `(nodeId: number \| path: string) => void`. When a `shareLinkSection` is present, the home / shared / recent sections call this instead of `onNodeClick`, so the hosting surface can open the leave-share confirmation. Falls back to `onNodeClick` when omitted. |
+| onFileClick        | function  | N        | -       | File click (recent). Recent entries carry `nodeId` (nodeId-first since Phase 5)                                                                                                                                                                                                                                   |
+| user               | object    | Y        | -       | User                                                                                                                                                                                                                                                                                                              |
+| treeUpdateTrigger  | any       | N        | -       | Trigger reload                                                                                                                                                                                                                                                                                                    |
+| hasWritePermission | boolean   | N        | -       | Compatibility prop accepted by host surfaces; Phase 4 `FolderTree` view does not consume it directly                                                                                                                                                                                                              |
+| onExplorerDrop     | function  | N        | -       | Drop handler (OS files)                                                                                                                                                                                                                                                                                           |
+| onInternalFileDrop | function  | N        | -       | Internal drag: `(draggedNodeId, targetNodeId)` when dropped from file manager                                                                                                                                                                                                                                     |
+| isMobile           | boolean   | N        | false   | Mobile                                                                                                                                                                                                                                                                                                            |
+| shareLinkSection   | ReactNode | N        | -       | Share link section                                                                                                                                                                                                                                                                                                |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onNodeClick | Folder click | (nodeId) |
-| onLeaveShareClick | Non-share section folder click while a share-link section is present (home/shared/recent) | (nodeId: number) or (path: string) |
-| onFileClick | Recent file click | (file) |
-| onExplorerDrop | Drop (OS files) | - |
-| onInternalFileDrop | Internal drop (file manager) | (draggedNodeId, targetNodeId) |
+| Callback           | When invoked                                                                              | Arguments                          |
+| ------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------- |
+| onNodeClick        | Folder click                                                                              | (nodeId)                           |
+| onLeaveShareClick  | Non-share section folder click while a share-link section is present (home/shared/recent) | (nodeId: number) or (path: string) |
+| onFileClick        | Recent file click                                                                         | (file)                             |
+| onExplorerDrop     | Drop (OS files)                                                                           | -                                  |
+| onInternalFileDrop | Internal drop (file manager)                                                              | (draggedNodeId, targetNodeId)      |
 
 ### 2.4 Dependencies
 
@@ -55,12 +55,12 @@
 
 ### 2.5 i18n Keys
 
-- nav.*, fileManager.*
+- nav._, fileManager._
 
 ### 2.6 Conditional Rendering
 
-- Admin: home root node 
-- Non-admin: user home node 
+- Admin: home root node
+- Non-admin: user home node
 - Shared/recent sections expandable
 - shareLinkSection when provided
 

@@ -35,10 +35,7 @@ async function createFolder(page: Parameters<typeof openFabAction>[0], folderNam
   await dialog.getByTestId('create-folder-submit').click();
 }
 
-async function mobileLongPressFile(
-  page: Parameters<typeof openFabAction>[0],
-  filePath: string,
-) {
+async function mobileLongPressFile(page: Parameters<typeof openFabAction>[0], filePath: string) {
   const selector = `[data-file-path="${filePath}"]`;
 
   const pressOnce = async () => {
@@ -98,7 +95,7 @@ async function mobileLongPressFile(
 async function selectTwoFilesMobile(
   page: Parameters<typeof openFabAction>[0],
   firstFilePath: string,
-  secondFilePath: string,
+  secondFilePath: string
 ) {
   await mobileLongPressFile(page, firstFilePath);
   await expect(page.getByTestId('bulk-action-move')).toBeVisible();
@@ -110,7 +107,7 @@ async function selectTwoFilesMobile(
 async function openFolderPickerAndSelectDestination(
   page: Parameters<typeof openFabAction>[0],
   action: 'move' | 'copy',
-  destinationFolderName: string,
+  destinationFolderName: string
 ) {
   const testId = action === 'move' ? 'bulk-action-move' : 'bulk-action-copy';
   await page.getByTestId(testId).click();
@@ -122,9 +119,7 @@ async function openFolderPickerAndSelectDestination(
   await dialog.getByRole('button', { name: 'Select', exact: true }).click();
 }
 
-async function bulkDeleteSelected(
-  page: Parameters<typeof openFabAction>[0],
-) {
+async function bulkDeleteSelected(page: Parameters<typeof openFabAction>[0]) {
   await page.getByTestId('bulk-action-delete').click();
 
   const dialog = page.getByRole('dialog');

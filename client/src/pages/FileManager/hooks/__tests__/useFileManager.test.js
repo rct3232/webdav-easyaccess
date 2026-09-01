@@ -32,8 +32,22 @@ jest.mock('../../../../services/fileService', () => {
 
 const mockUser = { id: '1', username: 'testuser', is_admin: false, rootNodeId: 1 };
 const defaultListedFiles = [
-  { nodeId: 10, path: '/testuser/a.txt', basename: 'a.txt', type: 'file', hasReadPermission: true, hasWritePermission: true },
-  { nodeId: 11, path: '/testuser/folder', basename: 'folder', type: 'directory', hasReadPermission: true, hasWritePermission: true },
+  {
+    nodeId: 10,
+    path: '/testuser/a.txt',
+    basename: 'a.txt',
+    type: 'file',
+    hasReadPermission: true,
+    hasWritePermission: true,
+  },
+  {
+    nodeId: 11,
+    path: '/testuser/folder',
+    basename: 'folder',
+    type: 'directory',
+    hasReadPermission: true,
+    hasWritePermission: true,
+  },
 ];
 const defaultPathAccess = { canRead: true, canWrite: true, raw: {} };
 
@@ -49,9 +63,7 @@ function TestWrapper({ initialPath, children }) {
 }
 
 function renderWithPath(urlPath, options = {}) {
-  const wrapper = ({ children }) => (
-    <TestWrapper initialPath={urlPath}>{children}</TestWrapper>
-  );
+  const wrapper = ({ children }) => <TestWrapper initialPath={urlPath}>{children}</TestWrapper>;
   return renderHook(() => useFileManager(mockUser, options), { wrapper });
 }
 
@@ -157,7 +169,11 @@ describe('useFileManager', () => {
     expect(result.current.currentPath).toBe('/');
     expect(result.current.loading).toBe(false);
     expect(result.current.files).toHaveLength(2);
-    expect(result.current.files[0]).toMatchObject({ path: '/testuser/a.txt', basename: 'a.txt', type: 'file' });
+    expect(result.current.files[0]).toMatchObject({
+      path: '/testuser/a.txt',
+      basename: 'a.txt',
+      type: 'file',
+    });
     expect(result.current.hasWritePermission).toBe(true);
     expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
       nodeId: 1,
@@ -293,9 +309,7 @@ describe('useFileManager', () => {
   });
 
   it('__recent__ path loads recent files', async () => {
-    const recentEntries = [
-      { path: '/recent/file.txt', type: 'file', lastAccessed: '2024-01-01' },
-    ];
+    const recentEntries = [{ path: '/recent/file.txt', type: 'file', lastAccessed: '2024-01-01' }];
 
     const { result } = await renderAndResolveRecentLoad(recentEntries);
 
@@ -343,7 +357,13 @@ describe('useFileManager', () => {
 
   it('__shared__ path loads shared folders through explorerGateway', async () => {
     const sharedEntries = [
-      { nodeId: 21, path: '/other/dir', basename: 'dir', type: 'directory', hasReadPermission: true },
+      {
+        nodeId: 21,
+        path: '/other/dir',
+        basename: 'dir',
+        type: 'directory',
+        hasReadPermission: true,
+      },
     ];
 
     const { result } = await renderAndResolveSharedLoad(sharedEntries);
@@ -370,9 +390,7 @@ describe('useFileManager', () => {
     const listDeferred = createDeferred();
     explorerGateway.listDirectory.mockReturnValueOnce(listDeferred.promise);
 
-    const wrapper = ({ children }) => (
-      <TestWrapper initialPath="node/2">{children}</TestWrapper>
-    );
+    const wrapper = ({ children }) => <TestWrapper initialPath="node/2">{children}</TestWrapper>;
     const { result } = renderHook(() => useFileManager(adminUser), { wrapper });
 
     await act(async () => {

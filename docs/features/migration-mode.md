@@ -65,7 +65,7 @@ as locked for migration: the operator may only observe progress on `/migration` 
 the job; all other application routes are blocked.
 
 - The gate is **set** when a migration starts (dialog apply for blobs, or `POST
-  /api/admin/migration/metadata` for metadata), **cleared** when the job reaches a terminal
+/api/admin/migration/metadata` for metadata), **cleared** when the job reaches a terminal
   state, and **reset at boot** (a restart during a migration leaves the gate inactive; the
   in-memory blob `migrationJobStore` also resets, so an interrupted run is resumed by re-running
   the copy).
@@ -85,11 +85,11 @@ A gating middleware installed in `server/index.js` (see
 `docs/spec/server/infrastructure/migrationGate.md`) enforces the lock for every HTTP route:
 
 - **Gate active →** every route returns `503` with error body `{ errorCode:
-  'migrationInProgress', ... }` **except** the allow-list:
+'migrationInProgress', ... }` **except** the allow-list:
   - `GET /api/health` — liveness stays open.
   - `POST /api/auth/login` — authentication stays open so the operator can reach `/migration`
-    after a session expiry. *(PLAN D3 refers to this as the admin login; the real route is
-    `POST /api/auth/login`, mounted from `server/domains/auth/routes.js`.)*
+    after a session expiry. _(PLAN D3 refers to this as the admin login; the real route is
+    `POST /api/auth/login`, mounted from `server/domains/auth/routes.js`.)_
   - `/api/admin/migration/*` — the admin migration API (start/cancel/poll, target-scan) stays
     open so a running migration can be observed and cancelled.
   - `GET /api/migration/status` — the public status endpoint the app-guard and `/migration` page
@@ -238,36 +238,36 @@ it.
 
 ## Decisions summary (D1–D14)
 
-| # | Area | Decision |
-|---|------|----------|
-| D1 | Config location | Migration configuration stays in dialogs (System Settings); `/migration` is execution/progress only. |
-| D2 | Start flow | Apply/start in a dialog begins the migration, sets the gate, auto-redirects to `/migration`; operator is forced to stay there. |
-| D3 | Gating | Server-side middleware returns `503 migrationInProgress` for all routes (incl. WebDAV protocol) except the allow-list; client app-guard polls `GET /api/migration/status` as double safety. |
-| D4 | Cancellation | DB migration = one target transaction → cancel = rollback; blob migration = cancel flag, current node finishes, partial progress kept + resumed on rerun. |
-| D5 | DB target handling | Scan the target first (`schemaExists` + per-table row counts); data present → wipe alert → explicit `wipeTarget=true` confirm; wipe + copy in the same transaction. |
-| D6 | Target schema | Auto-apply the DDL to the explicit target backend/connection (schema-manager refactor). |
-| D7 | `/migration` content | Progress only: determinate %, current-operation label, counters. No per-step/table list. |
-| D8 | Blob progress | Node-count based: `% = progress/total` over the snapshot; current file label shown. |
-| D9 | Terminal UX | No header back button; auto modal popup on terminal state with summary + "Go to settings". |
-| D10 | F2 persist | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets encrypted, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance. |
-| D11 | Final DB cutover | T0 keys env-owned; final step is manual env edit + restart; UI guides it and the server shows a persistent banner. |
-| D12 | Boot verification | Add an S3 boot probe symmetric to the WebDAV one (warn-only). |
-| D13 | ".env setup needed" | `metadataPresence` detection for the non-active backend, exposed via an admin endpoint, banner in System Settings with a link to the migration flow. |
-| D14 | F1 tool form | Admin API + dialogs; no standalone CLI (`migrateBlobs.js` CLI stays but is not the primary path). |
+| #   | Area                 | Decision                                                                                                                                                                                                                   |
+| --- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Config location      | Migration configuration stays in dialogs (System Settings); `/migration` is execution/progress only.                                                                                                                       |
+| D2  | Start flow           | Apply/start in a dialog begins the migration, sets the gate, auto-redirects to `/migration`; operator is forced to stay there.                                                                                             |
+| D3  | Gating               | Server-side middleware returns `503 migrationInProgress` for all routes (incl. WebDAV protocol) except the allow-list; client app-guard polls `GET /api/migration/status` as double safety.                                |
+| D4  | Cancellation         | DB migration = one target transaction → cancel = rollback; blob migration = cancel flag, current node finishes, partial progress kept + resumed on rerun.                                                                  |
+| D5  | DB target handling   | Scan the target first (`schemaExists` + per-table row counts); data present → wipe alert → explicit `wipeTarget=true` confirm; wipe + copy in the same transaction.                                                        |
+| D6  | Target schema        | Auto-apply the DDL to the explicit target backend/connection (schema-manager refactor).                                                                                                                                    |
+| D7  | `/migration` content | Progress only: determinate %, current-operation label, counters. No per-step/table list.                                                                                                                                   |
+| D8  | Blob progress        | Node-count based: `% = progress/total` over the snapshot; current file label shown.                                                                                                                                        |
+| D9  | Terminal UX          | No header back button; auto modal popup on terminal state with summary + "Go to settings".                                                                                                                                 |
+| D10 | F2 persist           | After blob `apply`: DB-sourced storage keys persist to DB (`Settings.set`, secrets encrypted, `invalidateCache`), job carries `configPersist { persisted, skippedEnvSourced }`; env-sourced keys → manual `.env` guidance. |
+| D11 | Final DB cutover     | T0 keys env-owned; final step is manual env edit + restart; UI guides it and the server shows a persistent banner.                                                                                                         |
+| D12 | Boot verification    | Add an S3 boot probe symmetric to the WebDAV one (warn-only).                                                                                                                                                              |
+| D13 | ".env setup needed"  | `metadataPresence` detection for the non-active backend, exposed via an admin endpoint, banner in System Settings with a link to the migration flow.                                                                       |
+| D14 | F1 tool form         | Admin API + dialogs; no standalone CLI (`migrateBlobs.js` CLI stays but is not the primary path).                                                                                                                          |
 
 ---
 
 ## API surface summary
 
-| Endpoint | Guard | Behavior |
-| -------- | ----- | -------- |
-| `GET /api/migration/status` | public (gate allow-list) | Current gate state `{ active, type?, jobId?, startedAt? }` — polled by the app-guard and the `/migration` page |
-| `GET /api/admin/migration/target-scan` | Token + Admin | Metadata target scan: `schemaExists` + per-table row counts |
-| `POST /api/admin/migration/metadata` | Token + Admin | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback |
-| `GET /api/admin/migration/info` | Token + Admin | Derived blob direction `{ source, direction }` (existing) |
-| `POST /api/admin/migration/blobs` | Token + Admin | Start a blob migration job; both `dry-run` and `apply` set the gate (existing, extended payload) |
-| `GET /api/admin/migration/jobs/:jobId` | Token + Admin | Job status/progress (existing, extended payload) |
-| `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running job (existing) |
+| Endpoint                                       | Guard                    | Behavior                                                                                                            |
+| ---------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/migration/status`                    | public (gate allow-list) | Current gate state `{ active, type?, jobId?, startedAt? }` — polled by the app-guard and the `/migration` page      |
+| `GET /api/admin/migration/target-scan`         | Token + Admin            | Metadata target scan: `schemaExists` + per-table row counts                                                         |
+| `POST /api/admin/migration/metadata`           | Token + Admin            | Start a metadata DB migration. Body `{ targetBackend, pg?, sqlitePath?, wipeTarget? }`; gate set; cancel = rollback |
+| `GET /api/admin/migration/info`                | Token + Admin            | Derived blob direction `{ source, direction }` (existing)                                                           |
+| `POST /api/admin/migration/blobs`              | Token + Admin            | Start a blob migration job; both `dry-run` and `apply` set the gate (existing, extended payload)                    |
+| `GET /api/admin/migration/jobs/:jobId`         | Token + Admin            | Job status/progress (existing, extended payload)                                                                    |
+| `POST /api/admin/migration/jobs/:jobId/cancel` | Token + Admin            | Cancel a running job (existing)                                                                                     |
 
 While the gate is active all non-allow-listed routes return `503 migrationInProgress`
 (`GET /api/health`, `POST /api/auth/login`, `/api/admin/migration/*`, `GET

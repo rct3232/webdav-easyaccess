@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, key-lost warning, and the "Advanced settings" config accordion. Direct content. Admin only. |
-| Used in | MyPageContentArea (when selectedCategory is 'admin-settings') |
-| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor |
+| Item               | Description                                                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | System settings for admins: backend-health status card, registration toggle, show hidden files toggle, orphan data cleanup, permission cleanup, key-lost warning, and the "Advanced settings" config accordion. Direct content. Admin only. |
+| Used in            | MyPageContentArea (when selectedCategory is 'admin-settings')                                                                                                                                                                               |
+| Related components | adminService, getShowHiddenFiles, setShowHiddenFiles (localStorage), SystemConfigEditor                                                                                                                                                     |
 
 ---
 
@@ -19,14 +19,14 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| onMessage | function | N | - | Message handler for feedback |
+| Name      | Type     | Required | Default | Description                  |
+| --------- | -------- | -------- | ------- | ---------------------------- |
+| onMessage | function | N        | -       | Message handler for feedback |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback  | When invoked          | Arguments                 |
+| --------- | --------------------- | ------------------------- |
 | onMessage | Feedback from actions | (object) – { type, text } |
 
 ### 2.4 Dependencies

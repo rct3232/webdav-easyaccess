@@ -110,11 +110,7 @@ describe('FolderPickerDialog', () => {
 
   it('shows Home/Shared toggle for non-admin in copy action', () => {
     renderWithProviders(
-      <FolderPickerDialog
-        {...defaultProps}
-        user={{ id: '1', is_admin: false }}
-        action="copy"
-      />
+      <FolderPickerDialog {...defaultProps} user={{ id: '1', is_admin: false }} action="copy" />
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });

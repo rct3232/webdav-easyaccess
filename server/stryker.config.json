@@ -12,12 +12,7 @@
     "models/**/*.js",
     "service/**/*.js"
   ],
-  "ignorePatterns": [
-    "**/__tests__/**",
-    "**/*.test.js",
-    "**/node_modules/**",
-    "**/coverage/**"
-  ],
+  "ignorePatterns": ["**/__tests__/**", "**/*.test.js", "**/node_modules/**", "**/coverage/**"],
   "jest": {
     "projectType": "custom"
   }

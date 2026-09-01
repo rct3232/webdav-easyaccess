@@ -8,7 +8,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 /**
  * Wraps async route handlers to automatically catch errors
  * Usage: router.get('/path', asyncHandler(async (req, res) => { ... }))
- * 
+ *
  * @param {Function} fn - Async route handler function
  * @returns {Function} Express middleware function
  * @example
@@ -34,9 +34,7 @@ function asyncHandler(fn) {
  * @returns {Object} Standardized error response
  */
 function formatErrorResponse(error, options = {}) {
-  const {
-    defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError,
-  } = options;
+  const { defaultErrorCode = SERVER_ERROR_CODES.errorHandler.internalServerError } = options;
 
   // Don't expose internal error details in production
   const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -82,7 +80,7 @@ function logError(error, context = {}) {
 /**
  * Express error handler middleware
  * Should be added after all routes: app.use(errorHandler)
- * 
+ *
  * @param {Error} err - Error object
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -148,21 +146,15 @@ function mapDatabaseError(error, options = {}) {
   }
 
   // Debug: expose raw DB error to console
-  console.error(
-    '[mapDatabaseError] raw DB error:',
-    { code: error?.code, message: error?.message }
-  );
+  console.error('[mapDatabaseError] raw DB error:', { code: error?.code, message: error?.message });
 
-  const fallbackErrorCode = options.fallbackErrorCode
-    || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
+  const fallbackErrorCode =
+    options.fallbackErrorCode || SERVER_ERROR_CODES.errorHandler.databaseQueryFailed;
 
   const code = error?.code;
   let mapped;
   if (code === '23505') {
-    mapped = createError(
-      SERVER_ERROR_CODES.errorHandler.databaseConflict,
-      HTTP_STATUS.CONFLICT
-    );
+    mapped = createError(SERVER_ERROR_CODES.errorHandler.databaseConflict, HTTP_STATUS.CONFLICT);
     if (error?.constraint) mapped.params = { constraint: error.constraint };
   } else if (code === '23503' || code === '23514' || code === '22P02') {
     mapped = createError(
@@ -213,7 +205,10 @@ function validationError(errorCode, params = undefined) {
  * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Unauthorized error
  */
-function unauthorizedError(errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken, params = undefined) {
+function unauthorizedError(
+  errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken,
+  params = undefined
+) {
   return createError(errorCode, 401, params);
 }
 
@@ -223,7 +218,10 @@ function unauthorizedError(errorCode = SERVER_ERROR_CODES.utilsAuth.invalidOrExp
  * @param {Object} [params] - Optional params for i18n
  * @returns {Error} Forbidden error
  */
-function forbiddenError(errorCode = SERVER_ERROR_CODES.permissionsMiddleware.accessDenied, params = undefined) {
+function forbiddenError(
+  errorCode = SERVER_ERROR_CODES.permissionsMiddleware.accessDenied,
+  params = undefined
+) {
   return createError(errorCode, 403, params);
 }
 

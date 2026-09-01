@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Simple component that renders the email notification message from i18n. |
-| Used in | Registration, settings |
-| Related components | useTranslation |
+| Item               | Description                                                             |
+| ------------------ | ----------------------------------------------------------------------- |
+| Role               | Simple component that renders the email notification message from i18n. |
+| Used in            | Registration, settings                                                  |
+| Related components | useTranslation                                                          |
 
 ---
 
@@ -20,8 +20,8 @@
 ### 2.2 Props
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| None | - | - | - | No props |
+| ---- | ---- | -------- | ------- | ----------- |
+| None | -    | -        | -       | No props    |
 
 ### 2.3 Callback Signatures
 

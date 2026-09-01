@@ -3,10 +3,7 @@
  * Pure function testing — no mocks needed.
  * @see shared/fileTypes.js
  */
-const {
-  getFileType,
-  getContentType,
-} = require('@webdav-easyaccess/shared/fileTypes');
+const { getFileType, getContentType } = require('@webdav-easyaccess/shared/fileTypes');
 
 describe('shared fileTypes', () => {
   describe('getFileType', () => {

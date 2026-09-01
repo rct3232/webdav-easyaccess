@@ -28,7 +28,13 @@ function createDefaultProps(overrides = {}) {
     isShareLinkMode: false,
     selectionMode: false,
     displayedFiles: [
-      { nodeId: 101, path: '/docs/report.txt', name: 'report.txt', basename: 'report.txt', type: 'file' },
+      {
+        nodeId: 101,
+        path: '/docs/report.txt',
+        name: 'report.txt',
+        basename: 'report.txt',
+        type: 'file',
+      },
       { nodeId: 102, path: '/docs/photos', name: 'photos', basename: 'photos', type: 'directory' },
     ],
     toggleFileSelection: jest.fn(),
@@ -93,9 +99,7 @@ describe('useExplorerInteraction', () => {
     const props = createDefaultProps();
     const file = props.displayedFiles[1];
     const timeSpy = jest.spyOn(Date, 'now');
-    timeSpy
-      .mockReturnValueOnce(1000)
-      .mockReturnValueOnce(1200);
+    timeSpy.mockReturnValueOnce(1000).mockReturnValueOnce(1200);
 
     const { result } = renderHook(() => useExplorerInteraction(props));
 
@@ -122,11 +126,13 @@ describe('useExplorerInteraction', () => {
       await result.current.handleFileClick(file);
     });
 
-    expect(props.setSelectedFile).toHaveBeenCalledWith(expect.objectContaining({
-      path: '/docs/report.txt',
-      name: 'report.txt',
-      canPreview: true,
-    }));
+    expect(props.setSelectedFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/docs/report.txt',
+        name: 'report.txt',
+        canPreview: true,
+      })
+    );
     expect(props.openPreviewDialog).toHaveBeenCalled();
     expect(explorerGateway.addRecentFile).toHaveBeenCalledWith(file);
   });
@@ -163,13 +169,18 @@ describe('useExplorerInteraction', () => {
       await result.current.handleFileClick(file);
     });
 
-    expect(props.recentFileApi.trackRecentFileClick).toHaveBeenCalledWith('/docs/report.txt', '/docs');
+    expect(props.recentFileApi.trackRecentFileClick).toHaveBeenCalledWith(
+      '/docs/report.txt',
+      '/docs'
+    );
     expect(props.navigateToExplorerPath).toHaveBeenCalledWith('/docs');
-    expect(props.recentFileApi.setRecentFileToPreview).toHaveBeenCalledWith(expect.objectContaining({
-      filePath: '/docs/report.txt',
-      fileName: 'report.txt',
-      parentPath: '/docs',
-    }));
+    expect(props.recentFileApi.setRecentFileToPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/docs/report.txt',
+        fileName: 'report.txt',
+        parentPath: '/docs',
+      })
+    );
   });
 
   it('shows the permission denied message instead of opening unreadable folders', async () => {
@@ -248,11 +259,13 @@ describe('useExplorerInteraction', () => {
     });
 
     expect(canPreview).toHaveBeenCalledWith('report.txt');
-    expect(props.setSelectedFile).toHaveBeenCalledWith(expect.objectContaining({
-      path: '/docs/report.txt',
-      name: 'report.txt',
-      canPreview: true,
-    }));
+    expect(props.setSelectedFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/docs/report.txt',
+        name: 'report.txt',
+        canPreview: true,
+      })
+    );
     expect(props.openPreviewDialog).toHaveBeenCalled();
   });
 });

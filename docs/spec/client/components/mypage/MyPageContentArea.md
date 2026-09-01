@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Selects and renders the correct content panel based on `selectedCategory` and `selectedContentItem`. Handles List, Detail, and Direct content patterns. Content is displayed within MyPageContentPanel's centered, max-width layout. |
-| Used in | MyPage |
-| Related components | MyPageContentPanel, PageHeaderContext, AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent |
+| Item               | Description                                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Selects and renders the correct content panel based on `selectedCategory` and `selectedContentItem`. Handles List, Detail, and Direct content patterns. Content is displayed within MyPageContentPanel's centered, max-width layout. |
+| Used in            | MyPage                                                                                                                                                                                                                               |
+| Related components | MyPageContentPanel, PageHeaderContext, AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent                                                                                              |
 
 ---
 
@@ -19,18 +19,18 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| selectedCategory | string | Y | - | Current category id ('account', 'sharing', 'admin-users', 'admin-settings', 'preferences') |
-| selectedContentItem | string \| null | Y | - | For multi-item categories: null = list view, non-null = detail view (e.g. 'inbox', 'outbox', 'links') |
-| onSelectContentItem | function | Y | - | Handler to switch between list and detail; pass `null` to return to list |
-| user | object | Y | - | Current user; passed to content components |
-| onMessage | function | N | - | Message handler (type, text) for child content feedback |
+| Name                | Type           | Required | Default | Description                                                                                           |
+| ------------------- | -------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| selectedCategory    | string         | Y        | -       | Current category id ('account', 'sharing', 'admin-users', 'admin-settings', 'preferences')            |
+| selectedContentItem | string \| null | Y        | -       | For multi-item categories: null = list view, non-null = detail view (e.g. 'inbox', 'outbox', 'links') |
+| onSelectContentItem | function       | Y        | -       | Handler to switch between list and detail; pass `null` to return to list                              |
+| user                | object         | Y        | -       | Current user; passed to content components                                                            |
+| onMessage           | function       | N        | -       | Message handler (type, text) for child content feedback                                               |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback            | When invoked                         | Arguments                                                   |
+| ------------------- | ------------------------------------ | ----------------------------------------------------------- |
 | onSelectContentItem | User selects a sub-item or taps Back | (itemId \| null) – item id for detail, or null to show list |
 
 ### 2.4 Dependencies
@@ -54,6 +54,7 @@
 - **Multi-item + selectedContentItem non-null:** Detail view. Render MyPageContentPanel with `onBack` that calls `onSelectContentItem(null)`, no `categoryIcon`; Back button shown.
 
 Mapping:
+
 - `account` → AccountContent (direct)
 - `preferences` → PreferencesContent (direct)
 - `sharing` + null → SharingContent list

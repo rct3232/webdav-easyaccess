@@ -48,11 +48,7 @@ async function resolveThumbnailTokenConfig() {
 async function signThumbnailToken(nodeId) {
   const { secret, expiry } = await resolveThumbnailTokenConfig();
   const hash = getThumbnailHash(nodeId);
-  return jwt.sign(
-    { h: hash },
-    secret,
-    { expiresIn: expiry }
-  );
+  return jwt.sign({ h: hash }, secret, { expiresIn: expiry });
 }
 
 async function verifyThumbnailToken(token, hash) {
@@ -226,5 +222,7 @@ module.exports = {
   signThumbnailToken,
   verifyThumbnailToken,
   findCachedThumbnailByHash,
-  get thumbnailCache() { return _getCache(); },
+  get thumbnailCache() {
+    return _getCache();
+  },
 };

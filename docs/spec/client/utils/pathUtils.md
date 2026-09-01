@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Path utilities: re-export from shared with client-specific options (VIRTUAL_ROOTS); local helpers for UI (getFolderName, getFileName, getPathParts, joinPath, toFilesPath). Supports virtual roots `/__shared__`, `/__recent__`. |
 
 ---
@@ -17,19 +17,19 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
-| normalizePath | (path) => string (re-export from shared) |
-| getParentPath | (path) => string (with treatAsRoot: VIRTUAL_ROOTS) |
-| isRootPath | (path) => boolean (with VIRTUAL_ROOTS) |
-| getBasename | (path) => string (re-export) |
-| getParentPaths | (path) => string[] (re-export) |
-| isSubPath | (child, parent) => boolean (alias of isPathUnder) |
-| getFolderName | (path, t?) => string (UI display name; when t provided, uses i18n keys) |
-| getFileName | (path) => string (basename, no i18n) |
-| getPathParts | (path) => string[] (split path segments) |
-| joinPath | (...parts) => string (join with leading slash) |
-| toFilesPath | (filePath) => string (e.g. `/files/a/b`) |
+| Function       | (input) => return                                                       |
+| -------------- | ----------------------------------------------------------------------- |
+| normalizePath  | (path) => string (re-export from shared)                                |
+| getParentPath  | (path) => string (with treatAsRoot: VIRTUAL_ROOTS)                      |
+| isRootPath     | (path) => boolean (with VIRTUAL_ROOTS)                                  |
+| getBasename    | (path) => string (re-export)                                            |
+| getParentPaths | (path) => string[] (re-export)                                          |
+| isSubPath      | (child, parent) => boolean (alias of isPathUnder)                       |
+| getFolderName  | (path, t?) => string (UI display name; when t provided, uses i18n keys) |
+| getFileName    | (path) => string (basename, no i18n)                                    |
+| getPathParts   | (path) => string[] (split path segments)                                |
+| joinPath       | (...parts) => string (join with leading slash)                          |
+| toFilesPath    | (filePath) => string (e.g. `/files/a/b`)                                |
 
 ### 2.2.1 getFolderName i18n Keys
 
@@ -42,11 +42,11 @@ When `t` is provided: `/` → `t('nav.root')`, `/__shared__` → `t('nav.shared'
 
 ### 2.4 Verification Scenarios
 
-- [ ] getFolderName: without t → 'Root', 'Shared', 'Recent' for /, /__shared__, /__recent__; with t → t('nav.root'), t('nav.shared'), t('nav.recentShort')
+- [ ] getFolderName: without t → 'Root', 'Shared', 'Recent' for /, /**shared**, /**recent**; with t → t('nav.root'), t('nav.shared'), t('nav.recentShort')
 - [ ] getPathParts('/a/b/c') → ['a','b','c']; empty path → []
 - [ ] joinPath('a','b','c') → '/a/b/c'
 - [ ] toFilesPath('/foo') → '/files/foo'; invalid → '/files'
-- [ ] getParentPath respects VIRTUAL_ROOTS (parent of /__shared__ is root)
+- [ ] getParentPath respects VIRTUAL_ROOTS (parent of /**shared** is root)
 - [ ] Empty and boundary inputs handled
 
 ### 2.5 Edge Cases

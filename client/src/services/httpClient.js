@@ -206,4 +206,3 @@ export async function request(config) {
 
   throw lastError;
 }
-

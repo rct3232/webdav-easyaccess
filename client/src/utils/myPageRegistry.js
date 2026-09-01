@@ -152,4 +152,3 @@ export function resolveMyPageCategory(categoryId, isAdmin) {
 
   return categoryId;
 }
-

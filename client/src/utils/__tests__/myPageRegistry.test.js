@@ -45,7 +45,9 @@ describe('myPageRegistry', () => {
   describe('getMyPageSidebarCategories', () => {
     it('includes admin-only categories only for admins', () => {
       const idsAdmin = getMyPageSidebarCategories(true).map((c) => c.id);
-      expect(idsAdmin).toEqual(expect.arrayContaining(['account', 'admin-users', 'admin-settings', 'preferences']));
+      expect(idsAdmin).toEqual(
+        expect.arrayContaining(['account', 'admin-users', 'admin-settings', 'preferences'])
+      );
       expect(idsAdmin).not.toEqual(expect.arrayContaining(['sharing']));
     });
 
@@ -107,4 +109,3 @@ describe('myPageRegistry', () => {
     });
   });
 });
-

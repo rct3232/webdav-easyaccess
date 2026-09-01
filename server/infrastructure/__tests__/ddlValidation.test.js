@@ -56,7 +56,10 @@ describe('DDL Smoke Test', () => {
     let db;
 
     beforeAll(async () => {
-      const ddlPath = path.join(__dirname, '../../store/postgresql/ddl/001_initial_normalized_schema.sql');
+      const ddlPath = path.join(
+        __dirname,
+        '../../store/postgresql/ddl/001_initial_normalized_schema.sql'
+      );
       const rawDdl = fs.readFileSync(ddlPath, 'utf8');
       const convertedDdl = convertPostgresToSqlite(rawDdl);
 
@@ -117,11 +120,11 @@ describe('DDL Smoke Test', () => {
       ]);
       expect(root).toBeDefined();
 
-      await run(
-        db,
-        `INSERT INTO file_nodes (parent_id, name, type) VALUES (?, ?, ?)`,
-        [root.id, `${parentId}-child`, 'directory']
-      );
+      await run(db, `INSERT INTO file_nodes (parent_id, name, type) VALUES (?, ?, ?)`, [
+        root.id,
+        `${parentId}-child`,
+        'directory',
+      ]);
 
       const child = await get(
         db,
@@ -137,15 +140,16 @@ describe('DDL Smoke Test', () => {
 
       await run(db, `INSERT INTO file_nodes (name, type) VALUES (?, 'directory')`, [uniquePrefix]);
 
-      const parent = await get(db, `SELECT id FROM file_nodes WHERE name = ? AND parent_id IS NULL`, [
-        uniquePrefix,
-      ]);
-
-      await run(
+      const parent = await get(
         db,
-        `INSERT INTO file_nodes (parent_id, name, type) VALUES (?, ?, 'file')`,
-        [parent.id, `${uniquePrefix}-child`]
+        `SELECT id FROM file_nodes WHERE name = ? AND parent_id IS NULL`,
+        [uniquePrefix]
       );
+
+      await run(db, `INSERT INTO file_nodes (parent_id, name, type) VALUES (?, ?, 'file')`, [
+        parent.id,
+        `${uniquePrefix}-child`,
+      ]);
 
       const childCountBefore = await get(
         db,
@@ -168,30 +172,21 @@ describe('DDL Smoke Test', () => {
     });
 
     it('maps BIGSERIAL PRIMARY KEY to INTEGER', async () => {
-      const info = await all(
-        db,
-        "PRAGMA table_info(file_nodes)"
-      );
+      const info = await all(db, 'PRAGMA table_info(file_nodes)');
 
       const idCol = info.find((c) => c.name === 'id');
       expect(idCol.type).toBe('INTEGER');
     });
 
     it('maps BIGINT to INTEGER for filecache.size', async () => {
-      const info = await all(
-        db,
-        "PRAGMA table_info(filecache)"
-      );
+      const info = await all(db, 'PRAGMA table_info(filecache)');
 
       const sizeCol = info.find((c) => c.name === 'size');
       expect(sizeCol.type).toBe('INTEGER');
     });
 
     it('maps TIMESTAMPTZ to TEXT for users.created_at', async () => {
-      const info = await all(
-        db,
-        "PRAGMA table_info(users)"
-      );
+      const info = await all(db, 'PRAGMA table_info(users)');
 
       const createdAtCol = info.find((c) => c.name === 'created_at');
       expect(createdAtCol.type).toBe('TEXT');

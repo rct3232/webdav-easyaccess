@@ -157,10 +157,7 @@ describe('Register', () => {
   it('register 400 shows error', async () => {
     server.use(
       http.post('/api/auth/register', () => {
-        return HttpResponse.json(
-          { errorCode: 'serverErrors.auth.emailTaken' },
-          { status: 400 }
-        );
+        return HttpResponse.json({ errorCode: 'serverErrors.auth.emailTaken' }, { status: 400 });
       })
     );
     const user = userEvent.setup();
@@ -222,6 +219,8 @@ describe('Register', () => {
       expect(alert).toHaveTextContent(/Registration complete|administrator approval/i);
     });
     const alert = screen.getByRole('alert');
-    expect(within(alert).getByText(/Approval result will be sent to your email/i)).toBeInTheDocument();
+    expect(
+      within(alert).getByText(/Approval result will be sent to your email/i)
+    ).toBeInTheDocument();
   });
 });

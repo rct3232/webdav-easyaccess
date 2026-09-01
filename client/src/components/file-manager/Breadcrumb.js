@@ -42,7 +42,9 @@ const Breadcrumb = ({
     if (normCurrent === normRoot || !normCurrent.startsWith(normRoot)) {
       return [];
     }
-    const suffix = normCurrent.slice(normRoot.endsWith('/') ? normRoot.length : normRoot.length + 1);
+    const suffix = normCurrent.slice(
+      normRoot.endsWith('/') ? normRoot.length : normRoot.length + 1
+    );
     if (!suffix) return [];
     const parts = suffix.split('/').filter(Boolean);
     const segments = [];
@@ -70,7 +72,10 @@ const Breadcrumb = ({
     homeClickTarget = '/__recent__';
   } else if (isShareMode) {
     homeIcon = <ShareIcon />;
-    homeLabel = shareRootName || normalizePath(shareRootPath).split('/').filter(Boolean).pop() || t('nav.sharedFolder');
+    homeLabel =
+      shareRootName ||
+      normalizePath(shareRootPath).split('/').filter(Boolean).pop() ||
+      t('nav.sharedFolder');
     homeClickTarget = normalizePath(shareRootPath);
   } else if (isSharedView) {
     homeIcon = <ShareIcon />;
@@ -149,21 +154,21 @@ const Breadcrumb = ({
       </Box>
 
       {(!shareRootPath || showFolderTreeToggle) && onToggleFolderTree && (
-      <IconButton
-        data-testid="breadcrumb-folder-tree-toggle"
-        onClick={onToggleFolderTree}
-        sx={{
-          ml: 1,
-          flexShrink: 0,
-          color: 'primary.main',
-          minWidth: 44,
-          minHeight: 44,
-          transition: 'transform 0.2s',
-        }}
-        title={isFolderTreeOpen ? t('nav.folderTreeClose') : t('nav.folderTreeOpen')}
-      >
-        {isFolderTreeOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-      </IconButton>
+        <IconButton
+          data-testid="breadcrumb-folder-tree-toggle"
+          onClick={onToggleFolderTree}
+          sx={{
+            ml: 1,
+            flexShrink: 0,
+            color: 'primary.main',
+            minWidth: 44,
+            minHeight: 44,
+            transition: 'transform 0.2s',
+          }}
+          title={isFolderTreeOpen ? t('nav.folderTreeClose') : t('nav.folderTreeOpen')}
+        >
+          {isFolderTreeOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+        </IconButton>
       )}
     </Box>
   );

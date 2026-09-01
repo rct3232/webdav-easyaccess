@@ -15,7 +15,8 @@ import { setupServer } from 'msw/node';
 jest.mock('react-pdf', () => {
   const React = require('react');
   return {
-    Document: ({ children }) => React.createElement('div', { 'data-testid': 'pdf-document' }, children),
+    Document: ({ children }) =>
+      React.createElement('div', { 'data-testid': 'pdf-document' }, children),
     Page: () => React.createElement('div', { 'data-testid': 'pdf-page' }),
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' } },
   };
@@ -32,10 +33,7 @@ __setBatchDelayForTests(0);
 export const server = setupServer(
   ...handlers,
   http.all('*', () =>
-    HttpResponse.json(
-      { errorCode: 'serverErrors.msw.unhandled' },
-      { status: 501 }
-    )
+    HttpResponse.json({ errorCode: 'serverErrors.msw.unhandled' }, { status: 501 })
   )
 );
 
@@ -55,16 +53,16 @@ global.IntersectionObserver = class MockIntersectionObserver {
   constructor(callback) {
     this.callback = callback;
   }
-  observe() { }
-  disconnect() { }
-  unobserve() { }
+  observe() {}
+  disconnect() {}
+  unobserve() {}
 };
 
 // Mock ResizeObserver for JSDOM
 global.ResizeObserver = class ResizeObserver {
-  observe() { }
-  unobserve() { }
-  disconnect() { }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 };
 
 // JSDOM does not implement canvas.getContext(). Return null so string-width

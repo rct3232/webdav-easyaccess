@@ -13,7 +13,10 @@ const {
 } = require('../../../../test-utils');
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('../../../../service/composition');
@@ -86,9 +89,15 @@ beforeEach(() => {
     ]);
   });
   webdavMock.getFileContents.mockResolvedValue(Buffer.from('test content'));
-  webdavMock.getFileMetadata.mockResolvedValue({ size: 100, lastmod: '2024-01-01', mime: 'text/plain' });
+  webdavMock.getFileMetadata.mockResolvedValue({
+    size: 100,
+    lastmod: '2024-01-01',
+    mime: 'text/plain',
+  });
   webdavMock.pathExists.mockResolvedValue(true);
-  webdavMock.isVideoFile.mockImplementation((filename) => String(filename).toLowerCase().endsWith('.mp4'));
+  webdavMock.isVideoFile.mockImplementation((filename) =>
+    String(filename).toLowerCase().endsWith('.mp4')
+  );
 });
 
 afterEach(() => {
@@ -108,9 +117,7 @@ describe('GET /api/files/list', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .get('/api/files/list')
-      .query({ nodeId: homeNodeId });
+    const res = await request(app).get('/api/files/list').query({ nodeId: homeNodeId });
     expect(res.status).toBe(401);
   });
 
@@ -211,9 +218,7 @@ describe('GET /api/files/ancestors', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .get('/api/files/ancestors')
-      .query({ nodeId: 1 });
+    const res = await request(app).get('/api/files/ancestors').query({ nodeId: 1 });
 
     expect(res.status).toBe(401);
   });
@@ -231,9 +236,7 @@ describe('GET /api/files/download', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .get('/api/files/download')
-      .query({ nodeId: testFileNodeId });
+    const res = await request(app).get('/api/files/download').query({ nodeId: testFileNodeId });
     expect(res.status).toBe(401);
   });
 
@@ -330,16 +333,13 @@ describe('POST /api/files/batch-move', () => {
       .post('/api/files/batch-move')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        moves: [
-          { sourceNodeId: 1, destinationParentNodeId: 2 },
-        ],
+        moves: [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
       });
 
     expect(res.status).toBe(202);
     expect(res.body.jobId).toBeDefined();
   });
 });
-
 
 describe('POST /api/files/upload', () => {
   it('returns 403 when user has no write permission on path', async () => {
@@ -357,7 +357,11 @@ describe('POST /api/files/upload', () => {
   });
 
   it('accepts multipart upload and returns 200', async () => {
-    const { user, token, homeNodeId: uploadHomeId } = await createUserWithHomeNode({
+    const {
+      user,
+      token,
+      homeNodeId: uploadHomeId,
+    } = await createUserWithHomeNode({
       username: `files-upload-${Date.now()}`,
     });
     await grantHomePermission({ userId: user.id, homeNodeId: uploadHomeId, permission: 'write' });
@@ -414,9 +418,7 @@ describe('POST /api/files/batch-copy', () => {
       .post('/api/files/batch-copy')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        copies: [
-          { sourceNodeId: 1, destinationParentNodeId: 2 },
-        ],
+        copies: [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
       });
 
     expect(res.status).toBe(202);
@@ -641,9 +643,7 @@ describe('POST /api/files/bulk-operation/:jobId/cancel', () => {
       .post('/api/files/batch-move')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        moves: [
-          { sourceNodeId: 1, destinationParentNodeId: 2 },
-        ],
+        moves: [{ sourceNodeId: 1, destinationParentNodeId: 2 }],
       });
 
     expect(moveRes.status).toBe(202);

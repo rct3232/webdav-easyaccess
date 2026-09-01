@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Mobile bottom sheet for file actions. Replaces context menu with touch-friendly list: preview, properties, download, rename, move, copy, share, delete. Opens only via More (⋮) button tap on each file item; long-press does not open it (long-press enters selection mode). |
-| Used in | FileManager (mobile) |
-| Related components | SwipeableDrawer, getFileIcon |
+| Item               | Description                                                                                                                                                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Mobile bottom sheet for file actions. Replaces context menu with touch-friendly list: preview, properties, download, rename, move, copy, share, delete. Opens only via More (⋮) button tap on each file item; long-press does not open it (long-press enters selection mode). |
+| Used in            | FileManager (mobile)                                                                                                                                                                                                                                                          |
+| Related components | SwipeableDrawer, getFileIcon                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -19,27 +19,27 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Drawer open |
-| onClose | function | Y | - | Close handler |
-| file | object | Y | - | File object |
-| onDownload | function | N | - | Download handler |
-| onRename | function | N | - | Rename handler |
-| onMove | function | N | - | Move handler |
-| onCopy | function | N | - | Copy handler |
-| onDelete | function | N | - | Delete handler |
-| onShare | function | N | - | Share handler |
-| onPreview | function | N | - | Preview handler |
-| onProperties | function | N | - | Properties handler |
-| hasWritePermission | boolean | N | true | Default write permission |
-| user | object | N | - | User |
+| Name               | Type     | Required | Default | Description              |
+| ------------------ | -------- | -------- | ------- | ------------------------ |
+| open               | boolean  | Y        | -       | Drawer open              |
+| onClose            | function | Y        | -       | Close handler            |
+| file               | object   | Y        | -       | File object              |
+| onDownload         | function | N        | -       | Download handler         |
+| onRename           | function | N        | -       | Rename handler           |
+| onMove             | function | N        | -       | Move handler             |
+| onCopy             | function | N        | -       | Copy handler             |
+| onDelete           | function | N        | -       | Delete handler           |
+| onShare            | function | N        | -       | Share handler            |
+| onPreview          | function | N        | -       | Preview handler          |
+| onProperties       | function | N        | -       | Properties handler       |
+| hasWritePermission | boolean  | N        | true    | Default write permission |
+| user               | object   | N        | -       | User                     |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Drawer close | - |
+| Callback     | When invoked    | Arguments                   |
+| ------------ | --------------- | --------------------------- |
+| onClose      | Drawer close    | -                           |
 | handleAction | List item click | calls action() then onClose |
 
 ### 2.4 Dependencies

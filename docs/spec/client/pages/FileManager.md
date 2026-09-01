@@ -2,17 +2,17 @@
 
 This spec defines the **FileManager page shell** responsibilities and how it composes the **explorer core** (controller hooks + views) together with **product-specific overlays** (share-link mode, virtual collections, and related policies).
 
-It intentionally documents *who owns what*, not file-by-file implementation details for submodules. Detailed contracts belong in the referenced component/hook/service specs.
+It intentionally documents _who owns what_, not file-by-file implementation details for submodules. Detailed contracts belong in the referenced component/hook/service specs.
 
 ---
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Route path | `/files/*` |
-| Role | FileManager page shell: route-level composition for the main file browser UI plus product overlays around the explorer core. |
-| Also used by | `ShareLinkLoader` to render shared directory browsing (share-link mode / limited operations). |
+| Item         | Description                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Route path   | `/files/*`                                                                                                                   |
+| Role         | FileManager page shell: route-level composition for the main file browser UI plus product overlays around the explorer core. |
+| Also used by | `ShareLinkLoader` to render shared directory browsing (share-link mode / limited operations).                                |
 
 ### 1.1 Route-param and path ownership contract
 
@@ -74,7 +74,7 @@ The FileManager page shell must continue to own these overlays and policies (unt
   - **Leave-share confirmation**: when an authenticated user attempts to leave the shared directory scope (e.g. by clicking the home / shared / recent entries of the folder tree in share-link mode), the shell must route the click through `useShareLinkOverlay.handleLeaveSharePathClick`, which opens the leave-share confirmation dialog. The actual navigation out of share mode (`/files/node/<nodeId>` for node id targets, `toFilesPath` route for path-string targets) happens only after the user confirms (`handleLeaveShareConfirm`).
 - **Virtual collections and product routing state**:
   - Special paths/collections such as `__recent__` and `__shared__` (product-defined).
-  - Rules for deciding *when* those collections are active and which explorer flow they should invoke.
+  - Rules for deciding _when_ those collections are active and which explorer flow they should invoke.
   - The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
 - **Product dialogs / feature flows** not part of generic explorer:
   - Share dialogs and permission-request flows.
@@ -117,7 +117,7 @@ While the current implementation is still monolithic, it uses (directly or indir
 - Dialog orchestration: `useFileManagerDialogs`
 - UX + utilities: `useDropToUpload`, `usePullToRefresh`, `useResponsive`, `useInfiniteScroll`, `useMessage`, `useRecentFile`
 
-As extraction proceeds, the page shell should retain only *composition* responsibility; orchestration and derived state move to the relevant explorer controller hooks. The page may still pass product context into those hooks, but it should not remain the owner of explorer storage/service/notifier wiring.
+As extraction proceeds, the page shell should retain only _composition_ responsibility; orchestration and derived state move to the relevant explorer controller hooks. The page may still pass product context into those hooks, but it should not remain the owner of explorer storage/service/notifier wiring.
 
 ---
 

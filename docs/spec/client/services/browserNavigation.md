@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                             |
+| ---- | ----------------------------------------------------------------------------------------------------------------------- |
 | Role | Browser adapter for opening share links or other URLs in a new tab/window behind a small replaceable function boundary. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called (see api.md) |
-|----------|-------|--------|-------------------------|
+| Function          | Input           | Return | API called (see api.md)    |
+| ----------------- | --------------- | ------ | -------------------------- |
 | `openUrlInNewTab` | `(url: string)` | `void` | None; browser adapter only |
 
 ### 2.3 Error Handling

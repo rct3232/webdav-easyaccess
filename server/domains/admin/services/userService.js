@@ -1,15 +1,16 @@
 'use strict';
-const {
-  PERMISSIONS,
-  HTTP_STATUS,
-  USER_STATUS,
-} = require('@webdav-easyaccess/shared/constants');
+const { PERMISSIONS, HTTP_STATUS, USER_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
 const permissionStore = require('../../../store/permissionStore');
 const PermissionRequest = require('../../../models/PermissionRequest');
 const { sendApprovalEmail, sendRejectionEmail } = require('../../../utils/email');
-const { createError, validationError, notFoundError, conflictError } = require('../../../utils/errorHandler');
+const {
+  createError,
+  validationError,
+  notFoundError,
+  conflictError,
+} = require('../../../utils/errorHandler');
 const { revokeAllUserTokens } = require('../../../domains/auth/service');
 
 function getFileNodeService() {
@@ -78,14 +79,24 @@ async function createAdminUser({ username, email, password }) {
 
     await permissionStore.grant(createdUser.id, homeNodeId, PERMISSIONS.ADMIN);
 
-    const hasPermission = await permissionStore.checkPermission(createdUser.id, homeNodeId, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(
+      createdUser.id,
+      homeNodeId,
+      PERMISSIONS.ADMIN
+    );
     if (!hasPermission) {
-      throw createError(SERVER_ERROR_CODES.admin.userPermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      throw createError(
+        SERVER_ERROR_CODES.admin.userPermissionFail,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR
+      );
     }
   } catch (permError) {
     console.error('[Admin Create] Failed to grant permissions:', permError);
     await User.delete(createdUser.id);
-    throw createError(SERVER_ERROR_CODES.admin.userPermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    throw createError(
+      SERVER_ERROR_CODES.admin.userPermissionFail,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR
+    );
   }
 
   return {
@@ -113,19 +124,32 @@ async function approvePendingUser(userId) {
   try {
     const homeNodeId = await ensureUserHomeNode(userId, user.username);
     if (homeNodeId == null) {
-      throw createError(SERVER_ERROR_CODES.admin.approveFolderFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      throw createError(
+        SERVER_ERROR_CODES.admin.approveFolderFail,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR
+      );
     }
 
     await permissionStore.grant(userId, homeNodeId, PERMISSIONS.ADMIN);
 
-    const hasPermission = await permissionStore.checkPermission(userId, homeNodeId, PERMISSIONS.ADMIN);
+    const hasPermission = await permissionStore.checkPermission(
+      userId,
+      homeNodeId,
+      PERMISSIONS.ADMIN
+    );
     if (!hasPermission) {
-      throw createError(SERVER_ERROR_CODES.admin.approvePermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      throw createError(
+        SERVER_ERROR_CODES.admin.approvePermissionFail,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR
+      );
     }
   } catch (permError) {
     console.error(`[Admin] Failed to grant permissions:`, permError);
     await User.updateStatus(userId, USER_STATUS.PENDING);
-    throw createError(SERVER_ERROR_CODES.admin.approvePermissionFail, HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    throw createError(
+      SERVER_ERROR_CODES.admin.approvePermissionFail,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR
+    );
   }
 
   try {
@@ -205,7 +229,7 @@ async function bulkUpdateUserPermissions(userId, permissionEntries) {
 
 async function listUsers() {
   const users = await User.findAll();
-  return users.map(u => ({
+  return users.map((u) => ({
     id: u.id,
     username: u.username,
     email: u.email,
@@ -216,10 +240,10 @@ async function listUsers() {
 async function listApprovedUsers(requesterId) {
   const approved = await User.findByStatus(USER_STATUS.APPROVED);
   const rows = approved
-    .filter(u => !u.is_admin)
-    .map(u => ({ id: u.id, username: u.username, email: u.email }))
+    .filter((u) => !u.is_admin)
+    .map((u) => ({ id: u.id, username: u.username, email: u.email }))
     .sort((a, b) => a.username.localeCompare(b.username));
-  return rows.filter(user => user.id !== requesterId);
+  return rows.filter((user) => user.id !== requesterId);
 }
 
 async function getUserById(userId) {

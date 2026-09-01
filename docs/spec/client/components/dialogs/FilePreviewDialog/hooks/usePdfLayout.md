@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Measures the PDF container dimensions via ResizeObserver, calculates optimal page render width, and manages numPages/pageInfo state for react-pdf |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Measures the PDF container dimensions via ResizeObserver, calculates optimal page render width, and manages numPages/pageInfo state for react-pdf |
+| Used by components/pages | FilePreviewDialog                                                                                                                                 |
 
 ---
 
@@ -17,25 +17,25 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state; measurement starts on open |
-| previewUrl | string\|null | Y | PDF blob URL; used as effect dependency to re-measure after URL resolves |
-| isMobile | boolean | Y | Mobile breakpoint flag; affects fallback width calculation |
+| Name       | Type         | Required | Description                                                              |
+| ---------- | ------------ | -------- | ------------------------------------------------------------------------ |
+| open       | boolean      | Y        | Dialog open state; measurement starts on open                            |
+| previewUrl | string\|null | Y        | PDF blob URL; used as effect dependency to re-measure after URL resolves |
+| isMobile   | boolean      | Y        | Mobile breakpoint flag; affects fallback width calculation               |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| pdfContainerRef | React.Ref | Ref to attach to the scrollable PDF container |
-| containerWidth | number\|null | Measured container width (minus padding) |
-| containerHeight | number\|null | Measured container height (minus padding) |
-| numPages | number\|null | Total page count from react-pdf `onLoadSuccess` |
-| pageInfo | object\|null | `{ width, height }` from first page `onLoadSuccess` |
+| Key             | Type              | Meaning                                                                                                                      |
+| --------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| pdfContainerRef | React.Ref         | Ref to attach to the scrollable PDF container                                                                                |
+| containerWidth  | number\|null      | Measured container width (minus padding)                                                                                     |
+| containerHeight | number\|null      | Measured container height (minus padding)                                                                                    |
+| numPages        | number\|null      | Total page count from react-pdf `onLoadSuccess`                                                                              |
+| pageInfo        | object\|null      | `{ width, height }` from first page `onLoadSuccess`                                                                          |
 | calculatedWidth | number\|undefined | Computed base render width for each `<Page>`; actual render width = calculatedWidth × zoom (zoom from parent usePreviewZoom) |
-| pageArray | number[] | `[1, 2, ..., numPages]` memoized array |
-| setNumPages | function | Setter for numPages (passed to react-pdf Document) |
-| setPageInfo | function | Setter for pageInfo (passed to react-pdf Page) |
+| pageArray       | number[]          | `[1, 2, ..., numPages]` memoized array                                                                                       |
+| setNumPages     | function          | Setter for numPages (passed to react-pdf Document)                                                                           |
+| setPageInfo     | function          | Setter for pageInfo (passed to react-pdf Page)                                                                               |
 
 ### 2.4 Dependencies
 

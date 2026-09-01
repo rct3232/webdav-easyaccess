@@ -7,7 +7,6 @@
  * No transaction wrapping; TX ownership belongs to the orchestration layer.
  */
 function createAncestryHelper(fileNodesStore) {
-
   /* ------------------------------------------------------------------ */
   /*  Insert-time ancestor bookkeeping                                  */
   /* ------------------------------------------------------------------ */
@@ -15,21 +14,19 @@ function createAncestryHelper(fileNodesStore) {
   async function buildAncestorsForNode(nodeId, parentId) {
     if (parentId === null || parentId === undefined) {
       await fileNodesStore.insertAncestorRows([
-        { ancestorId: nodeId, descendantId: nodeId, depth: 0 }
+        { ancestorId: nodeId, descendantId: nodeId, depth: 0 },
       ]);
       return;
     }
 
     const parentChain = await fileNodesStore.getAncestorChain(parentId);
 
-    const rows = [
-      { ancestorId: nodeId, descendantId: nodeId, depth: 0 }
-    ];
+    const rows = [{ ancestorId: nodeId, descendantId: nodeId, depth: 0 }];
     for (const entry of parentChain) {
       rows.push({
         ancestorId: entry.ancestorId,
         descendantId: nodeId,
-        depth: entry.depth + 1
+        depth: entry.depth + 1,
       });
     }
 
@@ -51,9 +48,7 @@ function createAncestryHelper(fileNodesStore) {
     }
 
     const allRows = [];
-    const queue = [
-      { nodeId: movedNodeId, parentChainForParent: newParentChain }
-    ];
+    const queue = [{ nodeId: movedNodeId, parentChainForParent: newParentChain }];
 
     while (queue.length > 0) {
       const { nodeId, parentChainForParent } = queue.shift();
@@ -63,17 +58,17 @@ function createAncestryHelper(fileNodesStore) {
         allRows.push({
           ancestorId: entry.ancestorId,
           descendantId: nodeId,
-          depth: entry.depth + 1
+          depth: entry.depth + 1,
         });
       }
 
       const children = await fileNodesStore.getChildren(nodeId);
       const childParentChain = [
         { ancestorId: nodeId, depth: 0 },
-        ...parentChainForParent.map(e => ({
+        ...parentChainForParent.map((e) => ({
           ancestorId: e.ancestorId,
-          depth: e.depth + 1
-        }))
+          depth: e.depth + 1,
+        })),
       ];
       for (const child of children) {
         queue.push({ nodeId: child.id, parentChainForParent: childParentChain });
@@ -101,7 +96,7 @@ function createAncestryHelper(fileNodesStore) {
   return {
     buildAncestorsForNode,
     rebuildAncestorsAfterMove,
-    cleanupAncestorsForDeletion
+    cleanupAncestorsForDeletion,
   };
 }
 

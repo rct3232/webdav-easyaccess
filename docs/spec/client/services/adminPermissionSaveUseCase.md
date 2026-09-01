@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Use-case for `ShareDialog` admin mode. Builds the target user's final permission list from the dialog state and persists it through `sharePermissionGateway.updateUserPermissions`. |
 
 ---
@@ -17,11 +17,11 @@
 
 ### 2.2 Inputs
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| userId | string | Y | Target user id |
-| username | string | Y | Target username, used to resolve the user base folder |
-| folderPermissions | `Map<string, Map<string, string>>` | Y | Edited permission assignments |
+| Name              | Type                               | Required | Description                                           |
+| ----------------- | ---------------------------------- | -------- | ----------------------------------------------------- |
+| userId            | string                             | Y        | Target user id                                        |
+| username          | string                             | Y        | Target username, used to resolve the user base folder |
+| folderPermissions | `Map<string, Map<string, string>>` | Y        | Edited permission assignments                         |
 
 ### 2.3 Output
 

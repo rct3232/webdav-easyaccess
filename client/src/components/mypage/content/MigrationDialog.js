@@ -81,7 +81,8 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
   };
 
   const handleStart = async () => {
-    const requiredFields = destType === 's3' ? ['bucket', 'accessKey', 'secretKey'] : ['url', 'username', 'password'];
+    const requiredFields =
+      destType === 's3' ? ['bucket', 'accessKey', 'secretKey'] : ['url', 'username', 'password'];
     const missing = requiredFields.filter((field) => !destConfig[field].trim());
     if (missing.length > 0) {
       setMissingFields(missing);
@@ -273,8 +274,18 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
         <FormControl component="fieldset" sx={{ mt: 1 }}>
           <FormLabel>{t('migration.mode')}</FormLabel>
           <RadioGroup row value={mode} onChange={(e) => setMode(e.target.value)}>
-            <FormControlLabel value="dry-run" control={<Radio />} label={t('migration.modeDryRun')} disabled={starting} />
-            <FormControlLabel value="apply" control={<Radio />} label={t('migration.modeApply')} disabled={starting} />
+            <FormControlLabel
+              value="dry-run"
+              control={<Radio />}
+              label={t('migration.modeDryRun')}
+              disabled={starting}
+            />
+            <FormControlLabel
+              value="apply"
+              control={<Radio />}
+              label={t('migration.modeApply')}
+              disabled={starting}
+            />
           </RadioGroup>
         </FormControl>
 
@@ -284,7 +295,9 @@ const MigrationDialog = ({ open, onClose, onMessage }) => {
           </Typography>
         )}
 
-        {info && !infoLoading && <Box sx={{ mt: 2 }}>{destType === 's3' ? renderS3Fields() : renderWebdavFields()}</Box>}
+        {info && !infoLoading && (
+          <Box sx={{ mt: 2 }}>{destType === 's3' ? renderS3Fields() : renderWebdavFields()}</Box>
+        )}
 
         {formError && (
           <Alert severity="error" sx={{ mt: 2 }}>

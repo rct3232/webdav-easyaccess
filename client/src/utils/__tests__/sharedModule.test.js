@@ -7,7 +7,15 @@ import { getFileType, getContentType } from '@webdav-easyaccess/shared/fileTypes
 describe('shared fileTypes utilities', () => {
   describe('getFileType', () => {
     it('returns "image" for image extensions', () => {
-      const images = ['photo.jpg', 'screenshot.jpeg', 'icon.png', 'anim.gif', 'pic.bmp', 'img.webp', 'logo.svg'];
+      const images = [
+        'photo.jpg',
+        'screenshot.jpeg',
+        'icon.png',
+        'anim.gif',
+        'pic.bmp',
+        'img.webp',
+        'logo.svg',
+      ];
       images.forEach((name) => expect(getFileType(name)).toBe('image'));
     });
 
@@ -27,10 +35,24 @@ describe('shared fileTypes utilities', () => {
 
     it('returns "text" for text extensions', () => {
       const texts = [
-        'notes.txt', 'readme.md', 'config.json', 'data.xml', 'report.csv',
-        'app.log', 'index.js', 'App.jsx', 'types.ts', 'Component.tsx',
-        'style.css', 'page.html', 'script.py', 'Main.java', 'main.c',
-        'utils.cpp', 'header.h', 'deploy.sh',
+        'notes.txt',
+        'readme.md',
+        'config.json',
+        'data.xml',
+        'report.csv',
+        'app.log',
+        'index.js',
+        'App.jsx',
+        'types.ts',
+        'Component.tsx',
+        'style.css',
+        'page.html',
+        'script.py',
+        'Main.java',
+        'main.c',
+        'utils.cpp',
+        'header.h',
+        'deploy.sh',
       ];
       texts.forEach((name) => expect(getFileType(name)).toBe('text'));
     });

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Distributed metadata lock abstraction for all backends. Uses lock rows for `postgresql` and `sqlite`, with TTL-based stale recovery and ownership-safe release. |
 
 ---
@@ -17,10 +17,10 @@
 
 ### 2.2 Main Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method      | Signature                                                       | Description                                                                                                                 |
+| ----------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | acquireLock | (lockName, options?) => Promise\<{ token, lockPath, release }\> | Acquire backend-specific lock. `postgresql`/`sqlite`: retries on PK conflict with stale row cleanup (`expires_at < NOW()`). |
-| withLock | (lockName, fn, options?) => Promise\<T\> | Acquire, run fn, release in `finally` for both success and error paths. |
+| withLock    | (lockName, fn, options?) => Promise\<T\>                        | Acquire, run fn, release in `finally` for both success and error paths.                                                     |
 
 ### 2.3 Options
 

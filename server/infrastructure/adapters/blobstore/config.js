@@ -3,7 +3,11 @@
 const S3BlobStore = require('./S3BlobStore');
 const WebdavBlobStore = require('./WebdavBlobStore');
 const WebdavFileStoreAdapter = require('../filestore/WebdavFileStoreAdapter');
-const { normalizePath, getParentPath, getBasename } = require('@webdav-easyaccess/shared/pathUtils');
+const {
+  normalizePath,
+  getParentPath,
+  getBasename,
+} = require('@webdav-easyaccess/shared/pathUtils');
 
 const SUPPORTED_TYPES = ['s3', 'webdav'];
 const S3_REQUIRED_FIELDS = ['bucket', 'accessKey', 'secretKey'];
@@ -34,13 +38,15 @@ function assertValidType(destConfig) {
     throw new Error('Missing required destination field: type');
   }
   if (!SUPPORTED_TYPES.includes(destConfig.type)) {
-    throw new Error(`Invalid destination type: ${destConfig.type}. Supported types: ${SUPPORTED_TYPES.join(', ')}`);
+    throw new Error(
+      `Invalid destination type: ${destConfig.type}. Supported types: ${SUPPORTED_TYPES.join(', ')}`
+    );
   }
 }
 
 function assertRequiredFields(type, destConfig) {
   const required = type === 's3' ? S3_REQUIRED_FIELDS : WEBDAV_REQUIRED_FIELDS;
-  const missing = required.filter(field => isMissing(destConfig[field]));
+  const missing = required.filter((field) => isMissing(destConfig[field]));
   if (missing.length > 0) {
     throw new Error(`Missing required destination fields: ${missing.join(', ')}`);
   }
@@ -156,7 +162,7 @@ function createDestWebdavModule(client, baseUrl) {
     listDirectory: async (path = '/') => {
       const requestPath = getRequestPath(normalizePath(path), baseUrl);
       const items = await client.getDirectoryContents(requestPath);
-      return items.map(item => ({
+      return items.map((item) => ({
         filename: item.filename,
         basename: item.basename,
         lastmod: item.lastmod,
@@ -189,7 +195,7 @@ function createDestWebdavModule(client, baseUrl) {
       const parentPath = getParentPath(normalizedPath);
       const basename = getBasename(normalizedPath);
       const items = await client.getDirectoryContents(getRequestPath(parentPath, baseUrl));
-      const item = items.find(entry => entry.basename === basename);
+      const item = items.find((entry) => entry.basename === basename);
       if (!item) {
         const err = new Error(`File not found: ${filePath}`);
         err.status = 404;

@@ -20,4 +20,3 @@ packageJson.proxy = `http://localhost:${PORT}`;
 
 fs.writeFileSync(clientPackageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
 console.log(`Updated client proxy to http://localhost:${PORT}`);
-

@@ -52,7 +52,8 @@ const FileActionSheet = ({
   const canPreview = file.canPreview;
 
   // 파일 객체에 hasWritePermission이 있으면 사용, 없으면 prop의 hasWritePermission 사용
-  const fileWritePermission = file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
+  const fileWritePermission =
+    file?.hasWritePermission !== undefined ? file.hasWritePermission : hasWritePermission;
 
   return (
     <SwipeableDrawer
@@ -229,4 +230,3 @@ const FileActionSheet = ({
 };
 
 export default FileActionSheet;
-

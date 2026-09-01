@@ -67,12 +67,7 @@ describe('Breadcrumb', () => {
 
   it('shows folder tree toggle when onToggleFolderTree provided', () => {
     const onToggleFolderTree = jest.fn();
-    renderWithProviders(
-      <Breadcrumb
-        {...defaultProps}
-        onToggleFolderTree={onToggleFolderTree}
-      />
-    );
+    renderWithProviders(<Breadcrumb {...defaultProps} onToggleFolderTree={onToggleFolderTree} />);
     const toggleButton = screen.getByRole('button', { name: /folder tree/i });
     expect(toggleButton).toBeInTheDocument();
     fireEvent.click(toggleButton);
@@ -93,9 +88,7 @@ describe('Breadcrumb', () => {
   });
 
   it('renders the recent virtual-root label when viewing recent files', () => {
-    renderWithProviders(
-      <Breadcrumb {...defaultProps} currentPath="/__recent__" />
-    );
+    renderWithProviders(<Breadcrumb {...defaultProps} currentPath="/__recent__" />);
     expect(screen.getByText(/recent/i)).toBeInTheDocument();
   });
 });

@@ -3,7 +3,10 @@
  * @see docs/spec/client/services/folderTreeGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-import folderTreeGateway, { getUserSharedFolderPermissions, listFolderChildren } from '../folderTreeGateway';
+import folderTreeGateway, {
+  getUserSharedFolderPermissions,
+  listFolderChildren,
+} from '../folderTreeGateway';
 import { listFiles } from '../fileService';
 import { getSharedPermissions } from '../permissionService';
 import { getShowHiddenFiles } from '../../utils/localStorage';
@@ -33,9 +36,33 @@ describe('folderTreeGateway', () => {
   it('lists only directories, filters hidden, applies filterChildNames, and sorts by name', async () => {
     getShowHiddenFiles.mockReturnValue(false);
     listFiles.mockResolvedValue([
-      { nodeId: 101, basename: 'a', name: 'a', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: true },
-      { nodeId: 102, basename: 'b', name: 'b', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
-      { nodeId: 103, basename: 'c', name: 'c', type: 'directory', isHidden: false, hasReadPermission: true, hasWritePermission: false },
+      {
+        nodeId: 101,
+        basename: 'a',
+        name: 'a',
+        type: 'directory',
+        isHidden: false,
+        hasReadPermission: true,
+        hasWritePermission: true,
+      },
+      {
+        nodeId: 102,
+        basename: 'b',
+        name: 'b',
+        type: 'directory',
+        isHidden: true,
+        hasReadPermission: true,
+        hasWritePermission: false,
+      },
+      {
+        nodeId: 103,
+        basename: 'c',
+        name: 'c',
+        type: 'directory',
+        isHidden: false,
+        hasReadPermission: true,
+        hasWritePermission: false,
+      },
       { nodeId: 104, basename: 'file.txt', name: 'file.txt', type: 'file', isHidden: false },
     ]);
 
@@ -61,7 +88,15 @@ describe('folderTreeGateway', () => {
   it('includes hidden directories when useHiddenFilesFilter is false', async () => {
     getShowHiddenFiles.mockReturnValue(false);
     listFiles.mockResolvedValue([
-      { nodeId: 102, basename: 'hidden', name: 'hidden', type: 'directory', isHidden: true, hasReadPermission: true, hasWritePermission: false },
+      {
+        nodeId: 102,
+        basename: 'hidden',
+        name: 'hidden',
+        type: 'directory',
+        isHidden: true,
+        hasReadPermission: true,
+        hasWritePermission: false,
+      },
     ]);
 
     const result = await listFolderChildren({
@@ -101,7 +136,9 @@ describe('folderTreeGateway', () => {
 
     const result = await getUserSharedFolderPermissions({ user });
 
-    expect(result).toEqual([{ nodeId: 200, name: 'External', permission: 'read', type: 'directory' }]);
+    expect(result).toEqual([
+      { nodeId: 200, name: 'External', permission: 'read', type: 'directory' },
+    ]);
   });
 
   it('returns an empty shared-folder list for admin users without calling the service', async () => {

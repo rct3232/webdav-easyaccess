@@ -134,7 +134,12 @@ describe('computeSetupStatus', () => {
       };
       const status = computeSetupStatus(env);
       expect(status.setup_complete).toBe(false);
-      expect(status.missing).toEqual(['WEA_PG_PORT', 'WEA_PG_DATABASE', 'WEA_PG_USER', 'WEA_PG_PASSWORD']);
+      expect(status.missing).toEqual([
+        'WEA_PG_PORT',
+        'WEA_PG_DATABASE',
+        'WEA_PG_USER',
+        'WEA_PG_PASSWORD',
+      ]);
     });
   });
 

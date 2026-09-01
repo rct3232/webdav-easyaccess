@@ -88,7 +88,10 @@ describe('filterDisplayUsers', () => {
     ['u3', { permission: 'admin' }],
   ];
   const user = { id: 'u1' };
-  const userInfoMap = new Map([['u2', { is_admin: false }], ['u3', { is_admin: true }]]);
+  const userInfoMap = new Map([
+    ['u2', { is_admin: false }],
+    ['u3', { is_admin: true }],
+  ]);
   const allUsers = [{ id: 'u1' }, { id: 'u2', is_admin: false }, { id: 'u3', is_admin: true }];
 
   it('in admin mode returns only current user', () => {
@@ -120,8 +123,14 @@ describe('filterDisplayUsers', () => {
     const result = filterDisplayUsers(usersNoAdmin, {
       isAdminMode: false,
       user: { id: 'u3' },
-      userInfoMap: new Map([['u1', { is_admin: true }], ['u2', { is_admin: false }]]),
-      allUsers: [{ id: 'u1', is_admin: true }, { id: 'u2', is_admin: false }],
+      userInfoMap: new Map([
+        ['u1', { is_admin: true }],
+        ['u2', { is_admin: false }],
+      ]),
+      allUsers: [
+        { id: 'u1', is_admin: true },
+        { id: 'u2', is_admin: false },
+      ],
     });
     expect(result).toEqual([['u2', {}]]);
   });
@@ -135,7 +144,10 @@ describe('filterDisplayUsers', () => {
       isAdminMode: false,
       user: { id: 'u3' },
       userInfoMap: new Map(),
-      allUsers: [{ id: 'u1', is_admin: true }, { id: 'u2', is_admin: false }],
+      allUsers: [
+        { id: 'u1', is_admin: true },
+        { id: 'u2', is_admin: false },
+      ],
     });
     expect(result).toEqual([['u2', {}]]);
   });

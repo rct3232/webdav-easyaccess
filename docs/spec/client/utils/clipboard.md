@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                       |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Cross-context clipboard utility. Attempts `navigator.clipboard.writeText` first; falls back to `document.execCommand('copy')` for HTTP (non-secure) environments. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function          | (input) => return                                                          |
+| ----------------- | -------------------------------------------------------------------------- |
 | `copyToClipboard` | `(text: string) => Promise<void>` — resolves on success, throws on failure |
 
 ### 2.3 Dependencies

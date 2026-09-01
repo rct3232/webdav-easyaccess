@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/admin` |
-| Role | Admin-only: settings, user management (pending, list, approve, reject, delete, create), folder list, user permissions, cleanup, blob migration. |
+| Item       | Description                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/admin`                                                                                                                                    |
+| Role       | Admin-only: settings, user management (pending, list, approve, reject, delete, create), folder list, user permissions, cleanup, blob migration. |
 
 ---
 
@@ -15,12 +15,12 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 
 ### 2.1 Route Modules
 
-| Module | Source | Mount Path | Test File |
-|--------|--------|------------|-----------|
-| userManagement | `server/domains/admin/routes/userManagement.js` | `/api/admin` | `server/domains/admin/routes/__tests__/admin.test.js` |
-| settings | `server/domains/admin/routes/settings.js` | `/api/admin`, `/api/settings` (public) | `server/domains/admin/routes/__tests__/settings.test.js` |
-| maintenance | `server/domains/admin/routes/maintenance.js` | `/api/admin` | `server/domains/admin/routes/__tests__/admin.test.js` |
-| migration | `server/domains/admin/routes/migration.js` | `/api/admin` | `server/domains/admin/routes/__tests__/migration.test.js` |
+| Module         | Source                                          | Mount Path                             | Test File                                                 |
+| -------------- | ----------------------------------------------- | -------------------------------------- | --------------------------------------------------------- |
+| userManagement | `server/domains/admin/routes/userManagement.js` | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
+| settings       | `server/domains/admin/routes/settings.js`       | `/api/admin`, `/api/settings` (public) | `server/domains/admin/routes/__tests__/settings.test.js`  |
+| maintenance    | `server/domains/admin/routes/maintenance.js`    | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
+| migration      | `server/domains/admin/routes/migration.js`      | `/api/admin`                           | `server/domains/admin/routes/__tests__/migration.test.js` |
 
 ### 2.2 Route List
 
@@ -28,36 +28,36 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 
 Admin-only user lifecycle management. Service: `domains/admin/services/userService.js`.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/users/pending` | Token + Admin | Pending signup approvals. |
-| GET | `/users` | Token + Admin | List all users. |
-| POST | `/users` | Token + Admin | Add user. Body: username, email, password. |
-| POST | `/users/:id/approve` | Token + Admin | Approve signup. Creates home folder, grants admin on it. |
-| POST | `/users/:id/reject` | Token + Admin | Reject signup. Revokes all permissions and requests. |
-| DELETE | `/users/:id` | Token + Admin | Delete user cascade. Cannot delete self or other admins. |
-| PUT | `/users/:id/permissions` | Token + Admin | Bulk update folder permissions. Body: `{ permissions }`. |
+| Method | Path                     | Auth          | Description                                              |
+| ------ | ------------------------ | ------------- | -------------------------------------------------------- |
+| GET    | `/users/pending`         | Token + Admin | Pending signup approvals.                                |
+| GET    | `/users`                 | Token + Admin | List all users.                                          |
+| POST   | `/users`                 | Token + Admin | Add user. Body: username, email, password.               |
+| POST   | `/users/:id/approve`     | Token + Admin | Approve signup. Creates home folder, grants admin on it. |
+| POST   | `/users/:id/reject`      | Token + Admin | Reject signup. Revokes all permissions and requests.     |
+| DELETE | `/users/:id`             | Token + Admin | Delete user cascade. Cannot delete self or other admins. |
+| PUT    | `/users/:id/permissions` | Token + Admin | Bulk update folder permissions. Body: `{ permissions }`. |
 
 #### 2.2.2 settings (`/api/admin`)
 
 System configuration. Also exposes a public endpoint at `/api/settings/public`.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/settings` | Token + Admin | Get system settings. |
-| PUT | `/settings` | Token + Admin | Update settings. Body: registration_enabled, etc. |
+| Method | Path        | Auth          | Description                                       |
+| ------ | ----------- | ------------- | ------------------------------------------------- |
+| GET    | `/settings` | Token + Admin | Get system settings.                              |
+| PUT    | `/settings` | Token + Admin | Update settings. Body: registration_enabled, etc. |
 
 #### 2.2.3 maintenance (`/api/admin`)
 
 System maintenance operations. Service: `domains/admin/services/cleanupService.js`.
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/folders/list` | Token + Admin | List folders for permission UI (single level). |
-| POST | `/permissions/ensure-home-owner-admin` | Token + Admin | Ensure each non-admin user has admin on their home node and remove redundant self-grants on their own subtree. |
-| POST | `/cleanup/orphaned` | Token + Admin | Clean orphaned metadata files and permission requests. Also runs one GC cycle and reports `orphaned_node` status (see §2.2.3.1). |
-| POST | `/maintenance/gc` | Token + Admin | Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 scan) for orphaned blobs. Service: `server/service/gcService.js`. |
-| POST | `/maintenance/repair-sync` | Token + Admin | Manually resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Service: `server/service/failSafeService.js`. |
+| Method | Path                                   | Auth          | Description                                                                                                                                      |
+| ------ | -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/folders/list`                        | Token + Admin | List folders for permission UI (single level).                                                                                                   |
+| POST   | `/permissions/ensure-home-owner-admin` | Token + Admin | Ensure each non-admin user has admin on their home node and remove redundant self-grants on their own subtree.                                   |
+| POST   | `/cleanup/orphaned`                    | Token + Admin | Clean orphaned metadata files and permission requests. Also runs one GC cycle and reports `orphaned_node` status (see §2.2.3.1).                 |
+| POST   | `/maintenance/gc`                      | Token + Admin | Run one garbage-collection cycle (Tier 1 DB-driven + Tier 2 S3 scan) for orphaned blobs. Service: `server/service/gcService.js`.                 |
+| POST   | `/maintenance/repair-sync`             | Token + Admin | Manually resolve an `orphaned_node`. Body: `{ nodeId, action: 'retry-delete' \| 'force-active' }`. Service: `server/service/failSafeService.js`. |
 
 #### 2.2.3.1 `cleanup/orphaned` response shape (additive keys)
 
@@ -70,12 +70,12 @@ The existing result keys (`deletedPermissionFiles`, `deletedUserFiles`, `deleted
 
 Bidirectional WebDAV ↔ S3 blob migration (202 + poll contract). Service: `domains/admin/services/migrationService.js`; job tracking: `domains/admin/stores/migrationJobStore.js`. Worker runs via `setImmediate` and honours the `WEA_SKIP_MIGRATION_WORKER` test seam (skips worker scheduling without changing defaults).
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/migration/info` | Token + Admin | Get the derived migration context. Returns `200 { source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }` (direction derived from the app config). |
-| POST | `/migration/blobs` | Token + Admin | Start a blob migration job. Body: `{ mode: 'dry-run' \| 'apply', force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }` — no `direction`; the server derives it from the app config and validates `dest.type` matches the expected destination. Returns `202 { jobId }`. |
-| GET | `/migration/jobs/:jobId` | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }`. |
-| POST | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`. |
+| Method | Path                            | Auth          | Description                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/migration/info`               | Token + Admin | Get the derived migration context. Returns `200 { source: 'webdav' \| 's3', direction: 'webdav-to-s3' \| 's3-to-webdav' }` (direction derived from the app config).                                                                                                             |
+| POST   | `/migration/blobs`              | Token + Admin | Start a blob migration job. Body: `{ mode: 'dry-run' \| 'apply', force?, dest: { type:'s3', ... } \| { type:'webdav', ... } }` — no `direction`; the server derives it from the app config and validates `dest.type` matches the expected destination. Returns `202 { jobId }`. |
+| GET    | `/migration/jobs/:jobId`        | Token + Admin | Get migration job status/progress. Returns `200 { jobShape }`.                                                                                                                                                                                                                  |
+| POST   | `/migration/jobs/:jobId/cancel` | Token + Admin | Cancel a running migration job. Returns `200 { messageCode, jobId }`.                                                                                                                                                                                                           |
 
 Destination config fields and the authoritative migration rules are documented in `docs/spec/server/tools/blob-migration.md`.
 
@@ -119,25 +119,25 @@ Destination config fields and the authoritative migration rules are documented i
 
 #### userService (`domains/admin/services/userService.js`)
 
-| Function | Description |
-|----------|-------------|
-| `createAdminUser({ username, email, password })` | Validates fields (min 6-char password), creates user folder, grants admin permission. Rollback on failure. |
-| `approvePendingUser(userId)` | Updates status to APPROVED, creates home folder, grants admin permission, sends approval email. |
-| `rejectPendingUser(userId, adminId)` | Revokes all permissions and requests, updates status to REJECTED, sends rejection email. |
-| `deleteUserCascade(userId, adminId)` | Full cleanup: permission requests, permissions files, user record. Prevents self-deletion and admin deletion. |
-| `bulkUpdateUserPermissions(userId, permissionEntries)` | Revokes all existing permissions, then grants new ones in batch. |
+| Function                                               | Description                                                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `createAdminUser({ username, email, password })`       | Validates fields (min 6-char password), creates user folder, grants admin permission. Rollback on failure.    |
+| `approvePendingUser(userId)`                           | Updates status to APPROVED, creates home folder, grants admin permission, sends approval email.               |
+| `rejectPendingUser(userId, adminId)`                   | Revokes all permissions and requests, updates status to REJECTED, sends rejection email.                      |
+| `deleteUserCascade(userId, adminId)`                   | Full cleanup: permission requests, permissions files, user record. Prevents self-deletion and admin deletion. |
+| `bulkUpdateUserPermissions(userId, permissionEntries)` | Revokes all existing permissions, then grants new ones in batch.                                              |
 
 #### cleanupService (`domains/admin/services/cleanupService.js`)
 
-| Function | Description |
-|----------|-------------|
-| `cleanupOrphanedData()` | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB. |
+| Function                            | Description                                                                                                                                    |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cleanupOrphanedData()`             | Removes orphaned metadata (e.g. permission/share rows referencing missing nodes) and stale permission requests from the DB.                    |
 | `ensureHomeOwnerAdminForAllUsers()` | Ensures each non-admin user has admin on their home node; removes redundant self-grants on the user's own subtree (home-root admin preserved). |
 
 #### migrationService (`domains/admin/services/migrationService.js`)
 
-| Function | Description |
-|----------|-------------|
+| Function                                       | Description                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run({ destConfig, mode, force, onProgress })` | Snapshot traversal + per-node copy + direction-specific `object_map` rules (incl. the inline flip for s3→webdav) + automatic resume + dry-run/failure isolation. Direction is derived internally from the injected `fileStorageMode`; `destConfig.type` must match the expected destination. Returns `{ copied, skipped, failed, errors }`. Full contract: `docs/spec/server/services/migrationService.md`. |
 
 ### 2.6 Related Documents

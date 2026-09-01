@@ -40,9 +40,7 @@ describe('requestLogger', () => {
   it('extracts IP from X-Forwarded-For header', async () => {
     app.get('/ip-test', (_req, res) => res.status(200).send('ok'));
 
-    const res = await request(app)
-      .get('/ip-test')
-      .set('X-Forwarded-For', '1.2.3.4, 5.6.7.8');
+    const res = await request(app).get('/ip-test').set('X-Forwarded-For', '1.2.3.4, 5.6.7.8');
 
     expect(res.status).toBe(200);
     expect(loggedLines[0].ip).toBe('1.2.3.4');

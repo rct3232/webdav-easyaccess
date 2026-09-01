@@ -42,9 +42,10 @@ function createFileService(options = {}) {
     let parentOwned = false;
     let adminGrantNodeIds = null;
     if (!isAdmin && !isShareCaller && children.length > 0) {
-      parentOwned = parentNodeId != null
-        ? await _ownerNodeResolver.isOwnerNode(userId, Number(parentNodeId))
-        : false;
+      parentOwned =
+        parentNodeId != null
+          ? await _ownerNodeResolver.isOwnerNode(userId, Number(parentNodeId))
+          : false;
       const grants = await _permissionStore.getUserPermissions(userId);
       adminGrantNodeIds = new Set(
         (grants || [])
@@ -64,11 +65,27 @@ function createFileService(options = {}) {
       } else {
         const isDir = child.type === 'directory';
         if (isDir) {
-          hasReadPermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.READ);
-          hasWritePermission = await aclService.checkFolderPermission(userId, child.id, PERMISSIONS.WRITE);
+          hasReadPermission = await aclService.checkFolderPermission(
+            userId,
+            child.id,
+            PERMISSIONS.READ
+          );
+          hasWritePermission = await aclService.checkFolderPermission(
+            userId,
+            child.id,
+            PERMISSIONS.WRITE
+          );
         } else {
-          hasReadPermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.READ);
-          hasWritePermission = await aclService.checkFilePermission(userId, child.id, PERMISSIONS.WRITE);
+          hasReadPermission = await aclService.checkFilePermission(
+            userId,
+            child.id,
+            PERMISSIONS.READ
+          );
+          hasWritePermission = await aclService.checkFilePermission(
+            userId,
+            child.id,
+            PERMISSIONS.WRITE
+          );
         }
       }
 
@@ -83,9 +100,10 @@ function createFileService(options = {}) {
         continue;
       }
 
-      const hasAdminPermission = isAdmin
-        || parentOwned
-        || (adminGrantNodeIds != null && adminGrantNodeIds.has(Number(child.id)));
+      const hasAdminPermission =
+        isAdmin ||
+        parentOwned ||
+        (adminGrantNodeIds != null && adminGrantNodeIds.has(Number(child.id)));
 
       const display_path = await fileNodeService.getNodePath(child.id);
 
@@ -124,7 +142,7 @@ function createFileService(options = {}) {
 
     // Conflict check: see if file with same name exists under parent
     const existingChildren = await fileNodeService.listDirectory(parentNodeId);
-    const existingFile = existingChildren.find(c => c.name === name && c.type === 'file');
+    const existingFile = existingChildren.find((c) => c.name === name && c.type === 'file');
 
     if (existingFile) {
       if (onConflict === 'skip') {
@@ -196,7 +214,7 @@ function createFileService(options = {}) {
 
     const node = await fileNodeService.getNode(nodeId);
     const siblings = await fileNodeService.listDirectory(node.parent_id);
-    if (siblings.some(s => s.name === newName && s.id !== nodeId)) {
+    if (siblings.some((s) => s.name === newName && s.id !== nodeId)) {
       throw conflictError(SERVER_ERROR_CODES.files.duplicateFile);
     }
 
@@ -256,7 +274,7 @@ function createFileService(options = {}) {
       }
     }
 
-   // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
+    // Best-effort WebDAV storage sync: download content before DB move so we can re-upload to new path
     let webdavBuffer = null;
     if (fileStorageMode === 'webdav') {
       try {
@@ -326,7 +344,11 @@ function createFileService(options = {}) {
       if (!sourceAllowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
       }
-      const destAllowed = await aclService.checkFolderPermission(userId, destinationParentNodeId, 'write');
+      const destAllowed = await aclService.checkFolderPermission(
+        userId,
+        destinationParentNodeId,
+        'write'
+      );
       if (!destAllowed) {
         throw forbiddenError(SERVER_ERROR_CODES.files.permissionDenied);
       }

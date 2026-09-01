@@ -1,6 +1,14 @@
 'use strict';
 
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command, CopyObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  CopyObjectCommand,
+} = require('@aws-sdk/client-s3');
 
 class S3BlobStore {
   constructor(config) {
@@ -16,18 +24,22 @@ class S3BlobStore {
     if (!key) throw new Error('S3 key is required');
     if (buffer == null) throw new Error('Buffer is required');
 
-    await this.client.send(new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      Body: buffer,
-    }));
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+      })
+    );
   }
 
   async downloadBlob(key) {
-    const response = await this.client.send(new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    }));
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      })
+    );
 
     if (Buffer.isBuffer(response.Body)) {
       return response.Body;
@@ -42,20 +54,24 @@ class S3BlobStore {
 
   async deleteBlob(key) {
     try {
-      await this.client.send(new DeleteObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      }));
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        })
+      );
     } catch (err) {
       if (err.name !== 'NoSuchKey' && !err.message.includes('NoSuchKey')) throw err;
     }
   }
 
   async headBlob(key) {
-    const res = await this.client.send(new HeadObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    }));
+    const res = await this.client.send(
+      new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      })
+    );
     return {
       contentLength: Number(res.ContentLength),
       contentType: res.ContentType,
@@ -64,11 +80,13 @@ class S3BlobStore {
 
   async copyBlob(sourceKey, destKey) {
     try {
-      await this.client.send(new CopyObjectCommand({
-        Bucket: this.bucket,
-        CopySource: `${this.bucket}/${sourceKey}`,
-        Key: destKey,
-      }));
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: `${this.bucket}/${sourceKey}`,
+          Key: destKey,
+        })
+      );
     } catch (err) {
       if (err.name === 'NoSuchKey' || String(err.message || '').includes('NoSuchKey')) {
         throw new Error(`Source key not found for copy: ${sourceKey}`);
@@ -110,7 +128,8 @@ function classifyS3Error(error) {
   if (!error) return 'unknown';
   const status =
     Number(error.$metadata && error.$metadata.httpStatusCode) || error.status || error.statusCode;
-  const name = String(error.name || '') + ' ' + String(error.code || '') + ' ' + String(error.message || '');
+  const name =
+    String(error.name || '') + ' ' + String(error.code || '') + ' ' + String(error.message || '');
   if (status === 403 || /accessdenied/i.test(name)) return 'auth';
   if (/nosuchbucket/i.test(name) || status === 404) return 'missing_resource';
   if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT/.test(name)) return 'unreachable';

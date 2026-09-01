@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Long-press event: returns touch/mouse handlers. Fires onLongPress after delay if no touch/mouse move. Haptic feedback on fire. |
-| Used by components/pages | FileList, FileGrid, FileDetail (inline long-press pattern) |
+| Item                     | Description                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Role                     | Long-press event: returns touch/mouse handlers. Fires onLongPress after delay if no touch/mouse move. Haptic feedback on fire. |
+| Used by components/pages | FileList, FileGrid, FileDetail (inline long-press pattern)                                                                     |
 
 ---
 
@@ -18,21 +18,21 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| onLongPress | function | Y | Callback on long press |
-| delay | number | N | 500 (ms) |
+| Name        | Type     | Required | Description            |
+| ----------- | -------- | -------- | ---------------------- |
+| onLongPress | function | Y        | Callback on long press |
+| delay       | number   | N        | 500 (ms)               |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| onTouchStart | function | Start timer |
-| onTouchEnd | function | Clear timer |
-| onTouchMove | function | Cancel (set touchMoveRef) |
-| onMouseDown | function | Start timer |
-| onMouseUp | function | Clear timer |
-| onMouseLeave | function | Clear timer |
+| Key          | Type     | Meaning                   |
+| ------------ | -------- | ------------------------- |
+| onTouchStart | function | Start timer               |
+| onTouchEnd   | function | Clear timer               |
+| onTouchMove  | function | Cancel (set touchMoveRef) |
+| onMouseDown  | function | Start timer               |
+| onMouseUp    | function | Clear timer               |
+| onMouseLeave | function | Clear timer               |
 
 ### 2.4 Dependencies
 

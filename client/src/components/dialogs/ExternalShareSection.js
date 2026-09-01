@@ -1,13 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  Typography,
-  IconButton,
-  Button,
-  TextField,
-  CircularProgress,
-} from '@mui/material';
+import { Box, Typography, IconButton, Button, TextField, CircularProgress } from '@mui/material';
 import { formatDateOnly } from '../../utils/format';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -45,7 +38,7 @@ const ExternalShareSection = ({
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {t('share.createLinkFor', { name: displayName })}
       </Typography>
-      
+
       {!externalShareLink ? (
         <>
           <Box sx={{ mb: 2 }}>
@@ -95,7 +88,7 @@ const ExternalShareSection = ({
               )}
             </Box>
           </Box>
-          
+
           <Button
             variant="contained"
             fullWidth
@@ -117,7 +110,8 @@ const ExternalShareSection = ({
                 console.error('Failed to create share link:', error);
                 if (onMessage) {
                   onMessage({
-                    text: getServerErrorDisplay(error?.response?.data, t) || t('share.linkCreateFail'),
+                    text:
+                      getServerErrorDisplay(error?.response?.data, t) || t('share.linkCreateFail'),
                     type: 'error',
                   });
                 }
@@ -189,15 +183,16 @@ const ExternalShareSection = ({
               </IconButton>
             </Box>
           </Box>
-          
+
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary">
-              {t('share.expiresAt')} {externalShareLink.expiresAt 
+              {t('share.expiresAt')}{' '}
+              {externalShareLink.expiresAt
                 ? formatDateOnly(externalShareLink.expiresAt)
                 : t('share.unlimited')}
             </Typography>
           </Box>
-          
+
           <Button
             variant="outlined"
             fullWidth

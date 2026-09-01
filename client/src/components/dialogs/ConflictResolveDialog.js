@@ -14,17 +14,9 @@ import {
   Typography,
   Box,
 } from '@mui/material';
-import {
-  Description as FileIcon,
-  Folder as FolderIcon,
-} from '@mui/icons-material';
+import { Description as FileIcon, Folder as FolderIcon } from '@mui/icons-material';
 
-const ConflictResolveDialog = ({
-  open,
-  onClose,
-  onResolve,
-  conflicts = [],
-}) => {
+const ConflictResolveDialog = ({ open, onClose, onResolve, conflicts = [] }) => {
   const { t } = useTranslation();
   const handleOverwrite = () => {
     onResolve('overwrite');
@@ -39,28 +31,29 @@ const ConflictResolveDialog = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleCancel}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={open} onClose={handleCancel} maxWidth="sm" fullWidth>
       <DialogTitle>{t('dialogs.conflictTitle')}</DialogTitle>
       <DialogContent>
-        <DialogContentText sx={{ mb: 2 }}>
-          {t('dialogs.conflictMessage')}
-        </DialogContentText>
-        
-        <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, maxHeight: 200, overflow: 'auto', p: 1 }}>
+        <DialogContentText sx={{ mb: 2 }}>{t('dialogs.conflictMessage')}</DialogContentText>
+
+        <Box
+          sx={{ bgcolor: 'action.hover', borderRadius: 1, maxHeight: 200, overflow: 'auto', p: 1 }}
+        >
           <List dense>
             {conflicts.map((conflict, index) => (
               <ListItem key={index}>
                 <ListItemIcon sx={{ minWidth: 36 }}>
-                  {conflict.type === 'directory' ? <FolderIcon color="primary" /> : <FileIcon color="action" />}
+                  {conflict.type === 'directory' ? (
+                    <FolderIcon color="primary" />
+                  ) : (
+                    <FileIcon color="action" />
+                  )}
                 </ListItemIcon>
-                <ListItemText 
+                <ListItemText
                   primary={conflict.name || conflict.sourceNodeId || `#${index + 1}`}
-                  secondary={conflict.name ? `Conflicts with ${conflict.name}` : t('dialogs.conflictMessage')}
+                  secondary={
+                    conflict.name ? `Conflicts with ${conflict.name}` : t('dialogs.conflictMessage')
+                  }
                   primaryTypographyProps={{ variant: 'body2', fontWeight: 'medium' }}
                   secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
                 />
@@ -68,11 +61,10 @@ const ConflictResolveDialog = ({
             ))}
           </List>
         </Box>
-        
+
         <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
           * {t('dialogs.conflictMergeNote')}
-          <br />
-          * {t('dialogs.conflictSkipNote')}
+          <br />* {t('dialogs.conflictSkipNote')}
         </Typography>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -80,18 +72,10 @@ const ConflictResolveDialog = ({
           {t('common.cancel')}
         </Button>
         <Box sx={{ flexGrow: 1 }} />
-        <Button 
-          onClick={handleSkip} 
-          variant="outlined" 
-          color="primary"
-        >
+        <Button onClick={handleSkip} variant="outlined" color="primary">
           {t('dialogs.conflictSkip')}
         </Button>
-        <Button
-          onClick={handleOverwrite}
-          variant="contained"
-          color="primary"
-        >
+        <Button onClick={handleOverwrite} variant="contained" color="primary">
           {t('dialogs.conflictMerge')}
         </Button>
       </DialogActions>

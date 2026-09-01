@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | (Component's role, e.g. bulk move/copy/download/delete for selected files) |
-| Used in | (e.g. FileManager) |
-| Related components | (Other components to reference) |
+| Item               | Description                                                                |
+| ------------------ | -------------------------------------------------------------------------- |
+| Role               | (Component's role, e.g. bulk move/copy/download/delete for selected files) |
+| Used in            | (e.g. FileManager)                                                         |
+| Related components | (Other components to reference)                                            |
 
 ---
 
@@ -19,14 +19,14 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| (propName) | (type) | Y/N | (default) | (description) |
+| Name       | Type   | Required | Default   | Description   |
+| ---------- | ------ | -------- | --------- | ------------- |
+| (propName) | (type) | Y/N      | (default) | (description) |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback  | When invoked        | Arguments       |
+| --------- | ------------------- | --------------- |
 | (handleX) | (when it is called) | (argument list) |
 
 ### 2.4 Dependencies

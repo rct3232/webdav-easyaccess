@@ -153,4 +153,3 @@ module.exports = {
   sendRejectionEmail,
   isEmailEnabled,
 };
-

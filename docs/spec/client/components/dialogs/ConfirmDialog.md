@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Reusable confirmation dialog. Shows centered popup with title, message, and confirm/cancel buttons. Supports loading variant (spinner only). |
-| Used in | Delete confirmations, operation confirmations |
-| Related components | MUI Dialog, ConfirmDialog does not use BaseDialog (uses raw MUI Dialog) |
+| Item               | Description                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Reusable confirmation dialog. Shows centered popup with title, message, and confirm/cancel buttons. Supports loading variant (spinner only). |
+| Used in            | Delete confirmations, operation confirmations                                                                                                |
+| Related components | MUI Dialog, ConfirmDialog does not use BaseDialog (uses raw MUI Dialog)                                                                      |
 
 ---
 
@@ -19,25 +19,25 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Whether dialog is open |
-| onClose | function | Y | - | Close handler |
-| onConfirm | function | N | - | Confirm handler |
-| title | string | N | t('common.confirm') | Dialog title |
-| message | string | N | - | Message text |
-| confirmText | string | N | t('common.confirm') | Confirm button label |
-| cancelText | string | N | t('common.cancel') | Cancel button label |
-| confirmColor | string | N | 'primary' | MUI color for confirm button |
-| loading | boolean | N | false | Disables buttons, shows loading state |
-| variant | string | N | - | 'loading' = spinner only, no title/message/buttons |
+| Name         | Type     | Required | Default             | Description                                        |
+| ------------ | -------- | -------- | ------------------- | -------------------------------------------------- |
+| open         | boolean  | Y        | -                   | Whether dialog is open                             |
+| onClose      | function | Y        | -                   | Close handler                                      |
+| onConfirm    | function | N        | -                   | Confirm handler                                    |
+| title        | string   | N        | t('common.confirm') | Dialog title                                       |
+| message      | string   | N        | -                   | Message text                                       |
+| confirmText  | string   | N        | t('common.confirm') | Confirm button label                               |
+| cancelText   | string   | N        | t('common.cancel')  | Cancel button label                                |
+| confirmColor | string   | N        | 'primary'           | MUI color for confirm button                       |
+| loading      | boolean  | N        | false               | Disables buttons, shows loading state              |
+| variant      | string   | N        | -                   | 'loading' = spinner only, no title/message/buttons |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Cancel button click or dialog close | - |
-| onConfirm | Confirm button click | - |
+| Callback  | When invoked                        | Arguments |
+| --------- | ----------------------------------- | --------- |
+| onClose   | Cancel button click or dialog close | -         |
+| onConfirm | Confirm button click                | -         |
 
 ### 2.4 Dependencies
 

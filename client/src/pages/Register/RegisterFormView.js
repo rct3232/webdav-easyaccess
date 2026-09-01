@@ -1,5 +1,14 @@
 import React from 'react';
-import { Alert, Box, Button, CircularProgress, Link, Paper, TextField, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Link,
+  Paper,
+  TextField,
+  Typography,
+} from '@mui/material';
 
 import { EmailNotificationMessage } from '../../components/feedback';
 
@@ -50,7 +59,13 @@ const RegisterFormView = ({
         }}
       />
 
-      <Typography variant="subtitle1" gutterBottom align="center" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography
+        variant="subtitle1"
+        gutterBottom
+        align="center"
+        color="text.secondary"
+        sx={{ mb: 3 }}
+      >
         {title}
       </Typography>
 
@@ -83,50 +98,50 @@ const RegisterFormView = ({
         </Box>
       ) : (
         <form onSubmit={onSubmit}>
-           <TextField
-             fullWidth
-             name="username"
-             label={usernameLabel}
-             variant="outlined"
-             margin="normal"
-             value={username}
-             onChange={onUsernameChange}
-             required
-             autoFocus
-           />
-           <TextField
-             fullWidth
-             name="email"
-             label={emailLabel}
-             type="email"
-             variant="outlined"
-             margin="normal"
-             value={email}
-             onChange={onEmailChange}
-             required
-           />
-           <TextField
-             fullWidth
-             name="password"
-             label={passwordLabel}
-             type="password"
-             variant="outlined"
-             margin="normal"
-             value={password}
-             onChange={onPasswordChange}
-             required
-           />
-           <TextField
-             fullWidth
-             name="confirmPassword"
-             label={confirmPasswordLabel}
-             type="password"
-             variant="outlined"
-             margin="normal"
-             value={confirmPassword}
-             onChange={onConfirmPasswordChange}
-             required
-           />
+          <TextField
+            fullWidth
+            name="username"
+            label={usernameLabel}
+            variant="outlined"
+            margin="normal"
+            value={username}
+            onChange={onUsernameChange}
+            required
+            autoFocus
+          />
+          <TextField
+            fullWidth
+            name="email"
+            label={emailLabel}
+            type="email"
+            variant="outlined"
+            margin="normal"
+            value={email}
+            onChange={onEmailChange}
+            required
+          />
+          <TextField
+            fullWidth
+            name="password"
+            label={passwordLabel}
+            type="password"
+            variant="outlined"
+            margin="normal"
+            value={password}
+            onChange={onPasswordChange}
+            required
+          />
+          <TextField
+            fullWidth
+            name="confirmPassword"
+            label={confirmPasswordLabel}
+            type="password"
+            variant="outlined"
+            margin="normal"
+            value={confirmPassword}
+            onChange={onConfirmPasswordChange}
+            required
+          />
 
           <Button
             type="submit"
@@ -140,12 +155,7 @@ const RegisterFormView = ({
           </Button>
 
           <Box textAlign="center">
-            <Link
-              href={loginPath}
-              underline="none"
-              color="inherit"
-              onClick={onNavigateToLogin}
-            >
+            <Link href={loginPath} underline="none" color="inherit" onClick={onNavigateToLogin}>
               <Typography variant="body2" color="primary">
                 {hasAccountText}
               </Typography>
@@ -158,4 +168,3 @@ const RegisterFormView = ({
 };
 
 export default RegisterFormView;
-

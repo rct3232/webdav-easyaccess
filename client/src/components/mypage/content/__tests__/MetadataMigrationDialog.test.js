@@ -111,7 +111,9 @@ describe('MetadataMigrationDialog', () => {
   });
 
   it('scans the target and reports an empty schema', async () => {
-    server.use(http.get('/api/admin/migration/target-scan', () => HttpResponse.json(emptyTargetScan)));
+    server.use(
+      http.get('/api/admin/migration/target-scan', () => HttpResponse.json(emptyTargetScan))
+    );
 
     const user = userEvent.setup();
     renderDialog();
@@ -142,7 +144,9 @@ describe('MetadataMigrationDialog', () => {
     await fillPgFields(user);
     await user.click(screen.getByRole('button', { name: /scan target/i }));
 
-    expect(await screen.findByText(/has no schema — it will be created during the migration/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/has no schema — it will be created during the migration/i)
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('metadata-wipe-alert')).not.toBeInTheDocument();
   });
 
@@ -175,13 +179,20 @@ describe('MetadataMigrationDialog', () => {
     const alert = await screen.findByTestId('metadata-wipe-alert');
     expect(within(alert).getByText(/users: 3/i)).toBeInTheDocument();
     expect(within(alert).getByText(/file_nodes: 10/i)).toBeInTheDocument();
-    expect(scanParams).toEqual({ targetBackend: 'postgresql', host: 'db.local', port: '5432', database: 'webdav' });
+    expect(scanParams).toEqual({
+      targetBackend: 'postgresql',
+      host: 'db.local',
+      port: '5432',
+      database: 'webdav',
+    });
 
     // Start stays disabled until the wipe is confirmed.
     const startButton = screen.getByRole('button', { name: /^start migration$/i });
     expect(startButton).toBeDisabled();
 
-    await user.click(screen.getByRole('checkbox', { name: /existing target data will be deleted/i }));
+    await user.click(
+      screen.getByRole('checkbox', { name: /existing target data will be deleted/i })
+    );
     expect(startButton).toBeEnabled();
 
     await user.click(startButton);
@@ -209,7 +220,10 @@ describe('MetadataMigrationDialog', () => {
     server.use(
       http.get('/api/admin/migration/target-scan', () => HttpResponse.json(populatedTargetScan)),
       http.post('/api/admin/migration/metadata', () =>
-        HttpResponse.json({ errorCode: 'serverErrors.admin.migrationMissingRequired' }, { status: 400 })
+        HttpResponse.json(
+          { errorCode: 'serverErrors.admin.migrationMissingRequired' },
+          { status: 400 }
+        )
       )
     );
 
@@ -219,7 +233,9 @@ describe('MetadataMigrationDialog', () => {
     await fillPgFields(user);
     await user.click(screen.getByRole('button', { name: /scan target/i }));
     await screen.findByTestId('metadata-wipe-alert');
-    await user.click(screen.getByRole('checkbox', { name: /existing target data will be deleted/i }));
+    await user.click(
+      screen.getByRole('checkbox', { name: /existing target data will be deleted/i })
+    );
     await user.click(screen.getByRole('button', { name: /^start migration$/i }));
 
     expect(await screen.findByText(/missing required destination fields/i)).toBeInTheDocument();

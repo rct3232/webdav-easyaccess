@@ -9,51 +9,54 @@ export const usePreviewLoader = ({ open, displayFile, file, shareToken, t }) => 
   const [previewBlob, setPreviewBlob] = useState(null);
   const [textContent, setTextContent] = useState(null);
 
-  const loadPreview = useCallback(async (signal) => {
-    const targetFile = displayFile || file;
-    if (!targetFile) return;
+  const loadPreview = useCallback(
+    async (signal) => {
+      const targetFile = displayFile || file;
+      if (!targetFile) return;
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      const filename = targetFile.name || targetFile.basename;
-      const fileType = getFileType(filename);
+      try {
+        const filename = targetFile.name || targetFile.basename;
+        const fileType = getFileType(filename);
 
-      if (fileType === 'video') {
-        const url = await getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken });
+        if (fileType === 'video') {
+          const url = await getVideoPreviewStreamUrl(targetFile.nodeId, { shareToken });
+          if (signal?.aborted) return;
+          setPreviewUrl(url);
+          setLoading(false);
+          return;
+        }
+
+        const blob = await getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal });
         if (signal?.aborted) return;
-        setPreviewUrl(url);
+
+        if (fileType === 'text') {
+          const text = await blob.text();
+          if (signal?.aborted) return;
+          setTextContent(text);
+        } else if (fileType === 'pdf') {
+          setPreviewBlob(blob);
+          const url = URL.createObjectURL(blob);
+          setPreviewUrl(url);
+        } else {
+          const url = URL.createObjectURL(blob);
+          setPreviewUrl(url);
+        }
+
         setLoading(false);
-        return;
+      } catch (err) {
+        // Treat abort (user navigated away or effect re-ran) as non-fatal.
+        // httpClient converts AbortError to Error with code ECONNABORTED.
+        if (err?.name === 'AbortError' || err?.code === 'ECONNABORTED') return;
+        console.error('Preview load error:', err);
+        setError(t('preview.loadFail'));
+        setLoading(false);
       }
-
-      const blob = await getFileBlob(targetFile.nodeId, { inline: true, shareToken, signal });
-      if (signal?.aborted) return;
-
-      if (fileType === 'text') {
-        const text = await blob.text();
-        if (signal?.aborted) return;
-        setTextContent(text);
-      } else if (fileType === 'pdf') {
-        setPreviewBlob(blob);
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
-      } else {
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
-      }
-
-      setLoading(false);
-    } catch (err) {
-      // Treat abort (user navigated away or effect re-ran) as non-fatal.
-      // httpClient converts AbortError to Error with code ECONNABORTED.
-      if (err?.name === 'AbortError' || err?.code === 'ECONNABORTED') return;
-      console.error('Preview load error:', err);
-      setError(t('preview.loadFail'));
-      setLoading(false);
-    }
-  }, [displayFile, file, shareToken, t]);
+    },
+    [displayFile, file, shareToken, t]
+  );
 
   useEffect(() => {
     const targetFile = displayFile || file;

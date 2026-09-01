@@ -53,12 +53,7 @@ describe('ShareDialog', () => {
 
   it('shows close button when enableExternalShare', async () => {
     renderWithProviders(
-      <ShareDialog
-        {...defaultProps}
-        enableExternalShare
-        fileNodeId={1}
-        fileName="file.pdf"
-      />
+      <ShareDialog {...defaultProps} enableExternalShare fileNodeId={1} fileName="file.pdf" />
     );
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
@@ -68,12 +63,7 @@ describe('ShareDialog', () => {
 
   it('mode admin shows permission settings in title', async () => {
     renderWithProviders(
-      <ShareDialog
-        {...defaultProps}
-        mode="admin"
-        userId="1"
-        username="testuser"
-      />
+      <ShareDialog {...defaultProps} mode="admin" userId="1" username="testuser" />
     );
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toHaveTextContent(/permission settings/i);
@@ -83,17 +73,11 @@ describe('ShareDialog', () => {
 
   it('mode review shows permission review in title', async () => {
     renderWithProviders(
-      <ShareDialog
-        {...defaultProps}
-        mode="review"
-        folderPath="/user/folder"
-        folderName="folder"
-      />
+      <ShareDialog {...defaultProps} mode="review" folderPath="/user/folder" folderName="folder" />
     );
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toHaveTextContent(/permission review/i);
       expect(screen.getByRole('dialog')).toHaveTextContent(/folder/i);
     });
   });
-
 });

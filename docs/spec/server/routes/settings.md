@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/settings` (public) and `/api/admin` (admin routes, same router) |
-| Role | Public settings (`registration_enabled`, `email_enabled`, `setup_complete`) — no auth; admin settings GET/PUT — admin auth |
+| Item       | Description                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/settings` (public) and `/api/admin` (admin routes, same router)                                                      |
+| Role       | Public settings (`registration_enabled`, `email_enabled`, `setup_complete`) — no auth; admin settings GET/PUT — admin auth |
 
 ---
 
@@ -18,11 +18,11 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/public` | None | Public settings. |
-| GET | `/admin/settings` | Token + Admin | Get all system settings. |
-| PUT | `/admin/settings` | Token + Admin | Update system settings (currently `registration_enabled`). |
+| Method | Path              | Auth          | Description                                                |
+| ------ | ----------------- | ------------- | ---------------------------------------------------------- |
+| GET    | `/public`         | None          | Public settings.                                           |
+| GET    | `/admin/settings` | Token + Admin | Get all system settings.                                   |
+| PUT    | `/admin/settings` | Token + Admin | Update system settings (currently `registration_enabled`). |
 
 ### 2.3 Middleware Used
 

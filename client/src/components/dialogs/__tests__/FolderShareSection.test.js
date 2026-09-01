@@ -31,9 +31,7 @@ describe('FolderShareSection', () => {
   });
 
   it('shows loading text when folderTree is empty', () => {
-    renderWithProviders(
-      <FolderShareSection {...defaultProps} folderTree={new Map()} />
-    );
+    renderWithProviders(<FolderShareSection {...defaultProps} folderTree={new Map()} />);
     expect(screen.getByText(/loading folders/i)).toBeInTheDocument();
   });
 
@@ -43,9 +41,7 @@ describe('FolderShareSection', () => {
   });
 
   it('shows noSubfolders when user base node has no children', () => {
-    const folderTree = new Map([
-      ['/user1', { path: '/user1', name: 'user1', children: [] }],
-    ]);
+    const folderTree = new Map([['/user1', { path: '/user1', name: 'user1', children: [] }]]);
     renderWithProviders(
       <FolderShareSection
         {...defaultProps}

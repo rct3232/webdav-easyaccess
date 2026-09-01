@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure validation for FolderPicker copy/move destinations. Determines whether the currently selected destination nodeId would be an invalid target for one or more source nodeIds. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Function Signatures
 
-| Function | (input) => return |
-|----------|-------------------|
+| Function                           | (input) => return                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------- |
 | `isInvalidFolderPickerDestination` | `({ action, selectedNodeId, sourceNodeId, sourceNodeIds }) => boolean` |
 
 ### 2.3 Dependencies

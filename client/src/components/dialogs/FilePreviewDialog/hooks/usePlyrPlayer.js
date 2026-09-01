@@ -77,8 +77,12 @@ export const usePlyrPlayer = ({
     videoEl.playsInline = true;
     videoEl.preload = 'metadata';
 
-    const onError = () => { setVideoNotPlayable(true); };
-    const onCanPlay = () => { setVideoNotPlayable(false); };
+    const onError = () => {
+      setVideoNotPlayable(true);
+    };
+    const onCanPlay = () => {
+      setVideoNotPlayable(false);
+    };
     const onWaiting = () => {
       if (videoEl?.networkState === 3 /* NETWORK_NO_SOURCE */) {
         setVideoNotPlayable(true);
@@ -148,7 +152,14 @@ export const usePlyrPlayer = ({
     };
     el.addEventListener('touchend', handler, { passive: false, capture: true });
     return () => el.removeEventListener('touchend', handler, { passive: false, capture: true });
-  }, [loading, isGalleryMode, isMobile, currentPreviewFileType, touchStartX, touchStartedOnPlyrControls]);
+  }, [
+    loading,
+    isGalleryMode,
+    isMobile,
+    currentPreviewFileType,
+    touchStartX,
+    touchStartedOnPlyrControls,
+  ]);
 
   return { videoNotPlayable, audioContainerRef, videoContainerRef, mediaTouchRef };
 };

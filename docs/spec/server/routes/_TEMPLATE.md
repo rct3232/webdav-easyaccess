@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item       | Description                  |
+| ---------- | ---------------------------- |
 | Mount path | (e.g. /api/auth, /api/files) |
-| Role | (Endpoint group role) |
+| Role       | (Endpoint group role)        |
 
 ---
 
@@ -18,8 +18,8 @@
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
+| Method   | Path   | Auth                | Description   |
+| -------- | ------ | ------------------- | ------------- |
 | (METHOD) | (path) | (required/optional) | (description) |
 
 ### 2.3 Middleware Used

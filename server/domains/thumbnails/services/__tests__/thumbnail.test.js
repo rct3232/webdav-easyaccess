@@ -6,14 +6,16 @@
  *
  * @see docs/spec/server/utils/thumbnail.md
  */
-jest.mock('sharp', () => jest.fn().mockImplementation(() => ({
-  metadata: jest.fn().mockResolvedValue({ hasAlpha: false }),
-  rotate: jest.fn().mockReturnThis(),
-  resize: jest.fn().mockReturnThis(),
-  jpeg: jest.fn().mockReturnThis(),
-  png: jest.fn().mockReturnThis(),
-  toBuffer: jest.fn().mockResolvedValue(Buffer.from('fake-thumbnail')),
-})));
+jest.mock('sharp', () =>
+  jest.fn().mockImplementation(() => ({
+    metadata: jest.fn().mockResolvedValue({ hasAlpha: false }),
+    rotate: jest.fn().mockReturnThis(),
+    resize: jest.fn().mockReturnThis(),
+    jpeg: jest.fn().mockReturnThis(),
+    png: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn().mockResolvedValue(Buffer.from('fake-thumbnail')),
+  }))
+);
 
 jest.mock('@server/utils/webdav', () => ({
   isImageFile: jest.fn(),

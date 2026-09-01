@@ -15,7 +15,7 @@ export function isInvalidFolderPickerDestination({
 
   if (selectedNodeId == null) return false;
 
-  const sourceIds = sourceNodeId != null ? [sourceNodeId] : (sourceNodeIds || []);
+  const sourceIds = sourceNodeId != null ? [sourceNodeId] : sourceNodeIds || [];
 
   return sourceIds.some((id) => id != null && id === selectedNodeId);
 }

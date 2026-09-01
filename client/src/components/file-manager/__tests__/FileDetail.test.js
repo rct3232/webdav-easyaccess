@@ -14,7 +14,14 @@ jest.mock('../../../hooks/useResponsive', () => {
 });
 
 const mockFiles = [
-  { path: '/doc.pdf', basename: 'doc.pdf', size: 1024, lastmod: '2025-01-15T10:00:00Z', type: 'file', mime: 'application/pdf' },
+  {
+    path: '/doc.pdf',
+    basename: 'doc.pdf',
+    size: 1024,
+    lastmod: '2025-01-15T10:00:00Z',
+    type: 'file',
+    mime: 'application/pdf',
+  },
   { path: '/folder', basename: 'folder', type: 'directory' },
 ];
 
@@ -57,9 +64,7 @@ describe('FileDetail', () => {
   });
 
   it('shows FileDetailSkeleton when loading and files empty', () => {
-    const { container } = renderWithProviders(
-      <FileDetail {...defaultProps} files={[]} loading />
-    );
+    const { container } = renderWithProviders(<FileDetail {...defaultProps} files={[]} loading />);
     expect(container.querySelector('.MuiSkeleton-root')).toBeInTheDocument();
   });
 

@@ -120,13 +120,12 @@ describe('shared pathUtils', () => {
       expect(isRootPath(input, treatAsRoot)).toBe(true);
     });
 
-    it.each([
-      ['/foo'],
-      ['/a/b/c'],
-      ['random-path'],
-    ])('returns false for normal path (%p)', (input) => {
-      expect(isRootPath(input)).toBe(false);
-    });
+    it.each([['/foo'], ['/a/b/c'], ['random-path']])(
+      'returns false for normal path (%p)',
+      (input) => {
+        expect(isRootPath(input)).toBe(false);
+      }
+    );
 
     it('returns false when treatAsRoot is not an array', () => {
       expect(isRootPath('/__shared__', '/__shared__')).toBe(false);

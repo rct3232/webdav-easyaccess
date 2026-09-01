@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Mount path | `/api/recent-files` |
-| Role | Recent files for current user: list, add, remove, clear. Entries are nodeId-based; displayPath resolved server-side. |
+| Item       | Description                                                                                                          |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/recent-files`                                                                                                  |
+| Role       | Recent files for current user: list, add, remove, clear. Entries are nodeId-based; displayPath resolved server-side. |
 
 ---
 
@@ -20,12 +20,12 @@
 
 ### 2.2 Route List
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/` | Token | List recent files. |
-| POST | `/` | Token | Add file. Body: fileNodeId. |
+| Method | Path           | Auth  | Description                        |
+| ------ | -------------- | ----- | ---------------------------------- |
+| GET    | `/`            | Token | List recent files.                 |
+| POST   | `/`            | Token | Add file. Body: fileNodeId.        |
 | DELETE | `/:fileNodeId` | Token | Remove one entry (numeric nodeId). |
-| DELETE | `/` | Token | Clear all. |
+| DELETE | `/`            | Token | Clear all.                         |
 
 **Route order:** `DELETE /` must be defined before `DELETE /:fileNodeId` so that clear-all matches before single-entry remove.
 

@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Section for share link root (like `__shared__`/`__recent__`). Shows the share link root and its children via `BaseFolderTreeItem`. Loads root children through `folderTreeGateway.listFolderChildren`. |
-| Used in | FolderTree (share link view) |
-| Related components | BaseFolderTreeItem, folderTreeGateway |
+| Item               | Description                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Section for share link root (like `__shared__`/`__recent__`). Shows the share link root and its children via `BaseFolderTreeItem`. Loads root children through `folderTreeGateway.listFolderChildren`. |
+| Used in            | FolderTree (share link view)                                                                                                                                                                           |
+| Related components | BaseFolderTreeItem, folderTreeGateway                                                                                                                                                                  |
 
 ---
 
@@ -19,20 +19,20 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| shareRootNodeId | number | Y | - | Share root node id (always present; link info carries nodeId) |
-| shareRootName | string | Y | - | Display name |
-| shareToken | string | N | - | Share token |
-| currentNodeId | number | Y | - | Current folder node id |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
-| isMobile | boolean | N | false | Mobile |
+| Name            | Type     | Required | Default | Description                                                   |
+| --------------- | -------- | -------- | ------- | ------------------------------------------------------------- |
+| shareRootNodeId | number   | Y        | -       | Share root node id (always present; link info carries nodeId) |
+| shareRootName   | string   | Y        | -       | Display name                                                  |
+| shareToken      | string   | N        | -       | Share token                                                   |
+| currentNodeId   | number   | Y        | -       | Current folder node id                                        |
+| onNodeClick     | function | Y        | -       | Folder click: `(nodeId) => void`                              |
+| isMobile        | boolean  | N        | false   | Mobile                                                        |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onNodeClick | Node click | (nodeId) |
+| Callback    | When invoked | Arguments |
+| ----------- | ------------ | --------- |
+| onNodeClick | Node click   | (nodeId)  |
 
 ### 2.4 Dependencies
 
@@ -46,7 +46,7 @@
 ### 2.6 Conditional Rendering
 
 - Expands ancestor nodes when `currentNodeId` is under the share root
-- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })` 
+- Loads root children through `folderTreeGateway.listFolderChildren({ nodeId: shareRootNodeId, listFilesOptions: { shareToken } })`
 
 ### 2.7 Verification Scenarios
 

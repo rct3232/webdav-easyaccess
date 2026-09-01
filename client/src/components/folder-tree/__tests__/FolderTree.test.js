@@ -68,10 +68,7 @@ describe('FolderTree', () => {
 
   it('renders home label for admin user', async () => {
     renderWithProviders(
-      <FolderTree
-        {...defaultProps}
-        user={{ id: '1', username: 'admin', is_admin: true }}
-      />
+      <FolderTree {...defaultProps} user={{ id: '1', username: 'admin', is_admin: true }} />
     );
     await waitFor(() => {
       expect(screen.getByText(/home/i)).toBeInTheDocument();

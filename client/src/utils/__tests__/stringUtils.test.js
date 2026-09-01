@@ -1,4 +1,9 @@
-import { middleTruncate, getVisibleLength, pixelMiddleTruncate, getTextWidth } from '../stringUtils';
+import {
+  middleTruncate,
+  getVisibleLength,
+  pixelMiddleTruncate,
+  getTextWidth,
+} from '../stringUtils';
 
 // Mock Canvas for getTextWidth
 if (typeof HTMLCanvasElement !== 'undefined') {
@@ -7,13 +12,14 @@ if (typeof HTMLCanvasElement !== 'undefined') {
       width: text.split('').reduce((acc, char) => {
         // Mock width: CJK=14px, others=7px
         const charCode = char.charCodeAt(0);
-        const isCJK = (charCode >= 0x1100 && charCode <= 0x11ff) ||
+        const isCJK =
+          (charCode >= 0x1100 && charCode <= 0x11ff) ||
           (charCode >= 0x3000 && charCode <= 0x303f) ||
           (charCode >= 0x3130 && charCode <= 0x318f) ||
           (charCode >= 0xac00 && charCode <= 0xd7af) ||
           (charCode >= 0x4e00 && charCode <= 0x9fff);
         return acc + (isCJK ? 14 : 7);
-      }, 0)
+      }, 0),
     })),
     font: '',
   }));

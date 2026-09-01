@@ -81,7 +81,13 @@ beforeEach(() => {
   jest.clearAllMocks();
   nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => realNow());
   // Unset PG env so each test opts in explicitly.
-  for (const key of ['WEA_PG_HOST', 'WEA_PG_PORT', 'WEA_PG_DATABASE', 'WEA_PG_USER', 'WEA_PG_PASSWORD']) {
+  for (const key of [
+    'WEA_PG_HOST',
+    'WEA_PG_PORT',
+    'WEA_PG_DATABASE',
+    'WEA_PG_USER',
+    'WEA_PG_PASSWORD',
+  ]) {
     delete process.env[key];
   }
 });

@@ -114,7 +114,9 @@ describe('maintenanceScheduler', () => {
 
     it('returns the fail-safe report', async () => {
       const failSafeService = {
-        runStartupRecovery: jest.fn(() => Promise.resolve({ scanned: 1, resolved: 0, manualReview: [{ nodeId: 1, path: '/x' }] })),
+        runStartupRecovery: jest.fn(() =>
+          Promise.resolve({ scanned: 1, resolved: 0, manualReview: [{ nodeId: 1, path: '/x' }] })
+        ),
       };
       const report = await runStartupFailSafeRecovery({ failSafeService });
       expect(report.scanned).toBe(1);

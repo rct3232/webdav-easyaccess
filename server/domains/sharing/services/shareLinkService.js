@@ -35,7 +35,12 @@ function toLinkResponse(link, node) {
   const fileName = node ? node.name : null;
   return {
     token: link.token,
-    nodeId: link.nodeId != null ? Number(link.nodeId) : (link.fileNodeId != null ? Number(link.fileNodeId) : null),
+    nodeId:
+      link.nodeId != null
+        ? Number(link.nodeId)
+        : link.fileNodeId != null
+          ? Number(link.fileNodeId)
+          : null,
     fileName,
     fileType: fileName ? getFileType(fileName) : null,
     isDirectory: node ? node.type === 'directory' : null,

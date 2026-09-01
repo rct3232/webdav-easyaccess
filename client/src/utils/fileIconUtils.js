@@ -28,4 +28,3 @@ export const getFileIconForGrid = (file) => {
 export const getThumbnail = (file) => {
   return file.thumbnailUrl || null;
 };
-

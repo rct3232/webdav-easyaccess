@@ -111,7 +111,12 @@ describe('createBackendHealth', () => {
     tracker.report('postgresql', { ok: true });
     expect(transitions).toHaveLength(1);
 
-    tracker.report('postgresql', { ok: false, code: 'auth', reason: 'bad credentials', hint: 'db.auth' });
+    tracker.report('postgresql', {
+      ok: false,
+      code: 'auth',
+      reason: 'bad credentials',
+      hint: 'db.auth',
+    });
     expect(transitions).toHaveLength(2);
     expect(transitions[1]).toEqual({
       backend: 'postgresql',

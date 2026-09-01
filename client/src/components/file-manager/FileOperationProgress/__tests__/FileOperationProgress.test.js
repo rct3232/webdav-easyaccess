@@ -15,7 +15,13 @@ jest.mock('../../../../hooks/useResponsive', () => {
 
 const mockItems = [
   { id: '1', type: 'download', status: 'completed', name: 'file1.txt' },
-  { id: '2', type: 'upload', status: 'error', name: 'file2.txt', failedItems: [{ fileName: 'file2.txt', error: 'err' }] },
+  {
+    id: '2',
+    type: 'upload',
+    status: 'error',
+    name: 'file2.txt',
+    failedItems: [{ fileName: 'file2.txt', error: 'err' }],
+  },
 ];
 
 const defaultProps = {
@@ -34,14 +40,24 @@ describe('FileOperationProgress', () => {
 
   it('returns null when items empty', () => {
     const { container } = renderWithProviders(
-      <FileOperationProgress items={[]} drawerOpen={false} onDrawerOpen={jest.fn()} onDrawerClose={jest.fn()} />
+      <FileOperationProgress
+        items={[]}
+        drawerOpen={false}
+        onDrawerOpen={jest.fn()}
+        onDrawerClose={jest.fn()}
+      />
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('returns null when items null', () => {
     const { container } = renderWithProviders(
-      <FileOperationProgress items={null} drawerOpen={false} onDrawerOpen={jest.fn()} onDrawerClose={jest.fn()} />
+      <FileOperationProgress
+        items={null}
+        drawerOpen={false}
+        onDrawerOpen={jest.fn()}
+        onDrawerClose={jest.fn()}
+      />
     );
     expect(container.firstChild).toBeNull();
   });

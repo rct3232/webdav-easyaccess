@@ -80,7 +80,7 @@ describe('FileItem', () => {
   it('click calls onFileClick with correct args', () => {
     const onFileClick = jest.fn();
     const { container } = renderWithProviders(
-      <FileItem {...defaultProps} onFileClick={onFileClick} />,
+      <FileItem {...defaultProps} onFileClick={onFileClick} />
     );
     const box = container.querySelector('[data-file-path="/test.pdf"]');
     fireEvent.click(box);
@@ -96,10 +96,10 @@ describe('FileItem', () => {
 
   it('directory item renders with different icon than file', () => {
     const { container: fileContainer } = renderWithProviders(
-      <FileItem {...defaultProps} file={mockFile} />,
+      <FileItem {...defaultProps} file={mockFile} />
     );
     const { container: dirContainer } = renderWithProviders(
-      <FileItem {...defaultProps} file={mockDirFile} />,
+      <FileItem {...defaultProps} file={mockDirFile} />
     );
 
     const fileIcon = fileContainer.querySelector('.MuiSvgIcon-root');

@@ -5,8 +5,17 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { DriveFileMove as MoveIcon, ContentCopy as CopyIcon, Delete as DeleteIcon } from '@mui/icons-material';
-import { renderProcessingIcon, getFileItemState, getDropTargetStyles, getEntryKey } from '../fileViewUtils';
+import {
+  DriveFileMove as MoveIcon,
+  ContentCopy as CopyIcon,
+  Delete as DeleteIcon,
+} from '@mui/icons-material';
+import {
+  renderProcessingIcon,
+  getFileItemState,
+  getDropTargetStyles,
+  getEntryKey,
+} from '../fileViewUtils';
 
 describe('fileViewUtils', () => {
   describe('getEntryKey', () => {

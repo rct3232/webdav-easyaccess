@@ -6,11 +6,11 @@
 
 ## 1. Overview (Historical)
 
-| Item | Description |
-|------|-------------|
-| Role | Toolbar for bulk actions on selected files: move, copy, download, delete. Rendered inline below FileManagerControls (sort/select/view row), with icon+text buttons and no background. |
-| Used in | FileManager |
-| Related components | MUI Button, Typography, Box |
+| Item               | Description                                                                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Toolbar for bulk actions on selected files: move, copy, download, delete. Rendered inline below FileManagerControls (sort/select/view row), with icon+text buttons and no background. |
+| Used in            | FileManager                                                                                                                                                                           |
+| Related components | MUI Button, Typography, Box                                                                                                                                                           |
 
 ---
 
@@ -23,26 +23,26 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| selectedFiles | Set\<string\> | Y | - | Set of selected file paths |
-| handleBulkMove | function | Y | - | Move button handler |
-| handleBulkCopy | function | Y | - | Copy button handler |
-| handleBulkDownload | function | Y | - | Download button handler |
-| openBulkDeleteDialog | function | Y | - | Delete button handler; receives filePaths array |
-| hasWritePermission | boolean | Y | - | Whether write actions allowed |
-| hasReadOnlyInSelection | boolean | N | false | Show read-only warning when some selected are read-only |
-| disabled | boolean | N | false | Disable all bulk actions |
-| downloadOnly | boolean | N | false | Hide move, copy, delete; show only download |
+| Name                   | Type          | Required | Default | Description                                             |
+| ---------------------- | ------------- | -------- | ------- | ------------------------------------------------------- |
+| selectedFiles          | Set\<string\> | Y        | -       | Set of selected file paths                              |
+| handleBulkMove         | function      | Y        | -       | Move button handler                                     |
+| handleBulkCopy         | function      | Y        | -       | Copy button handler                                     |
+| handleBulkDownload     | function      | Y        | -       | Download button handler                                 |
+| openBulkDeleteDialog   | function      | Y        | -       | Delete button handler; receives filePaths array         |
+| hasWritePermission     | boolean       | Y        | -       | Whether write actions allowed                           |
+| hasReadOnlyInSelection | boolean       | N        | false   | Show read-only warning when some selected are read-only |
+| disabled               | boolean       | N        | false   | Disable all bulk actions                                |
+| downloadOnly           | boolean       | N        | false   | Hide move, copy, delete; show only download             |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| handleBulkMove | Move button click | - |
-| handleBulkCopy | Copy button click | - |
-| handleBulkDownload | Download button click | - |
-| openBulkDeleteDialog | Delete button click | (filePaths: string[]) |
+| Callback             | When invoked          | Arguments             |
+| -------------------- | --------------------- | --------------------- |
+| handleBulkMove       | Move button click     | -                     |
+| handleBulkCopy       | Copy button click     | -                     |
+| handleBulkDownload   | Download button click | -                     |
+| openBulkDeleteDialog | Delete button click   | (filePaths: string[]) |
 
 ### 2.4 Dependencies
 

@@ -31,4 +31,3 @@ class PermissionRequest {
 }
 
 module.exports = PermissionRequest;
-

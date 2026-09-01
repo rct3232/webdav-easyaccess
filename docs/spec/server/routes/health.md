@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Liveness/health surfaces. `GET /api/health` (public) stays a liveness probe and now includes per-backend status strings. `GET /api/admin/health` (admin) returns the full backend-health snapshot. |
-| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D3) |
+| Item            | Description                                                                                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role            | Liveness/health surfaces. `GET /api/health` (public) stays a liveness probe and now includes per-backend status strings. `GET /api/admin/health` (admin) returns the full backend-health snapshot. |
+| Source of truth | `docs/features/backend-health.md`, `PLAN.md` Phase B (B1, D3)                                                                                                                                      |
 
 ---
 
@@ -26,10 +26,10 @@
   "status": "ok",
   "messageCode": "serverMessages.api.healthOk",
   "backends": {
-    "postgresql": "ok",   // "ok" | "fail" | "unknown"
+    "postgresql": "ok", // "ok" | "fail" | "unknown"
     "s3": "unknown",
-    "webdav": "fail"
-  }
+    "webdav": "fail",
+  },
 }
 ```
 
@@ -46,10 +46,34 @@
 ```jsonc
 {
   "backends": {
-    "postgresql": { "status": "ok", "code": undefined, "reason": undefined, "hint": undefined, "lastCheckedAt": 1725000000000, "firstFailedAt": undefined, "consecutiveFailures": 0 },
-    "s3": { "status": "unknown", "code": undefined, "reason": undefined, "hint": undefined, "lastCheckedAt": undefined, "firstFailedAt": undefined, "consecutiveFailures": 0 },
-    "webdav": { "status": "fail", "code": "unreachable", "reason": "ECONNREFUSED 127.0.0.1:8090", "hint": "Cannot reach the WebDAV server", "lastCheckedAt": 1725000000000, "firstFailedAt": 1724999900000, "consecutiveFailures": 3 }
-  }
+    "postgresql": {
+      "status": "ok",
+      "code": undefined,
+      "reason": undefined,
+      "hint": undefined,
+      "lastCheckedAt": 1725000000000,
+      "firstFailedAt": undefined,
+      "consecutiveFailures": 0,
+    },
+    "s3": {
+      "status": "unknown",
+      "code": undefined,
+      "reason": undefined,
+      "hint": undefined,
+      "lastCheckedAt": undefined,
+      "firstFailedAt": undefined,
+      "consecutiveFailures": 0,
+    },
+    "webdav": {
+      "status": "fail",
+      "code": "unreachable",
+      "reason": "ECONNREFUSED 127.0.0.1:8090",
+      "hint": "Cannot reach the WebDAV server",
+      "lastCheckedAt": 1725000000000,
+      "firstFailedAt": 1724999900000,
+      "consecutiveFailures": 3,
+    },
+  },
 }
 ```
 

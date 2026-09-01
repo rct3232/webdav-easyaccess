@@ -49,13 +49,14 @@ export function deriveShareFolderAccessView({
   });
 
   const requesterId = permissionRequest?.requester_id;
-  const reviewRequesterOption = isReviewMode && requesterId
-    ? {
-        userId: requesterId,
-        userName: permissionRequest.requester_username || getUserName(requesterId) || '',
-        alreadyAdded: currentFolderUserPerms.has(requesterId),
-      }
-    : null;
+  const reviewRequesterOption =
+    isReviewMode && requesterId
+      ? {
+          userId: requesterId,
+          userName: permissionRequest.requester_username || getUserName(requesterId) || '',
+          alreadyAdded: currentFolderUserPerms.has(requesterId),
+        }
+      : null;
 
   const currentIsUserBaseFolder =
     isAdminMode && baseFolderNodeId != null && nodeId === baseFolderNodeId;

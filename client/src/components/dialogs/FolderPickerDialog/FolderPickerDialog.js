@@ -28,7 +28,17 @@ import {
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useFolderPicker } from './hooks/useFolderPicker';
 
-const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, user, action, sourceNodeId, sourceNodeIds }) => {
+const FolderPickerDialog = ({
+  open,
+  onClose,
+  onSelect,
+  title,
+  currentNodeId,
+  user,
+  action,
+  sourceNodeId,
+  sourceNodeIds,
+}) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
 
@@ -61,13 +71,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      fullScreen={isMobile}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
       <DialogTitle>{title || t('dialogs.folderSelectTitle')}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 2 }}>
@@ -81,7 +85,10 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
               sx={{
                 p: 1.5,
                 backgroundColor: 'grey.100',
-                borderRadius: (action === 'copy' || action === 'move') && user && !user.is_admin ? '4px 0 0 4px' : '4px',
+                borderRadius:
+                  (action === 'copy' || action === 'move') && user && !user.is_admin
+                    ? '4px 0 0 4px'
+                    : '4px',
                 flexWrap: 'wrap',
                 flex: 1,
                 display: 'flex',
@@ -104,16 +111,28 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
                     },
                   }}
                 >
-                  {index === 0 && getCurrentPathType() === 'shared' && <ShareIcon sx={{ mr: 0.5, fontSize: 18 }} />}
-                  {index === 0 && getCurrentPathType() === 'home' && <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />}
+                  {index === 0 && getCurrentPathType() === 'shared' && (
+                    <ShareIcon sx={{ mr: 0.5, fontSize: 18 }} />
+                  )}
+                  {index === 0 && getCurrentPathType() === 'home' && (
+                    <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />
+                  )}
                   {crumb.name || t('nav.home')}
                 </Link>
               ))}
             </Breadcrumbs>
             {(action === 'copy' || action === 'move') && user && !user.is_admin && (
-              <Tooltip title={getCurrentPathType() === 'home' ? t('dialogs.switchToShared') : t('dialogs.switchToHome')}>
+              <Tooltip
+                title={
+                  getCurrentPathType() === 'home'
+                    ? t('dialogs.switchToShared')
+                    : t('dialogs.switchToHome')
+                }
+              >
                 <IconButton
-                  onClick={() => handleTogglePath(null, getCurrentPathType() === 'home' ? 'shared' : 'home')}
+                  onClick={() =>
+                    handleTogglePath(null, getCurrentPathType() === 'home' ? 'shared' : 'home')
+                  }
                   size="small"
                   sx={{
                     border: 1,
@@ -140,13 +159,26 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
           </Box>
         </Box>
 
-        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, minHeight: 300, maxHeight: 400, overflow: 'auto' }}>
+        <Box
+          sx={{
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 1,
+            minHeight: 300,
+            maxHeight: 400,
+            overflow: 'auto',
+          }}
+        >
           {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+            <Box
+              sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}
+            >
               <CircularProgress />
             </Box>
           ) : folders.length === 0 ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+            <Box
+              sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}
+            >
               <Typography color="text.secondary">{t('dialogs.noSubfolders')}</Typography>
             </Box>
           ) : (
@@ -154,7 +186,8 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
               {folders.map((folder, index) => {
                 const hasReadPermission = folder.hasReadPermission !== false;
                 const isDisabled = !hasReadPermission;
-                const isHidden = folder.isHidden || (folder.basename && folder.basename.startsWith('.'));
+                const isHidden =
+                  folder.isHidden || (folder.basename && folder.basename.startsWith('.'));
 
                 return (
                   <ListItem key={index} disablePadding>
@@ -162,7 +195,7 @@ const FolderPickerDialog = ({ open, onClose, onSelect, title, currentNodeId, use
                       onClick={() => handleFolderClick(folder)}
                       disabled={isDisabled}
                       sx={{
-                        opacity: isDisabled ? 0.5 : (isHidden ? 0.5 : 1),
+                        opacity: isDisabled ? 0.5 : isHidden ? 0.5 : 1,
                         cursor: isDisabled ? 'not-allowed' : 'pointer',
                         '&:hover': {
                           backgroundColor: isDisabled ? 'transparent' : undefined,

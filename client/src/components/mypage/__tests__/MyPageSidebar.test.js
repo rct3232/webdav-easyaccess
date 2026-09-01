@@ -37,9 +37,7 @@ describe('MyPageSidebar', () => {
   });
 
   it('renders category list (Account, Preferences)', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} />);
     expect(screen.getByText(/account info/i)).toBeInTheDocument();
     expect(screen.getByText(/preferences/i)).toBeInTheDocument();
   });
@@ -52,44 +50,31 @@ describe('MyPageSidebar', () => {
   });
 
   it('renders the prepared admin categories when provided', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} categories={adminCategories} />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} categories={adminCategories} />);
     expect(screen.getByText(/users/i)).toBeInTheDocument();
     expect(screen.getByText(/system settings/i)).toBeInTheDocument();
   });
 
   it('does not render categories that were not provided', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} />);
     expect(screen.queryByText(/system settings/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^users$/i)).not.toBeInTheDocument();
   });
 
   it('renders the provided Sharing category', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} />);
     expect(screen.getByText(/share management/i)).toBeInTheDocument();
   });
 
   it('omits Sharing when it is not included in categories', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} categories={adminCategories} />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} categories={adminCategories} />);
     expect(screen.queryByText(/share management/i)).not.toBeInTheDocument();
   });
 
   it('calls onSelectCategory with categoryId when category clicked', async () => {
     const onSelectCategory = jest.fn();
     const user = userEvent.setup();
-    renderWithProviders(
-      <MyPageSidebar
-        {...defaultProps}
-        onSelectCategory={onSelectCategory}
-      />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} onSelectCategory={onSelectCategory} />);
     await user.click(screen.getByText(/preferences/i));
     expect(onSelectCategory).toHaveBeenCalledWith('preferences');
   });
@@ -97,20 +82,13 @@ describe('MyPageSidebar', () => {
   it('calls onSelectCategory with sharing when Sharing clicked', async () => {
     const onSelectCategory = jest.fn();
     const user = userEvent.setup();
-    renderWithProviders(
-      <MyPageSidebar
-        {...defaultProps}
-        onSelectCategory={onSelectCategory}
-      />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} onSelectCategory={onSelectCategory} />);
     await user.click(screen.getByText(/share management/i));
     expect(onSelectCategory).toHaveBeenCalledWith('sharing');
   });
 
   it('highlights selected category', () => {
-    renderWithProviders(
-      <MyPageSidebar {...defaultProps} selectedCategory="account" />
-    );
+    renderWithProviders(<MyPageSidebar {...defaultProps} selectedCategory="account" />);
     const accountButton = screen.getByRole('button', {
       name: /account info/i,
     });

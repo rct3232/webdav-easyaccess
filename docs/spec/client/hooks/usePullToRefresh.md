@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Pull-to-refresh gesture: touch handlers, pullDistance, isRefreshing. Calls onRefresh when threshold exceeded. Uses scrollContainerRef for scroll position. |
-| Used by components/pages | FileManager (mobile) |
+| Item                     | Description                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Pull-to-refresh gesture: touch handlers, pullDistance, isRefreshing. Calls onRefresh when threshold exceeded. Uses scrollContainerRef for scroll position. |
+| Used by components/pages | FileManager (mobile)                                                                                                                                       |
 
 ---
 
@@ -18,21 +18,21 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| onRefresh | function | Y | Refresh callback |
-| options | object | N | threshold (80), maxPullDistance (120), scrollContainerRef, onRefreshComplete |
+| Name      | Type     | Required | Description                                                                  |
+| --------- | -------- | -------- | ---------------------------------------------------------------------------- |
+| onRefresh | function | Y        | Refresh callback                                                             |
+| options   | object   | N        | threshold (80), maxPullDistance (120), scrollContainerRef, onRefreshComplete |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| pullDistance | number | Pull distance |
-| isPulling | boolean | Pulling |
-| isRefreshing | boolean | Refreshing |
-| canPull | boolean | At top |
-| pullHandlers | object | Touch handlers |
-| resetPull | () => void | Reset |
+| Key          | Type       | Meaning        |
+| ------------ | ---------- | -------------- |
+| pullDistance | number     | Pull distance  |
+| isPulling    | boolean    | Pulling        |
+| isRefreshing | boolean    | Refreshing     |
+| canPull      | boolean    | At top         |
+| pullHandlers | object     | Touch handlers |
+| resetPull    | () => void | Reset          |
 
 ### 2.4 Dependencies
 

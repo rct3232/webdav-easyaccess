@@ -83,11 +83,11 @@ Errors surface via `t(errorCode, params)` (existing error-display utility patter
 
 ### 3.2 Main Functions
 
-| Function       | Input                                                         | Return                                          | API called              |
-| -------------- | ------------------------------------------------------------- | ----------------------------------------------- | ----------------------- |
-| getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status` |
-| testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`  |
-| applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply` |
+| Function       | Input                                                         | Return                                          | API called                |
+| -------------- | ------------------------------------------------------------- | ----------------------------------------------- | ------------------------- |
+| getSetupStatus | `()`                                                          | `Promise<{ setup_complete, missing, current }>` | `GET /api/setup/status`   |
+| testSetup      | `(target: 'postgresql' \| 's3' \| 'webdav', payload: Object)` | `Promise<{ ok }>`                               | `POST /api/setup/test`    |
+| applySetup     | `(payload: Object)`                                           | `Promise<{ restart_required }>`                 | `POST /api/setup/apply`   |
 | prefillSetup   | `(metadata: Object)`                                          | `Promise<{ current, key_lost_warning }>`        | `POST /api/setup/prefill` |
 
 Transport: the existing `apiClient` (`client/src/services/apiClient.js`), which delegates to

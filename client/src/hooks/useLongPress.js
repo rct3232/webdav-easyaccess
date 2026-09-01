@@ -10,19 +10,22 @@ export const useLongPress = (onLongPress, delay = 500) => {
   const touchMoveRef = useRef(false);
   const longPressOccurredRef = useRef(false);
 
-  const start = useCallback((e) => {
-    touchMoveRef.current = false;
-    timeoutRef.current = setTimeout(() => {
-      if (!touchMoveRef.current) {
-        // 햅틱 피드백
-        if (navigator.vibrate) {
-          navigator.vibrate(50); // 50ms 진동
+  const start = useCallback(
+    (e) => {
+      touchMoveRef.current = false;
+      timeoutRef.current = setTimeout(() => {
+        if (!touchMoveRef.current) {
+          // 햅틱 피드백
+          if (navigator.vibrate) {
+            navigator.vibrate(50); // 50ms 진동
+          }
+          longPressOccurredRef.current = true;
+          onLongPress(e);
         }
-        longPressOccurredRef.current = true;
-        onLongPress(e);
-      }
-    }, delay);
-  }, [onLongPress, delay]);
+      }, delay);
+    },
+    [onLongPress, delay]
+  );
 
   const clear = useCallback(() => {
     if (timeoutRef.current) {
@@ -54,4 +57,3 @@ export const useLongPress = (onLongPress, delay = 500) => {
     wasLongPress,
   };
 };
-

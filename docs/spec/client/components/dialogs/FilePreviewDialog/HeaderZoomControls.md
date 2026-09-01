@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Zoom controls for the FilePreviewDialog header (PDF/image). Desktop: full inline controls. Mobile: single compact control (icon or value); full controls appear in a floating bar when the control is tapped. |
-| Used in | FilePreviewDialog (header actions row); ZoomControlButtons also used in mobile floating bar) |
-| Related components | usePreviewZoom, useZoomInputs (keyboard/pinch still handled by dialog) |
+| Item               | Description                                                                                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Zoom controls for the FilePreviewDialog header (PDF/image). Desktop: full inline controls. Mobile: single compact control (icon or value); full controls appear in a floating bar when the control is tapped. |
+| Used in            | FilePreviewDialog (header actions row); ZoomControlButtons also used in mobile floating bar)                                                                                                                  |
+| Related components | usePreviewZoom, useZoomInputs (keyboard/pinch still handled by dialog)                                                                                                                                        |
 
 ---
 
@@ -19,14 +19,14 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| zoom | number | Y | Current zoom factor (e.g. 1, 1.25, 0.75) |
-| onZoomIn | function | Y | Called when zoom-in button clicked |
-| onZoomOut | function | Y | Called when zoom-out button clicked |
-| onReset | function | Y | Called when percentage/reset control clicked |
-| t | function | Y | i18n function for aria-labels |
-| isMobile | boolean | N | When true, render compact single control (display-only); floating bar is shown by parent with header visibility |
+| Name      | Type     | Required | Description                                                                                                     |
+| --------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| zoom      | number   | Y        | Current zoom factor (e.g. 1, 1.25, 0.75)                                                                        |
+| onZoomIn  | function | Y        | Called when zoom-in button clicked                                                                              |
+| onZoomOut | function | Y        | Called when zoom-out button clicked                                                                             |
+| onReset   | function | Y        | Called when percentage/reset control clicked                                                                    |
+| t         | function | Y        | i18n function for aria-labels                                                                                   |
+| isMobile  | boolean  | N        | When true, render compact single control (display-only); floating bar is shown by parent with header visibility |
 
 ### 2.3 Layout and Styling
 
@@ -50,7 +50,7 @@
 - [ ] Desktop: renders zoom out, percentage text, zoom in; all buttons work
 - [ ] Mobile: when zoom === 1 shows ZoomIn icon; when zoom !== 1 shows e.g. "125%"
 - [ ] Mobile: compact control is display-only; floating bar visibility follows header
-- [ ] ZoomControlButtons: zoom out, percentage, zoom in; percentage displays Math.round(zoom * 100)
+- [ ] ZoomControlButtons: zoom out, percentage, zoom in; percentage displays Math.round(zoom \* 100)
 
 ### 2.7 Edge Cases
 

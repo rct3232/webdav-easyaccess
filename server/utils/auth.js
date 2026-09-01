@@ -54,12 +54,16 @@ async function authenticateToken(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.accessTokenRequired });
+    return res
+      .status(HTTP_STATUS.UNAUTHORIZED)
+      .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.accessTokenRequired });
   }
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return res.status(HTTP_STATUS.FORBIDDEN).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
+    return res
+      .status(HTTP_STATUS.FORBIDDEN)
+      .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.invalidOrExpiredToken });
   }
 
   // Stateless: no userStore/cache; token_version checked at refresh time
@@ -77,23 +81,26 @@ async function authenticateToken(req, res, next) {
  * When both are present, share token wins so that logged-in users can view share links.
  * 1. X-Share-Token header or ?shareToken= query -> req.shareContext, req.principalId = "share:" + token
  * 2. JWT (Authorization: Bearer <token>) -> req.user, req.principalId = userId
-  * Neither present -> 401
-  *
-  * @param {import('express').Request} req - Express request object
-  * @param {import('express').Response} res - Express response object
-  * @param {import('express').NextFunction} next - Express next middleware function
-  */
+ * Neither present -> 401
+ *
+ * @param {import('express').Request} req - Express request object
+ * @param {import('express').Response} res - Express response object
+ * @param {import('express').NextFunction} next - Express next middleware function
+ */
 async function authenticateTokenOrShare(req, res, next) {
-  const shareToken =
-    req.headers['x-share-token'] || req.query.shareToken || req.body?.shareToken;
+  const shareToken = req.headers['x-share-token'] || req.query.shareToken || req.body?.shareToken;
   if (shareToken) {
     const ShareLink = require('../models/ShareLink');
     const link = await ShareLink.findByToken(shareToken);
     if (!link) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkNotFound });
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkNotFound });
     }
     if (ShareLink.isExpired(link)) {
-      return res.status(HTTP_STATUS.GONE).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkExpired });
+      return res
+        .status(HTTP_STATUS.GONE)
+        .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.shareLinkExpired });
     }
     const { normalizePath } = require('@webdav-easyaccess/shared/pathUtils');
     const rootPath = normalizePath(link.filePath);
@@ -123,7 +130,9 @@ async function authenticateTokenOrShare(req, res, next) {
     }
   }
 
-  return res.status(HTTP_STATUS.UNAUTHORIZED).json({ errorCode: SERVER_ERROR_CODES.utilsAuth.tokenRequired });
+  return res
+    .status(HTTP_STATUS.UNAUTHORIZED)
+    .json({ errorCode: SERVER_ERROR_CODES.utilsAuth.tokenRequired });
 }
 
 module.exports = {
@@ -132,4 +141,3 @@ module.exports = {
   authenticateToken,
   authenticateTokenOrShare,
 };
-

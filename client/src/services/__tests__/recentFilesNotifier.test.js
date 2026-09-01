@@ -1,10 +1,7 @@
 /**
  * recentFilesNotifier tests.
  */
-import {
-  onRecentFilesChange,
-  notifyRecentFilesChange,
-} from '../recentFilesNotifier';
+import { onRecentFilesChange, notifyRecentFilesChange } from '../recentFilesNotifier';
 
 describe('recentFilesNotifier', () => {
   let unsubscribeFns = [];
@@ -79,4 +76,3 @@ describe('recentFilesNotifier', () => {
     expect(good).toHaveBeenCalledTimes(1);
   });
 });
-

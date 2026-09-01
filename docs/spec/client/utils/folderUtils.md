@@ -6,8 +6,8 @@ The `client/src/utils/folderUtils.js` file was deleted during Wave 4 as part of 
 
 ### What Was Here
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
+| Function              | Signature                           | Purpose                                                                    |
+| --------------------- | ----------------------------------- | -------------------------------------------------------------------------- |
 | collectSubfolderPaths | `(folderPath) => Promise<string[]>` | Recursively collected folder and subfolder paths via fileService.listFiles |
 
 ### Why Removed

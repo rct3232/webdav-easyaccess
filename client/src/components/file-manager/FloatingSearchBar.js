@@ -1,15 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Box,
-  TextField,
-  InputAdornment,
-  IconButton,
-} from '@mui/material';
-import {
-  Search as SearchIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { Box, TextField, InputAdornment, IconButton } from '@mui/material';
+import { Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
 
 const FAB_SIZE = 56;
 const FAB_GAP = 12;
@@ -64,15 +56,15 @@ const FloatingSearchBar = ({
         }}
       >
         <Box sx={getFrostedStyle(focused)}>
-        <TextField
-    size="small"
-    fullWidth
-    type="search"
-    placeholder={placeholder ?? t('nav.searchPlaceholder')}
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    onFocus={() => setFocused(true)}
-    onBlur={() => setFocused(false)}
+          <TextField
+            size="small"
+            fullWidth
+            type="search"
+            placeholder={placeholder ?? t('nav.searchPlaceholder')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             InputProps={{
               sx: {
                 height: '100%',
@@ -91,23 +83,23 @@ const FloatingSearchBar = ({
                 },
               },
               startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon sx={{ color: 'text.secondary' }} />
-            </InputAdornment>
-          ),
-          endAdornment: searchQuery ? (
-            <InputAdornment position="end">
-              <IconButton
-                size="small"
-                onClick={() => setSearchQuery('')}
-                aria-label={t('nav.searchClose')}
-              >
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </InputAdornment>
-          ) : null,
-        }}
-      />
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    aria-label={t('nav.searchClose')}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
         </Box>
       </Box>
     </Box>

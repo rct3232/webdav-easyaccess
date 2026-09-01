@@ -128,7 +128,14 @@ export const useDropToUpload = (options = {}) => {
         setIsDraggingOver(true);
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, nodeId, internalDraggedNodeId]
+    [
+      isFolderMode,
+      isDisabled,
+      hasWritePermission,
+      onInternalFileDrop,
+      nodeId,
+      internalDraggedNodeId,
+    ]
   );
 
   const handleDragOver = useCallback(
@@ -161,7 +168,14 @@ export const useDropToUpload = (options = {}) => {
         e.dataTransfer.dropEffect = 'copy';
       }
     },
-    [isFolderMode, isDisabled, hasWritePermission, onInternalFileDrop, nodeId, internalDraggedNodeId]
+    [
+      isFolderMode,
+      isDisabled,
+      hasWritePermission,
+      onInternalFileDrop,
+      nodeId,
+      internalDraggedNodeId,
+    ]
   );
 
   const handleDragLeave = useCallback(
@@ -247,7 +261,7 @@ export const useDropToUpload = (options = {}) => {
       } catch (error) {
         console.error('Drop error:', error);
         if (onUploadError) {
-            onUploadError(error);
+          onUploadError(error);
         }
         setUploadProgress([]);
       }

@@ -91,9 +91,7 @@ async function detectPostgresPresence() {
     });
 
     await client.connect();
-    const reg = await client.query(
-      `SELECT to_regclass('public.${SETTINGS_TABLE}') AS relation`
-    );
+    const reg = await client.query(`SELECT to_regclass('public.${SETTINGS_TABLE}') AS relation`);
     if (!reg.rows[0] || !reg.rows[0].relation) {
       return { otherHasData: false, rows: null };
     }

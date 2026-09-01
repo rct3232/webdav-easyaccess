@@ -468,22 +468,25 @@ async function requireSetupIncomplete(req, res, next) {
 const router = express.Router();
 
 // GET /api/setup/status — public, always available.
-router.get('/status', asyncHandler(async (req, res) => {
-  const effective = await getSharedResolver().getEffectiveConfig();
-  const status = computeSetupStatus(process.env, {
-    effectiveConfig: normalizeEffectiveForStatus(effective),
-  });
+router.get(
+  '/status',
+  asyncHandler(async (req, res) => {
+    const effective = await getSharedResolver().getEffectiveConfig();
+    const status = computeSetupStatus(process.env, {
+      effectiveConfig: normalizeEffectiveForStatus(effective),
+    });
 
-  // key-lost warning (PLAN §7): an encrypted DB secret row cannot be
-  // decrypted/prefilled without the master key. Detection is shape-only — this
-  // path never decrypts, so prefill cannot leak plaintext.
-  const all = await Settings.getAll();
+    // key-lost warning (PLAN §7): an encrypted DB secret row cannot be
+    // decrypted/prefilled without the master key. Detection is shape-only — this
+    // path never decrypts, so prefill cannot leak plaintext.
+    const all = await Settings.getAll();
 
-  res.json({
-    ...status,
-    key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
-  });
-}));
+    res.json({
+      ...status,
+      key_lost_warning: Boolean(hasEncryptedRows(all) && !process.env.encrypt_secret_key),
+    });
+  })
+);
 
 // POST /api/setup/test — public; 403 setup.complete when already complete.
 router.post(

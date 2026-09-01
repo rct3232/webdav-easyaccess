@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Section wrapping folder tree in ShareDialog. Handles loading, empty state, and conditional root (user home vs children only). |
-| Used in | ShareDialog |
-| Related components | ShareFolderTree (via renderFolderTreeWrapper) |
+| Item               | Description                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Section wrapping folder tree in ShareDialog. Handles loading, empty state, and conditional root (user home vs children only). |
+| Used in            | ShareDialog                                                                                                                   |
+| Related components | ShareFolderTree (via renderFolderTreeWrapper)                                                                                 |
 
 ---
 
@@ -19,24 +19,24 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| loadingAllFolders | boolean | Y | - | Loading |
-| folderTree | Map | Y | - | Folder tree |
-| isAdminMode | boolean | Y | - | Admin mode |
-| startFromUserHome | boolean | Y | - | Start from user home |
-| username | string | N | - | Username |
-| isShareMode | boolean | Y | - | Share mode |
-| isReviewMode | boolean | Y | - | Review mode |
-| user | object | N | - | User |
-| rootPath | string | Y | - | Root path |
-| renderFolderTreeWrapper | function | Y | - | Renders tree (path, level) |
+| Name                    | Type     | Required | Default | Description                |
+| ----------------------- | -------- | -------- | ------- | -------------------------- |
+| loadingAllFolders       | boolean  | Y        | -       | Loading                    |
+| folderTree              | Map      | Y        | -       | Folder tree                |
+| isAdminMode             | boolean  | Y        | -       | Admin mode                 |
+| startFromUserHome       | boolean  | Y        | -       | Start from user home       |
+| username                | string   | N        | -       | Username                   |
+| isShareMode             | boolean  | Y        | -       | Share mode                 |
+| isReviewMode            | boolean  | Y        | -       | Review mode                |
+| user                    | object   | N        | -       | User                       |
+| rootPath                | string   | Y        | -       | Root path                  |
+| renderFolderTreeWrapper | function | Y        | -       | Renders tree (path, level) |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| renderFolderTreeWrapper | Render tree | (path, level) |
+| Callback                | When invoked | Arguments     |
+| ----------------------- | ------------ | ------------- |
+| renderFolderTreeWrapper | Render tree  | (path, level) |
 
 ### 2.4 Dependencies
 

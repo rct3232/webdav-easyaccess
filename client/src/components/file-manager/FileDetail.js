@@ -16,7 +16,24 @@ import { getEntryKey } from '../../utils/fileViewUtils';
 import { FileDetailSkeleton } from './FileSkeletons';
 import FileDetailRow from './FileDetailRow';
 
-const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPressSelect, onContextMenu, onFileDrop, onDropPermissionDenied, onDragStart, onDragEnd, internalDraggedNodeId, selectionMode, selectedFiles, onFileCheck, processingMap, loading = false }) => {
+const FileDetail = ({
+  files,
+  onFileClick,
+  onMoreClick,
+  showMoreButton,
+  onLongPressSelect,
+  onContextMenu,
+  onFileDrop,
+  onDropPermissionDenied,
+  onDragStart,
+  onDragEnd,
+  internalDraggedNodeId,
+  selectionMode,
+  selectedFiles,
+  onFileCheck,
+  processingMap,
+  loading = false,
+}) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const tableRef = useRef(null);
@@ -43,25 +60,20 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
   const maxPixelWidth = Math.max(40, nameColWidth - 32);
   const font = '14px Inter, Roboto, "Helvetica Neue", Arial, sans-serif';
 
-  const {
-    draggedFile,
-    dropTarget,
-    getFileState,
-    getDragHandlers,
-    getDropHandlers,
-  } = useFileViewCommon({
-    onFileDrop,
-    onDropPermissionDenied,
-    onDragStart,
-    onDragEnd,
-    internalDraggedNodeId,
-    selectionMode,
-    selectedFiles,
-    onFileCheck,
-    processingMap,
-    theme,
-    isMobile,
-  });
+  const { draggedFile, dropTarget, getFileState, getDragHandlers, getDropHandlers } =
+    useFileViewCommon({
+      onFileDrop,
+      onDropPermissionDenied,
+      onDragStart,
+      onDragEnd,
+      internalDraggedNodeId,
+      selectionMode,
+      selectedFiles,
+      onFileCheck,
+      processingMap,
+      theme,
+      isMobile,
+    });
 
   return (
     <TableContainer
@@ -86,9 +98,12 @@ const FileDetail = ({ files, onFileClick, onMoreClick, showMoreButton, onLongPre
             <FileDetailSkeleton selectionMode={selectionMode} />
           ) : (
             files.map((file, index) => {
-              const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } = getFileState(file);
-              const isDragging = draggedFile?.nodeId != null && getEntryKey(draggedFile) === getEntryKey(file);
-              const isDropTarget = dropTarget != null && String(dropTarget) === String(getEntryKey(file));
+              const { isSelected, isDisabled, isProcessing, processingType, isPermissionDisabled } =
+                getFileState(file);
+              const isDragging =
+                draggedFile?.nodeId != null && getEntryKey(draggedFile) === getEntryKey(file);
+              const isDropTarget =
+                dropTarget != null && String(dropTarget) === String(getEntryKey(file));
               const dragHandlers = getDragHandlers(file, isDisabled);
               const dropHandlers = getDropHandlers(file, isDisabled);
 

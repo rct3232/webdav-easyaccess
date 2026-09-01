@@ -6,10 +6,7 @@
 const crypto = require('crypto');
 const permissionRequestStore = require('../permissionRequestStore');
 const { PERMISSION_REQUEST_STATUS } = require('@webdav-easyaccess/shared/constants');
-const {
-  createTestDatabase,
-  dbRun,
-} = require('../../../../test-utils');
+const { createTestDatabase, dbRun } = require('../../../../test-utils');
 
 function uid(prefix) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
@@ -46,16 +43,16 @@ describe('permissionRequestStore (nodeId)', () => {
     requesterId = reqRes.lastID;
 
     // Create file_nodes for testing
-    const fileRes = await dbRun(
-      `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
-      [uid('file'), 'file']
-    );
+    const fileRes = await dbRun(`INSERT INTO file_nodes (name, type) VALUES (?, ?)`, [
+      uid('file'),
+      'file',
+    ]);
     fileNodeId = fileRes.lastID;
 
-    const dirRes = await dbRun(
-      `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
-      [uid('dir'), 'directory']
-    );
+    const dirRes = await dbRun(`INSERT INTO file_nodes (name, type) VALUES (?, ?)`, [
+      uid('dir'),
+      'directory',
+    ]);
     dirNodeId = dirRes.lastID;
   });
 
@@ -156,10 +153,7 @@ describe('permissionRequestStore (nodeId)', () => {
       const otherId = otherUserRes.lastID;
 
       // Update username to match what we inserted
-      await dbRun(
-        `UPDATE users SET username = ? WHERE id = ?`,
-        [uid('otherer'), otherId]
-      );
+      await dbRun(`UPDATE users SET username = ? WHERE id = ?`, [uid('otherer'), otherId]);
 
       const req = await permissionRequestStore.createRequest({
         requesterId: otherId,
@@ -192,10 +186,10 @@ describe('permissionRequestStore (nodeId)', () => {
     });
 
     it('returns targetType=directory for a directory node', async () => {
-      const dirFileRes = await dbRun(
-        `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
-        [uid('dir2'), 'directory']
-      );
+      const dirFileRes = await dbRun(`INSERT INTO file_nodes (name, type) VALUES (?, ?)`, [
+        uid('dir2'),
+        'directory',
+      ]);
       const dir2Id = dirFileRes.lastID;
 
       const created = await permissionRequestStore.createRequest({
@@ -266,10 +260,10 @@ describe('permissionRequestStore (nodeId)', () => {
     let approvableReqId;
 
     beforeAll(async () => {
-      const nodeResult = await dbRun(
-        `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
-        [uid('approve'), 'file']
-      );
+      const nodeResult = await dbRun(`INSERT INTO file_nodes (name, type) VALUES (?, ?)`, [
+        uid('approve'),
+        'file',
+      ]);
       const targetNodeId = nodeResult.lastID;
 
       const created = await permissionRequestStore.createRequest({
@@ -345,10 +339,10 @@ describe('permissionRequestStore (nodeId)', () => {
       );
       const freshReqId = otherUserRes.lastID;
 
-      const nodeResult = await dbRun(
-        `INSERT INTO file_nodes (name, type) VALUES (?, ?)`,
-        [uid('reject'), 'file']
-      );
+      const nodeResult = await dbRun(`INSERT INTO file_nodes (name, type) VALUES (?, ?)`, [
+        uid('reject'),
+        'file',
+      ]);
 
       await permissionRequestStore.createRequest({
         requesterId: freshReqId,

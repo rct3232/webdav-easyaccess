@@ -2,7 +2,15 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const { meetsRank } = require('../policy/permissionRank');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { createError, mapDatabaseError } = require('../../../utils/errorHandler');
-const { getBackend, getPgPool, withTransaction, isSqliteBackend, getSqliteConnection, withSqliteTransaction, sqliteRun } = require('../../../store/storage');
+const {
+  getBackend,
+  getPgPool,
+  withTransaction,
+  isSqliteBackend,
+  getSqliteConnection,
+  withSqliteTransaction,
+  sqliteRun,
+} = require('../../../store/storage');
 const { invalidateExistenceIndexForAclMutation } = require('./permissionExistenceIndex');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const userStore = require('../../../store/userStore');
@@ -401,8 +409,16 @@ async function getUserPermissions(userId) {
   }
 
   const result = [
-    ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission, type: 'directory' })),
-    ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission, type: 'file' })),
+    ...pathPerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      permission: r.permission,
+      type: 'directory',
+    })),
+    ...filePerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      permission: r.permission,
+      type: 'file',
+    })),
   ];
 
   if (cacheTtlMs > 0) {
@@ -613,7 +629,10 @@ async function getUserFilePermissions(userId) {
         `SELECT file_node_id, permission FROM permissions_user_files WHERE user_id = $1`,
         [uid]
       );
-      return res.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission }));
+      return res.rows.map((r) => ({
+        file_node_id: Number(r.file_node_id),
+        permission: r.permission,
+      }));
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -632,7 +651,10 @@ async function getUserFilePermissions(userId) {
           }
         );
       });
-      return res.rows.map(r => ({ file_node_id: Number(r.file_node_id), permission: r.permission }));
+      return res.rows.map((r) => ({
+        file_node_id: Number(r.file_node_id),
+        permission: r.permission,
+      }));
     } catch (error) {
       throw mapDatabaseError(error);
     }
@@ -709,8 +731,18 @@ async function getSharedPermissions(userId, homeRootNodeId) {
   const seen = new Set();
   const result = [];
   for (const row of [
-    ...pathPerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
-    ...filePerms.rows.map(r => ({ file_node_id: Number(r.file_node_id), name: r.name, permission: r.permission, type: r.type })),
+    ...pathPerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      name: r.name,
+      permission: r.permission,
+      type: r.type,
+    })),
+    ...filePerms.rows.map((r) => ({
+      file_node_id: Number(r.file_node_id),
+      name: r.name,
+      permission: r.permission,
+      type: r.type,
+    })),
   ]) {
     if (seen.has(row.file_node_id)) continue;
     seen.add(row.file_node_id);
@@ -743,8 +775,14 @@ async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
   if (isPostgresqlBackend()) {
     try {
       const pool = getPgPool();
-      const pathRes = await pool.query(buildRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
-      const fileRes = await pool.query(buildRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      const pathRes = await pool.query(buildRemovalSql('permissions_user_paths', '$1', '$2'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await pool.query(buildRemovalSql('permissions_user_files', '$1', '$2'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.rowCount || 0;
       removedFiles = fileRes.rowCount || 0;
     } catch (error) {
@@ -752,8 +790,14 @@ async function removeOwnSubtreePermissions(userId, homeRootNodeId) {
     }
   } else if (isSqliteBackend()) {
     try {
-      const pathRes = await sqliteRun(buildRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
-      const fileRes = await sqliteRun(buildRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      const pathRes = await sqliteRun(buildRemovalSql('permissions_user_paths', '?', '?'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await sqliteRun(buildRemovalSql('permissions_user_files', '?', '?'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.changes || 0;
       removedFiles = fileRes.changes || 0;
     } catch (error) {
@@ -796,8 +840,14 @@ async function revokeUserSubtreePermissions(userId, rootNodeId) {
   if (isPostgresqlBackend()) {
     try {
       const pool = getPgPool();
-      const pathRes = await pool.query(buildSubtreeRemovalSql('permissions_user_paths', '$1', '$2'), [uid, root]);
-      const fileRes = await pool.query(buildSubtreeRemovalSql('permissions_user_files', '$1', '$2'), [uid, root]);
+      const pathRes = await pool.query(
+        buildSubtreeRemovalSql('permissions_user_paths', '$1', '$2'),
+        [uid, root]
+      );
+      const fileRes = await pool.query(
+        buildSubtreeRemovalSql('permissions_user_files', '$1', '$2'),
+        [uid, root]
+      );
       removedPaths = pathRes.rowCount || 0;
       removedFiles = fileRes.rowCount || 0;
     } catch (error) {
@@ -805,8 +855,14 @@ async function revokeUserSubtreePermissions(userId, rootNodeId) {
     }
   } else if (isSqliteBackend()) {
     try {
-      const pathRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_paths', '?', '?'), [uid, root]);
-      const fileRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_files', '?', '?'), [uid, root]);
+      const pathRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_paths', '?', '?'), [
+        uid,
+        root,
+      ]);
+      const fileRes = await sqliteRun(buildSubtreeRemovalSql('permissions_user_files', '?', '?'), [
+        uid,
+        root,
+      ]);
       removedPaths = pathRes.changes || 0;
       removedFiles = fileRes.changes || 0;
     } catch (error) {

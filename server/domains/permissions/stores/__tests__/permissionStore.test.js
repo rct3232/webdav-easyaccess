@@ -8,11 +8,11 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 // Helper: build a mock SQLite client that tracks queries in-memory
 function createMockSQLiteClient() {
   const state = {
-    userPaths: [],     // { user_id, file_node_id, permission, updated_at }
-    userFiles: [],     // { user_id, file_node_id, permission, updated_at }
-    shares: [],        // { token, file_node_id, permission, updated_at }
-    ancestors: [],     // { ancestor_id, descendant_id, depth }
-    files: [],         // { id, parent_id, name, type } — file_nodes table
+    userPaths: [], // { user_id, file_node_id, permission, updated_at }
+    userFiles: [], // { user_id, file_node_id, permission, updated_at }
+    shares: [], // { token, file_node_id, permission, updated_at }
+    ancestors: [], // { ancestor_id, descendant_id, depth }
+    files: [], // { id, parent_id, name, type } — file_nodes table
   };
 
   const queries = [];
@@ -57,22 +57,33 @@ function createMockSQLiteClient() {
       return upsertInto(
         state.userPaths,
         (r) => r.user_id === params[0] && r.file_node_id === params[1],
-        { user_id: params[0], file_node_id: params[1], permission: params[2], updated_at: new Date() }
+        {
+          user_id: params[0],
+          file_node_id: params[1],
+          permission: params[2],
+          updated_at: new Date(),
+        }
       );
     }
     if (s.startsWith('INSERT') && targetsUserFiles) {
       return upsertInto(
         state.userFiles,
         (r) => r.user_id === params[0] && r.file_node_id === params[1],
-        { user_id: params[0], file_node_id: params[1], permission: params[2], updated_at: new Date() }
+        {
+          user_id: params[0],
+          file_node_id: params[1],
+          permission: params[2],
+          updated_at: new Date(),
+        }
       );
     }
     if (s.startsWith('INSERT') && targetsShares) {
-      return upsertInto(
-        state.shares,
-        (r) => r.token === params[0],
-        { token: params[0], file_node_id: params[1], permission: params[2], updated_at: new Date() }
-      );
+      return upsertInto(state.shares, (r) => r.token === params[0], {
+        token: params[0],
+        file_node_id: params[1],
+        permission: params[2],
+        updated_at: new Date(),
+      });
     }
 
     // DELETE ... WHERE user_id = ? AND file_node_id IN (SELECT ... node_ancestors ...)
@@ -96,15 +107,21 @@ function createMockSQLiteClient() {
 
     // DELETE — single row when two params (user_id + file_node_id), else all rows for the user/token
     if (s.startsWith('DELETE') && targetsUserPaths) {
-      state.userPaths = params.length > 1
-        ? state.userPaths.filter((r) => !(r.user_id === params[0] && r.file_node_id === params[1]))
-        : state.userPaths.filter((r) => r.user_id !== params[0]);
+      state.userPaths =
+        params.length > 1
+          ? state.userPaths.filter(
+              (r) => !(r.user_id === params[0] && r.file_node_id === params[1])
+            )
+          : state.userPaths.filter((r) => r.user_id !== params[0]);
       return { rows: [], changes: 1 };
     }
     if (s.startsWith('DELETE') && targetsUserFiles) {
-      state.userFiles = params.length > 1
-        ? state.userFiles.filter((r) => !(r.user_id === params[0] && r.file_node_id === params[1]))
-        : state.userFiles.filter((r) => r.user_id !== params[0]);
+      state.userFiles =
+        params.length > 1
+          ? state.userFiles.filter(
+              (r) => !(r.user_id === params[0] && r.file_node_id === params[1])
+            )
+          : state.userFiles.filter((r) => r.user_id !== params[0]);
       return { rows: [], changes: 1 };
     }
     if (s.startsWith('DELETE') && targetsShares) {
@@ -153,17 +170,39 @@ function createMockSQLiteClient() {
     // SELECT ... FROM permissions_user_paths/user_files WHERE user_id (getUserPermissions / getUserFilePermissions)
     if (targetsUserPaths) {
       const rows = state.userPaths.filter((r) => r.user_id === params[0]);
-      return { rows: rows.map((r) => ({ file_node_id: r.file_node_id, permission: r.permission, updated_at: r.updated_at })) };
+      return {
+        rows: rows.map((r) => ({
+          file_node_id: r.file_node_id,
+          permission: r.permission,
+          updated_at: r.updated_at,
+        })),
+      };
     }
     if (targetsUserFiles) {
       const rows = state.userFiles.filter((r) => r.user_id === params[0]);
-      return { rows: rows.map((r) => ({ file_node_id: r.file_node_id, permission: r.permission, updated_at: r.updated_at })) };
+      return {
+        rows: rows.map((r) => ({
+          file_node_id: r.file_node_id,
+          permission: r.permission,
+          updated_at: r.updated_at,
+        })),
+      };
     }
 
     // SELECT from permissions_shares WHERE token
     if (targetsShares) {
       const row = state.shares.find((r) => r.token === params[0]);
-      return { rows: row ? [{ file_node_id: row.file_node_id, permission: row.permission, updated_at: row.updated_at }] : [] };
+      return {
+        rows: row
+          ? [
+              {
+                file_node_id: row.file_node_id,
+                permission: row.permission,
+                updated_at: row.updated_at,
+              },
+            ]
+          : [],
+      };
     }
 
     // SELECT DISTINCT user_id FROM (paths UNION files) — listPermissionUserIds
@@ -264,7 +303,12 @@ describe('permissionStore (nodeId)', () => {
     jest.doMock('../../../../store/userStore', () => {
       const { createUserStoreMock } = require('@testing/mocks/storeMocks');
       return createUserStoreMock({
-        findById: jest.fn((id) => ({ id, username: `user${id}`, email: `u${id}@test.com`, is_admin: false })),
+        findById: jest.fn((id) => ({
+          id,
+          username: `user${id}`,
+          email: `u${id}@test.com`,
+          is_admin: false,
+        })),
       });
     });
 
@@ -387,10 +431,12 @@ describe('permissionStore (nodeId)', () => {
     const shared = await permissionStore.getSharedPermissions(userId, 1);
 
     expect(shared).toHaveLength(2);
-    expect(shared).toEqual(expect.arrayContaining([
-      { file_node_id: 7, name: 'external', permission: PERMISSIONS.READ, type: 'directory' },
-      { file_node_id: 8, name: 'doc.txt', permission: PERMISSIONS.WRITE, type: 'file' },
-    ]));
+    expect(shared).toEqual(
+      expect.arrayContaining([
+        { file_node_id: 7, name: 'external', permission: PERMISSIONS.READ, type: 'directory' },
+        { file_node_id: 8, name: 'doc.txt', permission: PERMISSIONS.WRITE, type: 'file' },
+      ])
+    );
   });
 
   // V13: removeOwnSubtreePermissions removes descendant self-grants, keeps home-root
@@ -411,7 +457,7 @@ describe('permissionStore (nodeId)', () => {
     expect(result).toEqual({ removedPaths: 1, removedFiles: 1 });
 
     const remaining = await permissionStore.getUserPermissions(userId);
-    const remainingIds = remaining.map(r => r.file_node_id);
+    const remainingIds = remaining.map((r) => r.file_node_id);
     expect(remainingIds).toContain(1); // home-root admin preserved
     expect(remainingIds).toContain(7); // external grant preserved
     expect(remainingIds).not.toContain(2);
@@ -441,9 +487,9 @@ describe('permissionStore (nodeId)', () => {
 
     const shared = await permissionStore.getSharedPermissions(userId, 1);
 
-    const ids = shared.map(r => r.file_node_id);
+    const ids = shared.map((r) => r.file_node_id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(shared.filter(r => r.file_node_id === 8)).toHaveLength(1);
+    expect(shared.filter((r) => r.file_node_id === 8)).toHaveLength(1);
     expect(shared).toHaveLength(2);
   });
 
@@ -470,13 +516,13 @@ describe('permissionStore (nodeId)', () => {
 
     expect(await permissionStore.checkPermission(userId, 2, PERMISSIONS.READ)).toBe(false);
     const remaining = await permissionStore.getUserPermissions(userId);
-    const remainingIds = remaining.map(r => r.file_node_id);
+    const remainingIds = remaining.map((r) => r.file_node_id);
     expect(remainingIds).not.toContain(2);
     expect(remainingIds).toContain(3);
 
     // file-level row untouched by the directory revoke
     const filePerms = await permissionStore.getUserFilePermissions(userId);
-    expect(filePerms.map(r => r.file_node_id)).toEqual([3]);
+    expect(filePerms.map((r) => r.file_node_id)).toEqual([3]);
   });
 
   // V17: grant upsert — read→write→admin keeps a single row; admin preserved on read
@@ -514,12 +560,12 @@ describe('permissionStore (nodeId)', () => {
     expect(result).toEqual({ removedPaths: 2, removedFiles: 1 });
 
     const remaining = await permissionStore.getUserPermissions(userId);
-    const remainingIds = remaining.map(r => r.file_node_id);
+    const remainingIds = remaining.map((r) => r.file_node_id);
     expect(remainingIds).not.toContain(1); // home-root row revoked too (depth 0)
     expect(remainingIds).not.toContain(2);
     expect(remainingIds).toContain(7); // external grant preserved
 
     const remainingFiles = await permissionStore.getUserFilePermissions(userId);
-    expect(remainingFiles.map(r => r.file_node_id)).not.toContain(3);
+    expect(remainingFiles.map((r) => r.file_node_id)).not.toContain(3);
   });
 });

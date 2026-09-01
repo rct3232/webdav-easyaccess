@@ -18,7 +18,7 @@ const emptyDropHandlers = {
 /**
  * Common hook for file view components
  * Provides shared logic for file list, grid, and detail views
- * 
+ *
  * @param {Object} options - Hook options
  * @param {Function} options.onFileDrop - Callback for file drop
  * @param {Function} options.onDropPermissionDenied - Callback when drop target has no write permission (destinationPath) => void
@@ -48,15 +48,15 @@ export const useFileViewCommon = ({
   // ref로 관리하여 useCallback 의존성에서 제거 (리렌더링 방지)
   const selectionModeRef = useRef(selectionMode);
   const isMobileRef = useRef(isMobile);
-  
+
   useEffect(() => {
     selectionModeRef.current = selectionMode;
   }, [selectionMode]);
-  
+
   useEffect(() => {
     isMobileRef.current = isMobile;
   }, [isMobile]);
-  
+
   const dragAndDrop = useDragAndDrop(
     onFileDrop,
     selectionMode,
@@ -66,63 +66,83 @@ export const useFileViewCommon = ({
     onDragEnd,
     internalDraggedNodeId
   );
-  
+
   /**
    * Get file state for rendering
    */
-  const getFileState = useCallback((file) => {
-    return getFileItemState(file, selectionMode, selectedFiles, processingMap);
-  }, [selectionMode, selectedFiles, processingMap]);
-  
+  const getFileState = useCallback(
+    (file) => {
+      return getFileItemState(file, selectionMode, selectedFiles, processingMap);
+    },
+    [selectionMode, selectedFiles, processingMap]
+  );
+
   /**
    * Handle file check (selection)
    */
-  const handleFileCheck = useCallback((file, checked, event) => {
-    event?.stopPropagation();
-    if (onFileCheck) {
-      onFileCheck(file, checked);
-    }
-  }, [onFileCheck]);
-  
+  const handleFileCheck = useCallback(
+    (file, checked, event) => {
+      event?.stopPropagation();
+      if (onFileCheck) {
+        onFileCheck(file, checked);
+      }
+    },
+    [onFileCheck]
+  );
+
   /**
    * Check if file is selected
    */
-  const isSelected = useCallback((file) => {
-    return selectedFiles && selectedFiles.has(getEntryKey(file));
-  }, [selectedFiles]);
-  
+  const isSelected = useCallback(
+    (file) => {
+      return selectedFiles && selectedFiles.has(getEntryKey(file));
+    },
+    [selectedFiles]
+  );
+
   /**
    * Get drag handlers for a file
    * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
    */
-  const getDragHandlers = useCallback((file, isDisabled) => {
-    if (isMobileRef.current || selectionModeRef.current || isDisabled || file.hasWritePermission === false) {
-      return emptyDragHandlers;
-    }
+  const getDragHandlers = useCallback(
+    (file, isDisabled) => {
+      if (
+        isMobileRef.current ||
+        selectionModeRef.current ||
+        isDisabled ||
+        file.hasWritePermission === false
+      ) {
+        return emptyDragHandlers;
+      }
 
-    return {
-      draggable: true,
-      onDragStart: (e) => dragAndDrop.handleDragStart(e, file),
-      onDragEnd: dragAndDrop.handleDragEnd,
-    };
-  }, [dragAndDrop]);
-  
+      return {
+        draggable: true,
+        onDragStart: (e) => dragAndDrop.handleDragStart(e, file),
+        onDragEnd: dragAndDrop.handleDragEnd,
+      };
+    },
+    [dragAndDrop]
+  );
+
   /**
    * Get drop handlers for a file
    * ref 사용으로 selectionMode/isMobile 변경 시 함수 재생성 방지
    */
-  const getDropHandlers = useCallback((file, isDisabled) => {
-    if (isMobileRef.current || selectionModeRef.current || isDisabled) {
-      return emptyDropHandlers;
-    }
-    
-    return {
-      onDragOver: (e) => dragAndDrop.handleDragOver(e, file),
-      onDragLeave: dragAndDrop.handleDragLeave,
-      onDrop: (e) => dragAndDrop.handleDrop(e, file),
-    };
-  }, [dragAndDrop]);
-  
+  const getDropHandlers = useCallback(
+    (file, isDisabled) => {
+      if (isMobileRef.current || selectionModeRef.current || isDisabled) {
+        return emptyDropHandlers;
+      }
+
+      return {
+        onDragOver: (e) => dragAndDrop.handleDragOver(e, file),
+        onDragLeave: dragAndDrop.handleDragLeave,
+        onDrop: (e) => dragAndDrop.handleDrop(e, file),
+      };
+    },
+    [dragAndDrop]
+  );
+
   return {
     ...dragAndDrop,
     getFileState,

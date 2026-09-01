@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Admin "Advanced settings" config editor: reads the effective config (`GET /api/admin/config`), renders grouped type-aware inputs (TextField / Switch / Select / Number / secret), dirty-tracks edits and writes only changed keys via `PUT /api/admin/config`. |
-| Used in | `SystemSettingsContent` inside the "Advanced settings" MUI Accordion (below the main settings rows). |
-| Related components | `adminService.getConfig` / `adminService.updateConfig`, `SystemSettingsContent` (page-level Snackbar via `onSnackbar`) |
-| API contract | `docs/spec/server/routes/config.md`, feature SoT `docs/features/config-source-resolution.md` |
+| Item               | Description                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Admin "Advanced settings" config editor: reads the effective config (`GET /api/admin/config`), renders grouped type-aware inputs (TextField / Switch / Select / Number / secret), dirty-tracks edits and writes only changed keys via `PUT /api/admin/config`. |
+| Used in            | `SystemSettingsContent` inside the "Advanced settings" MUI Accordion (below the main settings rows).                                                                                                                                                           |
+| Related components | `adminService.getConfig` / `adminService.updateConfig`, `SystemSettingsContent` (page-level Snackbar via `onSnackbar`)                                                                                                                                         |
+| API contract       | `docs/spec/server/routes/config.md`, feature SoT `docs/features/config-source-resolution.md`                                                                                                                                                                   |
 
 Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is defined client-side in `CONFIG_DISPLAY_META`. The server registry (`server/infrastructure/configRegistry.js`) is authoritative for `tier` / `secret` / `source`.
 
@@ -22,15 +22,15 @@ Display metadata (`labelKey`, `group`, `inputType`, `options`, `helpKey`) is def
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| active | boolean | Y | - | When truthy the config is fetched (lazily, once on first activation — wired to the Accordion expanded state). |
-| onSnackbar | function | N | - | Page-level Snackbar handler; called with `{ type: 'success'\|'error', text }`. |
+| Name       | Type     | Required | Default | Description                                                                                                   |
+| ---------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| active     | boolean  | Y        | -       | When truthy the config is fetched (lazily, once on first activation — wired to the Accordion expanded state). |
+| onSnackbar | function | N        | -       | Page-level Snackbar handler; called with `{ type: 'success'\|'error', text }`.                                |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
+| Callback   | When invoked                           | Arguments                            |
+| ---------- | -------------------------------------- | ------------------------------------ |
 | onSnackbar | Save success / save error / load error | `(msg)` where `msg = { type, text }` |
 
 ### 2.4 Dependencies
@@ -57,12 +57,12 @@ Client-side display map: `{ KEY: { labelKey, group, inputType, options?, helpKey
 
 Grouping (group → keys):
 
-| Group | Keys |
-|-------|------|
-| `fileStorage` | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS |
-| `serverSecurity` | PORT, CORS_ORIGINS, CORS_ORIGIN, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME |
-| `email` | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME |
-| `runtime` | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER |
+| Group            | Keys                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fileStorage`    | WEA_FILE_STORAGE, S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_ENDPOINT, WEBDAV_URL, WEBDAV_USERNAME, WEBDAV_PASSWORD, WEBDAV_AUTH_TYPE, WEBDAV_UPSTREAM_URL, MAX_THUMBNAIL_SIZE, THUMBNAIL_CONCURRENCY_LIMIT, THUMBNAIL_TOKEN_SECRET, THUMBNAIL_TOKEN_EXPIRY, FFMPEG_PATH, FFMPEG_INIT_TIMEOUT_MS, WEA_PREVIEW_TICKET_TTL_MS |
+| `serverSecurity` | PORT, CORS_ORIGINS, CORS_ORIGIN, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, JWT_EXPIRES_IN, ADMIN_DEFAULT_PASSWORD, WEA_DISABLE_DEFAULT_ADMIN, HOSTNAME                                                                                                                                                                                       |
+| `email`          | EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, EMAIL_SECURE, EMAIL_FROM_NAME                                                                                                                                                                                                                                                                    |
+| `runtime`        | GC_INTERVAL_MS, GC_ORPHAN_TTL_DAYS, REFRESH_TOKEN_EXPIRES_IN_DAYS, USER_CACHE_TTL_MS, PERMISSION_CACHE_TTL_MS, PERMISSIONS_EXISTENCE_INDEX_TTL_MS, PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE, PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY, WEA_SKIP_MIGRATION_WORKER, WEA_SKIP_BULK_WORKER, WEA_SKIP_GC_SCHEDULER                                   |
 
 **Metadata (T0) group removed (D5):** `WEA_STORAGE_BACKEND`, `WEA_SQLITE_PATH`, `WEA_PG_*`,
 `NODE_ENV`, `DOTENV_CONFIG_PATH` are **never rendered** — the DB connection is `.env`-owned and
@@ -115,7 +115,7 @@ A row is read-only (inputs disabled) when `source === 'env'` **or** `tier === 'T
 - **Snackbar** (page-level, via `onSnackbar`): save success/error.
 - **Alert banner — restart required** (inside the editor): `admin.config.restartRequired` + `admin.config.restartRequiredDetail` listing the T1 keys in `restartRequired` (`data-testid="config-restart-banner"`).
 - **Alert banner — applied** (inside the editor): `admin.config.appliedNow` + `admin.config.appliedNowDetail` listing the T2 keys in `applied` — surfaced so the operator sees exactly what took effect immediately (`data-testid="config-applied-banner"`).
-- **Per-field tier badge** (while editing): each non-read-only field renders a badge from `entry.tier` — T1 → `admin.config.tierRestart` ("Restart required"), T2 → `admin.config.tierImmediate` ("Applies immediately"). Feedback is visible *before* save, not only after.
+- **Per-field tier badge** (while editing): each non-read-only field renders a badge from `entry.tier` — T1 → `admin.config.tierRestart` ("Restart required"), T2 → `admin.config.tierImmediate` ("Applies immediately"). Feedback is visible _before_ save, not only after.
 
 ### 2.11 i18n Keys
 

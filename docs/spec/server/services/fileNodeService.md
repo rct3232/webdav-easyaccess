@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Filesystem tree management service. Orchestrates node creation/deletion/move/rename with transaction boundaries, cycle detection on moves, closure table maintenance via _ancestryHelper, and path resolution (nodeId→path, path→node). Factory function `createFileNodeService({ fileNodesStore, storage })`. |
+| Item | Description                                                                                                                                                                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Filesystem tree management service. Orchestrates node creation/deletion/move/rename with transaction boundaries, cycle detection on moves, closure table maintenance via \_ancestryHelper, and path resolution (nodeId→path, path→node). Factory function `createFileNodeService({ fileNodesStore, storage })`. |
 
 ---
 
@@ -40,10 +40,10 @@ function createFileNodeService({ fileNodesStore, storage }) {
 
 Creates a new file/directory node with ancestor chain initialization. Wrapped in TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| parentNodeId | number \| null | yes | Parent node ID; null for root-level creation |
-| name | string | yes | Node name (subject to UNIQUE constraint per parent) |
+| Param        | Type           | Required | Description                                         |
+| ------------ | -------------- | -------- | --------------------------------------------------- |
+| parentNodeId | number \| null | yes      | Parent node ID; null for root-level creation        |
+| name         | string         | yes      | Node name (subject to UNIQUE constraint per parent) |
 
 **Returns:** `{ id, parentId, name, type, syncStatus }`
 
@@ -53,19 +53,19 @@ Creates a new file/directory node with ancestor chain initialization. Wrapped in
 
 Updates node name without affecting ancestor chain. No TX needed (single UPDATE).
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number | yes | ID of the node to rename |
-| newName | string | yes | New name for the node |
+| Param   | Type   | Required | Description              |
+| ------- | ------ | -------- | ------------------------ |
+| nodeId  | number | yes      | ID of the node to rename |
+| newName | string | yes      | New name for the node    |
 
 #### `moveNode(nodeId, newParentId)`
 
 Moves a node (and its subtree) to a new parent. Includes cycle detection and closure table rebuild. Wrapped in TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number | yes | ID of the node to move |
-| newParentId | number \| null | yes | New parent ID; null means move to root |
+| Param       | Type           | Required | Description                            |
+| ----------- | -------------- | -------- | -------------------------------------- |
+| nodeId      | number         | yes      | ID of the node to move                 |
+| newParentId | number \| null | yes      | New parent ID; null means move to root |
 
 **Cycle detection:** Before move, calls `getDescendantIds(nodeId)` and rejects if `newParentId` is in the descendants set (cannot move a node into its own descendant).
 
@@ -73,9 +73,9 @@ Moves a node (and its subtree) to a new parent. Includes cycle detection and clo
 
 Deletes a node and all its descendants. Explicit ancestor cleanup + CASCADE delete. Wrapped in TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number | yes | ID of the root node to delete |
+| Param  | Type   | Required | Description                   |
+| ------ | ------ | -------- | ----------------------------- |
+| nodeId | number | yes      | ID of the root node to delete |
 
 **TX scope:** `cleanupAncestorsForDeletion` + `deleteNodeTree(descendantIds)` in single transaction. CASCADE handles object_map, filecache, node_ancestors FK rows.
 
@@ -83,9 +83,9 @@ Deletes a node and all its descendants. Explicit ancestor cleanup + CASCADE dele
 
 Returns children of a directory with filecache metadata (LEFT JOIN). Read-only, no TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| parentNodeId | number | yes | ID of the parent directory |
+| Param        | Type   | Required | Description                |
+| ------------ | ------ | -------- | -------------------------- |
+| parentNodeId | number | yes      | ID of the parent directory |
 
 **Returns:** `row[]` — each row includes file_nodes fields + size, mime_type, content_hash from filecache.
 
@@ -93,9 +93,9 @@ Returns children of a directory with filecache metadata (LEFT JOIN). Read-only, 
 
 Resolves a node's full display path by traversing its ancestor chain. Read-only, no TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| nodeId | number | yes | ID of the target node |
+| Param  | Type   | Required | Description           |
+| ------ | ------ | -------- | --------------------- |
+| nodeId | number | yes      | ID of the target node |
 
 **Returns:** string — e.g., `"/a/b/c/file.txt"`
 
@@ -103,9 +103,9 @@ Resolves a node's full display path by traversing its ancestor chain. Read-only,
 
 Resolves a path string to a node by sequential segment lookups. Read-only, no TX.
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| pathString | string | yes | Display path (e.g., `/a/b/c/file.txt`) |
+| Param      | Type   | Required | Description                            |
+| ---------- | ------ | -------- | -------------------------------------- |
+| pathString | string | yes      | Display path (e.g., `/a/b/c/file.txt`) |
 
 **Returns:** node object \| null if any segment doesn't exist. Special case: `"/"` returns root-level lookup.
 

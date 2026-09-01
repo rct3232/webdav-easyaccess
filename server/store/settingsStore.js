@@ -1,4 +1,10 @@
-const { getBackend, withTransaction, getPgPool, isSqliteBackend, withSqliteTransaction } = require('./storage');
+const {
+  getBackend,
+  withTransaction,
+  getPgPool,
+  isSqliteBackend,
+  withSqliteTransaction,
+} = require('./storage');
 const { mapDatabaseError } = require('../utils/errorHandler');
 
 function isPostgresqlBackend() {

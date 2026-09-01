@@ -173,9 +173,7 @@ describe('ShareTargetDialog', () => {
       expect(props.onSave).toHaveBeenCalledTimes(1);
       expect(props.onClose).toHaveBeenCalledTimes(1);
     });
-    expect(props.onMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'success' })
-    );
+    expect(props.onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
   });
 
   it('failed admin save keeps the dialog open and surfaces an error', async () => {
@@ -188,9 +186,7 @@ describe('ShareTargetDialog', () => {
     await user.click(await screen.findByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(props.onMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'error' })
-      );
+      expect(props.onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     });
     expect(props.onSave).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();

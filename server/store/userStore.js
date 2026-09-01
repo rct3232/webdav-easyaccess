@@ -10,14 +10,34 @@ function getAdapter() {
 }
 
 module.exports = {
-  get findByUsername() { return getAdapter().findByUsername; },
-  get findByEmail() { return getAdapter().findByEmail; },
-  get findById() { return getAdapter().findById; },
-  get findAll() { return getAdapter().findAll; },
-  get findByStatus() { return getAdapter().findByStatus; },
-  get createUser() { return getAdapter().createUser; },
-  get updateStatus() { return getAdapter().updateStatus; },
-  get updateEmail() { return getAdapter().updateEmail; },
-  get updatePassword() { return getAdapter().updatePassword; },
-  get deleteUser() { return getAdapter().deleteUser; },
+  get findByUsername() {
+    return getAdapter().findByUsername;
+  },
+  get findByEmail() {
+    return getAdapter().findByEmail;
+  },
+  get findById() {
+    return getAdapter().findById;
+  },
+  get findAll() {
+    return getAdapter().findAll;
+  },
+  get findByStatus() {
+    return getAdapter().findByStatus;
+  },
+  get createUser() {
+    return getAdapter().createUser;
+  },
+  get updateStatus() {
+    return getAdapter().updateStatus;
+  },
+  get updateEmail() {
+    return getAdapter().updateEmail;
+  },
+  get updatePassword() {
+    return getAdapter().updatePassword;
+  },
+  get deleteUser() {
+    return getAdapter().deleteUser;
+  },
 };

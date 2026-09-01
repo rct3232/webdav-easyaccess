@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | (Provider's role, e.g. auth state, theme) |
-| Used in | (Components/pages that consume it) |
-| Related | (authService, apiClient, etc.) |
+| Item    | Description                               |
+| ------- | ----------------------------------------- |
+| Role    | (Provider's role, e.g. auth state, theme) |
+| Used in | (Components/pages that consume it)        |
+| Related | (authService, apiClient, etc.)            |
 
 ---
 
@@ -19,8 +19,8 @@
 
 ### 2.2 Provided Value
 
-| Key | Type | Description |
-|-----|------|-------------|
+| Key   | Type   | Description   |
+| ----- | ------ | ------------- |
 | (key) | (type) | (description) |
 
 ### 2.3 Hook

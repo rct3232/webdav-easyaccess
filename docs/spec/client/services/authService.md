@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Role | Auth API: get current user, login, register. Used by `useAuthSession` and login/register pages through auth session actions. |
 
 ---
@@ -17,10 +17,10 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called |
-|----------|-------|--------|------------|
-| getMe | () | Promise\<Object\> | GET /api/auth/me |
-| login | (username, password) | Promise\<Object \| null\> | POST /api/auth/login |
+| Function | Input                       | Return                    | API called              |
+| -------- | --------------------------- | ------------------------- | ----------------------- |
+| getMe    | ()                          | Promise\<Object\>         | GET /api/auth/me        |
+| login    | (username, password)        | Promise\<Object \| null\> | POST /api/auth/login    |
 | register | (username, email, password) | Promise\<Object \| null\> | POST /api/auth/register |
 
 - Login/register responses include `user`, `token`; may include `status` (pending, rejected).

@@ -35,9 +35,7 @@ describe('FileContextMenu', () => {
   });
 
   it('returns null when file is null', () => {
-    const { container } = renderWithProviders(
-      <FileContextMenu {...defaultProps} file={null} />
-    );
+    const { container } = renderWithProviders(<FileContextMenu {...defaultProps} file={null} />);
     expect(container.firstChild).toBeNull();
   });
 

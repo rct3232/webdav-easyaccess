@@ -11,4 +11,3 @@ export function normalizeAuthUser(user) {
     is_admin: Boolean(user.is_admin),
   };
 }
-

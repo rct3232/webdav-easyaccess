@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Collapsible section for shared folders. Shows shared icon, expand/collapse. Renders BaseFolderTreeItem for each shared folder. Hidden for admin or when no shared folders. |
-| Used in | FolderTree |
-| Related components | BaseFolderTreeItem |
+| Item               | Description                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Collapsible section for shared folders. Shows shared icon, expand/collapse. Renders BaseFolderTreeItem for each shared folder. Hidden for admin or when no shared folders. |
+| Used in            | FolderTree                                                                                                                                                                 |
+| Related components | BaseFolderTreeItem                                                                                                                                                         |
 
 ---
 
@@ -21,30 +21,30 @@
 
 > **Phase 4 nodeId end-state:** shared-folder items are keyed and navigated by nodeId (the permissions API already returns nodeId). The section header selection on the `/__shared__` virtual-root route is unchanged (decision D1 keeps virtual roots path-based).
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| sharedFolders | array | Y | - | Shared folder list, each entry `{ nodeId, permission, name }` keyed by nodeId |
-| sharedExpanded | boolean | Y | - | Section expanded |
-| handleSharedToggle | function | Y | - | Toggle expand |
-| handleSharedClick | function | Y | - | Section header click |
-| currentNodeId | number | Y | - | Current folder node id (item highlighting) |
-| buildSharedFolderTree | function | Y | - | Build tree of `{ nodeId, name, children, parentNodeId, permission, hasReadPermission }` nodes |
-| onNodeClick | function | Y | - | Folder click: `(nodeId) => void` |
-| expandedNodeIds | Set | Y | - | Expanded node id set |
-| onToggleExpand | function | Y | - | Toggle expand: `(nodeId) => void` |
-| user | object | Y | - | User |
-| treeUpdateTrigger | any | N | - | Reload trigger |
-| onExplorerDrop | function | N | - | Drop |
-| isMobile | boolean | N | false | Mobile |
+| Name                  | Type     | Required | Default | Description                                                                                   |
+| --------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------- |
+| sharedFolders         | array    | Y        | -       | Shared folder list, each entry `{ nodeId, permission, name }` keyed by nodeId                 |
+| sharedExpanded        | boolean  | Y        | -       | Section expanded                                                                              |
+| handleSharedToggle    | function | Y        | -       | Toggle expand                                                                                 |
+| handleSharedClick     | function | Y        | -       | Section header click                                                                          |
+| currentNodeId         | number   | Y        | -       | Current folder node id (item highlighting)                                                    |
+| buildSharedFolderTree | function | Y        | -       | Build tree of `{ nodeId, name, children, parentNodeId, permission, hasReadPermission }` nodes |
+| onNodeClick           | function | Y        | -       | Folder click: `(nodeId) => void`                                                              |
+| expandedNodeIds       | Set      | Y        | -       | Expanded node id set                                                                          |
+| onToggleExpand        | function | Y        | -       | Toggle expand: `(nodeId) => void`                                                             |
+| user                  | object   | Y        | -       | User                                                                                          |
+| treeUpdateTrigger     | any      | N        | -       | Reload trigger                                                                                |
+| onExplorerDrop        | function | N        | -       | Drop                                                                                          |
+| isMobile              | boolean  | N        | false   | Mobile                                                                                        |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| handleSharedToggle | Expand/collapse | - |
-| handleSharedClick | Section click | - |
-| onNodeClick | Folder click | (nodeId) |
-| onToggleExpand | Folder expand | (nodeId) |
+| Callback           | When invoked    | Arguments |
+| ------------------ | --------------- | --------- |
+| handleSharedToggle | Expand/collapse | -         |
+| handleSharedClick  | Section click   | -         |
+| onNodeClick        | Folder click    | (nodeId)  |
+| onToggleExpand     | Folder expand   | (nodeId)  |
 
 ### 2.4 Dependencies
 

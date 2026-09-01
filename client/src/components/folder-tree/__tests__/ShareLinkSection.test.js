@@ -40,11 +40,7 @@ describe('ShareLinkSection', () => {
 
   it('returns null when no shareRootNodeId and no shareToken', () => {
     renderWithProviders(
-      <ShareLinkSection
-        {...defaultProps}
-        shareRootNodeId={undefined}
-        shareToken=""
-      />
+      <ShareLinkSection {...defaultProps} shareRootNodeId={undefined} shareToken="" />
     );
     expect(screen.queryByText('My Share')).not.toBeInTheDocument();
   });
@@ -78,9 +74,7 @@ describe('ShareLinkSection', () => {
   });
 
   it('keeps the section expanded when currentNodeId is under the share root', async () => {
-    renderWithProviders(
-      <ShareLinkSection {...defaultProps} currentNodeId={7} />
-    );
+    renderWithProviders(<ShareLinkSection {...defaultProps} currentNodeId={7} />);
     await waitFor(() => {
       expect(screen.getByText('docs')).toBeInTheDocument();
     });

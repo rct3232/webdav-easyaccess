@@ -49,7 +49,7 @@ export const addSearchHistory = (query) => {
   try {
     const history = getSearchHistory();
     // 중복 제거 (같은 검색어가 있으면 제거 후 맨 앞에 추가)
-    const filtered = history.filter(item => item !== query);
+    const filtered = history.filter((item) => item !== query);
     const newHistory = [query, ...filtered].slice(0, MAX_SEARCH_HISTORY);
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory));
   } catch (error) {

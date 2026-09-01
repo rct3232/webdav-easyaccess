@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog for selecting files to upload. Uses react-dropzone for drag-and-drop. Lists selected files, remove option, upload button. |
-| Used in | FileManager |
-| Related components | BaseDialog, useDropzone |
+| Item               | Description                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog for selecting files to upload. Uses react-dropzone for drag-and-drop. Lists selected files, remove option, upload button. |
+| Used in            | FileManager                                                                                                                      |
+| Related components | BaseDialog, useDropzone                                                                                                          |
 
 ---
 
@@ -19,18 +19,18 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| currentPath | string | Y | - | Upload destination path |
-| onUploadStart | function | Y | - | Called with (fileList, currentPath) on upload |
+| Name          | Type     | Required | Default | Description                                   |
+| ------------- | -------- | -------- | ------- | --------------------------------------------- |
+| open          | boolean  | Y        | -       | Dialog open                                   |
+| onClose       | function | Y        | -       | Close handler                                 |
+| currentPath   | string   | Y        | -       | Upload destination path                       |
+| onUploadStart | function | Y        | -       | Called with (fileList, currentPath) on upload |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Dialog close | - |
+| Callback      | When invoked        | Arguments                               |
+| ------------- | ------------------- | --------------------------------------- |
+| onClose       | Dialog close        | -                                       |
 | onUploadStart | Upload button click | (fileList: File[], currentPath: string) |
 
 ### 2.4 Dependencies

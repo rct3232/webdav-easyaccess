@@ -8,12 +8,14 @@ import {
 
 describe('deriveShareTargetAdminView', () => {
   it('maps folder and file permission responses into access entries', () => {
-    expect(buildShareTargetAccessList({
-      permissions: [
-        { id: 'u1', username: 'user1', email: 'u1@example.com', permission: PERMISSIONS.WRITE },
-      ],
-      isDirectory: true,
-    })).toEqual([
+    expect(
+      buildShareTargetAccessList({
+        permissions: [
+          { id: 'u1', username: 'user1', email: 'u1@example.com', permission: PERMISSIONS.WRITE },
+        ],
+        isDirectory: true,
+      })
+    ).toEqual([
       {
         id: 'u1',
         username: 'user1',
@@ -22,18 +24,20 @@ describe('deriveShareTargetAdminView', () => {
       },
     ]);
 
-    expect(buildShareTargetAccessList({
-      permissions: [
-        {
-          id: 'u2',
-          username: 'user2',
-          email: 'u2@example.com',
-          permission: PERMISSIONS.READ,
-          file_permission: PERMISSIONS.WRITE,
-        },
-      ],
-      isDirectory: false,
-    })).toEqual([
+    expect(
+      buildShareTargetAccessList({
+        permissions: [
+          {
+            id: 'u2',
+            username: 'user2',
+            email: 'u2@example.com',
+            permission: PERMISSIONS.READ,
+            file_permission: PERMISSIONS.WRITE,
+          },
+        ],
+        isDirectory: false,
+      })
+    ).toEqual([
       {
         id: 'u2',
         username: 'user2',
@@ -46,13 +50,15 @@ describe('deriveShareTargetAdminView', () => {
   });
 
   it('filters admin entries and matches users by username or email', () => {
-    expect(buildShareTargetAccessList({
-      permissions: [
-        { id: 'admin', is_admin: true, permission: PERMISSIONS.ADMIN },
-        { id: 'u1', username: 'user1', email: 'u1@example.com', permission: PERMISSIONS.READ },
-      ],
-      isDirectory: true,
-    })).toEqual([
+    expect(
+      buildShareTargetAccessList({
+        permissions: [
+          { id: 'admin', is_admin: true, permission: PERMISSIONS.ADMIN },
+          { id: 'u1', username: 'user1', email: 'u1@example.com', permission: PERMISSIONS.READ },
+        ],
+        isDirectory: true,
+      })
+    ).toEqual([
       {
         id: 'u1',
         username: 'user1',
@@ -61,15 +67,15 @@ describe('deriveShareTargetAdminView', () => {
       },
     ]);
 
-    expect(filterShareTargetUsers({
-      users: [
-        { id: 'u1', username: 'Alice', email: 'alice@example.com' },
-        { id: 'u2', username: 'Bob', email: 'team@example.com' },
-      ],
-      searchQuery: 'TEAM',
-    })).toEqual([
-      { id: 'u2', username: 'Bob', email: 'team@example.com' },
-    ]);
+    expect(
+      filterShareTargetUsers({
+        users: [
+          { id: 'u1', username: 'Alice', email: 'alice@example.com' },
+          { id: 'u2', username: 'Bob', email: 'team@example.com' },
+        ],
+        searchQuery: 'TEAM',
+      })
+    ).toEqual([{ id: 'u2', username: 'Bob', email: 'team@example.com' }]);
   });
 
   it('returns a sorted copy of the access list', () => {

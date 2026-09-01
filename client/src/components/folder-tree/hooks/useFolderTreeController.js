@@ -5,7 +5,13 @@ import folderTreeGateway from '../../../services/folderTreeGateway';
 
 const EMPTY_ANCESTORS = [];
 
-const useFolderTreeController = ({ currentNodeId, currentPath = '', user, onNodeClick, ancestors = EMPTY_ANCESTORS }) => {
+const useFolderTreeController = ({
+  currentNodeId,
+  currentPath = '',
+  user,
+  onNodeClick,
+  ancestors = EMPTY_ANCESTORS,
+}) => {
   const chain = Array.isArray(ancestors) ? ancestors : EMPTY_ANCESTORS;
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [sharedFolders, setSharedFolders] = useState([]);
@@ -136,13 +142,10 @@ const useFolderTreeController = ({ currentNodeId, currentPath = '', user, onNode
     [onNodeClick]
   );
 
-  const handleRecentToggle = useCallback(
-    (e) => {
-      e.stopPropagation();
-      setRecentExpanded((prev) => !prev);
-    },
-    []
-  );
+  const handleRecentToggle = useCallback((e) => {
+    e.stopPropagation();
+    setRecentExpanded((prev) => !prev);
+  }, []);
 
   const handleRecentClick = useCallback(() => {
     onNodeClick('/__recent__');

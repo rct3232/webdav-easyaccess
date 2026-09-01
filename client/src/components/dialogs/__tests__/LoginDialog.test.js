@@ -70,10 +70,7 @@ describe('LoginDialog', () => {
   it('dialog stays open on API failure', async () => {
     server.use(
       http.post('/api/auth/login', () =>
-        HttpResponse.json(
-          { errorCode: 'serverErrors.auth.invalidCredentials' },
-          { status: 401 }
-        )
+        HttpResponse.json({ errorCode: 'serverErrors.auth.invalidCredentials' }, { status: 401 })
       )
     );
     const user = userEvent.setup();

@@ -8,8 +8,7 @@ jest.mock('../../infrastructure/backendHealth', () => {
   return { getBackendHealth: () => ({ report }) };
 });
 
-const healthReport = () =>
-  require('../../infrastructure/backendHealth').getBackendHealth().report;
+const healthReport = () => require('../../infrastructure/backendHealth').getBackendHealth().report;
 
 describe('getBackend', () => {
   const originalEnv = process.env.WEA_STORAGE_BACKEND;

@@ -69,7 +69,11 @@ export async function createShareLink(
   return body;
 }
 
-async function createFolderViaApi(request: APIRequestContext, bearerToken: string, folderPath: string) {
+async function createFolderViaApi(
+  request: APIRequestContext,
+  bearerToken: string,
+  folderPath: string
+) {
   const segments = folderPath.split('/').filter(Boolean);
   const name = segments[segments.length - 1];
   const parentPath = `/${segments.slice(0, -1).join('/')}`;
@@ -114,7 +118,10 @@ async function uploadFileViaApi(
   expect(res.ok()).toBeTruthy();
 }
 
-export async function createPublicShareFixtures(request: APIRequestContext, testInfo: TestInfo): Promise<PublicShareFixtures> {
+export async function createPublicShareFixtures(
+  request: APIRequestContext,
+  testInfo: TestInfo
+): Promise<PublicShareFixtures> {
   // Deterministic naming across runs and platform projects.
   // We keep the suffix stable per Playwright project to avoid cross-project resource collisions.
   const baseId = `${slugify(testInfo.project.name)}-share-public`;
@@ -229,11 +236,7 @@ export async function createPublicShareFixtures(request: APIRequestContext, test
     expiresInDays: 30,
   });
 
-  const approvedUserHomeNodeId = await resolveNodeId(
-    request,
-    bearerToken,
-    `/${approvedUsername}`,
-  );
+  const approvedUserHomeNodeId = await resolveNodeId(request, bearerToken, `/${approvedUsername}`);
 
   return {
     approvedUserSuffix,
@@ -280,4 +283,3 @@ export async function createPublicShareFixtures(request: APIRequestContext, test
     },
   };
 }
-

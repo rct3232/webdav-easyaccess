@@ -15,7 +15,9 @@ const LoginDialog = ({ open, onClose }) => (
     PaperProps={{ sx: { m: 1 } }}
     disableRestoreFocus
   >
-    <DialogContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+    <DialogContent
+      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}
+    >
       <LoginForm redirectAfterLogin={false} onSuccess={onClose} />
     </DialogContent>
   </Dialog>

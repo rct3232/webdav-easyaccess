@@ -72,7 +72,9 @@ describe('MigrationDialog', () => {
 
   it('renders WebDAV destination fields when info source is s3', async () => {
     server.use(
-      http.get('/api/admin/migration/info', () => HttpResponse.json({ source: 's3', direction: 's3-to-webdav' }))
+      http.get('/api/admin/migration/info', () =>
+        HttpResponse.json({ source: 's3', direction: 's3-to-webdav' })
+      )
     );
 
     renderDialog();
@@ -90,10 +92,14 @@ describe('MigrationDialog', () => {
     renderDialog();
 
     await screen.findByText(/source: webdav/i);
-    expect(screen.queryByText(/already migrated files are skipped automatically/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/already migrated files are skipped automatically/i)
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /apply/i }));
-    expect(screen.getByText(/already migrated files are skipped automatically/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/already migrated files are skipped automatically/i)
+    ).toBeInTheDocument();
   });
 
   it('blocks start when required fields are missing', async () => {
@@ -182,7 +188,10 @@ describe('MigrationDialog', () => {
   it('shows an inline error and stays on the settings page when the migration fails to start', async () => {
     server.use(
       http.post('/api/admin/migration/blobs', () =>
-        HttpResponse.json({ errorCode: 'serverErrors.admin.migrationInvalidPayload' }, { status: 400 })
+        HttpResponse.json(
+          { errorCode: 'serverErrors.admin.migrationInvalidPayload' },
+          { status: 400 }
+        )
       )
     );
 
@@ -199,7 +208,9 @@ describe('MigrationDialog', () => {
 
   it('info-load failure shows an inline error and disables Start', async () => {
     server.use(
-      http.get('/api/admin/migration/info', () => HttpResponse.json({ errorCode: 'serverErrors.msw.unhandled' }, { status: 500 }))
+      http.get('/api/admin/migration/info', () =>
+        HttpResponse.json({ errorCode: 'serverErrors.msw.unhandled' }, { status: 500 })
+      )
     );
 
     renderDialog();

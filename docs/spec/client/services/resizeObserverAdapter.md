@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
+| Item | Description                                                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Role | Browser adapter that observes element size changes and reports width updates through a narrow callback interface. Owns direct `ResizeObserver` access. |
 
 ---
@@ -17,8 +17,8 @@
 
 ### 2.2 Main Functions
 
-| Function | Input | Return | API called (see api.md) |
-|----------|-------|--------|-------------------------|
+| Function              | Input                                                        | Return               | API called (see api.md)    |
+| --------------------- | ------------------------------------------------------------ | -------------------- | -------------------------- |
 | `observeElementWidth` | `(element: Element, onWidthChange: (width: number) => void)` | `() => void` cleanup | None; browser adapter only |
 
 ### 2.3 Error Handling

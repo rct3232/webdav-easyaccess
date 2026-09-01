@@ -57,9 +57,7 @@ describe('FileGrid', () => {
   });
 
   it('shows FileGridSkeleton when loading and files empty', () => {
-    const { container } = renderWithProviders(
-      <FileGrid {...defaultProps} files={[]} loading />
-    );
+    const { container } = renderWithProviders(<FileGrid {...defaultProps} files={[]} loading />);
     expect(container.querySelector('.MuiSkeleton-root')).toBeInTheDocument();
   });
 
@@ -89,9 +87,7 @@ describe('FileGrid', () => {
   });
 
   it('does not show checkbox in selection mode', () => {
-    renderWithProviders(
-      <FileGrid {...defaultProps} selectionMode selectedFiles={new Set()} />
-    );
+    renderWithProviders(<FileGrid {...defaultProps} selectionMode selectedFiles={new Set()} />);
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });

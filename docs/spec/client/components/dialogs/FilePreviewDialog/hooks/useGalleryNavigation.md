@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Manages gallery index state and navigation: derives opened index from file.path, provides goPrev/goNext, handles touch swipe gestures for navigation |
-| Used by components/pages | FilePreviewDialog |
+| Item                     | Description                                                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Manages gallery index state and navigation: derives opened index from file.path, provides goPrev/goNext, handles touch swipe gestures for navigation |
+| Used by components/pages | FilePreviewDialog                                                                                                                                    |
 
 ---
 
@@ -17,25 +17,25 @@
 
 ### 2.2 Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| open | boolean | Y | Dialog open state |
-| isGalleryMode | boolean | Y | True when multiple media files are shown |
-| file | object | Y | Original file prop (used for path-based index sync) |
-| mediaFiles | array | Y | All media files in gallery |
-| isMobile | boolean | Y | Mobile breakpoint flag |
-| currentPreviewFileType | string | N | File type of currently displayed file |
-| resetHideTimer | function | Y | Resets UI hide timer on navigation |
+| Name                   | Type     | Required | Description                                         |
+| ---------------------- | -------- | -------- | --------------------------------------------------- |
+| open                   | boolean  | Y        | Dialog open state                                   |
+| isGalleryMode          | boolean  | Y        | True when multiple media files are shown            |
+| file                   | object   | Y        | Original file prop (used for path-based index sync) |
+| mediaFiles             | array    | Y        | All media files in gallery                          |
+| isMobile               | boolean  | Y        | Mobile breakpoint flag                              |
+| currentPreviewFileType | string   | N        | File type of currently displayed file               |
+| resetHideTimer         | function | Y        | Resets UI hide timer on navigation                  |
 
 ### 2.3 Return Value / State
 
-| Key | Type | Meaning |
-|-----|------|---------|
-| currentMediaIndex | number | Index of currently displayed file in mediaFiles |
-| goPrev | function | Navigates to previous media |
-| goNext | function | Navigates to next media |
-| handleTouchStart | function | Records touch start X coordinate |
-| handleTouchEnd | function | Handles swipe navigation or tap toggle |
+| Key               | Type     | Meaning                                         |
+| ----------------- | -------- | ----------------------------------------------- |
+| currentMediaIndex | number   | Index of currently displayed file in mediaFiles |
+| goPrev            | function | Navigates to previous media                     |
+| goNext            | function | Navigates to next media                         |
+| handleTouchStart  | function | Records touch start X coordinate                |
+| handleTouchEnd    | function | Handles swipe navigation or tap toggle          |
 
 ### 2.4 Dependencies
 

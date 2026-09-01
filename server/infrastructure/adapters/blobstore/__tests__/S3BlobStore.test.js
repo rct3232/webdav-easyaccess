@@ -17,8 +17,7 @@ jest.mock('../../../backendHealth', () => {
   return { getBackendHealth: () => ({ report }) };
 });
 
-const healthReport = () =>
-  require('../../../backendHealth').getBackendHealth().report;
+const healthReport = () => require('../../../backendHealth').getBackendHealth().report;
 
 beforeEach(() => {
   jest.resetModules();
@@ -138,13 +137,21 @@ describe('S3BlobStore', () => {
       const oldDate = new Date(now - 86400000 * 10);
       const recentDate = new Date(now - 1000);
 
-      currentMockS3.putObject({ Bucket: 'test-bucket', Key: 'old-file.txt', Body: Buffer.from('old') });
+      currentMockS3.putObject({
+        Bucket: 'test-bucket',
+        Key: 'old-file.txt',
+        Body: Buffer.from('old'),
+      });
       currentMockS3.getStore().set('old-file.txt', {
         ...currentMockS3.getStore().get('old-file.txt'),
         LastModified: oldDate,
       });
 
-      currentMockS3.putObject({ Bucket: 'test-bucket', Key: 'recent-file.txt', Body: Buffer.from('new') });
+      currentMockS3.putObject({
+        Bucket: 'test-bucket',
+        Key: 'recent-file.txt',
+        Body: Buffer.from('new'),
+      });
       currentMockS3.getStore().set('recent-file.txt', {
         ...currentMockS3.getStore().get('recent-file.txt'),
         LastModified: recentDate,
@@ -162,7 +169,11 @@ describe('S3BlobStore', () => {
       const oldDate = new Date(Date.now() - 86400000 * 20);
 
       for (let i = 0; i < 15; i++) {
-        currentMockS3.putObject({ Bucket: 'test-bucket', Key: `page-key-${i}`, Body: Buffer.from('x') });
+        currentMockS3.putObject({
+          Bucket: 'test-bucket',
+          Key: `page-key-${i}`,
+          Body: Buffer.from('x'),
+        });
         currentMockS3.getStore().set(`page-key-${i}`, {
           ...currentMockS3.getStore().get(`page-key-${i}`),
           LastModified: oldDate,
@@ -186,7 +197,12 @@ describe('S3BlobStore', () => {
 
   describe('copyBlob', () => {
     it('copies object to a new key via CopyObjectCommand', async () => {
-      currentMockS3.putObject({ Bucket: 'test-bucket', Key: 'src-key', Body: Buffer.from('data'), ContentType: 'text/plain' });
+      currentMockS3.putObject({
+        Bucket: 'test-bucket',
+        Key: 'src-key',
+        Body: Buffer.from('data'),
+        ContentType: 'text/plain',
+      });
 
       const store = new S3BlobStore(config);
       await store.copyBlob('src-key', 'dest-key');
@@ -198,7 +214,9 @@ describe('S3BlobStore', () => {
 
     it('throws clear error when source key is missing (NoSuchKey)', async () => {
       const store = new S3BlobStore(config);
-      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(/source key not found/i);
+      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(
+        /source key not found/i
+      );
     });
   });
 
@@ -235,7 +253,10 @@ describe('S3BlobStore', () => {
       );
       const store = new S3BlobStore(config);
       await expect(store.uploadBlob('k', Buffer.from('x'))).rejects.toThrow();
-      expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false, code: 'auth' }));
+      expect(report).toHaveBeenCalledWith(
+        's3',
+        expect.objectContaining({ ok: false, code: 'auth' })
+      );
     });
 
     it('reports missing_resource on NoSuchBucket', async () => {
@@ -254,7 +275,10 @@ describe('S3BlobStore', () => {
       currentMockS3.getObject.mockRejectedValue(new Error('boom'));
       const store = new S3BlobStore(config);
       await expect(store.downloadBlob('k')).rejects.toThrow();
-      expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false, code: 'unknown' }));
+      expect(report).toHaveBeenCalledWith(
+        's3',
+        expect.objectContaining({ ok: false, code: 'unknown' })
+      );
     });
 
     it('reports ok when deleteBlob swallows NoSuchKey', async () => {
@@ -266,7 +290,9 @@ describe('S3BlobStore', () => {
 
     it('reports fail before copyBlob remaps source-missing error', async () => {
       const store = new S3BlobStore(config);
-      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(/source key not found/i);
+      await expect(store.copyBlob('missing-src', 'dest-key')).rejects.toThrow(
+        /source key not found/i
+      );
       expect(report).toHaveBeenCalledWith('s3', expect.objectContaining({ ok: false }));
     });
   });

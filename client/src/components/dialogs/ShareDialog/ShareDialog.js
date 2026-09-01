@@ -1,12 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-} from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { openUrlInNewTab } from '../../../services/browserNavigation';
 import { createShareLink, getShareLinkUrl } from '../../../services/shareLinkService';
@@ -118,12 +112,7 @@ const ShareDialog = ({
     handleClose,
   } = shareDialog;
 
-  const {
-    folderPermissions,
-    saving,
-    loadingPermissions,
-    hasPermissionChanged,
-  } = permissionManager;
+  const { folderPermissions, saving, loadingPermissions, hasPermissionChanged } = permissionManager;
 
   const { t } = useTranslation();
   const dialogTitle = isAdminMode
@@ -134,7 +123,8 @@ const ShareDialog = ({
 
   const renderFolderTreeWrapper = (identifier, level = 0) => {
     const node = folderTree.get(identifier);
-    const resolvedNodeId = node?.nodeId != null ? node.nodeId : (typeof identifier === 'number' ? identifier : null);
+    const resolvedNodeId =
+      node?.nodeId != null ? node.nodeId : typeof identifier === 'number' ? identifier : null;
     return (
       <ShareFolderTree
         rootNodeId={resolvedNodeId}
@@ -168,18 +158,22 @@ const ShareDialog = ({
         maxWidth="md"
         fullScreen={isMobile}
         PaperProps={{
-          sx: isMobile ? {} : {
-            width: '49%',
-            maxWidth: '49%',
-            height: '70vh',
-            maxHeight: '70vh',
-          },
+          sx: isMobile
+            ? {}
+            : {
+                width: '49%',
+                maxWidth: '49%',
+                height: '70vh',
+                maxHeight: '70vh',
+              },
         }}
       >
         <DialogTitle>
           {enableExternalShare ? t('dialogs.externalShareTitle') : dialogTitle}
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}>
+        <DialogContent
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, overflow: 'hidden' }}
+        >
           {enableExternalShare && fileNodeId != null && (
             <ExternalShareSection
               externalShareLink={externalShareLink}

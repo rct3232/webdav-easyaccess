@@ -29,9 +29,7 @@ describe('httpClient', () => {
   });
 
   it('parses JSON responses into result.data', async () => {
-    global.fetch = jest.fn().mockResolvedValue(
-      createResponse({ body: { value: 42 } })
-    );
+    global.fetch = jest.fn().mockResolvedValue(createResponse({ body: { value: 42 } }));
 
     const result = await request({ url: '/json' });
 

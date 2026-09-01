@@ -51,9 +51,7 @@ function pickField(payload, primary, aliases) {
  * (non-masked) password is always used verbatim.
  */
 function resolvePgPassword(password) {
-  return password === SECRET_MASK || isMissing(password)
-    ? process.env.WEA_PG_PASSWORD
-    : password;
+  return password === SECRET_MASK || isMissing(password) ? process.env.WEA_PG_PASSWORD : password;
 }
 
 function toShortReason(value) {

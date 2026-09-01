@@ -35,10 +35,7 @@ async function insertObjectMapRow({ fileNodeId, s3Key, status, daysAgo = 0 }) {
 }
 
 async function getObjectMapRowByKey(s3Key) {
-  const res = await dbQuery(
-    'SELECT s3_key, status FROM object_map WHERE s3_key = ?',
-    [s3Key]
-  );
+  const res = await dbQuery('SELECT s3_key, status FROM object_map WHERE s3_key = ?', [s3Key]);
   return res.rows[0] || null;
 }
 
@@ -71,7 +68,12 @@ describe('createGcService', () => {
     it('deletes S3 blobs and object_map rows for orphaned entries older than the TTL', async () => {
       const orphanedNode = await fileNodesStore.createNode(null, `t1-orphan-${Date.now()}`, 'file');
       const orphanedKey = `t1-orphaned-key-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: orphanedNode.id, s3Key: orphanedKey, status: 'orphaned', daysAgo: 10 });
+      await insertObjectMapRow({
+        fileNodeId: orphanedNode.id,
+        s3Key: orphanedKey,
+        status: 'orphaned',
+        daysAgo: 10,
+      });
 
       const results = await gcService.runGcCycle({ olderThanDays: 1 });
 
@@ -87,9 +89,18 @@ describe('createGcService', () => {
       const activeKey = `t1-active-key-${Date.now()}`;
       await insertObjectMapRow({ fileNodeId: activeNode.id, s3Key: activeKey, status: 'active' });
 
-      const orphanedNode = await fileNodesStore.createNode(null, `t1-orphan2-${Date.now()}`, 'file');
+      const orphanedNode = await fileNodesStore.createNode(
+        null,
+        `t1-orphan2-${Date.now()}`,
+        'file'
+      );
       const orphanedKey = `t1-orphaned-key-2-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: orphanedNode.id, s3Key: orphanedKey, status: 'orphaned', daysAgo: 10 });
+      await insertObjectMapRow({
+        fileNodeId: orphanedNode.id,
+        s3Key: orphanedKey,
+        status: 'orphaned',
+        daysAgo: 10,
+      });
 
       const results = await gcService.runGcCycle({ olderThanDays: 1 });
 
@@ -97,10 +108,9 @@ describe('createGcService', () => {
       expect(blobStore.getDeleted()).toEqual([orphanedKey]);
       expect(blobStore.getDeleted()).not.toContain(activeKey);
 
-      const activeRow = await dbQuery(
-        `SELECT s3_key, status FROM object_map WHERE s3_key = ?`,
-        [activeKey]
-      );
+      const activeRow = await dbQuery(`SELECT s3_key, status FROM object_map WHERE s3_key = ?`, [
+        activeKey,
+      ]);
       expect(activeRow.rows).toHaveLength(1);
       expect(activeRow.rows[0].status).toBe('active');
     });
@@ -108,7 +118,12 @@ describe('createGcService', () => {
     it('leaves orphaned entries younger than the TTL untouched', async () => {
       const freshNode = await fileNodesStore.createNode(null, `t1-fresh-${Date.now()}`, 'file');
       const freshKey = `t1-fresh-key-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: freshNode.id, s3Key: freshKey, status: 'orphaned', daysAgo: 0 });
+      await insertObjectMapRow({
+        fileNodeId: freshNode.id,
+        s3Key: freshKey,
+        status: 'orphaned',
+        daysAgo: 0,
+      });
 
       const results = await gcService.runGcCycle({ olderThanDays: 1 });
 
@@ -123,7 +138,12 @@ describe('createGcService', () => {
     it('collects row-delete errors without throwing', async () => {
       const node = await fileNodesStore.createNode(null, `t1-err-${Date.now()}`, 'file');
       const key = `t1-err-key-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: node.id, s3Key: key, status: 'orphaned', daysAgo: 10 });
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: key,
+        status: 'orphaned',
+        daysAgo: 10,
+      });
 
       const failingStore = {
         getOrphanedObjects: fileNodesStore.getOrphanedObjects.bind(fileNodesStore),
@@ -144,7 +164,12 @@ describe('createGcService', () => {
     it('WebDAV mode: orphaned object_map rows are deleted but blobStore.deleteBlob is NOT called', async () => {
       const orphanedNode = await fileNodesStore.createNode(null, `t1-wd-${Date.now()}`, 'file');
       const orphanedKey = `preserved-uuid-marker-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: orphanedNode.id, s3Key: orphanedKey, status: 'orphaned', daysAgo: 10 });
+      await insertObjectMapRow({
+        fileNodeId: orphanedNode.id,
+        s3Key: orphanedKey,
+        status: 'orphaned',
+        daysAgo: 10,
+      });
 
       const wdBlobStore = createFakeBlobStore();
       const webdavGc = createGcService({
@@ -264,7 +289,12 @@ describe('createGcService', () => {
         const envGc = createGcService({ blobStore, fileNodesStore, fileStorageMode: 's3' });
         const node = await fileNodesStore.createNode(null, `ttl-${Date.now()}`, 'file');
         const key = `ttl-key-${Date.now()}`;
-        await insertObjectMapRow({ fileNodeId: node.id, s3Key: key, status: 'orphaned', daysAgo: 10 });
+        await insertObjectMapRow({
+          fileNodeId: node.id,
+          s3Key: key,
+          status: 'orphaned',
+          daysAgo: 10,
+        });
 
         const results = await envGc.runGcCycle();
 
@@ -282,7 +312,12 @@ describe('createGcService', () => {
     it('prefers an explicit olderThanDays argument over the TTL', async () => {
       const node = await fileNodesStore.createNode(null, `ttl-arg-${Date.now()}`, 'file');
       const key = `ttl-arg-key-${Date.now()}`;
-      await insertObjectMapRow({ fileNodeId: node.id, s3Key: key, status: 'orphaned', daysAgo: 10 });
+      await insertObjectMapRow({
+        fileNodeId: node.id,
+        s3Key: key,
+        status: 'orphaned',
+        daysAgo: 10,
+      });
 
       const results = await gcService.runGcCycle({ olderThanDays: 30 });
 

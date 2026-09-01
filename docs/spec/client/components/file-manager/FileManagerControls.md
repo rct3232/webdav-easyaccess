@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Toolbar for sort, select all/deselect all, view mode (list/grid/detail), and bulk actions (move, copy, download, delete). In selection mode: hides sort and view mode; shows select all, deselect all, and bulk action buttons in a single row. No selection mode toggle — entry/exit driven by file interactions and selected count. |
-| Used in | FileManager |
-| Related components | VIEW_MODES, SORT_MODES constants |
+| Item               | Description                                                                                                                                                                                                                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Toolbar for sort, select all/deselect all, view mode (list/grid/detail), and bulk actions (move, copy, download, delete). In selection mode: hides sort and view mode; shows select all, deselect all, and bulk action buttons in a single row. No selection mode toggle — entry/exit driven by file interactions and selected count. |
+| Used in            | FileManager                                                                                                                                                                                                                                                                                                                           |
+| Related components | VIEW_MODES, SORT_MODES constants                                                                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -19,39 +19,39 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| isMobile | boolean | Y | - | Mobile layout |
-| selectionMode | boolean | Y | - | Selection mode active |
-| handleSelectAll | function | Y | - | Select all |
-| handleDeselectAll | function | Y | - | Deselect all |
-| selectedFiles | Set | Y | - | Selected count |
-| sortMode | string | Y | - | SORT_MODES value |
-| setSortMode | function | Y | - | Set sort mode |
-| viewMode | string | Y | - | VIEW_MODES value |
-| setViewMode | function | Y | - | Set view mode |
-| selectionActionsDisabled | boolean | N | false | Disable selection actions |
-| handleBulkMove | function | N | - | Bulk move handler (when selectionMode) |
-| handleBulkCopy | function | N | - | Bulk copy handler (when selectionMode) |
-| handleBulkDownload | function | N | - | Bulk download handler (when selectionMode) |
-| openBulkDeleteDialog | function | N | - | Bulk delete handler; receives (filePaths: string[]) (when selectionMode) |
-| bulkWritePermission | boolean | N | true | Whether write actions (move, delete) allowed for bulk ops |
-| hasReadOnlyInSelection | boolean | N | false | Show read-only warning when some selected are read-only |
-| bulkActionsDisabled | boolean | N | false | Disable all bulk action buttons |
-| downloadOnly | boolean | N | false | Hide move, copy, delete; show only download (e.g. share link mode) |
+| Name                     | Type     | Required | Default | Description                                                              |
+| ------------------------ | -------- | -------- | ------- | ------------------------------------------------------------------------ |
+| isMobile                 | boolean  | Y        | -       | Mobile layout                                                            |
+| selectionMode            | boolean  | Y        | -       | Selection mode active                                                    |
+| handleSelectAll          | function | Y        | -       | Select all                                                               |
+| handleDeselectAll        | function | Y        | -       | Deselect all                                                             |
+| selectedFiles            | Set      | Y        | -       | Selected count                                                           |
+| sortMode                 | string   | Y        | -       | SORT_MODES value                                                         |
+| setSortMode              | function | Y        | -       | Set sort mode                                                            |
+| viewMode                 | string   | Y        | -       | VIEW_MODES value                                                         |
+| setViewMode              | function | Y        | -       | Set view mode                                                            |
+| selectionActionsDisabled | boolean  | N        | false   | Disable selection actions                                                |
+| handleBulkMove           | function | N        | -       | Bulk move handler (when selectionMode)                                   |
+| handleBulkCopy           | function | N        | -       | Bulk copy handler (when selectionMode)                                   |
+| handleBulkDownload       | function | N        | -       | Bulk download handler (when selectionMode)                               |
+| openBulkDeleteDialog     | function | N        | -       | Bulk delete handler; receives (filePaths: string[]) (when selectionMode) |
+| bulkWritePermission      | boolean  | N        | true    | Whether write actions (move, delete) allowed for bulk ops                |
+| hasReadOnlyInSelection   | boolean  | N        | false   | Show read-only warning when some selected are read-only                  |
+| bulkActionsDisabled      | boolean  | N        | false   | Disable all bulk action buttons                                          |
+| downloadOnly             | boolean  | N        | false   | Hide move, copy, delete; show only download (e.g. share link mode)       |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| handleSelectAll | Select all click | - |
-| handleDeselectAll | Deselect all click | - |
-| setSortMode | Sort option selected | (mode) |
-| setViewMode | View option selected | (mode) |
-| handleBulkMove | Move button click | - |
-| handleBulkCopy | Copy button click | - |
-| handleBulkDownload | Download button click | - |
-| openBulkDeleteDialog | Delete button click | (filePaths: string[]) |
+| Callback             | When invoked          | Arguments             |
+| -------------------- | --------------------- | --------------------- |
+| handleSelectAll      | Select all click      | -                     |
+| handleDeselectAll    | Deselect all click    | -                     |
+| setSortMode          | Sort option selected  | (mode)                |
+| setViewMode          | View option selected  | (mode)                |
+| handleBulkMove       | Move button click     | -                     |
+| handleBulkCopy       | Copy button click     | -                     |
+| handleBulkDownload   | Download button click | -                     |
+| openBulkDeleteDialog | Delete button click   | (filePaths: string[]) |
 
 ### 2.4 Dependencies
 

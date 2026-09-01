@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog shell for item-level sharing. Admin users can edit direct access and external share state through gateway/use-case-backed flows; non-admin users see shared-manage actions through `useSharedManage`. |
-| Used in | FileManager (share action) |
-| Related components | `SharedManageBody`, `ExternalShareSection`, `useSharedManage`, `sharePermissionGateway`, sharing save use-cases, `shareLinkService` |
+| Item               | Description                                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Dialog shell for item-level sharing. Admin users can edit direct access and external share state through gateway/use-case-backed flows; non-admin users see shared-manage actions through `useSharedManage`. |
+| Used in            | FileManager (share action)                                                                                                                                                                                   |
+| Related components | `SharedManageBody`, `ExternalShareSection`, `useSharedManage`, `sharePermissionGateway`, sharing save use-cases, `shareLinkService`                                                                          |
 
 ---
 
@@ -19,22 +19,22 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| file | object | Y | - | Selected item to share; includes `path`, `basename`/`name`, `type`, and caller-known permission flags |
-| user | object | Y | - | Current user |
-| onMessage | function | N | - | Message handler |
-| onSave | function | N | - | Success callback after admin-side save flows |
+| Name      | Type     | Required | Default | Description                                                                                           |
+| --------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| open      | boolean  | Y        | -       | Dialog open                                                                                           |
+| onClose   | function | Y        | -       | Close handler                                                                                         |
+| file      | object   | Y        | -       | Selected item to share; includes `path`, `basename`/`name`, `type`, and caller-known permission flags |
+| user      | object   | Y        | -       | Current user                                                                                          |
+| onMessage | function | N        | -       | Message handler                                                                                       |
+| onSave    | function | N        | -       | Success callback after admin-side save flows                                                          |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Dialog close | - |
-| onMessage | Show message | - |
-| onSave | Admin permission/share action completed successfully | - |
+| Callback  | When invoked                                         | Arguments |
+| --------- | ---------------------------------------------------- | --------- |
+| onClose   | Dialog close                                         | -         |
+| onMessage | Show message                                         | -         |
+| onSave    | Admin permission/share action completed successfully | -         |
 
 ### 2.4 Dependencies
 

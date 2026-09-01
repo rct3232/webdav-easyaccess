@@ -27,7 +27,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   }, [selectionMode, selectedFiles.size]);
 
   const handleToggleSelectionMode = () => {
-    setSelectionMode(prev => {
+    setSelectionMode((prev) => {
       const next = !prev;
       if (next) skipNextAutoExitRef.current = true;
       return next;
@@ -37,7 +37,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   };
 
   const handleSelectAll = () => {
-    setSelectedFiles(new Set(filesForSelectAll.map(file => getEntryKey(file))));
+    setSelectedFiles(new Set(filesForSelectAll.map((file) => getEntryKey(file))));
   };
 
   const handleDeselectAll = () => {
@@ -45,7 +45,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   };
 
   const handleFileCheck = (file, checked) => {
-    setSelectedFiles(prev => {
+    setSelectedFiles((prev) => {
       const newSet = new Set(prev);
       if (checked) {
         newSet.add(getEntryKey(file));
@@ -57,7 +57,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
   };
 
   const toggleFileSelection = (file) => {
-    setSelectedFiles(prev => {
+    setSelectedFiles((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(getEntryKey(file))) {
         newSet.delete(getEntryKey(file));
@@ -75,9 +75,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
       const hi = Math.max(fromIndex, toIndex);
       const clampedLo = Math.max(0, lo);
       const clampedHi = Math.min(displayedFiles.length - 1, hi);
-      const keys = displayedFiles
-        .slice(clampedLo, clampedHi + 1)
-        .map(f => getEntryKey(f));
+      const keys = displayedFiles.slice(clampedLo, clampedHi + 1).map((f) => getEntryKey(f));
       setSelectedFiles(new Set(keys));
     },
     [displayedFiles]
@@ -101,7 +99,7 @@ export const useSelection = (displayedFiles, allFiles = null) => {
         lastSelectedIndexRef.current = fileIndex;
       } else if (ctrlOrMeta) {
         setSelectionMode(true);
-        setSelectedFiles(prev => {
+        setSelectedFiles((prev) => {
           const newSet = new Set(prev);
           if (newSet.has(getEntryKey(file))) {
             newSet.delete(getEntryKey(file));
@@ -136,4 +134,3 @@ export const useSelection = (displayedFiles, allFiles = null) => {
     enterSelectionMode,
   };
 };
-

@@ -7,12 +7,12 @@
 const hexToRgba = (hex, alpha) => {
   // Remove # if present
   hex = hex.replace('#', '');
-  
+
   // Parse hex values
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  
+
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
@@ -27,7 +27,7 @@ export const createDragGhostElement = (file, theme, count = 1) => {
   // Convert primary color to rgba with opacity
   const primaryColor = theme.palette.primary.main;
   const borderColor = hexToRgba(primaryColor, 0.3);
-  
+
   // Create container
   const container = document.createElement('div');
   container.style.cssText = `
@@ -136,7 +136,7 @@ export const createDragGhostElement = (file, theme, count = 1) => {
 const createFileIconSVG = (file, theme) => {
   const primaryColor = theme.palette.primary.main;
   const textColor = 'rgba(120, 120, 120, 0.7)';
-  
+
   // Folder icon
   if (file.type === 'directory') {
     return `
@@ -145,7 +145,7 @@ const createFileIconSVG = (file, theme) => {
       </svg>
     `;
   }
-  
+
   // Image icon
   if (file.mime?.startsWith('image/')) {
     return `
@@ -154,7 +154,7 @@ const createFileIconSVG = (file, theme) => {
       </svg>
     `;
   }
-  
+
   // Video icon
   if (file.mime?.startsWith('video/')) {
     return `
@@ -164,7 +164,7 @@ const createFileIconSVG = (file, theme) => {
       </svg>
     `;
   }
-  
+
   // Default file icon
   return `
     <svg width="64" height="64" viewBox="0 0 24 24" fill="${textColor}" style="opacity: 0.7;">
@@ -182,14 +182,14 @@ const createFileIconSVG = (file, theme) => {
  */
 export const setupDragGhost = (event, file, theme, count = 1) => {
   const ghostElement = createDragGhostElement(file, theme, count);
-  
+
   // Temporarily add to DOM (required for setDragImage)
   document.body.appendChild(ghostElement);
-  
+
   // Set the custom drag image
   // Offset: half width (60px) and half height (80px) for centered cursor
   event.dataTransfer.setDragImage(ghostElement, 60, 80);
-  
+
   // Clean up after a brief moment
   setTimeout(() => {
     if (ghostElement.parentNode) {
@@ -197,4 +197,3 @@ export const setupDragGhost = (event, file, theme, count = 1) => {
     }
   }, 0);
 };
-

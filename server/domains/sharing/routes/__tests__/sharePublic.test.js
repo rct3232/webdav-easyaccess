@@ -11,7 +11,10 @@ const {
 const { createFileNodeService } = require('../../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../../store/fileNodesStore');
 const ShareLink = require('../../../../models/ShareLink');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('../../../../infrastructure/adapters/blobstore/WebdavBlobStore');
@@ -28,7 +31,11 @@ async function createUserWithHomeNode(opts = {}) {
 }
 
 async function createFileWithBlob({ user, homeNodeId, name, content, mimeType }) {
-  await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+  await grantTestPermissionByNodeId({
+    userId: user.id,
+    fileNodeId: homeNodeId,
+    permission: 'write',
+  });
   const file = await fileNodeService.createFile(homeNodeId, name);
   await blobStorageService.uploadToWebdav(file.id, Buffer.from(content), mimeType);
   return file.id;
@@ -224,8 +231,7 @@ describe('GET /api/share/:token/check-my-permission', () => {
 
 describe('POST /api/share/:token/add-to-my-permissions', () => {
   it('returns 401 when not authenticated', async () => {
-    const res = await request(app)
-      .post('/api/share/some-token/add-to-my-permissions');
+    const res = await request(app).post('/api/share/some-token/add-to-my-permissions');
 
     expect(res.status).toBe(401);
     expect(res.body.errorCode).toBeDefined();
@@ -233,7 +239,11 @@ describe('POST /api/share/:token/add-to-my-permissions', () => {
 
   it('grants exactly read for a directory share and lists it under __shared__', async () => {
     const owner = await createUserWithHomeNode({ username: `share-add-dir-${Date.now()}` });
-    await grantTestPermissionByNodeId({ userId: owner.user.id, fileNodeId: owner.homeNodeId, permission: 'write' });
+    await grantTestPermissionByNodeId({
+      userId: owner.user.id,
+      fileNodeId: owner.homeNodeId,
+      permission: 'write',
+    });
     const sharedDir = await fileNodeService.createDirectory(owner.homeNodeId, 'shared-dir');
     const linkToken = await createShareLinkForNode(owner.token, sharedDir.id);
 
@@ -278,7 +288,9 @@ describe('POST /api/share/:token/add-to-my-permissions', () => {
     });
     const linkToken = await createShareLinkForNode(owner.token, fileNodeId);
 
-    const recipient = await createUserWithHomeNode({ username: `share-add-file-bee-${Date.now()}` });
+    const recipient = await createUserWithHomeNode({
+      username: `share-add-file-bee-${Date.now()}`,
+    });
 
     const addRes = await request(app)
       .post(`/api/share/${linkToken}/add-to-my-permissions`)
@@ -337,7 +349,11 @@ describe('GET /api/files/list with a share token (share scope)', () => {
     const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-scope-inside-${Date.now()}`,
     });
-    await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+    await grantTestPermissionByNodeId({
+      userId: user.id,
+      fileNodeId: homeNodeId,
+      permission: 'write',
+    });
     const sharedDir = await fileNodeService.createDirectory(homeNodeId, 'scope-shared');
     await fileNodeService.createFile(sharedDir.id, 'inside.txt');
     const linkToken = await createShareLinkForNode(token, sharedDir.id);
@@ -355,7 +371,11 @@ describe('GET /api/files/list with a share token (share scope)', () => {
     const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-scope-sibling-${Date.now()}`,
     });
-    await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+    await grantTestPermissionByNodeId({
+      userId: user.id,
+      fileNodeId: homeNodeId,
+      permission: 'write',
+    });
     const sharedDir = await fileNodeService.createDirectory(homeNodeId, 'scope-shared');
     const siblingDir = await fileNodeService.createDirectory(homeNodeId, 'scope-sibling');
     await fileNodeService.createFile(sharedDir.id, 'inside.txt');
@@ -376,7 +396,11 @@ describe('GET /api/files/list with a share token (share scope)', () => {
     const { user, token, homeNodeId } = await createUserWithHomeNode({
       username: `share-scope-parent-${Date.now()}`,
     });
-    await grantTestPermissionByNodeId({ userId: user.id, fileNodeId: homeNodeId, permission: 'write' });
+    await grantTestPermissionByNodeId({
+      userId: user.id,
+      fileNodeId: homeNodeId,
+      permission: 'write',
+    });
     const sharedDir = await fileNodeService.createDirectory(homeNodeId, 'scope-shared');
     await fileNodeService.createDirectory(homeNodeId, 'scope-sibling');
     await fileNodeService.createFile(sharedDir.id, 'inside.txt');
@@ -449,7 +473,9 @@ describe('Security surfaces — IDOR between users', () => {
       .set('Authorization', `Bearer ${other.token}`);
 
     expect(otherUsersRes.status).toBe(HTTP_STATUS.FORBIDDEN);
-    expect(otherUsersRes.body.errorCode).toBe(SERVER_ERROR_CODES.permissionsMiddleware.accessDenied);
+    expect(otherUsersRes.body.errorCode).toBe(
+      SERVER_ERROR_CODES.permissionsMiddleware.accessDenied
+    );
 
     const ownRes = await request(app)
       .get(`/api/permissions/user/${other.user.id}`)

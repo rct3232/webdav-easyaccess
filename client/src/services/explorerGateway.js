@@ -19,7 +19,7 @@ const normalizeFileEntry = (item) => {
 
 export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   const resolvedOpts = typeof options === 'object' && !Array.isArray(options) ? options : {};
-  const extracted = resolvedOpts.shareToken || resolvedOpts.user ? resolvedOpts : (options || {});
+  const extracted = resolvedOpts.shareToken || resolvedOpts.user ? resolvedOpts : options || {};
   const { shareToken, showHiddenFiles, user } = extracted;
 
   const data = await listFiles(nodeId ?? null, shareToken ? { shareToken } : {});
@@ -29,9 +29,8 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   }
 
   let files = Array.isArray(data) ? data.map(normalizeFileEntry) : [];
-  const shouldShowHiddenFiles = typeof showHiddenFiles === 'boolean'
-    ? showHiddenFiles
-    : getShowHiddenFiles();
+  const shouldShowHiddenFiles =
+    typeof showHiddenFiles === 'boolean' ? showHiddenFiles : getShowHiddenFiles();
 
   if (!shouldShowHiddenFiles) {
     files = files.filter((item) => item?.isHidden !== true);
@@ -47,11 +46,9 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
   // to a boolean; it no longer recomputes it from getUserPermissions rows,
   // which under the "No self-grants" policy would hide the owner's admin
   // capability on their own folders.
-  return files.map((item) => (
-    item?.nodeId != null
-      ? { ...item, hasAdminPermission: item.hasAdminPermission === true }
-      : item
-  ));
+  return files.map((item) =>
+    item?.nodeId != null ? { ...item, hasAdminPermission: item.hasAdminPermission === true } : item
+  );
 };
 
 export const getPathAccess = async ({ nodeId, options = {} } = {}) => {
@@ -135,12 +132,17 @@ export const loadSharedEntries = async ({ user, options: _options = {} } = {}) =
   return [...folderEntries, ...fileEntries];
 };
 
-export const checkConflictsForExplorer = async ({ operations, parentNodeId, files, options } = {}) => {
+export const checkConflictsForExplorer = async ({
+  operations,
+  parentNodeId,
+  files,
+  options,
+} = {}) => {
   if (Array.isArray(operations)) {
     return checkConflicts(operations, options);
   }
   if (Array.isArray(files) && files.length > 0) {
-    const ops = files.map(f => ({
+    const ops = files.map((f) => ({
       sourceNodeId: f?.file?.nodeId || undefined,
       destinationParentNodeId: parentNodeId,
       fileName: f?.file?.name || f?.relativePath || 'unknown',

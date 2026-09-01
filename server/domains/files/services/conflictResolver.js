@@ -40,7 +40,7 @@ async function getConflictsByNodeIds(operations, opts = {}) {
       if (!name) continue;
 
       const children = await fileNodeService.listDirectory(destinationParentNodeId);
-      const existingChild = children.find(c => c.name === name && c.type !== 'directory');
+      const existingChild = children.find((c) => c.name === name && c.type !== 'directory');
 
       if (existingChild) {
         conflicts.push({

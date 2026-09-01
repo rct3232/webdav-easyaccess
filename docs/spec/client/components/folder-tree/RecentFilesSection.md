@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Collapsible section for recent files. Header selects /__recent__. Children: recent file list with file icon, click navigates to parent folder or opens file. Width-sensitive truncation must be sourced from a hook/adapter boundary rather than direct `ResizeObserver` usage in the component. |
-| Used in | FolderTree |
-| Related components | getFileIcon |
+| Item               | Description                                                                                                                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role               | Collapsible section for recent files. Header selects /**recent**. Children: recent file list with file icon, click navigates to parent folder or opens file. Width-sensitive truncation must be sourced from a hook/adapter boundary rather than direct `ResizeObserver` usage in the component. |
+| Used in            | FolderTree                                                                                                                                                                                                                                                                                       |
+| Related components | getFileIcon                                                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -19,24 +19,24 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| recentExpanded | boolean | Y | - | Section expanded |
-| handleRecentToggle | function | Y | - | Toggle expand |
-| handleRecentClick | function | Y | - | Section header click |
-| currentPath | string | Y | - | Current path |
-| recentFilesList | array | Y | - | Recent files (entries keyed/carried by nodeId) |
-| onNodeClick | function | Y | - | Node click (folder): `(nodeId) => void` |
-| onFileClick | function | N | - | File click: `(file) => void`, receives `{ ...entry, nodeId, isRecentFile: true }`. If omitted, file click falls back to parent-folder navigation via `onNodeClick` |
+| Name               | Type     | Required | Default | Description                                                                                                                                                        |
+| ------------------ | -------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| recentExpanded     | boolean  | Y        | -       | Section expanded                                                                                                                                                   |
+| handleRecentToggle | function | Y        | -       | Toggle expand                                                                                                                                                      |
+| handleRecentClick  | function | Y        | -       | Section header click                                                                                                                                               |
+| currentPath        | string   | Y        | -       | Current path                                                                                                                                                       |
+| recentFilesList    | array    | Y        | -       | Recent files (entries keyed/carried by nodeId)                                                                                                                     |
+| onNodeClick        | function | Y        | -       | Node click (folder): `(nodeId) => void`                                                                                                                            |
+| onFileClick        | function | N        | -       | File click: `(file) => void`, receives `{ ...entry, nodeId, isRecentFile: true }`. If omitted, file click falls back to parent-folder navigation via `onNodeClick` |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| handleRecentToggle | Expand/collapse | - |
-| handleRecentClick | Section click | - |
-| onNodeClick | Folder click | (nodeId) |
-| onFileClick | File click | (file) — receives `{ ...entry, nodeId, isRecentFile: true }` |
+| Callback           | When invoked    | Arguments                                                    |
+| ------------------ | --------------- | ------------------------------------------------------------ |
+| handleRecentToggle | Expand/collapse | -                                                            |
+| handleRecentClick  | Section click   | -                                                            |
+| onNodeClick        | Folder click    | (nodeId)                                                     |
+| onFileClick        | File click      | (file) — receives `{ ...entry, nodeId, isRecentFile: true }` |
 
 ### 2.4 Dependencies
 
@@ -50,7 +50,7 @@
 
 ### 2.6 Conditional Rendering
 
-- Selected when currentPath === '/__recent__'
+- Selected when currentPath === '/**recent**'
 - Collapse for file list
 - Empty: recentItemsEmpty message
 - List limited to first 10 items (slice 0–10)

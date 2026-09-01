@@ -1,14 +1,18 @@
 'use strict';
 
 const express = require('express');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
-  HTTP_STATUS,
-} = require('@webdav-easyaccess/shared/constants');
-const { SERVER_ERROR_CODES, SERVER_MESSAGE_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+  SERVER_ERROR_CODES,
+  SERVER_MESSAGE_CODES,
+} = require('@webdav-easyaccess/shared/serverMessageCodes');
 const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
-const { deriveDirection, destinationTypeForDirection } = require('../../../infrastructure/adapters/blobstore/config');
+const {
+  deriveDirection,
+  destinationTypeForDirection,
+} = require('../../../infrastructure/adapters/blobstore/config');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const { getMigrationGate } = require('../../../infrastructure/migrationGate');
 const { clearPresenceCache } = require('../../../infrastructure/metadataPresence');
@@ -39,11 +43,7 @@ const isAdmin = asyncHandler(async (req, res, next) => {
  * Returns `{ errorCode }` for a 400, or `{ payload }` for a valid body.
  */
 function parseMigrationPayload(body, expectedDestType) {
-  const {
-    mode = 'dry-run',
-    force = false,
-    dest,
-  } = body || {};
+  const { mode = 'dry-run', force = false, dest } = body || {};
 
   if (!VALID_MODES.includes(mode)) {
     return { errorCode: SERVER_ERROR_CODES.admin.migrationInvalidPayload };
@@ -352,108 +352,142 @@ function dispatchWorker(jobId, params) {
 const router = express.Router();
 
 // Migration info: source + direction derived from the current config
-router.get('/migration/info', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { getComposition } = require('../../../service/composition');
-  const { fileStorageMode } = getComposition();
-  res.json({ source: fileStorageMode, direction: deriveDirection(fileStorageMode) });
-}));
+router.get(
+  '/migration/info',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { getComposition } = require('../../../service/composition');
+    const { fileStorageMode } = getComposition();
+    res.json({ source: fileStorageMode, direction: deriveDirection(fileStorageMode) });
+  })
+);
 
 // Read-only scan of an explicit (non-active) metadata target backend
-router.get('/migration/target-scan', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
-  const source = { ...req.query, ...body };
+router.get(
+  '/migration/target-scan',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const body =
+      req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const source = { ...req.query, ...body };
 
-  const parsed = parseTargetScanPayload(source);
-  if (parsed.errorCode) {
-    throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
-  }
+    const parsed = parseTargetScanPayload(source);
+    if (parsed.errorCode) {
+      throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
+    }
 
-  const { backend, pg, sqlitePath } = parsed.payload;
-  const metadataMigrationService = require('../services/metadataMigrationService').getService();
-  const result = await metadataMigrationService.scanTarget({ backend, pg, sqlitePath });
-  res.json(result);
-}));
+    const { backend, pg, sqlitePath } = parsed.payload;
+    const metadataMigrationService = require('../services/metadataMigrationService').getService();
+    const result = await metadataMigrationService.scanTarget({ backend, pg, sqlitePath });
+    res.json(result);
+  })
+);
 
 // Start a blob migration job (202 + poll contract)
-router.post('/migration/blobs', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { getComposition } = require('../../../service/composition');
-  const { migrationJobStore, fileStorageMode } = getComposition();
+router.post(
+  '/migration/blobs',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { getComposition } = require('../../../service/composition');
+    const { migrationJobStore, fileStorageMode } = getComposition();
 
-  const direction = deriveDirection(fileStorageMode);
-  const expectedDestType = destinationTypeForDirection(direction);
-  const parsed = parseMigrationPayload(req.body, expectedDestType);
-  if (parsed.errorCode) {
-    throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
-  }
+    const direction = deriveDirection(fileStorageMode);
+    const expectedDestType = destinationTypeForDirection(direction);
+    const parsed = parseMigrationPayload(req.body, expectedDestType);
+    if (parsed.errorCode) {
+      throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
+    }
 
-  if (migrationJobStore.hasRunning()) {
-    throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
-  }
+    if (migrationJobStore.hasRunning()) {
+      throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
+    }
 
-  const { mode, force, dest } = parsed.payload;
-  const job = migrationJobStore.create({ type: 'blobs', direction, mode });
-  const destConfig = { type: dest.type, ...dest };
+    const { mode, force, dest } = parsed.payload;
+    const job = migrationJobStore.create({ type: 'blobs', direction, mode });
+    const destConfig = { type: dest.type, ...dest };
 
-  dispatchWorker(job.jobId, { type: 'blobs', destConfig, mode, force });
+    dispatchWorker(job.jobId, { type: 'blobs', destConfig, mode, force });
 
-  res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
-}));
+    res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
+  })
+);
 
 // Start a metadata DB migration job (202 + poll contract)
-router.post('/migration/metadata', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { getComposition } = require('../../../service/composition');
-  const { migrationJobStore } = getComposition();
+router.post(
+  '/migration/metadata',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { getComposition } = require('../../../service/composition');
+    const { migrationJobStore } = getComposition();
 
-  if (getMigrationGate().isActive() || migrationJobStore.hasRunning()) {
-    throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
-  }
+    if (getMigrationGate().isActive() || migrationJobStore.hasRunning()) {
+      throw createError(SERVER_ERROR_CODES.admin.migrationAlreadyRunning, HTTP_STATUS.CONFLICT);
+    }
 
-  const activeBackend = getBackend();
-  const parsed = parseMetadataMigrationPayload(req.body, activeBackend);
-  if (parsed.errorCode) {
-    throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
-  }
+    const activeBackend = getBackend();
+    const parsed = parseMetadataMigrationPayload(req.body, activeBackend);
+    if (parsed.errorCode) {
+      throw createError(parsed.errorCode, HTTP_STATUS.BAD_REQUEST);
+    }
 
-  const { targetBackend, pg, sqlitePath, wipeTarget } = parsed.payload;
-  const direction = activeBackend === 'sqlite' ? 'sqliteToPostgresql' : 'postgresqlToSqlite';
+    const { targetBackend, pg, sqlitePath, wipeTarget } = parsed.payload;
+    const direction = activeBackend === 'sqlite' ? 'sqliteToPostgresql' : 'postgresqlToSqlite';
 
-  const job = migrationJobStore.create({
-    type: 'metadata',
-    direction,
-    mode: 'apply',
-    status: 'pending',
-  });
+    const job = migrationJobStore.create({
+      type: 'metadata',
+      direction,
+      mode: 'apply',
+      status: 'pending',
+    });
 
-  dispatchWorker(job.jobId, {
-    type: 'metadata',
-    direction,
-    target: { backend: targetBackend, pg, sqlitePath },
-    wipeTarget,
-  });
+    dispatchWorker(job.jobId, {
+      type: 'metadata',
+      direction,
+      target: { backend: targetBackend, pg, sqlitePath },
+      wipeTarget,
+    });
 
-  res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
-}));
+    res.status(HTTP_STATUS.ACCEPTED).json({ jobId: job.jobId });
+  })
+);
 
 // Get migration job status/progress
-router.get('/migration/jobs/:jobId', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { getComposition } = require('../../../service/composition');
-  const { migrationJobStore } = getComposition();
-  const job = migrationJobStore.get(req.params.jobId);
-  if (!job) {
-    throw createError(SERVER_ERROR_CODES.admin.migrationJobNotFound, HTTP_STATUS.NOT_FOUND);
-  }
-  res.json(job);
-}));
+router.get(
+  '/migration/jobs/:jobId',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { getComposition } = require('../../../service/composition');
+    const { migrationJobStore } = getComposition();
+    const job = migrationJobStore.get(req.params.jobId);
+    if (!job) {
+      throw createError(SERVER_ERROR_CODES.admin.migrationJobNotFound, HTTP_STATUS.NOT_FOUND);
+    }
+    res.json(job);
+  })
+);
 
 // Cancel a running migration job (blobs: runCopy loop picks it up; metadata:
 // isCancelled() aborts the transaction -> rollback)
-router.post('/migration/jobs/:jobId/cancel', authenticateToken, isAdmin, asyncHandler(async (req, res) => {
-  const { getComposition } = require('../../../service/composition');
-  const { migrationJobStore } = getComposition();
-  if (!migrationJobStore.cancel(req.params.jobId)) {
-    throw createError(SERVER_ERROR_CODES.admin.migrationJobNotFound, HTTP_STATUS.NOT_FOUND);
-  }
-  res.json({ messageCode: SERVER_MESSAGE_CODES.admin.migrationCancelled, jobId: req.params.jobId });
-}));
+router.post(
+  '/migration/jobs/:jobId/cancel',
+  authenticateToken,
+  isAdmin,
+  asyncHandler(async (req, res) => {
+    const { getComposition } = require('../../../service/composition');
+    const { migrationJobStore } = getComposition();
+    if (!migrationJobStore.cancel(req.params.jobId)) {
+      throw createError(SERVER_ERROR_CODES.admin.migrationJobNotFound, HTTP_STATUS.NOT_FOUND);
+    }
+    res.json({
+      messageCode: SERVER_MESSAGE_CODES.admin.migrationCancelled,
+      jobId: req.params.jobId,
+    });
+  })
+);
 
 module.exports = router;

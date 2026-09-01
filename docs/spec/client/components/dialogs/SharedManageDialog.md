@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Dialog to manage shared item: view/request/revoke permissions. Uses useSharedManage and SharedManageBody. |
-| Used in | FileManager (manage sharing from context menu) |
-| Related components | SharedManageBody, useSharedManage |
+| Item               | Description                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| Role               | Dialog to manage shared item: view/request/revoke permissions. Uses useSharedManage and SharedManageBody. |
+| Used in            | FileManager (manage sharing from context menu)                                                            |
+| Related components | SharedManageBody, useSharedManage                                                                         |
 
 ---
 
@@ -19,26 +19,26 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| open | boolean | Y | - | Dialog open |
-| onClose | function | Y | - | Close handler |
-| targetNodeId | number | Y | - | Node id to manage |
-| parentNodeId | number | N | - | Parent node id (used for file-level `pathPermission` derivation) |
-| displayName | string | Y | - | Display name |
-| isDirectory | boolean | Y | - | Is directory |
-| user | object | Y | - | Current user |
-| directHasReadPermission | boolean | N | - | Direct read permission |
-| onMessage | function | N | - | Message handler |
-| onActionComplete | function | N | - | Action complete handler |
+| Name                    | Type     | Required | Default | Description                                                      |
+| ----------------------- | -------- | -------- | ------- | ---------------------------------------------------------------- |
+| open                    | boolean  | Y        | -       | Dialog open                                                      |
+| onClose                 | function | Y        | -       | Close handler                                                    |
+| targetNodeId            | number   | Y        | -       | Node id to manage                                                |
+| parentNodeId            | number   | N        | -       | Parent node id (used for file-level `pathPermission` derivation) |
+| displayName             | string   | Y        | -       | Display name                                                     |
+| isDirectory             | boolean  | Y        | -       | Is directory                                                     |
+| user                    | object   | Y        | -       | Current user                                                     |
+| directHasReadPermission | boolean  | N        | -       | Direct read permission                                           |
+| onMessage               | function | N        | -       | Message handler                                                  |
+| onActionComplete        | function | N        | -       | Action complete handler                                          |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onClose | Dialog close | - |
-| onMessage | Show message | - |
-| onActionComplete | Action done | - |
+| Callback         | When invoked | Arguments |
+| ---------------- | ------------ | --------- |
+| onClose          | Dialog close | -         |
+| onMessage        | Show message | -         |
+| onActionComplete | Action done  | -         |
 
 ### 2.4 Dependencies
 

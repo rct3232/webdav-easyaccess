@@ -63,49 +63,58 @@ const FileManagerControls = ({
           <>
             {isMobile ? (
               <>
-                <IconButton size="small" onClick={handleSelectAll} title={t('fileManager.selectAll')} data-testid="bulk-action-select-all" disabled={selectionActionsDisabled}>
+                <IconButton
+                  size="small"
+                  onClick={handleSelectAll}
+                  title={t('fileManager.selectAll')}
+                  data-testid="bulk-action-select-all"
+                  disabled={selectionActionsDisabled}
+                >
                   <SelectAllIcon />
                 </IconButton>
-                <IconButton size="small" onClick={handleDeselectAll} title={t('fileManager.deselectAll')} data-testid="bulk-action-deselect-all" disabled={selectionActionsDisabled}>
+                <IconButton
+                  size="small"
+                  onClick={handleDeselectAll}
+                  title={t('fileManager.deselectAll')}
+                  data-testid="bulk-action-deselect-all"
+                  disabled={selectionActionsDisabled}
+                >
                   <DeselectIcon />
                 </IconButton>
               </>
             ) : (
-            <>
-              <Button
-                size="small"
-                startIcon={<SelectAllIcon />}
-                onClick={handleSelectAll}
-                disabled={selectionActionsDisabled}
-              >
-                {t('fileManager.selectAll')}
-              </Button>
-              <Button
-                size="small"
-                startIcon={<DeselectIcon />}
-                onClick={handleDeselectAll}
-                disabled={selectionActionsDisabled}
-              >
-                {t('fileManager.deselectAll')}
-              </Button>
-              <Typography variant="body2" sx={{ ml: 1 }}>
-                {t('fileManager.selectedCountFull', { count: selectedFiles.size })}
+              <>
+                <Button
+                  size="small"
+                  startIcon={<SelectAllIcon />}
+                  onClick={handleSelectAll}
+                  disabled={selectionActionsDisabled}
+                >
+                  {t('fileManager.selectAll')}
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<DeselectIcon />}
+                  onClick={handleDeselectAll}
+                  disabled={selectionActionsDisabled}
+                >
+                  {t('fileManager.deselectAll')}
+                </Button>
+                <Typography variant="body2" sx={{ ml: 1 }}>
+                  {t('fileManager.selectedCountFull', { count: selectedFiles.size })}
+                </Typography>
+              </>
+            )}
+
+            {!isMobile && hasReadOnlyInSelection && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                {t('fileManager.readOnlyInSelection')}
               </Typography>
-            </>
-          )}
+            )}
 
-          {!isMobile && hasReadOnlyInSelection && (
-            <Typography
-              variant="caption"
-              sx={{ color: 'text.secondary', fontSize: '0.75rem' }}
-            >
-              {t('fileManager.readOnlyInSelection')}
-            </Typography>
-          )}
+            <Box sx={{ flexGrow: 1 }} />
 
-          <Box sx={{ flexGrow: 1 }} />
-
-          {!downloadOnly && handleBulkMove && (
+            {!downloadOnly && handleBulkMove && (
               <IconButton
                 size="small"
                 color="primary"
@@ -114,10 +123,10 @@ const FileManagerControls = ({
                 title={t('actions.move')}
                 data-testid="bulk-action-move"
               >
-              <MoveIcon fontSize="small" />
-            </IconButton>
-          )}
-          {!downloadOnly && handleBulkCopy && (
+                <MoveIcon fontSize="small" />
+              </IconButton>
+            )}
+            {!downloadOnly && handleBulkCopy && (
               <IconButton
                 size="small"
                 color="primary"
@@ -126,10 +135,10 @@ const FileManagerControls = ({
                 title={t('actions.copy')}
                 data-testid="bulk-action-copy"
               >
-              <CopyIcon fontSize="small" />
-            </IconButton>
-          )}
-          {handleBulkDownload && (
+                <CopyIcon fontSize="small" />
+              </IconButton>
+            )}
+            {handleBulkDownload && (
               <IconButton
                 size="small"
                 color="primary"
@@ -138,10 +147,10 @@ const FileManagerControls = ({
                 title={t('actions.download')}
                 data-testid="bulk-action-download"
               >
-              <DownloadIcon fontSize="small" />
-            </IconButton>
-          )}
-          {!downloadOnly && openBulkDeleteDialog && (
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            )}
+            {!downloadOnly && openBulkDeleteDialog && (
               <IconButton
                 size="small"
                 color="error"
@@ -155,44 +164,44 @@ const FileManagerControls = ({
                 title={t('actions.delete')}
                 data-testid="bulk-action-delete"
               >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          )}
-        </>
-      ) : (
-        <>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+          </>
+        ) : (
+          <>
             <IconButton
               onClick={(e) => setSortMenuAnchor(e.currentTarget)}
               title={t('fileManager.sort')}
               data-testid="file-manager-sort"
             >
-            <SortIcon />
-          </IconButton>
-
-          <Box sx={{ flexGrow: 1 }} />
-
-          <Box sx={{ display: 'flex', gap: 1 }}>
-                <IconButton
-                  color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-                  onClick={() => {
-                    setViewMode(VIEW_MODES.LIST);
-                  }}
-                  title={t('fileManager.listViewTitle')}
-                  data-testid="view-mode-list"
-                >
-              <ViewStreamIcon />
+              <SortIcon />
             </IconButton>
-                <IconButton
-                  color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-                  onClick={() => {
-                    setViewMode(VIEW_MODES.GRID);
-                  }}
-                  title={t('fileManager.gridViewTitle')}
-                  data-testid="view-mode-grid"
-                >
-              <ViewModuleIcon />
-            </IconButton>
-            {!isMobile && (
+
+            <Box sx={{ flexGrow: 1 }} />
+
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <IconButton
+                color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
+                onClick={() => {
+                  setViewMode(VIEW_MODES.LIST);
+                }}
+                title={t('fileManager.listViewTitle')}
+                data-testid="view-mode-list"
+              >
+                <ViewStreamIcon />
+              </IconButton>
+              <IconButton
+                color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
+                onClick={() => {
+                  setViewMode(VIEW_MODES.GRID);
+                }}
+                title={t('fileManager.gridViewTitle')}
+                data-testid="view-mode-grid"
+              >
+                <ViewModuleIcon />
+              </IconButton>
+              {!isMobile && (
                 <IconButton
                   color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
                   onClick={() => {
@@ -201,79 +210,79 @@ const FileManagerControls = ({
                   title={t('fileManager.detailViewTitle')}
                   data-testid="view-mode-detail"
                 >
-                <ViewListIcon />
-              </IconButton>
-            )}
-          </Box>
-        </>
-      )}
+                  <ViewListIcon />
+                </IconButton>
+              )}
+            </Box>
+          </>
+        )}
 
-      {/* Sort Menu - only when !selectionMode */}
-      {!selectionMode && (
-        <Menu
-          anchorEl={sortMenuAnchor}
-          open={Boolean(sortMenuAnchor)}
-          onClose={() => setSortMenuAnchor(null)}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'left',
-          }}
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'left',
-          }}
-        >
-          <Box sx={{ px: 2, py: 1 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-              {t('fileManager.sortByName')}
-            </Typography>
-            <RadioGroup
-              value={sortMode}
-              onChange={(e) => {
-                const newMode = e.target.value;
-                setSortMode(newMode);
-                setSortMenuAnchor(null);
-              }}
-            >
-              <FormControlLabel
-                value={SORT_MODES.NAME_ASC}
-                control={<Radio size="small" />}
-                label={t('fileManager.asc')}
-              />
-              <FormControlLabel
-                value={SORT_MODES.NAME_DESC}
-                control={<Radio size="small" />}
-                label={t('fileManager.desc')}
-              />
-            </RadioGroup>
-          </Box>
-          <Divider />
-          <Box sx={{ px: 2, py: 1 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-              {t('fileManager.sortByDate')}
-            </Typography>
-            <RadioGroup
-              value={sortMode}
-              onChange={(e) => {
-                const newMode = e.target.value;
-                setSortMode(newMode);
-                setSortMenuAnchor(null);
-              }}
-            >
-              <FormControlLabel
-                value={SORT_MODES.DATE_ASC}
-                control={<Radio size="small" />}
-                label={t('fileManager.asc')}
-              />
-              <FormControlLabel
-                value={SORT_MODES.DATE_DESC}
-                control={<Radio size="small" />}
-                label={t('fileManager.desc')}
-              />
-            </RadioGroup>
-          </Box>
-        </Menu>
-      )}
+        {/* Sort Menu - only when !selectionMode */}
+        {!selectionMode && (
+          <Menu
+            anchorEl={sortMenuAnchor}
+            open={Boolean(sortMenuAnchor)}
+            onClose={() => setSortMenuAnchor(null)}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'left',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'left',
+            }}
+          >
+            <Box sx={{ px: 2, py: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                {t('fileManager.sortByName')}
+              </Typography>
+              <RadioGroup
+                value={sortMode}
+                onChange={(e) => {
+                  const newMode = e.target.value;
+                  setSortMode(newMode);
+                  setSortMenuAnchor(null);
+                }}
+              >
+                <FormControlLabel
+                  value={SORT_MODES.NAME_ASC}
+                  control={<Radio size="small" />}
+                  label={t('fileManager.asc')}
+                />
+                <FormControlLabel
+                  value={SORT_MODES.NAME_DESC}
+                  control={<Radio size="small" />}
+                  label={t('fileManager.desc')}
+                />
+              </RadioGroup>
+            </Box>
+            <Divider />
+            <Box sx={{ px: 2, py: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                {t('fileManager.sortByDate')}
+              </Typography>
+              <RadioGroup
+                value={sortMode}
+                onChange={(e) => {
+                  const newMode = e.target.value;
+                  setSortMode(newMode);
+                  setSortMenuAnchor(null);
+                }}
+              >
+                <FormControlLabel
+                  value={SORT_MODES.DATE_ASC}
+                  control={<Radio size="small" />}
+                  label={t('fileManager.asc')}
+                />
+                <FormControlLabel
+                  value={SORT_MODES.DATE_DESC}
+                  control={<Radio size="small" />}
+                  label={t('fileManager.desc')}
+                />
+              </RadioGroup>
+            </Box>
+          </Menu>
+        )}
       </Box>
 
       {showMobileReadOnlyBanner && (

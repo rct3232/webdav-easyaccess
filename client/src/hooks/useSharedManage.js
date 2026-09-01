@@ -50,19 +50,22 @@ export function useSharedManage({
     }
   }, []);
 
-  const emitTransientMessage = useCallback((message) => {
-    if (!onMessage) {
-      return;
-    }
+  const emitTransientMessage = useCallback(
+    (message) => {
+      if (!onMessage) {
+        return;
+      }
 
-    clearScheduledMessageHide();
-    onMessage(message);
+      clearScheduledMessageHide();
+      onMessage(message);
 
-    hideMessageTimerRef.current = setTimeout(() => {
-      onMessage(HIDDEN_SHARE_MANAGE_MESSAGE);
-      hideMessageTimerRef.current = null;
-    }, getShareManageHideDuration(message.type));
-  }, [clearScheduledMessageHide, onMessage]);
+      hideMessageTimerRef.current = setTimeout(() => {
+        onMessage(HIDDEN_SHARE_MANAGE_MESSAGE);
+        hideMessageTimerRef.current = null;
+      }, getShareManageHideDuration(message.type));
+    },
+    [clearScheduledMessageHide, onMessage]
+  );
 
   useEffect(() => clearScheduledMessageHide, [clearScheduledMessageHide]);
 
@@ -75,9 +78,11 @@ export function useSharedManage({
     }
     if (user.is_admin) {
       // For admin: skip API, but still synthesize enough data for consistent derivation.
-      setPermissionCheck(isDirectory
-        ? { hasRead: true, hasWrite: true }
-        : { hasRead: true, hasWrite: true, source: 'path' });
+      setPermissionCheck(
+        isDirectory
+          ? { hasRead: true, hasWrite: true }
+          : { hasRead: true, hasWrite: true, source: 'path' }
+      );
       setParentPermissionCheck(isDirectory ? null : { hasRead: true, hasWrite: true });
       setInitialLoading(false);
       return;
@@ -87,7 +92,10 @@ export function useSharedManage({
       try {
         if (isDirectory) {
           const permission = await checkPermission(targetNodeId);
-          setPermissionCheck({ hasRead: Boolean(permission.hasRead), hasWrite: Boolean(permission.hasWrite) });
+          setPermissionCheck({
+            hasRead: Boolean(permission.hasRead),
+            hasWrite: Boolean(permission.hasWrite),
+          });
           setParentPermissionCheck(null);
         } else {
           const fileResult = await checkPermission(targetNodeId);
@@ -113,7 +121,9 @@ export function useSharedManage({
       } catch (error) {
         console.error('Failed to check permission:', error);
         setPermissionCheck(
-          isDirectory ? { hasRead: false, hasWrite: false } : { hasRead: false, hasWrite: false, source: 'path' }
+          isDirectory
+            ? { hasRead: false, hasWrite: false }
+            : { hasRead: false, hasWrite: false, source: 'path' }
         );
         setParentPermissionCheck(null);
       } finally {
@@ -151,32 +161,41 @@ export function useSharedManage({
 
   useEffect(() => {
     if (!open || !targetNodeId || !user || user.is_admin) {
-      setPendingRequest({ read: { pending: false, id: null }, write: { pending: false, id: null } });
+      setPendingRequest({
+        read: { pending: false, id: null },
+        write: { pending: false, id: null },
+      });
       return;
     }
     const loadPendingRequests = async () => {
       try {
         const outbox = await listOutboxPermissionRequests({ status: 'pending' });
-        setPendingRequest(buildPendingRequestState({
-          requests: outbox,
-          targetNodeId,
-          isDirectory,
-        }));
+        setPendingRequest(
+          buildPendingRequestState({
+            requests: outbox,
+            targetNodeId,
+            isDirectory,
+          })
+        );
       } catch (error) {
-        setPendingRequest({ read: { pending: false, id: null }, write: { pending: false, id: null } });
+        setPendingRequest({
+          read: { pending: false, id: null },
+          write: { pending: false, id: null },
+        });
       }
     };
     loadPendingRequests();
   }, [open, targetNodeId, user, isDirectory]);
 
-  const { hasReadPermission, hasWritePermission, pathPermission, filePermissionLevel } = deriveSharedAccessState({
-    isDirectory,
-    permissionCheck,
-    parentPermissionCheck,
-    directHasReadPermission,
-    pendingRequest,
-    ownerExists,
-  });
+  const { hasReadPermission, hasWritePermission, pathPermission, filePermissionLevel } =
+    deriveSharedAccessState({
+      isDirectory,
+      permissionCheck,
+      parentPermissionCheck,
+      directHasReadPermission,
+      pendingRequest,
+      ownerExists,
+    });
 
   const handleCancelPendingRequest = useCallback(
     async (permissionToCancel) => {
@@ -189,18 +208,22 @@ export function useSharedManage({
           ...prev,
           [permissionToCancel]: { pending: false, id: null },
         }));
-        emitTransientMessage(buildShareManageSuccessMessage({
-          kind: 'requestCancelled',
-          permission: permissionToCancel,
-          t,
-        }));
+        emitTransientMessage(
+          buildShareManageSuccessMessage({
+            kind: 'requestCancelled',
+            permission: permissionToCancel,
+            t,
+          })
+        );
       } catch (error) {
         console.error('Failed to cancel permission request:', error);
-        emitTransientMessage(buildShareManageErrorMessage({
-          error,
-          fallbackKey: 'sharedManage.cancelRequestFail',
-          t,
-        }));
+        emitTransientMessage(
+          buildShareManageErrorMessage({
+            error,
+            fallbackKey: 'sharedManage.cancelRequestFail',
+            t,
+          })
+        );
       } finally {
         setLoading(false);
       }
@@ -226,20 +249,27 @@ export function useSharedManage({
         const created = await createPermissionRequest(payload);
         setPendingRequest((prev) => ({
           ...prev,
-          [requestedPermission]: { pending: true, id: created?.id ?? prev[requestedPermission]?.id ?? null },
+          [requestedPermission]: {
+            pending: true,
+            id: created?.id ?? prev[requestedPermission]?.id ?? null,
+          },
         }));
-        emitTransientMessage(buildShareManageSuccessMessage({
-          kind: 'requestSent',
-          permission: requestedPermission,
-          t,
-        }));
+        emitTransientMessage(
+          buildShareManageSuccessMessage({
+            kind: 'requestSent',
+            permission: requestedPermission,
+            t,
+          })
+        );
       } catch (error) {
         console.error('Failed to create permission request:', error);
-        emitTransientMessage(buildShareManageErrorMessage({
-          error,
-          fallbackKey: 'sharedManage.requestSentFail',
-          t,
-        }));
+        emitTransientMessage(
+          buildShareManageErrorMessage({
+            error,
+            fallbackKey: 'sharedManage.requestSentFail',
+            t,
+          })
+        );
       } finally {
         setLoading(false);
       }
@@ -252,26 +282,39 @@ export function useSharedManage({
     setLoading(true);
     try {
       await revokePermission({ userId: user.id, nodeId: targetNodeId });
-      emitTransientMessage(buildShareManageSuccessMessage({
-        kind: 'revoke',
-        displayName,
-        isDirectory,
-        t,
-      }));
+      emitTransientMessage(
+        buildShareManageSuccessMessage({
+          kind: 'revoke',
+          displayName,
+          isDirectory,
+          t,
+        })
+      );
       if (onActionComplete) onActionComplete();
       onClose();
     } catch (error) {
       console.error('Failed to revoke permission:', error);
-      emitTransientMessage(buildShareManageErrorMessage({
-        error,
-        fallbackKey: 'sharedManage.revokeFail',
-        t,
-      }));
+      emitTransientMessage(
+        buildShareManageErrorMessage({
+          error,
+          fallbackKey: 'sharedManage.revokeFail',
+          t,
+        })
+      );
     } finally {
       setLoading(false);
       setConfirmDialogOpen(false);
     }
-  }, [displayName, emitTransientMessage, isDirectory, onActionComplete, onClose, t, targetNodeId, user]);
+  }, [
+    displayName,
+    emitTransientMessage,
+    isDirectory,
+    onActionComplete,
+    onClose,
+    t,
+    targetNodeId,
+    user,
+  ]);
 
   return {
     loading,

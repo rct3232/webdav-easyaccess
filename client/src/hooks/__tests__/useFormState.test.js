@@ -18,9 +18,7 @@ describe('useFormState', () => {
 
   it('setValue updates field and clears that field error', () => {
     const validator = (v) => (v ? null : 'required');
-    const { result } = renderHook(() =>
-      useFormState({ name: '' }, { name: validator })
-    );
+    const { result } = renderHook(() => useFormState({ name: '' }, { name: validator }));
 
     act(() => {
       result.current.handleSubmit();
@@ -47,9 +45,7 @@ describe('useFormState', () => {
 
   it('validator errors reflected in hasFieldError and getFieldError', () => {
     const validator = (v) => (v && v.length >= 3 ? null : 'min 3 chars');
-    const { result } = renderHook(() =>
-      useFormState({ name: 'ab' }, { name: validator })
-    );
+    const { result } = renderHook(() => useFormState({ name: 'ab' }, { name: validator }));
 
     act(() => {
       result.current.handleSubmit();
@@ -93,10 +89,13 @@ describe('useFormState', () => {
 
   it('isSubmitting true during submit', async () => {
     let resolveSubmit;
-    const onSubmit = jest.fn(() => new Promise((r) => { resolveSubmit = r; }));
-    const { result } = renderHook(() =>
-      useFormState({ x: 'y' }, {}, { onSubmit })
+    const onSubmit = jest.fn(
+      () =>
+        new Promise((r) => {
+          resolveSubmit = r;
+        })
     );
+    const { result } = renderHook(() => useFormState({ x: 'y' }, {}, { onSubmit }));
 
     let submitPromise;
     await act(async () => {
@@ -118,9 +117,7 @@ describe('useFormState', () => {
   it('reset restores initialValues and clears errors', () => {
     const initial = { a: 1, b: 2 };
     const validator = () => 'error';
-    const { result } = renderHook(() =>
-      useFormState(initial, { a: validator })
-    );
+    const { result } = renderHook(() => useFormState(initial, { a: validator }));
 
     act(() => {
       result.current.handleChange('a', 99);
@@ -142,9 +139,7 @@ describe('useFormState', () => {
     const validator = () => {
       throw new Error('custom validator error');
     };
-    const { result } = renderHook(() =>
-      useFormState({ x: 1 }, { x: validator })
-    );
+    const { result } = renderHook(() => useFormState({ x: 1 }, { x: validator }));
 
     act(() => {
       result.current.handleSubmit();
@@ -155,9 +150,7 @@ describe('useFormState', () => {
 
   it('works with empty validators', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() =>
-      useFormState({ a: 1 }, {}, { onSubmit })
-    );
+    const { result } = renderHook(() => useFormState({ a: 1 }, {}, { onSubmit }));
 
     act(() => {
       result.current.handleChange('a', 2);

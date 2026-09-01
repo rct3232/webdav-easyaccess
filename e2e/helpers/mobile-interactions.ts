@@ -48,7 +48,7 @@ export async function closeActionSheet(page: Page): Promise<void> {
 
 /**
  * Click a specific action in the Action Sheet
- * 
+ *
  * @param page Playwright page
  * @param action The action to click: 'preview' | 'properties' | 'download' | 'rename' | 'move' | 'copy' | 'share' | 'delete'
  */
@@ -58,7 +58,7 @@ export async function clickActionSheetItem(
 ): Promise<void> {
   const actionSelector = `[data-testid="file-action-${action}"]`;
   const actionItem = page.locator(actionSelector);
-  
+
   await expect(actionItem).toBeVisible();
   await actionItem.click();
 }
@@ -112,12 +112,12 @@ export async function longPressItem(
 
 /**
  * Toggle the folder tree using the breadcrumb toggle button on mobile
- * 
+ *
  * @param page Playwright page
  */
 export async function toggleFolderTree(page: Page): Promise<void> {
   const toggleButton = page.getByTestId('breadcrumb-folder-tree-toggle');
-  
+
   await expect(toggleButton).toBeVisible();
   await toggleButton.click();
 }

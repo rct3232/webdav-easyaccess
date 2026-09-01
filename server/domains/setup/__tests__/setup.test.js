@@ -1144,9 +1144,11 @@ describe('POST /api/setup/prefill', () => {
   });
 
   it('sqlite metadata returns empty current and no warning (sqlite is prefilled via /status)', async () => {
-    const res = await request(app).post('/api/setup/prefill').send({
-      metadata: { backend: 'sqlite' },
-    });
+    const res = await request(app)
+      .post('/api/setup/prefill')
+      .send({
+        metadata: { backend: 'sqlite' },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ current: {}, key_lost_warning: false });
@@ -1177,9 +1179,11 @@ describe('POST /api/setup/prefill', () => {
   });
 
   it('missing required fields keeps serverErrors.setup.testFailed with the short message', async () => {
-    const res = await request(app).post('/api/setup/prefill').send({
-      metadata: { backend: 'postgresql', host: 'localhost' },
-    });
+    const res = await request(app)
+      .post('/api/setup/prefill')
+      .send({
+        metadata: { backend: 'postgresql', host: 'localhost' },
+      });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({

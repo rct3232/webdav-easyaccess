@@ -41,19 +41,10 @@ const PERMISSION_REQUEST_STATUS = {
   REJECTED: 'rejected',
   CANCELLED: 'cancelled',
   ALL: ['pending', 'approved', 'rejected', 'cancelled'],
-  isValid: (status) =>
-    ['pending', 'approved', 'rejected', 'cancelled'].includes(status),
+  isValid: (status) => ['pending', 'approved', 'rejected', 'cancelled'].includes(status),
 };
 
-const IMAGE_EXTENSIONS = [
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'bmp',
-  'webp',
-  'svg',
-];
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'];
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac'];
 const TEXT_EXTENSIONS = [

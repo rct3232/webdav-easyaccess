@@ -27,4 +27,3 @@ export async function shareReviewUseCase({
 
   await approvePermissionRequest(permissionRequestId);
 }
-

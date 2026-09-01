@@ -90,7 +90,11 @@ async function ensureHomeOwnerAdminForAllUsers() {
         await blobStorageService.createDirectoryWebdav(Number(homeNode.id));
       }
 
-      const hasAdmin = await permissionStore.checkPermission(user.id, homeNode.id, PERMISSIONS.ADMIN);
+      const hasAdmin = await permissionStore.checkPermission(
+        user.id,
+        homeNode.id,
+        PERMISSIONS.ADMIN
+      );
       if (!hasAdmin) {
         await permissionStore.grant(user.id, homeNode.id, PERMISSIONS.ADMIN);
         result.grantedPaths += 1;

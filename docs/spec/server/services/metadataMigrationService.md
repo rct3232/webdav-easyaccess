@@ -2,12 +2,12 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
-| Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js` |
-| Files | `server/domains/admin/services/metadataMigrationService.js` (new) |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg`) |
+| Item       | Description                                                                                                                                                                                                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
+| Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
+| Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg`)                                                                                                                                                                                    |
 
 Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
 `PLAN.md` (`feature/migration-mode`, D4–D6, D11, D14).
@@ -24,17 +24,17 @@ which is tied to the active backend. The active backend is never touched by the 
 
 `createMetadataMigrationService({ getBackend, pgConnectionProvider, sqliteFactory })`
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `getBackend` | function | Returns the active metadata backend (`'sqlite'` \| `'postgresql'`) from `server/store/storage.js`. Used to derive the migration direction (target = the other backend). |
+| Param                  | Type     | Description                                                                                                                                                                                                                            |
+| ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBackend`           | function | Returns the active metadata backend (`'sqlite'` \| `'postgresql'`) from `server/store/storage.js`. Used to derive the migration direction (target = the other backend).                                                                |
 | `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). |
-| `sqliteFactory` | function | `(path) => sqlite connection` — direct SQLite factory (better-sqlite3). |
+| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (better-sqlite3).                                                                                                                                                                |
 
 ### 2.2 Public API
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `scanTarget` | `({ targetBackend, pg?, sqlitePath? }) => Promise<ScanResult>` | Connect to the explicit target and report `schemaExists` + per-table row counts. Read-only. |
+| Function       | Signature                                                                                | Description                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `scanTarget`   | `({ targetBackend, pg?, sqlitePath? }) => Promise<ScanResult>`                           | Connect to the explicit target and report `schemaExists` + per-table row counts. Read-only.                                         |
 | `runMigration` | `({ targetBackend, pg?, sqlitePath?, wipeTarget?, onStage, signal }) => Promise<Result>` | Apply schema if missing, wipe the target if `wipeTarget`, then copy all rows in one target transaction. `signal` aborts → ROLLBACK. |
 
 ### 2.3 Target scan (`scanTarget`)
@@ -112,15 +112,15 @@ COMMIT   // or ROLLBACK on error/cancel
 Rows must be inserted in FK-dependency order so `REFERENCES` checks pass (foreign keys are
 enforced on both backends):
 
-| Step | Table(s) | Why here |
-|------|----------|----------|
-| 1 | `users` | Referenced by `permissions_*`, `share_links`, `recent_files`, `permission_requests`. |
-| 2 | `file_nodes` | `parent_id` self-references `file_nodes`; referenced by every child table. All nodes must exist before child rows. |
-| 3 | `object_map`, `filecache`, `node_ancestors` | Reference `file_nodes` only. |
-| 4 | `permissions_user_paths`, `permissions_user_files`, `permissions_shares` | Reference `users` + `file_nodes`. |
-| 5 | `share_links`, `recent_files`, `permission_requests` | Reference `users` + `file_nodes` (permission_requests has a SERIAL id). |
-| 6 | `locks` | No FK dependencies; copied for completeness. |
-| 7 | `settings` | Last — values may depend on nothing, but the table is the config surface. |
+| Step | Table(s)                                                                 | Why here                                                                                                           |
+| ---- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| 1    | `users`                                                                  | Referenced by `permissions_*`, `share_links`, `recent_files`, `permission_requests`.                               |
+| 2    | `file_nodes`                                                             | `parent_id` self-references `file_nodes`; referenced by every child table. All nodes must exist before child rows. |
+| 3    | `object_map`, `filecache`, `node_ancestors`                              | Reference `file_nodes` only.                                                                                       |
+| 4    | `permissions_user_paths`, `permissions_user_files`, `permissions_shares` | Reference `users` + `file_nodes`.                                                                                  |
+| 5    | `share_links`, `recent_files`, `permission_requests`                     | Reference `users` + `file_nodes` (permission_requests has a SERIAL id).                                            |
+| 6    | `locks`                                                                  | No FK dependencies; copied for completeness.                                                                       |
+| 7    | `settings`                                                               | Last — values may depend on nothing, but the table is the config surface.                                          |
 
 ### 2.8 Per-table copy rules
 
@@ -137,8 +137,8 @@ enforced on both backends):
   stores real `true/false`. The copy maps:
   - **→ PG:** `0 → false`, `1 → true`.
   - **→ sqlite:** `true → 1`, `false → 0`.
-  This is the only BOOLEAN column in the schema (`users.is_admin`,
-  `001_initial_normalized_schema.sql:20`).
+    This is the only BOOLEAN column in the schema (`users.is_admin`,
+    `001_initial_normalized_schema.sql:20`).
 - **Explicit-id inserts + sequence resync.** SERIAL-id tables (`users`, `file_nodes`,
   `permission_requests`) are inserted **with their explicit source `id`** so FK references stay
   intact. Afterwards the target sequences are resynced so new inserts do not collide:
@@ -154,11 +154,11 @@ enforced on both backends):
 
 `onStage({ stage, label, done, total })` is called per table:
 
-| Field | Description |
-|-------|-------------|
-| `stage` | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
-| `label` | Current table + rows, e.g. `"Copying users … 3,420/5,100"` (this becomes `progress.currentLabel`) |
-| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%` |
+| Field            | Description                                                                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
+| `label`          | Current table + rows, e.g. `"Copying users … 3,420/5,100"` (this becomes `progress.currentLabel`)                                                                    |
+| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                       |
 
 ### 2.10 Result
 

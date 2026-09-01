@@ -13,7 +13,12 @@ const crypto = require('crypto');
  * @param {Object} [opts.fileNodeService] - needed in WebDAV mode; exposes getNode(nodeId)
  *   and getNodePath(nodeId).
  */
-function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode = 's3', fileNodeService }) {
+function createBlobStorageService({
+  blobStore,
+  fileNodesStore,
+  fileStorageMode = 's3',
+  fileNodeService,
+}) {
   const isWebdavMode = fileStorageMode === 'webdav';
 
   async function prepareUpload(fileNodeId) {
@@ -149,7 +154,12 @@ function createBlobStorageService({ blobStore, fileNodesStore, fileStorageMode =
       throw new Error('Cannot resolve path for fileNodeId: ' + fileNodeId);
     }
     await blobStore.uploadBlob(nodePath, buffer);
-    await fileNodesStore.upsertCache(fileNodeId, buffer.length, mimeType || 'application/octet-stream', null);
+    await fileNodesStore.upsertCache(
+      fileNodeId,
+      buffer.length,
+      mimeType || 'application/octet-stream',
+      null
+    );
   }
 
   /**

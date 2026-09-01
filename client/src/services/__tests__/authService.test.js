@@ -31,7 +31,10 @@ describe('authService', () => {
 
       const result = await login('testuser', 'password123');
 
-      expect(post).toHaveBeenCalledWith('/auth/login', { username: 'testuser', password: 'password123' });
+      expect(post).toHaveBeenCalledWith('/auth/login', {
+        username: 'testuser',
+        password: 'password123',
+      });
       expect(result).toHaveProperty('token');
       expect(result).toHaveProperty('user');
       expect(result).toHaveProperty('refreshToken');

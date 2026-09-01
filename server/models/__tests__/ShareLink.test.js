@@ -3,7 +3,11 @@
  * Verifies create, findByToken, findByUserId, update, delete, incrementDownloadCount, isExpired.
  */
 const ShareLink = require('../ShareLink');
-const { createTestDatabase, createAuthenticatedTestUser, createTestFileNode } = require('../../test-utils');
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  createTestFileNode,
+} = require('../../test-utils');
 
 describe('ShareLink model', () => {
   let dbCleanup;

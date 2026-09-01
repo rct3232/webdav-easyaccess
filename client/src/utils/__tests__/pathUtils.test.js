@@ -225,21 +225,18 @@ describe('property-based (fast-check)', () => {
     );
   });
 
-    it('joinPath then getPathParts yields equivalent segments (joinPath normalizes slashes)', () => {
-      // joinPath strips leading/trailing slashes from parts - use parts without slashes for round-trip
-      const segment = fc.stringOf(
-        fc.char().filter((c) => c !== '/' && c !== '\\'),
-        { minLength: 1, maxLength: 10 }
-      );
-      fc.assert(
-        fc.property(
-          fc.array(segment, { minLength: 1, maxLength: 5 }),
-          (parts) => {
-            const joined = joinPath(...parts);
-            const recovered = getPathParts(joined);
-            expect(recovered).toEqual(parts);
-          }
-        )
-      );
-    });
+  it('joinPath then getPathParts yields equivalent segments (joinPath normalizes slashes)', () => {
+    // joinPath strips leading/trailing slashes from parts - use parts without slashes for round-trip
+    const segment = fc.stringOf(
+      fc.char().filter((c) => c !== '/' && c !== '\\'),
+      { minLength: 1, maxLength: 10 }
+    );
+    fc.assert(
+      fc.property(fc.array(segment, { minLength: 1, maxLength: 5 }), (parts) => {
+        const joined = joinPath(...parts);
+        const recovered = getPathParts(joined);
+        expect(recovered).toEqual(parts);
+      })
+    );
+  });
 });

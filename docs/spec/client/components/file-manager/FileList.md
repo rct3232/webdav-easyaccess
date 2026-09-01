@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item | Description |
-|------|-------------|
-| Role | List view of files in a responsive grid. Supports selection, drag-and-drop, long-press selection entry on mobile, infinite scroll. |
-| Used in | FileManager |
-| Related components | FileListItem, FileSkeletons, useFileViewCommon, useThumbnailLazyLoad |
+| Item               | Description                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | List view of files in a responsive grid. Supports selection, drag-and-drop, long-press selection entry on mobile, infinite scroll. |
+| Used in            | FileManager                                                                                                                        |
+| Related components | FileListItem, FileSkeletons, useFileViewCommon, useThumbnailLazyLoad                                                               |
 
 ---
 
@@ -19,36 +19,36 @@
 
 ### 2.2 Props
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| files | array | Y | - | File objects to display |
-| onFileClick | function | Y | - | Click handler for file; receives (file, event) for modifier detection |
-| onMoreClick | function | Y | - | More button click handler (file); opens FileActionSheet |
-| onLongPressSelect | function | Y | - | Long-press handler for mobile: enters selection mode and selects file |
-| onContextMenu | function | Y | - | Context menu handler (e, file) |
-| onFileDrop | function | N | - | Drop handler for drag-and-drop |
-| selectionMode | boolean | Y | - | Whether selection mode active |
-| selectedFiles | Set | Y | - | Selected file paths |
-| onFileCheck | function | Y | - | Selection toggle handler (used by row interactions in selection mode; no checkbox UI required) |
-| processingMap | object | N | - | Map of path -> processing state |
-| currentPath | string | Y | - | Current folder path |
-| onPathClick | function | N | - | Path click handler |
-| loading | boolean | N | false | Shows skeleton when true and files empty |
-| onThumbnailsLoaded | function | N | - | Callback when thumbnails loaded |
-| loadMoreRef | ref | N | - | Ref for infinite scroll sentinel |
-| hasMore | boolean | N | - | Whether more items to load |
-| shareToken | string | N | - | Share token for thumbnail URLs |
+| Name               | Type     | Required | Default | Description                                                                                    |
+| ------------------ | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------- |
+| files              | array    | Y        | -       | File objects to display                                                                        |
+| onFileClick        | function | Y        | -       | Click handler for file; receives (file, event) for modifier detection                          |
+| onMoreClick        | function | Y        | -       | More button click handler (file); opens FileActionSheet                                        |
+| onLongPressSelect  | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file                          |
+| onContextMenu      | function | Y        | -       | Context menu handler (e, file)                                                                 |
+| onFileDrop         | function | N        | -       | Drop handler for drag-and-drop                                                                 |
+| selectionMode      | boolean  | Y        | -       | Whether selection mode active                                                                  |
+| selectedFiles      | Set      | Y        | -       | Selected file paths                                                                            |
+| onFileCheck        | function | Y        | -       | Selection toggle handler (used by row interactions in selection mode; no checkbox UI required) |
+| processingMap      | object   | N        | -       | Map of path -> processing state                                                                |
+| currentPath        | string   | Y        | -       | Current folder path                                                                            |
+| onPathClick        | function | N        | -       | Path click handler                                                                             |
+| loading            | boolean  | N        | false   | Shows skeleton when true and files empty                                                       |
+| onThumbnailsLoaded | function | N        | -       | Callback when thumbnails loaded                                                                |
+| loadMoreRef        | ref      | N        | -       | Ref for infinite scroll sentinel                                                               |
+| hasMore            | boolean  | N        | -       | Whether more items to load                                                                     |
+| shareToken         | string   | N        | -       | Share token for thumbnail URLs                                                                 |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-|----------|--------------|-----------|
-| onFileClick | File row click | (file, event) |
-| onMoreClick | More button click | (file) |
-| onLongPressSelect | Mobile long-press on file | (file) |
-| onContextMenu | Right-click | (e, file) |
-| onFileDrop | File dropped on target | via useFileViewCommon |
-| onFileCheck | Selection toggle in selection mode | (file, checked, e) |
+| Callback          | When invoked                       | Arguments             |
+| ----------------- | ---------------------------------- | --------------------- |
+| onFileClick       | File row click                     | (file, event)         |
+| onMoreClick       | More button click                  | (file)                |
+| onLongPressSelect | Mobile long-press on file          | (file)                |
+| onContextMenu     | Right-click                        | (e, file)             |
+| onFileDrop        | File dropped on target             | via useFileViewCommon |
+| onFileCheck       | Selection toggle in selection mode | (file, checked, e)    |
 
 ### 2.4 Dependencies
 

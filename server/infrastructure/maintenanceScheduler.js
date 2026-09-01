@@ -59,7 +59,9 @@ async function runStartupFailSafeRecovery({ failSafeService }) {
   try {
     const report = await failSafeService.runStartupRecovery();
     if (report.scanned > 0) {
-      console.warn(`\u26A0 Fail-safe recovery: ${report.scanned} orphaned node(s) require manual review`);
+      console.warn(
+        `\u26A0 Fail-safe recovery: ${report.scanned} orphaned node(s) require manual review`
+      );
       console.warn('  Resolve them via POST /api/admin/maintenance/repair-sync');
     } else {
       console.log('Fail-safe recovery: no orphaned nodes found');
